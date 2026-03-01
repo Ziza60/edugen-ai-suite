@@ -38,6 +38,75 @@ async function callAI(model: string, prompt: string) {
   return data.choices?.[0]?.message?.content || JSON.stringify(data);
 }
 
+// PROMPT MESTRE: Pedagogical refinement post-processing
+function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {
+  return `Você é um designer instrucional sênior especializado em e-learning de alta qualidade.
+
+Receba o conteúdo bruto abaixo e reescreva-o aplicando TODAS as regras a seguir. O resultado deve parecer material profissional pago.
+
+## REGRAS DE REESCRITA
+
+### 1. Estrutura e Hierarquia Visual
+- Use ## para título do módulo (apenas 1)
+- Use ### para seções principais (3-5 por módulo)
+- Use #### para subseções quando necessário
+- Adicione uma linha em branco entre cada bloco para respiro visual
+- Parágrafos curtos: máximo 3-4 linhas cada
+
+### 2. Marcadores Pedagógicos (OBRIGATÓRIOS)
+Insira os seguintes blocos onde forem pedagogicamente relevantes:
+
+> 🔑 **Conceito-chave:** [explicação concisa do conceito fundamental]
+
+> 💡 **Exemplo prático:** [exemplo concreto e aplicável]
+
+> ⚠️ **Atenção:** [erro comum, armadilha ou ponto crítico]
+
+> 📝 **Resumo da seção:** [2-3 frases sintetizando os pontos principais]
+
+Cada módulo DEVE conter no mínimo:
+- 2 blocos "Conceito-chave"
+- 2 blocos "Exemplo prático"  
+- 1 bloco "Atenção"
+- 1 bloco "Resumo da seção" ao final
+
+### 3. Redução de Densidade Textual
+- Elimine redundâncias e repetições
+- Substitua parágrafos densos por listas com bullet points (-)
+- Use **negrito** para termos-chave (máximo 3-4 por parágrafo)
+- Use tabelas Markdown quando comparar 2+ itens
+- Prefira frases diretas e objetivas
+
+### 4. Formatação para Leitura em Tela
+- Escaneabilidade: o leitor deve entender a estrutura só passando os olhos
+- Use listas numeradas para processos/etapas sequenciais
+- Use listas com bullet para itens sem ordem
+- Blocos de código com \`\`\` quando aplicável
+- Linha horizontal (---) para separar grandes seções
+
+### 5. Abertura e Fechamento
+- Comece com 1-2 frases que contextualizem o que será aprendido (sem "Neste módulo vamos...")
+- Termine com o bloco 📝 Resumo + uma frase motivacional curta de transição
+
+### 6. Restrições
+- Mantenha 100% da correção técnica do conteúdo original
+- NÃO adicione informações novas que não estejam no original
+- NÃO remova conceitos ou explicações importantes
+- Mantenha o idioma: ${language}
+- NÃO inclua metadados, comentários sobre o processo ou notas para o editor
+
+---
+
+TÍTULO DO MÓDULO: ${moduleTitle}
+
+CONTEÚDO BRUTO:
+${rawContent}
+
+---
+
+Retorne APENAS o conteúdo reescrito em Markdown, sem explicações adicionais.`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -56,15 +125,12 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    // User client (respects RLS)
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Service client (bypasses RLS)
     const serviceClient = createClient(supabaseUrl, supabaseKey);
 
-    // Get user
     const {
       data: { user },
       error: userError,
@@ -116,7 +182,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Enforce module limit
     const actualModules = Math.min(num_modules || 3, limits.maxModules);
 
     // 3. Generate course structure with Gemini Flash-Lite
@@ -145,12 +210,8 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-    const structureRaw = await callAI(
-      "google/gemini-2.5-flash-lite",
-      structurePrompt
-    );
+    const structureRaw = await callAI("google/gemini-2.5-flash-lite", structurePrompt);
 
-    // Parse JSON from response
     let structure;
     try {
       const jsonMatch = structureRaw.match(/\{[\s\S]*\}/);
@@ -179,10 +240,11 @@ Return ONLY valid JSON with this structure:
 
     if (courseError) throw courseError;
 
-    // 5. Generate content for each module with Gemini Flash
+    // 5. Generate content for each module: raw → refined → save
     for (let i = 0; i < structure.modules.length; i++) {
       const mod = structure.modules[i];
 
+      // Step A: Generate raw content with Gemini Flash
       const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
 
 Course: ${title}
@@ -199,18 +261,23 @@ Write in Markdown format. Include:
 
 Write 800-1200 words. Be thorough and educational.`;
 
-      const content = await callAI(
-        "google/gemini-2.5-flash",
-        contentPrompt
-      );
+      const rawContent = await callAI("google/gemini-2.5-flash", contentPrompt);
 
-      // Insert module
+      // Step B: PROMPT MESTRE — Pedagogical refinement post-processing
+      const refinementPrompt = buildRefinementPrompt(
+        mod.title,
+        rawContent,
+        language || "pt-BR"
+      );
+      const refinedContent = await callAI("google/gemini-2.5-flash", refinementPrompt);
+
+      // Step C: Save the REFINED content (never the raw version)
       const { data: moduleData, error: moduleError } = await serviceClient
         .from("course_modules")
         .insert({
           course_id: course.id,
           title: mod.title,
-          content: content,
+          content: refinedContent,
           order_index: i,
         })
         .select()
