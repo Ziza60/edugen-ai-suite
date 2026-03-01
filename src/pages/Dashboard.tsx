@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
+import { useDevMode } from "@/hooks/useDevMode";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { plan, limits } = useSubscription();
   const { usage } = useMonthlyUsage();
+  const { isDev } = useDevMode();
   const navigate = useNavigate();
 
   const { data: courses = [], isLoading } = useQuery({
@@ -30,7 +32,7 @@ export default function Dashboard() {
     enabled: !!user,
   });
 
-  const canCreate = usage < limits.maxCourses;
+  const canCreate = isDev || usage < limits.maxCourses;
 
   const handleCreate = () => {
     if (!canCreate) return;
