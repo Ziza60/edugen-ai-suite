@@ -12,24 +12,30 @@ const PLAN_LIMITS = {
   pro: { maxCourses: 5, maxModules: 10, images: true },
 };
 
-// Call Lovable AI (which wraps Gemini models)
-async function callAI(model: string, prompt: string, supabaseUrl: string, anonKey: string) {
-  const res = await fetch(`${supabaseUrl}/functions/v1/ai`, {
+// Call Lovable AI Gateway
+async function callAI(model: string, prompt: string) {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${anonKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, prompt }),
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+    }),
   });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`AI call failed: ${errText}`);
+    throw new Error(`AI call failed (${res.status}): ${errText}`);
   }
 
   const data = await res.json();
-  return data.text || data.content || JSON.stringify(data);
+  return data.choices?.[0]?.message?.content || JSON.stringify(data);
 }
 
 Deno.serve(async (req: Request) => {
@@ -141,9 +147,7 @@ Return ONLY valid JSON with this structure:
 
     const structureRaw = await callAI(
       "google/gemini-2.5-flash-lite",
-      structurePrompt,
-      supabaseUrl,
-      anonKey
+      structurePrompt
     );
 
     // Parse JSON from response
@@ -197,9 +201,7 @@ Write 800-1200 words. Be thorough and educational.`;
 
       const content = await callAI(
         "google/gemini-2.5-flash",
-        contentPrompt,
-        supabaseUrl,
-        anonKey
+        contentPrompt
       );
 
       // Insert module
