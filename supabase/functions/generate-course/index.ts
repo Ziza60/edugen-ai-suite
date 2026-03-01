@@ -165,21 +165,32 @@ Deno.serve(async (req: Request) => {
     const plan = (sub?.plan || "free") as "free" | "pro";
     const limits = PLAN_LIMITS[plan];
 
-    // 2. Check monthly usage
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const { count: usageCount } = await serviceClient
-      .from("usage_events")
-      .select("*", { count: "exact", head: true })
+    // 1b. Check if user is a dev (unlimited generation)
+    const { data: profile } = await serviceClient
+      .from("profiles")
+      .select("is_dev")
       .eq("user_id", user.id)
-      .eq("event_type", "course_created")
-      .gte("created_at", startOfMonth);
+      .single();
 
-    if ((usageCount ?? 0) >= limits.maxCourses) {
-      return new Response(
-        JSON.stringify({ error: "Monthly course limit reached. Upgrade your plan." }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const isDev = profile?.is_dev === true;
+
+    // 2. Check monthly usage (skip for dev users)
+    if (!isDev) {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const { count: usageCount } = await serviceClient
+        .from("usage_events")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("event_type", "course_created")
+        .gte("created_at", startOfMonth);
+
+      if ((usageCount ?? 0) >= limits.maxCourses) {
+        return new Response(
+          JSON.stringify({ error: "Monthly course limit reached. Upgrade your plan." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     const actualModules = Math.min(num_modules || 3, limits.maxModules);
