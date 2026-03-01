@@ -167,13 +167,22 @@ Deno.serve(async (req: Request) => {
     const limits = PLAN_LIMITS[plan];
 
     // 1b. Check if user is a dev (unlimited generation)
-    const { data: profile } = await serviceClient
+    const { data: profile, error: profileError } = await serviceClient
       .from("profiles")
       .select("is_dev")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
-    const isDev = profile?.is_dev === true;
+    // Defensive fallback: if lookup by user_id fails, try id = auth user id
+    let isDev = profile?.is_dev === true;
+    if (!isDev && profileError) {
+      const { data: profileById } = await serviceClient
+        .from("profiles")
+        .select("is_dev")
+        .eq("id", userId)
+        .maybeSingle();
+      isDev = profileById?.is_dev === true;
+    }
 
     // 2. Check monthly usage (skip for dev users)
     if (!isDev) {
