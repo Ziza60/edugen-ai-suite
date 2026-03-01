@@ -2,3 +2,9 @@ project_id = "hhlzaryhsyqbqktxdgyb"
 
 [functions.generate-course]
 verify_jwt = false
+
+[functions.export-pdf]
+verify_jwt = false
+
+[functions.validate-certificate]
+verify_jwt = false
