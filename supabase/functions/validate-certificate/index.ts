@@ -50,16 +50,26 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Fetch modules for syllabus
+    const { data: modules = [] } = await serviceClient
+      .from("course_modules")
+      .select("title, order_index")
+      .eq("course_id", cert.course_id)
+      .order("order_index");
+
     return new Response(
       JSON.stringify({
         valid: true,
         certificate: {
+          id: cert.id,
           student_name: cert.student_name,
           course_title: course.title,
           issued_at: cert.issued_at,
           template: cert.template,
           custom_data: cert.custom_data,
           language: course.language,
+          token,
+          modules: modules.map((m: any) => ({ title: m.title, order_index: m.order_index })),
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
