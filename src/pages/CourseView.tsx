@@ -1,26 +1,33 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Download, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard } from "lucide-react";
+import { ArrowLeft, Download, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, FileText, Award } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import { motion } from "framer-motion";
 import { useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
+import { CertificateDialog } from "@/components/course/CertificateDialog";
 
 export default function CourseView() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { plan } = useSubscription();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [certDialogOpen, setCertDialogOpen] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  const isPro = plan === "pro";
 
   const { data: course, isLoading: loadingCourse } = useQuery({
     queryKey: ["course", id],
@@ -36,10 +43,7 @@ export default function CourseView() {
     queryKey: ["course-modules", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("course_modules")
-        .select("*")
-        .eq("course_id", id!)
-        .order("order_index");
+        .from("course_modules").select("*").eq("course_id", id!).order("order_index");
       if (error) throw error;
       return data;
     },
@@ -52,9 +56,7 @@ export default function CourseView() {
       const moduleIds = modules.map((m) => m.id);
       if (moduleIds.length === 0) return [];
       const { data, error } = await supabase
-        .from("course_quiz_questions")
-        .select("*")
-        .in("module_id", moduleIds);
+        .from("course_quiz_questions").select("*").in("module_id", moduleIds);
       if (error) throw error;
       return data;
     },
@@ -67,9 +69,7 @@ export default function CourseView() {
       const moduleIds = modules.map((m) => m.id);
       if (moduleIds.length === 0) return [];
       const { data, error } = await supabase
-        .from("course_flashcards")
-        .select("*")
-        .in("module_id", moduleIds);
+        .from("course_flashcards").select("*").in("module_id", moduleIds);
       if (error) throw error;
       return data;
     },
@@ -101,7 +101,8 @@ export default function CourseView() {
   });
 
   const handleExportMarkdown = () => {
-    const md = modules.map((m) => `# ${m.title}\n\n${m.content || ""}`).join("\n\n---\n\n");
+    const branding = isPro ? "" : "\n\n---\n\n*Gerado com CourseAI — plataforma de cursos com IA*\n";
+    const md = modules.map((m) => `# ${m.title}\n\n${m.content || ""}`).join("\n\n---\n\n") + branding;
     const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -109,6 +110,37 @@ export default function CourseView() {
     a.download = `${course?.title || "curso"}.md`;
     a.click();
     URL.revokeObjectURL(url);
+
+    // Log usage
+    if (user) {
+      supabase.from("usage_events").insert({
+        user_id: user.id,
+        event_type: "export_md",
+        metadata: { course_id: id },
+      }).then(() => {});
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!isPro) {
+      toast({ title: "Recurso PRO", description: "Exportação PDF disponível apenas no plano Pro.", variant: "destructive" });
+      return;
+    }
+    setExportingPdf(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("export-pdf", {
+        body: { course_id: id },
+      });
+      if (error) throw error;
+      if (data?.url) {
+        window.open(data.url, "_blank");
+        toast({ title: "PDF gerado!" });
+      }
+    } catch (err: any) {
+      toast({ title: "Erro ao exportar PDF", description: err.message, variant: "destructive" });
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   if (loadingCourse || loadingModules) {
@@ -131,8 +163,7 @@ export default function CourseView() {
   return (
     <div className="p-6 lg:p-8 max-w-4xl mx-auto">
       <Button variant="ghost" onClick={() => navigate("/app/dashboard")} className="mb-4">
-        <ArrowLeft className="h-4 w-4 mr-2" />
-        Voltar
+        <ArrowLeft className="h-4 w-4 mr-2" /> Voltar
       </Button>
 
       {/* Course header */}
@@ -147,10 +178,21 @@ export default function CourseView() {
           <h1 className="font-display text-3xl font-bold">{course.title}</h1>
           {course.description && <p className="text-muted-foreground mt-2">{course.description}</p>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={handleExportMarkdown}>
-            <Download className="h-4 w-4 mr-1" />
-            MD
+            <Download className="h-4 w-4 mr-1" /> MD
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportPdf}
+            disabled={exportingPdf || !isPro}
+          >
+            {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
+            PDF {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)}>
+            <Award className="h-4 w-4 mr-1" /> Certificado
           </Button>
           <Button
             variant={course.status === "published" ? "outline" : "default"}
@@ -167,19 +209,16 @@ export default function CourseView() {
       <Tabs defaultValue="modules">
         <TabsList>
           <TabsTrigger value="modules">
-            <BookOpen className="h-4 w-4 mr-1" />
-            Módulos ({modules.length})
+            <BookOpen className="h-4 w-4 mr-1" /> Módulos ({modules.length})
           </TabsTrigger>
           {quizzes.length > 0 && (
             <TabsTrigger value="quizzes">
-              <Brain className="h-4 w-4 mr-1" />
-              Quizzes ({quizzes.length})
+              <Brain className="h-4 w-4 mr-1" /> Quizzes ({quizzes.length})
             </TabsTrigger>
           )}
           {flashcards.length > 0 && (
             <TabsTrigger value="flashcards">
-              <CreditCard className="h-4 w-4 mr-1" />
-              Flashcards ({flashcards.length})
+              <CreditCard className="h-4 w-4 mr-1" /> Flashcards ({flashcards.length})
             </TabsTrigger>
           )}
         </TabsList>
@@ -211,12 +250,7 @@ export default function CourseView() {
                 </CardHeader>
                 <CardContent>
                   {editingModuleId === mod.id ? (
-                    <Textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      rows={12}
-                      className="font-mono text-sm"
-                    />
+                    <Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={12} className="font-mono text-sm" />
                   ) : (
                     <div className="prose prose-sm max-w-none dark:prose-invert">
                       <ReactMarkdown>{mod.content || "*Sem conteúdo ainda*"}</ReactMarkdown>
@@ -259,6 +293,15 @@ export default function CourseView() {
           ))}
         </TabsContent>
       </Tabs>
+
+      {/* Certificate Dialog */}
+      <CertificateDialog
+        open={certDialogOpen}
+        onOpenChange={setCertDialogOpen}
+        courseId={id!}
+        courseTitle={course.title}
+        courseStatus={course.status}
+      />
     </div>
   );
 }
