@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN is_dev boolean NOT NULL DEFAULT false;
