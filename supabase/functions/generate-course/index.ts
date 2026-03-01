@@ -131,16 +131,17 @@ Deno.serve(async (req: Request) => {
 
     const serviceClient = createClient(supabaseUrl, supabaseKey);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await userClient.auth.getUser();
-    if (userError || !user) {
+    // Validate token using getClaims
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
       return new Response(JSON.stringify({ error: "Invalid token" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const userId = claimsData.claims.sub as string;
 
     const body = await req.json();
     const {
@@ -159,7 +160,7 @@ Deno.serve(async (req: Request) => {
     const { data: sub } = await serviceClient
       .from("subscriptions")
       .select("plan")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .single();
 
     const plan = (sub?.plan || "free") as "free" | "pro";
@@ -169,7 +170,7 @@ Deno.serve(async (req: Request) => {
     const { data: profile } = await serviceClient
       .from("profiles")
       .select("is_dev")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .single();
 
     const isDev = profile?.is_dev === true;
@@ -181,7 +182,7 @@ Deno.serve(async (req: Request) => {
       const { count: usageCount } = await serviceClient
         .from("usage_events")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("event_type", "course_created")
         .gte("created_at", startOfMonth);
 
@@ -235,7 +236,7 @@ Return ONLY valid JSON with this structure:
     const { data: course, error: courseError } = await serviceClient
       .from("courses")
       .insert({
-        user_id: user.id,
+        user_id: userId,
         title,
         description: structure.description || "",
         theme,
@@ -321,7 +322,7 @@ Write 800-1200 words. Be thorough and educational.`;
 
     // 6. Log usage event
     await serviceClient.from("usage_events").insert({
-      user_id: user.id,
+      user_id: userId,
       event_type: "course_created",
       metadata: { course_id: course.id, plan },
     });
