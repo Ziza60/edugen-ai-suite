@@ -117,8 +117,10 @@ function parseModuleContent(content: string): ContentBlock[] {
 
 /* ─── Slide generation helpers ─── */
 
-const MAX_CHARS = 600;
-const MAX_BULLETS = 6;
+const MAX_CHARS = 900;
+const MAX_BULLETS = 10;
+const SPLIT_THRESHOLD_CHARS = 600;
+const SPLIT_THRESHOLD_BULLETS = 8;
 
 const PRIMARY = "16213E";
 const TEXT_WHITE = "FFFFFF";
@@ -128,10 +130,39 @@ const ACCENT_LIGHT = "E8EAF6";
 const TAKEAWAY_BG = "FFF8E1";
 const TAKEAWAY_ACCENT = "F9A825";
 
+// Layout constants — slide is 10"×5.63"
+const HEADER_H = 0.65;
+const FOOTER_Y = 5.35;
+const CONTENT_TOP = 0.85;
+const CONTENT_H = 4.4;
+const CONTENT_LEFT = 0.5;
+const CONTENT_W = 9.0;
+const BULLET_LEFT = 0.65;
+const BULLET_W = 8.7;
+
+const BASE_FONT = 15;
+const REDUCED_FONT = 13;
+const MIN_FONT = 11;
+
 interface SlideContent {
   title: string;
   bullets: string[];
   style?: "default" | "objectives" | "takeaways" | "table-compare";
+}
+
+/** Determine if content is dense enough to warrant two-column layout */
+function isDense(bullets: string[]): boolean {
+  if (bullets.length >= SPLIT_THRESHOLD_BULLETS) return true;
+  const totalChars = bullets.reduce((s, b) => s + b.length, 0);
+  return totalChars > SPLIT_THRESHOLD_CHARS && bullets.length >= 4;
+}
+
+/** Determine font size: reduce for dense content */
+function pickFontSize(bullets: string[]): number {
+  const totalChars = bullets.reduce((s, b) => s + b.length, 0);
+  if (totalChars > 800 || bullets.length > 8) return MIN_FONT;
+  if (totalChars > SPLIT_THRESHOLD_CHARS || bullets.length > 5) return REDUCED_FONT;
+  return BASE_FONT;
 }
 
 function splitBulletsIntoSlides(heading: string, items: string[], style: SlideContent["style"] = "default"): SlideContent[] {
@@ -154,7 +185,6 @@ function splitBulletsIntoSlides(heading: string, items: string[], style: SlideCo
     slides.push({ title: heading, bullets: [...current], style });
   }
 
-  // Add continuation markers
   if (slides.length > 1) {
     slides.forEach((s, i) => {
       s.title = `${heading} (${i + 1}/${slides.length})`;
@@ -165,7 +195,6 @@ function splitBulletsIntoSlides(heading: string, items: string[], style: SlideCo
 }
 
 function tableToSlides(heading: string, headers: string[], rows: string[][]): SlideContent[] {
-  // Convert each row into a comparative bullet list
   const items: string[] = [];
   for (const row of rows) {
     const parts = row.map((cell, j) => `${headers[j] || `Col${j + 1}`}: ${cell}`).join(" → ");
@@ -179,12 +208,10 @@ function buildModuleSlides(mod: any, index: number, total: number): SlideContent
   const moduleTitle = cleanEmoji(stripMarkdown(mod.title));
   const slides: SlideContent[] = [];
 
-  // Separate objectives, takeaways and content
   const objectiveBlocks = blocks.filter((b) => b.type === "objectives");
   const takeawayBlocks = blocks.filter((b) => b.type === "takeaways");
   const contentBlocks = blocks.filter((b) => b.type !== "objectives" && b.type !== "takeaways");
 
-  // Slide A: Module title + objectives
   const objectiveBullets = objectiveBlocks.flatMap((b) => b.items || []);
   slides.push({
     title: `Módulo ${index + 1}: ${moduleTitle}`,
@@ -192,17 +219,14 @@ function buildModuleSlides(mod: any, index: number, total: number): SlideContent
     style: "objectives",
   });
 
-  // Content slides
   for (const block of contentBlocks) {
     if (block.type === "table" && block.headers && block.rows) {
       slides.push(...tableToSlides(block.heading || moduleTitle, block.headers, block.rows));
     } else if (block.items && block.items.length > 0) {
-      const heading = block.heading || moduleTitle;
-      slides.push(...splitBulletsIntoSlides(heading, block.items));
+      slides.push(...splitBulletsIntoSlides(block.heading || moduleTitle, block.items));
     }
   }
 
-  // Final slide: Takeaways
   const takeawayBullets = takeawayBlocks.flatMap((b) => b.items || []);
   if (takeawayBullets.length > 0) {
     slides.push(...splitBulletsIntoSlides("Resumo / Key Takeaways", takeawayBullets, "takeaways"));
@@ -214,84 +238,92 @@ function buildModuleSlides(mod: any, index: number, total: number): SlideContent
 /* ─── Slide rendering ─── */
 
 function addHeaderBar(slide: any, pptx: any) {
-  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: 1.1, fill: { color: PRIMARY } });
+  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: HEADER_H, fill: { color: PRIMARY } });
 }
 
 function addFooter(slide: any, slideNum: number, totalSlides: number) {
   slide.addText(`${slideNum} / ${totalSlides}`, {
-    x: 4, y: 5.2, w: 2, h: 0.3,
-    fontSize: 9, fontFace: "Arial", color: "999999", align: "center",
+    x: 4, y: FOOTER_Y, w: 2, h: 0.25,
+    fontSize: 8, fontFace: "Arial", color: "999999", align: "center",
   });
+}
+
+function makeBulletObjs(bullets: string[], fontSize: number, bulletColor: string) {
+  return bullets.map((b) => ({
+    text: b,
+    options: {
+      fontSize,
+      fontFace: "Arial",
+      color: TEXT_DARK,
+      bullet: { type: "bullet" as const, color: bulletColor },
+      paraSpaceAfter: fontSize > 13 ? 6 : 4,
+      lineSpacing: fontSize > 13 ? 18 : 15,
+    },
+  }));
+}
+
+function renderBulletsArea(slide: any, bullets: string[], fontSize: number, bulletColor: string, top: number, height: number) {
+  const twoCol = isDense(bullets);
+
+  if (twoCol) {
+    const mid = Math.ceil(bullets.length / 2);
+    const left = bullets.slice(0, mid);
+    const right = bullets.slice(mid);
+    const colW = (CONTENT_W - 0.3) / 2;
+    const smallFont = Math.max(MIN_FONT, fontSize - 1);
+
+    slide.addText(makeBulletObjs(left, smallFont, bulletColor), {
+      x: CONTENT_LEFT, y: top, w: colW, h: height, valign: "top",
+    });
+    slide.addText(makeBulletObjs(right, smallFont, bulletColor), {
+      x: CONTENT_LEFT + colW + 0.3, y: top, w: colW, h: height, valign: "top",
+    });
+  } else {
+    slide.addText(makeBulletObjs(bullets, fontSize, bulletColor), {
+      x: BULLET_LEFT, y: top, w: BULLET_W, h: height, valign: "top",
+    });
+  }
 }
 
 function renderSlide(pptx: any, sc: SlideContent, slideNum: number, totalSlides: number) {
   const slide = pptx.addSlide();
+  const fontSize = pickFontSize(sc.bullets);
 
   if (sc.style === "objectives") {
-    // Blue header with module title
     addHeaderBar(slide, pptx);
     slide.addText(sc.title, {
-      x: 0.5, y: 0.2, w: 9, h: 0.7,
-      fontSize: 22, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+      x: 0.4, y: 0.08, w: 9.2, h: 0.5,
+      fontSize: 20, fontFace: "Arial", color: TEXT_WHITE, bold: true,
     });
-    // Accent bar
-    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 1.25, w: 1.5, h: 0.04, fill: { color: ACCENT } });
-
+    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: HEADER_H + 0.1, w: 1.2, h: 0.03, fill: { color: ACCENT } });
     slide.addText("🎯 Objetivos", {
-      x: 0.5, y: 1.45, w: 4, h: 0.4,
-      fontSize: 14, fontFace: "Arial", color: ACCENT, bold: true,
+      x: 0.5, y: HEADER_H + 0.18, w: 4, h: 0.3,
+      fontSize: 13, fontFace: "Arial", color: ACCENT, bold: true,
     });
-
-    const bulletObjs = sc.bullets.map((b) => ({
-      text: b,
-      options: { fontSize: 14, fontFace: "Arial", color: TEXT_DARK, bullet: { type: "bullet" as const, color: ACCENT }, paraSpaceAfter: 8 },
-    }));
-    slide.addText(bulletObjs, { x: 0.8, y: 1.9, w: 8.4, h: 3.0, valign: "top" });
+    const bTop = HEADER_H + 0.52;
+    renderBulletsArea(slide, sc.bullets, fontSize, ACCENT, bTop, FOOTER_Y - bTop - 0.1);
 
   } else if (sc.style === "takeaways") {
-    // Warm background for takeaways
     slide.background = { color: TAKEAWAY_BG };
-    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: 0.08, fill: { color: TAKEAWAY_ACCENT } });
-
+    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: 0.06, fill: { color: TAKEAWAY_ACCENT } });
     slide.addText("📌 " + sc.title, {
-      x: 0.5, y: 0.4, w: 9, h: 0.6,
-      fontSize: 20, fontFace: "Arial", color: TEXT_DARK, bold: true,
+      x: 0.4, y: 0.2, w: 9.2, h: 0.5,
+      fontSize: 19, fontFace: "Arial", color: TEXT_DARK, bold: true,
     });
-
-    const bulletObjs = sc.bullets.map((b) => ({
-      text: b,
-      options: { fontSize: 13, fontFace: "Arial", color: TEXT_DARK, bullet: { type: "bullet" as const, color: TAKEAWAY_ACCENT }, paraSpaceAfter: 8 },
-    }));
-    slide.addText(bulletObjs, { x: 0.8, y: 1.2, w: 8.4, h: 3.8, valign: "top" });
-
-  } else if (sc.style === "table-compare") {
-    addHeaderBar(slide, pptx);
-    slide.addText(sc.title, {
-      x: 0.5, y: 0.2, w: 9, h: 0.7,
-      fontSize: 20, fontFace: "Arial", color: TEXT_WHITE, bold: true,
-    });
-    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 1.25, w: 1.5, h: 0.04, fill: { color: ACCENT } });
-
-    const bulletObjs = sc.bullets.map((b) => ({
-      text: b,
-      options: { fontSize: 13, fontFace: "Arial", color: TEXT_DARK, bullet: { type: "bullet" as const, color: ACCENT }, paraSpaceAfter: 10 },
-    }));
-    slide.addText(bulletObjs, { x: 0.8, y: 1.5, w: 8.4, h: 3.6, valign: "top" });
+    const bTop = 0.8;
+    renderBulletsArea(slide, sc.bullets, fontSize, TAKEAWAY_ACCENT, bTop, FOOTER_Y - bTop - 0.1);
 
   } else {
-    // Default content slide
+    // default + table-compare share the same layout
     addHeaderBar(slide, pptx);
     slide.addText(sc.title, {
-      x: 0.5, y: 0.15, w: 9, h: 0.7,
-      fontSize: 20, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+      x: 0.4, y: 0.08, w: 9.2, h: 0.5,
+      fontSize: 19, fontFace: "Arial", color: TEXT_WHITE, bold: true,
     });
-    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 1.25, w: 1.5, h: 0.04, fill: { color: ACCENT } });
-
-    const bulletObjs = sc.bullets.map((b) => ({
-      text: b,
-      options: { fontSize: 14, fontFace: "Arial", color: TEXT_DARK, bullet: { type: "bullet" as const, color: ACCENT }, paraSpaceAfter: 8 },
-    }));
-    slide.addText(bulletObjs, { x: 0.8, y: 1.5, w: 8.4, h: 3.6, valign: "top" });
+    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: HEADER_H + 0.08, w: 1.2, h: 0.03, fill: { color: ACCENT } });
+    const bTop = HEADER_H + 0.2;
+    const bulletColor = sc.style === "table-compare" ? ACCENT : ACCENT;
+    renderBulletsArea(slide, sc.bullets, fontSize, bulletColor, bTop, FOOTER_Y - bTop - 0.1);
   }
 
   addFooter(slide, slideNum, totalSlides);
