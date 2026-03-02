@@ -66,7 +66,7 @@ export function useMonthlyUsage() {
         .from("usage_events")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
-        .eq("event_type", "course_created")
+        .eq("event_type", "COURSE_GENERATED")
         .gte("created_at", startOfMonth);
       if (error) throw error;
       return count ?? 0;
