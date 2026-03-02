@@ -8,13 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Download, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, FileText, Award, RefreshCw } from "lucide-react";
+import { ArrowLeft, Download, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, FileText, Award, RefreshCw, Layers, List } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import { motion } from "framer-motion";
 import { useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { CertificateDialog } from "@/components/course/CertificateDialog";
+import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
+import { FlashcardsListView } from "@/components/course/FlashcardsListView";
 
 export default function CourseView() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +30,8 @@ export default function CourseView() {
   const [certDialogOpen, setCertDialogOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [reprocessingFlashcards, setReprocessingFlashcards] = useState(false);
+  const [flashcardView, setFlashcardView] = useState<"list" | "flip">("flip");
+  const [flipEntitled, setFlipEntitled] = useState<boolean | null>(null);
 
   const isPro = plan === "pro";
 
@@ -76,6 +80,26 @@ export default function CourseView() {
       return data;
     },
     enabled: modules.length > 0,
+  });
+
+  // Check flip entitlement from backend
+  useQuery({
+    queryKey: ["flip-entitlement"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("check-entitlements", {
+        body: { feature: "flashcards_flip" },
+      });
+      if (error) {
+        setFlipEntitled(false);
+        setFlashcardView("list");
+        return false;
+      }
+      const entitled = data?.entitled === true;
+      setFlipEntitled(entitled);
+      if (!entitled) setFlashcardView("list");
+      return entitled;
+    },
+    enabled: flashcards.length > 0,
   });
 
   const updateModule = useMutation({
@@ -283,7 +307,28 @@ export default function CourseView() {
         </TabsContent>
 
         <TabsContent value="flashcards" className="space-y-4 mt-4">
-          <div className="flex justify-end">
+          {/* View toggle & reprocess */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              {flipEntitled && (
+                <>
+                  <Button
+                    variant={flashcardView === "flip" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFlashcardView("flip")}
+                  >
+                    <Layers className="h-4 w-4 mr-1" /> Modo Flip
+                  </Button>
+                  <Button
+                    variant={flashcardView === "list" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFlashcardView("list")}
+                  >
+                    <List className="h-4 w-4 mr-1" /> Lista
+                  </Button>
+                </>
+              )}
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -308,18 +353,13 @@ export default function CourseView() {
               Reprocessar perguntas
             </Button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {flashcards.map((fc) => (
-              <Card key={fc.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-5">
-                  <p className="font-medium text-sm mb-2 text-primary">Pergunta</p>
-                  <p className="mb-4">{fc.front}</p>
-                  <p className="font-medium text-sm mb-2 text-secondary">Resposta</p>
-                  <p className="text-muted-foreground">{fc.back}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+
+          {/* Render view based on entitlement */}
+          {flashcardView === "flip" && flipEntitled ? (
+            <FlashcardsFlipView flashcards={flashcards} />
+          ) : (
+            <FlashcardsListView flashcards={flashcards} showUpsell={!flipEntitled} />
+          )}
         </TabsContent>
       </Tabs>
 
