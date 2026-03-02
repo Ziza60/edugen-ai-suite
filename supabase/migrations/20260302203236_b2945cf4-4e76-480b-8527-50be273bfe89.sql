@@ -1,0 +1,1 @@
+UPDATE subscriptions SET plan = 'pro', updated_at = now() WHERE user_id = '389a5d7f-5d24-46ed-a315-e4e86ec53c3b'
