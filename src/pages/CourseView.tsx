@@ -356,13 +356,22 @@ export default function CourseView() {
               ) : (
                 <div>
                   {moduleImage && (
-                    <div className="mb-6 rounded-xl overflow-hidden border border-border">
+                    <div className="mb-6 rounded-xl overflow-hidden border border-border relative">
                       <img
                         src={moduleImage.url}
                         alt={moduleImage.alt_text || `Ilustração do módulo ${activeModuleIndex + 1}`}
                         className="w-full h-auto object-cover max-h-[360px]"
                         loading="lazy"
                       />
+                      {/* Text overlay — all visible text is real HTML, never baked into the image */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-6">
+                        <p className="text-xs font-semibold text-white/80 uppercase tracking-wider mb-1">
+                          Módulo {activeModuleIndex + 1}
+                        </p>
+                        <h3 className="text-xl lg:text-2xl font-bold text-white font-display leading-tight drop-shadow-md">
+                          {activeModule.title}
+                        </h3>
+                      </div>
                     </div>
                   )}
                   <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-display prose-headings:font-bold prose-p:leading-relaxed prose-li:leading-relaxed">
