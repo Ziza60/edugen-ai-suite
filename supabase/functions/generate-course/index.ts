@@ -197,7 +197,7 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json();
     const {
-      title,
+      title: rawTitle,
       theme,
       target_audience,
       tone,
@@ -207,6 +207,15 @@ Deno.serve(async (req: Request) => {
       include_flashcards,
       include_images,
     } = body;
+
+    // Sanitize title: trim whitespace, collapse multiple spaces, ensure non-empty
+    const title = (rawTitle || "").trim().replace(/\s{2,}/g, " ");
+    if (!title || title.length < 3) {
+      return new Response(
+        JSON.stringify({ error: "O título do curso deve ter pelo menos 3 caracteres." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // 1. Get subscription
     const { data: sub } = await serviceClient
@@ -267,6 +276,12 @@ Deno.serve(async (req: Request) => {
 
     // 3. Generate course structure with Gemini Flash-Lite
     const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
+
+CRITICAL QUALITY RULES:
+- All text (titles, descriptions, questions) must have PERFECT spelling and grammar in ${language || "pt-BR"}.
+- Double-check every title and sentence for missing letters, typos, or truncated words.
+- Module titles must be complete, grammatically correct phrases.
+- The course description must be a well-formed paragraph with no spelling errors.
 
 Course details:
 - Title: ${title}
