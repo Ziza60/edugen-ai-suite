@@ -12,38 +12,33 @@ const corsHeaders = {
 
 /** Remove emojis and other non-Latin1 symbols that jsPDF cannot render */
 function sanitizeText(text: string): string {
-  // Remove emoji (Unicode ranges for common emoji blocks)
   let clean = text
-    // Emoji & symbols
-    .replace(/[\u{1F600}-\u{1F64F}]/gu, "")  // Emoticons
-    .replace(/[\u{1F300}-\u{1F5FF}]/gu, "")  // Misc symbols & pictographs
-    .replace(/[\u{1F680}-\u{1F6FF}]/gu, "")  // Transport & map
-    .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, "")  // Flags
-    .replace(/[\u{2600}-\u{26FF}]/gu, "")    // Misc symbols
-    .replace(/[\u{2700}-\u{27BF}]/gu, "")    // Dingbats
-    .replace(/[\u{FE00}-\u{FE0F}]/gu, "")    // Variation selectors
-    .replace(/[\u{200D}]/gu, "")              // Zero width joiner
-    .replace(/[\u{20E3}]/gu, "")              // Combining enclosing keycap
-    .replace(/[\u{E0020}-\u{E007F}]/gu, "")  // Tags
-    .replace(/[\u{1F900}-\u{1F9FF}]/gu, "")  // Supplemental symbols
-    .replace(/[\u{1FA00}-\u{1FA6F}]/gu, "")  // Chess symbols
-    .replace(/[\u{1FA70}-\u{1FAFF}]/gu, "")  // Symbols extended-A
-    .replace(/[\u{2300}-\u{23FF}]/gu, "")    // Misc technical (⌛ etc)
-    .replace(/[\u{2B50}]/gu, "")              // Star
-    .replace(/[\u{203C}\u{2049}]/gu, "")      // ‼ ⁉
-    .replace(/[\u{00AD}]/gu, "")              // Soft hyphen
+    .replace(/[\u{1F600}-\u{1F64F}]/gu, "")
+    .replace(/[\u{1F300}-\u{1F5FF}]/gu, "")
+    .replace(/[\u{1F680}-\u{1F6FF}]/gu, "")
+    .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, "")
+    .replace(/[\u{2600}-\u{26FF}]/gu, "")
+    .replace(/[\u{2700}-\u{27BF}]/gu, "")
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, "")
+    .replace(/[\u{200D}]/gu, "")
+    .replace(/[\u{20E3}]/gu, "")
+    .replace(/[\u{E0020}-\u{E007F}]/gu, "")
+    .replace(/[\u{1F900}-\u{1F9FF}]/gu, "")
+    .replace(/[\u{1FA00}-\u{1FA6F}]/gu, "")
+    .replace(/[\u{1FA70}-\u{1FAFF}]/gu, "")
+    .replace(/[\u{2300}-\u{23FF}]/gu, "")
+    .replace(/[\u{2B50}]/gu, "")
+    .replace(/[\u{203C}\u{2049}]/gu, "")
+    .replace(/[\u{00AD}]/gu, "")
     .trim();
 
-  // Replace smart quotes with regular quotes
   clean = clean
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2013\u2014]/g, "-")
     .replace(/[\u2026]/g, "...");
 
-  // Collapse multiple spaces left by emoji removal
   clean = clean.replace(/  +/g, " ").trim();
-
   return clean;
 }
 
@@ -72,7 +67,6 @@ interface ParsedTable {
 }
 
 function parseMarkdownTable(lines: string[], startIndex: number): { table: ParsedTable | null; endIndex: number } {
-  // Line must contain pipes
   if (!lines[startIndex]?.includes("|")) return { table: null, endIndex: startIndex };
 
   const parsePipeRow = (line: string): string[] =>
@@ -81,7 +75,6 @@ function parseMarkdownTable(lines: string[], startIndex: number): { table: Parse
   const headers = parsePipeRow(lines[startIndex]);
   if (headers.length < 2) return { table: null, endIndex: startIndex };
 
-  // Check separator line
   const sepLine = lines[startIndex + 1];
   if (!sepLine || !/^[\s|:-]+$/.test(sepLine)) return { table: null, endIndex: startIndex };
 
@@ -94,43 +87,92 @@ function parseMarkdownTable(lines: string[], startIndex: number): { table: Parse
   }
 
   if (rows.length === 0) return { table: null, endIndex: startIndex };
-
   return { table: { headers, rows }, endIndex: i - 1 };
+}
+
+// ── Pedagogical block detection ───────────────────────────────────────
+
+type PedagogicalBlockType = "example" | "reflection" | "summary" | "takeaways" | "tip" | "note" | null;
+
+function detectPedagogicalBlock(text: string): PedagogicalBlockType {
+  const lower = text.toLowerCase().replace(/[*#_`>]/g, "").trim();
+  if (/^exemplo\s+pr[áa]tico/.test(lower) || /^na\s+pr[áa]tica/.test(lower) || /^vamos\s+praticar/.test(lower)) return "example";
+  if (/^pare\s+um\s+momento/.test(lower) || /^reflita/.test(lower) || /^para\s+pensar/.test(lower) || /^checkpoint/.test(lower)) return "reflection";
+  if (/^resumo/.test(lower) || /^em\s+resumo/.test(lower) || /^conclus[ãa]o/.test(lower)) return "summary";
+  if (/^key\s+takeaway/.test(lower) || /^pontos[- ]chave/.test(lower)) return "takeaways";
+  if (/^dica/.test(lower) || /^importante/.test(lower) || /^aten[çc][ãa]o/.test(lower)) return "tip";
+  if (/^nota/.test(lower) || /^lembre[- ]se/.test(lower) || /^sa[íi]ba\s+mais/.test(lower) || /^exerc[íi]cio/.test(lower) || /^atividade/.test(lower) || /^desafio/.test(lower)) return "note";
+  return null;
 }
 
 // ── PDF Layout constants ──────────────────────────────────────────────
 
 const PAGE_W = 210;
-const MARGIN_LEFT = 22;
-const MARGIN_RIGHT = 22;
-const MARGIN_TOP = 25;
-const MARGIN_BOTTOM = 25;
+const MARGIN_LEFT = 24;
+const MARGIN_RIGHT = 24;
+const MARGIN_TOP = 28;
+const MARGIN_BOTTOM = 28;
 const CONTENT_W = PAGE_W - MARGIN_LEFT - MARGIN_RIGHT;
 const MAX_Y = 297 - MARGIN_BOTTOM;
 
 // Font sizes
 const FONT = {
-  TITLE: 26,
-  MODULE_TITLE: 18,
-  H2: 14,
-  H3: 12,
+  TITLE: 28,
+  MODULE_TITLE: 20,
+  H2: 15,
+  H3: 12.5,
   H4: 11,
-  BODY: 10,
-  SMALL: 9,
+  BODY: 10.5,
+  SMALL: 9.5,
   TABLE_HEADER: 9,
-  TABLE_BODY: 8.5,
+  TABLE_BODY: 9,
+  BLOCK_LABEL: 9.5,
 };
 
-// Spacing (mm)
-const SPACE = {
-  AFTER_TITLE: 10,
-  AFTER_H2: 6,
+// Spacing (mm) — generous for comfortable reading
+const SP = {
+  AFTER_TITLE: 14,
+  BEFORE_H2: 12,
+  AFTER_H2: 7,
+  BEFORE_H3: 10,
   AFTER_H3: 5,
-  AFTER_PARAGRAPH: 5,
-  LINE_HEIGHT: 4.5,   // body text line height
-  TABLE_ROW_PAD: 3,
-  SECTION_GAP: 8,
-  BEFORE_HEADING: 8,
+  BEFORE_H4: 8,
+  AFTER_H4: 4,
+  AFTER_PARAGRAPH: 6,
+  LINE_HEIGHT: 5.2,
+  BULLET_GAP: 3,
+  TABLE_ROW_PAD: 3.5,
+  TABLE_CELL_LINE: 4,
+  SECTION_GAP: 10,
+  BLOCK_PAD_V: 5,
+  BLOCK_PAD_H: 8,
+};
+
+// Colors (RGB tuples)
+const COLOR = {
+  PRIMARY: [35, 40, 85] as const,       // Deep navy
+  PRIMARY_LIGHT: [60, 65, 130] as const,
+  TEXT_DARK: [30, 30, 35] as const,
+  TEXT_BODY: [45, 45, 50] as const,
+  TEXT_MUTED: [100, 100, 110] as const,
+  TEXT_WHITE: [255, 255, 255] as const,
+  BG_EXAMPLE: [235, 245, 238] as const,    // Soft green
+  BG_REFLECTION: [240, 238, 250] as const, // Soft purple
+  BG_SUMMARY: [235, 242, 252] as const,    // Soft blue
+  BG_TAKEAWAY: [252, 245, 230] as const,   // Soft amber
+  BG_TIP: [255, 243, 230] as const,        // Soft orange
+  BG_NOTE: [242, 242, 248] as const,       // Neutral
+  BAR_EXAMPLE: [40, 140, 70] as const,
+  BAR_REFLECTION: [110, 70, 180] as const,
+  BAR_SUMMARY: [40, 100, 180] as const,
+  BAR_TAKEAWAY: [200, 150, 30] as const,
+  BAR_TIP: [220, 120, 30] as const,
+  BAR_NOTE: [100, 100, 130] as const,
+  TABLE_HEADER: [35, 40, 85] as const,
+  TABLE_ZEBRA: [245, 245, 252] as const,
+  TABLE_FIRST_COL: [232, 232, 245] as const,
+  BORDER_LIGHT: [210, 210, 220] as const,
+  BORDER_TABLE: [185, 185, 200] as const,
 };
 
 // ── PDF renderer ──────────────────────────────────────────────────────
@@ -146,6 +188,8 @@ class PdfRenderer {
     this.pageNum = 1;
   }
 
+  // ── Page management ──────────────────────────────────────────────
+
   addPage() {
     this.doc.addPage();
     this.y = MARGIN_TOP;
@@ -160,396 +204,35 @@ class PdfRenderer {
   drawFooter() {
     this.doc.setFontSize(8);
     this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(160, 160, 160);
+    this.doc.setTextColor(160, 160, 165);
     this.doc.text(`${this.pageNum}`, PAGE_W / 2, 290, { align: "center" });
-    this.doc.setTextColor(0, 0, 0);
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
-  // ── Title page ────────────────────────────────────────────────────
+  // ── Estimation helpers (no side-effects on Y) ────────────────────
 
-  renderTitlePage(title: string, description: string | null, language: string) {
-    // Decorative top bar
-    this.doc.setFillColor(40, 40, 90);
-    this.doc.rect(0, 0, PAGE_W, 6, "F");
-
-    // Title
-    this.doc.setFontSize(FONT.TITLE);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(30, 30, 60);
-    const titleLines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 10);
-    const titleY = 70;
-    this.doc.text(titleLines, PAGE_W / 2, titleY, { align: "center" });
-
-    // Underline
-    const underY = titleY + titleLines.length * 10 + 4;
-    this.doc.setDrawColor(40, 40, 90);
-    this.doc.setLineWidth(0.8);
-    this.doc.line(PAGE_W / 2 - 30, underY, PAGE_W / 2 + 30, underY);
-
-    // Description
-    if (description) {
-      this.doc.setFontSize(11);
-      this.doc.setFont("helvetica", "normal");
-      this.doc.setTextColor(80, 80, 80);
-      const descLines = this.doc.splitTextToSize(sanitizeText(description), CONTENT_W - 30);
-      this.doc.text(descLines, PAGE_W / 2, underY + 12, { align: "center" });
-    }
-
-    // Metadata
-    this.doc.setFontSize(9);
-    this.doc.setTextColor(120, 120, 120);
-    this.doc.text(`Idioma: ${language}`, PAGE_W / 2, 250, { align: "center" });
-    this.doc.text(new Date().toLocaleDateString("pt-BR"), PAGE_W / 2, 256, { align: "center" });
-
-    // Bottom bar
-    this.doc.setFillColor(40, 40, 90);
-    this.doc.rect(0, 291, PAGE_W, 6, "F");
-
-    this.drawFooter();
-  }
-
-  // ── Module rendering ──────────────────────────────────────────────
-
-  renderModuleTitle(title: string) {
-    this.addPage();
-    this.y = MARGIN_TOP + 5;
-
-    // Accent bar
-    this.doc.setFillColor(40, 40, 90);
-    this.doc.rect(MARGIN_LEFT, this.y - 2, 4, 10, "F");
-
-    this.doc.setFontSize(FONT.MODULE_TITLE);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(30, 30, 60);
-    const lines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 10);
-    this.doc.text(lines, MARGIN_LEFT + 8, this.y + 6);
-    this.y += lines.length * 8 + SPACE.AFTER_TITLE;
-    this.doc.setTextColor(0, 0, 0);
-
-    // Thin separator
-    this.doc.setDrawColor(200, 200, 210);
-    this.doc.setLineWidth(0.3);
-    this.doc.line(MARGIN_LEFT, this.y, PAGE_W - MARGIN_RIGHT, this.y);
-    this.y += 6;
-  }
-
-  /** Estimate how tall a text block would be without rendering */
   estimateTextHeight(text: string, fontSize: number, maxWidth: number, lineH: number): number {
     this.doc.setFontSize(fontSize);
     const lines = this.doc.splitTextToSize(sanitizeText(stripMarkdown(text)), maxWidth);
     return lines.length * lineH + 4;
   }
 
-  /** Estimate height of a bullet item */
   estimateBulletHeight(text: string): number {
     this.doc.setFontSize(FONT.BODY);
-    const cleanText = sanitizeText(stripMarkdown(text.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "")));
-    const lines = this.doc.splitTextToSize(cleanText, CONTENT_W - 7);
-    return lines.length * SPACE.LINE_HEIGHT + 2;
+    const clean = sanitizeText(stripMarkdown(text.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "")));
+    const lines = this.doc.splitTextToSize(clean, CONTENT_W - 10);
+    return lines.length * SP.LINE_HEIGHT + SP.BULLET_GAP;
   }
 
-  renderHeading(text: string, level: number, extraNeeded = 0) {
-    // extraNeeded = estimated height of the content that MUST stay with this heading
-    const headingSize = ({ 2: FONT.H2, 3: FONT.H3, 4: FONT.H4 } as Record<number, number>)[level] || FONT.BODY;
-    const headingH = SPACE.BEFORE_HEADING + 
-      this.doc.splitTextToSize(sanitizeText(stripMarkdown(text.replace(/^#{1,6}\s*/, ""))), CONTENT_W).length * (headingSize / 2.8) + 
-      SPACE.AFTER_H2 + (level === 2 ? 4 : 0);
-
-    // Reserve space for heading + associated content
-    this.checkPage(headingH + extraNeeded);
-    this.y += SPACE.BEFORE_HEADING;
-
-    const sizeMap: Record<number, number> = {
-      2: FONT.H2,
-      3: FONT.H3,
-      4: FONT.H4,
-      5: FONT.BODY,
-      6: FONT.BODY,
-    };
-    const fontSize = sizeMap[level] || FONT.BODY;
-
-    this.doc.setFontSize(fontSize);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(30, 30, 60);
-
-    const cleanText = sanitizeText(stripMarkdown(text.replace(/^#{1,6}\s*/, "")));
-    const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
-    this.doc.text(lines, MARGIN_LEFT, this.y);
-    this.y += lines.length * (fontSize / 2.8) + SPACE.AFTER_H2;
-
-    // Small underline for H2
-    if (level === 2) {
-      this.doc.setDrawColor(200, 200, 210);
-      this.doc.setLineWidth(0.2);
-      this.doc.line(MARGIN_LEFT, this.y - 2, MARGIN_LEFT + 50, this.y - 2);
-      this.y += 2;
-    }
-
-    this.doc.setTextColor(0, 0, 0);
-  }
-
-  renderParagraph(text: string) {
-    const cleanText = sanitizeText(stripMarkdown(text));
-    if (!cleanText) return;
-
-    this.doc.setFontSize(FONT.BODY);
-    this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(40, 40, 40);
-
-    const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
-    this.checkPage(lines.length * SPACE.LINE_HEIGHT + 2);
-    this.doc.text(lines, MARGIN_LEFT, this.y);
-    this.y += lines.length * SPACE.LINE_HEIGHT + SPACE.AFTER_PARAGRAPH;
-  }
-
-  renderBullet(text: string, indent = 0) {
-    const cleanText = sanitizeText(stripMarkdown(text.replace(/^[-*]\s*/, "")));
-    if (!cleanText) return;
-
-    this.doc.setFontSize(FONT.BODY);
-    this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(40, 40, 40);
-
-    const indentMm = indent * 4;
-    const bulletX = MARGIN_LEFT + 2 + indentMm;
-    const textX = MARGIN_LEFT + 7 + indentMm;
-    const availW = CONTENT_W - 7 - indentMm;
-
-    const lines = this.doc.splitTextToSize(cleanText, availW);
-    this.checkPage(lines.length * SPACE.LINE_HEIGHT + 2);
-
-    // Bullet dot
-    this.doc.setFillColor(40, 40, 90);
-    this.doc.circle(bulletX, this.y - 1, 0.7, "F");
-
-    this.doc.text(lines, textX, this.y);
-    this.y += lines.length * SPACE.LINE_HEIGHT + 2;
-  }
-
-  renderBlockquote(text: string) {
-    const cleanText = sanitizeText(stripMarkdown(text.replace(/^>\s*/, "")));
-    if (!cleanText) return;
-
-    this.doc.setFontSize(FONT.SMALL);
-    this.doc.setFont("helvetica", "italic");
-    this.doc.setTextColor(60, 60, 80);
-
-    const lines = this.doc.splitTextToSize(cleanText, CONTENT_W - 12);
-    this.checkPage(lines.length * 4 + 6);
-
-    // Background
-    const blockH = lines.length * 4 + 4;
-    this.doc.setFillColor(240, 240, 248);
-    this.doc.roundedRect(MARGIN_LEFT, this.y - 4, CONTENT_W, blockH, 2, 2, "F");
-
-    // Left accent bar
-    this.doc.setFillColor(70, 70, 140);
-    this.doc.rect(MARGIN_LEFT, this.y - 4, 2, blockH, "F");
-
-    this.doc.text(lines, MARGIN_LEFT + 8, this.y);
-    this.y += blockH + 4;
-    this.doc.setTextColor(0, 0, 0);
-  }
-
-  renderHorizontalRule() {
-    this.checkPage(8);
-    this.y += 3;
-    this.doc.setDrawColor(210, 210, 215);
-    this.doc.setLineWidth(0.3);
-    this.doc.line(MARGIN_LEFT + 20, this.y, PAGE_W - MARGIN_RIGHT - 20, this.y);
-    this.y += SPACE.SECTION_GAP;
-  }
-
-  // ── Table rendering ───────────────────────────────────────────────
-
-  renderTable(table: ParsedTable) {
-    const { headers, rows } = table;
-    const numCols = headers.length;
-
-    // Calculate column widths proportionally
-    // First column gets slightly more width for "Aspecto" style columns
-    const colWidths: number[] = [];
-    const firstColRatio = numCols <= 3 ? 0.30 : 0.25;
-    const remainingWidth = CONTENT_W - (CONTENT_W * firstColRatio);
-    colWidths.push(CONTENT_W * firstColRatio);
-    for (let i = 1; i < numCols; i++) {
-      colWidths.push(remainingWidth / (numCols - 1));
-    }
-
-    // Measure total table height to check if it fits
-    const headerH = 8;
-    const estimatedRowH = 10;
-    const totalEstH = headerH + rows.length * estimatedRowH + 4;
-
-    // If table is too tall, check if we need a new page
-    this.checkPage(Math.min(totalEstH, 60));
-    this.y += 2;
-
-    const startX = MARGIN_LEFT;
-    const tableWidth = CONTENT_W;
-    let currentY = this.y;
-
-    // ── Header ──
-    this.doc.setFillColor(40, 40, 90);
-    this.doc.rect(startX, currentY, tableWidth, headerH, "F");
-
-    this.doc.setFontSize(FONT.TABLE_HEADER);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(255, 255, 255);
-
-    let colX = startX;
-    for (let c = 0; c < numCols; c++) {
-      const cellText = sanitizeText(stripMarkdown(headers[c] || ""));
-      const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 4);
-      this.doc.text(lines[0] || "", colX + 3, currentY + 5.5);
-      colX += colWidths[c];
-    }
-
-    currentY += headerH;
-
-    // ── Rows ──
-    for (let r = 0; r < rows.length; r++) {
-      const row = rows[r];
-
-      // Calculate row height based on content
-      this.doc.setFontSize(FONT.TABLE_BODY);
-      this.doc.setFont("helvetica", "normal");
-      let maxLines = 1;
-      const cellLines: string[][] = [];
-
-      for (let c = 0; c < numCols; c++) {
-        const cellText = sanitizeText(stripMarkdown(row[c] || ""));
-        const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 6);
-        // Limit to 3 lines per cell for readability
-        const trimmedLines = lines.slice(0, 3);
-        cellLines.push(trimmedLines);
-        if (trimmedLines.length > maxLines) maxLines = trimmedLines.length;
-      }
-
-      const rowH = Math.max(7, maxLines * 3.8 + SPACE.TABLE_ROW_PAD * 2);
-
-      // Check page break
-      if (currentY + rowH > MAX_Y) {
-        this.addPage();
-        currentY = this.y;
-
-        // Repeat header on new page
-        this.doc.setFillColor(40, 40, 90);
-        this.doc.rect(startX, currentY, tableWidth, headerH, "F");
-        this.doc.setFontSize(FONT.TABLE_HEADER);
-        this.doc.setFont("helvetica", "bold");
-        this.doc.setTextColor(255, 255, 255);
-        let hx = startX;
-        for (let c = 0; c < numCols; c++) {
-          const cellText = sanitizeText(stripMarkdown(headers[c] || ""));
-          this.doc.text(cellText, hx + 3, currentY + 5.5);
-          hx += colWidths[c];
-        }
-        currentY += headerH;
-      }
-
-      // Row background (zebra striping)
-      if (r % 2 === 0) {
-        this.doc.setFillColor(248, 248, 252);
-      } else {
-        this.doc.setFillColor(255, 255, 255);
-      }
-      this.doc.rect(startX, currentY, tableWidth, rowH, "F");
-
-      // First column highlight
-      this.doc.setFillColor(235, 235, 245);
-      this.doc.rect(startX, currentY, colWidths[0], rowH, "F");
-
-      // Cell text
-      colX = startX;
-      for (let c = 0; c < numCols; c++) {
-        if (c === 0) {
-          this.doc.setFont("helvetica", "bold");
-          this.doc.setTextColor(30, 30, 60);
-        } else {
-          this.doc.setFont("helvetica", "normal");
-          this.doc.setTextColor(50, 50, 50);
-        }
-        this.doc.setFontSize(FONT.TABLE_BODY);
-
-        const lines = cellLines[c] || [""];
-        for (let l = 0; l < lines.length; l++) {
-          this.doc.text(lines[l], colX + 3, currentY + SPACE.TABLE_ROW_PAD + 2.5 + l * 3.8);
-        }
-        colX += colWidths[c];
-      }
-
-      // Row border
-      this.doc.setDrawColor(220, 220, 230);
-      this.doc.setLineWidth(0.15);
-      this.doc.line(startX, currentY + rowH, startX + tableWidth, currentY + rowH);
-
-      currentY += rowH;
-    }
-
-    // Table outer border
-    const totalH = currentY - this.y;
-    this.doc.setDrawColor(180, 180, 200);
-    this.doc.setLineWidth(0.3);
-    this.doc.rect(startX, this.y, tableWidth, totalH);
-
-    // Column separators
-    colX = startX;
-    for (let c = 0; c < numCols - 1; c++) {
-      colX += colWidths[c];
-      this.doc.setDrawColor(210, 210, 220);
-      this.doc.setLineWidth(0.15);
-      this.doc.line(colX, this.y, colX, this.y + totalH);
-    }
-
-    this.y = currentY + SPACE.SECTION_GAP;
-  }
-
-  // ── Module content processor ──────────────────────────────────────
-
-  // ── Pedagogical phrase detection ──────────────────────────────────
-
-  /** Check if a line is a pedagogical intro phrase that must stay with its following content */
-  isPedagogicalIntro(text: string): boolean {
-    const lower = text.toLowerCase().replace(/[*#_`>]/g, "").trim();
-    const patterns = [
-      /^exemplo\s+pr[áa]tico/,
-      /^pare\s+um\s+momento/,
-      /^reflita/,
-      /^key\s+takeaway/,
-      /^pontos[- ]chave/,
-      /^resumo/,
-      /^aten[çc][ãa]o/,
-      /^importante/,
-      /^dica/,
-      /^nota/,
-      /^lembre[- ]se/,
-      /^sa[íi]ba\s+mais/,
-      /^para\s+pensar/,
-      /^exerc[íi]cio/,
-      /^atividade/,
-      /^desafio/,
-      /^conclus[ãa]o/,
-      /^em\s+resumo/,
-      /^vamos\s+praticar/,
-      /^na\s+pr[áa]tica/,
-    ];
-    return patterns.some((p) => p.test(lower));
-  }
-
-  /** Estimate the height of the next content block after index i (for look-ahead) */
   estimateNextBlockHeight(lines: string[], i: number): number {
     if (i >= lines.length) return 0;
     const trimmed = lines[i].trim();
     if (!trimmed) return 0;
 
-    // Table
     if (trimmed.includes("|") && i + 1 < lines.length && lines[i + 1]?.includes("|")) {
       const { table } = parseMarkdownTable(lines, i);
-      if (table) return Math.min(60, 8 + table.rows.length * 10);
+      if (table) return Math.min(80, 10 + table.rows.length * 12);
     }
-
-    // Blockquote
     if (trimmed.startsWith("> ")) {
       let text = trimmed.replace(/^>\s*/, "");
       let j = i + 1;
@@ -557,15 +240,11 @@ class PdfRenderer {
         text += " " + lines[j].trim().replace(/^>\s*/, "");
         j++;
       }
-      return this.estimateTextHeight(text, FONT.SMALL, CONTENT_W - 12, 4) + 8;
+      return this.estimateTextHeight(text, FONT.SMALL, CONTENT_W - 16, 4.5) + 12;
     }
-
-    // Bullet list - estimate first few bullets
     if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || /^\d+\.\s/.test(trimmed)) {
-      let h = 0;
-      let j = i;
-      let count = 0;
-      while (j < lines.length && count < 4) {
+      let h = 0, j = i, count = 0;
+      while (j < lines.length && count < 5) {
         const t = lines[j].trim();
         if (!t || getHeadingLevel(t) > 0) break;
         if (t.startsWith("- ") || t.startsWith("* ") || /^\d+\.\s/.test(t)) {
@@ -576,34 +255,440 @@ class PdfRenderer {
       }
       return h;
     }
-
-    // Paragraph
-    return this.estimateTextHeight(trimmed, FONT.BODY, CONTENT_W, SPACE.LINE_HEIGHT);
+    return this.estimateTextHeight(trimmed, FONT.BODY, CONTENT_W, SP.LINE_HEIGHT);
   }
 
-  /** Skip empty lines and return index of next non-empty line */
   nextNonEmpty(lines: string[], from: number): number {
     let j = from;
     while (j < lines.length && !lines[j].trim()) j++;
     return j;
   }
 
+  // ── Title page ────────────────────────────────────────────────────
+
+  renderTitlePage(title: string, description: string | null, language: string) {
+    // Top decorative bar
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.rect(0, 0, PAGE_W, 8, "F");
+    // Accent stripe
+    this.doc.setFillColor(...COLOR.PRIMARY_LIGHT);
+    this.doc.rect(0, 8, PAGE_W, 2, "F");
+
+    // Title
+    this.doc.setFontSize(FONT.TITLE);
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...COLOR.PRIMARY);
+    const titleLines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 20);
+    const titleY = 80;
+    this.doc.text(titleLines, PAGE_W / 2, titleY, { align: "center" });
+
+    // Decorative line under title
+    const underY = titleY + titleLines.length * 11 + 6;
+    this.doc.setDrawColor(...COLOR.PRIMARY);
+    this.doc.setLineWidth(1);
+    this.doc.line(PAGE_W / 2 - 35, underY, PAGE_W / 2 + 35, underY);
+    this.doc.setLineWidth(0.3);
+    this.doc.line(PAGE_W / 2 - 25, underY + 3, PAGE_W / 2 + 25, underY + 3);
+
+    // Description
+    if (description) {
+      this.doc.setFontSize(11.5);
+      this.doc.setFont("helvetica", "normal");
+      this.doc.setTextColor(...COLOR.TEXT_MUTED);
+      const descLines = this.doc.splitTextToSize(sanitizeText(description), CONTENT_W - 40);
+      this.doc.text(descLines, PAGE_W / 2, underY + 18, { align: "center" });
+    }
+
+    // Metadata
+    this.doc.setFontSize(9);
+    this.doc.setTextColor(130, 130, 140);
+    this.doc.text(`Idioma: ${language}`, PAGE_W / 2, 248, { align: "center" });
+    this.doc.text(new Date().toLocaleDateString("pt-BR"), PAGE_W / 2, 254, { align: "center" });
+
+    // Bottom decorative bars
+    this.doc.setFillColor(...COLOR.PRIMARY_LIGHT);
+    this.doc.rect(0, 289, PAGE_W, 2, "F");
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.rect(0, 291, PAGE_W, 6, "F");
+
+    this.drawFooter();
+  }
+
+  // ── Module title ──────────────────────────────────────────────────
+
+  renderModuleTitle(title: string) {
+    this.addPage();
+    this.y = MARGIN_TOP + 8;
+
+    // Accent bar
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.rect(MARGIN_LEFT, this.y - 3, 5, 14, "F");
+
+    this.doc.setFontSize(FONT.MODULE_TITLE);
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...COLOR.PRIMARY);
+    const lines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 14);
+    this.doc.text(lines, MARGIN_LEFT + 10, this.y + 7);
+    this.y += lines.length * 9 + SP.AFTER_TITLE;
+
+    // Separator line
+    this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
+    this.doc.setLineWidth(0.4);
+    this.doc.line(MARGIN_LEFT, this.y, PAGE_W - MARGIN_RIGHT, this.y);
+    this.y += 8;
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
+  }
+
+  // ── Headings ──────────────────────────────────────────────────────
+
+  renderHeading(text: string, level: number, extraNeeded = 0) {
+    const sizeMap: Record<number, number> = { 2: FONT.H2, 3: FONT.H3, 4: FONT.H4, 5: FONT.BODY, 6: FONT.BODY };
+    const fontSize = sizeMap[level] || FONT.BODY;
+    const beforeMap: Record<number, number> = { 2: SP.BEFORE_H2, 3: SP.BEFORE_H3, 4: SP.BEFORE_H4 };
+    const beforeSpace = beforeMap[level] || 6;
+    const afterMap: Record<number, number> = { 2: SP.AFTER_H2, 3: SP.AFTER_H3, 4: SP.AFTER_H4 };
+    const afterSpace = afterMap[level] || 4;
+
+    const cleanText = sanitizeText(stripMarkdown(text.replace(/^#{1,6}\s*/, "")));
+    this.doc.setFontSize(fontSize);
+    const textLines = this.doc.splitTextToSize(cleanText, CONTENT_W);
+    const headingH = beforeSpace + textLines.length * (fontSize * 0.38) + afterSpace;
+
+    this.checkPage(headingH + extraNeeded);
+    this.y += beforeSpace;
+
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...COLOR.PRIMARY);
+    this.doc.text(textLines, MARGIN_LEFT, this.y);
+    this.y += textLines.length * (fontSize * 0.38) + afterSpace;
+
+    // H2 underline accent
+    if (level === 2) {
+      this.doc.setDrawColor(...COLOR.PRIMARY_LIGHT);
+      this.doc.setLineWidth(0.3);
+      this.doc.line(MARGIN_LEFT, this.y - 3, MARGIN_LEFT + 55, this.y - 3);
+      this.y += 2;
+    }
+
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
+  }
+
+  // ── Body text ─────────────────────────────────────────────────────
+
+  renderParagraph(text: string) {
+    const cleanText = sanitizeText(stripMarkdown(text));
+    if (!cleanText) return;
+
+    this.doc.setFontSize(FONT.BODY);
+    this.doc.setFont("helvetica", "normal");
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
+
+    const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
+    this.checkPage(lines.length * SP.LINE_HEIGHT + 3);
+    this.doc.text(lines, MARGIN_LEFT, this.y);
+    this.y += lines.length * SP.LINE_HEIGHT + SP.AFTER_PARAGRAPH;
+  }
+
+  renderBullet(text: string, indent = 0) {
+    const cleanText = sanitizeText(stripMarkdown(text.replace(/^[-*]\s*/, "")));
+    if (!cleanText) return;
+
+    this.doc.setFontSize(FONT.BODY);
+    this.doc.setFont("helvetica", "normal");
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
+
+    const indentMm = indent * 5;
+    const bulletX = MARGIN_LEFT + 3 + indentMm;
+    const textX = MARGIN_LEFT + 9 + indentMm;
+    const availW = CONTENT_W - 9 - indentMm;
+
+    const lines = this.doc.splitTextToSize(cleanText, availW);
+    this.checkPage(lines.length * SP.LINE_HEIGHT + SP.BULLET_GAP);
+
+    // Bullet dot
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.circle(bulletX, this.y - 1.2, 0.8, "F");
+
+    this.doc.text(lines, textX, this.y);
+    this.y += lines.length * SP.LINE_HEIGHT + SP.BULLET_GAP;
+  }
+
+  // ── Blockquote ────────────────────────────────────────────────────
+
+  renderBlockquote(text: string) {
+    const cleanText = sanitizeText(stripMarkdown(text.replace(/^>\s*/, "")));
+    if (!cleanText) return;
+
+    this.doc.setFontSize(FONT.SMALL);
+    this.doc.setFont("helvetica", "italic");
+
+    const lines = this.doc.splitTextToSize(cleanText, CONTENT_W - 16);
+    const blockH = lines.length * 4.5 + SP.BLOCK_PAD_V * 2;
+    this.checkPage(blockH + 4);
+
+    // Background
+    this.doc.setFillColor(...COLOR.BG_NOTE);
+    this.doc.roundedRect(MARGIN_LEFT, this.y - SP.BLOCK_PAD_V, CONTENT_W, blockH, 2, 2, "F");
+
+    // Left accent bar
+    this.doc.setFillColor(...COLOR.BAR_NOTE);
+    this.doc.roundedRect(MARGIN_LEFT, this.y - SP.BLOCK_PAD_V, 3, blockH, 1.5, 1.5, "F");
+
+    this.doc.setTextColor(60, 60, 85);
+    this.doc.text(lines, MARGIN_LEFT + SP.BLOCK_PAD_H + 2, this.y + 1);
+    this.y += blockH + 6;
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
+  }
+
+  // ── Styled pedagogical box ────────────────────────────────────────
+
+  renderPedagogicalBox(label: string, bodyLines: string[], blockType: PedagogicalBlockType) {
+    const bgMap: Record<string, readonly [number, number, number]> = {
+      example: COLOR.BG_EXAMPLE,
+      reflection: COLOR.BG_REFLECTION,
+      summary: COLOR.BG_SUMMARY,
+      takeaways: COLOR.BG_TAKEAWAY,
+      tip: COLOR.BG_TIP,
+      note: COLOR.BG_NOTE,
+    };
+    const barMap: Record<string, readonly [number, number, number]> = {
+      example: COLOR.BAR_EXAMPLE,
+      reflection: COLOR.BAR_REFLECTION,
+      summary: COLOR.BAR_SUMMARY,
+      takeaways: COLOR.BAR_TAKEAWAY,
+      tip: COLOR.BAR_TIP,
+      note: COLOR.BAR_NOTE,
+    };
+    const bt = blockType || "note";
+    const bg = bgMap[bt] || COLOR.BG_NOTE;
+    const bar = barMap[bt] || COLOR.BAR_NOTE;
+
+    // Measure label
+    this.doc.setFontSize(FONT.BLOCK_LABEL);
+    this.doc.setFont("helvetica", "bold");
+    const labelClean = sanitizeText(stripMarkdown(label));
+    const labelLines = this.doc.splitTextToSize(labelClean, CONTENT_W - 18);
+    const labelH = labelLines.length * 4.5;
+
+    // Measure body
+    this.doc.setFontSize(FONT.BODY);
+    this.doc.setFont("helvetica", "normal");
+    const bodyH = bodyLines.reduce((sum, line) => {
+      const ls = this.doc.splitTextToSize(sanitizeText(stripMarkdown(line)), CONTENT_W - 18);
+      return sum + ls.length * SP.LINE_HEIGHT + 2;
+    }, 0);
+
+    const totalH = SP.BLOCK_PAD_V + labelH + 4 + bodyH + SP.BLOCK_PAD_V;
+    this.checkPage(totalH + 4);
+
+    const boxY = this.y - 2;
+
+    // Background with rounded corners
+    this.doc.setFillColor(...bg);
+    this.doc.roundedRect(MARGIN_LEFT, boxY, CONTENT_W, totalH, 2.5, 2.5, "F");
+
+    // Left accent bar
+    this.doc.setFillColor(...bar);
+    this.doc.roundedRect(MARGIN_LEFT, boxY, 3.5, totalH, 1.5, 1.5, "F");
+
+    // Label
+    this.doc.setFontSize(FONT.BLOCK_LABEL);
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...(bar as [number, number, number]));
+    const innerX = MARGIN_LEFT + SP.BLOCK_PAD_H + 2;
+    let curY = boxY + SP.BLOCK_PAD_V + 3;
+    this.doc.text(labelLines, innerX, curY);
+    curY += labelH + 4;
+
+    // Body content
+    this.doc.setFontSize(FONT.BODY);
+    this.doc.setFont("helvetica", "normal");
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
+    for (const line of bodyLines) {
+      const clean = sanitizeText(stripMarkdown(line));
+      if (!clean) { curY += 2; continue; }
+      const isBullet = line.trim().startsWith("- ") || line.trim().startsWith("* ") || /^\d+\.\s/.test(line.trim());
+      if (isBullet) {
+        const bulletText = clean.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "");
+        const ls = this.doc.splitTextToSize(bulletText, CONTENT_W - 24);
+        this.doc.setFillColor(...bar);
+        this.doc.circle(innerX + 2, curY - 1, 0.7, "F");
+        this.doc.setTextColor(...COLOR.TEXT_BODY);
+        this.doc.text(ls, innerX + 7, curY);
+        curY += ls.length * SP.LINE_HEIGHT + SP.BULLET_GAP;
+      } else {
+        const ls = this.doc.splitTextToSize(clean, CONTENT_W - 18);
+        this.doc.text(ls, innerX, curY);
+        curY += ls.length * SP.LINE_HEIGHT + 2;
+      }
+    }
+
+    this.y = boxY + totalH + 8;
+  }
+
+  // ── Horizontal rule ───────────────────────────────────────────────
+
+  renderHorizontalRule() {
+    this.checkPage(10);
+    this.y += 4;
+    this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
+    this.doc.setLineWidth(0.3);
+    this.doc.line(MARGIN_LEFT + 25, this.y, PAGE_W - MARGIN_RIGHT - 25, this.y);
+    this.y += SP.SECTION_GAP;
+  }
+
+  // ── Table rendering ───────────────────────────────────────────────
+
+  renderTable(table: ParsedTable) {
+    const { headers, rows } = table;
+    const numCols = headers.length;
+
+    // Column widths - first column wider for "Aspecto" pattern
+    const colWidths: number[] = [];
+    const firstRatio = numCols <= 2 ? 0.35 : numCols <= 3 ? 0.30 : 0.25;
+    colWidths.push(CONTENT_W * firstRatio);
+    const remaining = CONTENT_W - colWidths[0];
+    for (let i = 1; i < numCols; i++) colWidths.push(remaining / (numCols - 1));
+
+    // Pre-measure all rows to get accurate heights
+    const headerH = 10;
+    const rowHeights: number[] = [];
+    for (const row of rows) {
+      this.doc.setFontSize(FONT.TABLE_BODY);
+      let maxLines = 1;
+      for (let c = 0; c < numCols; c++) {
+        const cellText = sanitizeText(stripMarkdown(row[c] || ""));
+        const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 8);
+        if (lines.length > maxLines) maxLines = Math.min(lines.length, 4);
+      }
+      rowHeights.push(Math.max(8, maxLines * SP.TABLE_CELL_LINE + SP.TABLE_ROW_PAD * 2));
+    }
+
+    const totalTableH = headerH + rowHeights.reduce((a, b) => a + b, 0) + 4;
+
+    // If table fits on one page, keep it together
+    if (totalTableH < MAX_Y - MARGIN_TOP) {
+      this.checkPage(totalTableH);
+    } else {
+      this.checkPage(Math.min(totalTableH, headerH + rowHeights[0] + 20));
+    }
+
+    this.y += 3;
+    const startX = MARGIN_LEFT;
+    let currentY = this.y;
+
+    const drawHeader = (atY: number): number => {
+      // Header background
+      this.doc.setFillColor(...COLOR.TABLE_HEADER);
+      this.doc.roundedRect(startX, atY, CONTENT_W, headerH, 1.5, 1.5, "F");
+      // Square off bottom corners by overlaying rect
+      this.doc.rect(startX, atY + headerH - 2, CONTENT_W, 2, "F");
+
+      this.doc.setFontSize(FONT.TABLE_HEADER);
+      this.doc.setFont("helvetica", "bold");
+      this.doc.setTextColor(...COLOR.TEXT_WHITE);
+
+      let hx = startX;
+      for (let c = 0; c < numCols; c++) {
+        const cellText = sanitizeText(stripMarkdown(headers[c] || ""));
+        const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 6);
+        this.doc.text(lines[0] || "", hx + 4, atY + 6.5);
+        hx += colWidths[c];
+      }
+      return atY + headerH;
+    };
+
+    currentY = drawHeader(currentY);
+
+    // ── Rows ──
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const rowH = rowHeights[r];
+
+      // Page break check
+      if (currentY + rowH > MAX_Y) {
+        // Draw outer border for current page portion
+        const partH = currentY - this.y;
+        this.doc.setDrawColor(...COLOR.BORDER_TABLE);
+        this.doc.setLineWidth(0.3);
+        this.doc.rect(startX, this.y, CONTENT_W, partH);
+
+        this.addPage();
+        currentY = this.y;
+        currentY = drawHeader(currentY);
+      }
+
+      // Row background
+      this.doc.setFillColor(...(r % 2 === 0 ? COLOR.TABLE_ZEBRA : COLOR.TEXT_WHITE));
+      this.doc.rect(startX, currentY, CONTENT_W, rowH, "F");
+
+      // First column highlight
+      this.doc.setFillColor(...COLOR.TABLE_FIRST_COL);
+      this.doc.rect(startX, currentY, colWidths[0], rowH, "F");
+
+      // Cell text
+      let colX = startX;
+      for (let c = 0; c < numCols; c++) {
+        const cellText = sanitizeText(stripMarkdown(row[c] || ""));
+        this.doc.setFontSize(FONT.TABLE_BODY);
+        const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 8).slice(0, 4);
+
+        if (c === 0) {
+          this.doc.setFont("helvetica", "bold");
+          this.doc.setTextColor(...COLOR.PRIMARY);
+        } else {
+          this.doc.setFont("helvetica", "normal");
+          this.doc.setTextColor(...COLOR.TEXT_BODY);
+        }
+
+        for (let l = 0; l < lines.length; l++) {
+          this.doc.text(lines[l], colX + 4, currentY + SP.TABLE_ROW_PAD + 3 + l * SP.TABLE_CELL_LINE);
+        }
+        colX += colWidths[c];
+      }
+
+      // Row bottom border
+      this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
+      this.doc.setLineWidth(0.15);
+      this.doc.line(startX, currentY + rowH, startX + CONTENT_W, currentY + rowH);
+
+      currentY += rowH;
+    }
+
+    // Outer border
+    const totalH = currentY - this.y;
+    this.doc.setDrawColor(...COLOR.BORDER_TABLE);
+    this.doc.setLineWidth(0.35);
+    this.doc.roundedRect(startX, this.y, CONTENT_W, totalH, 1.5, 1.5);
+
+    // Column separators
+    let colX = startX;
+    for (let c = 0; c < numCols - 1; c++) {
+      colX += colWidths[c];
+      this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
+      this.doc.setLineWidth(0.15);
+      this.doc.line(colX, this.y + headerH, colX, this.y + totalH);
+    }
+
+    this.y = currentY + SP.SECTION_GAP;
+  }
+
+  // ── Module content processor ──────────────────────────────────────
+
   renderModuleContent(content: string) {
     const lines = content.split("\n");
     let i = 0;
 
     while (i < lines.length) {
-      const line = lines[i];
-      const trimmed = line.trim();
+      const trimmed = lines[i].trim();
 
-      // Skip empty lines (add small spacing)
       if (!trimmed) {
-        this.y += 2;
+        this.y += 3;
         i++;
         continue;
       }
 
-      // Table detection
+      // ── Table detection ──
       if (trimmed.includes("|") && i + 1 < lines.length && lines[i + 1]?.includes("|")) {
         const { table, endIndex } = parseMarkdownTable(lines, i);
         if (table) {
@@ -613,29 +698,51 @@ class PdfRenderer {
         }
       }
 
-      // Headings - look ahead to keep heading with next content block
+      // ── Headings with look-ahead ──
       const heading = getHeadingLevel(trimmed);
       if (heading > 0) {
         const nextIdx = this.nextNonEmpty(lines, i + 1);
         const nextBlockH = this.estimateNextBlockHeight(lines, nextIdx);
-        const level = heading === 1 ? 2 : heading;
-        this.renderHeading(trimmed, level, nextBlockH);
+        this.renderHeading(trimmed, heading === 1 ? 2 : heading, nextBlockH);
         i++;
         continue;
       }
 
-      // Pedagogical intro phrases - keep with next block
-      if (this.isPedagogicalIntro(trimmed)) {
-        const nextIdx = this.nextNonEmpty(lines, i + 1);
-        const nextBlockH = this.estimateNextBlockHeight(lines, nextIdx);
-        const paraH = this.estimateTextHeight(trimmed, FONT.BODY, CONTENT_W, SPACE.LINE_HEIGHT);
-        this.checkPage(paraH + nextBlockH);
-        this.renderParagraph(trimmed);
-        i++;
+      // ── Pedagogical blocks — collect label + body as one unit ──
+      const blockType = detectPedagogicalBlock(trimmed);
+      if (blockType) {
+        const label = trimmed;
+        const bodyLines: string[] = [];
+        let j = i + 1;
+        // Collect associated content lines until next heading, empty gap, or new block
+        let emptyCount = 0;
+        while (j < lines.length) {
+          const t = lines[j].trim();
+          if (!t) {
+            emptyCount++;
+            if (emptyCount >= 2) break; // Two blank lines = block separator
+            j++;
+            continue;
+          }
+          emptyCount = 0;
+          if (getHeadingLevel(t) > 0) break;
+          if (detectPedagogicalBlock(t)) break;
+          if (t === "---" || t === "***" || t === "___") break;
+          bodyLines.push(t);
+          j++;
+        }
+
+        if (bodyLines.length > 0) {
+          this.renderPedagogicalBox(label, bodyLines, blockType);
+        } else {
+          // No body found, render as styled paragraph
+          this.renderParagraph(label);
+        }
+        i = j;
         continue;
       }
 
-      // Blockquote - keep entire blockquote together
+      // ── Blockquote ──
       if (trimmed.startsWith("> ")) {
         let quoteText = trimmed.replace(/^>\s*/, "");
         let j = i + 1;
@@ -643,37 +750,35 @@ class PdfRenderer {
           quoteText += " " + lines[j].trim().replace(/^>\s*/, "");
           j++;
         }
-        // Estimate full blockquote height and check page
-        const bqH = this.estimateTextHeight(quoteText, FONT.SMALL, CONTENT_W - 12, 4) + 8;
+        const bqH = this.estimateTextHeight(quoteText, FONT.SMALL, CONTENT_W - 16, 4.5) + 12;
         this.checkPage(bqH);
         this.renderBlockquote(quoteText);
         i = j;
         continue;
       }
 
-      // Bullet list
+      // ── Bullet list ──
       if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
         this.renderBullet(trimmed);
         i++;
         continue;
       }
 
-      // Numbered list
+      // ── Numbered list ──
       if (/^\d+\.\s/.test(trimmed)) {
-        const itemText = trimmed.replace(/^\d+\.\s*/, "");
-        this.renderBullet("- " + itemText);
+        this.renderBullet("- " + trimmed.replace(/^\d+\.\s*/, ""));
         i++;
         continue;
       }
 
-      // Horizontal rule
+      // ── Horizontal rule ──
       if (trimmed === "---" || trimmed === "***" || trimmed === "___") {
         this.renderHorizontalRule();
         i++;
         continue;
       }
 
-      // Regular paragraph
+      // ── Regular paragraph ──
       this.renderParagraph(trimmed);
       i++;
     }
