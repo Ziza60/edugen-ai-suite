@@ -70,7 +70,6 @@ function parseModuleContent(content: string): ContentBlock[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // Table detection
     if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
       if (!inTable) {
         flushBullets();
@@ -78,7 +77,7 @@ function parseModuleContent(content: string): ContentBlock[] {
         const cells = trimmed.split("|").filter(Boolean).map((c) => stripMarkdown(c.trim()));
         tableHeaders = cells;
       } else if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
-        // separator row, skip
+        // separator
       } else {
         const cells = trimmed.split("|").filter(Boolean).map((c) => stripMarkdown(c.trim()));
         tableRows.push(cells);
@@ -88,21 +87,18 @@ function parseModuleContent(content: string): ContentBlock[] {
 
     if (inTable) flushTable();
 
-    // Heading
     if (trimmed.startsWith("#")) {
       flushBullets();
       currentHeading = cleanEmoji(stripMarkdown(trimmed));
       continue;
     }
 
-    // Bullet
     if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || /^\d+\.\s/.test(trimmed)) {
       const text = cleanEmoji(stripMarkdown(trimmed.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "")));
       if (text.length > 0) currentBullets.push(text);
       continue;
     }
 
-    // Paragraph → convert to bullet
     const clean = cleanEmoji(stripMarkdown(trimmed));
     if (clean.length > 10) {
       currentBullets.push(clean);
@@ -117,8 +113,9 @@ function parseModuleContent(content: string): ContentBlock[] {
 
 /* ─── Slide generation helpers ─── */
 
-const MAX_CHARS = 1800;
-const MAX_BULLETS = 14;
+// STRICT limits — professional presentations use 5-6 bullets max
+const MAX_CHARS_PER_SLIDE = 700;
+const MAX_BULLETS_PER_SLIDE = 7;
 
 const PRIMARY = "16213E";
 const TEXT_WHITE = "FFFFFF";
@@ -128,17 +125,15 @@ const TAKEAWAY_BG = "FFF8E1";
 const TAKEAWAY_ACCENT = "F9A825";
 
 // Layout (10" x 5.625")
-const SLIDE_H = 5.625;
-const HEADER_H = 0.64; // ~11.4% da altura
-const FOOTER_Y = 5.33;
-const BODY_TOP = 0.68;
-const BODY_H = 4.48; // ~79.6% da altura
+const HEADER_H = 0.56;
+const FOOTER_Y = 5.35;
+const BODY_TOP = 0.74;       // content starts after header + accent line + small gap
+const BODY_BOTTOM = 5.25;    // stop before footer
+const BODY_H = BODY_BOTTOM - BODY_TOP; // ~4.51"
 const BODY_X = 0.45;
 const BODY_W = 9.1;
-
-// Margens internas solicitadas
-const INNER_X = 0.25;
-const INNER_Y = 0.15;
+const INNER_X = 0.2;
+const INNER_Y = 0.1;
 
 interface SlideContent {
   title: string;
@@ -146,34 +141,71 @@ interface SlideContent {
   style?: "default" | "objectives" | "takeaways" | "table-compare";
 }
 
-interface SlideLayout {
-  fontSize: number;
-  lineSpacing: number;
-  paraAfter: number;
-  twoCols: boolean;
-  top: number;
-  height: number;
+/** Estimate how tall a set of bullets will be in inches */
+function estimateHeight(bullets: string[], fontSize: number, colWidth: number): number {
+  // chars per line based on column width and font size
+  // At 18pt Arial, ~5.5 chars/inch; at 24pt ~4.2 chars/inch
+  const charsPerInch = Math.max(3.5, 7 - (fontSize / 12));
+  const cpl = Math.max(20, Math.floor(colWidth * charsPerInch));
+  const lineH = (fontSize / 72) * 1.35; // line height with spacing
+  const paraGap = 0.06; // gap between bullets
+
+  let h = 0;
+  for (const b of bullets) {
+    const lines = Math.max(1, Math.ceil(b.length / cpl));
+    h += lines * lineH + paraGap;
+  }
+  return h;
 }
 
+function fitsOnSlide(bullets: string[], fontSize: number, twoCols: boolean): boolean {
+  const availH = BODY_H - INNER_Y * 2;
+  if (twoCols) {
+    const colW = (BODY_W - INNER_X * 2 - 0.3) / 2;
+    const mid = Math.ceil(bullets.length / 2);
+    const lh = estimateHeight(bullets.slice(0, mid), fontSize, colW);
+    const rh = estimateHeight(bullets.slice(mid), fontSize, colW);
+    return Math.max(lh, rh) <= availH;
+  }
+  const contentW = BODY_W - INNER_X * 2;
+  return estimateHeight(bullets, fontSize, contentW) <= availH;
+}
+
+/** Pick best layout: try large font first, shrink, then try 2-col */
+function pickLayout(bullets: string[]): { fontSize: number; twoCols: boolean } {
+  const count = bullets.length;
+  const totalChars = bullets.reduce((s, b) => s + b.length, 0);
+
+  // Try single column with decreasing font sizes
+  for (const fs of [22, 20, 18, 16]) {
+    if (fitsOnSlide(bullets, fs, false)) return { fontSize: fs, twoCols: false };
+  }
+
+  // Try two columns (good for many short bullets)
+  const useTwoCols = count >= 6 || totalChars > 400;
+  if (useTwoCols) {
+    for (const fs of [20, 18, 16]) {
+      if (fitsOnSlide(bullets, fs, true)) return { fontSize: fs, twoCols: true };
+    }
+  }
+
+  // Fallback — will use shrink fit
+  return { fontSize: 16, twoCols: count >= 8 };
+}
+
+/** Split a long bullet into multiple shorter ones at sentence boundaries */
 function splitLongBullet(item: string): string[] {
   const clean = item.trim();
-  if (clean.length <= 320) return [clean];
+  if (clean.length <= 200) return [clean];
 
-  const parts = clean
-    .split(/(?<=[\.!?])\s+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-
+  const parts = clean.split(/(?<=[\.!?])\s+/).map((p) => p.trim()).filter(Boolean);
   if (parts.length <= 1) return [clean];
 
   const out: string[] = [];
   let acc = "";
   for (const p of parts) {
-    if (!acc) {
-      acc = p;
-      continue;
-    }
-    if ((acc + " " + p).length <= 220) {
+    if (!acc) { acc = p; continue; }
+    if ((acc + " " + p).length <= 180) {
       acc += " " + p;
     } else {
       out.push(acc);
@@ -184,74 +216,11 @@ function splitLongBullet(item: string): string[] {
   return out;
 }
 
-function shouldUseTwoColumns(bullets: string[]): boolean {
-  const count = bullets.length;
-  const totalChars = bullets.reduce((s, b) => s + b.length, 0);
-  const avg = count > 0 ? totalChars / count : 0;
-  return count >= 8 || (count >= 6 && avg <= 85);
-}
-
-function charsPerLine(fontSize: number, twoCols: boolean): number {
-  const base = twoCols ? 48 : 96;
-  return Math.max(22, Math.floor(base * (18 / fontSize)));
-}
-
-function estimateColumnHeight(bullets: string[], fontSize: number, twoCols: boolean, paraAfter: number, lineSpacing: number): number {
-  const cpl = charsPerLine(fontSize, twoCols);
-  const lineH = Math.max(0.16, (fontSize / 72) * 1.15);
-  let h = 0;
-
-  for (const b of bullets) {
-    const lines = Math.max(1, Math.ceil(b.length / cpl));
-    h += lines * lineH + paraAfter + (lineSpacing / 72) * 0.18;
-  }
-  return h;
-}
-
-function fitsInBody(bullets: string[], layout: SlideLayout): boolean {
-  if (layout.twoCols) {
-    const mid = Math.ceil(bullets.length / 2);
-    const left = bullets.slice(0, mid);
-    const right = bullets.slice(mid);
-    const leftH = estimateColumnHeight(left, layout.fontSize, true, layout.paraAfter, layout.lineSpacing);
-    const rightH = estimateColumnHeight(right, layout.fontSize, true, layout.paraAfter, layout.lineSpacing);
-    return Math.max(leftH, rightH) <= layout.height - INNER_Y * 2;
-  }
-
-  const singleH = estimateColumnHeight(bullets, layout.fontSize, false, layout.paraAfter, layout.lineSpacing);
-  return singleH <= layout.height - INNER_Y * 2;
-}
-
-function pickLayout(bullets: string[]): SlideLayout {
-  const dense = bullets.length > 5 || bullets.reduce((s, b) => s + b.length, 0) > 350;
-
-  const variants: SlideLayout[] = [
-    { fontSize: 24, lineSpacing: 28, paraAfter: 0.05, twoCols: false, top: BODY_TOP + 0.08, height: BODY_H - 0.14 },
-    { fontSize: 22, lineSpacing: 26, paraAfter: 0.045, twoCols: false, top: BODY_TOP + 0.06, height: BODY_H - 0.08 },
-    { fontSize: 20, lineSpacing: 24, paraAfter: 0.04, twoCols: false, top: BODY_TOP + 0.04, height: BODY_H - 0.04 },
-    { fontSize: 18, lineSpacing: 22, paraAfter: 0.035, twoCols: false, top: BODY_TOP + 0.02, height: BODY_H },
-  ];
-
-  const colVariants: SlideLayout[] = [
-    { fontSize: 22, lineSpacing: 24, paraAfter: 0.04, twoCols: true, top: BODY_TOP + 0.04, height: BODY_H - 0.04 },
-    { fontSize: 20, lineSpacing: 22, paraAfter: 0.035, twoCols: true, top: BODY_TOP + 0.02, height: BODY_H },
-    { fontSize: 18, lineSpacing: 20, paraAfter: 0.03, twoCols: true, top: BODY_TOP + 0.02, height: BODY_H },
-  ];
-
-  const tryCols = shouldUseTwoColumns(bullets);
-  const ordered = dense
-    ? [variants[1], variants[2], ...(tryCols ? colVariants : []), variants[3], variants[0]]
-    : [variants[0], variants[1], ...(tryCols ? colVariants : []), variants[2], variants[3]];
-
-  for (const candidate of ordered) {
-    if (fitsInBody(bullets, candidate)) return candidate;
-  }
-
-  return { fontSize: 18, lineSpacing: 20, paraAfter: 0.03, twoCols: tryCols, top: BODY_TOP + 0.02, height: BODY_H };
-}
-
+/** Core splitting: distribute bullets across slides respecting limits */
 function splitBulletsIntoSlides(heading: string, inputItems: string[], style: SlideContent["style"] = "default"): SlideContent[] {
   const items = inputItems.flatMap(splitLongBullet).filter(Boolean);
+  if (items.length === 0) return [];
+
   const slides: SlideContent[] = [];
   let current: string[] = [];
 
@@ -259,29 +228,31 @@ function splitBulletsIntoSlides(heading: string, inputItems: string[], style: Sl
     const next = [...current, item];
     const nextChars = next.reduce((s, b) => s + b.length, 0);
 
-    // guardrails amplos; quebra principal é por fitting visual
-    if (next.length <= MAX_BULLETS && nextChars <= MAX_CHARS && fitsInBody(next, pickLayout(next))) {
-      current = next;
-      continue;
+    // Check hard limits AND visual fit
+    if (next.length <= MAX_BULLETS_PER_SLIDE && nextChars <= MAX_CHARS_PER_SLIDE) {
+      const layout = pickLayout(next);
+      if (fitsOnSlide(next, layout.fontSize, layout.twoCols)) {
+        current = next;
+        continue;
+      }
     }
 
+    // Current batch is full — flush it
     if (current.length > 0) {
       slides.push({ title: heading, bullets: [...current], style });
       current = [item];
-      continue;
+    } else {
+      // Single item too big — push it alone
+      slides.push({ title: heading, bullets: [item], style });
+      current = [];
     }
-
-    // fallback para item extremo
-    slides.push({ title: heading, bullets: [item], style });
-    current = [];
   }
 
   if (current.length > 0) slides.push({ title: heading, bullets: [...current], style });
 
+  // Add part numbers if split
   if (slides.length > 1) {
-    slides.forEach((s, i) => {
-      s.title = `${heading} (${i + 1}/${slides.length})`;
-    });
+    slides.forEach((s, i) => { s.title = `${heading} (${i + 1}/${slides.length})`; });
   }
 
   return slides;
@@ -290,12 +261,16 @@ function splitBulletsIntoSlides(heading: string, inputItems: string[], style: Sl
 function tableToSlides(heading: string, headers: string[], rows: string[][]): SlideContent[] {
   const items: string[] = [];
   for (const row of rows) {
-    const parts = row.map((cell, j) => `${headers[j] || `Col${j + 1}`}: ${cell}`).join(" → ");
+    const parts = row.map((cell, j) => `${headers[j] || `Col${j + 1}`}: ${cell}`).join("  →  ");
     items.push(parts);
   }
   return splitBulletsIntoSlides(heading || "Comparativo", items, "table-compare");
 }
 
+/**
+ * CRITICAL FIX: Merge tiny content blocks so we don't get slides with 1 sentence.
+ * Adjacent blocks under the same or no heading get merged before splitting.
+ */
 function buildModuleSlides(mod: any, index: number, total: number): SlideContent[] {
   const blocks = parseModuleContent(mod.content || "");
   const moduleTitle = cleanEmoji(stripMarkdown(mod.title));
@@ -305,6 +280,7 @@ function buildModuleSlides(mod: any, index: number, total: number): SlideContent
   const takeawayBlocks = blocks.filter((b) => b.type === "takeaways");
   const contentBlocks = blocks.filter((b) => b.type !== "objectives" && b.type !== "takeaways");
 
+  // Module intro slide
   const objectiveBullets = objectiveBlocks.flatMap((b) => b.items || []);
   slides.push({
     title: `Módulo ${index + 1}: ${moduleTitle}`,
@@ -312,14 +288,49 @@ function buildModuleSlides(mod: any, index: number, total: number): SlideContent
     style: "objectives",
   });
 
+  // MERGE small adjacent content blocks to avoid slides with 1 bullet
+  const mergedBlocks: { heading: string; items: string[]; isTable: boolean; headers?: string[]; rows?: string[][] }[] = [];
+
   for (const block of contentBlocks) {
     if (block.type === "table" && block.headers && block.rows) {
-      slides.push(...tableToSlides(block.heading || moduleTitle, block.headers, block.rows));
-    } else if (block.items && block.items.length > 0) {
-      slides.push(...splitBulletsIntoSlides(block.heading || moduleTitle, block.items));
+      mergedBlocks.push({ heading: block.heading || moduleTitle, items: [], isTable: true, headers: block.headers, rows: block.rows });
+      continue;
+    }
+
+    const blockItems = block.items || [];
+    if (blockItems.length === 0) continue;
+
+    const blockChars = blockItems.reduce((s, b) => s + b.length, 0);
+    const lastMerged = mergedBlocks.length > 0 ? mergedBlocks[mergedBlocks.length - 1] : null;
+
+    // If this block is tiny (<=2 items or <=150 chars) and previous block is also small, merge them
+    if (
+      lastMerged &&
+      !lastMerged.isTable &&
+      blockItems.length <= 2 &&
+      blockChars <= 150 &&
+      lastMerged.items.length <= 3 &&
+      lastMerged.items.reduce((s, b) => s + b.length, 0) <= 300
+    ) {
+      // Add heading as a prefix bullet if different
+      if (block.heading && block.heading !== lastMerged.heading) {
+        lastMerged.items.push(`${block.heading}:`);
+      }
+      lastMerged.items.push(...blockItems);
+    } else {
+      mergedBlocks.push({ heading: block.heading || moduleTitle, items: [...blockItems], isTable: false });
     }
   }
 
+  for (const mb of mergedBlocks) {
+    if (mb.isTable && mb.headers && mb.rows) {
+      slides.push(...tableToSlides(mb.heading, mb.headers, mb.rows));
+    } else if (mb.items.length > 0) {
+      slides.push(...splitBulletsIntoSlides(mb.heading, mb.items));
+    }
+  }
+
+  // Takeaways
   const takeawayBullets = takeawayBlocks.flatMap((b) => b.items || []);
   if (takeawayBullets.length > 0) {
     slides.push(...splitBulletsIntoSlides("Resumo / Key Takeaways", takeawayBullets, "takeaways"));
@@ -336,12 +347,14 @@ function addHeaderBar(slide: any, pptx: any) {
 
 function addFooter(slide: any, slideNum: number, totalSlides: number) {
   slide.addText(`${slideNum} / ${totalSlides}`, {
-    x: 4, y: FOOTER_Y, w: 2, h: 0.24,
+    x: 4, y: FOOTER_Y, w: 2, h: 0.22,
     fontSize: 8, fontFace: "Arial", color: "999999", align: "center",
   });
 }
 
-function makeBulletObjs(bullets: string[], fontSize: number, bulletColor: string, lineSpacing: number, paraAfter: number) {
+function makeBulletObjs(bullets: string[], fontSize: number, bulletColor: string) {
+  const lineSpacing = Math.round(fontSize * 1.3);
+  const paraAfter = Math.max(3, Math.round(fontSize * 0.25));
   return bullets.map((b) => ({
     text: b,
     options: {
@@ -349,48 +362,36 @@ function makeBulletObjs(bullets: string[], fontSize: number, bulletColor: string
       fontFace: "Arial",
       color: TEXT_DARK,
       bullet: { type: "bullet" as const, color: bulletColor },
-      paraSpaceAfter: Math.max(3, Math.round(paraAfter * 72)),
+      paraSpaceAfter: paraAfter,
       lineSpacing,
     },
   }));
 }
 
-function renderBulletsArea(slide: any, bullets: string[], bulletColor: string, layout: SlideLayout) {
-  const textTop = layout.top + INNER_Y;
-  const textHeight = layout.height - INNER_Y * 2;
+function renderBulletsArea(slide: any, bullets: string[], bulletColor: string, fontSize: number, twoCols: boolean, top: number, height: number) {
+  const textTop = top + INNER_Y;
+  const textHeight = height - INNER_Y * 2;
 
-  if (layout.twoCols) {
+  if (twoCols) {
     const mid = Math.ceil(bullets.length / 2);
     const left = bullets.slice(0, mid);
     const right = bullets.slice(mid);
     const contentW = BODY_W - INNER_X * 2;
-    const colW = (contentW - 0.3) / 2; // gap ~0.3"
+    const colW = (contentW - 0.3) / 2;
 
-    slide.addText(makeBulletObjs(left, layout.fontSize, bulletColor, layout.lineSpacing, layout.paraAfter), {
-      x: BODY_X + INNER_X,
-      y: textTop,
-      w: colW,
-      h: textHeight,
-      valign: "top",
-      fit: "shrink",
+    slide.addText(makeBulletObjs(left, fontSize, bulletColor), {
+      x: BODY_X + INNER_X, y: textTop, w: colW, h: textHeight,
+      valign: "top", shrinkText: true,
     });
 
-    slide.addText(makeBulletObjs(right, layout.fontSize, bulletColor, layout.lineSpacing, layout.paraAfter), {
-      x: BODY_X + INNER_X + colW + 0.3,
-      y: textTop,
-      w: colW,
-      h: textHeight,
-      valign: "top",
-      fit: "shrink",
+    slide.addText(makeBulletObjs(right, fontSize, bulletColor), {
+      x: BODY_X + INNER_X + colW + 0.3, y: textTop, w: colW, h: textHeight,
+      valign: "top", shrinkText: true,
     });
   } else {
-    slide.addText(makeBulletObjs(bullets, layout.fontSize, bulletColor, layout.lineSpacing, layout.paraAfter), {
-      x: BODY_X + INNER_X,
-      y: textTop,
-      w: BODY_W - INNER_X * 2,
-      h: textHeight,
-      valign: "top",
-      fit: "shrink",
+    slide.addText(makeBulletObjs(bullets, fontSize, bulletColor), {
+      x: BODY_X + INNER_X, y: textTop, w: BODY_W - INNER_X * 2, h: textHeight,
+      valign: "top", shrinkText: true,
     });
   }
 }
@@ -399,36 +400,39 @@ function renderSlide(pptx: any, sc: SlideContent, slideNum: number, totalSlides:
   const slide = pptx.addSlide();
   const layout = pickLayout(sc.bullets);
 
+  const contentTop = BODY_TOP;
+  const contentH = BODY_H;
+
   if (sc.style === "objectives") {
     addHeaderBar(slide, pptx);
     slide.addText(sc.title, {
-      x: 0.4, y: 0.08, w: 9.2, h: 0.46,
-      fontSize: 20, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+      x: 0.4, y: 0.06, w: 9.2, h: 0.42,
+      fontSize: 18, fontFace: "Arial", color: TEXT_WHITE, bold: true,
     });
-    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: HEADER_H + 0.07, w: 1.2, h: 0.03, fill: { color: ACCENT } });
+    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: HEADER_H + 0.06, w: 1.2, h: 0.03, fill: { color: ACCENT } });
     slide.addText("Objetivos", {
-      x: 0.5, y: HEADER_H + 0.14, w: 3.5, h: 0.24,
-      fontSize: 13, fontFace: "Arial", color: ACCENT, bold: true,
+      x: 0.5, y: HEADER_H + 0.12, w: 3.5, h: 0.22,
+      fontSize: 12, fontFace: "Arial", color: ACCENT, bold: true,
     });
-    renderBulletsArea(slide, sc.bullets, ACCENT, { ...layout, top: BODY_TOP + 0.12, height: BODY_H - 0.1 });
+    renderBulletsArea(slide, sc.bullets, ACCENT, layout.fontSize, layout.twoCols, contentTop + 0.15, contentH - 0.15);
 
   } else if (sc.style === "takeaways") {
     slide.background = { color: TAKEAWAY_BG };
     slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: 0.06, fill: { color: TAKEAWAY_ACCENT } });
     slide.addText("Resumo / Key Takeaways", {
-      x: 0.4, y: 0.16, w: 9.2, h: 0.44,
-      fontSize: 19, fontFace: "Arial", color: TEXT_DARK, bold: true,
+      x: 0.4, y: 0.14, w: 9.2, h: 0.40,
+      fontSize: 18, fontFace: "Arial", color: TEXT_DARK, bold: true,
     });
-    renderBulletsArea(slide, sc.bullets, TAKEAWAY_ACCENT, { ...layout, top: BODY_TOP + 0.04, height: BODY_H + 0.04 });
+    renderBulletsArea(slide, sc.bullets, TAKEAWAY_ACCENT, layout.fontSize, layout.twoCols, 0.58, BODY_BOTTOM - 0.58);
 
   } else {
     addHeaderBar(slide, pptx);
     slide.addText(sc.title, {
-      x: 0.4, y: 0.08, w: 9.2, h: 0.46,
-      fontSize: 19, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+      x: 0.4, y: 0.06, w: 9.2, h: 0.42,
+      fontSize: 18, fontFace: "Arial", color: TEXT_WHITE, bold: true,
     });
-    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: HEADER_H + 0.07, w: 1.2, h: 0.03, fill: { color: ACCENT } });
-    renderBulletsArea(slide, sc.bullets, ACCENT, layout);
+    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: HEADER_H + 0.06, w: 1.2, h: 0.03, fill: { color: ACCENT } });
+    renderBulletsArea(slide, sc.bullets, ACCENT, layout.fontSize, layout.twoCols, contentTop, contentH);
   }
 
   addFooter(slide, slideNum, totalSlides);
@@ -510,14 +514,10 @@ Deno.serve(async (req: Request) => {
     /* ─── Build all slide content ─── */
 
     const allSlides: SlideContent[] = [];
-
-    // 1) Cover slide (handled separately)
-    // 2) Module slides
     for (let i = 0; i < modules.length; i++) {
       const modSlides = buildModuleSlides(modules[i], i, modules.length);
       allSlides.push(...modSlides);
     }
-    // 3) Closing slide (handled separately)
 
     const totalSlides = allSlides.length + 2; // +cover +closing
 
@@ -528,23 +528,26 @@ Deno.serve(async (req: Request) => {
     pptx.title = course.title;
     pptx.subject = course.description || "";
 
-    // Cover slide
+    // ─── COVER SLIDE (fixed overlap) ───
     const titleSlide = pptx.addSlide();
     titleSlide.background = { color: PRIMARY };
+    // Title in top half — use shrinkText to avoid overflow
     titleSlide.addText(course.title, {
-      x: 0.8, y: 1.5, w: 8.4, h: 2,
-      fontSize: 36, fontFace: "Arial", color: TEXT_WHITE, bold: true,
-      align: "center", valign: "middle",
+      x: 0.8, y: 0.8, w: 8.4, h: 2.2,
+      fontSize: 34, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+      align: "center", valign: "middle", shrinkText: true,
     });
     if (course.description) {
+      // Description safely below title area
       titleSlide.addText(course.description, {
-        x: 1.5, y: 3.8, w: 7, h: 1,
-        fontSize: 16, fontFace: "Arial", color: "B0BEC5", align: "center",
+        x: 1.2, y: 3.2, w: 7.6, h: 1.6,
+        fontSize: 14, fontFace: "Arial", color: "B0BEC5", align: "center", valign: "top",
+        shrinkText: true,
       });
     }
     titleSlide.addText(`${modules.length} módulos • Gerado por EduGen AI`, {
-      x: 0, y: 4.8, w: 10, h: 0.5,
-      fontSize: 11, fontFace: "Arial", color: "78909C", align: "center",
+      x: 0, y: 5.0, w: 10, h: 0.4,
+      fontSize: 10, fontFace: "Arial", color: "78909C", align: "center",
     });
 
     // Content slides
@@ -556,18 +559,18 @@ Deno.serve(async (req: Request) => {
     const endSlide = pptx.addSlide();
     endSlide.background = { color: PRIMARY };
     endSlide.addText("Obrigado!", {
-      x: 0, y: 1.8, w: 10, h: 1.5,
-      fontSize: 40, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+      x: 0, y: 1.6, w: 10, h: 1.4,
+      fontSize: 38, fontFace: "Arial", color: TEXT_WHITE, bold: true,
       align: "center", valign: "middle",
     });
     endSlide.addText(course.title, {
-      x: 1, y: 3.5, w: 8, h: 0.6,
-      fontSize: 16, fontFace: "Arial", color: "B0BEC5", align: "center",
+      x: 1, y: 3.3, w: 8, h: 0.6,
+      fontSize: 15, fontFace: "Arial", color: "B0BEC5", align: "center",
+      shrinkText: true,
     });
 
-    console.log(`PPTX generated: ${allSlides.length + 2} slides for ${modules.length} modules`);
+    console.log(`PPTX generated: ${totalSlides} slides for ${modules.length} modules`);
 
-    // Generate file
     const pptxData = await pptx.write({ outputType: "uint8array" });
     const dateStr = new Date().toISOString().slice(0, 10);
     const safeName = (course.title || "curso").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().substring(0, 80);
