@@ -106,6 +106,19 @@ export default function CourseView() {
     enabled: modules.length > 0,
   });
 
+  const { data: courseImages = [] } = useQuery({
+    queryKey: ["course-images", id],
+    queryFn: async () => {
+      const moduleIds = modules.map((m) => m.id);
+      if (moduleIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("course_images").select("*").in("module_id", moduleIds);
+      if (error) throw error;
+      return data;
+    },
+    enabled: modules.length > 0,
+  });
+
   useQuery({
     queryKey: ["flip-entitlement", user?.id, plan],
     queryFn: async () => {
@@ -167,6 +180,7 @@ export default function CourseView() {
   const isPublished = course.status === "published";
   const moduleQuizzes = activeModule ? quizzes.filter((q) => q.module_id === activeModule.id) : [];
   const moduleFlashcards = activeModule ? flashcards.filter((f) => f.module_id === activeModule.id) : [];
+  const moduleImage = activeModule ? courseImages.find((img) => img.module_id === activeModule.id) : null;
 
   const features = [
     modules.length > 0 && `${modules.length} módulos`,
@@ -340,10 +354,22 @@ export default function CourseView() {
                   </div>
                 </div>
               ) : (
-                <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-display prose-headings:font-bold prose-p:leading-relaxed prose-li:leading-relaxed">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>
-                    {activeModule.content || "*Sem conteúdo ainda*"}
-                  </ReactMarkdown>
+                <div>
+                  {moduleImage && (
+                    <div className="mb-6 rounded-xl overflow-hidden border border-border">
+                      <img
+                        src={moduleImage.url}
+                        alt={moduleImage.alt_text || `Ilustração do módulo ${activeModuleIndex + 1}`}
+                        className="w-full h-auto object-cover max-h-[360px]"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-display prose-headings:font-bold prose-p:leading-relaxed prose-li:leading-relaxed">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>
+                      {activeModule.content || "*Sem conteúdo ainda*"}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               )}
 
