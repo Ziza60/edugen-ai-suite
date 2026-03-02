@@ -487,6 +487,63 @@ Write 800-1200 words. Be thorough and educational.`;
         }));
         await serviceClient.from("course_flashcards").insert(fcInserts);
       }
+
+      // Generate AI image for this module
+      if (include_images) {
+        try {
+          const imagePrompt = `Create a professional, clean, educational illustration for a course module titled "${mod.title}" in the course "${title}". The image should be modern, visually appealing, and suitable for an e-learning platform. Use a clean style with soft colors. No text in the image. 16:9 aspect ratio.`;
+
+          const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash-image",
+              messages: [{ role: "user", content: imagePrompt }],
+              modalities: ["image", "text"],
+            }),
+          });
+
+          if (imgRes.ok) {
+            const imgData = await imgRes.json();
+            const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+
+            if (imageUrl && imageUrl.startsWith("data:image")) {
+              // Upload base64 image to storage
+              const base64Data = imageUrl.split(",")[1];
+              const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+              const ext = imageUrl.includes("png") ? "png" : "jpg";
+              const storagePath = `${userId}/module-${moduleData.id}.${ext}`;
+
+              const { error: uploadErr } = await serviceClient.storage
+                .from("course-exports")
+                .upload(storagePath, binaryData, {
+                  contentType: `image/${ext}`,
+                  upsert: true,
+                });
+
+              if (!uploadErr) {
+                const { data: signedData } = await serviceClient.storage
+                  .from("course-exports")
+                  .createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 1 year
+
+                if (signedData?.signedUrl) {
+                  await serviceClient.from("course_images").insert({
+                    module_id: moduleData.id,
+                    url: signedData.signedUrl,
+                    alt_text: `Ilustração: ${mod.title}`,
+                  });
+                }
+              }
+            }
+          }
+        } catch (imgErr) {
+          console.error("Image generation failed for module", mod.title, imgErr);
+          // Non-blocking: continue even if image generation fails
+        }
+      }
     }
 
     // 6. Log usage events
