@@ -233,8 +233,30 @@ class PdfRenderer {
     this.y += 6;
   }
 
-  renderHeading(text: string, level: number) {
-    this.checkPage(14);
+  /** Estimate how tall a text block would be without rendering */
+  estimateTextHeight(text: string, fontSize: number, maxWidth: number, lineH: number): number {
+    this.doc.setFontSize(fontSize);
+    const lines = this.doc.splitTextToSize(sanitizeText(stripMarkdown(text)), maxWidth);
+    return lines.length * lineH + 4;
+  }
+
+  /** Estimate height of a bullet item */
+  estimateBulletHeight(text: string): number {
+    this.doc.setFontSize(FONT.BODY);
+    const cleanText = sanitizeText(stripMarkdown(text.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "")));
+    const lines = this.doc.splitTextToSize(cleanText, CONTENT_W - 7);
+    return lines.length * SPACE.LINE_HEIGHT + 2;
+  }
+
+  renderHeading(text: string, level: number, extraNeeded = 0) {
+    // extraNeeded = estimated height of the content that MUST stay with this heading
+    const headingSize = ({ 2: FONT.H2, 3: FONT.H3, 4: FONT.H4 } as Record<number, number>)[level] || FONT.BODY;
+    const headingH = SPACE.BEFORE_HEADING + 
+      this.doc.splitTextToSize(sanitizeText(stripMarkdown(text.replace(/^#{1,6}\s*/, ""))), CONTENT_W).length * (headingSize / 2.8) + 
+      SPACE.AFTER_H2 + (level === 2 ? 4 : 0);
+
+    // Reserve space for heading + associated content
+    this.checkPage(headingH + extraNeeded);
     this.y += SPACE.BEFORE_HEADING;
 
     const sizeMap: Record<number, number> = {
@@ -485,6 +507,87 @@ class PdfRenderer {
 
   // ── Module content processor ──────────────────────────────────────
 
+  // ── Pedagogical phrase detection ──────────────────────────────────
+
+  /** Check if a line is a pedagogical intro phrase that must stay with its following content */
+  isPedagogicalIntro(text: string): boolean {
+    const lower = text.toLowerCase().replace(/[*#_`>]/g, "").trim();
+    const patterns = [
+      /^exemplo\s+pr[áa]tico/,
+      /^pare\s+um\s+momento/,
+      /^reflita/,
+      /^key\s+takeaway/,
+      /^pontos[- ]chave/,
+      /^resumo/,
+      /^aten[çc][ãa]o/,
+      /^importante/,
+      /^dica/,
+      /^nota/,
+      /^lembre[- ]se/,
+      /^sa[íi]ba\s+mais/,
+      /^para\s+pensar/,
+      /^exerc[íi]cio/,
+      /^atividade/,
+      /^desafio/,
+      /^conclus[ãa]o/,
+      /^em\s+resumo/,
+      /^vamos\s+praticar/,
+      /^na\s+pr[áa]tica/,
+    ];
+    return patterns.some((p) => p.test(lower));
+  }
+
+  /** Estimate the height of the next content block after index i (for look-ahead) */
+  estimateNextBlockHeight(lines: string[], i: number): number {
+    if (i >= lines.length) return 0;
+    const trimmed = lines[i].trim();
+    if (!trimmed) return 0;
+
+    // Table
+    if (trimmed.includes("|") && i + 1 < lines.length && lines[i + 1]?.includes("|")) {
+      const { table } = parseMarkdownTable(lines, i);
+      if (table) return Math.min(60, 8 + table.rows.length * 10);
+    }
+
+    // Blockquote
+    if (trimmed.startsWith("> ")) {
+      let text = trimmed.replace(/^>\s*/, "");
+      let j = i + 1;
+      while (j < lines.length && lines[j]?.trim().startsWith("> ")) {
+        text += " " + lines[j].trim().replace(/^>\s*/, "");
+        j++;
+      }
+      return this.estimateTextHeight(text, FONT.SMALL, CONTENT_W - 12, 4) + 8;
+    }
+
+    // Bullet list - estimate first few bullets
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || /^\d+\.\s/.test(trimmed)) {
+      let h = 0;
+      let j = i;
+      let count = 0;
+      while (j < lines.length && count < 4) {
+        const t = lines[j].trim();
+        if (!t || getHeadingLevel(t) > 0) break;
+        if (t.startsWith("- ") || t.startsWith("* ") || /^\d+\.\s/.test(t)) {
+          h += this.estimateBulletHeight(t);
+          count++;
+        } else break;
+        j++;
+      }
+      return h;
+    }
+
+    // Paragraph
+    return this.estimateTextHeight(trimmed, FONT.BODY, CONTENT_W, SPACE.LINE_HEIGHT);
+  }
+
+  /** Skip empty lines and return index of next non-empty line */
+  nextNonEmpty(lines: string[], from: number): number {
+    let j = from;
+    while (j < lines.length && !lines[j].trim()) j++;
+    return j;
+  }
+
   renderModuleContent(content: string) {
     const lines = content.split("\n");
     let i = 0;
@@ -510,28 +613,41 @@ class PdfRenderer {
         }
       }
 
-      // Headings
+      // Headings - look ahead to keep heading with next content block
       const heading = getHeadingLevel(trimmed);
       if (heading > 0) {
-        if (heading === 1) {
-          this.renderHeading(trimmed, 2); // Treat H1 in content as H2
-        } else {
-          this.renderHeading(trimmed, heading);
-        }
+        const nextIdx = this.nextNonEmpty(lines, i + 1);
+        const nextBlockH = this.estimateNextBlockHeight(lines, nextIdx);
+        const level = heading === 1 ? 2 : heading;
+        this.renderHeading(trimmed, level, nextBlockH);
         i++;
         continue;
       }
 
-      // Blockquote
-      if (trimmed.startsWith("> ")) {
-        // Collect multi-line blockquote
-        let quoteText = trimmed.replace(/^>\s*/, "");
-        while (i + 1 < lines.length && lines[i + 1]?.trim().startsWith("> ")) {
-          i++;
-          quoteText += " " + lines[i].trim().replace(/^>\s*/, "");
-        }
-        this.renderBlockquote(quoteText);
+      // Pedagogical intro phrases - keep with next block
+      if (this.isPedagogicalIntro(trimmed)) {
+        const nextIdx = this.nextNonEmpty(lines, i + 1);
+        const nextBlockH = this.estimateNextBlockHeight(lines, nextIdx);
+        const paraH = this.estimateTextHeight(trimmed, FONT.BODY, CONTENT_W, SPACE.LINE_HEIGHT);
+        this.checkPage(paraH + nextBlockH);
+        this.renderParagraph(trimmed);
         i++;
+        continue;
+      }
+
+      // Blockquote - keep entire blockquote together
+      if (trimmed.startsWith("> ")) {
+        let quoteText = trimmed.replace(/^>\s*/, "");
+        let j = i + 1;
+        while (j < lines.length && lines[j]?.trim().startsWith("> ")) {
+          quoteText += " " + lines[j].trim().replace(/^>\s*/, "");
+          j++;
+        }
+        // Estimate full blockquote height and check page
+        const bqH = this.estimateTextHeight(quoteText, FONT.SMALL, CONTENT_W - 12, 4) + 8;
+        this.checkPage(bqH);
+        this.renderBlockquote(quoteText);
+        i = j;
         continue;
       }
 
