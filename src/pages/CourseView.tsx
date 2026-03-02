@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Download, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, FileText, Award } from "lucide-react";
+import { ArrowLeft, Download, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, FileText, Award, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import { motion } from "framer-motion";
@@ -27,6 +27,7 @@ export default function CourseView() {
   const [editContent, setEditContent] = useState("");
   const [certDialogOpen, setCertDialogOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [reprocessingFlashcards, setReprocessingFlashcards] = useState(false);
 
   const isPro = plan === "pro";
 
@@ -281,17 +282,44 @@ export default function CourseView() {
           ))}
         </TabsContent>
 
-        <TabsContent value="flashcards" className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          {flashcards.map((fc) => (
-            <Card key={fc.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-5">
-                <p className="font-medium text-sm mb-2 text-primary">Pergunta</p>
-                <p className="mb-4">{fc.front}</p>
-                <p className="font-medium text-sm mb-2 text-secondary">Resposta</p>
-                <p className="text-muted-foreground">{fc.back}</p>
-              </CardContent>
-            </Card>
-          ))}
+        <TabsContent value="flashcards" className="space-y-4 mt-4">
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={reprocessingFlashcards}
+              onClick={async () => {
+                setReprocessingFlashcards(true);
+                try {
+                  const { data, error } = await supabase.functions.invoke("reprocess-flashcards", {
+                    body: { course_id: id },
+                  });
+                  if (error) throw error;
+                  queryClient.invalidateQueries({ queryKey: ["course-flashcards", id] });
+                  toast({ title: "Flashcards reprocessados!", description: `${data.updated} de ${data.total} atualizados.` });
+                } catch (err: any) {
+                  toast({ title: "Erro ao reprocessar", description: err.message, variant: "destructive" });
+                } finally {
+                  setReprocessingFlashcards(false);
+                }
+              }}
+            >
+              {reprocessingFlashcards ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+              Reprocessar perguntas
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {flashcards.map((fc) => (
+              <Card key={fc.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-5">
+                  <p className="font-medium text-sm mb-2 text-primary">Pergunta</p>
+                  <p className="mb-4">{fc.front}</p>
+                  <p className="font-medium text-sm mb-2 text-secondary">Resposta</p>
+                  <p className="text-muted-foreground">{fc.back}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
 
