@@ -261,7 +261,9 @@ Deno.serve(async (req: Request) => {
 
     // Generate zip
     const zipBlob = await zip.generateAsync({ type: "uint8array" });
-    const fileName = `${userId}/${course_id}.scorm.zip`;
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const safeName = (course.title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/g, "").trim();
+    const fileName = `${userId}/${safeName} - SCORM - ${dateStr}.zip`;
 
     // Upload to storage
     const { error: uploadErr } = await serviceClient.storage

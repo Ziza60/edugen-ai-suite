@@ -24,6 +24,12 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const [exportingScorm, setExportingScorm] = useState(false);
   const [exportingNotion, setExportingNotion] = useState(false);
 
+  const formatFileName = (title: string, format: string, ext: string) => {
+    const safe = (title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/gi, "").trim();
+    const date = new Date().toISOString().slice(0, 10);
+    return `${safe} - ${format} - ${date}.${ext}`;
+  };
+
   const handleExportMarkdown = () => {
     const branding = isPro ? "" : "\n\n---\n\n*Gerado com CourseAI — plataforma de cursos com IA*\n";
     const md = modules.map((m) => `# ${m.title}\n\n${m.content || ""}`).join("\n\n---\n\n") + branding;
@@ -31,7 +37,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${courseTitle || "curso"}.md`;
+    a.download = formatFileName(courseTitle, "MD", "md");
     a.click();
     URL.revokeObjectURL(url);
 
@@ -64,7 +70,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = blobUrl;
-        a.download = `${courseTitle || "curso"}.${extension}`;
+        a.download = formatFileName(courseTitle, label.toUpperCase(), extension);
         a.rel = "noopener";
         document.body.appendChild(a);
         a.click();
