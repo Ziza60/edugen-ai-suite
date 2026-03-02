@@ -1,25 +1,28 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, Award, RefreshCw, Layers, List } from "lucide-react";
+import {
+  ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
+  RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
+  Pencil, Share2, GraduationCap, CheckCircle2, XCircle
+} from "lucide-react";
 import { ExportButtons } from "@/components/course/ExportButtons";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useMarkdownTableComponents } from "@/components/course/MarkdownTable";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { CertificateDialog } from "@/components/course/CertificateDialog";
 import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
@@ -29,12 +32,18 @@ export default function CourseView() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const [activeModuleIndex, setActiveModuleIndex] = useState(0);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [certDialogOpen, setCertDialogOpen] = useState(false);
   const [reprocessingFlashcards, setReprocessingFlashcards] = useState(false);
   const [flashcardView, setFlashcardView] = useState<"list" | "flip">("flip");
   const [flipEntitled, setFlipEntitled] = useState<boolean | null>(null);
+  const [showFlashcardsModal, setShowFlashcardsModal] = useState(false);
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
+  const [quizRevealed, setQuizRevealed] = useState<Record<string, boolean>>({});
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const isPro = plan === "pro";
 
@@ -44,6 +53,11 @@ export default function CourseView() {
       setFlashcardView("list");
     }
   }, [isPro]);
+
+  // Scroll content to top when active module changes
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activeModuleIndex]);
 
   const { data: course, isLoading: loadingCourse } = useQuery({
     queryKey: ["course", id],
@@ -92,7 +106,6 @@ export default function CourseView() {
     enabled: modules.length > 0,
   });
 
-  // Check flip entitlement from backend only for Pro users
   useQuery({
     queryKey: ["flip-entitlement", user?.id, plan],
     queryFn: async () => {
@@ -100,18 +113,10 @@ export default function CourseView() {
         const { data, error } = await supabase.functions.invoke("check-entitlements", {
           body: { feature: "flashcards_flip" },
         });
-        if (error || !data?.entitled) {
-          setFlipEntitled(false);
-          setFlashcardView("list");
-          return false;
-        }
+        if (error || !data?.entitled) { setFlipEntitled(false); setFlashcardView("list"); return false; }
         setFlipEntitled(true);
         return true;
-      } catch {
-        setFlipEntitled(false);
-        setFlashcardView("list");
-        return false;
-      }
+      } catch { setFlipEntitled(false); setFlashcardView("list"); return false; }
     },
     enabled: flashcards.length > 0 && isPro,
     retry: false,
@@ -141,8 +146,6 @@ export default function CourseView() {
     },
   });
 
-
-
   if (loadingCourse || loadingModules) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -160,177 +163,418 @@ export default function CourseView() {
     );
   }
 
-  return (
-    <div className="p-6 lg:p-8 max-w-4xl mx-auto">
-      <Button variant="ghost" onClick={() => navigate("/app/dashboard")} className="mb-4">
-        <ArrowLeft className="h-4 w-4 mr-2" /> Voltar
-      </Button>
+  const activeModule = modules[activeModuleIndex];
+  const isPublished = course.status === "published";
+  const moduleQuizzes = activeModule ? quizzes.filter((q) => q.module_id === activeModule.id) : [];
+  const moduleFlashcards = activeModule ? flashcards.filter((f) => f.module_id === activeModule.id) : [];
 
-      {/* Course header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Badge variant={course.status === "published" ? "default" : "outline"}>
-              {course.status === "published" ? "Publicado" : "Rascunho"}
+  const features = [
+    modules.length > 0 && `${modules.length} módulos`,
+    quizzes.length > 0 && "quizzes",
+    flashcards.length > 0 && "flashcards",
+    "certificado",
+  ].filter(Boolean);
+
+  return (
+    <div className="min-h-screen flex flex-col bg-muted/30">
+      {/* ═══════════ COURSE HEADER ═══════════ */}
+      <div className="bg-card border-b border-border">
+        <div className="max-w-[1400px] mx-auto px-6 py-5">
+          <div className="flex items-center gap-3 mb-3">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/app/dashboard")} className="shrink-0 -ml-2">
+              <ArrowLeft className="h-4 w-4 mr-1.5" />
+              Dashboard
+            </Button>
+            <div className="h-5 w-px bg-border" />
+            <Badge
+              variant={isPublished ? "default" : "outline"}
+              className={isPublished ? "bg-secondary/15 text-secondary border-secondary/30 hover:bg-secondary/20" : ""}
+            >
+              {isPublished ? "✓ Publicado" : "Rascunho"}
             </Badge>
-            <span className="text-sm text-muted-foreground">{course.language}</span>
           </div>
-          <h1 className="font-display text-3xl font-bold">{course.title}</h1>
-          {course.description && <p className="text-muted-foreground mt-2">{course.description}</p>}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <ExportButtons
-            courseId={id!}
-            courseTitle={course.title}
-            courseStatus={course.status}
-            isPro={isPro}
-            modules={modules}
-          />
-          <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)}>
-            <Award className="h-4 w-4 mr-1" /> Certificado
-          </Button>
-          <Button
-            variant={course.status === "published" ? "outline" : "default"}
-            size="sm"
-            onClick={() => togglePublish.mutate()}
-          >
-            <Eye className="h-4 w-4 mr-1" />
-            {course.status === "published" ? "Despublicar" : "Publicar"}
-          </Button>
+
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div>
+              <h1 className="font-display text-2xl lg:text-3xl font-bold text-foreground">{course.title}</h1>
+              {course.description && (
+                <p className="text-muted-foreground mt-1 text-sm max-w-2xl">{course.description}</p>
+              )}
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                {features.map((f, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted/60 rounded-md px-2 py-1">
+                    {f}
+                  </span>
+                ))}
+                <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium ml-1">{course.language}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <Button
+                variant={isPublished ? "outline" : "default"}
+                size="sm"
+                onClick={() => togglePublish.mutate()}
+                className="h-9"
+              >
+                <Eye className="h-4 w-4 mr-1.5" />
+                {isPublished ? "Despublicar" : "Publicar"}
+              </Button>
+              <ExportButtons
+                courseId={id!}
+                courseTitle={course.title}
+                courseStatus={course.status}
+                isPro={isPro}
+                modules={modules}
+              />
+              <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)} className="h-9">
+                <GraduationCap className="h-4 w-4 mr-1.5" />
+                Certificado
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="modules">
-        <TabsList>
-          <TabsTrigger value="modules">
-            <BookOpen className="h-4 w-4 mr-1" /> Módulos ({modules.length})
-          </TabsTrigger>
-          {quizzes.length > 0 && (
-            <TabsTrigger value="quizzes">
-              <Brain className="h-4 w-4 mr-1" /> Quizzes ({quizzes.length})
-            </TabsTrigger>
-          )}
-          {flashcards.length > 0 && (
-            <TabsTrigger value="flashcards">
-              <CreditCard className="h-4 w-4 mr-1" /> Flashcards ({flashcards.length})
-            </TabsTrigger>
-          )}
-        </TabsList>
-
-        <TabsContent value="modules" className="space-y-4 mt-4">
-          {modules.map((mod, i) => (
-            <motion.div key={mod.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="font-display text-lg">
-                    <span className="text-muted-foreground mr-2">{i + 1}.</span>
-                    {mod.title}
-                  </CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      if (editingModuleId === mod.id) {
-                        updateModule.mutate({ moduleId: mod.id, content: editContent });
-                      } else {
-                        setEditingModuleId(mod.id);
-                        setEditContent(mod.content || "");
-                      }
-                    }}
+      {/* ═══════════ TWO-PANEL LAYOUT ═══════════ */}
+      <div className="flex-1 flex max-w-[1400px] mx-auto w-full">
+        {/* ── Left: Module sidebar ── */}
+        <aside className="hidden lg:block w-72 border-r border-border bg-card shrink-0">
+          <ScrollArea className="h-[calc(100vh-160px)] sticky top-0">
+            <div className="p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
+                Módulos ({modules.length})
+              </p>
+              <nav className="space-y-1">
+                {modules.map((mod, i) => (
+                  <button
+                    key={mod.id}
+                    onClick={() => setActiveModuleIndex(i)}
+                    className={`w-full text-left rounded-xl px-3 py-2.5 text-sm transition-all flex items-start gap-3 ${
+                      i === activeModuleIndex
+                        ? "bg-primary/10 text-primary font-semibold border border-primary/20"
+                        : "text-foreground/70 hover:bg-muted hover:text-foreground"
+                    }`}
                   >
-                    <Edit3 className="h-4 w-4 mr-1" />
-                    {editingModuleId === mod.id ? "Salvar" : "Editar"}
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  {editingModuleId === mod.id ? (
-                    <Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={12} className="font-mono text-sm" />
-                  ) : (
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>{mod.content || "*Sem conteúdo ainda*"}</ReactMarkdown>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </TabsContent>
+                    <span className={`shrink-0 h-6 w-6 rounded-md flex items-center justify-center text-xs font-bold mt-0.5 ${
+                      i === activeModuleIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                    }`}>
+                      {i + 1}
+                    </span>
+                    <span className="line-clamp-2 leading-snug">{mod.title}</span>
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </ScrollArea>
+        </aside>
 
-        <TabsContent value="quizzes" className="space-y-4 mt-4">
-          {quizzes.map((q, i) => (
-            <Card key={q.id}>
-              <CardContent className="p-5">
-                <p className="font-medium mb-3">{i + 1}. {q.question}</p>
-                <div className="space-y-2">
-                  {(q.options as string[])?.map((opt: string, j: number) => (
-                    <div key={j} className={`p-2 rounded text-sm ${j === q.correct_answer ? "bg-success/10 text-success border border-success/30" : "bg-muted"}`}>
-                      {String.fromCharCode(65 + j)}) {opt}
-                    </div>
-                  ))}
+        {/* ── Mobile module selector ── */}
+        <div className="lg:hidden sticky top-0 z-10 bg-card border-b border-border px-4 py-2 overflow-x-auto">
+          <div className="flex gap-2">
+            {modules.map((mod, i) => (
+              <button
+                key={mod.id}
+                onClick={() => setActiveModuleIndex(i)}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  i === activeModuleIndex
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {i + 1}. {mod.title.length > 20 ? mod.title.slice(0, 20) + "…" : mod.title}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Right: Content area ── */}
+        <div ref={contentRef} className="flex-1 overflow-y-auto">
+          {activeModule ? (
+            <div className="px-6 lg:px-10 py-8 max-w-[760px]">
+              {/* Module header */}
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div>
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">
+                    Módulo {activeModuleIndex + 1} de {modules.length}
+                  </p>
+                  <h2 className="font-display text-2xl font-bold text-foreground">{activeModule.title}</h2>
                 </div>
-                {q.explanation && <p className="text-sm text-muted-foreground mt-3 italic">{q.explanation}</p>}
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 h-9"
+                  onClick={() => {
+                    if (editingModuleId === activeModule.id) {
+                      updateModule.mutate({ moduleId: activeModule.id, content: editContent });
+                    } else {
+                      setEditingModuleId(activeModule.id);
+                      setEditContent(activeModule.content || "");
+                    }
+                  }}
+                >
+                  {editingModuleId === activeModule.id ? (
+                    <><CheckCircle2 className="h-4 w-4 mr-1.5" />Salvar</>
+                  ) : (
+                    <><Pencil className="h-4 w-4 mr-1.5" />Editar</>
+                  )}
+                </Button>
+              </div>
 
-        <TabsContent value="flashcards" className="space-y-4 mt-4">
-          {/* View toggle & reprocess */}
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              {flipEntitled && (
-                <>
+              {/* Module content */}
+              {editingModuleId === activeModule.id ? (
+                <div className="space-y-3">
+                  <Textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    rows={20}
+                    className="font-mono text-sm resize-y"
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent })}>
+                      Salvar alterações
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setEditingModuleId(null)}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-display prose-headings:font-bold prose-p:leading-relaxed prose-li:leading-relaxed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>
+                    {activeModule.content || "*Sem conteúdo ainda*"}
+                  </ReactMarkdown>
+                </div>
+              )}
+
+              {/* ── Module navigation ── */}
+              <div className="flex items-center justify-between mt-10 pt-6 border-t border-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={activeModuleIndex === 0}
+                  onClick={() => setActiveModuleIndex((i) => i - 1)}
+                >
+                  <ArrowLeft className="h-4 w-4 mr-1.5" />
+                  Anterior
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {activeModuleIndex + 1} / {modules.length}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={activeModuleIndex === modules.length - 1}
+                  onClick={() => setActiveModuleIndex((i) => i + 1)}
+                >
+                  Próximo
+                  <ArrowLeft className="h-4 w-4 ml-1.5 rotate-180" />
+                </Button>
+              </div>
+
+              {/* ═══════════ QUIZZES SECTION ═══════════ */}
+              {moduleQuizzes.length > 0 && (
+                <div className="mt-10 pt-8 border-t border-border">
+                  <div className="flex items-center gap-2 mb-5">
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <MessageSquare className="h-4 w-4 text-primary" />
+                    </div>
+                    <h3 className="font-display text-lg font-bold text-foreground">
+                      Quiz — Módulo {activeModuleIndex + 1}
+                    </h3>
+                    <Badge variant="secondary" className="text-xs">{moduleQuizzes.length} perguntas</Badge>
+                  </div>
+
+                  <div className="space-y-4">
+                    {moduleQuizzes.map((q, qi) => {
+                      const answered = quizAnswers[q.id] !== undefined;
+                      const revealed = quizRevealed[q.id];
+                      const selectedAnswer = quizAnswers[q.id];
+
+                      return (
+                        <Card key={q.id} className="rounded-xl border-border overflow-hidden">
+                          <CardContent className="p-5">
+                            <p className="font-semibold text-sm mb-4">
+                              <span className="text-muted-foreground mr-1.5">{qi + 1}.</span>
+                              {q.question}
+                            </p>
+                            <div className="space-y-2">
+                              {(q.options as string[])?.map((opt: string, j: number) => {
+                                const isCorrect = j === q.correct_answer;
+                                const isSelected = selectedAnswer === j;
+                                let optionClass = "bg-muted/50 hover:bg-muted border border-transparent cursor-pointer";
+
+                                if (revealed) {
+                                  if (isCorrect) {
+                                    optionClass = "bg-secondary/10 border border-secondary/30 text-secondary";
+                                  } else if (isSelected && !isCorrect) {
+                                    optionClass = "bg-destructive/10 border border-destructive/30 text-destructive";
+                                  } else {
+                                    optionClass = "bg-muted/30 border border-transparent text-muted-foreground";
+                                  }
+                                } else if (isSelected) {
+                                  optionClass = "bg-primary/10 border border-primary/30 text-primary";
+                                }
+
+                                return (
+                                  <button
+                                    key={j}
+                                    onClick={() => {
+                                      if (!revealed) {
+                                        setQuizAnswers((prev) => ({ ...prev, [q.id]: j }));
+                                      }
+                                    }}
+                                    className={`w-full text-left p-3 rounded-lg text-sm transition-all flex items-center gap-3 ${optionClass}`}
+                                  >
+                                    <span className="shrink-0 h-6 w-6 rounded-md bg-background/60 flex items-center justify-center text-xs font-bold">
+                                      {String.fromCharCode(65 + j)}
+                                    </span>
+                                    <span className="flex-1">{opt}</span>
+                                    {revealed && isCorrect && <CheckCircle2 className="h-4 w-4 text-secondary shrink-0" />}
+                                    {revealed && isSelected && !isCorrect && <XCircle className="h-4 w-4 text-destructive shrink-0" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {answered && !revealed && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="mt-3"
+                                onClick={() => setQuizRevealed((prev) => ({ ...prev, [q.id]: true }))}
+                              >
+                                Verificar resposta
+                              </Button>
+                            )}
+
+                            {revealed && q.explanation && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="mt-4 bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground"
+                              >
+                                <strong className="text-foreground">Explicação:</strong> {q.explanation}
+                              </motion.div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ═══════════ FLASHCARDS PREVIEW ═══════════ */}
+              {moduleFlashcards.length > 0 && (
+                <div className="mt-10 pt-8 border-t border-border">
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-lg bg-accent/10 flex items-center justify-center">
+                        <BrainCircuit className="h-4 w-4 text-accent" />
+                      </div>
+                      <h3 className="font-display text-lg font-bold text-foreground">
+                        Flashcards de revisão
+                      </h3>
+                      <Badge variant="secondary" className="text-xs">{moduleFlashcards.length} cards</Badge>
+                    </div>
+                  </div>
+
+                  {/* Static preview cards (max 4) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    {moduleFlashcards.slice(0, 4).map((fc) => (
+                      <div key={fc.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                        <p className="text-xs font-semibold text-primary uppercase tracking-wider">Frente</p>
+                        <p className="text-sm font-medium text-foreground leading-snug">{fc.front}</p>
+                        <div className="border-t border-border/60 pt-2">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Verso</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{fc.back}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {moduleFlashcards.length > 4 && (
+                    <p className="text-xs text-muted-foreground mb-3">
+                      +{moduleFlashcards.length - 4} flashcards adicionais
+                    </p>
+                  )}
+
                   <Button
-                    variant={flashcardView === "flip" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFlashcardView("flip")}
+                    variant="outline"
+                    onClick={() => setShowFlashcardsModal(true)}
+                    className="w-full sm:w-auto"
                   >
-                    <Layers className="h-4 w-4 mr-1" /> Modo Flip
+                    <Layers className="h-4 w-4 mr-2" />
+                    Abrir modo interativo
                   </Button>
-                  <Button
-                    variant={flashcardView === "list" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFlashcardView("list")}
-                  >
-                    <List className="h-4 w-4 mr-1" /> Lista
-                  </Button>
-                </>
+                </div>
               )}
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={reprocessingFlashcards}
-              onClick={async () => {
-                setReprocessingFlashcards(true);
-                try {
-                  const { data, error } = await supabase.functions.invoke("reprocess-flashcards", {
-                    body: { course_id: id },
-                  });
-                  if (error) throw error;
-                  queryClient.invalidateQueries({ queryKey: ["course-flashcards", id] });
-                  toast({ title: "Flashcards reprocessados!", description: `${data.updated} de ${data.total} atualizados.` });
-                } catch (err: any) {
-                  toast({ title: "Erro ao reprocessar", description: err.message, variant: "destructive" });
-                } finally {
-                  setReprocessingFlashcards(false);
-                }
-              }}
-            >
-              {reprocessingFlashcards ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-              Reprocessar perguntas
-            </Button>
-          </div>
-
-          {/* Render view based on entitlement */}
-          {flashcardView === "flip" && flipEntitled ? (
-            <FlashcardsFlipView flashcards={flashcards} />
           ) : (
-            <FlashcardsListView flashcards={flashcards} showUpsell={!flipEntitled} />
+            <div className="flex items-center justify-center py-20 text-muted-foreground">
+              Selecione um módulo para visualizar
+            </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
+
+      {/* ═══════════ FLASHCARDS MODAL ═══════════ */}
+      {showFlashcardsModal && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col"
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h3 className="font-display text-lg font-bold">Flashcards — Módulo {activeModuleIndex + 1}</h3>
+              <div className="flex items-center gap-2">
+                {flipEntitled && (
+                  <>
+                    <Button variant={flashcardView === "flip" ? "default" : "outline"} size="sm" onClick={() => setFlashcardView("flip")}>
+                      <Layers className="h-4 w-4 mr-1" /> Flip
+                    </Button>
+                    <Button variant={flashcardView === "list" ? "default" : "outline"} size="sm" onClick={() => setFlashcardView("list")}>
+                      <List className="h-4 w-4 mr-1" /> Lista
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={reprocessingFlashcards}
+                  onClick={async () => {
+                    setReprocessingFlashcards(true);
+                    try {
+                      const { data, error } = await supabase.functions.invoke("reprocess-flashcards", { body: { course_id: id } });
+                      if (error) throw error;
+                      queryClient.invalidateQueries({ queryKey: ["course-flashcards", id] });
+                      toast({ title: "Flashcards reprocessados!", description: `${data.updated} de ${data.total} atualizados.` });
+                    } catch (err: any) {
+                      toast({ title: "Erro ao reprocessar", description: err.message, variant: "destructive" });
+                    } finally {
+                      setReprocessingFlashcards(false);
+                    }
+                  }}
+                >
+                  {reprocessingFlashcards ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setShowFlashcardsModal(false)}>
+                  ✕
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {flashcardView === "flip" && flipEntitled ? (
+                <FlashcardsFlipView flashcards={moduleFlashcards.length > 0 ? moduleFlashcards : flashcards} />
+              ) : (
+                <FlashcardsListView flashcards={moduleFlashcards.length > 0 ? moduleFlashcards : flashcards} showUpsell={!flipEntitled} />
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Certificate Dialog */}
       <CertificateDialog
