@@ -8,27 +8,47 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-/* ─── Markdown helpers ─── */
+/* ════════════════════════════════════════════════════════════
+   TEXT SANITIZATION — remove ALL markup residue
+   ════════════════════════════════════════════════════════════ */
 
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/#{1,6}\s*/g, "")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
-    .replace(/`{1,3}[^`]*`{1,3}/g, (m) => m.replace(/`/g, ""))
-    .replace(/>\s*/g, "")
-    .replace(/---/g, "")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+function sanitize(text: string): string {
+  let t = text;
+  // HTML tags → space or nothing
+  t = t.replace(/<br\s*\/?>/gi, " ");
+  t = t.replace(/<\/?(p|div|span|strong|em|b|i|u|a|li|ul|ol|h[1-6]|blockquote|code|pre|table|tr|td|th|thead|tbody)[^>]*>/gi, " ");
+  t = t.replace(/<[^>]+>/g, " "); // catch-all remaining tags
+  // Markdown
+  t = t.replace(/#{1,6}\s*/g, "");
+  t = t.replace(/\*\*(.*?)\*\*/g, "$1");
+  t = t.replace(/\*(.*?)\*/g, "$1");
+  t = t.replace(/`{1,3}([^`]*)`{1,3}/g, "$1");
+  t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  t = t.replace(/^>\s*/gm, "");
+  t = t.replace(/^---+$/gm, "");
+  // Arrows → colon or dash
+  t = t.replace(/\s*[→⟶➜➔➞►▶︎]\s*/g, ": ");
+  t = t.replace(/\s*->\s*/g, ": ");
+  // Emoji strip
+  t = t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu, "");
+  // Multiple spaces / trim
+  t = t.replace(/\s{2,}/g, " ").trim();
+  return t;
 }
 
-function cleanEmoji(text: string): string {
-  return text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu, "").trim();
+/** Detect if a line is a comparison pattern like "A: X → Y" or "Aspecto | Trad | Gen" */
+function isComparisonLine(line: string): boolean {
+  // Contains arrow separators
+  if (/[→⟶➜➔➞►▶︎]/.test(line) || /\s+->\s+/.test(line)) return true;
+  return false;
 }
 
-/* ─── Content parsing ─── */
+/* ════════════════════════════════════════════════════════════
+   CONTENT PARSING — extract semantic blocks from markdown
+   ════════════════════════════════════════════════════════════ */
 
 interface ContentBlock {
-  type: "heading" | "bullets" | "paragraph" | "table" | "takeaways" | "objectives";
+  type: "heading" | "bullets" | "table" | "takeaways" | "objectives" | "comparison";
   heading?: string;
   items?: string[];
   rows?: string[][];
@@ -40,14 +60,25 @@ function parseModuleContent(content: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   let currentHeading = "";
   let currentBullets: string[] = [];
+  let comparisonItems: string[] = [];
   let inTable = false;
   let tableHeaders: string[] = [];
   let tableRows: string[][] = [];
 
+  const flushComparisons = () => {
+    if (comparisonItems.length > 0) {
+      // Try to parse comparison items into a table structure
+      const parsed = parseComparisonLines(comparisonItems, currentHeading);
+      blocks.push(parsed);
+      comparisonItems = [];
+    }
+  };
+
   const flushBullets = () => {
+    flushComparisons();
     if (currentBullets.length > 0) {
-      const isObjectives = /objetivo|objetivo do módulo/i.test(currentHeading);
-      const isTakeaway = /resumo|key takeaway|takeaway/i.test(currentHeading);
+      const isObjectives = /objetivo|objetivos?\s+d[oe]/i.test(currentHeading);
+      const isTakeaway = /resumo|key takeaway|takeaway|pontos[- ]chave/i.test(currentHeading);
       blocks.push({
         type: isObjectives ? "objectives" : isTakeaway ? "takeaways" : "bullets",
         heading: currentHeading,
@@ -70,52 +101,108 @@ function parseModuleContent(content: string): ContentBlock[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
+    // Markdown table
     if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
       if (!inTable) {
         flushBullets();
         inTable = true;
-        const cells = trimmed.split("|").filter(Boolean).map((c) => stripMarkdown(c.trim()));
-        tableHeaders = cells;
+        tableHeaders = trimmed.split("|").filter(Boolean).map((c) => sanitize(c.trim()));
       } else if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
-        // separator
+        // separator row — skip
       } else {
-        const cells = trimmed.split("|").filter(Boolean).map((c) => stripMarkdown(c.trim()));
-        tableRows.push(cells);
+        tableRows.push(trimmed.split("|").filter(Boolean).map((c) => sanitize(c.trim())));
+      }
+      continue;
+    }
+    if (inTable) flushTable();
+
+    // Heading
+    if (/^#{1,6}\s/.test(trimmed)) {
+      flushBullets();
+      currentHeading = sanitize(trimmed.replace(/^#{1,6}\s*/, ""));
+      continue;
+    }
+
+    // Bullet / numbered list
+    if (/^[-*]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed)) {
+      const raw = trimmed.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "");
+      // Check if this bullet is a comparison
+      if (isComparisonLine(raw)) {
+        flushBullets(); // flush normal bullets first
+        comparisonItems.push(raw);
+      } else {
+        flushComparisons(); // flush comparisons first
+        const clean = sanitize(raw);
+        if (clean.length > 3) currentBullets.push(clean);
       }
       continue;
     }
 
-    if (inTable) flushTable();
-
-    if (trimmed.startsWith("#")) {
+    // Plain text line — could be comparison or content
+    if (isComparisonLine(trimmed)) {
       flushBullets();
-      currentHeading = cleanEmoji(stripMarkdown(trimmed));
+      comparisonItems.push(trimmed);
       continue;
     }
 
-    if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || /^\d+\.\s/.test(trimmed)) {
-      const text = cleanEmoji(stripMarkdown(trimmed.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "")));
-      if (text.length > 0) currentBullets.push(text);
-      continue;
-    }
-
-    const clean = cleanEmoji(stripMarkdown(trimmed));
-    if (clean.length > 10) {
-      currentBullets.push(clean);
-    }
+    flushComparisons();
+    const clean = sanitize(trimmed);
+    if (clean.length > 8) currentBullets.push(clean);
   }
 
   if (inTable) flushTable();
   flushBullets();
-
   return blocks;
 }
 
-/* ─── Slide generation helpers ─── */
+/** Parse lines like "Aspecto: X → Y" into a table block */
+function parseComparisonLines(lines: string[], heading: string): ContentBlock {
+  const rows: string[][] = [];
+  const headers: string[] = [];
 
-// STRICT limits — professional presentations use 5-6 bullets max
-const MAX_CHARS_PER_SLIDE = 700;
-const MAX_BULLETS_PER_SLIDE = 7;
+  for (const line of lines) {
+    // Try "Label: Value1 → Value2 → Value3"
+    const colonIdx = line.indexOf(":");
+    if (colonIdx > 0 && colonIdx < 40) {
+      const label = sanitize(line.substring(0, colonIdx));
+      const rest = line.substring(colonIdx + 1);
+      const parts = rest.split(/[→⟶➜➔➞►▶︎]|->/).map((p) => sanitize(p));
+      if (parts.length >= 2) {
+        rows.push([label, ...parts]);
+        continue;
+      }
+    }
+    // Try "Value1 → Value2"
+    const parts = line.split(/[→⟶➜➔➞►▶︎]|->/).map((p) => sanitize(p));
+    if (parts.length >= 2) {
+      rows.push(parts);
+    } else {
+      rows.push([sanitize(line)]);
+    }
+  }
+
+  // Infer headers from column count
+  if (rows.length > 0) {
+    const maxCols = Math.max(...rows.map((r) => r.length));
+    if (maxCols === 3) {
+      headers.push("Aspecto", "Antes", "Depois");
+    } else if (maxCols === 2) {
+      headers.push("Item", "Descrição");
+    } else {
+      for (let i = 0; i < maxCols; i++) headers.push(`Col ${i + 1}`);
+    }
+    // Normalize row lengths
+    for (const row of rows) {
+      while (row.length < maxCols) row.push("");
+    }
+  }
+
+  return { type: "comparison", heading: heading || "Comparativo", headers, rows };
+}
+
+/* ════════════════════════════════════════════════════════════
+   SLIDE MODEL — 4 layout types only
+   ════════════════════════════════════════════════════════════ */
 
 const PRIMARY = "16213E";
 const TEXT_WHITE = "FFFFFF";
@@ -123,322 +210,481 @@ const TEXT_DARK = "1E1E23";
 const ACCENT = "5C6BC0";
 const TAKEAWAY_BG = "FFF8E1";
 const TAKEAWAY_ACCENT = "F9A825";
+const TABLE_HEADER_BG = "E8EAF6";
+const TABLE_ALT_BG = "F5F5F5";
 
-// Layout (10" x 5.625")
-const HEADER_H = 0.56;
-const FOOTER_Y = 5.35;
-const BODY_TOP = 0.74;       // content starts after header + accent line + small gap
-const BODY_BOTTOM = 5.25;    // stop before footer
-const BODY_H = BODY_BOTTOM - BODY_TOP; // ~4.51"
-const BODY_X = 0.45;
-const BODY_W = 9.1;
-const INNER_X = 0.2;
-const INNER_Y = 0.1;
+// Slide = 10" x 5.625"
+const SLIDE_W = 10;
+const SLIDE_H = 5.625;
+const HEADER_H = 0.52;     // ~9% of slide
+const TITLE_H = 0.36;
+const ACCENT_LINE_Y = HEADER_H + 0.04;
+const CONTENT_TOP = 0.68;  // content starts here
+const FOOTER_Y = 5.38;
+const FOOTER_H = 0.24;
+const CONTENT_BOTTOM = 5.30;
+const CONTENT_H = CONTENT_BOTTOM - CONTENT_TOP; // ~4.62"
+const MARGIN_X = 0.5;      // left/right margin
+const CONTENT_W = SLIDE_W - MARGIN_X * 2; // 9.0"
+
+// Font stepping: 18 → 17 → 16 (minimum)
+const FONT_SIZES = [18, 17, 16];
+const MIN_BULLETS_PER_SLIDE = 4;
+const MAX_BULLETS_PER_SLIDE = 8;
+const MAX_CHARS_PER_SLIDE = 900;
 
 interface SlideContent {
+  type: "cover" | "divider" | "content" | "comparison" | "takeaways";
   title: string;
-  bullets: string[];
-  style?: "default" | "objectives" | "takeaways" | "table-compare";
+  subtitle?: string;
+  bullets?: string[];
+  tableHeaders?: string[];
+  tableRows?: string[][];
 }
 
-/** Estimate how tall a set of bullets will be in inches */
-function estimateHeight(bullets: string[], fontSize: number, colWidth: number): number {
-  // chars per line based on column width and font size
-  // At 18pt Arial, ~5.5 chars/inch; at 24pt ~4.2 chars/inch
-  const charsPerInch = Math.max(3.5, 7 - (fontSize / 12));
-  const cpl = Math.max(20, Math.floor(colWidth * charsPerInch));
-  const lineH = (fontSize / 72) * 1.35; // line height with spacing
-  const paraGap = 0.06; // gap between bullets
+/* ════════════════════════════════════════════════════════════
+   HEIGHT ESTIMATION — accurate character-based wrapping
+   ════════════════════════════════════════════════════════════ */
 
-  let h = 0;
+function charsPerLine(fontSize: number, colWidth: number): number {
+  // Arial at various sizes: empirical chars-per-inch ≈ 90/fontSize
+  const cpi = 90 / fontSize;
+  return Math.max(15, Math.floor(colWidth * cpi));
+}
+
+function estimateBulletsHeight(bullets: string[], fontSize: number, width: number): number {
+  const cpl = charsPerLine(fontSize, width);
+  const lineH = (fontSize / 72) * 1.20; // line height factor 1.20
+  const bulletGap = 0.04; // gap between bullets
+  let total = 0;
   for (const b of bullets) {
     const lines = Math.max(1, Math.ceil(b.length / cpl));
-    h += lines * lineH + paraGap;
+    total += lines * lineH + bulletGap;
   }
-  return h;
+  return total;
 }
 
-function fitsOnSlide(bullets: string[], fontSize: number, twoCols: boolean): boolean {
-  const availH = BODY_H - INNER_Y * 2;
-  if (twoCols) {
-    const colW = (BODY_W - INNER_X * 2 - 0.3) / 2;
-    const mid = Math.ceil(bullets.length / 2);
-    const lh = estimateHeight(bullets.slice(0, mid), fontSize, colW);
-    const rh = estimateHeight(bullets.slice(mid), fontSize, colW);
-    return Math.max(lh, rh) <= availH;
-  }
-  const contentW = BODY_W - INNER_X * 2;
-  return estimateHeight(bullets, fontSize, contentW) <= availH;
+function bulletsFitInArea(bullets: string[], fontSize: number, availableH: number, width: number): boolean {
+  return estimateBulletsHeight(bullets, fontSize, width) <= availableH;
 }
 
-/** Pick best layout: try large font first, shrink, then try 2-col */
-function pickLayout(bullets: string[]): { fontSize: number; twoCols: boolean } {
-  const count = bullets.length;
-  const totalChars = bullets.reduce((s, b) => s + b.length, 0);
-
-  // Try single column with decreasing font sizes
-  for (const fs of [22, 20, 18, 16]) {
-    if (fitsOnSlide(bullets, fs, false)) return { fontSize: fs, twoCols: false };
+/** Find best fontSize that fits bullets in the available area */
+function bestFontForBullets(bullets: string[], availableH: number, width: number): number {
+  for (const fs of FONT_SIZES) {
+    if (bulletsFitInArea(bullets, fs, availableH, width)) return fs;
   }
-
-  // Try two columns (good for many short bullets)
-  const useTwoCols = count >= 6 || totalChars > 400;
-  if (useTwoCols) {
-    for (const fs of [20, 18, 16]) {
-      if (fitsOnSlide(bullets, fs, true)) return { fontSize: fs, twoCols: true };
-    }
-  }
-
-  // Fallback — will use shrink fit
-  return { fontSize: 16, twoCols: count >= 8 };
+  return FONT_SIZES[FONT_SIZES.length - 1]; // minimum
 }
 
-/** Split a long bullet into multiple shorter ones at sentence boundaries */
-function splitLongBullet(item: string): string[] {
-  const clean = item.trim();
-  if (clean.length <= 200) return [clean];
+/* ════════════════════════════════════════════════════════════
+   SEMANTIC PAGINATION — split by topic, merge small sections
+   ════════════════════════════════════════════════════════════ */
 
-  const parts = clean.split(/(?<=[\.!?])\s+/).map((p) => p.trim()).filter(Boolean);
-  if (parts.length <= 1) return [clean];
-
-  const out: string[] = [];
-  let acc = "";
-  for (const p of parts) {
-    if (!acc) { acc = p; continue; }
-    if ((acc + " " + p).length <= 180) {
-      acc += " " + p;
-    } else {
-      out.push(acc);
-      acc = p;
-    }
-  }
-  if (acc) out.push(acc);
-  return out;
+/** Remove duplicate module prefix from title: "Módulo 1: Módulo 1: X" → "Módulo 1: X" */
+function deduplicateTitle(title: string): string {
+  // Match patterns like "Módulo X: Módulo X: ..." or "Módulo X: Módulo X - ..."
+  return title.replace(/^(Módulo\s+\d+\s*[:–-]\s*)\1/i, "$1");
 }
 
-/** Core splitting: distribute bullets across slides respecting limits */
-function splitBulletsIntoSlides(heading: string, inputItems: string[], style: SlideContent["style"] = "default"): SlideContent[] {
-  const items = inputItems.flatMap(splitLongBullet).filter(Boolean);
+/** Split bullets into slide-sized groups, respecting min/max and height constraints */
+function paginateBullets(heading: string, items: string[], type: SlideContent["type"] = "content"): SlideContent[] {
   if (items.length === 0) return [];
 
   const slides: SlideContent[] = [];
   let current: string[] = [];
 
-  for (const item of items) {
-    const next = [...current, item];
-    const nextChars = next.reduce((s, b) => s + b.length, 0);
+  const flush = () => {
+    if (current.length > 0) {
+      slides.push({ type, title: heading, bullets: [...current] });
+      current = [];
+    }
+  };
 
-    // Check hard limits AND visual fit
-    if (next.length <= MAX_BULLETS_PER_SLIDE && nextChars <= MAX_CHARS_PER_SLIDE) {
-      const layout = pickLayout(next);
-      if (fitsOnSlide(next, layout.fontSize, layout.twoCols)) {
-        current = next;
+  for (const item of items) {
+    const candidate = [...current, item];
+    const totalChars = candidate.reduce((s, b) => s + b.length, 0);
+
+    // Check if candidate fits
+    if (candidate.length <= MAX_BULLETS_PER_SLIDE && totalChars <= MAX_CHARS_PER_SLIDE) {
+      const fs = bestFontForBullets(candidate, CONTENT_H - 0.1, CONTENT_W);
+      if (bulletsFitInArea(candidate, fs, CONTENT_H - 0.1, CONTENT_W)) {
+        current = candidate;
         continue;
       }
     }
 
-    // Current batch is full — flush it
-    if (current.length > 0) {
-      slides.push({ title: heading, bullets: [...current], style });
-      current = [item];
-    } else {
-      // Single item too big — push it alone
-      slides.push({ title: heading, bullets: [item], style });
-      current = [];
+    // Doesn't fit — flush current
+    flush();
+    current = [item];
+  }
+  flush();
+
+  // POST-PROCESS: merge tiny trailing slides back into previous
+  // If last slide has < MIN_BULLETS and previous exists, try to merge
+  if (slides.length >= 2) {
+    const last = slides[slides.length - 1];
+    const prev = slides[slides.length - 2];
+    if ((last.bullets?.length || 0) < MIN_BULLETS_PER_SLIDE && prev.bullets) {
+      const merged = [...prev.bullets, ...(last.bullets || [])];
+      const totalChars = merged.reduce((s, b) => s + b.length, 0);
+      if (merged.length <= MAX_BULLETS_PER_SLIDE + 1 && totalChars <= MAX_CHARS_PER_SLIDE + 100) {
+        const fs = bestFontForBullets(merged, CONTENT_H - 0.1, CONTENT_W);
+        if (bulletsFitInArea(merged, fs, CONTENT_H - 0.1, CONTENT_W)) {
+          prev.bullets = merged;
+          slides.pop();
+        }
+      }
     }
   }
 
-  if (current.length > 0) slides.push({ title: heading, bullets: [...current], style });
-
-  // Add part numbers if split
-  if (slides.length > 1) {
-    slides.forEach((s, i) => { s.title = `${heading} (${i + 1}/${slides.length})`; });
-  }
-
+  // NO part numbering — cleaner titles
   return slides;
 }
 
-function tableToSlides(heading: string, headers: string[], rows: string[][]): SlideContent[] {
-  const items: string[] = [];
-  for (const row of rows) {
-    const parts = row.map((cell, j) => `${headers[j] || `Col${j + 1}`}: ${cell}`).join("  →  ");
-    items.push(parts);
-  }
-  return splitBulletsIntoSlides(heading || "Comparativo", items, "table-compare");
-}
-
-/**
- * CRITICAL FIX: Merge tiny content blocks so we don't get slides with 1 sentence.
- * Adjacent blocks under the same or no heading get merged before splitting.
- */
+/** Build all slides for one module */
 function buildModuleSlides(mod: any, index: number, total: number): SlideContent[] {
   const blocks = parseModuleContent(mod.content || "");
-  const moduleTitle = cleanEmoji(stripMarkdown(mod.title));
+  const rawTitle = sanitize(mod.title || "");
+  // Prevent "Módulo X: Módulo X:"
+  const moduleLabel = `Módulo ${index + 1}`;
+  let moduleTitle: string;
+  if (/^módulo\s+\d+/i.test(rawTitle)) {
+    moduleTitle = rawTitle; // already has prefix
+  } else {
+    moduleTitle = `${moduleLabel}: ${rawTitle}`;
+  }
+  moduleTitle = deduplicateTitle(moduleTitle);
+
   const slides: SlideContent[] = [];
 
+  // Separate block types
   const objectiveBlocks = blocks.filter((b) => b.type === "objectives");
   const takeawayBlocks = blocks.filter((b) => b.type === "takeaways");
   const contentBlocks = blocks.filter((b) => b.type !== "objectives" && b.type !== "takeaways");
 
-  // Module intro slide
-  const objectiveBullets = objectiveBlocks.flatMap((b) => b.items || []);
+  // 1) DIVIDER slide for module
+  const objBullets = objectiveBlocks.flatMap((b) => (b.items || []).map(sanitize)).filter(Boolean).slice(0, 4);
   slides.push({
-    title: `Módulo ${index + 1}: ${moduleTitle}`,
-    bullets: objectiveBullets.length > 0 ? objectiveBullets : ["Conteúdo detalhado a seguir"],
-    style: "objectives",
+    type: "divider",
+    title: moduleTitle,
+    subtitle: moduleLabel,
+    bullets: objBullets.length > 0 ? objBullets : undefined,
   });
 
-  // MERGE small adjacent content blocks to avoid slides with 1 bullet
-  const mergedBlocks: { heading: string; items: string[]; isTable: boolean; headers?: string[]; rows?: string[][] }[] = [];
+  // 2) Content slides — merge adjacent small blocks
+  const mergedSections: { heading: string; items: string[]; isTable: boolean; headers?: string[]; rows?: string[][] }[] = [];
 
   for (const block of contentBlocks) {
-    if (block.type === "table" && block.headers && block.rows) {
-      mergedBlocks.push({ heading: block.heading || moduleTitle, items: [], isTable: true, headers: block.headers, rows: block.rows });
+    if ((block.type === "table" || block.type === "comparison") && block.headers && block.rows && block.rows.length > 0) {
+      mergedSections.push({
+        heading: sanitize(block.heading || moduleTitle),
+        items: [],
+        isTable: true,
+        headers: block.headers.map(sanitize),
+        rows: block.rows.map((r) => r.map(sanitize)),
+      });
       continue;
     }
 
-    const blockItems = block.items || [];
+    const blockItems = (block.items || []).map(sanitize).filter((s) => s.length > 3);
     if (blockItems.length === 0) continue;
 
+    const blockHeading = sanitize(block.heading || "");
     const blockChars = blockItems.reduce((s, b) => s + b.length, 0);
-    const lastMerged = mergedBlocks.length > 0 ? mergedBlocks[mergedBlocks.length - 1] : null;
+    const last = mergedSections.length > 0 ? mergedSections[mergedSections.length - 1] : null;
 
-    // If this block is tiny (<=2 items or <=150 chars) and previous block is also small, merge them
+    // Merge small sections: if both current and previous are small
     if (
-      lastMerged &&
-      !lastMerged.isTable &&
-      blockItems.length <= 2 &&
-      blockChars <= 150 &&
-      lastMerged.items.length <= 3 &&
-      lastMerged.items.reduce((s, b) => s + b.length, 0) <= 300
+      last && !last.isTable &&
+      blockItems.length < MIN_BULLETS_PER_SLIDE &&
+      last.items.length < MIN_BULLETS_PER_SLIDE &&
+      (last.items.length + blockItems.length) <= MAX_BULLETS_PER_SLIDE
     ) {
-      // Add heading as a prefix bullet if different
-      if (block.heading && block.heading !== lastMerged.heading) {
-        lastMerged.items.push(`${block.heading}:`);
+      const totalAfter = last.items.reduce((s, b) => s + b.length, 0) + blockChars;
+      if (totalAfter <= MAX_CHARS_PER_SLIDE) {
+        // Optionally add heading as separator
+        if (blockHeading && blockHeading !== last.heading && blockItems.length >= 2) {
+          last.items.push(""); // visual break
+          last.heading = last.heading || blockHeading;
+        }
+        last.items.push(...blockItems);
+        continue;
       }
-      lastMerged.items.push(...blockItems);
-    } else {
-      mergedBlocks.push({ heading: block.heading || moduleTitle, items: [...blockItems], isTable: false });
+    }
+
+    mergedSections.push({ heading: blockHeading || moduleTitle, items: [...blockItems], isTable: false });
+  }
+
+  for (const section of mergedSections) {
+    if (section.isTable && section.headers && section.rows) {
+      // Render as COMPARISON slide(s)
+      const maxRowsPerSlide = 6;
+      for (let i = 0; i < section.rows.length; i += maxRowsPerSlide) {
+        const chunk = section.rows.slice(i, i + maxRowsPerSlide);
+        slides.push({
+          type: "comparison",
+          title: section.heading,
+          tableHeaders: section.headers,
+          tableRows: chunk,
+        });
+      }
+    } else if (section.items.length > 0) {
+      // Remove empty separator strings before pagination
+      const cleanItems = section.items.filter((s) => s.length > 0);
+      slides.push(...paginateBullets(section.heading, cleanItems));
     }
   }
 
-  for (const mb of mergedBlocks) {
-    if (mb.isTable && mb.headers && mb.rows) {
-      slides.push(...tableToSlides(mb.heading, mb.headers, mb.rows));
-    } else if (mb.items.length > 0) {
-      slides.push(...splitBulletsIntoSlides(mb.heading, mb.items));
-    }
-  }
-
-  // Takeaways
-  const takeawayBullets = takeawayBlocks.flatMap((b) => b.items || []);
+  // 3) Takeaways
+  const takeawayBullets = takeawayBlocks.flatMap((b) => (b.items || []).map(sanitize)).filter(Boolean);
   if (takeawayBullets.length > 0) {
-    slides.push(...splitBulletsIntoSlides("Resumo / Key Takeaways", takeawayBullets, "takeaways"));
+    slides.push(...paginateBullets("Resumo", takeawayBullets, "takeaways"));
   }
 
   return slides;
 }
 
-/* ─── Slide rendering ─── */
+/* ════════════════════════════════════════════════════════════
+   SLIDE RENDERING — 4 layouts
+   ════════════════════════════════════════════════════════════ */
 
-function addHeaderBar(slide: any, pptx: any) {
-  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: HEADER_H, fill: { color: PRIMARY } });
-}
-
-function addFooter(slide: any, slideNum: number, totalSlides: number) {
-  slide.addText(`${slideNum} / ${totalSlides}`, {
-    x: 4, y: FOOTER_Y, w: 2, h: 0.22,
+function addFooter(slide: any, num: number, total: number) {
+  slide.addText(`${num} / ${total}`, {
+    x: 4, y: FOOTER_Y, w: 2, h: FOOTER_H,
     fontSize: 8, fontFace: "Arial", color: "999999", align: "center",
   });
 }
 
-function makeBulletObjs(bullets: string[], fontSize: number, bulletColor: string) {
-  const lineSpacing = Math.round(fontSize * 1.3);
-  const paraAfter = Math.max(3, Math.round(fontSize * 0.25));
-  return bullets.map((b) => ({
+function renderCover(pptx: any, title: string, description: string, moduleCount: number) {
+  const slide = pptx.addSlide();
+  slide.background = { color: PRIMARY };
+  slide.addText(title, {
+    x: 0.8, y: 0.6, w: 8.4, h: 2.4,
+    fontSize: 32, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+    align: "center", valign: "middle", shrinkText: true,
+  });
+  if (description) {
+    slide.addText(sanitize(description), {
+      x: 1.2, y: 3.2, w: 7.6, h: 1.2,
+      fontSize: 14, fontFace: "Arial", color: "B0BEC5", align: "center", valign: "top",
+      shrinkText: true,
+    });
+  }
+  const d = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  slide.addText(`${moduleCount} módulos  •  ${d}  •  Gerado por EduGen AI`, {
+    x: 0, y: 4.8, w: 10, h: 0.4,
+    fontSize: 10, fontFace: "Arial", color: "78909C", align: "center",
+  });
+}
+
+function renderDivider(pptx: any, sc: SlideContent, num: number, total: number) {
+  const slide = pptx.addSlide();
+  slide.background = { color: PRIMARY };
+
+  // Subtitle label
+  if (sc.subtitle) {
+    slide.addText(sc.subtitle.toUpperCase(), {
+      x: 0.8, y: 0.8, w: 8.4, h: 0.35,
+      fontSize: 12, fontFace: "Arial", color: ACCENT, bold: true, align: "left",
+      letterSpacing: 3,
+    });
+    slide.addShape(pptx.ShapeType.rect, { x: 0.8, y: 1.2, w: 1.0, h: 0.03, fill: { color: ACCENT } });
+  }
+
+  slide.addText(sc.title, {
+    x: 0.8, y: 1.4, w: 8.4, h: 1.4,
+    fontSize: 26, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+    valign: "top", shrinkText: true,
+  });
+
+  // Objectives if present
+  if (sc.bullets && sc.bullets.length > 0) {
+    slide.addText("Objetivos", {
+      x: 0.8, y: 3.0, w: 3, h: 0.3,
+      fontSize: 11, fontFace: "Arial", color: ACCENT, bold: true,
+    });
+    const objText = sc.bullets.map((b) => ({
+      text: b,
+      options: {
+        fontSize: 13, fontFace: "Arial", color: "B0BEC5",
+        bullet: { type: "bullet" as const, color: ACCENT },
+        paraSpaceAfter: 3, lineSpacing: 16,
+      },
+    }));
+    slide.addText(objText, {
+      x: 0.8, y: 3.3, w: 8.4, h: 1.8,
+      valign: "top", shrinkText: true,
+    });
+  }
+
+  addFooter(slide, num, total);
+}
+
+function renderContent(pptx: any, sc: SlideContent, num: number, total: number) {
+  const slide = pptx.addSlide();
+  const bullets = sc.bullets || [];
+
+  // Header bar
+  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: SLIDE_W, h: HEADER_H, fill: { color: PRIMARY } });
+  slide.addText(deduplicateTitle(sc.title), {
+    x: 0.4, y: 0.06, w: 9.2, h: TITLE_H,
+    fontSize: 16, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+    shrinkText: true,
+  });
+  // Accent line
+  slide.addShape(pptx.ShapeType.rect, { x: MARGIN_X, y: ACCENT_LINE_Y, w: 1.0, h: 0.025, fill: { color: ACCENT } });
+
+  // Find best font size
+  const fs = bestFontForBullets(bullets, CONTENT_H - 0.05, CONTENT_W);
+  const lineSpacing = Math.round(fs * 1.18);
+  const paraAfter = Math.max(2, Math.round(fs * 0.2));
+
+  const bulletObjs = bullets.map((b) => ({
     text: b,
     options: {
-      fontSize,
+      fontSize: fs,
       fontFace: "Arial",
       color: TEXT_DARK,
-      bullet: { type: "bullet" as const, color: bulletColor },
+      bullet: { type: "bullet" as const, color: ACCENT },
       paraSpaceAfter: paraAfter,
       lineSpacing,
     },
   }));
+
+  slide.addText(bulletObjs, {
+    x: MARGIN_X, y: CONTENT_TOP, w: CONTENT_W, h: CONTENT_H,
+    valign: "top", shrinkText: true,
+  });
+
+  addFooter(slide, num, total);
 }
 
-function renderBulletsArea(slide: any, bullets: string[], bulletColor: string, fontSize: number, twoCols: boolean, top: number, height: number) {
-  const textTop = top + INNER_Y;
-  const textHeight = height - INNER_Y * 2;
-
-  if (twoCols) {
-    const mid = Math.ceil(bullets.length / 2);
-    const left = bullets.slice(0, mid);
-    const right = bullets.slice(mid);
-    const contentW = BODY_W - INNER_X * 2;
-    const colW = (contentW - 0.3) / 2;
-
-    slide.addText(makeBulletObjs(left, fontSize, bulletColor), {
-      x: BODY_X + INNER_X, y: textTop, w: colW, h: textHeight,
-      valign: "top", shrinkText: true,
-    });
-
-    slide.addText(makeBulletObjs(right, fontSize, bulletColor), {
-      x: BODY_X + INNER_X + colW + 0.3, y: textTop, w: colW, h: textHeight,
-      valign: "top", shrinkText: true,
-    });
-  } else {
-    slide.addText(makeBulletObjs(bullets, fontSize, bulletColor), {
-      x: BODY_X + INNER_X, y: textTop, w: BODY_W - INNER_X * 2, h: textHeight,
-      valign: "top", shrinkText: true,
-    });
-  }
-}
-
-function renderSlide(pptx: any, sc: SlideContent, slideNum: number, totalSlides: number) {
+function renderComparison(pptx: any, sc: SlideContent, num: number, total: number) {
   const slide = pptx.addSlide();
-  const layout = pickLayout(sc.bullets);
+  const headers = sc.tableHeaders || [];
+  const rows = sc.tableRows || [];
+  const colCount = headers.length || (rows[0]?.length ?? 2);
 
-  const contentTop = BODY_TOP;
-  const contentH = BODY_H;
+  // Header bar
+  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: SLIDE_W, h: HEADER_H, fill: { color: PRIMARY } });
+  slide.addText(deduplicateTitle(sc.title), {
+    x: 0.4, y: 0.06, w: 9.2, h: TITLE_H,
+    fontSize: 16, fontFace: "Arial", color: TEXT_WHITE, bold: true, shrinkText: true,
+  });
+  slide.addShape(pptx.ShapeType.rect, { x: MARGIN_X, y: ACCENT_LINE_Y, w: 1.0, h: 0.025, fill: { color: ACCENT } });
 
-  if (sc.style === "objectives") {
-    addHeaderBar(slide, pptx);
-    slide.addText(sc.title, {
-      x: 0.4, y: 0.06, w: 9.2, h: 0.42,
-      fontSize: 18, fontFace: "Arial", color: TEXT_WHITE, bold: true,
-    });
-    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: HEADER_H + 0.06, w: 1.2, h: 0.03, fill: { color: ACCENT } });
-    slide.addText("Objetivos", {
-      x: 0.5, y: HEADER_H + 0.12, w: 3.5, h: 0.22,
-      fontSize: 12, fontFace: "Arial", color: ACCENT, bold: true,
-    });
-    renderBulletsArea(slide, sc.bullets, ACCENT, layout.fontSize, layout.twoCols, contentTop + 0.15, contentH - 0.15);
+  // Table
+  const tableX = MARGIN_X;
+  const tableY = CONTENT_TOP + 0.05;
+  const tableW = CONTENT_W;
+  const colW = tableW / colCount;
 
-  } else if (sc.style === "takeaways") {
-    slide.background = { color: TAKEAWAY_BG };
-    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: 0.06, fill: { color: TAKEAWAY_ACCENT } });
-    slide.addText("Resumo / Key Takeaways", {
-      x: 0.4, y: 0.14, w: 9.2, h: 0.40,
-      fontSize: 18, fontFace: "Arial", color: TEXT_DARK, bold: true,
-    });
-    renderBulletsArea(slide, sc.bullets, TAKEAWAY_ACCENT, layout.fontSize, layout.twoCols, 0.58, BODY_BOTTOM - 0.58);
+  // Build table data for pptxgenjs
+  const tableData: any[][] = [];
 
-  } else {
-    addHeaderBar(slide, pptx);
-    slide.addText(sc.title, {
-      x: 0.4, y: 0.06, w: 9.2, h: 0.42,
-      fontSize: 18, fontFace: "Arial", color: TEXT_WHITE, bold: true,
-    });
-    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: HEADER_H + 0.06, w: 1.2, h: 0.03, fill: { color: ACCENT } });
-    renderBulletsArea(slide, sc.bullets, ACCENT, layout.fontSize, layout.twoCols, contentTop, contentH);
-  }
+  // Header row
+  const headerRow = headers.map((h) => ({
+    text: h,
+    options: {
+      fontSize: 12, fontFace: "Arial", bold: true, color: TEXT_DARK,
+      fill: { color: TABLE_HEADER_BG },
+      border: [
+        { type: "solid", pt: 0.5, color: "CCCCCC" },
+        { type: "solid", pt: 0.5, color: "CCCCCC" },
+        { type: "solid", pt: 0.5, color: "CCCCCC" },
+        { type: "solid", pt: 0.5, color: "CCCCCC" },
+      ],
+      valign: "middle",
+      paraSpaceAfter: 2,
+      paraSpaceBefore: 2,
+    },
+  }));
+  tableData.push(headerRow);
 
-  addFooter(slide, slideNum, totalSlides);
+  // Data rows
+  rows.forEach((row, ri) => {
+    const dataRow = row.map((cell) => ({
+      text: cell,
+      options: {
+        fontSize: 11, fontFace: "Arial", color: TEXT_DARK,
+        fill: ri % 2 === 1 ? { color: TABLE_ALT_BG } : undefined,
+        border: [
+          { type: "solid", pt: 0.5, color: "DDDDDD" },
+          { type: "solid", pt: 0.5, color: "DDDDDD" },
+          { type: "solid", pt: 0.5, color: "DDDDDD" },
+          { type: "solid", pt: 0.5, color: "DDDDDD" },
+        ],
+        valign: "middle",
+        paraSpaceAfter: 2,
+        paraSpaceBefore: 2,
+      },
+    }));
+    // Pad if needed
+    while (dataRow.length < colCount) {
+      dataRow.push({ text: "", options: { fontSize: 11, fontFace: "Arial", color: TEXT_DARK, valign: "middle" as const, paraSpaceAfter: 2, paraSpaceBefore: 2 } });
+    }
+    tableData.push(dataRow);
+  });
+
+  slide.addTable(tableData, {
+    x: tableX, y: tableY, w: tableW,
+    colW: Array(colCount).fill(colW),
+    autoPage: false,
+    shrinkText: true,
+  });
+
+  addFooter(slide, num, total);
 }
 
-/* ─── Main handler ─── */
+function renderTakeaways(pptx: any, sc: SlideContent, num: number, total: number) {
+  const slide = pptx.addSlide();
+  const bullets = sc.bullets || [];
+
+  slide.background = { color: TAKEAWAY_BG };
+  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: SLIDE_W, h: 0.05, fill: { color: TAKEAWAY_ACCENT } });
+  slide.addText(sc.title, {
+    x: MARGIN_X, y: 0.15, w: CONTENT_W, h: 0.4,
+    fontSize: 18, fontFace: "Arial", color: TEXT_DARK, bold: true,
+  });
+
+  const fs = bestFontForBullets(bullets, CONTENT_BOTTOM - 0.65, CONTENT_W);
+  const lineSpacing = Math.round(fs * 1.18);
+  const paraAfter = Math.max(2, Math.round(fs * 0.2));
+
+  const bulletObjs = bullets.map((b) => ({
+    text: b,
+    options: {
+      fontSize: fs, fontFace: "Arial", color: TEXT_DARK,
+      bullet: { type: "bullet" as const, color: TAKEAWAY_ACCENT },
+      paraSpaceAfter: paraAfter, lineSpacing,
+    },
+  }));
+
+  slide.addText(bulletObjs, {
+    x: MARGIN_X, y: 0.60, w: CONTENT_W, h: CONTENT_BOTTOM - 0.65,
+    valign: "top", shrinkText: true,
+  });
+
+  addFooter(slide, num, total);
+}
+
+function renderClosing(pptx: any, title: string) {
+  const slide = pptx.addSlide();
+  slide.background = { color: PRIMARY };
+  slide.addText("Obrigado!", {
+    x: 0, y: 1.4, w: SLIDE_W, h: 1.6,
+    fontSize: 38, fontFace: "Arial", color: TEXT_WHITE, bold: true,
+    align: "center", valign: "middle",
+  });
+  slide.addText(sanitize(title), {
+    x: 1, y: 3.3, w: 8, h: 0.6,
+    fontSize: 15, fontFace: "Arial", color: "B0BEC5", align: "center", shrinkText: true,
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   MAIN HANDLER
+   ════════════════════════════════════════════════════════════ */
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -488,7 +734,7 @@ Deno.serve(async (req: Request) => {
       if (!profile?.is_dev) {
         return new Response(
           JSON.stringify({ error: "PowerPoint export requires a Pro plan.", feature: "export_pptx" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
     }
@@ -511,63 +757,45 @@ Deno.serve(async (req: Request) => {
     const { data: modules = [] } = await serviceClient
       .from("course_modules").select("*").eq("course_id", course_id).order("order_index");
 
-    /* ─── Build all slide content ─── */
-
+    /* ─── Build all slides ─── */
     const allSlides: SlideContent[] = [];
     for (let i = 0; i < modules.length; i++) {
-      const modSlides = buildModuleSlides(modules[i], i, modules.length);
-      allSlides.push(...modSlides);
+      allSlides.push(...buildModuleSlides(modules[i], i, modules.length));
     }
 
     const totalSlides = allSlides.length + 2; // +cover +closing
 
     /* ─── Build PPTX ─── */
-
     const pptx = new PptxGenJS();
     pptx.author = "EduGen AI";
     pptx.title = course.title;
     pptx.subject = course.description || "";
 
-    // ─── COVER SLIDE (fixed overlap) ───
-    const titleSlide = pptx.addSlide();
-    titleSlide.background = { color: PRIMARY };
-    // Title in top half — use shrinkText to avoid overflow
-    titleSlide.addText(course.title, {
-      x: 0.8, y: 0.8, w: 8.4, h: 2.2,
-      fontSize: 34, fontFace: "Arial", color: TEXT_WHITE, bold: true,
-      align: "center", valign: "middle", shrinkText: true,
-    });
-    if (course.description) {
-      // Description safely below title area
-      titleSlide.addText(course.description, {
-        x: 1.2, y: 3.2, w: 7.6, h: 1.6,
-        fontSize: 14, fontFace: "Arial", color: "B0BEC5", align: "center", valign: "top",
-        shrinkText: true,
-      });
+    // 1) Cover
+    renderCover(pptx, course.title, course.description || "", modules.length);
+
+    // 2) Content slides
+    let slideNum = 2;
+    for (const sc of allSlides) {
+      switch (sc.type) {
+        case "divider":
+          renderDivider(pptx, sc, slideNum, totalSlides);
+          break;
+        case "comparison":
+          renderComparison(pptx, sc, slideNum, totalSlides);
+          break;
+        case "takeaways":
+          renderTakeaways(pptx, sc, slideNum, totalSlides);
+          break;
+        default:
+          renderContent(pptx, sc, slideNum, totalSlides);
+          break;
+      }
+      slideNum++;
     }
-    titleSlide.addText(`${modules.length} módulos • Gerado por EduGen AI`, {
-      x: 0, y: 5.0, w: 10, h: 0.4,
-      fontSize: 10, fontFace: "Arial", color: "78909C", align: "center",
-    });
 
-    // Content slides
-    allSlides.forEach((sc, i) => {
-      renderSlide(pptx, sc, i + 2, totalSlides);
-    });
-
-    // Closing slide
-    const endSlide = pptx.addSlide();
-    endSlide.background = { color: PRIMARY };
-    endSlide.addText("Obrigado!", {
-      x: 0, y: 1.6, w: 10, h: 1.4,
-      fontSize: 38, fontFace: "Arial", color: TEXT_WHITE, bold: true,
-      align: "center", valign: "middle",
-    });
-    endSlide.addText(course.title, {
-      x: 1, y: 3.3, w: 8, h: 0.6,
-      fontSize: 15, fontFace: "Arial", color: "B0BEC5", align: "center",
-      shrinkText: true,
-    });
+    // 3) Closing
+    renderClosing(pptx, course.title);
 
     console.log(`PPTX generated: ${totalSlides} slides for ${modules.length} modules`);
 
@@ -599,7 +827,7 @@ Deno.serve(async (req: Request) => {
     console.error("Export PPTX error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
