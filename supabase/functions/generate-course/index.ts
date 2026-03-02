@@ -128,8 +128,17 @@ Todo módulo DEVE terminar com:
 - Escaneabilidade: o leitor deve entender a estrutura só passando os olhos
 - Listas numeradas para processos/etapas sequenciais
 - Listas com bullet para itens sem ordem
-- Tabelas Markdown quando comparar 2+ itens
 - Blocos de código com \`\`\` quando aplicável
+
+**Padrão obrigatório para TODAS as tabelas Markdown:**
+- Primeira coluna deve se chamar "Aspecto", "Dimensão", "Critério" ou equivalente conceitual
+- Texto da primeira coluna: sempre curto (2-4 palavras), conceitual, pode incluir emoji discreto no início (ex: 🎯 Objetivo, ⚡ Velocidade)
+- Máximo 1 ideia por célula — frases curtas e objetivas
+- Preferir verbos claros (analisar, gerar, classificar, criar) em vez de descrições abstratas
+- Incluir exemplos concretos sempre que possível (ex: "ex: Python, R")
+- Quando a tabela for comparativa, reforçar contrastes claros entre colunas — evitar descrições equivalentes/vagas
+- Se o conteúdo original tiver tabelas com parágrafos longos, reescrever mantendo o significado mas fragmentando em frases curtas
+- Critério: qualquer tabela deve ser compreendida em até 10 segundos por um leitor iniciante
 
 ### 6. RESTRIÇÕES ABSOLUTAS
 - Mantenha 100% da correção técnica do conteúdo original
