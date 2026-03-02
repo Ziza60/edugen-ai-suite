@@ -59,19 +59,29 @@ function buildNotionMarkdown(
     if (moduleQuizzes.length > 0) {
       lines.push(`### 🧠 Quiz — ${mod.title}`);
       lines.push("");
-      moduleQuizzes.forEach((q, qi) => {
-        lines.push(`**${qi + 1}. ${q.question}**`);
-        lines.push("");
-        (q.options || []).forEach((opt: string, j: number) => {
-          const marker = j === q.correct_answer ? "✅" : "⬜";
-          lines.push(`${marker} ${String.fromCharCode(65 + j)}) ${opt}`);
-        });
-        if (q.explanation) {
+      if (moduleQuizzes.length <= 15) {
+        // Standard format
+        moduleQuizzes.forEach((q, qi) => {
+          lines.push(`**${qi + 1}. ${q.question}**`);
           lines.push("");
-          lines.push(`> 💡 ${q.explanation}`);
-        }
+          (q.options || []).forEach((opt: string, j: number) => {
+            const marker = j === q.correct_answer ? "✅" : "⬜";
+            lines.push(`${marker} ${String.fromCharCode(65 + j)}) ${opt}`);
+          });
+          if (q.explanation) {
+            lines.push("");
+            lines.push(`> 💡 ${q.explanation}`);
+          }
+          lines.push("");
+        });
+      } else {
+        // Compact list for large quiz sets
+        moduleQuizzes.forEach((q, qi) => {
+          const correctLetter = String.fromCharCode(65 + q.correct_answer);
+          lines.push(`${qi + 1}. **${q.question}** → ${correctLetter}) ${(q.options || [])[q.correct_answer] || ""}`);
+        });
         lines.push("");
-      });
+      }
     }
 
     // Module flashcards
@@ -79,13 +89,23 @@ function buildNotionMarkdown(
     if (moduleFlashcards.length > 0) {
       lines.push(`### 🃏 Flashcards — ${mod.title}`);
       lines.push("");
-      lines.push("| Pergunta | Resposta |");
-      lines.push("| --- | --- |");
-      moduleFlashcards.forEach((f) => {
-        const front = f.front.replace(/\|/g, "\\|").replace(/\n/g, " ");
-        const back = f.back.replace(/\|/g, "\\|").replace(/\n/g, " ");
-        lines.push(`| ${front} | ${back} |`);
-      });
+      if (moduleFlashcards.length <= 15) {
+        // Table format for small sets
+        lines.push("| Pergunta | Resposta |");
+        lines.push("| --- | --- |");
+        moduleFlashcards.forEach((f) => {
+          const front = f.front.replace(/\|/g, "\\|").replace(/\n/g, " ");
+          const back = f.back.replace(/\|/g, "\\|").replace(/\n/g, " ");
+          lines.push(`| ${front} | ${back} |`);
+        });
+      } else {
+        // List format fallback for large sets (avoids broken tables in Notion)
+        moduleFlashcards.forEach((f, fi) => {
+          lines.push(`**${fi + 1}. ${f.front.replace(/\n/g, " ")}**`);
+          lines.push(`   → ${f.back.replace(/\n/g, " ")}`);
+          lines.push("");
+        });
+      }
       lines.push("");
     }
 
@@ -183,7 +203,9 @@ Deno.serve(async (req: Request) => {
     const encoder = new TextEncoder();
     const mdBytes = encoder.encode(markdown);
 
-    const fileName = `${userId}/${course_id}_notion.md`;
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const safeName = (course.title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/g, "").trim();
+    const fileName = `${userId}/${safeName} - Notion - ${dateStr}.md`;
 
     const { error: uploadErr } = await serviceClient.storage
       .from("course-exports")

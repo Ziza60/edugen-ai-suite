@@ -44,11 +44,11 @@ function extractBullets(content: string): string[] {
       }
     }
     
-    // Limit bullets per slide
-    if (bullets.length >= 8) break;
+    // Limit bullets per slide (max 6 for readability)
+    if (bullets.length >= 6) break;
   }
   
-  return bullets.slice(0, 8);
+  return bullets.slice(0, 6);
 }
 
 Deno.serve(async (req: Request) => {
@@ -227,7 +227,9 @@ Deno.serve(async (req: Request) => {
 
     // Generate file
     const pptxData = await pptx.write({ outputType: "uint8array" });
-    const fileName = `${userId}/${course_id}.pptx`;
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const safeName = (course.title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/g, "").trim();
+    const fileName = `${userId}/${safeName} - PPTX - ${dateStr}.pptx`;
 
     const { error: uploadErr } = await serviceClient.storage
       .from("course-exports")
