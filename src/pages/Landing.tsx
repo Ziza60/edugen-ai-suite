@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Sparkles, BookOpen, Zap, Award, ArrowRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Sparkles, BookOpen, Zap, Award, ArrowRight, FileUp, CheckCircle, Crown } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Landing() {
   const features = [
     { icon: BookOpen, title: "Cursos completos", desc: "Módulos, conteúdo e estrutura gerados por IA em minutos." },
+    { icon: FileUp, title: "Fontes próprias", desc: "Envie seus PDFs e textos — a IA gera o curso fielmente a partir do seu material.", pro: true },
     { icon: Zap, title: "Quizzes & Flashcards", desc: "Material de avaliação e revisão criados automaticamente." },
     { icon: Award, title: "Certificados", desc: "Emita certificados verificáveis para seus alunos." },
   ];
@@ -63,15 +65,25 @@ export default function Landing() {
 
       {/* Features */}
       <section className="container mx-auto px-4 pb-24">
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {features.map((f, i) => (
             <motion.div
               key={f.title}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 + i * 0.1 }}
-              className="bg-card border border-border rounded-xl p-8 hover:shadow-lg transition-shadow"
+              className={`bg-card border rounded-xl p-8 hover:shadow-lg transition-shadow relative ${
+                f.pro ? "border-primary/30 bg-primary/[0.02]" : "border-border"
+              }`}
             >
+              {f.pro && (
+                <div className="absolute top-3 right-3">
+                  <Badge variant="default" className="text-[10px] px-2 py-0.5 gap-1">
+                    <Crown className="h-3 w-3" />
+                    PRO
+                  </Badge>
+                </div>
+              )}
               <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                 <f.icon className="h-6 w-6 text-primary" />
               </div>
@@ -80,6 +92,42 @@ export default function Landing() {
             </motion.div>
           ))}
         </div>
+      </section>
+
+      {/* Sources CTA */}
+      <section className="container mx-auto px-4 pb-24">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
+          className="bg-card border border-primary/20 rounded-2xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-8"
+        >
+          <div className="flex-1">
+            <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-semibold mb-4">
+              <Crown className="h-3.5 w-3.5" />
+              Exclusivo Pro
+            </div>
+            <h2 className="font-display text-2xl md:text-3xl font-bold mb-3">
+              Cursos a partir das suas fontes
+            </h2>
+            <p className="text-muted-foreground leading-relaxed mb-5 max-w-lg">
+              Envie seus próprios PDFs, textos ou arquivos Markdown e a IA gera um curso completo fielmente baseado no seu conteúdo — sem alucinação, sem informação externa.
+            </p>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              <li className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-primary shrink-0" /> Até 3 documentos por curso</li>
+              <li className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-primary shrink-0" /> PDF, TXT e Markdown suportados</li>
+              <li className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-primary shrink-0" /> Conteúdo 100% fiel às suas fontes</li>
+            </ul>
+          </div>
+          <div className="shrink-0">
+            <Button size="lg" className="text-base px-8" asChild>
+              <Link to="/auth">
+                Começar com Pro
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </motion.div>
       </section>
 
       {/* Footer */}
