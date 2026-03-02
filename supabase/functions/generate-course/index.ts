@@ -340,6 +340,11 @@ ${sourcesBlock}
 
     const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
 
+CRITICAL HARD CONSTRAINT — MODULE COUNT:
+- You MUST generate EXACTLY ${actualModules} modules. Not fewer, not more.
+- The "modules" array in your JSON response MUST contain exactly ${actualModules} items.
+- This is a non-negotiable requirement. Generating a different number is a critical failure.
+
 CRITICAL QUALITY RULES:
 - All text (titles, descriptions, questions) must have PERFECT spelling and grammar in ${language || "pt-BR"}.
 - Double-check every title and sentence for missing letters, typos, or truncated words.
@@ -353,7 +358,7 @@ Course details:
 - Target audience: ${target_audience || "general"}
 - Tone: ${tone || "professional"}
 - Language: ${language || "pt-BR"}
-- Number of modules: ${actualModules}
+- EXACTLY ${actualModules} modules (mandatory — no more, no less)
 ${use_sources ? "- IMPORTANT: Base the course structure EXCLUSIVELY on the content in <SOURCES>" : ""}
 ${include_quiz ? "- Include 3 quiz questions per module" : ""}
 ${include_flashcards ? "- Include 5 flashcards per module" : ""}
@@ -379,6 +384,33 @@ Return ONLY valid JSON with this structure:
       structure = JSON.parse(jsonMatch ? jsonMatch[0] : structureRaw);
     } catch {
       throw new Error("Failed to parse AI structure response");
+    }
+
+    // HARD VALIDATION: enforce exact module count
+    if (!structure.modules || structure.modules.length !== actualModules) {
+      console.warn(`Module count mismatch: got ${structure.modules?.length ?? 0}, expected ${actualModules}. Retrying...`);
+      
+      const retryPrompt = `You previously generated ${structure.modules?.length ?? 0} modules, but EXACTLY ${actualModules} are required.
+
+Generate a complete course structure with EXACTLY ${actualModules} modules for the course "${title}" (${theme}).
+Language: ${language || "pt-BR"}. Target audience: ${target_audience || "general"}. Tone: ${tone || "professional"}.
+${include_quiz ? "Include 3 quiz questions per module." : ""}
+${include_flashcards ? "Include 5 flashcards per module." : ""}
+
+Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
+
+      const retryRaw = await callAI("google/gemini-2.5-flash", retryPrompt);
+      try {
+        const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
+        structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
+      } catch {
+        throw new Error("Failed to parse AI retry response");
+      }
+
+      if (!structure.modules || structure.modules.length !== actualModules) {
+        console.error(`Retry failed: got ${structure.modules?.length ?? 0}, expected ${actualModules}`);
+        throw new Error(`Failed to generate exactly ${actualModules} modules after retry. Got ${structure.modules?.length ?? 0}.`);
+      }
     }
 
     // 4. Create course in DB
