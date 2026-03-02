@@ -163,10 +163,6 @@ export default function CourseView() {
   };
 
   const handleExportPdf = async () => {
-    if (!isPro) {
-      toast({ title: "Recurso PRO", description: "Exportação PDF disponível apenas no plano Pro.", variant: "destructive" });
-      return;
-    }
     setExportingPdf(true);
     try {
       const { data, error } = await supabase.functions.invoke("export-pdf", {
@@ -227,7 +223,7 @@ export default function CourseView() {
             variant="outline"
             size="sm"
             onClick={handleExportPdf}
-            disabled={exportingPdf || !isPro}
+            disabled={exportingPdf}
           >
             {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
             PDF {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
