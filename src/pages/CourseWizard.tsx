@@ -70,7 +70,7 @@ export default function CourseWizard() {
 
       const { data, error } = await supabase.functions.invoke("generate-course", {
         body: {
-          title: form.title,
+          title: form.title.trim(),
           theme: form.theme,
           target_audience: form.targetAudience,
           tone: form.tone,
