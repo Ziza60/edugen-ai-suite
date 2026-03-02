@@ -38,62 +38,105 @@ async function callAI(model: string, prompt: string) {
   return data.choices?.[0]?.message?.content || JSON.stringify(data);
 }
 
-// PROMPT MESTRE: Pedagogical refinement post-processing
+// PROMPT MESTRE v2: Official Pedagogical Template
 function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {
-  return `Você é um designer instrucional sênior especializado em e-learning de alta qualidade.
+  return `Você é um designer instrucional sênior especializado em e-learning premium.
 
-Receba o conteúdo bruto abaixo e reescreva-o aplicando TODAS as regras a seguir. O resultado deve parecer material profissional pago.
+Reescreva o conteúdo bruto abaixo aplicando TODAS as regras do Template Pedagógico Oficial. O resultado deve ser visualmente leve, escaneável e profissional.
 
-## REGRAS DE REESCRITA
+## TEMPLATE PEDAGÓGICO OFICIAL
 
-### 1. Estrutura e Hierarquia Visual
-- Use ## para título do módulo (apenas 1)
-- Use ### para seções principais (3-5 por módulo)
-- Use #### para subseções quando necessário
-- Adicione uma linha em branco entre cada bloco para respiro visual
-- Parágrafos curtos: máximo 3-4 linhas cada
+### 1. ABERTURA OBRIGATÓRIA
+Comece o módulo SEMPRE com:
 
-### 2. Marcadores Pedagógicos (OBRIGATÓRIOS)
-Insira os seguintes blocos onde forem pedagogicamente relevantes:
+## ${moduleTitle}
 
-> 🔑 **Conceito-chave:** [explicação concisa do conceito fundamental]
+Seguido IMEDIATAMENTE por:
 
-> 💡 **Exemplo prático:** [exemplo concreto e aplicável]
+### 🎯 Objetivo do Módulo
+- [bullet 1: o que o aluno vai aprender]
+- [bullet 2: habilidade ou competência]
+- [bullet 3: aplicação prática esperada]
+(máximo 3 bullets, diretos e claros)
 
-> ⚠️ **Atenção:** [erro comum, armadilha ou ponto crítico]
+---
 
-> 📝 **Resumo da seção:** [2-3 frases sintetizando os pontos principais]
+### 2. ORGANIZAÇÃO EM BLOCOS TEMÁTICOS
+Organize o conteúdo do módulo usando os seguintes blocos, NA ORDEM em que fizerem sentido pedagógico. Use apenas os blocos relevantes para o conteúdo (nem todo módulo precisa de todos):
 
-Cada módulo DEVE conter no mínimo:
-- 2 blocos "Conceito-chave"
-- 2 blocos "Exemplo prático"  
-- 1 bloco "Atenção"
-- 1 bloco "Resumo da seção" ao final
+#### 🧠 Fundamentos
+- Conceitos base, definições essenciais
 
-### 3. Redução de Densidade Textual
-- Elimine redundâncias e repetições
-- Substitua parágrafos densos por listas com bullet points (-)
-- Use **negrito** para termos-chave (máximo 3-4 por parágrafo)
-- Use tabelas Markdown quando comparar 2+ itens
-- Prefira frases diretas e objetivas
+#### ⚙️ Como funciona
+- Mecanismos, processos, etapas
 
-### 4. Formatação para Leitura em Tela
-- Escaneabilidade: o leitor deve entender a estrutura só passando os olhos
-- Use listas numeradas para processos/etapas sequenciais
-- Use listas com bullet para itens sem ordem
-- Blocos de código com \`\`\` quando aplicável
+#### 🧩 Modelos / Tipos
+- Categorias, classificações, variantes (usar tabela Markdown quando comparar 2+ itens)
+
+#### 💡 Exemplo prático
+- Caso concreto, cenário aplicado, demonstração
+
+#### 🛠️ Aplicações reais
+- Usos no mercado, indústria, cotidiano
+
+#### ⚠️ Desafios e cuidados
+- Limitações, erros comuns, armadilhas, considerações éticas
+
+### 3. CHECKPOINT DE REFLEXÃO (OBRIGATÓRIO — mínimo 1 por módulo)
+Insira em um ponto estratégico do módulo:
+
+> 💭 **Pare um momento e reflita:** [pergunta provocativa relacionada ao conteúdo, que estimule o aluno a conectar o que aprendeu com sua experiência]
+
+### 4. FECHAMENTO OBRIGATÓRIO
+Todo módulo DEVE terminar com:
+
+---
+
+### 🧾 Resumo do Módulo
+[1 parágrafo curto — máximo 3 frases — sintetizando o essencial]
+
+### 📌 Key Takeaways
+- [takeaway 1]
+- [takeaway 2]
+- [takeaway 3]
+- [takeaway 4]
+(mínimo 4, máximo 6 bullets)
+
+---
+
+### 5. REGRAS DE FORMATAÇÃO E ESTILO
+
+**Densidade textual:**
+- Nenhum parágrafo pode exceder 4 linhas
+- Converter parágrafos longos em listas com bullet points (-)
+- Inserir linha em branco entre cada bloco/seção para respiro visual
+- Usar **negrito** para termos-chave (máximo 3-4 por parágrafo)
+
+**Hierarquia:**
+- ## para título do módulo (apenas 1)
+- ### para seções principais (com emoji correspondente)
+- #### para subseções quando necessário
 - Linha horizontal (---) para separar grandes seções
 
-### 5. Abertura e Fechamento
-- Comece com 1-2 frases que contextualizem o que será aprendido (sem "Neste módulo vamos...")
-- Termine com o bloco 📝 Resumo + uma frase motivacional curta de transição
+**Tom e linguagem:**
+- Profissional, claro e acessível
+- Frases diretas, voz ativa
+- Evitar jargão excessivo — explicar termos técnicos na primeira ocorrência
+- Idioma: ${language}
 
-### 6. Restrições
+**Formatação para tela:**
+- Escaneabilidade: o leitor deve entender a estrutura só passando os olhos
+- Listas numeradas para processos/etapas sequenciais
+- Listas com bullet para itens sem ordem
+- Tabelas Markdown quando comparar 2+ itens
+- Blocos de código com \`\`\` quando aplicável
+
+### 6. RESTRIÇÕES ABSOLUTAS
 - Mantenha 100% da correção técnica do conteúdo original
 - NÃO adicione informações novas que não estejam no original
-- NÃO remova conceitos ou explicações importantes
-- Mantenha o idioma: ${language}
+- NÃO remova conceitos ou explicações importantes — apenas reorganize e fragmente
 - NÃO inclua metadados, comentários sobre o processo ou notas para o editor
+- NÃO use "Neste módulo vamos..." como abertura
 
 ---
 
@@ -104,7 +147,7 @@ ${rawContent}
 
 ---
 
-Retorne APENAS o conteúdo reescrito em Markdown, sem explicações adicionais.`;
+Retorne APENAS o conteúdo reescrito em Markdown seguindo o template acima, sem explicações adicionais.`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -234,7 +277,7 @@ Return ONLY valid JSON with this structure:
       "title": "Module title",
       "summary": "brief summary for content generation"
       ${include_quiz ? ',"quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "..."}]' : ""}
-      ${include_flashcards ? ',"flashcards": [{"front": "Uma pergunta explícita com verbo e ponto de interrogação. NUNCA use títulos nominais ou formato de glossário. Ex: Qual é a função do X no contexto Y?", "back": "resposta completa"}]' : ""}
+      ${include_flashcards ? ',"flashcards": [{"front": "Pergunta EXPLÍCITA com verbo e ponto de interrogação (?). PROIBIDO: títulos nominais, glossário ou definições soltas. CORRETO: Qual é a função do X no contexto Y? / Como o mecanismo Z contribui para W?", "back": "Resposta completa, objetiva e pedagogicamente clara"}]' : ""}
     }
   ]
 }`;
