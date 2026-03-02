@@ -204,7 +204,7 @@ Deno.serve(async (req: Request) => {
     const mdBytes = encoder.encode(markdown);
 
     const dateStr = new Date().toISOString().slice(0, 10);
-    const safeName = (course.title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/g, "").trim();
+    const safeName = (course.title || "curso").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().substring(0, 80);
     const fileName = `${userId}/${safeName} - Notion - ${dateStr}.md`;
 
     const { error: uploadErr } = await serviceClient.storage

@@ -262,7 +262,7 @@ Deno.serve(async (req: Request) => {
     // Generate zip
     const zipBlob = await zip.generateAsync({ type: "uint8array" });
     const dateStr = new Date().toISOString().slice(0, 10);
-    const safeName = (course.title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/g, "").trim();
+    const safeName = (course.title || "curso").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().substring(0, 80);
     const fileName = `${userId}/${safeName} - SCORM - ${dateStr}.zip`;
 
     // Upload to storage
