@@ -234,7 +234,7 @@ Return ONLY valid JSON with this structure:
       "title": "Module title",
       "summary": "brief summary for content generation"
       ${include_quiz ? ',"quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "..."}]' : ""}
-      ${include_flashcards ? ',"flashcards": [{"front": "question", "back": "answer"}]' : ""}
+      ${include_flashcards ? ',"flashcards": [{"front": "Uma pergunta explícita com verbo e ponto de interrogação. NUNCA use títulos nominais ou formato de glossário. Ex: Qual é a função do X no contexto Y?", "back": "resposta completa"}]' : ""}
     }
   ]
 }`;
