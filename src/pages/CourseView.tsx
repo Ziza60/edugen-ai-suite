@@ -86,20 +86,26 @@ export default function CourseView() {
   useQuery({
     queryKey: ["flip-entitlement"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("check-entitlements", {
-        body: { feature: "flashcards_flip" },
-      });
-      if (error) {
+      try {
+        const { data, error } = await supabase.functions.invoke("check-entitlements", {
+          body: { feature: "flashcards_flip" },
+        });
+        // 403 comes back as an error with the response body in data
+        if (error || !data?.entitled) {
+          setFlipEntitled(false);
+          setFlashcardView("list");
+          return false;
+        }
+        setFlipEntitled(true);
+        return true;
+      } catch {
         setFlipEntitled(false);
         setFlashcardView("list");
         return false;
       }
-      const entitled = data?.entitled === true;
-      setFlipEntitled(entitled);
-      if (!entitled) setFlashcardView("list");
-      return entitled;
     },
     enabled: flashcards.length > 0,
+    retry: false,
   });
 
   const updateModule = useMutation({
