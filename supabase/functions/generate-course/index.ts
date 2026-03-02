@@ -443,21 +443,25 @@ Return ONLY valid JSON with "description" and "modules" array containing EXACTLY
         .eq("user_id", userId);
     }
 
-    // 5. Generate content for each module: raw → refined → save
-    for (let i = 0; i < structure.modules.length; i++) {
-      const mod = structure.modules[i];
+    // 5. Generate content for each module IN PARALLEL (batches of 3)
+    const BATCH_SIZE = 3;
+    for (let batchStart = 0; batchStart < structure.modules.length; batchStart += BATCH_SIZE) {
+      const batch = structure.modules.slice(batchStart, batchStart + BATCH_SIZE);
+      
+      await Promise.all(batch.map(async (mod: any, batchIdx: number) => {
+        const i = batchStart + batchIdx;
 
-      // Step A: Generate raw content
-      const sourceContentInstruction = use_sources
-        ? `\n\nCRITICAL: Use ONLY the content provided in <SOURCES> below. Do NOT add any external knowledge.
+        // Step A: Generate raw content
+        const sourceContentInstruction = use_sources
+          ? `\n\nCRITICAL: Use ONLY the content provided in <SOURCES> below. Do NOT add any external knowledge.
 If there is insufficient information in the sources for this module, write: "⚠️ Não há conteúdo suficiente nas fontes para este módulo. Considere adicionar mais material sobre este tema."
 
 <SOURCES>
 ${sourcesBlock}
 </SOURCES>`
-        : "";
+          : "";
 
-      const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
+        const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
 
 Course: ${title}
 Module ${i + 1}: ${mod.title}
@@ -474,56 +478,56 @@ Write in Markdown format. Include:
 
 Write 800-1200 words. Be thorough and educational.`;
 
-      const rawContent = await callAI("google/gemini-2.5-flash", contentPrompt);
+        const rawContent = await callAI("google/gemini-2.5-flash", contentPrompt);
 
-      // Step B: PROMPT MESTRE — Pedagogical refinement post-processing
-      const refinementPrompt = buildRefinementPrompt(
-        mod.title,
-        rawContent,
-        language || "pt-BR"
-      );
-      const refinedContent = await callAI("google/gemini-2.5-flash", refinementPrompt);
+        // Step B: PROMPT MESTRE — Pedagogical refinement post-processing
+        const refinementPrompt = buildRefinementPrompt(
+          mod.title,
+          rawContent,
+          language || "pt-BR"
+        );
+        const refinedContent = await callAI("google/gemini-2.5-flash", refinementPrompt);
 
-      // Step C: Save the REFINED content (never the raw version)
-      const { data: moduleData, error: moduleError } = await serviceClient
-        .from("course_modules")
-        .insert({
-          course_id: course.id,
-          title: mod.title,
-          content: refinedContent,
-          order_index: i,
-        })
-        .select()
-        .single();
+        // Step C: Save the REFINED content
+        const { data: moduleData, error: moduleError } = await serviceClient
+          .from("course_modules")
+          .insert({
+            course_id: course.id,
+            title: mod.title,
+            content: refinedContent,
+            order_index: i,
+          })
+          .select()
+          .single();
 
-      if (moduleError) throw moduleError;
+        if (moduleError) throw moduleError;
 
-      // Insert quiz questions
-      if (include_quiz && mod.quiz?.length > 0) {
-        const quizInserts = mod.quiz.map((q: any) => ({
-          module_id: moduleData.id,
-          question: q.question,
-          options: q.options,
-          correct_answer: q.correct ?? 0,
-          explanation: q.explanation || null,
-        }));
-        await serviceClient.from("course_quiz_questions").insert(quizInserts);
-      }
+        // Insert quiz questions
+        if (include_quiz && mod.quiz?.length > 0) {
+          const quizInserts = mod.quiz.map((q: any) => ({
+            module_id: moduleData.id,
+            question: q.question,
+            options: q.options,
+            correct_answer: q.correct ?? 0,
+            explanation: q.explanation || null,
+          }));
+          await serviceClient.from("course_quiz_questions").insert(quizInserts);
+        }
 
-      // Insert flashcards
-      if (include_flashcards && mod.flashcards?.length > 0) {
-        const fcInserts = mod.flashcards.map((fc: any) => ({
-          module_id: moduleData.id,
-          front: fc.front,
-          back: fc.back,
-        }));
-        await serviceClient.from("course_flashcards").insert(fcInserts);
-      }
+        // Insert flashcards
+        if (include_flashcards && mod.flashcards?.length > 0) {
+          const fcInserts = mod.flashcards.map((fc: any) => ({
+            module_id: moduleData.id,
+            front: fc.front,
+            back: fc.back,
+          }));
+          await serviceClient.from("course_flashcards").insert(fcInserts);
+        }
 
-      // Generate AI image for this module
-      if (include_images) {
-        try {
-          const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
+        // Generate AI image (non-blocking within the module)
+        if (include_images) {
+          try {
+            const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
 
 STRICT RULES:
 - Do NOT include any readable text, letters, words, numbers, labels, captions, or typography anywhere in the image.
@@ -533,57 +537,56 @@ STRICT RULES:
 - Style: modern, minimalist, soft colors, professional e-learning aesthetic.
 - Aspect ratio: 16:9.`;
 
-          const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
-            },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash-image",
-              messages: [{ role: "user", content: imagePrompt }],
-              modalities: ["image", "text"],
-            }),
-          });
+            const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
+              },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash-image",
+                messages: [{ role: "user", content: imagePrompt }],
+                modalities: ["image", "text"],
+              }),
+            });
 
-          if (imgRes.ok) {
-            const imgData = await imgRes.json();
-            const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+            if (imgRes.ok) {
+              const imgData = await imgRes.json();
+              const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
-            if (imageUrl && imageUrl.startsWith("data:image")) {
-              // Upload base64 image to storage
-              const base64Data = imageUrl.split(",")[1];
-              const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-              const ext = imageUrl.includes("png") ? "png" : "jpg";
-              const storagePath = `${userId}/module-${moduleData.id}.${ext}`;
+              if (imageUrl && imageUrl.startsWith("data:image")) {
+                const base64Data = imageUrl.split(",")[1];
+                const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+                const ext = imageUrl.includes("png") ? "png" : "jpg";
+                const storagePath = `${userId}/module-${moduleData.id}.${ext}`;
 
-              const { error: uploadErr } = await serviceClient.storage
-                .from("course-exports")
-                .upload(storagePath, binaryData, {
-                  contentType: `image/${ext}`,
-                  upsert: true,
-                });
-
-              if (!uploadErr) {
-                const { data: signedData } = await serviceClient.storage
+                const { error: uploadErr } = await serviceClient.storage
                   .from("course-exports")
-                  .createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 1 year
-
-                if (signedData?.signedUrl) {
-                  await serviceClient.from("course_images").insert({
-                    module_id: moduleData.id,
-                    url: signedData.signedUrl,
-                    alt_text: `Ilustração: ${mod.title}`,
+                  .upload(storagePath, binaryData, {
+                    contentType: `image/${ext}`,
+                    upsert: true,
                   });
+
+                if (!uploadErr) {
+                  const { data: signedData } = await serviceClient.storage
+                    .from("course-exports")
+                    .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+
+                  if (signedData?.signedUrl) {
+                    await serviceClient.from("course_images").insert({
+                      module_id: moduleData.id,
+                      url: signedData.signedUrl,
+                      alt_text: `Ilustração: ${mod.title}`,
+                    });
+                  }
                 }
               }
             }
+          } catch (imgErr) {
+            console.error("Image generation failed for module", mod.title, imgErr);
           }
-        } catch (imgErr) {
-          console.error("Image generation failed for module", mod.title, imgErr);
-          // Non-blocking: continue even if image generation fails
         }
-      }
+      }));
     }
 
     // 6. Log usage events
