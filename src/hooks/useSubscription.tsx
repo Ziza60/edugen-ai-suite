@@ -14,7 +14,7 @@ export interface PlanLimits {
 
 const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
   free: {
-    maxCourses: 5,
+    maxCourses: 3,
     maxModules: 5,
     images: false,
     pdfExport: false,

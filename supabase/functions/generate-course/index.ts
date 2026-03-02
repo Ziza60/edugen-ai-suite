@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 const PLAN_LIMITS = {
-  free: { maxCourses: 5, maxModules: 5, images: false },
+  free: { maxCourses: 3, maxModules: 5, images: false },
   pro: { maxCourses: 5, maxModules: 10, images: true },
 };
 
