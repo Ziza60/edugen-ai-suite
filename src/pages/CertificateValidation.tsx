@@ -114,18 +114,18 @@ export default function CertificateValidation() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3 text-right">
-              <div>
-                <div className="h-px w-32 bg-gray-500 mb-2" />
+            <div className="flex items-center gap-4">
+              <div className="flex flex-col items-center">
+                <div className="h-px w-48 sm:w-56 bg-gray-500 mb-3" />
                 {cert.custom_data?.instructor_name ? (
                   <>
-                    <p className="text-white font-bold text-xs sm:text-sm">{cert.custom_data.instructor_name}</p>
-                    <p className="text-gray-400 text-[10px] sm:text-xs">Instrutor</p>
+                    <p className="text-white font-bold text-xs sm:text-sm text-center">{cert.custom_data.instructor_name}</p>
+                    <p className="text-gray-400 text-[10px] sm:text-xs text-center">Instrutor</p>
                   </>
                 ) : (
                   <>
-                    <p className="text-white font-bold text-xs sm:text-sm">CourseAI</p>
-                    <p className="text-gray-400 text-[10px] sm:text-xs">Plataforma de Cursos com IA</p>
+                    <p className="text-white font-bold text-xs sm:text-sm text-center">CourseAI</p>
+                    <p className="text-gray-400 text-[10px] sm:text-xs text-center">Plataforma de Cursos com IA</p>
                   </>
                 )}
               </div>
@@ -180,10 +180,10 @@ export default function CertificateValidation() {
                   <p className="text-white font-mono font-bold text-xs sm:text-sm">{validationCode}</p>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="h-px w-32 bg-gray-500 mb-2" />
-                <p className="text-white font-bold text-xs sm:text-sm">CourseAI</p>
-                <p className="text-gray-400 text-[10px] sm:text-xs">Plataforma de Cursos com IA</p>
+              <div className="flex flex-col items-center">
+                <div className="h-px w-48 sm:w-56 bg-gray-500 mb-3" />
+                <p className="text-white font-bold text-xs sm:text-sm text-center">CourseAI</p>
+                <p className="text-gray-400 text-[10px] sm:text-xs text-center">Plataforma de Cursos com IA</p>
               </div>
             </div>
           </div>
