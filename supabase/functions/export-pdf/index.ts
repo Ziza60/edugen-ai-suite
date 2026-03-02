@@ -889,7 +889,7 @@ Deno.serve(async (req: Request) => {
 
     const pdfBytes = pdf.output();
     const dateStr = new Date().toISOString().slice(0, 10);
-    const safeName = (course.title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/g, "").trim();
+    const safeName = (course.title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/gi, "").replace(/\s+/g, " ").trim();
     const fileName = `${userId}/${safeName} - PDF - ${dateStr}.pdf`;
 
     // Upload to storage
