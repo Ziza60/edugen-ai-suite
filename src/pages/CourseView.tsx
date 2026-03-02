@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Download, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, FileText, Award, RefreshCw, Layers, List } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
+import { useMarkdownTableComponents } from "@/components/course/MarkdownTable";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +20,7 @@ import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
 
 export default function CourseView() {
+  const markdownTableComponents = useMarkdownTableComponents();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { plan } = useSubscription();
@@ -291,7 +293,7 @@ export default function CourseView() {
                     <Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={12} className="font-mono text-sm" />
                   ) : (
                     <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown>{mod.content || "*Sem conteúdo ainda*"}</ReactMarkdown>
+                      <ReactMarkdown components={markdownTableComponents}>{mod.content || "*Sem conteúdo ainda*"}</ReactMarkdown>
                     </div>
                   )}
                 </CardContent>
