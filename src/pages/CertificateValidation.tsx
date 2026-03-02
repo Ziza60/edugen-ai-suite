@@ -84,16 +84,15 @@ export default function CertificateValidation() {
               {cert.student_name}
             </h2>
             <p className="text-gray-300 italic text-sm sm:text-base max-w-xl leading-relaxed">
-              concluiu com êxito o curso <strong className="text-white">"{cert.course_title}"</strong>, em{" "}
+              participou e concluiu o curso <strong className="text-white">"{cert.course_title}"</strong>, em{" "}
               <strong className="text-white">{issuedDate}</strong>.
             </p>
           </div>
 
           {/* Stats Row */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-4 my-6 sm:my-8">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 my-6 sm:my-8">
             {[
               { label: "MÓDULOS", value: `${cert.modules?.length || 0}` },
-              { label: "TEMPLATE", value: cert.template === "professional" ? "PRO" : "FREE" },
               { label: "DATA DE EMISSÃO", value: issuedDate },
             ].map((stat) => (
               <div key={stat.label} className="text-center border border-gray-600/30 rounded-lg py-3 sm:py-4">
