@@ -195,6 +195,50 @@ export type Database = {
           },
         ]
       }
+      course_sources: {
+        Row: {
+          char_count: number
+          content_type: string
+          course_id: string
+          created_at: string
+          extracted_text: string | null
+          file_path: string
+          filename: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          char_count?: number
+          content_type?: string
+          course_id: string
+          created_at?: string
+          extracted_text?: string | null
+          file_path: string
+          filename: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          char_count?: number
+          content_type?: string
+          course_id?: string
+          created_at?: string
+          extracted_text?: string | null
+          file_path?: string
+          filename?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_sources_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       courses: {
         Row: {
           created_at: string
@@ -210,6 +254,7 @@ export type Database = {
           title: string
           tone: string | null
           updated_at: string
+          use_sources: boolean
           user_id: string
         }
         Insert: {
@@ -226,6 +271,7 @@ export type Database = {
           title: string
           tone?: string | null
           updated_at?: string
+          use_sources?: boolean
           user_id: string
         }
         Update: {
@@ -242,6 +288,7 @@ export type Database = {
           title?: string
           tone?: string | null
           updated_at?: string
+          use_sources?: boolean
           user_id?: string
         }
         Relationships: []
