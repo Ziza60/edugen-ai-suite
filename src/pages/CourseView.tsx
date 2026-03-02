@@ -170,13 +170,21 @@ export default function CourseView() {
       });
       if (error) throw error;
       if (data?.url) {
+        const response = await fetch(data.url);
+        if (!response.ok) throw new Error("Não foi possível baixar o PDF.");
+
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+
         const a = document.createElement("a");
-        a.href = data.url;
+        a.href = blobUrl;
         a.download = `${course?.title || "curso"}.pdf`;
         a.rel = "noopener";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+
+        URL.revokeObjectURL(blobUrl);
         toast({ title: "PDF gerado!" });
       }
     } catch (err: any) {
