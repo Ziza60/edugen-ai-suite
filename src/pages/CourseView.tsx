@@ -12,7 +12,7 @@ import { ArrowLeft, Download, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, 
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { CertificateDialog } from "@/components/course/CertificateDialog";
 import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
@@ -34,6 +34,13 @@ export default function CourseView() {
   const [flipEntitled, setFlipEntitled] = useState<boolean | null>(null);
 
   const isPro = plan === "pro";
+
+  useEffect(() => {
+    if (!isPro) {
+      setFlipEntitled(false);
+      setFlashcardView("list");
+    }
+  }, [isPro]);
 
   const { data: course, isLoading: loadingCourse } = useQuery({
     queryKey: ["course", id],
@@ -82,15 +89,14 @@ export default function CourseView() {
     enabled: modules.length > 0,
   });
 
-  // Check flip entitlement from backend
+  // Check flip entitlement from backend only for Pro users
   useQuery({
-    queryKey: ["flip-entitlement"],
+    queryKey: ["flip-entitlement", user?.id, plan],
     queryFn: async () => {
       try {
         const { data, error } = await supabase.functions.invoke("check-entitlements", {
           body: { feature: "flashcards_flip" },
         });
-        // 403 comes back as an error with the response body in data
         if (error || !data?.entitled) {
           setFlipEntitled(false);
           setFlashcardView("list");
@@ -104,7 +110,7 @@ export default function CourseView() {
         return false;
       }
     },
-    enabled: flashcards.length > 0,
+    enabled: flashcards.length > 0 && isPro,
     retry: false,
   });
 
