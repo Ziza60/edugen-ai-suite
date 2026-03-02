@@ -67,7 +67,7 @@ export function CertificateDialog({ open, onOpenChange, courseId, courseTitle, c
       if (user) {
         supabase.from("usage_events").insert({
           user_id: user.id,
-          event_type: "certificate_issued",
+          event_type: "CERTIFICATE_ISSUED",
           metadata: { course_id: courseId },
         }).then(() => {});
       }

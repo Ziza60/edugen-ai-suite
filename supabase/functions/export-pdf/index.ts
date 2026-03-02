@@ -211,7 +211,7 @@ Deno.serve(async (req: Request) => {
     // Log usage event
     await serviceClient.from("usage_events").insert({
       user_id: userId,
-      event_type: "export_pdf",
+      event_type: "COURSE_EXPORTED_PDF",
       metadata: { course_id },
     });
 

@@ -192,7 +192,7 @@ Deno.serve(async (req: Request) => {
         .from("usage_events")
         .select("*", { count: "exact", head: true })
         .eq("user_id", userId)
-        .eq("event_type", "course_created")
+        .eq("event_type", "COURSE_GENERATED")
         .gte("created_at", startOfMonth);
 
       if ((usageCount ?? 0) >= limits.maxCourses) {
@@ -340,7 +340,7 @@ Write 800-1200 words. Be thorough and educational.`;
     // 6. Log usage event
     await serviceClient.from("usage_events").insert({
       user_id: userId,
-      event_type: "course_created",
+      event_type: "COURSE_GENERATED",
       metadata: { course_id: course.id, plan },
     });
 
