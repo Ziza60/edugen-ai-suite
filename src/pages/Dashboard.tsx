@@ -1,15 +1,27 @@
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
 import { useDevMode } from "@/hooks/useDevMode";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, BookOpen, Clock, Sparkles, ArrowRight, Loader2 } from "lucide-react";
+import { Plus, BookOpen, Clock, Sparkles, ArrowRight, Loader2, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -17,6 +29,8 @@ export default function Dashboard() {
   const { usage } = useMonthlyUsage();
   const { isDev } = useDevMode();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [deletingCourse, setDeletingCourse] = useState<{ id: string; title: string } | null>(null);
 
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ["courses", user?.id],
@@ -30,6 +44,21 @@ export default function Dashboard() {
       return data;
     },
     enabled: !!user,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (courseId: string) => {
+      const { error } = await supabase.from("courses").delete().eq("id", courseId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["courses", user?.id] });
+      toast.success("Curso excluído com sucesso.");
+      setDeletingCourse(null);
+    },
+    onError: () => {
+      toast.error("Erro ao excluir o curso. Tente novamente.");
+    },
   });
 
   const canCreate = isDev || usage < limits.maxCourses;
@@ -114,7 +143,7 @@ export default function Dashboard() {
           <div>
             <h3 className="font-display font-semibold text-lg">Limite atingido</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Você atingiu o limite do plano Free. Faça upgrade para criar mais cursos.
+              Você já criou {limits.maxCourses} cursos gratuitos este mês. Faça upgrade para criar mais cursos agora.
             </p>
           </div>
           <Button onClick={() => navigate("/app/upgrade")}>
@@ -154,15 +183,27 @@ export default function Dashboard() {
               transition={{ delay: i * 0.05 }}
             >
               <Card
-                className="cursor-pointer hover:shadow-md transition-shadow"
+                className="cursor-pointer hover:shadow-md transition-shadow group"
                 onClick={() => navigate(`/app/courses/${course.id}`)}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <CardTitle className="font-display text-lg line-clamp-2">{course.title}</CardTitle>
-                    <Badge variant={course.status === "published" ? "default" : "outline"} className="text-xs shrink-0 ml-2">
-                      {course.status === "published" ? "Publicado" : "Rascunho"}
-                    </Badge>
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      <Badge variant={course.status === "published" ? "default" : "outline"} className="text-xs">
+                        {course.status === "published" ? "Publicado" : "Rascunho"}
+                      </Badge>
+                      <button
+                        className="p-1.5 rounded-md text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
+                        title="Excluir curso"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingCourse({ id: course.id, title: course.title });
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -180,6 +221,39 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      {/* Delete confirmation modal */}
+      <AlertDialog open={!!deletingCourse} onOpenChange={(open) => !open && setDeletingCourse(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir curso?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <span className="block">
+                Esta ação é irreversível. O curso <strong>"{deletingCourse?.title}"</strong> e todos os seus materiais (módulos, quizzes, flashcards, imagens e certificados) serão removidos permanentemente.
+              </span>
+              {plan === "free" && (
+                <span className="block text-amber-600 dark:text-amber-400 text-sm font-medium">
+                  ⚠️ Excluir um curso não libera novas criações no seu limite mensal. O limite conta cursos gerados no mês.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+              onClick={() => deletingCourse && deleteMutation.mutate(deletingCourse.id)}
+            >
+              {deleteMutation.isPending ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Excluindo...</>
+              ) : (
+                "Excluir permanentemente"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
