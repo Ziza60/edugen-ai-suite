@@ -206,6 +206,7 @@ Deno.serve(async (req: Request) => {
       include_quiz,
       include_flashcards,
       include_images,
+      use_sources,
     } = body;
 
     // Sanitize title: trim whitespace, collapse multiple spaces, ensure non-empty
@@ -274,7 +275,69 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 3. Generate course structure with Gemini Flash-Lite
+    // 2c. Validate sources gate (Pro only, dev bypasses)
+    if (use_sources && plan !== "pro" && !isDev) {
+      return new Response(
+        JSON.stringify({ error: "Fontes próprias estão disponíveis apenas no plano Pro." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 2d. If using sources, retrieve all extracted texts
+    let sourcesBlock = "";
+    if (use_sources) {
+      // Sources are stored with a temporary course_id created by frontend
+      // We need to get them by user_id and the temp course_id passed
+      const tempCourseId = body.temp_course_id;
+      if (!tempCourseId) {
+        return new Response(
+          JSON.stringify({ error: "temp_course_id é obrigatório para cursos com fontes." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: sources, error: srcError } = await serviceClient
+        .from("course_sources")
+        .select("filename, extracted_text")
+        .eq("course_id", tempCourseId)
+        .eq("user_id", userId);
+
+      if (srcError) throw srcError;
+
+      if (!sources || sources.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Nenhuma fonte encontrada. Faça upload de pelo menos um documento." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const allText = sources
+        .map((s: any) => `--- Fonte: ${s.filename} ---\n${s.extracted_text}`)
+        .join("\n\n");
+
+      if (allText.length < 200) {
+        return new Response(
+          JSON.stringify({ error: "As fontes fornecidas não contêm conteúdo suficiente para gerar um curso." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      sourcesBlock = allText;
+    }
+
+    // 3. Generate course structure
+    const sourcesInstruction = use_sources
+      ? `\n\nCRITICAL SOURCE RULES:
+- You MUST use ONLY the content provided in <SOURCES> below.
+- Do NOT add any external knowledge, facts, or information not present in the sources.
+- If the sources don't contain enough information for a topic, explicitly state: "Informação não disponível nas fontes fornecidas."
+- Module titles and content must be derived exclusively from the provided documents.
+
+<SOURCES>
+${sourcesBlock}
+</SOURCES>`
+      : "";
+
     const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
 
 CRITICAL QUALITY RULES:
@@ -282,6 +345,7 @@ CRITICAL QUALITY RULES:
 - Double-check every title and sentence for missing letters, typos, or truncated words.
 - Module titles must be complete, grammatically correct phrases.
 - The course description must be a well-formed paragraph with no spelling errors.
+${sourcesInstruction}
 
 Course details:
 - Title: ${title}
@@ -290,6 +354,7 @@ Course details:
 - Tone: ${tone || "professional"}
 - Language: ${language || "pt-BR"}
 - Number of modules: ${actualModules}
+${use_sources ? "- IMPORTANT: Base the course structure EXCLUSIVELY on the content in <SOURCES>" : ""}
 ${include_quiz ? "- Include 3 quiz questions per module" : ""}
 ${include_flashcards ? "- Include 5 flashcards per module" : ""}
 
@@ -330,17 +395,36 @@ Return ONLY valid JSON with this structure:
         include_quiz: !!include_quiz,
         include_flashcards: !!include_flashcards,
         include_images: !!include_images,
+        use_sources: !!use_sources,
       })
       .select()
       .single();
 
     if (courseError) throw courseError;
 
+    // 4b. If using sources, reassign source records from temp course_id to real course_id
+    if (use_sources && body.temp_course_id) {
+      await serviceClient
+        .from("course_sources")
+        .update({ course_id: course.id })
+        .eq("course_id", body.temp_course_id)
+        .eq("user_id", userId);
+    }
+
     // 5. Generate content for each module: raw → refined → save
     for (let i = 0; i < structure.modules.length; i++) {
       const mod = structure.modules[i];
 
-      // Step A: Generate raw content with Gemini Flash
+      // Step A: Generate raw content
+      const sourceContentInstruction = use_sources
+        ? `\n\nCRITICAL: Use ONLY the content provided in <SOURCES> below. Do NOT add any external knowledge.
+If there is insufficient information in the sources for this module, write: "⚠️ Não há conteúdo suficiente nas fontes para este módulo. Considere adicionar mais material sobre este tema."
+
+<SOURCES>
+${sourcesBlock}
+</SOURCES>`
+        : "";
+
       const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
 
 Course: ${title}
@@ -348,6 +432,7 @@ Module ${i + 1}: ${mod.title}
 Summary: ${mod.summary || mod.title}
 Target audience: ${target_audience || "general"}
 Tone: ${tone || "professional"}
+${sourceContentInstruction}
 
 Write in Markdown format. Include:
 - Clear introduction
@@ -404,12 +489,18 @@ Write 800-1200 words. Be thorough and educational.`;
       }
     }
 
-    // 6. Log usage event
-    await serviceClient.from("usage_events").insert({
-      user_id: userId,
-      event_type: "COURSE_GENERATED",
-      metadata: { course_id: course.id, plan },
-    });
+    // 6. Log usage events
+    const usageInserts = [
+      { user_id: userId, event_type: "COURSE_GENERATED", metadata: { course_id: course.id, plan } },
+    ];
+    if (use_sources) {
+      usageInserts.push({
+        user_id: userId,
+        event_type: "COURSE_WITH_SOURCES",
+        metadata: { course_id: course.id, plan },
+      });
+    }
+    await serviceClient.from("usage_events").insert(usageInserts);
 
     return new Response(
       JSON.stringify({ course_id: course.id, message: "Course generated successfully" }),

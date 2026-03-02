@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ArrowRight, Loader2, Sparkles, BookOpen, Brain, Image, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Sparkles, BookOpen, Brain, Image, CheckCircle2, Upload, FileText, X, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -24,16 +24,33 @@ const STEPS = [
   { label: "Revisão", icon: CheckCircle2 },
 ];
 
+const MAX_FILES = 3;
+const MAX_TOTAL_CHARS = 150_000;
+const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
+
+interface UploadedSource {
+  id: string;
+  filename: string;
+  char_count: number;
+}
+
 export default function CourseWizard() {
   const { user } = useAuth();
   const { plan, limits } = useSubscription();
   const { usage } = useMonthlyUsage();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
+
+  // Source mode
+  const [useSources, setUseSources] = useState(false);
+  const [tempCourseId] = useState(() => crypto.randomUUID());
+  const [uploadedSources, setUploadedSources] = useState<UploadedSource[]>([]);
 
   const [form, setForm] = useState({
     title: "",
@@ -49,14 +66,76 @@ export default function CourseWizard() {
 
   const canCreate = usage < limits.maxCourses;
   const canUseImages = limits.images;
+  const canUseSources = plan === "pro";
+  const totalChars = uploadedSources.reduce((sum, s) => sum + s.char_count, 0);
 
   const updateForm = (key: string, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleFileUpload = async (file: File) => {
+    if (uploadedSources.length >= MAX_FILES) {
+      toast({ title: "Limite atingido", description: `Máximo de ${MAX_FILES} arquivos por curso.`, variant: "destructive" });
+      return;
+    }
+
+    const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      toast({ title: "Tipo não suportado", description: `Aceitos: ${ALLOWED_EXTENSIONS.join(", ")}`, variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("course_id", tempCourseId);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-course-source`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: formData,
+        }
+      );
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Erro no upload");
+
+      setUploadedSources((prev) => [
+        ...prev,
+        { id: result.id, filename: result.filename, char_count: result.char_count },
+      ]);
+
+      toast({ title: "Arquivo processado", description: `${result.filename} — ${result.char_count.toLocaleString()} caracteres extraídos.` });
+    } catch (error: any) {
+      toast({ title: "Erro no upload", description: error.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeSource = async (sourceId: string) => {
+    try {
+      await supabase.from("course_sources").delete().eq("id", sourceId);
+      setUploadedSources((prev) => prev.filter((s) => s.id !== sourceId));
+    } catch {
+      toast({ title: "Erro ao remover", variant: "destructive" });
+    }
+  };
+
   const handleGenerate = async () => {
     if (!canCreate) {
       toast({ title: "Limite atingido", description: "Você atingiu o limite mensal do seu plano.", variant: "destructive" });
+      return;
+    }
+
+    if (useSources && uploadedSources.length === 0) {
+      toast({ title: "Nenhuma fonte", description: "Faça upload de pelo menos um documento.", variant: "destructive" });
       return;
     }
 
@@ -79,6 +158,8 @@ export default function CourseWizard() {
           include_quiz: form.includeQuiz,
           include_flashcards: form.includeFlashcards,
           include_images: form.includeImages,
+          use_sources: useSources,
+          temp_course_id: useSources ? tempCourseId : undefined,
         },
       });
 
@@ -139,7 +220,11 @@ export default function CourseWizard() {
           <CardContent className="py-16 text-center">
             <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
             <h3 className="font-display text-xl font-semibold mb-2">Gerando seu curso...</h3>
-            <p className="text-muted-foreground mb-6">A IA está criando o conteúdo. Isso pode levar alguns segundos.</p>
+            <p className="text-muted-foreground mb-6">
+              {useSources
+                ? "A IA está analisando suas fontes e criando o conteúdo. Isso pode levar alguns minutos."
+                : "A IA está criando o conteúdo. Isso pode levar alguns segundos."}
+            </p>
             <Progress value={generationProgress} className="max-w-sm mx-auto h-2" />
             <p className="text-xs text-muted-foreground mt-2">{generationProgress}%</p>
           </CardContent>
@@ -160,6 +245,99 @@ export default function CourseWizard() {
                   <CardDescription>Defina o tema e público-alvo do seu curso</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Source mode toggle */}
+                  <div className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Upload className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="font-medium">Gerar a partir de fontes próprias</p>
+                          <p className="text-sm text-muted-foreground">
+                            {canUseSources
+                              ? "O curso será baseado exclusivamente nos seus documentos"
+                              : "Disponível apenas no plano Pro"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!canUseSources && <Badge variant="outline" className="text-xs">PRO</Badge>}
+                        <Switch
+                          checked={useSources}
+                          onCheckedChange={setUseSources}
+                          disabled={!canUseSources}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Upload area */}
+                    {useSources && (
+                      <div className="space-y-3 pt-2 border-t">
+                        <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
+                          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                          <span>O curso será gerado exclusivamente com base nos documentos enviados. A IA não adicionará conteúdo externo.</span>
+                        </div>
+
+                        {/* Uploaded files list */}
+                        {uploadedSources.length > 0 && (
+                          <div className="space-y-2">
+                            {uploadedSources.map((source) => (
+                              <div key={source.id} className="flex items-center justify-between bg-muted rounded-md px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-primary" />
+                                  <span className="text-sm font-medium truncate max-w-[200px]">{source.filename}</span>
+                                  <span className="text-xs text-muted-foreground">{source.char_count.toLocaleString()} chars</span>
+                                </div>
+                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeSource(source.id)}>
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                            <div className="text-xs text-muted-foreground">
+                              Total: {totalChars.toLocaleString()} / {MAX_TOTAL_CHARS.toLocaleString()} caracteres
+                              {" · "}
+                              {uploadedSources.length} / {MAX_FILES} arquivos
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Upload button */}
+                        {uploadedSources.length < MAX_FILES && (
+                          <>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept=".pdf,.txt,.md"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleFileUpload(file);
+                                e.target.value = "";
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={uploading}
+                            >
+                              {uploading ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Processando...
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="h-4 w-4 mr-2" />
+                                  Enviar arquivo (PDF, TXT ou MD)
+                                </>
+                              )}
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-2">
                     <Label>Título do curso *</Label>
                     <Input placeholder="Ex: Introdução ao Marketing Digital" value={form.title} onChange={(e) => updateForm("title", e.target.value)} />
@@ -290,7 +468,26 @@ export default function CourseWizard() {
                     <div className="flex justify-between"><span className="text-muted-foreground">Quizzes</span><span>{form.includeQuiz ? "✅" : "❌"}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Flashcards</span><span>{form.includeFlashcards ? "✅" : "❌"}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Imagens IA</span><span>{form.includeImages ? "✅" : "❌"}</span></div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Fontes próprias</span>
+                      <span>
+                        {useSources
+                          ? `✅ ${uploadedSources.length} arquivo(s)`
+                          : "❌"}
+                      </span>
+                    </div>
                   </div>
+
+                  {useSources && (
+                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-sm">
+                      <p className="font-medium text-primary mb-1">📄 Curso baseado em fontes próprias</p>
+                      <p className="text-muted-foreground">
+                        O conteúdo será gerado exclusivamente a partir dos {uploadedSources.length} documento(s) enviado(s)
+                        ({totalChars.toLocaleString()} caracteres). A IA não adicionará informações externas.
+                      </p>
+                    </div>
+                  )}
+
                   {!canCreate && (
                     <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-center">
                       <p className="text-sm text-destructive font-medium">Limite mensal atingido. Faça upgrade para continuar.</p>
@@ -316,9 +513,9 @@ export default function CourseWizard() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={handleGenerate} disabled={!canCreate}>
+            <Button onClick={handleGenerate} disabled={!canCreate || (useSources && uploadedSources.length === 0)}>
               <Sparkles className="h-4 w-4 mr-2" />
-              Gerar curso com IA
+              {useSources ? "Gerar curso a partir das fontes" : "Gerar curso com IA"}
             </Button>
           )}
         </div>
