@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Download, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, FileText, Award, RefreshCw, Layers, List } from "lucide-react";
+import { ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, CreditCard, Award, RefreshCw, Layers, List } from "lucide-react";
+import { ExportButtons } from "@/components/course/ExportButtons";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -31,7 +32,6 @@ export default function CourseView() {
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [certDialogOpen, setCertDialogOpen] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
   const [reprocessingFlashcards, setReprocessingFlashcards] = useState(false);
   const [flashcardView, setFlashcardView] = useState<"list" | "flip">("flip");
   const [flipEntitled, setFlipEntitled] = useState<boolean | null>(null);
@@ -141,58 +141,7 @@ export default function CourseView() {
     },
   });
 
-  const handleExportMarkdown = () => {
-    const branding = isPro ? "" : "\n\n---\n\n*Gerado com CourseAI — plataforma de cursos com IA*\n";
-    const md = modules.map((m) => `# ${m.title}\n\n${m.content || ""}`).join("\n\n---\n\n") + branding;
-    const blob = new Blob([md], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${course?.title || "curso"}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
 
-    // Log usage
-    if (user) {
-      supabase.from("usage_events").insert({
-        user_id: user.id,
-        event_type: "COURSE_EXPORTED_MD",
-        metadata: { course_id: id },
-      }).then(() => {});
-    }
-  };
-
-  const handleExportPdf = async () => {
-    setExportingPdf(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("export-pdf", {
-        body: { course_id: id },
-      });
-      if (error) throw error;
-      if (data?.url) {
-        const response = await fetch(data.url);
-        if (!response.ok) throw new Error("Não foi possível baixar o PDF.");
-
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = `${course?.title || "curso"}.pdf`;
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-
-        URL.revokeObjectURL(blobUrl);
-        toast({ title: "PDF gerado!" });
-      }
-    } catch (err: any) {
-      toast({ title: "Erro ao exportar PDF", description: err.message, variant: "destructive" });
-    } finally {
-      setExportingPdf(false);
-    }
-  };
 
   if (loadingCourse || loadingModules) {
     return (
@@ -230,18 +179,13 @@ export default function CourseView() {
           {course.description && <p className="text-muted-foreground mt-2">{course.description}</p>}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportMarkdown}>
-            <Download className="h-4 w-4 mr-1" /> MD
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportPdf}
-            disabled={exportingPdf}
-          >
-            {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
-            PDF {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-          </Button>
+          <ExportButtons
+            courseId={id!}
+            courseTitle={course.title}
+            courseStatus={course.status}
+            isPro={isPro}
+            modules={modules}
+          />
           <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)}>
             <Award className="h-4 w-4 mr-1" /> Certificado
           </Button>
