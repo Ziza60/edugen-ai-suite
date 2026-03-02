@@ -491,7 +491,15 @@ Write 800-1200 words. Be thorough and educational.`;
       // Generate AI image for this module
       if (include_images) {
         try {
-          const imagePrompt = `Create a professional, clean, educational illustration for a course module titled "${mod.title}" in the course "${title}". The image should be modern, visually appealing, and suitable for an e-learning platform. Use a clean style with soft colors. No text in the image. 16:9 aspect ratio.`;
+          const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
+
+STRICT RULES:
+- Do NOT include any readable text, letters, words, numbers, labels, captions, or typography anywhere in the image.
+- No watermarks, no signatures, no written annotations.
+- Use ONLY: abstract shapes, icons, conceptual diagrams, visual metaphors, gradients, geometric patterns, and symbolic illustrations.
+- The image must be purely visual/illustrative — all text will be added separately by the application.
+- Style: modern, minimalist, soft colors, professional e-learning aesthetic.
+- Aspect ratio: 16:9.`;
 
           const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
