@@ -6,6 +6,15 @@ verify_jwt = false
 [functions.export-pdf]
 verify_jwt = false
 
+[functions.export-scorm]
+verify_jwt = false
+
+[functions.export-pptx]
+verify_jwt = false
+
+[functions.export-notion]
+verify_jwt = false
+
 [functions.validate-certificate]
 verify_jwt = false
 

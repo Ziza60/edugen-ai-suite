@@ -7,7 +7,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PRO_FEATURES = ["flashcards_flip", "export_pdf", "ai_images", "custom_certificate"];
+const PRO_FEATURES = ["flashcards_flip", "export_pdf", "export_pptx", "export_notion", "ai_images", "custom_certificate"];
+const BUSINESS_FEATURES = ["export_scorm"];
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -45,12 +46,14 @@ Deno.serve(async (req: Request) => {
 
     const { feature } = await req.json();
 
-    if (!feature || !PRO_FEATURES.includes(feature)) {
+    if (!feature || (!PRO_FEATURES.includes(feature) && !BUSINESS_FEATURES.includes(feature))) {
       return new Response(JSON.stringify({ error: "Invalid feature" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const isBusinessFeature = BUSINESS_FEATURES.includes(feature);
 
     // Check subscription
     const { data: sub } = await serviceClient
@@ -61,9 +64,12 @@ Deno.serve(async (req: Request) => {
 
     const plan = sub?.plan || "free";
 
-    if (plan !== "pro") {
+    const requiredPlan = isBusinessFeature ? "business" : "pro";
+    const entitled = isBusinessFeature ? plan === "business" : (plan === "pro" || plan === "business");
+
+    if (!entitled) {
       return new Response(
-        JSON.stringify({ error: "This feature requires a Pro plan.", feature, entitled: false }),
+        JSON.stringify({ error: `This feature requires a ${requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1)} plan.`, feature, entitled: false }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
