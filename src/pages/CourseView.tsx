@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useDevMode } from "@/hooks/useDevMode";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ export default function CourseView() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { plan } = useSubscription();
+  const { isDev } = useDevMode();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -27,7 +29,7 @@ export default function CourseView() {
   const [certDialogOpen, setCertDialogOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
-  const isPro = plan === "pro";
+  const isPro = plan === "pro" || isDev;
 
   const { data: course, isLoading: loadingCourse } = useQuery({
     queryKey: ["course", id],

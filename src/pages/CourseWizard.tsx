@@ -49,6 +49,7 @@ export default function CourseWizard() {
   });
 
   const canCreate = isDev || usage < limits.maxCourses;
+  const canUseImages = isDev || limits.images;
 
   const updateForm = (key: string, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -258,16 +259,16 @@ export default function CourseWizard() {
                       <div>
                         <p className="font-medium">Imagens com IA</p>
                         <p className="text-sm text-muted-foreground">
-                          {limits.images ? "Gerar imagens ilustrativas" : "Disponível apenas no plano Pro"}
+                          {canUseImages ? "Gerar imagens ilustrativas" : "Disponível apenas no plano Pro"}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {!limits.images && <Badge variant="outline" className="text-xs">PRO</Badge>}
+                      {!canUseImages && <Badge variant="outline" className="text-xs">PRO</Badge>}
                       <Switch
                         checked={form.includeImages}
                         onCheckedChange={(v) => updateForm("includeImages", v)}
-                        disabled={!limits.images}
+                        disabled={!canUseImages}
                       />
                     </div>
                   </div>

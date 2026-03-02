@@ -205,6 +205,14 @@ Deno.serve(async (req: Request) => {
 
     const actualModules = Math.min(num_modules || 3, limits.maxModules);
 
+    // 2b. Validate image gate (Pro only, dev bypasses)
+    if (include_images && !limits.images && !isDev) {
+      return new Response(
+        JSON.stringify({ error: "AI images are available only on Pro plan." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // 3. Generate course structure with Gemini Flash-Lite
     const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
 
