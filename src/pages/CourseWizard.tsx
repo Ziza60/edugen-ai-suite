@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ArrowRight, Loader2, Sparkles, BookOpen, Brain, Image, CheckCircle2, Upload, FileText, X, AlertCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Sparkles, BookOpen, Brain, Image, CheckCircle2, Upload, FileText, X, AlertCircle, Award } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -191,8 +191,10 @@ export default function CourseWizard() {
     }
   };
 
+  const certType = plan === "pro" ? "personalizado" : "simples";
+
   return (
-    <div className="p-6 lg:p-8 max-w-3xl mx-auto">
+    <div className="p-6 lg:p-8 max-w-[800px] mx-auto">
       <Button variant="ghost" onClick={() => navigate("/app/dashboard")} className="mb-6">
         <ArrowLeft className="h-4 w-4 mr-2" />
         Voltar
@@ -202,12 +204,16 @@ export default function CourseWizard() {
       <div className="flex items-center gap-2 mb-8">
         {STEPS.map((s, i) => (
           <div key={s.label} className="flex items-center gap-2 flex-1">
-            <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
-              i <= step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+            <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
+              i < step ? "bg-primary text-primary-foreground" :
+              i === step ? "bg-primary text-primary-foreground ring-4 ring-primary/20" :
+              "bg-muted text-muted-foreground"
             }`}>
-              {i + 1}
+              {i < step ? "✓" : i + 1}
             </div>
-            <span className={`text-sm hidden sm:inline ${i <= step ? "text-foreground" : "text-muted-foreground"}`}>
+            <span className={`text-sm hidden sm:inline font-medium ${
+              i <= step ? "text-foreground" : "text-muted-foreground"
+            }`}>
               {s.label}
             </span>
             {i < STEPS.length - 1 && <div className={`flex-1 h-px ${i < step ? "bg-primary" : "bg-border"}`} />}
@@ -244,7 +250,7 @@ export default function CourseWizard() {
                   <CardTitle className="font-display">Sobre o curso</CardTitle>
                   <CardDescription>Defina o tema e público-alvo do seu curso</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-5">
                   {/* Source mode toggle */}
                   <div className="rounded-lg border p-4 space-y-3">
                     <div className="flex items-center justify-between">
@@ -252,9 +258,9 @@ export default function CourseWizard() {
                         <Upload className="h-5 w-5 text-primary" />
                         <div>
                           <p className="font-medium">Gerar a partir de fontes próprias</p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             {canUseSources
-                              ? "O curso será baseado exclusivamente nos seus documentos"
+                              ? "Seus documentos serão usados exclusivamente neste curso."
                               : "Disponível apenas no plano Pro"}
                           </p>
                         </div>
@@ -277,7 +283,6 @@ export default function CourseWizard() {
                           <span>O curso será gerado exclusivamente com base nos documentos enviados. A IA não adicionará conteúdo externo.</span>
                         </div>
 
-                        {/* Uploaded files list */}
                         {uploadedSources.length > 0 && (
                           <div className="space-y-2">
                             {uploadedSources.map((source) => (
@@ -300,7 +305,6 @@ export default function CourseWizard() {
                           </div>
                         )}
 
-                        {/* Upload button */}
                         {uploadedSources.length < MAX_FILES && (
                           <>
                             <input
@@ -338,20 +342,22 @@ export default function CourseWizard() {
                     )}
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <Label>Título do curso *</Label>
                     <Input placeholder="Ex: Introdução ao Marketing Digital" value={form.title} onChange={(e) => updateForm("title", e.target.value)} />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <Label>Tema / Assunto principal *</Label>
                     <Textarea placeholder="Descreva brevemente o tema do curso" value={form.theme} onChange={(e) => updateForm("theme", e.target.value)} rows={3} />
+                    <p className="text-xs text-muted-foreground">Isso ajuda a IA a ajustar o nível e a profundidade do curso.</p>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <Label>Público-alvo</Label>
                     <Input placeholder="Ex: Iniciantes, estudantes universitários" value={form.targetAudience} onChange={(e) => updateForm("targetAudience", e.target.value)} />
+                    <p className="text-xs text-muted-foreground">Isso ajuda a IA a ajustar o nível e a profundidade do curso.</p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <Label>Tom</Label>
                       <Select value={form.tone} onValueChange={(v) => updateForm("tone", v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -362,8 +368,9 @@ export default function CourseWizard() {
                           <SelectItem value="divertido">Divertido</SelectItem>
                         </SelectContent>
                       </Select>
+                      <p className="text-xs text-muted-foreground">Define se o curso será mais acadêmico, didático ou direto.</p>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <Label>Idioma</Label>
                       <Select value={form.language} onValueChange={(v) => updateForm("language", v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -388,7 +395,7 @@ export default function CourseWizard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <Label>Número de módulos</Label>
                     <Select value={String(form.numModules)} onValueChange={(v) => updateForm("numModules", parseInt(v))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -415,7 +422,7 @@ export default function CourseWizard() {
                       <Brain className="h-5 w-5 text-primary" />
                       <div>
                         <p className="font-medium">Quizzes</p>
-                        <p className="text-sm text-muted-foreground">Perguntas de múltipla escolha por módulo</p>
+                        <p className="text-xs text-muted-foreground">Perguntas de múltipla escolha por módulo</p>
                       </div>
                     </div>
                     <Switch checked={form.includeQuiz} onCheckedChange={(v) => updateForm("includeQuiz", v)} />
@@ -425,7 +432,7 @@ export default function CourseWizard() {
                       <BookOpen className="h-5 w-5 text-primary" />
                       <div>
                         <p className="font-medium">Flashcards</p>
-                        <p className="text-sm text-muted-foreground">Cartões de estudo para revisão</p>
+                        <p className="text-xs text-muted-foreground">Cartões de estudo para revisão</p>
                       </div>
                     </div>
                     <Switch checked={form.includeFlashcards} onCheckedChange={(v) => updateForm("includeFlashcards", v)} />
@@ -435,7 +442,7 @@ export default function CourseWizard() {
                       <Image className="h-5 w-5 text-primary" />
                       <div>
                         <p className="font-medium">Imagens com IA</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           {canUseImages ? "Gerar imagens ilustrativas" : "Disponível apenas no plano Pro"}
                         </p>
                       </div>
@@ -456,26 +463,54 @@ export default function CourseWizard() {
             {step === 3 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="font-display">Revisão</CardTitle>
-                  <CardDescription>Confirme as informações antes de gerar</CardDescription>
+                  <CardTitle className="font-display">Revisão final</CardTitle>
+                  <CardDescription>Confirme as informações antes de gerar o curso</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="bg-muted rounded-lg p-4 space-y-3">
-                    <div className="flex justify-between"><span className="text-muted-foreground">Título</span><span className="font-medium">{form.title}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Módulos</span><span className="font-medium">{form.numModules}</span></div>
+                <CardContent className="space-y-5">
+                  {/* Structured preview */}
+                  <div className="bg-primary/5 border border-primary/15 rounded-xl p-5">
+                    <h4 className="font-display font-semibold text-base mb-3 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      Este curso terá:
+                    </h4>
+                    <ul className="space-y-2 text-sm">
+                      <li className="flex items-center gap-2">
+                        <Brain className="h-4 w-4 text-primary/70" />
+                        <span><strong>{form.numModules}</strong> {form.numModules === 1 ? "módulo" : "módulos"} de conteúdo</span>
+                      </li>
+                      {form.includeQuiz && (
+                        <li className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-primary/70" />
+                          <span>Quizzes de múltipla escolha por módulo</span>
+                        </li>
+                      )}
+                      {form.includeFlashcards && (
+                        <li className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4 text-primary/70" />
+                          <span>Flashcards de revisão</span>
+                        </li>
+                      )}
+                      {form.includeImages && (
+                        <li className="flex items-center gap-2">
+                          <Image className="h-4 w-4 text-primary/70" />
+                          <span>Imagens ilustrativas com IA</span>
+                        </li>
+                      )}
+                      <li className="flex items-center gap-2">
+                        <Award className="h-4 w-4 text-primary/70" />
+                        <span>Certificado {certType} (conforme seu plano)</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  {/* Details summary */}
+                  <div className="bg-muted rounded-lg p-4 space-y-2.5 text-sm">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Título</span><span className="font-medium text-right max-w-[60%] truncate">{form.title}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Idioma</span><span className="font-medium">{form.language}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Tom</span><span className="font-medium capitalize">{form.tone}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Quizzes</span><span>{form.includeQuiz ? "✅" : "❌"}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Flashcards</span><span>{form.includeFlashcards ? "✅" : "❌"}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Imagens IA</span><span>{form.includeImages ? "✅" : "❌"}</span></div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Fontes próprias</span>
-                      <span>
-                        {useSources
-                          ? `✅ ${uploadedSources.length} arquivo(s)`
-                          : "❌"}
-                      </span>
-                    </div>
+                    {useSources && (
+                      <div className="flex justify-between"><span className="text-muted-foreground">Fontes próprias</span><span className="font-medium">{uploadedSources.length} arquivo(s)</span></div>
+                    )}
                   </div>
 
                   {useSources && (
@@ -485,6 +520,14 @@ export default function CourseWizard() {
                         O conteúdo será gerado exclusivamente a partir dos {uploadedSources.length} documento(s) enviado(s)
                         ({totalChars.toLocaleString()} caracteres). A IA não adicionará informações externas.
                       </p>
+                    </div>
+                  )}
+
+                  {/* Usage warning for free users */}
+                  {plan === "free" && canCreate && (
+                    <div className="bg-muted/60 border border-border rounded-lg p-3 text-xs text-muted-foreground flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>Você usou <strong>{usage}</strong> de <strong>{limits.maxCourses}</strong> cursos gratuitos este mês. Esta geração usará 1 crédito.</span>
                     </div>
                   )}
 
@@ -513,7 +556,7 @@ export default function CourseWizard() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={handleGenerate} disabled={!canCreate || (useSources && uploadedSources.length === 0)}>
+            <Button onClick={handleGenerate} disabled={!canCreate || (useSources && uploadedSources.length === 0)} size="lg" className="px-6">
               <Sparkles className="h-4 w-4 mr-2" />
               {useSources ? "Gerar curso a partir das fontes" : "Gerar curso com IA"}
             </Button>

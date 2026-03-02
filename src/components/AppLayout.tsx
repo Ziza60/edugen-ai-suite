@@ -1,9 +1,10 @@
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
-import { LayoutDashboard, BookOpen, Award, LogOut, Sparkles, Menu, X } from "lucide-react";
+import { LayoutDashboard, BookOpen, Award, LogOut, Sparkles, Menu, X, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { useState } from "react";
 
 export function AppLayout() {
@@ -11,7 +12,10 @@ export function AppLayout() {
   const { plan } = useSubscription();
   const { usage } = useMonthlyUsage();
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const maxCourses = plan === "pro" ? 5 : 3;
 
   const navItems = [
     { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -51,15 +55,30 @@ export function AppLayout() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-sidebar-border">
-          <div className="flex items-center gap-2 mb-3">
-            <Badge variant={plan === "pro" ? "default" : "secondary"} className="text-xs">
-              {plan.toUpperCase()}
-            </Badge>
-            <span className="text-xs text-sidebar-foreground/60">
-              {usage}/{plan === "pro" ? 5 : 1} cursos/mês
-            </span>
+        {/* Plan info + CTA */}
+        <div className="p-4 border-t border-sidebar-border space-y-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <Badge variant={plan === "pro" ? "default" : "secondary"} className="text-xs">
+                {plan.toUpperCase()}
+              </Badge>
+              <span className="text-xs text-sidebar-foreground/60">
+                {usage}/{maxCourses} cursos/mês
+              </span>
+            </div>
+            <Progress value={(usage / maxCourses) * 100} className="h-1.5" />
           </div>
+
+          {plan === "free" && (
+            <button
+              onClick={() => navigate("/app/upgrade")}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs font-medium bg-sidebar-accent/60 text-sidebar-primary hover:bg-sidebar-accent transition-colors"
+            >
+              <Star className="h-3.5 w-3.5" />
+              Upgrade para Pro
+            </button>
+          )}
+
           <Button
             variant="ghost"
             size="sm"
@@ -102,6 +121,15 @@ export function AppLayout() {
                 {item.label}
               </Link>
             ))}
+            {plan === "free" && (
+              <button
+                onClick={() => { setMobileOpen(false); navigate("/app/upgrade"); }}
+                className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+              >
+                <Star className="h-4 w-4" />
+                Upgrade para Pro
+              </button>
+            )}
             <Button variant="ghost" size="sm" className="w-full justify-start mt-2" onClick={signOut}>
               <LogOut className="h-4 w-4 mr-2" />
               Sair
@@ -112,7 +140,7 @@ export function AppLayout() {
 
       {/* Main content */}
       <main className="flex-1 lg:overflow-auto">
-        <div className="lg:hidden h-14" /> {/* spacer for mobile header */}
+        <div className="lg:hidden h-14" />
         <Outlet />
       </main>
     </div>

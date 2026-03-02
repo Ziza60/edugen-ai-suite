@@ -76,19 +76,22 @@ export default function Auth() {
             <h1 className="font-display text-3xl font-bold">EduGen AI</h1>
           </div>
           <h2 className="font-display text-4xl font-bold leading-tight mb-4">
-            Crie cursos completos em minutos com IA
+            Crie cursos prontos para ensinar ou vender em minutos, não em semanas
           </h2>
           <p className="text-lg text-primary-foreground/80 leading-relaxed">
-            Módulos, quizzes, flashcards, imagens e certificados — tudo gerado automaticamente para você.
+            Cursos com módulos, quizzes, flashcards e certificados — tudo com IA.
           </p>
           <div className="mt-12 grid grid-cols-2 gap-4">
-            {["Quizzes automáticos", "Flashcards", "Certificados", "Exportação PDF"].map((f) => (
+            {["Quizzes automáticos", "Flashcards de revisão", "Certificados validáveis", "Exportação PDF e PPTX"].map((f) => (
               <div key={f} className="flex items-center gap-2 text-sm text-primary-foreground/70">
                 <div className="h-1.5 w-1.5 rounded-full bg-secondary" />
                 {f}
               </div>
             ))}
           </div>
+          <p className="mt-8 text-sm text-primary-foreground/50 italic">
+            Usado por professores, instrutores e criadores digitais
+          </p>
         </div>
       </div>
 

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, BookOpen, Clock, Sparkles, ArrowRight, Loader2, Trash2 } from "lucide-react";
+import { Plus, BookOpen, Clock, Sparkles, ArrowRight, Loader2, Trash2, Eye, Pencil, GraduationCap, Bot, BarChart3, PenTool } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   AlertDialog,
@@ -22,6 +22,24 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+
+const THEME_ICONS: Record<string, React.ElementType> = {
+  default: BookOpen,
+  ia: Bot,
+  marketing: BarChart3,
+  educacao: GraduationCap,
+  escrita: PenTool,
+};
+
+function getCourseIcon(theme?: string | null): React.ElementType {
+  if (!theme) return BookOpen;
+  const lower = theme.toLowerCase();
+  if (lower.includes("ia") || lower.includes("inteligência") || lower.includes("machine")) return Bot;
+  if (lower.includes("marketing") || lower.includes("negócio") || lower.includes("vendas") || lower.includes("dados")) return BarChart3;
+  if (lower.includes("educação") || lower.includes("didática") || lower.includes("pedagog") || lower.includes("ensino")) return GraduationCap;
+  if (lower.includes("escrita") || lower.includes("redação") || lower.includes("texto") || lower.includes("conteúdo")) return PenTool;
+  return BookOpen;
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -37,13 +55,46 @@ export default function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("courses")
-        .select("*")
+        .select("*, course_modules(id), course_quiz_questions(id), course_flashcards(id:course_modules!inner(id))")
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) {
+        // Fallback to simple query if join fails
+        const { data: simple, error: simpleError } = await supabase
+          .from("courses")
+          .select("*")
+          .eq("user_id", user!.id)
+          .order("created_at", { ascending: false });
+        if (simpleError) throw simpleError;
+        return simple;
+      }
       return data;
     },
     enabled: !!user,
+  });
+
+  // Separate query for course stats
+  const { data: courseStats = {} } = useQuery({
+    queryKey: ["course-stats", user?.id],
+    queryFn: async () => {
+      const courseIds = courses.map((c: any) => c.id);
+      if (courseIds.length === 0) return {};
+      
+      const { data: modules } = await supabase
+        .from("course_modules")
+        .select("id, course_id")
+        .in("course_id", courseIds);
+
+      const stats: Record<string, { modules: number }> = {};
+      courseIds.forEach((id: string) => {
+        stats[id] = { modules: 0 };
+      });
+      modules?.forEach((m: any) => {
+        if (stats[m.course_id]) stats[m.course_id].modules++;
+      });
+      return stats;
+    },
+    enabled: courses.length > 0,
   });
 
   const deleteMutation = useMutation({
@@ -69,21 +120,48 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-6 lg:p-10 max-w-6xl mx-auto space-y-8">
+      {/* Plan usage contextual banner */}
+      {plan === "free" && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-primary/5 border border-primary/15 rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+        >
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Sparkles className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                Você usou <strong>{usage}</strong> de <strong>{limits.maxCourses}</strong> cursos gratuitos este mês
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                No Pro, crie mais cursos, gere PDFs, exporte PPTX e use imagens com IA.
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" className="shrink-0 border-primary/30 text-primary hover:bg-primary/10" onClick={() => navigate("/app/upgrade")}>
+            <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+            Ver plano Pro
+          </Button>
+        </motion.div>
+      )}
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground mt-1">Gerencie seus cursos criados com IA</p>
         </div>
-        <Button onClick={handleCreate} disabled={!canCreate} size="lg">
-          <Plus className="h-4 w-4 mr-2" />
-          Criar novo curso
+        <Button onClick={handleCreate} disabled={!canCreate} size="lg" className="text-base px-6 h-12 shadow-md hover:shadow-lg transition-shadow">
+          <Plus className="h-5 w-5 mr-2" />
+          Criar novo curso com IA
         </Button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
@@ -133,12 +211,12 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Upsell banner */}
+      {/* Upsell banner when limit reached */}
       {!canCreate && plan === "free" && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-primary/5 border border-primary/20 rounded-xl p-6 mb-8 flex items-center justify-between"
+          className="bg-primary/5 border border-primary/20 rounded-xl p-6 flex items-center justify-between"
         >
           <div>
             <h3 className="font-display font-semibold text-lg">Limite atingido</h3>
@@ -153,74 +231,112 @@ export default function Dashboard() {
       )}
 
       {/* Courses list */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : courses.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-              <BookOpen className="h-8 w-8 text-primary" />
-            </div>
-            <h3 className="font-display text-xl font-semibold mb-2">Nenhum curso ainda</h3>
-            <p className="text-muted-foreground mb-6 max-w-sm">
-              Crie seu primeiro curso com inteligência artificial em poucos minutos.
-            </p>
-            <Button onClick={handleCreate}>
-              <Plus className="h-4 w-4 mr-2" />
-              Criar primeiro curso
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {courses.map((course, i) => (
-            <motion.div
-              key={course.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              <Card
-                className="cursor-pointer hover:shadow-md transition-shadow group"
-                onClick={() => navigate(`/app/courses/${course.id}`)}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="font-display text-lg line-clamp-2">{course.title}</CardTitle>
-                    <div className="flex items-center gap-1 shrink-0 ml-2">
-                      <Badge variant={course.status === "published" ? "default" : "outline"} className="text-xs">
-                        {course.status === "published" ? "Publicado" : "Rascunho"}
-                      </Badge>
-                      <button
-                        className="p-1.5 rounded-md text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
-                        title="Excluir curso"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeletingCourse({ id: course.id, title: course.title });
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {course.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{course.description}</p>
-                  )}
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{course.language}</span>
-                    <span>•</span>
-                    <span>{new Date(course.created_at).toLocaleDateString("pt-BR")}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-      )}
+      <div>
+        <h2 className="font-display text-xl font-semibold mb-4">Seus cursos</h2>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : courses.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                <BookOpen className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="font-display text-xl font-semibold mb-2">Nenhum curso ainda</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm">
+                Crie seu primeiro curso com inteligência artificial em poucos minutos.
+              </p>
+              <Button onClick={handleCreate} size="lg">
+                <Plus className="h-4 w-4 mr-2" />
+                Criar primeiro curso
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {courses.map((course: any, i: number) => {
+              const IconComp = getCourseIcon(course.theme);
+              const stats = (courseStats as any)[course.id];
+              const moduleCount = stats?.modules ?? 0;
+
+              return (
+                <motion.div
+                  key={course.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                >
+                  <Card className="group hover:shadow-md transition-all hover:border-primary/20">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <IconComp className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="font-display text-base line-clamp-2 leading-snug">{course.title}</CardTitle>
+                          <div className="mt-1.5">
+                            <Badge variant={course.status === "published" ? "default" : "outline"} className="text-[10px] px-2 py-0">
+                              {course.status === "published" ? "Publicado" : "Rascunho"}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {course.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-2">{course.description}</p>
+                      )}
+                      
+                      {/* Metadata */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {moduleCount > 0 && <span>{moduleCount} módulos</span>}
+                        {course.include_quiz && <span>· quizzes</span>}
+                        {course.include_flashcards && <span>· flashcards</span>}
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/50">
+                        <span>{new Date(course.created_at).toLocaleDateString("pt-BR")}</span>
+                        <span>{course.language}</span>
+                      </div>
+
+                      {/* Quick actions */}
+                      <div className="flex items-center gap-1.5 pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs flex-1"
+                          onClick={() => navigate(`/app/courses/${course.id}`)}
+                        >
+                          <Eye className="h-3.5 w-3.5 mr-1" />
+                          Ver
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs flex-1"
+                          onClick={() => navigate(`/app/courses/${course.id}`)}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" />
+                          Editar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setDeletingCourse({ id: course.id, title: course.title })}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Delete confirmation modal */}
       <AlertDialog open={!!deletingCourse} onOpenChange={(open) => !open && setDeletingCourse(null)}>
