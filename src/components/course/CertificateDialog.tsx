@@ -62,6 +62,15 @@ export function CertificateDialog({ open, onOpenChange, courseId, courseTitle, c
       setGeneratedToken(token);
       queryClient.invalidateQueries({ queryKey: ["certificates"] });
       toast({ title: "Certificado gerado!" });
+
+      // Log usage event
+      if (user) {
+        supabase.from("usage_events").insert({
+          user_id: user.id,
+          event_type: "certificate_issued",
+          metadata: { course_id: courseId },
+        }).then(() => {});
+      }
     },
     onError: (err: any) => {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
