@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
-import { LayoutDashboard, BookOpen, Award, LogOut, Sparkles, Menu, X, Star } from "lucide-react";
+import { LayoutDashboard, BookOpen, Award, LogOut, Sparkles, Menu, X, Star, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -20,6 +20,7 @@ export function AppLayout() {
   const navItems = [
     { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/app/certificates", label: "Certificados", icon: Award },
+    { to: "/app/planos", label: "Planos", icon: CreditCard },
   ];
 
   const isActive = (path: string) => location.pathname.startsWith(path);
@@ -70,7 +71,7 @@ export function AppLayout() {
 
           {plan === "free" && (
             <button
-              onClick={() => navigate("/app/upgrade")}
+              onClick={() => navigate("/app/planos")}
               className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs font-medium bg-sidebar-accent/60 text-sidebar-primary hover:bg-sidebar-accent transition-colors"
             >
               <Star className="h-3.5 w-3.5" />
@@ -122,7 +123,7 @@ export function AppLayout() {
             ))}
             {plan === "free" && (
               <button
-                onClick={() => { setMobileOpen(false); navigate("/app/upgrade"); }}
+                onClick={() => { setMobileOpen(false); navigate("/app/planos"); }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
               >
                 <Star className="h-4 w-4" />

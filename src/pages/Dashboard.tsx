@@ -148,7 +148,7 @@ export default function Dashboard() {
                 </span>
                 {plan === "free" && (
                   <button
-                    onClick={() => navigate("/app/upgrade")}
+                    onClick={() => navigate("/app/planos")}
                     className="text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
                   >
                     Upgrade <ArrowRight className="h-3 w-3" />
@@ -227,7 +227,7 @@ export default function Dashboard() {
               variant="outline"
               size="sm"
               className="relative shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-semibold"
-              onClick={() => navigate("/app/upgrade")}
+              onClick={() => navigate("/app/planos")}
             >
               <Sparkles className="h-3.5 w-3.5 mr-1.5" />
               Ver plano Pro
@@ -248,7 +248,7 @@ export default function Dashboard() {
                 Você já criou {limits.maxCourses} cursos gratuitos este mês. Faça upgrade para continuar criando.
               </p>
             </div>
-            <Button onClick={() => navigate("/app/upgrade")} className="shrink-0">
+            <Button onClick={() => navigate("/app/planos")} className="shrink-0">
               Fazer upgrade <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </motion.div>
