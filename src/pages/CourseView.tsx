@@ -170,7 +170,13 @@ export default function CourseView() {
       });
       if (error) throw error;
       if (data?.url) {
-        window.open(data.url, "_blank");
+        const a = document.createElement("a");
+        a.href = data.url;
+        a.download = `${course?.title || "curso"}.pdf`;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
         toast({ title: "PDF gerado!" });
       }
     } catch (err: any) {
