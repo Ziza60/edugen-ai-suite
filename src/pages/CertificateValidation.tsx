@@ -116,7 +116,7 @@ export default function CertificateValidation() {
             </div>
             <div className="flex items-center gap-4">
               <div className="flex flex-col items-center">
-                <div className="h-px w-48 sm:w-56 bg-gray-500 mb-3" />
+                <div className="h-px w-56 sm:w-72 bg-gray-500 mb-3" />
                 {cert.custom_data?.instructor_name ? (
                   <>
                     <p className="text-white font-bold text-xs sm:text-sm text-center">{cert.custom_data.instructor_name}</p>
@@ -181,7 +181,7 @@ export default function CertificateValidation() {
                 </div>
               </div>
               <div className="flex flex-col items-center">
-                <div className="h-px w-48 sm:w-56 bg-gray-500 mb-3" />
+                <div className="h-px w-56 sm:w-72 bg-gray-500 mb-3" />
                 <p className="text-white font-bold text-xs sm:text-sm text-center">CourseAI</p>
                 <p className="text-gray-400 text-[10px] sm:text-xs text-center">Plataforma de Cursos com IA</p>
               </div>
