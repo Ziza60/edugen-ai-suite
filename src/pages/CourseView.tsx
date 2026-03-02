@@ -500,7 +500,7 @@ export default function CourseView() {
                 </div>
               )}
 
-              {/* ═══════════ FLASHCARDS PREVIEW ═══════════ */}
+              {/* ═══════════ FLASHCARDS ═══════════ */}
               {moduleFlashcards.length > 0 && (
                 <div className="mt-10 pt-8 border-t border-border">
                   <div className="flex items-center justify-between mb-5">
@@ -515,34 +515,43 @@ export default function CourseView() {
                     </div>
                   </div>
 
-                  {/* Static preview cards (max 4) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                    {moduleFlashcards.slice(0, 4).map((fc) => (
-                      <div key={fc.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
-                        <p className="text-xs font-semibold text-primary uppercase tracking-wider">Frente</p>
-                        <p className="text-sm font-medium text-foreground leading-snug">{fc.front}</p>
-                        <div className="border-t border-border/60 pt-2">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Verso</p>
-                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{fc.back}</p>
-                        </div>
+                  {isPro && flipEntitled ? (
+                    /* PRO: render FlipView directly inline — no static cards, no modal button */
+                    <div className="rounded-xl border border-border bg-card p-4 min-h-[320px]">
+                      <FlashcardsFlipView flashcards={moduleFlashcards} />
+                    </div>
+                  ) : (
+                    /* FREE: static preview + button to open modal */
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                        {moduleFlashcards.slice(0, 4).map((fc) => (
+                          <div key={fc.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                            <p className="text-xs font-semibold text-primary uppercase tracking-wider">Frente</p>
+                            <p className="text-sm font-medium text-foreground leading-snug">{fc.front}</p>
+                            <div className="border-t border-border/60 pt-2">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Verso</p>
+                              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{fc.back}</p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
 
-                  {moduleFlashcards.length > 4 && (
-                    <p className="text-xs text-muted-foreground mb-3">
-                      +{moduleFlashcards.length - 4} flashcards adicionais
-                    </p>
+                      {moduleFlashcards.length > 4 && (
+                        <p className="text-xs text-muted-foreground mb-3">
+                          +{moduleFlashcards.length - 4} flashcards adicionais
+                        </p>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowFlashcardsModal(true)}
+                        className="w-full sm:w-auto"
+                      >
+                        <Layers className="h-4 w-4 mr-2" />
+                        Abrir modo interativo
+                      </Button>
+                    </>
                   )}
-
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowFlashcardsModal(true)}
-                    className="w-full sm:w-auto"
-                  >
-                    <Layers className="h-4 w-4 mr-2" />
-                    Abrir modo interativo
-                  </Button>
                 </div>
               )}
             </div>
