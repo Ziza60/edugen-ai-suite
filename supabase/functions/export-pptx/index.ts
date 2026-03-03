@@ -65,7 +65,7 @@ const CELL_LINE_H_IN = 0.22;
 const MAX_TABLE_H = SLIDE_H - TABLE_Y - BOTTOM_MARGIN;
 
 const MIN_BULLETS = 3;
-const MAX_BULLETS = 5;
+const MAX_BULLETS = 4;
 const MAX_CHARS = 900;
 
 // Section layout constants
@@ -250,9 +250,9 @@ function splitBulletsToFit(bullets: string[], maxH: number, fontSize = FONT_PT, 
    DETERMINISTIC WRAP/PAGINATION (ANTI-OVERFLOW)
    ═══════════════════════════════════════════════════════ */
 
-const SAFE_CHARS_PER_LINE = 52; // intentionally conservative
-const SAFE_LINE_MULTIPLIER = 1.55; // higher than visual setting to avoid underestimation
-const SAFE_BULLET_GAP = 12 / 72;
+const SAFE_CHARS_PER_LINE = 48; // very conservative — accounts for bullet marker + PPTX internal padding
+const SAFE_LINE_MULTIPLIER = 1.85; // generous multiplier to match actual PowerPoint rendering
+const SAFE_BULLET_GAP = 16 / 72; // increased gap between bullets
 
 interface BulletBlock {
   kind: "header" | "bullet";
@@ -319,13 +319,15 @@ function buildBulletBlocks(items: string[]): BulletBlock[] {
 }
 
 function paginateBulletBlocks(blocks: BulletBlock[], maxH: number): BulletBlock[][] {
+  // Apply 25% safety margin — PowerPoint consistently renders taller than calculated
+  const safeMaxH = maxH * 0.75;
   const pages: BulletBlock[][] = [];
   let current: BulletBlock[] = [];
   let currentH = 0;
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    const wouldOverflow = currentH + block.height > maxH;
+    const wouldOverflow = currentH + block.height > safeMaxH;
 
     if (wouldOverflow && current.length > 0) {
       pages.push(current);
@@ -334,7 +336,7 @@ function paginateBulletBlocks(blocks: BulletBlock[], maxH: number): BulletBlock[
     }
 
     if (block.kind === "header") {
-      if (currentH + block.height > maxH && current.length > 0) {
+      if (currentH + block.height > safeMaxH && current.length > 0) {
         pages.push(current);
         current = [];
         currentH = 0;
@@ -344,11 +346,11 @@ function paginateBulletBlocks(blocks: BulletBlock[], maxH: number): BulletBlock[
       continue;
     }
 
-    if (block.height > maxH) {
+    if (block.height > safeMaxH) {
       const forcedChunks = splitLongBulletText(block.text, 120);
       for (const forced of forcedChunks) {
         const forcedH = estimateBulletHeightStrict(forced, FONT_PT);
-        if (currentH + forcedH > maxH && current.length > 0) {
+        if (currentH + forcedH > safeMaxH && current.length > 0) {
           pages.push(current);
           current = [];
           currentH = 0;
@@ -1104,81 +1106,101 @@ function renderSingleBulletSlide(pptx: any, titleText: string, blocks: BulletBlo
   }
 }
 
-// Layout 4 — CARDS EM GRID
+// Layout 4 — CARDS EM GRID (with pagination)
 function renderCardsGrid(pptx: any, data: SlideData) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.BG_LIGHT };
-
-  const titleText = deduplicateTitle(data.title);
-  const headerH = getHeaderHeight(titleText);
-  const headerFont = getHeaderTitleFontSize(titleText);
-
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0, y: 0, w: SLIDE_W, h: headerH,
-    fill: { color: C.PRIMARY },
-  });
-
-  addTextSafe(slide, titleText, {
-    x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
-    fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
-    valign: "middle",
-  });
-
   const items = data.items || [];
-  const count = items.length;
+  if (items.length === 0) return;
+
+  const baseTitle = cleanPartTitle(data.title);
   const cols = 2;
-  const rows = Math.ceil(count / cols);
+
+  // Calculate how many cards fit per slide
+  const headerH = getHeaderHeight(baseTitle);
   const gridTop = headerH + 0.3;
   const gridH = SLIDE_H - gridTop - BOTTOM_MARGIN;
-  const cardW = (SAFE_W - 0.3) / cols;
-  const cardH = Math.min((gridH - (rows - 1) * 0.2) / rows, 1.4);
-  const gapX = 0.3;
+  const maxCardH = 1.4;
   const gapY = 0.2;
+  const maxRowsPerSlide = Math.max(1, Math.floor((gridH + gapY) / (maxCardH + gapY)));
+  const maxItemsPerSlide = maxRowsPerSlide * cols;
 
-  items.forEach((item, idx) => {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    const x = MARGIN_L + col * (cardW + gapX);
-    const y = gridTop + row * (cardH + gapY);
+  // Paginate items
+  const pages: string[][] = [];
+  for (let i = 0; i < items.length; i += maxItemsPerSlide) {
+    pages.push(items.slice(i, i + maxItemsPerSlide));
+  }
 
-    // Ensure card doesn't exceed slide bounds
-    if (y + cardH > SLIDE_H - BOTTOM_MARGIN) return;
-    if (x + cardW > SLIDE_W - MARGIN_R) return;
+  pages.forEach((pageItems, pageIdx) => {
+    const suffix = pages.length > 1 ? ` (Parte ${pageIdx + 1})` : "";
+    const titleText = deduplicateTitle(baseTitle + suffix);
+
+    const slide = pptx.addSlide();
+    slide.background = { color: C.BG_LIGHT };
+
+    const hH = getHeaderHeight(titleText);
+    const hFont = getHeaderTitleFontSize(titleText);
 
     slide.addShape(pptx.ShapeType.rect, {
-      x, y, w: cardW, h: cardH,
-      fill: { color: C.WHITE },
-      shadow: { type: "outer", blur: 4, offset: 1, color: "000000", opacity: 0.1 },
-      rectRadius: 0.04,
+      x: 0, y: 0, w: SLIDE_W, h: hH,
+      fill: { color: C.PRIMARY },
     });
 
-    slide.addShape(pptx.ShapeType.rect, {
-      x, y: y + 0.06, w: 0.06, h: cardH - 0.12,
-      fill: { color: C.ACCENT },
+    addTextSafe(slide, titleText, {
+      x: MARGIN_L, y: 0.08, w: SAFE_W, h: hH - 0.16,
+      fontSize: hFont, fontFace: FONT, color: C.WHITE, bold: true,
+      valign: "middle",
     });
 
-    const cardContentW = cardW - 0.35;
-    const colonIdx = item.indexOf(":");
-    if (colonIdx > 2 && colonIdx < 50) {
-      const cardTitle = item.substring(0, colonIdx).trim();
-      const cardDesc = item.substring(colonIdx + 1).trim();
-      addTextSafe(slide, cardTitle, {
-        x: x + 0.2, y: y + 0.1, w: cardContentW, h: 0.35,
-        fontSize: 14, fontFace: FONT, color: C.PRIMARY, bold: true,
-        valign: "top",
+    const gTop = hH + 0.3;
+    const gH = SLIDE_H - gTop - BOTTOM_MARGIN;
+    const rows = Math.ceil(pageItems.length / cols);
+    const cardW = (SAFE_W - 0.3) / cols;
+    const cardH = Math.min((gH - (rows - 1) * gapY) / rows, maxCardH);
+    const gapX = 0.3;
+
+    pageItems.forEach((item, idx) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const x = MARGIN_L + col * (cardW + gapX);
+      const y = gTop + row * (cardH + gapY);
+
+      if (y + cardH > SLIDE_H - BOTTOM_MARGIN) return;
+      if (x + cardW > SLIDE_W - MARGIN_R) return;
+
+      slide.addShape(pptx.ShapeType.rect, {
+        x, y, w: cardW, h: cardH,
+        fill: { color: C.WHITE },
+        shadow: { type: "outer", blur: 4, offset: 1, color: "000000", opacity: 0.1 },
+        rectRadius: 0.04,
       });
-      addTextSafe(slide, cardDesc, {
-        x: x + 0.2, y: y + 0.42, w: cardContentW, h: cardH - 0.55,
-        fontSize: 13, fontFace: FONT, color: C.TEXT_BODY,
-        valign: "top",
+
+      slide.addShape(pptx.ShapeType.rect, {
+        x, y: y + 0.06, w: 0.06, h: cardH - 0.12,
+        fill: { color: C.ACCENT },
       });
-    } else {
-      addTextSafe(slide, item, {
-        x: x + 0.2, y: y + 0.1, w: cardContentW, h: cardH - 0.2,
-        fontSize: 14, fontFace: FONT, color: C.TEXT_BODY,
-        valign: "middle",
-      });
-    }
+
+      const cardContentW = cardW - 0.35;
+      const colonIdx = item.indexOf(":");
+      if (colonIdx > 2 && colonIdx < 50) {
+        const cardTitle = item.substring(0, colonIdx).trim();
+        const cardDesc = item.substring(colonIdx + 1).trim();
+        addTextSafe(slide, cardTitle, {
+          x: x + 0.2, y: y + 0.1, w: cardContentW, h: 0.35,
+          fontSize: 14, fontFace: FONT, color: C.PRIMARY, bold: true,
+          valign: "top",
+        });
+        addTextSafe(slide, cardDesc, {
+          x: x + 0.2, y: y + 0.42, w: cardContentW, h: cardH - 0.55,
+          fontSize: 13, fontFace: FONT, color: C.TEXT_BODY,
+          valign: "top",
+        });
+      } else {
+        addTextSafe(slide, item, {
+          x: x + 0.2, y: y + 0.1, w: cardContentW, h: cardH - 0.2,
+          fontSize: 14, fontFace: FONT, color: C.TEXT_BODY,
+          valign: "middle",
+        });
+      }
+    });
   });
 }
 
