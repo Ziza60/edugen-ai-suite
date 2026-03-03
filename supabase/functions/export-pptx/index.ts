@@ -144,6 +144,61 @@ function getTitleHeight(titleText: string, boxWidthIn: number, fontSizePt: numbe
   return Math.max(0.70, lines * lineHeightIn + 0.20); // minimum 0.70in
 }
 
+/** Header title font shrinks for very long titles to prevent right-edge clipping */
+function getHeaderTitleFontSize(titleText: string): number {
+  const len = sanitize(removePartSuffix(deduplicateTitle(titleText || ""))).length;
+  if (len > 110) return 16;
+  if (len > 90) return 18;
+  if (len > 72) return 20;
+  return 24;
+}
+
+/** Dynamic header height for long titles */
+function getHeaderHeight(titleText: string): number {
+  const fs = getHeaderTitleFontSize(titleText);
+  const titleH = getTitleHeight(titleText, SAFE_W, fs);
+  return Math.max(HEADER_H, Math.min(1.15, titleH + 0.18));
+}
+
+/** Split oversized bullet text into smaller bullets so one item never explodes a slide */
+function splitLongBulletText(text: string, maxCharsPerChunk: number): string[] {
+  const clean = sanitize(text);
+  if (!clean) return [];
+  if (clean.length <= maxCharsPerChunk) return [clean];
+
+  const chunks: string[] = [];
+  const sentences = clean.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let current = "";
+
+  for (const s of sentences) {
+    const candidate = current ? `${current} ${s}` : s;
+    if (candidate.length <= maxCharsPerChunk) {
+      current = candidate;
+    } else {
+      if (current) chunks.push(current.trim());
+      if (s.length <= maxCharsPerChunk) {
+        current = s;
+      } else {
+        const words = s.split(/\s+/);
+        let wAcc = "";
+        for (const w of words) {
+          const wCandidate = wAcc ? `${wAcc} ${w}` : w;
+          if (wCandidate.length <= maxCharsPerChunk) {
+            wAcc = wCandidate;
+          } else {
+            if (wAcc) chunks.push(wAcc.trim());
+            wAcc = w;
+          }
+        }
+        current = wAcc;
+      }
+    }
+  }
+  if (current) chunks.push(current.trim());
+
+  return chunks.length ? chunks : [clean];
+}
+
 /** Estimate height of a single bullet item */
 function estimateBulletHeight(item: string, fontSize = FONT_PT, charsPerLine = CHARS_PER_LINE): number {
   const text = sanitize(item || "");
@@ -162,11 +217,20 @@ function estimateBulletsHeight(bullets: string[], fontSize = FONT_PT, charsPerLi
 
 /** Split bullets into groups that fit within maxH */
 function splitBulletsToFit(bullets: string[], maxH: number, fontSize = FONT_PT, charsPerLine = CHARS_PER_LINE): string[][] {
+  const lineHeight = (fontSize * 1.5) / 72;
+  const maxLinesPerChunk = Math.max(2, Math.floor((maxH * 0.55) / lineHeight));
+  const maxCharsPerChunk = Math.max(48, maxLinesPerChunk * Math.max(20, charsPerLine - 4));
+
+  const expandedBullets = bullets.flatMap((b) => {
+    const itemH = estimateBulletHeight(b, fontSize, charsPerLine);
+    return itemH > maxH ? splitLongBulletText(b, maxCharsPerChunk) : [b];
+  });
+
   const groups: string[][] = [];
   let current: string[] = [];
   let currentH = 0;
 
-  for (const b of bullets) {
+  for (const b of expandedBullets) {
     const itemH = estimateBulletHeight(b, fontSize, charsPerLine);
 
     if (currentH + itemH > maxH && current.length > 0) {
@@ -593,17 +657,11 @@ function validateAndFix(slides: SlideData[]): SlideData[] {
       continue;
     }
 
-    const bulletCount = slide.items?.length || 0;
-
-    if (bulletCount > 0 && bulletCount < MIN_BULLETS) {
-      const prev = result.length > 0 ? result[result.length - 1] : null;
-      if (prev && (prev.layout === "BULLETS" || prev.layout === "RESUMO") && prev.items) {
-        const merged = [...prev.items, ...(slide.items || [])];
-        if (merged.length <= MAX_BULLETS + 1 && merged.reduce((s, b) => s + b.length, 0) <= MAX_CHARS + 100) {
-          prev.items = merged;
-          continue;
-        }
-      }
+    // CRITICAL: never re-merge small slides blindly after split logic.
+    // Previous merge-by-count caused content concatenation and overflow.
+    if (slide.layout === "BULLETS" || slide.layout === "RESUMO" || slide.layout === "CARDS_GRID") {
+      result.push(slide);
+      continue;
     }
 
     result.push(slide);
@@ -879,19 +937,21 @@ function renderBullets(pptx: any, data: SlideData) {
     const slide = pptx.addSlide();
     slide.background = { color: C.BG_LIGHT };
 
-    // Title bar
+    // Title bar (dynamic height to avoid header clipping)
+    const headerH = getHeaderHeight(titleText);
+    const headerFont = getHeaderTitleFontSize(titleText);
     slide.addShape(pptx.ShapeType.rect, {
-      x: 0, y: 0, w: SLIDE_W, h: HEADER_H,
+      x: 0, y: 0, w: SLIDE_W, h: headerH,
       fill: { color: C.PRIMARY },
     });
     addTextSafe(slide, titleText, {
-      x: MARGIN_L, y: 0.08, w: SAFE_W, h: HEADER_H - 0.16,
-      fontSize: 28, fontFace: FONT, color: C.WHITE, bold: true,
+      x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
+      fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
       valign: "middle",
     });
 
     // Render each section with its header and bullets
-    let currentY = CONTENT_START_Y;
+    let currentY = headerH + 0.25;
 
     for (const sec of group) {
       // Section header
@@ -939,14 +999,16 @@ function renderSingleBulletSlide(pptx: any, titleText: string, bullets: string[]
   const slide = pptx.addSlide();
   slide.background = { color: C.BG_LIGHT };
 
-  // Title bar
+  // Title bar (dynamic height to avoid header clipping)
+  const headerH = getHeaderHeight(titleText);
+  const headerFont = getHeaderTitleFontSize(titleText);
   slide.addShape(pptx.ShapeType.rect, {
-    x: 0, y: 0, w: SLIDE_W, h: HEADER_H,
+    x: 0, y: 0, w: SLIDE_W, h: headerH,
     fill: { color: C.PRIMARY },
   });
   addTextSafe(slide, titleText, {
-    x: MARGIN_L, y: 0.08, w: SAFE_W, h: HEADER_H - 0.16,
-    fontSize: 28, fontFace: FONT, color: C.WHITE, bold: true,
+    x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
+    fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
     valign: "middle",
   });
 
@@ -958,13 +1020,15 @@ function renderSingleBulletSlide(pptx: any, titleText: string, bullets: string[]
     fontSize: FONT_PT,
   });
 
-  // Calculate height dynamically
+  // Calculate height dynamically (based on real available area below dynamic header)
+  const contentStartY = headerH + 0.25;
+  const maxContentH = SLIDE_H - contentStartY - BOTTOM_MARGIN;
   const estimatedH = estimateBulletsHeight(bullets, FONT_PT, CHARS_PER_LINE);
-  const contentH = Math.min(estimatedH + 0.15, MAX_CONTENT_H);
+  const contentH = Math.min(estimatedH + 0.15, maxContentH);
 
   addTextSafe(slide, bulletsArr, {
     x: MARGIN_L,
-    y: CONTENT_START_Y,
+    y: contentStartY,
     w: SAFE_W,
     h: contentH,
     valign: "top",
@@ -978,14 +1042,18 @@ function renderCardsGrid(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   slide.background = { color: C.BG_LIGHT };
 
+  const titleText = deduplicateTitle(data.title);
+  const headerH = getHeaderHeight(titleText);
+  const headerFont = getHeaderTitleFontSize(titleText);
+
   slide.addShape(pptx.ShapeType.rect, {
-    x: 0, y: 0, w: SLIDE_W, h: HEADER_H,
+    x: 0, y: 0, w: SLIDE_W, h: headerH,
     fill: { color: C.PRIMARY },
   });
 
-  addTextSafe(slide, deduplicateTitle(data.title), {
-    x: MARGIN_L, y: 0.08, w: SAFE_W, h: HEADER_H - 0.16,
-    fontSize: 28, fontFace: FONT, color: C.WHITE, bold: true,
+  addTextSafe(slide, titleText, {
+    x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
+    fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
     valign: "middle",
   });
 
@@ -993,7 +1061,7 @@ function renderCardsGrid(pptx: any, data: SlideData) {
   const count = items.length;
   const cols = 2;
   const rows = Math.ceil(count / cols);
-  const gridTop = HEADER_H + 0.3;
+  const gridTop = headerH + 0.3;
   const gridH = SLIDE_H - gridTop - BOTTOM_MARGIN;
   const cardW = (SAFE_W - 0.3) / cols;
   const cardH = Math.min((gridH - (rows - 1) * 0.2) / rows, 1.4);
@@ -1057,9 +1125,13 @@ function renderTabela(pptx: any, data: SlideData) {
   const colW = Array(colCount).fill(SAFE_W / colCount);
   const estimatedH = calcTableHeight(rows, colW);
 
+  const titleText = deduplicateTitle(data.title);
+  const headerH = getHeaderHeight(titleText);
+  const maxTableH = SLIDE_H - (headerH + 0.2) - BOTTOM_MARGIN;
+
   // Split if table exceeds available height
-  if (estimatedH > MAX_TABLE_H && rows.length > 1) {
-    const chunks = splitTableRows(rows, colW, MAX_TABLE_H);
+  if (estimatedH > maxTableH && rows.length > 1) {
+    const chunks = splitTableRows(rows, colW, maxTableH);
     if (chunks.length > 1) {
       const baseTitle = cleanPartTitle(data.title);
       chunks.forEach((chunk, idx) => {
@@ -1078,12 +1150,12 @@ function renderTabela(pptx: any, data: SlideData) {
   slide.background = { color: C.BG_LIGHT };
 
   slide.addShape(pptx.ShapeType.rect, {
-    x: 0, y: 0, w: SLIDE_W, h: HEADER_H,
+    x: 0, y: 0, w: SLIDE_W, h: headerH,
     fill: { color: C.PRIMARY },
   });
-  addTextSafe(slide, deduplicateTitle(data.title), {
-    x: MARGIN_L, y: 0.08, w: SAFE_W, h: HEADER_H - 0.16,
-    fontSize: 28, fontFace: FONT, color: C.WHITE, bold: true,
+  addTextSafe(slide, titleText, {
+    x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
+    fontSize: getHeaderTitleFontSize(titleText), fontFace: FONT, color: C.WHITE, bold: true,
     valign: "middle",
   });
 
@@ -1136,10 +1208,11 @@ function renderTabela(pptx: any, data: SlideData) {
   });
 
   // +15% padding for safety
-  const safeH = Math.min(estimatedH * 1.15 + 0.2, MAX_TABLE_H);
+  const safeH = Math.min(estimatedH * 1.15 + 0.2, maxTableH);
+  const tableY = headerH + 0.2;
   slide.addTable(tableData, {
     x: MARGIN_L,
-    y: TABLE_Y,
+    y: tableY,
     w: SAFE_W,
     h: safeH,
     colW,
