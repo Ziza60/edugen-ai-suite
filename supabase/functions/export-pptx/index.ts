@@ -2,6 +2,19 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "https://esm.sh/pptxgenjs@3.12.0";
 
+/**
+ * REGRAS DE OURO — NUNCA VIOLAR:
+ *
+ * 1. NUNCA usar autoFit: true — encolhe texto para tamanho ilegível
+ * 2. NUNCA usar altura fixa (h: 4.375) para caixas de conteúdo
+ * 3. SEMPRE usar splitBulletsToFit() antes de renderizar bullets
+ * 4. SEMPRE calcular titleH dinamicamente com getTitleHeight()
+ * 5. SEMPRE posicionar elementos seguintes com Y = elemento_anterior_Y + elemento_anterior_H + gap
+ * 6. NUNCA deixar qualquer elemento com bottom > (SLIDE_H - 0.20)
+ *
+ * Slide widescreen = 10.0 x 5.625 polegadas — NÃO é 10 x 7.5!
+ */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -29,24 +42,23 @@ const FONT = "Calibri";
 const SLIDE_W = 10;
 const SLIDE_H = 5.625;
 const MX = 0.6;
-const MY = 0.6;
-const CONTENT_W = SLIDE_W - MX * 2;
+const CONTENT_W = SLIDE_W - MX * 2; // 8.8
 
 const HEADER_H = 0.70;
-const CONTENT_Y = 0.95;
-const MARGIN_BOTTOM = 0.20;
-const MAX_CONTENT_H = SLIDE_H - CONTENT_Y - MARGIN_BOTTOM;
+const CONTENT_START_Y = 0.95;
+const BOTTOM_MARGIN = 0.25;
+const MAX_CONTENT_H = SLIDE_H - CONTENT_START_Y - BOTTOM_MARGIN; // ~4.375
 
-const FONT_SIZE_PT = 16;
-const LINE_HEIGHT_IN = (FONT_SIZE_PT * 1.4) / 72;
-const PARA_SPACE_IN = 10 / 72;
-const CHARS_PER_LINE = 85;
+const FONT_PT = 16;
+const LINE_H_IN = (FONT_PT * 1.35) / 72;   // 0.300in per line
+const PARA_GAP_IN = 12 / 72;               // 0.167in between bullets
+const CHARS_PER_LINE = 80;                  // ~80 chars per line at 16pt in 8.8in
 
 const TABLE_Y = 0.90;
 const HEADER_ROW_H = 0.45;
-const ROW_BASE_H = 0.45;
+const ROW_BASE_H = 0.55;  // conservative estimate per row
 const CELL_LINE_H_IN = 0.22;
-const MAX_TABLE_H = SLIDE_H - TABLE_Y - 0.15;
+const MAX_TABLE_H = SLIDE_H - TABLE_Y - BOTTOM_MARGIN;
 
 const MIN_BULLETS = 3;
 const MAX_BULLETS = 5;
@@ -87,8 +99,67 @@ function deduplicateTitle(title: string): string {
 }
 
 /* ═══════════════════════════════════════════════════════
-   BULLET TEXT ARRAY BUILDER (FIX FOR BUG #1 & #4)
-   Each bullet is a separate text object with breakLine: true
+   SAFE TEXT — NEVER autoFit, NEVER overflow visible
+   ═══════════════════════════════════════════════════════ */
+
+function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
+  slide.addText(text, {
+    ...options,
+    autoFit: false,
+    overflow: "clip",
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   DYNAMIC HEIGHT HELPERS (CORREÇÃO #1 & #2)
+   ═══════════════════════════════════════════════════════ */
+
+/** Calculate title box height based on text length */
+function getTitleHeight(titleText: string, boxWidthIn: number, fontSizePt: number): number {
+  const charsPerLine = Math.floor(boxWidthIn * 5.5); // ~5.5 chars/pt/inch at given font
+  const lines = Math.max(1, Math.ceil(titleText.length / Math.max(1, charsPerLine)));
+  const lineHeightIn = (fontSizePt * 1.25) / 72;
+  return Math.max(0.70, lines * lineHeightIn + 0.20); // minimum 0.70in
+}
+
+/** Estimate height of a single bullet item */
+function estimateBulletHeight(item: string, fontSize = FONT_PT, charsPerLine = CHARS_PER_LINE): number {
+  const text = sanitize(item || "");
+  const lines = Math.max(1, Math.ceil(text.length / Math.max(1, charsPerLine)));
+  const lineHeight = (fontSize * 1.35) / 72;
+  return (lines * lineHeight) + PARA_GAP_IN;
+}
+
+/** Estimate total height of a list of bullets */
+function estimateBulletsHeight(bullets: string[], fontSize = FONT_PT, charsPerLine = CHARS_PER_LINE): number {
+  return bullets.reduce((sum, b) => sum + estimateBulletHeight(b, fontSize, charsPerLine), 0);
+}
+
+/** Split bullets into groups that fit within maxH */
+function splitBulletsToFit(bullets: string[], maxH: number, fontSize = FONT_PT, charsPerLine = CHARS_PER_LINE): string[][] {
+  const groups: string[][] = [];
+  let current: string[] = [];
+  let currentH = 0;
+
+  for (const b of bullets) {
+    const itemH = estimateBulletHeight(b, fontSize, charsPerLine);
+
+    if (currentH + itemH > maxH && current.length > 0) {
+      groups.push(current);
+      current = [b];
+      currentH = itemH;
+    } else {
+      current.push(b);
+      currentH += itemH;
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups.length > 0 ? groups : [bullets];
+}
+
+/* ═══════════════════════════════════════════════════════
+   BULLET TEXT ARRAY BUILDER
+   Each bullet is a separate text object with breakLine
    ═══════════════════════════════════════════════════════ */
 
 function buildBulletTextArray(
@@ -137,14 +208,6 @@ function buildBulletTextArray(
   return result;
 }
 
-function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
-  slide.addText(text, {
-    autoFit: false,
-    overflow: "clip",
-    ...options,
-  });
-}
-
 /* ═══════════════════════════════════════════════════════
    CONTENT PARSING
    ═══════════════════════════════════════════════════════ */
@@ -189,7 +252,6 @@ function parseModuleContent(content: string): ParsedBlock[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // Markdown table
     if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
       if (!inTable) {
         flushBullets();
@@ -204,14 +266,12 @@ function parseModuleContent(content: string): ParsedBlock[] {
     }
     if (inTable) flushTable();
 
-    // Heading
     if (/^#{1,6}\s/.test(trimmed)) {
       flushBullets();
       curHeading = sanitize(trimmed.replace(/^#{1,6}\s*/, ""));
       continue;
     }
 
-    // Bullet / numbered list
     if (/^[-*]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed)) {
       const raw = trimmed.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "");
       const clean = sanitize(raw);
@@ -219,7 +279,6 @@ function parseModuleContent(content: string): ParsedBlock[] {
       continue;
     }
 
-    // Plain text as bullet
     const clean = sanitize(trimmed);
     if (clean.length > 8) curBullets.push(clean);
   }
@@ -249,7 +308,7 @@ interface SlideData {
 }
 
 /* ═══════════════════════════════════════════════════════
-   HELPERS FOR MERGE/SPLIT (BUG #2 & #3)
+   HELPERS FOR MERGE/SPLIT
    ═══════════════════════════════════════════════════════ */
 
 function sameParentTopic(title1: string, title2: string): boolean {
@@ -279,7 +338,7 @@ function isObjectivesHeading(heading: string): boolean {
 }
 
 /* ═══════════════════════════════════════════════════════
-   PARAGRAPH → BULLETS CONVERSION (BUG #3)
+   PARAGRAPH → BULLETS CONVERSION
    ═══════════════════════════════════════════════════════ */
 
 interface RawSlide {
@@ -298,7 +357,6 @@ function processSlideContent(slide: RawSlide): RawSlide {
   const hasOnlyParagraph = !hasBullets && slide.content && slide.content.length > 0;
 
   if (hasOnlyParagraph && slide.content) {
-    // Break paragraph into sentence-bullets
     const sentences = slide.content
       .split(/(?<=[.!?])\s+/)
       .map((s) => sanitize(s.trim()))
@@ -315,7 +373,7 @@ function processSlideContent(slide: RawSlide): RawSlide {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SPLIT/MERGE ALGORITHM (BUG #2)
+   SPLIT/MERGE ALGORITHM
    ═══════════════════════════════════════════════════════ */
 
 function splitOrMergeSlides(rawSlides: RawSlide[]): RawSlide[] {
@@ -324,7 +382,6 @@ function splitOrMergeSlides(rawSlides: RawSlide[]): RawSlide[] {
   for (let i = 0; i < rawSlides.length; i++) {
     let slide = rawSlides[i];
 
-    // Prepend bullets from previous slide marked mergeWithNext
     if (slide.prependBullets) {
       slide.bullets = [...slide.prependBullets, ...slide.bullets];
       delete slide.prependBullets;
@@ -332,7 +389,6 @@ function splitOrMergeSlides(rawSlides: RawSlide[]): RawSlide[] {
 
     const bullets = slide.bullets || [];
 
-    // CASE 1: Slide with < MIN_BULLETS → try merge with previous
     if (bullets.length > 0 && bullets.length < MIN_BULLETS) {
       const prev = result.length > 0 ? result[result.length - 1] : null;
       if (
@@ -345,14 +401,12 @@ function splitOrMergeSlides(rawSlides: RawSlide[]): RawSlide[] {
         prev.title = removePartSuffix(prev.title);
         continue;
       }
-      // If can't merge back and < 2 bullets, push forward
       if (bullets.length < 2 && i + 1 < rawSlides.length && !rawSlides[i + 1].isTable) {
         rawSlides[i + 1].prependBullets = bullets;
         continue;
       }
     }
 
-    // Handle mergeWithNext flag (single paragraph)
     if (slide.mergeWithNext && i + 1 < rawSlides.length && !rawSlides[i + 1].isTable) {
       const content = slide.content || (slide.bullets || []).join(". ");
       if (content) {
@@ -364,7 +418,6 @@ function splitOrMergeSlides(rawSlides: RawSlide[]): RawSlide[] {
 
     const finalBullets = slide.bullets || bullets;
 
-    // CASE 2: Slide with > MAX_BULLETS → split evenly
     if (finalBullets.length > MAX_BULLETS) {
       const mid = Math.ceil(finalBullets.length / 2);
       result.push({ ...slide, bullets: finalBullets.slice(0, mid), title: slide.title + " (Parte 1)" });
@@ -379,7 +432,7 @@ function splitOrMergeSlides(rawSlides: RawSlide[]): RawSlide[] {
 }
 
 /* ═══════════════════════════════════════════════════════
-   VALIDATION: discard slides with insufficient content
+   VALIDATION
    ═══════════════════════════════════════════════════════ */
 
 function validateBeforeRender(slides: RawSlide[]): RawSlide[] {
@@ -426,7 +479,6 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
 
   const slides: SlideData[] = [];
 
-  // 1) ABERTURA_MODULO
   slides.push({
     layout: "ABERTURA_MODULO",
     title: moduleTitle,
@@ -435,7 +487,6 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
     moduleIndex: modIndex,
   });
 
-  // 2) Build raw slides from content blocks
   const rawSlides: RawSlide[] = [];
 
   for (const block of contentBlocks) {
@@ -454,7 +505,6 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
     const heading = sanitize(block.heading || moduleTitle);
 
     if (items.length === 0) {
-      // Might be a paragraph-only block; mark as content
       const blockContent = block.items.join(" ").trim();
       if (blockContent.length > 30) {
         rawSlides.push({ title: heading, bullets: [], content: sanitize(blockContent) });
@@ -465,16 +515,10 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
     rawSlides.push({ title: heading, bullets: items });
   }
 
-  // Process paragraphs into bullets (Bug #3)
   const processed = rawSlides.map(processSlideContent);
-
-  // Split/merge for balanced content (Bug #2)
   const balanced = splitOrMergeSlides(processed);
-
-  // Validate
   const validated = validateBeforeRender(balanced);
 
-  // Convert to SlideData
   for (const raw of validated) {
     if (raw.isTable && raw.headers && raw.rows) {
       slides.push({
@@ -497,7 +541,6 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
     });
   }
 
-  // 3) Resumo slide
   if (resumoItems.length > 0) {
     slides.push({
       layout: "RESUMO",
@@ -527,7 +570,6 @@ function validateAndFix(slides: SlideData[]): SlideData[] {
 
     const bulletCount = slide.items?.length || 0;
 
-    // Merge thin slides into previous bullet/resumo slide
     if (bulletCount > 0 && bulletCount < MIN_BULLETS) {
       const prev = result.length > 0 ? result[result.length - 1] : null;
       if (prev && (prev.layout === "BULLETS" || prev.layout === "RESUMO") && prev.items) {
@@ -542,7 +584,6 @@ function validateAndFix(slides: SlideData[]): SlideData[] {
     result.push(slide);
   }
 
-  // Final sanitization pass
   for (const slide of result) {
     if (slide.title) slide.title = sanitize(slide.title);
     if (slide.subtitle) slide.subtitle = sanitize(slide.subtitle);
@@ -580,51 +621,8 @@ function auditSlides(slides: SlideData[]): string[] {
 }
 
 /* ═══════════════════════════════════════════════════════
-   RENDER HELPERS (DYNAMIC HEIGHT / SPLIT)
+   TABLE HEIGHT HELPERS
    ═══════════════════════════════════════════════════════ */
-
-function estimateTextLines(text: string, charsPerLine: number): number {
-  const clean = sanitize(text || "");
-  return Math.max(1, Math.ceil(clean.length / Math.max(1, charsPerLine)));
-}
-
-function estimateBulletHeight(item: string, fontSize = FONT_SIZE_PT, charsPerLine = CHARS_PER_LINE): number {
-  const lines = estimateTextLines(item, charsPerLine);
-  const lineHeight = (fontSize * 1.4) / 72;
-  return (lines * lineHeight) + PARA_SPACE_IN;
-}
-
-function estimateContentHeight(items: string[], fontSize = FONT_SIZE_PT, charsPerLine = CHARS_PER_LINE): number {
-  return items.reduce((sum, bullet) => sum + estimateBulletHeight(bullet, fontSize, charsPerLine), 0);
-}
-
-function shouldSplitByHeight(items: string[], maxHeight: number, fontSize = FONT_SIZE_PT, charsPerLine = CHARS_PER_LINE): boolean {
-  return estimateContentHeight(items, fontSize, charsPerLine) > maxHeight;
-}
-
-function splitItemsByHeight(items: string[], maxHeight: number, fontSize = FONT_SIZE_PT, charsPerLine = CHARS_PER_LINE): [string[], string[]] {
-  if (items.length <= 1) return [items, []];
-
-  const target = estimateContentHeight(items, fontSize, charsPerLine) / 2;
-  const first: string[] = [];
-  let acc = 0;
-
-  for (let i = 0; i < items.length; i++) {
-    const h = estimateBulletHeight(items[i], fontSize, charsPerLine);
-    const remaining = items.length - i;
-    if (first.length > 0 && acc + h > target && remaining >= 1) break;
-    first.push(items[i]);
-    acc += h;
-  }
-
-  if (first.length === 0) first.push(items[0]);
-  if (first.length >= items.length) {
-    const mid = Math.ceil(items.length / 2);
-    return [items.slice(0, mid), items.slice(mid)];
-  }
-
-  return [first, items.slice(first.length)];
-}
 
 function cleanPartTitle(title: string): string {
   return removePartSuffix(deduplicateTitle(title));
@@ -677,7 +675,7 @@ function splitTableRows(rows: string[][], colWidths: number[], maxTableH: number
    SLIDE RENDERERS
    ═══════════════════════════════════════════════════════ */
 
-// Layout 1 — CAPA
+// Layout 1 — CAPA (CORREÇÃO #1: título com altura dinâmica)
 function renderCapa(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   slide.background = { color: C.PRIMARY };
@@ -687,17 +685,24 @@ function renderCapa(pptx: any, data: SlideData) {
     fill: { color: C.ACCENT },
   });
 
+  // Dynamic title height
+  const titleH = getTitleHeight(data.title, 8.4, 44);
   addTextSafe(slide, data.title, {
-    x: 0.8, y: 0.8, w: 8.4, h: 2.4,
+    x: 0.8, y: 0.8, w: 8.4, h: titleH,
     fontSize: 44, fontFace: FONT, color: C.WHITE, bold: true,
     align: "left", valign: "middle",
   });
 
+  // Position description BELOW title dynamically
+  const descY = 0.8 + titleH + 0.20;
   if (data.description) {
-    addTextSafe(slide, sanitize(data.description), {
-      x: 0.8, y: 3.3, w: 7.6, h: 1.0,
-      fontSize: 18, fontFace: FONT, color: C.LIGHT_BLUE, align: "left", valign: "top",
-    });
+    const maxDescH = Math.min(1.0, SLIDE_H - descY - 0.8);
+    if (maxDescH > 0.3) {
+      addTextSafe(slide, sanitize(data.description), {
+        x: 0.8, y: descY, w: 7.6, h: maxDescH,
+        fontSize: 18, fontFace: FONT, color: C.LIGHT_BLUE, align: "left", valign: "top",
+      });
+    }
   }
 
   const d = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
@@ -705,50 +710,69 @@ function renderCapa(pptx: any, data: SlideData) {
   if (data.moduleCount) footerParts.push(`${data.moduleCount} módulos`);
   footerParts.push(d);
   addTextSafe(slide, footerParts.join("  •  "), {
-    x: 0.8, y: 4.8, w: 8.4, h: 0.4,
+    x: 0.8, y: SLIDE_H - 0.60, w: 8.4, h: 0.4,
     fontSize: 12, fontFace: FONT, color: C.TEXT_SEC, align: "left",
   });
 }
 
-// Layout 2 — ABERTURA DE MÓDULO
+// Layout 2 — ABERTURA DE MÓDULO (CORREÇÃO #3: Y dinâmico para objetivos)
 function renderAberturaModulo(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   slide.background = { color: C.PRIMARY };
 
+  // Badge módulo: fixed at top
+  const badgeY = 0.35;
+  const badgeH = 0.38;
   if (data.subtitle) {
     slide.addShape(pptx.ShapeType.roundRect, {
-      x: 0.6, y: 0.6, w: 1.6, h: 0.38,
+      x: MX, y: badgeY, w: 1.6, h: badgeH,
       fill: { color: C.ACCENT },
       rectRadius: 0.08,
     });
     addTextSafe(slide, data.subtitle.toUpperCase(), {
-      x: 0.6, y: 0.6, w: 1.6, h: 0.38,
+      x: MX, y: badgeY, w: 1.6, h: badgeH,
       fontSize: 13, fontFace: FONT, color: C.PRIMARY, bold: true,
       align: "center", valign: "middle",
     });
   }
 
+  // Dynamic title height
+  const titleY = 0.90;
+  const titleH = getTitleHeight(data.title, CONTENT_W, 32);
   addTextSafe(slide, data.title, {
-    x: 0.6, y: 1.2, w: 8.8, h: 1.4,
-    fontSize: 38, fontFace: FONT, color: C.WHITE, bold: true,
+    x: MX, y: titleY, w: CONTENT_W, h: titleH,
+    fontSize: 32, fontFace: FONT, color: C.WHITE, bold: true,
     valign: "top",
   });
 
+  // Objectives positioned BELOW the title dynamically
   if (data.items && data.items.length > 0) {
+    const labelY = titleY + titleH + 0.15;
+    const labelH = 0.35;
     addTextSafe(slide, "Objetivos", {
-      x: 0.6, y: 2.9, w: 3, h: 0.35,
+      x: MX, y: labelY, w: 3, h: labelH,
       fontSize: 14, fontFace: FONT, color: C.ACCENT, bold: true,
     });
+
+    const objectivesY = labelY + labelH + 0.05;
+    const availableH = SLIDE_H - objectivesY - BOTTOM_MARGIN;
+
+    // If objectives don't fit, reduce font size
+    const objEstimatedH = estimateBulletsHeight(data.items, 15, 85);
+    const objFontSize = objEstimatedH > availableH ? 13 : 15;
+    const objCharsPerLine = objFontSize === 13 ? 95 : 85;
 
     const objTextArr = buildBulletTextArray(data.items, {
       markerChar: "✓",
       markerColor: C.ACCENT,
       textColor: C.WHITE,
-      fontSize: 16,
+      fontSize: objFontSize,
     });
 
+    const contentH = Math.min(estimateBulletsHeight(data.items, objFontSize, objCharsPerLine) + 0.15, availableH);
+
     addTextSafe(slide, objTextArr, {
-      x: 0.6, y: 3.3, w: 8.8, h: 1.9,
+      x: MX, y: objectivesY, w: CONTENT_W, h: Math.max(0.5, contentH),
       valign: "top",
       paraSpaceAfter: 8,
       lineSpacingMultiple: 1.25,
@@ -756,90 +780,91 @@ function renderAberturaModulo(pptx: any, data: SlideData) {
   }
 }
 
-// Layout 3 — CONTEÚDO COM BULLETS (altura dinâmica + split por altura)
+// Layout 3 — CONTEÚDO COM BULLETS (CORREÇÃO #2: splitBulletsToFit + altura dinâmica)
 function renderBullets(pptx: any, data: SlideData) {
-  const bullets = (data.items || []).map((b) => sanitize(b)).filter(Boolean);
-  if (bullets.length === 0) return;
+  const allBullets = (data.items || []).map((b) => sanitize(b)).filter(Boolean);
+  if (allBullets.length === 0) return;
 
-  if (shouldSplitByHeight(bullets, MAX_CONTENT_H, 16, CHARS_PER_LINE) && bullets.length > 1) {
-    const [part1, part2] = splitItemsByHeight(bullets, MAX_CONTENT_H, 16, CHARS_PER_LINE);
-    if (part2.length > 0) {
-      const baseTitle = cleanPartTitle(data.title);
-      renderBullets(pptx, { ...data, title: `${baseTitle} (Parte 1)`, items: part1 });
-      renderBullets(pptx, { ...data, title: `${baseTitle} (Parte 2)`, items: part2 });
-      return;
-    }
-  }
+  // Split into groups that fit within MAX_CONTENT_H BEFORE rendering
+  const groups = splitBulletsToFit(allBullets, MAX_CONTENT_H, FONT_PT, CHARS_PER_LINE);
 
-  const slide = pptx.addSlide();
-  slide.background = { color: C.BG_LIGHT };
+  groups.forEach((bullets, idx) => {
+    const suffix = groups.length > 1 ? ` (Parte ${idx + 1})` : "";
+    const titleText = deduplicateTitle(cleanPartTitle(data.title) + suffix);
 
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0, y: 0, w: SLIDE_W, h: HEADER_H,
-    fill: { color: C.PRIMARY },
-  });
+    const slide = pptx.addSlide();
+    slide.background = { color: C.BG_LIGHT };
 
-  addTextSafe(slide, deduplicateTitle(data.title), {
-    x: MX, y: 0.08, w: CONTENT_W, h: HEADER_H - 0.16,
-    fontSize: 28, fontFace: FONT, color: C.WHITE, bold: true,
-    valign: "middle",
-  });
+    // Title bar
+    slide.addShape(pptx.ShapeType.rect, {
+      x: 0, y: 0, w: SLIDE_W, h: HEADER_H,
+      fill: { color: C.PRIMARY },
+    });
 
-  const bulletsArr: any[] = [];
-  bullets.forEach((b, idx) => {
-    const isLast = idx === bullets.length - 1;
-    const isSubCategory = /^.+:$/.test(b) && b.length < 50;
+    addTextSafe(slide, titleText, {
+      x: MX, y: 0.08, w: CONTENT_W, h: HEADER_H - 0.16,
+      fontSize: 28, fontFace: FONT, color: C.WHITE, bold: true,
+      valign: "middle",
+    });
 
-    if (isSubCategory) {
-      bulletsArr.push({
-        text: b + (isLast ? "" : "\n"),
-        options: {
-          fontSize: 15,
-          fontFace: FONT,
-          color: C.PRIMARY,
-          bold: true,
-          paraSpaceBefore: 8,
-          paraSpaceAfter: 2,
-          breakLine: !isLast,
+    // Build bullet text array
+    const bulletsArr: any[] = [];
+    bullets.forEach((b, bidx) => {
+      const isLast = bidx === bullets.length - 1;
+      const isSubCategory = /^.+:$/.test(b) && b.length < 50;
+
+      if (isSubCategory) {
+        bulletsArr.push({
+          text: b + (isLast ? "" : "\n"),
+          options: {
+            fontSize: 15,
+            fontFace: FONT,
+            color: C.PRIMARY,
+            bold: true,
+            paraSpaceBefore: 8,
+            paraSpaceAfter: 2,
+            breakLine: !isLast,
+          },
+        });
+        return;
+      }
+
+      bulletsArr.push(
+        {
+          text: "●  ",
+          options: {
+            color: C.MEDIUM,
+            bold: true,
+            fontSize: FONT_PT,
+            fontFace: FONT,
+            breakLine: false,
+          },
         },
-      });
-      return;
-    }
-
-    bulletsArr.push(
-      {
-        text: "●  ",
-        options: {
-          color: C.MEDIUM,
-          bold: true,
-          fontSize: 16,
-          fontFace: FONT,
-          breakLine: false,
+        {
+          text: b + (isLast ? "" : "\n"),
+          options: {
+            color: C.TEXT_BODY,
+            fontSize: FONT_PT,
+            fontFace: FONT,
+            breakLine: !isLast,
+          },
         },
-      },
-      {
-        text: b + (isLast ? "" : "\n"),
-        options: {
-          color: C.TEXT_BODY,
-          fontSize: 16,
-          fontFace: FONT,
-          breakLine: !isLast,
-        },
-      },
-    );
-  });
+      );
+    });
 
-  const estimatedH = estimateContentHeight(bullets, 16, CHARS_PER_LINE);
-  const contentH = Math.min(estimatedH + 0.3, MAX_CONTENT_H);
+    // Calculate height dynamically — NEVER fixed
+    const estimatedH = estimateBulletsHeight(bullets, FONT_PT, CHARS_PER_LINE);
+    const contentH = Math.min(estimatedH + 0.15, MAX_CONTENT_H);
 
-  addTextSafe(slide, bulletsArr, {
-    x: MX,
-    y: CONTENT_Y,
-    w: CONTENT_W,
-    h: contentH,
-    valign: "top",
-    paraSpaceAfter: 10,
-    lineSpacingMultiple: 1.3,
+    addTextSafe(slide, bulletsArr, {
+      x: MX,
+      y: CONTENT_START_Y,
+      w: CONTENT_W,
+      h: contentH,
+      valign: "top",
+      paraSpaceAfter: 12,
+      lineSpacingMultiple: 1.35,
+    });
   });
 }
 
@@ -864,7 +889,7 @@ function renderCardsGrid(pptx: any, data: SlideData) {
   const cols = 2;
   const rows = Math.ceil(count / cols);
   const gridTop = HEADER_H + 0.3;
-  const gridH = SLIDE_H - gridTop - 0.35;
+  const gridH = SLIDE_H - gridTop - BOTTOM_MARGIN;
   const cardW = (CONTENT_W - 0.3) / cols;
   const cardH = Math.min((gridH - (rows - 1) * 0.2) / rows, 1.4);
   const gapX = 0.3;
@@ -875,6 +900,9 @@ function renderCardsGrid(pptx: any, data: SlideData) {
     const row = Math.floor(idx / cols);
     const x = MX + col * (cardW + gapX);
     const y = gridTop + row * (cardH + gapY);
+
+    // Ensure card bottom doesn't exceed slide
+    if (y + cardH > SLIDE_H - BOTTOM_MARGIN) return;
 
     slide.addShape(pptx.ShapeType.rect, {
       x, y, w: cardW, h: cardH,
@@ -912,7 +940,7 @@ function renderCardsGrid(pptx: any, data: SlideData) {
   });
 }
 
-// Layout 5 — TABELA COMPARATIVA (altura dinâmica + split por altura)
+// Layout 5 — TABELA COMPARATIVA (CORREÇÃO #4: altura com folga generosa)
 function renderTabela(pptx: any, data: SlideData) {
   const headers = (data.tableHeaders || []).map((h) => sanitize(h));
   const rows = (data.tableRows || []).map((r) => r.map((c) => sanitize(c)));
@@ -922,6 +950,7 @@ function renderTabela(pptx: any, data: SlideData) {
   const colW = Array(colCount).fill(CONTENT_W / colCount);
   const estimatedH = calcTableHeight(rows, colW);
 
+  // Split if table exceeds available height
   if (estimatedH > MAX_TABLE_H && rows.length > 1) {
     const chunks = splitTableRows(rows, colW, MAX_TABLE_H);
     if (chunks.length > 1) {
@@ -999,70 +1028,74 @@ function renderTabela(pptx: any, data: SlideData) {
     tableData.push(dataRow);
   });
 
-  const safeH = Math.min(calcTableHeight(rows, colW) + 0.2, MAX_TABLE_H);
+  // +15% padding for safety
+  const safeH = Math.min(estimatedH * 1.15 + 0.2, MAX_TABLE_H);
   slide.addTable(tableData, {
     x: MX,
     y: TABLE_Y,
     w: CONTENT_W,
     h: safeH,
     colW,
+    rowH: ROW_BASE_H,
     autoPage: false,
   });
 }
 
-// Layout 6 — RESUMO (altura dinâmica + split por altura)
+// Layout 6 — RESUMO (dynamic Y positioning)
 function renderResumo(pptx: any, data: SlideData) {
   const items = (data.items || []).map((i) => sanitize(i)).filter(Boolean);
   if (!items.length) return;
 
-  const summaryY = 1.5;
-  const summaryMaxH = SLIDE_H - summaryY - 0.2;
+  // Calculate title height dynamically
+  const titleText = deduplicateTitle(data.subtitle || data.title);
+  const titleH = getTitleHeight(titleText, 9.2, 24);
+  const titleY = 0.7;
+  const bulletsY = titleY + titleH + 0.15;
+  const summaryMaxH = SLIDE_H - bulletsY - BOTTOM_MARGIN;
 
-  if (shouldSplitByHeight(items, summaryMaxH, 14, 95) && items.length > 1) {
-    const [part1, part2] = splitItemsByHeight(items, summaryMaxH, 14, 95);
-    if (part2.length > 0) {
-      const baseTitle = cleanPartTitle(data.subtitle || data.title);
-      renderResumo(pptx, { ...data, subtitle: `${baseTitle} (Parte 1)`, items: part1 });
-      renderResumo(pptx, { ...data, subtitle: `${baseTitle} (Parte 2)`, items: part2 });
-      return;
-    }
-  }
+  // Split if needed using splitBulletsToFit
+  const groups = splitBulletsToFit(items, summaryMaxH, 14, 95);
 
-  const slide = pptx.addSlide();
-  slide.background = { color: C.BG_LIGHT };
+  groups.forEach((groupItems, idx) => {
+    const suffix = groups.length > 1 ? ` (Parte ${idx + 1})` : "";
+    const slideTitle = cleanPartTitle(data.subtitle || data.title) + suffix;
 
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0, y: 0, w: 0.18, h: SLIDE_H,
-    fill: { color: C.ACCENT },
-  });
+    const slide = pptx.addSlide();
+    slide.background = { color: C.BG_LIGHT };
 
-  addTextSafe(slide, "RESUMO", {
-    x: 0.4, y: 0.3, w: 2, h: 0.4,
-    fontSize: 13, fontFace: FONT, color: C.ACCENT, bold: true,
-  });
+    slide.addShape(pptx.ShapeType.rect, {
+      x: 0, y: 0, w: 0.18, h: SLIDE_H,
+      fill: { color: C.ACCENT },
+    });
 
-  addTextSafe(slide, deduplicateTitle(data.subtitle || data.title), {
-    x: 0.4, y: 0.7, w: 9.2, h: 0.7,
-    fontSize: 24, fontFace: FONT, color: C.PRIMARY, bold: true,
-    valign: "top",
-  });
+    addTextSafe(slide, "RESUMO", {
+      x: 0.4, y: 0.3, w: 2, h: 0.4,
+      fontSize: 13, fontFace: FONT, color: C.ACCENT, bold: true,
+    });
 
-  const bulletLines = buildBulletTextArray(items, {
-    markerChar: "✓",
-    markerColor: C.ACCENT,
-    textColor: C.TEXT_BODY,
-    fontSize: 14,
-  });
+    addTextSafe(slide, deduplicateTitle(slideTitle), {
+      x: 0.4, y: titleY, w: 9.2, h: titleH,
+      fontSize: 24, fontFace: FONT, color: C.PRIMARY, bold: true,
+      valign: "top",
+    });
 
-  const contentH = Math.min(estimateContentHeight(items, 14, 95) + 0.3, summaryMaxH);
-  addTextSafe(slide, bulletLines, {
-    x: 0.4,
-    y: summaryY,
-    w: 9.2,
-    h: contentH,
-    valign: "top",
-    paraSpaceAfter: 10,
-    lineSpacingMultiple: 1.3,
+    const bulletLines = buildBulletTextArray(groupItems, {
+      markerChar: "✓",
+      markerColor: C.ACCENT,
+      textColor: C.TEXT_BODY,
+      fontSize: 14,
+    });
+
+    const contentH = Math.min(estimateBulletsHeight(groupItems, 14, 95) + 0.15, summaryMaxH);
+    addTextSafe(slide, bulletLines, {
+      x: 0.4,
+      y: bulletsY,
+      w: 9.2,
+      h: Math.max(0.5, contentH),
+      valign: "top",
+      paraSpaceAfter: 10,
+      lineSpacingMultiple: 1.3,
+    });
   });
 }
 
