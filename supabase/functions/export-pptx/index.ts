@@ -57,9 +57,9 @@ const BODY_FONT_PT = 15;
 const HEADER_SECTION_PT = 14;
 
 const TABLE_Y = 0.90;
-const HEADER_ROW_H = 0.45;
-const ROW_BASE_H = 0.55;
-const CELL_LINE_H_IN = 0.22;
+const HEADER_ROW_H = 0.40;
+const ROW_BASE_H = 0.38;
+const CELL_LINE_H_IN = 0.18;
 
 const MIN_BULLETS = 3;
 const MAX_BULLETS = 6;
@@ -200,30 +200,30 @@ function runAudit(): { passed: boolean; errors: string[]; warnings: string[] } {
    ═══════════════════════════════════════════════════════ */
 
 function sanitizeBullets(bullets: string[]): string[] {
+  if (!bullets || bullets.length === 0) return [];
   const result: string[] = [];
   let buffer = '';
 
-  for (const bullet of bullets) {
-    const text = bullet.trim();
+  for (const raw of bullets) {
+    const text = (raw || '').trim();
     if (!text) continue;
 
+    // Accumulate in buffer
     buffer = buffer ? buffer + ' ' + text : text;
 
-    // Bullet is complete if it ends with punctuation AND starts with uppercase (or is long enough)
-    const endsWithPunctuation = /[.!?:)]$/.test(buffer);
-    const isLikelyComplete = endsWithPunctuation || buffer.length > 200;
+    // Bullet is complete if it ends with terminal punctuation (accounting for quotes/parens)
+    const complete = /[.!?](\s*["')])?$/.test(buffer) || buffer.length > 220;
 
-    if (isLikelyComplete) {
-      // Ensure it ends with a period
-      if (!/[.!?]$/.test(buffer)) buffer += '.';
-      result.push(buffer);
+    if (complete) {
+      if (!/[.!?]$/.test(buffer.replace(/["')]\s*$/, ''))) buffer += '.';
+      result.push(buffer.trim());
       buffer = '';
     }
   }
-  // Flush remaining buffer
-  if (buffer) {
-    if (!/[.!?]$/.test(buffer)) buffer += '.';
-    result.push(buffer);
+  // Flush remaining buffer (last incomplete sentence)
+  if (buffer.trim()) {
+    if (!/[.!?]$/.test(buffer.trim())) buffer = buffer.trim() + '.';
+    result.push(buffer.trim());
   }
   return result;
 }
@@ -257,7 +257,7 @@ function splitBulletsToFit(bullets: string[], maxH: number): string[][] {
   for (const bullet of bullets) {
     const itemH = getBulletHeight(bullet);
     if (current.length >= MAX_BULLETS_PER_SLIDE ||
-        (current.length > 0 && currentH + itemH > maxH - 0.30)) {
+        (current.length > 0 && currentH + itemH > maxH - 0.15)) {
       groups.push([...current]);
       current = [bullet];
       currentH = itemH;
@@ -267,6 +267,21 @@ function splitBulletsToFit(bullets: string[], maxH: number): string[][] {
     }
   }
   if (current.length > 0) groups.push(current);
+
+  // CAUSA #1 balance: merge last group if it has only 1 item and previous group has room
+  if (groups.length >= 2) {
+    const last = groups[groups.length - 1];
+    const prev = groups[groups.length - 2];
+    if (last.length === 1 && prev.length < MAX_BULLETS_PER_SLIDE) {
+      const lastH = getBulletHeight(last[0]);
+      const prevH = calcBulletsHeight(prev);
+      if (prevH + lastH <= maxH) {
+        prev.push(last[0]);
+        groups.pop();
+      }
+    }
+  }
+
   return groups;
 }
 
@@ -399,12 +414,16 @@ function groupIntoSections(items: string[]): ContentSection[] {
 }
 
 function paginateSections(sections: ContentSection[], maxH: number): ContentSection[][] {
-  const safeMaxH = maxH * 0.85; // more conservative to prevent bottom clipping
+  // Filter out header-only sections with no bullets (they create empty slides)
+  const validSections = sections.filter(s => s.bullets.length > 0);
+  if (validSections.length === 0) return [];
+
+  const safeMaxH = maxH * 0.85;
   const pages: ContentSection[][] = [];
   let currentPage: ContentSection[] = [];
   let currentH = 0;
 
-  for (const sec of sections) {
+  for (const sec of validSections) {
     if (currentH + sec.totalHeight > safeMaxH && currentPage.length > 0) {
       pages.push(currentPage);
       currentPage = [sec];
@@ -415,7 +434,7 @@ function paginateSections(sections: ContentSection[], maxH: number): ContentSect
     }
   }
   if (currentPage.length > 0) pages.push(currentPage);
-  return pages.length > 0 ? pages : [[]];
+  return pages.length > 0 ? pages : [];
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -835,6 +854,12 @@ function calcTableHeight(rows: string[][], colWidths: number[]): number {
 }
 
 function splitTableRows(rows: string[][], colWidths: number[], maxTableH: number): string[][][] {
+  // CAUSA #3: Try fitting ALL rows in 1 slide first
+  if (calcTableHeight(rows, colWidths) <= maxTableH) {
+    return [rows]; // fits in one slide — DO NOT SPLIT
+  }
+
+  // Split by adding rows until height limit
   const chunks: string[][][] = [];
   let current: string[][] = [];
   let currentHeight = HEADER_ROW_H;
@@ -1010,6 +1035,7 @@ function renderBullets(pptx: any, data: SlideData) {
 
   // Paginate sections
   const pages = paginateSections(sections, maxContentH);
+  if (pages.length === 0) return;
 
   pages.forEach((pageSections, idx) => {
     const suffix = pages.length > 1 ? ` (Parte ${idx + 1})` : "";
@@ -1042,6 +1068,26 @@ function renderBullets(pptx: any, data: SlideData) {
 }
 
 // Layout 4 — CARDS EM GRID
+function groupCardsIntoSlides(cards: string[]): string[][] {
+  const total = cards.length;
+  if (total === 0) return [];
+  if (total <= 4) return [cards];
+  if (total === 5) return [cards.slice(0, 3), cards.slice(3)];
+  if (total === 6) return [cards.slice(0, 3), cards.slice(3)];
+  // 7+ cards: balanced groups, minimum 2 per slide
+  const numSlides = Math.ceil(total / 4);
+  const baseSize = Math.floor(total / numSlides);
+  const remainder = total % numSlides;
+  const groups: string[][] = [];
+  let start = 0;
+  for (let i = 0; i < numSlides; i++) {
+    const size = baseSize + (i < remainder ? 1 : 0);
+    groups.push(cards.slice(start, start + size));
+    start += size;
+  }
+  return groups;
+}
+
 function renderCardsGrid(pptx: any, data: SlideData) {
   const allItems = data.items || [];
   if (allItems.length === 0) return;
@@ -1051,17 +1097,21 @@ function renderCardsGrid(pptx: any, data: SlideData) {
     return;
   }
 
-  // CAMADA 3: Separate intro paragraphs (>120 chars without colon title) from cards
-  const introItems = allItems.filter(item => {
+  // CAUSA #2: Separate intro paragraphs (no colon title AND >80 chars) from real cards
+  const introItems: string[] = [];
+  const cardItems: string[] = [];
+
+  for (const item of allItems) {
     const colonIdx = item.indexOf(":");
     const hasTitle = colonIdx > 2 && colonIdx < 50;
-    return !hasTitle && item.length > 120;
-  });
-  const cardItems = allItems.filter(item => {
-    const colonIdx = item.indexOf(":");
-    const hasTitle = colonIdx > 2 && colonIdx < 50;
-    return hasTitle || item.length <= 120;
-  });
+    const isLongParagraph = !hasTitle && item.length > 80;
+
+    if (isLongParagraph) {
+      introItems.push(item);
+    } else {
+      cardItems.push(item);
+    }
+  }
 
   // If no real card items left, fall back to bullets
   if (cardItems.length <= 2) {
@@ -1071,7 +1121,6 @@ function renderCardsGrid(pptx: any, data: SlideData) {
 
   const baseTitle = cleanPartTitle(data.title);
   const cols = 2;
-  const headerH = getHeaderHeight(baseTitle);
   const gapY = 0.2;
   const gapX = 0.30;
   const cardW = (SAFE_W - gapX) / cols;
@@ -1079,21 +1128,12 @@ function renderCardsGrid(pptx: any, data: SlideData) {
 
   // Calculate intro height for first page
   const introText = introItems.map(i => sanitize(i)).join(' ');
-  const introH = introItems.length > 0 ? getBulletHeight(introText) + 0.25 : 0;
 
-  const gridTopBase = headerH + 0.3;
-  const gridTopFirstPage = gridTopBase + introH;
-  const gridH = SLIDE_H - gridTopFirstPage - BOTTOM_MARGIN;
-  const maxRowsPerSlide = Math.max(1, Math.floor((gridH + gapY) / (maxCardH + gapY)));
-  const maxItemsPerSlide = maxRowsPerSlide * cols;
+  // CAUSA #1: Use balanced grouping instead of mechanical slice
+  const groups = groupCardsIntoSlides(cardItems);
 
-  const pages: string[][] = [];
-  for (let i = 0; i < cardItems.length; i += maxItemsPerSlide) {
-    pages.push(cardItems.slice(i, i + maxItemsPerSlide));
-  }
-
-  pages.forEach((pageItems, pageIdx) => {
-    const suffix = pages.length > 1 ? ` (Parte ${pageIdx + 1})` : "";
+  groups.forEach((pageItems, pageIdx) => {
+    const suffix = groups.length > 1 ? ` (Parte ${pageIdx + 1})` : "";
     const titleText = deduplicateTitle(baseTitle + suffix);
 
     const slide = pptx.addSlide();
@@ -1105,10 +1145,11 @@ function renderCardsGrid(pptx: any, data: SlideData) {
     // Render intro text ABOVE the grid on first page only
     if (pageIdx === 0 && introItems.length > 0) {
       const introTextClean = sanitize(introText);
-      const introRenderH = getBulletHeight(introTextClean) + 0.10;
+      const lines = Math.max(1, Math.ceil(introTextClean.length / 90));
+      const introRenderH = lines * 0.32 + 0.10;
       addTextSafe(slide, introTextClean, {
         x: MARGIN_L, y: gTop, w: SAFE_W, h: introRenderH,
-        fontSize: 14, fontFace: FONT, color: C.TEXT_BODY,
+        fontSize: 13, fontFace: FONT, color: C.TEXT_SEC, italic: true,
         valign: "top",
       });
       gTop += introRenderH + 0.15;
@@ -1141,21 +1182,25 @@ function renderCardsGrid(pptx: any, data: SlideData) {
 
       const cardContentW = cardW - 0.35;
       const colonIdx = item.indexOf(":");
-      if (colonIdx > 2 && colonIdx < 50) {
-        const cardTitle = item.substring(0, colonIdx).trim();
-        const cardDesc = item.substring(colonIdx + 1).trim();
+      // CAUSA #2: Always handle title as string, never undefined
+      const cardTitle = (colonIdx > 2 && colonIdx < 50) ? item.substring(0, colonIdx).trim() : '';
+      const cardBody = cardTitle ? item.substring(colonIdx + 1).trim() : item.trim();
+
+      let textY = y + 0.1;
+
+      if (cardTitle) {
         addTextSafe(slide, cardTitle, {
-          x: x + 0.2, y: y + 0.1, w: cardContentW, h: 0.35,
+          x: x + 0.2, y: textY, w: cardContentW, h: 0.28,
           fontSize: 14, fontFace: FONT, color: C.PRIMARY, bold: true, valign: "top",
         });
-        addTextSafe(slide, cardDesc, {
-          x: x + 0.2, y: y + 0.42, w: cardContentW, h: cardH - 0.55,
+        textY += 0.30;
+      }
+
+      if (cardBody) {
+        const bodyH = cardH - (textY - y) - 0.10;
+        addTextSafe(slide, cardBody, {
+          x: x + 0.2, y: textY, w: cardContentW, h: Math.max(bodyH, 0.20),
           fontSize: 13, fontFace: FONT, color: C.TEXT_BODY, valign: "top",
-        });
-      } else {
-        addTextSafe(slide, item, {
-          x: x + 0.2, y: y + 0.1, w: cardContentW, h: cardH - 0.2,
-          fontSize: 14, fontFace: FONT, color: C.TEXT_BODY, valign: "middle",
         });
       }
     });
@@ -1247,7 +1292,7 @@ function renderResumo(pptx: any, data: SlideData) {
 
   // Apply sanitizeBullets to merge truncated bullets, then split long ones
   const sanitized = sanitizeBullets(items);
-  const allBullets = sanitized.flatMap((text) => splitLongBulletText(text, 170));
+  const allBullets = sanitized.flatMap((text) => splitLongBulletText(text, 250));
 
   // Use conservative bullet-count split instead of imprecise estimation
   const bulletGroups = splitBulletsToFit(allBullets, summaryMaxH);
