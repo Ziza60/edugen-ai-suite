@@ -65,7 +65,7 @@ const CELL_LINE_H_IN = 0.22;
 const MAX_TABLE_H = SLIDE_H - TABLE_Y - BOTTOM_MARGIN;
 
 const MIN_BULLETS = 3;
-const MAX_BULLETS = 4;
+const MAX_BULLETS = 6;
 const MAX_CHARS = 900;
 
 // Section layout constants
@@ -250,9 +250,11 @@ function splitBulletsToFit(bullets: string[], maxH: number, fontSize = FONT_PT, 
    DETERMINISTIC WRAP/PAGINATION (ANTI-OVERFLOW)
    ═══════════════════════════════════════════════════════ */
 
-const SAFE_CHARS_PER_LINE = 48; // very conservative — accounts for bullet marker + PPTX internal padding
-const SAFE_LINE_MULTIPLIER = 1.85; // generous multiplier to match actual PowerPoint rendering
-const SAFE_BULLET_GAP = 16 / 72; // increased gap between bullets
+// Calibrated by measuring actual rendered slides (page_3.jpg: 4 bullets = ~2.3in of 4.3in)
+// Each 2-line bullet ≈ 0.57in, each 3-line ≈ 0.80in in PowerPoint
+const SAFE_CHARS_PER_LINE = 60; // measured: ~60 effective chars fit per line at 16pt in 8.9in width
+const SAFE_LINE_MULTIPLIER = 1.1; // actual lineSpacingMultiple 1.25 normalized to text box behavior
+const SAFE_BULLET_GAP = 6 / 72; // ~0.083in gap (paraSpaceAfter 8pt is partially absorbed by text box)
 
 interface BulletBlock {
   kind: "header" | "bullet";
@@ -319,8 +321,8 @@ function buildBulletBlocks(items: string[]): BulletBlock[] {
 }
 
 function paginateBulletBlocks(blocks: BulletBlock[], maxH: number): BulletBlock[][] {
-  // Apply 25% safety margin — PowerPoint consistently renders taller than calculated
-  const safeMaxH = maxH * 0.75;
+  // 10% safety margin — calibrated from actual rendered slides
+  const safeMaxH = maxH * 0.90;
   const pages: BulletBlock[][] = [];
   let current: BulletBlock[] = [];
   let currentH = 0;
