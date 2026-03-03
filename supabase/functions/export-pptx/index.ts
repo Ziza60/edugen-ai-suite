@@ -57,9 +57,9 @@ const BODY_FONT_PT = 15;
 const HEADER_SECTION_PT = 14;
 
 const TABLE_Y = 0.90;
-const HEADER_ROW_H = 0.40;
-const ROW_BASE_H = 0.38;
-const CELL_LINE_H_IN = 0.18;
+const HEADER_ROW_H = 0.50;
+const ROW_BASE_H = 0.45;
+const CELL_LINE_H_IN = 0.22;
 
 const MIN_BULLETS = 3;
 const MAX_BULLETS = 6;
@@ -232,10 +232,12 @@ function sanitizeBullets(bullets: string[]): string[] {
    CONSERVATIVE HEIGHT — bullet-count based (not char estimation)
    ═══════════════════════════════════════════════════════ */
 
-const BULLET_H_SHORT = 0.42;   // bullets <= 80 chars (1 line)
-const BULLET_H_LONG  = 0.72;   // bullets 81-160 chars (2 lines)
-const BULLET_H_XLONG = 1.00;   // bullets > 160 chars (3 lines)
+const BULLET_H_SHORT = 0.52;   // bullets <= 80 chars (1 line) — increased for real PPT rendering
+const BULLET_H_LONG  = 0.90;   // bullets 81-160 chars (2 lines) — increased for line-wrap headroom
+const BULLET_H_XLONG = 1.20;   // bullets > 160 chars (3 lines) — increased for safety
 const MAX_BULLETS_PER_SLIDE = 5;
+// Used by splitOrMergeSlides when splitting bullet-heavy slides
+const MAX_CONTENT_H_FOR_SPLIT = SLIDE_H - (HEADER_H + 0.25) - BOTTOM_MARGIN;
 
 function getBulletHeight(text: string): number {
   const len = (text || '').length;
@@ -418,23 +420,30 @@ function paginateSections(sections: ContentSection[], maxH: number): ContentSect
   const validSections = sections.filter(s => s.bullets.length > 0);
   if (validSections.length === 0) return [];
 
-  const safeMaxH = maxH * 0.85;
+  // Use actual maxH — BULLET_H constants already include headroom, no 0.85 factor needed
   const pages: ContentSection[][] = [];
   let currentPage: ContentSection[] = [];
   let currentH = 0;
+  let currentBulletCount = 0;
 
   for (const sec of validSections) {
-    if (currentH + sec.totalHeight > safeMaxH && currentPage.length > 0) {
+    const secBulletCount = sec.bullets.length;
+    // Break page if height overflows OR bullet count exceeds MAX_BULLETS_PER_SLIDE
+    if (currentPage.length > 0 &&
+        (currentH + sec.totalHeight > maxH - 0.10 || currentBulletCount + secBulletCount > MAX_BULLETS_PER_SLIDE)) {
       pages.push(currentPage);
       currentPage = [sec];
       currentH = sec.totalHeight + SECTION_GAP;
+      currentBulletCount = secBulletCount;
     } else {
       currentPage.push(sec);
       currentH += sec.totalHeight + SECTION_GAP;
+      currentBulletCount += secBulletCount;
     }
   }
   if (currentPage.length > 0) pages.push(currentPage);
-  return pages.length > 0 ? pages : [];
+  // Filter out any empty pages to prevent empty slide creation
+  return pages.filter(p => p.length > 0 && p.some(s => s.bullets.length > 0));
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -694,9 +703,12 @@ function splitOrMergeSlides(rawSlides: RawSlide[]): RawSlide[] {
     const finalBullets = slide.bullets || bullets;
 
     if (finalBullets.length > MAX_BULLETS) {
-      const mid = Math.ceil(finalBullets.length / 2);
-      result.push({ ...slide, bullets: finalBullets.slice(0, mid), title: slide.title + " (Parte 1)" });
-      result.push({ ...slide, bullets: finalBullets.slice(mid), title: slide.title + " (Parte 2)" });
+      // Use balanced split: never create a part with fewer than 2 bullets
+      const groups = splitBulletsToFit(finalBullets, MAX_CONTENT_H_FOR_SPLIT);
+      groups.forEach((group, gIdx) => {
+        const suffix = groups.length > 1 ? ` (Parte ${gIdx + 1})` : "";
+        result.push({ ...slide, bullets: group, title: slide.title + suffix });
+      });
       continue;
     }
 
@@ -714,7 +726,8 @@ function validateBeforeRender(slides: RawSlide[]): RawSlide[] {
   return slides.filter((slide) => {
     const bullets = slide.bullets || [];
     const content = slide.content || "";
-    const hasContent = bullets.length >= 2 || content.length >= 100 || slide.isTable;
+    // Accept 1+ bullets (single bullets will be merged by splitOrMergeSlides if needed)
+    const hasContent = bullets.length >= 1 || content.length >= 50 || slide.isTable;
     if (!hasContent) {
       console.warn(`⚠️ Slide descartado por conteúdo insuficiente: "${slide.title}"`);
     }
@@ -1009,43 +1022,29 @@ function renderBullets(pptx: any, data: SlideData) {
   const baseTitle = cleanPartTitle(data.title);
   const sections = groupIntoSections(allBullets);
 
-  // Paginate ALL sections into pages that fit
+  // Calculate available content area
   const baseHeaderH = getHeaderHeight(baseTitle);
   const contentStartY = baseHeaderH + 0.25;
   const maxContentH = SLIDE_H - contentStartY - BOTTOM_MARGIN;
 
-  if (sections.length === 2) {
-    // Try 2-column layout
-    const s0H = estimateSectionHeight(sections[0].header, sections[0].bullets, COL_W);
-    const s1H = estimateSectionHeight(sections[1].header, sections[1].bullets, COL_W);
-
-    if (s0H <= maxContentH && s1H <= maxContentH) {
-      const titleText = deduplicateTitle(baseTitle);
-      const slide = pptx.addSlide();
-      slide.background = { color: C.BG_LIGHT };
-      const headerH = renderHeaderBar(pptx, slide, titleText);
-      const cStartY = headerH + 0.25;
-      const colMaxY = SLIDE_H - BOTTOM_MARGIN;
-      renderSectionsInArea(slide, [sections[0]], COL_LEFT_X, cStartY, COL_W, colMaxY);
-      renderSectionsInArea(slide, [sections[1]], COL_RIGHT_X, cStartY, COL_W, colMaxY);
-      return;
-    }
-    // Falls through to paginated full-width
-  }
-
-  // Paginate sections
+  // Always paginate first — this guarantees no empty pages are created
   const pages = paginateSections(sections, maxContentH);
   if (pages.length === 0) return;
 
   pages.forEach((pageSections, idx) => {
+    // Guard: skip pages that somehow have no bullets after filtering
+    const hasBullets = pageSections.some(s => s.bullets.length > 0);
+    if (!hasBullets) return;
+
     const suffix = pages.length > 1 ? ` (Parte ${idx + 1})` : "";
     const titleText = deduplicateTitle(baseTitle + suffix);
 
-    // If exactly 2 sections in this page, try 2-col
-    if (pageSections.length === 2) {
+    // Try 2-column layout only when exactly 2 valid sections and both are not too tall
+    if (pageSections.length === 2 &&
+        pageSections[0].bullets.length > 0 &&
+        pageSections[1].bullets.length > 0) {
       const s0H = estimateSectionHeight(pageSections[0].header, pageSections[0].bullets, COL_W);
       const s1H = estimateSectionHeight(pageSections[1].header, pageSections[1].bullets, COL_W);
-
       if (s0H <= maxContentH && s1H <= maxContentH) {
         const slide = pptx.addSlide();
         slide.background = { color: C.BG_LIGHT };
@@ -1271,11 +1270,12 @@ function renderTabela(pptx: any, data: SlideData) {
     tableData.push(dataRow);
   });
 
-  const safeH = Math.min(estimatedH * 1.15 + 0.2, maxTableH);
+  const safeH = Math.min(estimatedH * 1.25 + 0.3, maxTableH);
   const tableY = hH + 0.2;
   slide.addTable(tableData, {
     x: MARGIN_L, y: tableY, w: SAFE_W, h: safeH,
     colW, rowH: ROW_BASE_H, autoPage: false,
+    newSlideStartY: tableY, newSlideStopY: SLIDE_H - BOTTOM_MARGIN,
   });
 }
 
