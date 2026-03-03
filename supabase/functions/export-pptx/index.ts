@@ -1013,56 +1013,56 @@ function renderAberturaModulo(pptx: any, data: SlideData) {
   }
 }
 
-// Layout 3 — CONTEÚDO COM BULLETS (PAGINAÇÃO DETERMINÍSTICA POR BLOCO)
-function renderBullets(pptx: any, data: SlideData) {
-  const allBullets = (data.items || []).map((b) => sanitize(b)).filter(Boolean);
-  if (allBullets.length === 0) return;
+/* ═══════════════════════════════════════════════════════
+   SECTION GROUPING — groups blocks by headers into logical sections
+   ═══════════════════════════════════════════════════════ */
 
-  const baseTitle = cleanPartTitle(data.title);
-  const baseHeaderH = getHeaderHeight(baseTitle);
-  const contentStartY = baseHeaderH + 0.25;
-  const maxContentH = SLIDE_H - contentStartY - BOTTOM_MARGIN;
-
-  const blocks = buildBulletBlocks(allBullets);
-  const pages = paginateBulletBlocks(blocks, maxContentH);
-
-  pages.forEach((pageBlocks, idx) => {
-    const suffix = pages.length > 1 ? ` (Parte ${idx + 1})` : "";
-    const titleText = deduplicateTitle(baseTitle + suffix);
-    renderSingleBulletSlide(pptx, titleText, pageBlocks);
-  });
+interface ContentSection {
+  header: string | null;
+  blocks: BulletBlock[];
+  totalHeight: number;
 }
 
-/** Render a single slide with deterministic block layout */
-function renderSingleBulletSlide(pptx: any, titleText: string, blocks: BulletBlock[]) {
-  const slide = pptx.addSlide();
-  slide.background = { color: C.BG_LIGHT };
+function groupBlocksIntoSections(blocks: BulletBlock[]): ContentSection[] {
+  const sections: ContentSection[] = [];
+  let current: ContentSection = { header: null, blocks: [], totalHeight: 0 };
 
-  const headerH = getHeaderHeight(titleText);
-  const headerFont = getHeaderTitleFontSize(titleText);
+  for (const block of blocks) {
+    if (block.kind === "header") {
+      // Flush previous section if it has content
+      if (current.blocks.length > 0) {
+        sections.push(current);
+      }
+      current = { header: block.text, blocks: [block], totalHeight: block.height };
+    } else {
+      current.blocks.push(block);
+      current.totalHeight += block.height;
+    }
+  }
+  if (current.blocks.length > 0) sections.push(current);
 
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0, y: 0, w: SLIDE_W, h: headerH,
-    fill: { color: C.PRIMARY },
-  });
+  return sections;
+}
 
-  addTextSafe(slide, titleText, {
-    x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
-    fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
-    valign: "middle",
-  });
-
-  let currentY = headerH + 0.25;
-  const maxY = SLIDE_H - BOTTOM_MARGIN;
-
+/** Render blocks into a text box at given x, y, w with maxY limit */
+function renderBlocksInArea(
+  slide: any,
+  blocks: BulletBlock[],
+  x: number,
+  startY: number,
+  w: number,
+  maxY: number,
+  charsPerLine?: number,
+) {
+  let currentY = startY;
   for (const block of blocks) {
     if (currentY + block.height > maxY) break;
 
     if (block.kind === "header") {
       addTextSafe(slide, block.text, {
-        x: MARGIN_L,
+        x,
         y: currentY,
-        w: SAFE_W,
+        w,
         h: block.height,
         fontSize: 14,
         fontFace: FONT,
@@ -1095,9 +1095,9 @@ function renderSingleBulletSlide(pptx: any, titleText: string, blocks: BulletBlo
         },
       },
     ], {
-      x: MARGIN_L,
+      x,
       y: currentY,
-      w: SAFE_W,
+      w,
       h: block.height,
       valign: "top",
       paraSpaceAfter: 8,
@@ -1108,10 +1108,176 @@ function renderSingleBulletSlide(pptx: any, titleText: string, blocks: BulletBlo
   }
 }
 
-// Layout 4 — CARDS EM GRID (with pagination)
+// Layout 3 — CONTEÚDO COM BULLETS (LAYOUT ADAPTATIVO: 1-col vs 2-col)
+function renderBullets(pptx: any, data: SlideData) {
+  const allBullets = (data.items || []).map((b) => sanitize(b)).filter(Boolean);
+  if (allBullets.length === 0) return;
+
+  const baseTitle = cleanPartTitle(data.title);
+  const baseHeaderH = getHeaderHeight(baseTitle);
+  const contentStartY = baseHeaderH + 0.25;
+  const maxContentH = SLIDE_H - contentStartY - BOTTOM_MARGIN;
+
+  const blocks = buildBulletBlocks(allBullets);
+  const sections = groupBlocksIntoSections(blocks);
+
+  if (sections.length === 2) {
+    // ── 2 SECTIONS → try 2-column layout ──
+    const colW = 3.95;
+    const leftX = 0.75;
+    const rightX = 5.35;
+    const colMaxY = SLIDE_H - BOTTOM_MARGIN;
+    // Recalculate heights for narrower columns (fewer chars per line → taller)
+    const narrowChars = Math.floor(colW * 6.5); // ~25 chars at 16pt in 3.95in
+    const sec0H = sections[0].blocks.reduce((s, b) => {
+      const lines = Math.max(1, Math.ceil(b.text.length / narrowChars));
+      const h = (lines * FONT_PT * SAFE_LINE_MULTIPLIER) / 72 + SAFE_BULLET_GAP;
+      return s + (b.kind === "header" ? b.height : h);
+    }, 0);
+    const sec1H = sections[1].blocks.reduce((s, b) => {
+      const lines = Math.max(1, Math.ceil(b.text.length / narrowChars));
+      const h = (lines * FONT_PT * SAFE_LINE_MULTIPLIER) / 72 + SAFE_BULLET_GAP;
+      return s + (b.kind === "header" ? b.height : h);
+    }, 0);
+
+    const fitsInTwoCols = sec0H <= maxContentH && sec1H <= maxContentH;
+
+    if (fitsInTwoCols) {
+      const titleText = deduplicateTitle(baseTitle);
+      const slide = pptx.addSlide();
+      slide.background = { color: C.BG_LIGHT };
+
+      const headerH = getHeaderHeight(titleText);
+      const headerFont = getHeaderTitleFontSize(titleText);
+
+      slide.addShape(pptx.ShapeType.rect, {
+        x: 0, y: 0, w: SLIDE_W, h: headerH,
+        fill: { color: C.PRIMARY },
+      });
+      addTextSafe(slide, titleText, {
+        x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
+        fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
+        valign: "middle",
+      });
+
+      const cStartY = headerH + 0.25;
+      renderBlocksInArea(slide, sections[0].blocks, leftX, cStartY, colW, colMaxY);
+      renderBlocksInArea(slide, sections[1].blocks, rightX, cStartY, colW, colMaxY);
+      return;
+    }
+    // Falls through to standard pagination if doesn't fit
+  }
+
+  if (sections.length >= 3) {
+    // ── 3+ SECTIONS → paginate: each section (or pair) gets its own slide ──
+    // Group sections into pages that fit within maxContentH
+    const sectionPages: ContentSection[][] = [];
+    let currentPage: ContentSection[] = [];
+    let currentH = 0;
+
+    for (const sec of sections) {
+      if (currentH + sec.totalHeight > maxContentH && currentPage.length > 0) {
+        sectionPages.push(currentPage);
+        currentPage = [sec];
+        currentH = sec.totalHeight;
+      } else {
+        currentPage.push(sec);
+        currentH += sec.totalHeight + SECTION_GAP;
+      }
+    }
+    if (currentPage.length > 0) sectionPages.push(currentPage);
+
+    sectionPages.forEach((pageSections, idx) => {
+      const suffix = sectionPages.length > 1 ? ` (Parte ${idx + 1})` : "";
+      const titleText = deduplicateTitle(baseTitle + suffix);
+
+      // Flatten sections into blocks for this page
+      const pageBlocks = pageSections.flatMap((s) => s.blocks);
+
+      // If this page has exactly 2 sections and they fit in 2 cols, use 2-col
+      if (pageSections.length === 2) {
+        const colW = 3.95;
+        const narrowChars = Math.floor(colW * 6.5);
+        const s0H = pageSections[0].blocks.reduce((s, b) => {
+          const lines = Math.max(1, Math.ceil(b.text.length / narrowChars));
+          return s + ((b.kind === "header" ? b.height : (lines * FONT_PT * SAFE_LINE_MULTIPLIER) / 72 + SAFE_BULLET_GAP));
+        }, 0);
+        const s1H = pageSections[1].blocks.reduce((s, b) => {
+          const lines = Math.max(1, Math.ceil(b.text.length / narrowChars));
+          return s + ((b.kind === "header" ? b.height : (lines * FONT_PT * SAFE_LINE_MULTIPLIER) / 72 + SAFE_BULLET_GAP));
+        }, 0);
+
+        if (s0H <= maxContentH && s1H <= maxContentH) {
+          const slide = pptx.addSlide();
+          slide.background = { color: C.BG_LIGHT };
+          const headerH = getHeaderHeight(titleText);
+          const headerFont = getHeaderTitleFontSize(titleText);
+          slide.addShape(pptx.ShapeType.rect, {
+            x: 0, y: 0, w: SLIDE_W, h: headerH,
+            fill: { color: C.PRIMARY },
+          });
+          addTextSafe(slide, titleText, {
+            x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
+            fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
+            valign: "middle",
+          });
+          const cStartY = headerH + 0.25;
+          const colMaxY = SLIDE_H - BOTTOM_MARGIN;
+          renderBlocksInArea(slide, pageSections[0].blocks, 0.75, cStartY, colW, colMaxY);
+          renderBlocksInArea(slide, pageSections[1].blocks, 5.35, cStartY, colW, colMaxY);
+          return;
+        }
+      }
+
+      // Otherwise render full-width
+      renderSingleBulletSlide(pptx, titleText, pageBlocks);
+    });
+    return;
+  }
+
+  // ── 0-1 SECTIONS → standard full-width with pagination ──
+  const pages = paginateBulletBlocks(blocks, maxContentH);
+
+  pages.forEach((pageBlocks, idx) => {
+    const suffix = pages.length > 1 ? ` (Parte ${idx + 1})` : "";
+    const titleText = deduplicateTitle(baseTitle + suffix);
+    renderSingleBulletSlide(pptx, titleText, pageBlocks);
+  });
+}
+
+/** Render a single slide with deterministic block layout — FULL WIDTH */
+function renderSingleBulletSlide(pptx: any, titleText: string, blocks: BulletBlock[]) {
+  const slide = pptx.addSlide();
+  slide.background = { color: C.BG_LIGHT };
+
+  const headerH = getHeaderHeight(titleText);
+  const headerFont = getHeaderTitleFontSize(titleText);
+
+  slide.addShape(pptx.ShapeType.rect, {
+    x: 0, y: 0, w: SLIDE_W, h: headerH,
+    fill: { color: C.PRIMARY },
+  });
+
+  addTextSafe(slide, titleText, {
+    x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
+    fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
+    valign: "middle",
+  });
+
+  const maxY = SLIDE_H - BOTTOM_MARGIN;
+  renderBlocksInArea(slide, blocks, MARGIN_L, headerH + 0.25, SAFE_W, maxY);
+}
+
+// Layout 4 — CARDS EM GRID (with pagination + adaptive columns)
 function renderCardsGrid(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
+
+  // If only 1-2 items, render as full-width bullets instead of half-empty grid
+  if (items.length <= 2) {
+    renderBullets(pptx, { ...data, layout: "BULLETS" });
+    return;
+  }
 
   const baseTitle = cleanPartTitle(data.title);
   const cols = 2;
