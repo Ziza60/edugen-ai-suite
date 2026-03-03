@@ -43,19 +43,20 @@ const SLIDE_W = 10.0;
 const SLIDE_H = 5.625;
 
 // ── Safe margins: x + w must NEVER exceed SLIDE_W - MARGIN_R ──
-const MARGIN_L = 0.50;
-const MARGIN_R = 0.50;
-const SAFE_W = SLIDE_W - MARGIN_L - MARGIN_R; // = 9.00 — max width of any element
+// PowerPoint adds ~0.1in internal padding per text box, so we use generous margins
+const MARGIN_L = 0.55;
+const MARGIN_R = 0.55;
+const SAFE_W = SLIDE_W - MARGIN_L - MARGIN_R; // = 8.90 — max width of any element
 
 const HEADER_H = 0.70;
 const CONTENT_START_Y = 0.95;
-const BOTTOM_MARGIN = 0.25;
-const MAX_CONTENT_H = SLIDE_H - CONTENT_START_Y - BOTTOM_MARGIN; // ~4.375
+const BOTTOM_MARGIN = 0.30;
+const MAX_CONTENT_H = SLIDE_H - CONTENT_START_Y - BOTTOM_MARGIN; // ~4.325
 
 const FONT_PT = 16;
-const LINE_H_IN = (FONT_PT * 1.35) / 72;   // 0.300in per line
-const PARA_GAP_IN = 12 / 72;               // 0.167in between bullets
-const CHARS_PER_LINE = 80;                  // ~80 chars per line at 16pt in 9.00in
+const LINE_H_IN = (FONT_PT * 1.5) / 72;    // 0.333in per line (accounts for lineSpacingMultiple)
+const PARA_GAP_IN = 14 / 72;               // 0.194in between bullets (accounts for paraSpaceAfter)
+const CHARS_PER_LINE = 62;                  // ~62 chars per line at 16pt in 8.9in (accounts for bullet marker + PPTX padding)
 
 const TABLE_Y = 0.90;
 const HEADER_ROW_H = 0.45;
@@ -146,14 +147,17 @@ function getTitleHeight(titleText: string, boxWidthIn: number, fontSizePt: numbe
 /** Estimate height of a single bullet item */
 function estimateBulletHeight(item: string, fontSize = FONT_PT, charsPerLine = CHARS_PER_LINE): number {
   const text = sanitize(item || "");
-  const lines = Math.max(1, Math.ceil(text.length / Math.max(1, charsPerLine)));
-  const lineHeight = (fontSize * 1.35) / 72;
-  return (lines * lineHeight) + PARA_GAP_IN;
+  // Add 4 chars for bullet marker "●  " taking up space
+  const effectiveCharsPerLine = Math.max(10, charsPerLine - 4);
+  const lines = Math.max(1, Math.ceil(text.length / effectiveCharsPerLine));
+  const lineHeight = (fontSize * 1.5) / 72; // match LINE_H_IN calculation
+  return (lines * lineHeight) + (14 / 72); // match PARA_GAP_IN
 }
 
-/** Estimate total height of a list of bullets */
+/** Estimate total height of a list of bullets — includes 20% safety factor */
 function estimateBulletsHeight(bullets: string[], fontSize = FONT_PT, charsPerLine = CHARS_PER_LINE): number {
-  return bullets.reduce((sum, b) => sum + estimateBulletHeight(b, fontSize, charsPerLine), 0);
+  const raw = bullets.reduce((sum, b) => sum + estimateBulletHeight(b, fontSize, charsPerLine), 0);
+  return raw * 1.15; // 15% safety margin for PowerPoint rendering differences
 }
 
 /** Split bullets into groups that fit within maxH */
@@ -782,9 +786,9 @@ function renderAberturaModulo(pptx: any, data: SlideData) {
     const availableH = SLIDE_H - objectivesY - BOTTOM_MARGIN;
 
     // If objectives don't fit, reduce font size
-    const objEstimatedH = estimateBulletsHeight(data.items, 15, 85);
+    const objEstimatedH = estimateBulletsHeight(data.items, 15, 60);
     const objFontSize = objEstimatedH > availableH ? 13 : 15;
-    const objCharsPerLine = objFontSize === 13 ? 95 : 85;
+    const objCharsPerLine = objFontSize === 13 ? 70 : 60;
 
     const objTextArr = buildBulletTextArray(data.items, {
       markerChar: "✓",
@@ -1159,7 +1163,7 @@ function renderResumo(pptx: any, data: SlideData) {
   const summaryMaxH = SLIDE_H - bulletsY - BOTTOM_MARGIN;
 
   // Split if needed using splitBulletsToFit
-  const groups = splitBulletsToFit(items, summaryMaxH, 14, 90);
+  const groups = splitBulletsToFit(items, summaryMaxH, 14, 65);
 
   groups.forEach((groupItems, idx) => {
     const suffix = groups.length > 1 ? ` (Parte ${idx + 1})` : "";
@@ -1191,7 +1195,7 @@ function renderResumo(pptx: any, data: SlideData) {
       fontSize: 14,
     });
 
-    const contentH = Math.min(estimateBulletsHeight(groupItems, 14, 90) + 0.15, summaryMaxH);
+    const contentH = Math.min(estimateBulletsHeight(groupItems, 14, 65) + 0.15, summaryMaxH);
     addTextSafe(slide, bulletLines, {
       x: resumoContentX,
       y: bulletsY,
