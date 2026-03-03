@@ -198,13 +198,17 @@ function runAudit(): { passed: boolean; errors: string[]; warnings: string[] } {
 function estimateTextHeight(text: string, fontSizePt: number, widthInInches: number): number {
   const clean = sanitize(text || "");
   if (!clean) return 0;
-  const charsPerLine = Math.max(10, Math.floor(widthInInches * 12));
+  // Calibri at 15pt ≈ 7.5 chars/inch; at 14pt ≈ 8 chars/inch; at 13pt ≈ 8.5
+  // Using fontSizePt-aware scaling instead of fixed multiplier
+  const charsPerInch = Math.max(5, 120 / fontSizePt); // e.g. 15pt → 8, 14pt → 8.6, 24pt → 5
+  const charsPerLine = Math.max(15, Math.floor(widthInInches * charsPerInch));
   const paragraphs = clean.split("\n").filter(Boolean);
   let totalLines = 0;
   for (const para of paragraphs) {
     totalLines += Math.max(1, Math.ceil(para.length / charsPerLine));
   }
-  return (totalLines * fontSizePt * 1.25) / 72 + 0.15;
+  const lineHeightIn = (fontSizePt * 1.2) / 72; // tighter than 1.25
+  return totalLines * lineHeightIn + 0.08; // smaller padding than 0.15
 }
 
 function getTitleHeight(titleText: string, boxWidthIn: number, fontSizePt: number): number {
@@ -278,12 +282,12 @@ interface ContentSection {
 function estimateSectionHeight(header: string | null, bullets: string[], widthIn: number, bodyFontPt = BODY_FONT_PT): number {
   let h = 0;
   if (header) {
-    h += estimateTextHeight(header, HEADER_SECTION_PT, widthIn) + 0.08;
+    h += estimateTextHeight(header, HEADER_SECTION_PT, widthIn) + 0.06;
   }
   if (bullets.length > 0) {
     const joined = bullets.join("\n");
     h += estimateTextHeight(joined, bodyFontPt, widthIn - 0.3);
-    h += (bullets.length * 4) / 72;
+    h += (bullets.length * 3) / 72; // reduced from 4 to 3 pt per bullet
   }
   return h;
 }
@@ -322,7 +326,7 @@ function groupIntoSections(items: string[]): ContentSection[] {
 }
 
 function paginateSections(sections: ContentSection[], maxH: number): ContentSection[][] {
-  const safeMaxH = maxH * 0.90;
+  const safeMaxH = maxH * 0.85; // more conservative to prevent bottom clipping
   const pages: ContentSection[][] = [];
   let currentPage: ContentSection[] = [];
   let currentH = 0;
@@ -379,12 +383,12 @@ function renderSectionsInArea(
         );
       });
 
-      const bodyH = estimateTextHeight(sec.bullets.join("\n"), BODY_FONT_PT, safeW - 0.3) + (sec.bullets.length * 4) / 72;
+      const bodyH = estimateTextHeight(sec.bullets.join("\n"), BODY_FONT_PT, safeW - 0.3) + (sec.bullets.length * 3) / 72;
       if (yCursor + bodyH > maxY) break;
 
       addTextSafe(slide, textParts, {
         x, y: yCursor, w: safeW, h: bodyH,
-        valign: "top", paraSpaceAfter: 4, lineSpacingMultiple: 1.15,
+        valign: "top", paraSpaceAfter: 3, lineSpacingMultiple: 1.1,
       });
       yCursor += bodyH + SECTION_GAP;
     }
@@ -1167,13 +1171,13 @@ function renderResumo(pptx: any, data: SlideData) {
       );
     });
 
-    const bodyH = estimateTextHeight(pageBullets.join("\n"), 14, SAFE_W - 0.38) + (pageBullets.length * 4) / 72;
+    const bodyH = estimateTextHeight(pageBullets.join("\n"), 14, SAFE_W - 0.38) + (pageBullets.length * 3) / 72;
     const clampedH = Math.min(bodyH, SLIDE_H - bulletsY - BOTTOM_MARGIN);
 
     if (clampedH > 0.2) {
       addTextSafe(slide, textParts, {
         x: MARGIN_L, y: bulletsY, w: SAFE_W - 0.08, h: clampedH,
-        valign: "top", paraSpaceAfter: 4, lineSpacingMultiple: 1.15,
+        valign: "top", paraSpaceAfter: 3, lineSpacingMultiple: 1.1,
       });
     }
   });
