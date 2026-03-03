@@ -147,6 +147,15 @@ Todo módulo DEVE terminar com:
 - NÃO inclua metadados, comentários sobre o processo ou notas para o editor
 - NÃO use "Neste módulo vamos..." como abertura
 
+### 7. REGRA CRÍTICA PARA BULLETS E FRASES
+- Cada bullet DEVE ser uma frase completa, terminando com ponto final.
+- NUNCA corte uma frase no meio de uma palavra. Se o bullet ficar longo, reescreva-o de forma mais concisa.
+- Máximo de 180 caracteres por bullet.
+- Se uma ideia precisar de mais de 180 caracteres, divida em dois bullets completos e independentes.
+- PROIBIDO: bullets que começam com letra minúscula (exceto artigos após ponto).
+- PROIBIDO: bullets que terminam sem pontuação.
+- Cada bullet deve ser compreensível isoladamente, sem depender do anterior.
+
 ---
 
 TÍTULO DO MÓDULO: ${moduleTitle}
@@ -475,6 +484,15 @@ Write in Markdown format. Include:
 - Main concepts with explanations
 - Examples when relevant
 - Key takeaways
+
+REGRA CRÍTICA PARA BULLETS E FRASES:
+- Cada bullet DEVE ser uma frase completa, terminando com ponto final.
+- NUNCA corte uma frase no meio de uma palavra. Se o bullet ficar longo, reescreva-o de forma mais concisa.
+- Máximo de 180 caracteres por bullet.
+- Se uma ideia precisar de mais de 180 caracteres, divida em dois bullets completos e independentes.
+- PROIBIDO: bullets que começam com letra minúscula (exceto artigos após ponto).
+- PROIBIDO: bullets que terminam sem pontuação.
+- Cada bullet deve ser compreensível isoladamente, sem depender do anterior.
 
 Write 800-1200 words. Be thorough and educational.`;
 
