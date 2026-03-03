@@ -110,6 +110,12 @@ function deduplicateTitle(title: string): string {
    SAFE TEXT — boundary-checked wrapper
    ═══════════════════════════════════════════════════════ */
 
+// Audit log — collects all rendered elements for post-generation validation
+const _auditLog: { slideLabel: string; x: number; y: number; w: number; h: number; origW: number; origH: number }[] = [];
+let _auditSlideCounter = 0;
+
+function auditNextSlide() { _auditSlideCounter++; }
+
 function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
   const x = Number(options.x || 0);
   const y = Number(options.y || 0);
@@ -121,6 +127,14 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
   // Clamp height: never exceed bottom margin
   const maxH = SLIDE_H - y - 0.15;
   const safeH = Math.min(h, maxH);
+
+  // Record to audit log (before clamping check)
+  _auditLog.push({
+    slideLabel: `Slide ${_auditSlideCounter}`,
+    x, y, w: safeW, h: safeH,
+    origW: w, origH: h,
+  });
+
   if (safeW <= 0.1 || safeH <= 0.05) return;
 
   slide.addText(text, {
@@ -132,6 +146,49 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
     autoFit: false,
     overflow: "clip",
   });
+}
+
+function runAudit(): { passed: boolean; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  for (const el of _auditLog) {
+    const right = el.x + el.w;
+    const bottom = el.y + el.h;
+
+    if (right > SLIDE_W - 0.10) {
+      errors.push(`${el.slideLabel}: overflow DIREITO (x+w=${right.toFixed(2)}in > ${(SLIDE_W - 0.10).toFixed(2)}in)`);
+    }
+    if (bottom > SLIDE_H - 0.10) {
+      errors.push(`${el.slideLabel}: overflow INFERIOR (y+h=${bottom.toFixed(2)}in > ${(SLIDE_H - 0.10).toFixed(2)}in)`);
+    }
+    if (el.x < 0) {
+      errors.push(`${el.slideLabel}: x negativo (${el.x})`);
+    }
+    if (el.y < 0) {
+      errors.push(`${el.slideLabel}: y negativo (${el.y})`);
+    }
+    // Warn if clamping changed the original dimensions significantly
+    if (el.origW - el.w > 0.1) {
+      warnings.push(`${el.slideLabel}: largura clampada de ${el.origW.toFixed(2)} para ${el.w.toFixed(2)}in`);
+    }
+    if (el.origH - el.h > 0.1) {
+      warnings.push(`${el.slideLabel}: altura clampada de ${el.origH.toFixed(2)} para ${el.h.toFixed(2)}in`);
+    }
+  }
+
+  const passed = errors.length === 0;
+  if (passed) {
+    console.log(`✅ PPTX Audit PASSED — ${_auditLog.length} elements checked, 0 overflow errors`);
+  } else {
+    console.error(`❌ PPTX Audit FAILED — ${errors.length} errors, ${warnings.length} warnings`);
+    errors.forEach(e => console.error(`  ❌ ${e}`));
+  }
+  if (warnings.length > 0) {
+    warnings.forEach(w => console.warn(`  ⚠️ ${w}`));
+  }
+
+  return { passed, errors, warnings };
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1231,6 +1288,12 @@ Deno.serve(async (req: Request) => {
     pptx.title = course.title;
     pptx.subject = course.description || "";
 
+    // Wrap addSlide to auto-increment audit counter
+    const _origAddSlide = pptx.addSlide.bind(pptx);
+    pptx.addSlide = (...args: any[]) => {
+      auditNextSlide();
+      return _origAddSlide(...args);
+    };
     renderCapa(pptx, {
       layout: "CAPA",
       title: course.title,
@@ -1253,6 +1316,13 @@ Deno.serve(async (req: Request) => {
 
     const totalSlides = allSlides.length + 2;
     console.log(`PPTX generated: ${totalSlides} slides for ${modules.length} modules`);
+
+    // ═══ AUDIT CHECKLIST — runs after every generation ═══
+    const audit = runAudit();
+    if (!audit.passed) {
+      console.error(`PPTX Audit: ${audit.errors.length} bound violations detected. Details above.`);
+    }
+    console.log(`PPTX Audit summary: ${_auditLog.length} elements, ${audit.errors.length} errors, ${audit.warnings.length} warnings`);
 
     const pptxData = await pptx.write({ outputType: "uint8array" });
     const dateStr = new Date().toISOString().slice(0, 10);
