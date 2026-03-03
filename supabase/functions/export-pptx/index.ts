@@ -247,6 +247,127 @@ function splitBulletsToFit(bullets: string[], maxH: number, fontSize = FONT_PT, 
 }
 
 /* ═══════════════════════════════════════════════════════
+   DETERMINISTIC WRAP/PAGINATION (ANTI-OVERFLOW)
+   ═══════════════════════════════════════════════════════ */
+
+const SAFE_CHARS_PER_LINE = 52; // intentionally conservative
+const SAFE_LINE_MULTIPLIER = 1.55; // higher than visual setting to avoid underestimation
+const SAFE_BULLET_GAP = 12 / 72;
+
+interface BulletBlock {
+  kind: "header" | "bullet";
+  text: string;
+  height: number;
+}
+
+function wrapTextConservative(text: string, maxChars = SAFE_CHARS_PER_LINE): string[] {
+  const clean = sanitize(text);
+  if (!clean) return [""];
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const w of words) {
+    const candidate = current ? `${current} ${w}` : w;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current);
+      current = w;
+    }
+  }
+
+  if (current) lines.push(current);
+  return lines.length ? lines : [clean];
+}
+
+function estimateBulletHeightStrict(text: string, fontSize = FONT_PT): number {
+  const lines = wrapTextConservative(text, SAFE_CHARS_PER_LINE).length;
+  const lineH = (fontSize * SAFE_LINE_MULTIPLIER) / 72;
+  return (lines * lineH) + SAFE_BULLET_GAP;
+}
+
+function buildBulletBlocks(items: string[]): BulletBlock[] {
+  const blocks: BulletBlock[] = [];
+
+  for (const raw of items) {
+    const clean = sanitize(raw);
+    if (!clean) continue;
+
+    const isSubHeader = /^.+:\s*$/.test(clean) && clean.length <= 70;
+    if (isSubHeader) {
+      blocks.push({
+        kind: "header",
+        text: clean,
+        height: SECTION_HEADER_H + 0.12,
+      });
+      continue;
+    }
+
+    const chunks = splitLongBulletText(clean, 180);
+    for (const chunk of chunks) {
+      blocks.push({
+        kind: "bullet",
+        text: chunk,
+        height: estimateBulletHeightStrict(chunk, FONT_PT),
+      });
+    }
+  }
+
+  return blocks;
+}
+
+function paginateBulletBlocks(blocks: BulletBlock[], maxH: number): BulletBlock[][] {
+  const pages: BulletBlock[][] = [];
+  let current: BulletBlock[] = [];
+  let currentH = 0;
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const wouldOverflow = currentH + block.height > maxH;
+
+    if (wouldOverflow && current.length > 0) {
+      pages.push(current);
+      current = [];
+      currentH = 0;
+    }
+
+    if (block.kind === "header") {
+      if (currentH + block.height > maxH && current.length > 0) {
+        pages.push(current);
+        current = [];
+        currentH = 0;
+      }
+      current.push(block);
+      currentH += block.height;
+      continue;
+    }
+
+    if (block.height > maxH) {
+      const forcedChunks = splitLongBulletText(block.text, 120);
+      for (const forced of forcedChunks) {
+        const forcedH = estimateBulletHeightStrict(forced, FONT_PT);
+        if (currentH + forcedH > maxH && current.length > 0) {
+          pages.push(current);
+          current = [];
+          currentH = 0;
+        }
+        current.push({ kind: "bullet", text: forced, height: forcedH });
+        currentH += forcedH;
+      }
+      continue;
+    }
+
+    current.push(block);
+    currentH += block.height;
+  }
+
+  if (current.length > 0) pages.push(current);
+  return pages.length ? pages : [[]];
+}
+
+/* ═══════════════════════════════════════════════════════
    BULLET TEXT ARRAY BUILDER
    Each bullet is a separate text object with breakLine
    ═══════════════════════════════════════════════════════ */
@@ -831,7 +952,7 @@ function renderAberturaModulo(pptx: any, data: SlideData) {
     valign: "top",
   });
 
-  // Objectives positioned BELOW the title dynamically
+  // Objectives positioned BELOW the title dynamically with deterministic item layout
   if (data.items && data.items.length > 0) {
     const labelY = titleY + titleH + 0.15;
     const labelH = 0.35;
@@ -840,201 +961,147 @@ function renderAberturaModulo(pptx: any, data: SlideData) {
       fontSize: 14, fontFace: FONT, color: C.ACCENT, bold: true,
     });
 
-    const objectivesY = labelY + labelH + 0.05;
-    const availableH = SLIDE_H - objectivesY - BOTTOM_MARGIN;
+    const objectivesY = labelY + labelH + 0.06;
+    const maxY = SLIDE_H - BOTTOM_MARGIN;
+    const objectiveBlocks = (data.items || [])
+      .map((item) => sanitize(item))
+      .filter(Boolean)
+      .slice(0, 6)
+      .flatMap((item) => splitLongBulletText(item, 150))
+      .map((chunk) => ({ text: chunk, h: estimateBulletHeightStrict(chunk, 14) }));
 
-    // If objectives don't fit, reduce font size
-    const objEstimatedH = estimateBulletsHeight(data.items, 15, 60);
-    const objFontSize = objEstimatedH > availableH ? 13 : 15;
-    const objCharsPerLine = objFontSize === 13 ? 70 : 60;
+    let currentY = objectivesY;
+    for (const obj of objectiveBlocks) {
+      if (currentY + obj.h > maxY) break;
 
-    const objTextArr = buildBulletTextArray(data.items, {
-      markerChar: "✓",
-      markerColor: C.ACCENT,
-      textColor: C.WHITE,
-      fontSize: objFontSize,
-    });
+      addTextSafe(slide, [
+        {
+          text: "✓  ",
+          options: {
+            color: C.ACCENT,
+            bold: true,
+            fontSize: 14,
+            fontFace: FONT,
+            breakLine: false,
+          },
+        },
+        {
+          text: obj.text,
+          options: {
+            color: C.WHITE,
+            fontSize: 14,
+            fontFace: FONT,
+            breakLine: true,
+          },
+        },
+      ], {
+        x: MARGIN_L,
+        y: currentY,
+        w: SAFE_W,
+        h: obj.h,
+        valign: "top",
+        paraSpaceAfter: 6,
+        lineSpacingMultiple: 1.2,
+      });
 
-    const contentH = Math.min(estimateBulletsHeight(data.items, objFontSize, objCharsPerLine) + 0.15, availableH);
-
-    addTextSafe(slide, objTextArr, {
-      x: MARGIN_L, y: objectivesY, w: SAFE_W, h: Math.max(0.5, contentH),
-      valign: "top",
-      paraSpaceAfter: 8,
-      lineSpacingMultiple: 1.25,
-    });
+      currentY += obj.h;
+    }
   }
 }
 
-// Layout 3 — CONTEÚDO COM BULLETS (CORREÇÃO #2: splitBulletsToFit + altura dinâmica)
+// Layout 3 — CONTEÚDO COM BULLETS (PAGINAÇÃO DETERMINÍSTICA POR BLOCO)
 function renderBullets(pptx: any, data: SlideData) {
   const allBullets = (data.items || []).map((b) => sanitize(b)).filter(Boolean);
   if (allBullets.length === 0) return;
 
-  // Detect sub-sections within the bullet list (items ending with ":")
-  interface Section { header?: string; bullets: string[] }
-  const sections: Section[] = [];
-  let currentSection: Section = { bullets: [] };
+  const baseTitle = cleanPartTitle(data.title);
+  const baseHeaderH = getHeaderHeight(baseTitle);
+  const contentStartY = baseHeaderH + 0.25;
+  const maxContentH = SLIDE_H - contentStartY - BOTTOM_MARGIN;
 
-  for (const b of allBullets) {
-    const isSubCategory = /^.+:$/.test(b) && b.length < 50;
-    if (isSubCategory) {
-      if (currentSection.bullets.length > 0 || currentSection.header) {
-        sections.push(currentSection);
-      }
-      currentSection = { header: b, bullets: [] };
-    } else {
-      currentSection.bullets.push(b);
-    }
-  }
-  if (currentSection.bullets.length > 0 || currentSection.header) {
-    sections.push(currentSection);
-  }
+  const blocks = buildBulletBlocks(allBullets);
+  const pages = paginateBulletBlocks(blocks, maxContentH);
 
-  // Estimate height per section
-  function estimateSectionHeight(sec: Section): number {
-    let h = 0;
-    if (sec.header) h += SECTION_HEADER_H + 0.10;
-    h += estimateBulletsHeight(sec.bullets, FONT_PT, CHARS_PER_LINE);
-    h += SECTION_GAP;
-    return h;
-  }
-
-  // Group sections into slides that fit within MAX_CONTENT_H
-  const slideGroups: Section[][] = [];
-  let curGroup: Section[] = [];
-  let curH = 0;
-
-  for (const sec of sections) {
-    const secH = estimateSectionHeight(sec);
-    if (curH + secH > MAX_CONTENT_H && curGroup.length > 0) {
-      slideGroups.push(curGroup);
-      curGroup = [sec];
-      curH = secH;
-    } else {
-      curGroup.push(sec);
-      curH += secH;
-    }
-  }
-  if (curGroup.length > 0) slideGroups.push(curGroup);
-
-  // If no sections detected, fall back to flat bullet splitting
-  if (sections.length === 1 && !sections[0].header) {
-    const flatGroups = splitBulletsToFit(allBullets, MAX_CONTENT_H, FONT_PT, CHARS_PER_LINE);
-    flatGroups.forEach((bullets, idx) => {
-      const suffix = flatGroups.length > 1 ? ` (Parte ${idx + 1})` : "";
-      const titleText = deduplicateTitle(cleanPartTitle(data.title) + suffix);
-      renderSingleBulletSlide(pptx, titleText, bullets);
-    });
-    return;
-  }
-
-  // Render each group as a separate slide
-  slideGroups.forEach((group, idx) => {
-    const suffix = slideGroups.length > 1 ? ` (Parte ${idx + 1})` : "";
-    const titleText = deduplicateTitle(cleanPartTitle(data.title) + suffix);
-
-    const slide = pptx.addSlide();
-    slide.background = { color: C.BG_LIGHT };
-
-    // Title bar (dynamic height to avoid header clipping)
-    const headerH = getHeaderHeight(titleText);
-    const headerFont = getHeaderTitleFontSize(titleText);
-    slide.addShape(pptx.ShapeType.rect, {
-      x: 0, y: 0, w: SLIDE_W, h: headerH,
-      fill: { color: C.PRIMARY },
-    });
-    addTextSafe(slide, titleText, {
-      x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
-      fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
-      valign: "middle",
-    });
-
-    // Render each section with its header and bullets
-    let currentY = headerH + 0.25;
-
-    for (const sec of group) {
-      // Section header
-      if (sec.header) {
-        addTextSafe(slide, sec.header, {
-          x: MARGIN_L, y: currentY,
-          w: SAFE_W, h: SECTION_HEADER_H + 0.10,
-          fontSize: 14, fontFace: FONT, color: C.PRIMARY, bold: true,
-          valign: "top",
-        });
-        currentY += SECTION_HEADER_H + 0.12;
-      }
-
-      // Bullets for this section
-      if (sec.bullets.length > 0) {
-        const bulletsArr = buildBulletTextArray(sec.bullets, {
-          markerChar: "●",
-          markerColor: C.MEDIUM,
-          textColor: C.TEXT_BODY,
-          fontSize: FONT_PT,
-        });
-
-        const bulletsH = Math.min(
-          estimateBulletsHeight(sec.bullets, FONT_PT, CHARS_PER_LINE) + 0.10,
-          SLIDE_H - currentY - BOTTOM_MARGIN
-        );
-
-        addTextSafe(slide, bulletsArr, {
-          x: MARGIN_L, y: currentY,
-          w: SAFE_W, h: bulletsH,
-          valign: "top",
-          paraSpaceAfter: 12,
-          lineSpacingMultiple: 1.35,
-        });
-        currentY += bulletsH;
-      }
-
-      currentY += SECTION_GAP;
-    }
+  pages.forEach((pageBlocks, idx) => {
+    const suffix = pages.length > 1 ? ` (Parte ${idx + 1})` : "";
+    const titleText = deduplicateTitle(baseTitle + suffix);
+    renderSingleBulletSlide(pptx, titleText, pageBlocks);
   });
 }
 
-/** Render a single slide with flat bullets (no sub-sections) */
-function renderSingleBulletSlide(pptx: any, titleText: string, bullets: string[]) {
+/** Render a single slide with deterministic block layout */
+function renderSingleBulletSlide(pptx: any, titleText: string, blocks: BulletBlock[]) {
   const slide = pptx.addSlide();
   slide.background = { color: C.BG_LIGHT };
 
-  // Title bar (dynamic height to avoid header clipping)
   const headerH = getHeaderHeight(titleText);
   const headerFont = getHeaderTitleFontSize(titleText);
+
   slide.addShape(pptx.ShapeType.rect, {
     x: 0, y: 0, w: SLIDE_W, h: headerH,
     fill: { color: C.PRIMARY },
   });
+
   addTextSafe(slide, titleText, {
     x: MARGIN_L, y: 0.08, w: SAFE_W, h: headerH - 0.16,
     fontSize: headerFont, fontFace: FONT, color: C.WHITE, bold: true,
     valign: "middle",
   });
 
-  // Build bullet text array
-  const bulletsArr = buildBulletTextArray(bullets, {
-    markerChar: "●",
-    markerColor: C.MEDIUM,
-    textColor: C.TEXT_BODY,
-    fontSize: FONT_PT,
-  });
+  let currentY = headerH + 0.25;
+  const maxY = SLIDE_H - BOTTOM_MARGIN;
 
-  // Calculate height dynamically (based on real available area below dynamic header)
-  const contentStartY = headerH + 0.25;
-  const maxContentH = SLIDE_H - contentStartY - BOTTOM_MARGIN;
-  const estimatedH = estimateBulletsHeight(bullets, FONT_PT, CHARS_PER_LINE);
-  const contentH = Math.min(estimatedH + 0.15, maxContentH);
+  for (const block of blocks) {
+    if (currentY + block.height > maxY) break;
 
-  addTextSafe(slide, bulletsArr, {
-    x: MARGIN_L,
-    y: contentStartY,
-    w: SAFE_W,
-    h: contentH,
-    valign: "top",
-    paraSpaceAfter: 12,
-    lineSpacingMultiple: 1.35,
-  });
+    if (block.kind === "header") {
+      addTextSafe(slide, block.text, {
+        x: MARGIN_L,
+        y: currentY,
+        w: SAFE_W,
+        h: block.height,
+        fontSize: 14,
+        fontFace: FONT,
+        color: C.PRIMARY,
+        bold: true,
+        valign: "top",
+      });
+      currentY += block.height;
+      continue;
+    }
+
+    addTextSafe(slide, [
+      {
+        text: "●  ",
+        options: {
+          color: C.MEDIUM,
+          bold: true,
+          fontSize: FONT_PT,
+          fontFace: FONT,
+          breakLine: false,
+        },
+      },
+      {
+        text: block.text,
+        options: {
+          color: C.TEXT_BODY,
+          fontSize: FONT_PT,
+          fontFace: FONT,
+          breakLine: true,
+        },
+      },
+    ], {
+      x: MARGIN_L,
+      y: currentY,
+      w: SAFE_W,
+      h: block.height,
+      valign: "top",
+      paraSpaceAfter: 8,
+      lineSpacingMultiple: 1.25,
+    });
+
+    currentY += block.height;
+  }
 }
 
 // Layout 4 — CARDS EM GRID
@@ -1221,26 +1288,30 @@ function renderTabela(pptx: any, data: SlideData) {
   });
 }
 
-// Layout 6 — RESUMO (dynamic Y positioning)
+// Layout 6 — RESUMO (paginação determinística anti-overflow)
 function renderResumo(pptx: any, data: SlideData) {
   const items = (data.items || []).map((i) => sanitize(i)).filter(Boolean);
   if (!items.length) return;
 
-  // Calculate title height dynamically
-  const titleText = deduplicateTitle(data.subtitle || data.title);
-  const resumoContentX = MARGIN_L;
-  const resumoContentW = SAFE_W - 0.08; // account for left accent bar at x=0
-  const titleH = getTitleHeight(titleText, resumoContentW, 24);
+  const baseTitle = cleanPartTitle(data.subtitle || data.title);
+  const titleH = getTitleHeight(baseTitle, SAFE_W - 0.08, 24);
   const titleY = 0.7;
   const bulletsY = titleY + titleH + 0.15;
   const summaryMaxH = SLIDE_H - bulletsY - BOTTOM_MARGIN;
 
-  // Split if needed using splitBulletsToFit
-  const groups = splitBulletsToFit(items, summaryMaxH, 14, 65);
+  const bulletBlocks: BulletBlock[] = items.flatMap((text) =>
+    splitLongBulletText(text, 170).map((chunk) => ({
+      kind: "bullet" as const,
+      text: chunk,
+      height: estimateBulletHeightStrict(chunk, 14),
+    }))
+  );
 
-  groups.forEach((groupItems, idx) => {
-    const suffix = groups.length > 1 ? ` (Parte ${idx + 1})` : "";
-    const slideTitle = cleanPartTitle(data.subtitle || data.title) + suffix;
+  const pages = paginateBulletBlocks(bulletBlocks, summaryMaxH);
+
+  pages.forEach((pageBlocks, idx) => {
+    const suffix = pages.length > 1 ? ` (Parte ${idx + 1})` : "";
+    const slideTitle = deduplicateTitle(baseTitle + suffix);
 
     const slide = pptx.addSlide();
     slide.background = { color: C.BG_LIGHT };
@@ -1251,33 +1322,54 @@ function renderResumo(pptx: any, data: SlideData) {
     });
 
     addTextSafe(slide, "RESUMO", {
-      x: resumoContentX, y: 0.3, w: 2, h: 0.4,
+      x: MARGIN_L, y: 0.3, w: 2, h: 0.4,
       fontSize: 13, fontFace: FONT, color: C.ACCENT, bold: true,
     });
 
-    addTextSafe(slide, deduplicateTitle(slideTitle), {
-      x: resumoContentX, y: titleY, w: resumoContentW, h: titleH,
+    addTextSafe(slide, slideTitle, {
+      x: MARGIN_L, y: titleY, w: SAFE_W - 0.08, h: titleH,
       fontSize: 24, fontFace: FONT, color: C.PRIMARY, bold: true,
       valign: "top",
     });
 
-    const bulletLines = buildBulletTextArray(groupItems, {
-      markerChar: "✓",
-      markerColor: C.ACCENT,
-      textColor: C.TEXT_BODY,
-      fontSize: 14,
-    });
+    let currentY = bulletsY;
+    const maxY = SLIDE_H - BOTTOM_MARGIN;
 
-    const contentH = Math.min(estimateBulletsHeight(groupItems, 14, 65) + 0.15, summaryMaxH);
-    addTextSafe(slide, bulletLines, {
-      x: resumoContentX,
-      y: bulletsY,
-      w: resumoContentW,
-      h: Math.max(0.5, contentH),
-      valign: "top",
-      paraSpaceAfter: 10,
-      lineSpacingMultiple: 1.3,
-    });
+    for (const block of pageBlocks) {
+      if (currentY + block.height > maxY) break;
+
+      addTextSafe(slide, [
+        {
+          text: "✓  ",
+          options: {
+            color: C.ACCENT,
+            bold: true,
+            fontSize: 14,
+            fontFace: FONT,
+            breakLine: false,
+          },
+        },
+        {
+          text: block.text,
+          options: {
+            color: C.TEXT_BODY,
+            fontSize: 14,
+            fontFace: FONT,
+            breakLine: true,
+          },
+        },
+      ], {
+        x: MARGIN_L,
+        y: currentY,
+        w: SAFE_W - 0.08,
+        h: block.height,
+        valign: "top",
+        paraSpaceAfter: 8,
+        lineSpacingMultiple: 1.22,
+      });
+
+      currentY += block.height;
+    }
   });
 }
 
