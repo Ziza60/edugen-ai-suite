@@ -20,38 +20,119 @@ const corsHeaders = {
 };
 
 /* ═══════════════════════════════════════════════════════
-   DESIGN SYSTEM — 100% LIGHT THEME
+   BLOCO 1: DESIGN SYSTEM FUNDAMENTAL
+   Canvas: 13.333" × 7.5" (16:9), Área segura: 12" × 6.5"
+   Resolução: 96 DPI
    ═══════════════════════════════════════════════════════ */
 
+// ── THEME SYSTEM (Light default, Dark optional) ──
+const THEME = {
+  light: {
+    background: "FFFFFF",
+    backgroundSecondary: "F8F9FA",
+    text: "2C3E50",
+    textSecondary: "7F8C8D",
+    accent: "E67E22",
+    accentSecondary: "9B59B6",
+    borders: "BDC3C7",
+  },
+  dark: {
+    background: "2C3E50",
+    backgroundSecondary: "34495E",
+    text: "ECF0F1",
+    textSecondary: "BDC3C7",
+    accent: "E67E22",
+    accentSecondary: "9B59B6",
+    borders: "7F8C8D",
+  },
+};
+
+// Active theme — entire course uses ONE theme, never mix
+const currentTheme = THEME.light;
+
 const C = {
-  BG_WHITE: "FFFFFF", BG_LIGHT: "F8F9FA", BG_CARD: "FFFFFF", BG_CARD_ALT: "F2F3F5",
-  PRIMARY: "2C3E50", SECONDARY: "E67E22", ACCENT_PURPLE: "9B59B6", ACCENT_BLUE: "3498DB",
-  ACCENT_GREEN: "27AE60", ACCENT_TEAL: "1ABC9C", ACCENT_RED: "E74C3C", ACCENT_ORANGE: "F39C12",
-  TEXT_DARK: "2C3E50", TEXT_BODY: "34495E", TEXT_LIGHT: "7F8C8D", TEXT_WHITE: "FFFFFF",
-  TABLE_HEADER_BG: "34495E", TABLE_ROW_ODD: "FFFFFF", TABLE_ROW_EVEN: "ECF0F1", TABLE_BORDER: "BDC3C7",
-  CARD_BORDER: "E0E0E0", CARD_SHADOW: "D5D8DC",
-  INSIGHT_BG: "FDF2E9", INSIGHT_BORDER: "E67E22",
+  BG_WHITE: currentTheme.background,
+  BG_LIGHT: currentTheme.backgroundSecondary,
+  BG_CARD: currentTheme.background,
+  BG_CARD_ALT: "F2F3F5",
+  PRIMARY: currentTheme.text,
+  SECONDARY: currentTheme.accent,
+  ACCENT_PURPLE: "9B59B6",
+  ACCENT_BLUE: "3498DB",
+  ACCENT_GREEN: "27AE60",
+  ACCENT_TEAL: "1ABC9C",
+  ACCENT_RED: "E74C3C",
+  ACCENT_ORANGE: "F39C12",
+  TEXT_DARK: currentTheme.text,
+  TEXT_BODY: "34495E",
+  TEXT_LIGHT: currentTheme.textSecondary,
+  TEXT_WHITE: "FFFFFF",
+  TABLE_HEADER_BG: "34495E",
+  TABLE_ROW_ODD: currentTheme.background,
+  TABLE_ROW_EVEN: "ECF0F1",
+  TABLE_BORDER: currentTheme.borders,
+  CARD_BORDER: "E0E0E0",
+  CARD_SHADOW: "D5D8DC",
+  INSIGHT_BG: "FDF2E9",
+  INSIGHT_BORDER: currentTheme.accent,
   REFLECTION_BG: "EBF5FB",
 };
 
 const CARD_ACCENT_COLORS = [C.ACCENT_BLUE, C.ACCENT_GREEN, C.ACCENT_PURPLE, C.SECONDARY, C.ACCENT_RED, C.PRIMARY];
 
-// Module cover colors (applied to module number only)
+// Module cover colors (applied to module number only) — rotates for M06+
 const MODULE_NUMBER_COLORS = [
-  C.ACCENT_PURPLE,  // M01
-  C.ACCENT_BLUE,    // M02
-  C.ACCENT_GREEN,   // M03
-  C.ACCENT_ORANGE,  // M04
-  C.ACCENT_TEAL,    // M05
+  C.ACCENT_PURPLE,  // M01 — Roxo
+  C.ACCENT_BLUE,    // M02 — Azul
+  C.ACCENT_GREEN,   // M03 — Verde
+  C.ACCENT_ORANGE,  // M04 — Laranja
+  C.ACCENT_TEAL,    // M05 — Teal
 ];
 
+// ── TYPOGRAPHY HIERARCHY (Montserrat + Open Sans) ──
 const FONT_TITLE = "Montserrat";
 const FONT_BODY = "Open Sans";
-const SLIDE_W = 13.333;
+
+// Typography sizes (pt) — strict hierarchy
+const TYPO = {
+  MODULE_NUMBER: 72,    // Montserrat Bold, line-height 1.0
+  MODULE_TITLE: 32,     // Montserrat Bold, line-height 1.2
+  SECTION_TITLE: 32,    // Montserrat Bold, line-height 1.2
+  SUBTITLE: 18,         // Open Sans Regular, line-height 1.4
+  BODY: 14,             // Open Sans Regular 14-16pt, line-height 1.5
+  BODY_LARGE: 16,       // Open Sans Regular, line-height 1.5
+  SUPPORT: 12,          // Open Sans Regular 11-12pt, line-height 1.4
+  LABEL: 14,            // Open Sans Bold UPPERCASE, letter-spacing 2
+};
+
+// ── CANVAS & GRID SYSTEM ──
+const SLIDE_W = 13.333;  // 16:9 widescreen
 const SLIDE_H = 7.5;
-const MARGIN = 0.50;
-const SAFE_W = SLIDE_W - MARGIN * 2;
-const BOTTOM_MARGIN = 0.35;
+const MARGIN = 0.667;    // ~0.667" margins to achieve 12" safe width
+const SAFE_W = 12.0;     // Fixed: 12" safe width per spec
+const SAFE_H = 6.5;      // Fixed: 6.5" safe height per spec
+const BOTTOM_MARGIN = 0.50; // Bottom margin (Y: 7.0" max)
+
+// Grid zones (Y coordinates)
+const ZONE = {
+  HEADER_START: 0.50,    // Headers and labels
+  HEADER_END: 2.0,
+  CONTENT_START: 2.0,    // Main content area
+  CONTENT_END: 6.0,
+  FOOTER_START: 6.0,     // Footer and metadata
+  FOOTER_END: 7.0,
+  LEFT: 0.667,           // Content margins (centered within safe area)
+  RIGHT: 12.667,         // MARGIN + SAFE_W
+};
+
+// ── TEXT DENSITY CONSTRAINTS ──
+// Rule: NEVER exceed 15 chars/sq in
+const DENSITY_LIMITS: Record<string, { minArea: number; maxChars: number; maxDensity: number }> = {
+  title:       { minArea: 15,  maxChars: 60,  maxDensity: 4 },
+  moduleTitle: { minArea: 6,   maxChars: 40,  maxDensity: 6.7 },
+  subtitle:    { minArea: 4,   maxChars: 60,  maxDensity: 15 },
+  bullet:      { minArea: 3.5, maxChars: 50,  maxDensity: 14.3 },
+};
 
 /* ═══════════════════════════════════════════════════════
    P1: SMART TRUNCATION — NEVER CUT WORDS
@@ -209,6 +290,68 @@ function getSemanticIcon(text: string, fallbackIdx: number): string {
 }
 
 /* ═══════════════════════════════════════════════════════
+   BLOCO 1 — §4.2: TEXT DENSITY VALIDATION (Critical)
+   Rule: NEVER exceed 15 chars/sq in
+   ═══════════════════════════════════════════════════════ */
+
+interface DensityResult {
+  fits: boolean;
+  density: number;
+  maxChars: number;
+  suggestion: "OK" | "REDUCE_TEXT";
+}
+
+function validateTextDensity(text: string, boxWidth: number, boxHeight: number, fontSize: number): DensityResult {
+  const area = boxWidth * boxHeight;
+  const estimatedCharsPerLine = (boxWidth * 96) / (fontSize * 0.6);
+  const estimatedLines = boxHeight / (fontSize * 1.5 * 0.0139); // 1pt = 0.0139"
+  const maxChars = Math.floor(estimatedCharsPerLine * estimatedLines * 0.9); // 10% safety margin
+
+  return {
+    fits: text.length <= maxChars,
+    density: area > 0 ? text.length / area : 999,
+    maxChars,
+    suggestion: text.length > maxChars ? "REDUCE_TEXT" : "OK",
+  };
+}
+
+interface AutoAdjustResult {
+  fontSize: number;
+  truncated: boolean;
+  text: string;
+}
+
+function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFont = 32, minFont = 11): AutoAdjustResult {
+  for (let size = maxFont; size >= minFont; size -= 2) {
+    const check = validateTextDensity(text, boxWidth, boxHeight, size);
+    if (check.fits) {
+      return { fontSize: size, truncated: false, text };
+    }
+  }
+  // Last resort: truncate with smartTruncate (word-safe)
+  const maxLen = validateTextDensity(text, boxWidth, boxHeight, minFont).maxChars;
+  return {
+    fontSize: minFont,
+    truncated: true,
+    text: smartTruncate(text, Math.max(maxLen - 3, 10), true),
+  };
+}
+
+/* ═══════════════════════════════════════════════════════
+   BLOCO 1 — §5.2: TRUNCATION DETECTION (Pre-render check)
+   ═══════════════════════════════════════════════════════ */
+
+function detectTruncation(text: string): boolean {
+  if (!text || text.length < 5) return false;
+  const patterns = [
+    /\s(d[ao]s?|nas?|em|por|para)\s+\w{1,3}$/,  // Preposition + short word at end
+    /[a-zà-ú]{2,}$/i,                            // Word ending abruptly (no punctuation)
+  ];
+  const noPunctuation = !/[.!?…]$/.test(text.trim()) && text.length < 20;
+  return patterns.some(p => p.test(text)) || noPunctuation;
+}
+
+/* ═══════════════════════════════════════════════════════
    TEXT COMPRESSION (65% reduction) — uses smartTruncate
    ═══════════════════════════════════════════════════════ */
 
@@ -294,8 +437,34 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
   const safeW = Math.min(w, SLIDE_W - x - 0.15);
   const safeH = Math.min(h, SLIDE_H - y - 0.05);
   if (safeW <= 0.1 || safeH <= 0.05) return;
+
+  // Pre-render density validation for plain text
+  if (typeof text === "string" && text.length > 0) {
+    const fontSize = Number(options.fontSize || TYPO.BODY);
+    const check = validateTextDensity(text, safeW, safeH, fontSize);
+    if (!check.fits) {
+      const adjusted = autoAdjustText(text, safeW, safeH, fontSize, TYPO.SUPPORT);
+      text = adjusted.text;
+      options = { ...options, fontSize: adjusted.fontSize };
+      if (adjusted.truncated) {
+        console.log(`⚠️ Density auto-adjust on Slide ${_auditSlideCounter}: "${text.substring(0, 30)}..." → ${adjusted.fontSize}pt`);
+      }
+    }
+    // Final truncation detection
+    if (detectTruncation(text)) {
+      console.warn(`⚠️ Possible truncation detected on Slide ${_auditSlideCounter}: "${text.substring(0, 40)}"`);
+    }
+  }
+
   _auditLog.push({ slideLabel: `Slide ${_auditSlideCounter}`, x, y, w: safeW, h: safeH });
-  slide.addText(text, { ...options, x, y, w: safeW, h: safeH, autoFit: false, overflow: "clip" });
+  slide.addText(text, {
+    ...options, x, y, w: safeW, h: safeH,
+    autoFit: false,
+    shrinkText: false,
+    wrap: true,        // CRITICAL: line wrapping — §4.3
+    overflow: "clip",
+    inset: options.inset ?? 0.1,  // Minimal internal margin — §4.3
+  });
 }
 
 function runAudit() {
@@ -1802,12 +1971,13 @@ Deno.serve(async (req: Request) => {
     const avgDensity = allSlides.reduce((sum, s) => sum + (s.densityScore || 0), 0) / allSlides.length;
     console.log(`📊 Average density: ${avgDensity.toFixed(1)} | Slides: ${allSlides.length}`);
 
-    /* ─── Build PPTX ─── */
+    /* ─── Build PPTX — §4.1 Configuration ─── */
     const pptx = new PptxGenJS();
-    pptx.author = "EduGen AI";
+    pptx.layout = "LAYOUT_16x9";
+    pptx.author = "Sistema de Cursos";
+    pptx.company = "EduGen AI";
+    pptx.subject = "Curso Profissional";
     pptx.title = course.title;
-    pptx.subject = course.description || "";
-    pptx.layout = "LAYOUT_WIDE";
 
     const _origAddSlide = pptx.addSlide.bind(pptx);
     pptx.addSlide = (...args: any[]) => {
