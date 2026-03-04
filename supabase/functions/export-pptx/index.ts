@@ -232,9 +232,9 @@ function sanitizeBullets(bullets: string[]): string[] {
    CONSERVATIVE HEIGHT — bullet-count based (not char estimation)
    ═══════════════════════════════════════════════════════ */
 
-const BULLET_H_SHORT = 0.52;   // bullets <= 80 chars (1 line) — increased for real PPT rendering
-const BULLET_H_LONG  = 0.90;   // bullets 81-160 chars (2 lines) — increased for line-wrap headroom
-const BULLET_H_XLONG = 1.20;   // bullets > 160 chars (3 lines) — increased for safety
+const BULLET_H_SHORT = 0.55;   // bullets <= 80 chars (1 linha)
+const BULLET_H_LONG  = 0.95;   // bullets 81–160 chars (2 linhas)
+const BULLET_H_XLONG = 1.30;   // bullets > 160 chars (3 linhas)
 const MAX_BULLETS_PER_SLIDE = 5;
 // Used by splitOrMergeSlides when splitting bullet-heavy slides
 const MAX_CONTENT_H_FOR_SPLIT = SLIDE_H - (HEADER_H + 0.25) - BOTTOM_MARGIN;
@@ -383,20 +383,23 @@ function estimateSectionHeight(header: string | null, bullets: string[], widthIn
 }
 
 function groupIntoSections(items: string[]): ContentSection[] {
+  // REGRA: nunca criar seção sem bullets — headers orphans viram parte da próxima seção
   const sections: ContentSection[] = [];
-  let curHeader: string | null = null;
+  let pendingHeader: string | null = null;
   let curBullets: string[] = [];
 
   const flush = () => {
-    if (curBullets.length > 0 || curHeader) {
+    // Só cria seção se tem bullets — nunca criar seção vazia
+    if (curBullets.length > 0) {
       sections.push({
-        header: curHeader,
+        header: pendingHeader,
         bullets: [...curBullets],
-        totalHeight: estimateSectionHeight(curHeader, curBullets, SAFE_W),
+        totalHeight: estimateSectionHeight(pendingHeader, curBullets, SAFE_W),
       });
       curBullets = [];
-      curHeader = null;
+      pendingHeader = null;
     }
+    // Se ficou header sem bullets, descarta (não cria seção fantasma)
   };
 
   for (const raw of items) {
@@ -404,8 +407,10 @@ function groupIntoSections(items: string[]): ContentSection[] {
     if (!clean) continue;
     const isSubHeader = /^.+:\s*$/.test(clean) && clean.length <= 70;
     if (isSubHeader) {
-      flush();
-      curHeader = clean;
+      // Antes de trocar de header, fecha a seção atual se tiver bullets
+      if (curBullets.length > 0) flush();
+      // Guarda o novo header — só vira seção quando chegarem bullets
+      pendingHeader = clean;
     } else {
       const chunks = splitLongBulletText(clean, 180);
       curBullets.push(...chunks);
@@ -1014,55 +1019,79 @@ function renderAberturaModulo(pptx: any, data: SlideData) {
   }
 }
 
-// Layout 3 — CONTEÚDO COM BULLETS (LAYOUT ADAPTATIVO + PAGINAÇÃO COMPLETA)
+// Layout 3 — CONTEÚDO COM BULLETS
 function renderBullets(pptx: any, data: SlideData) {
-  const allBullets = (data.items || []).map((b) => sanitize(b)).filter(Boolean);
+  // 1. Coletar e limpar todos os bullets
+  const allBullets = (data.items || [])
+    .map((b) => sanitize(b))
+    .filter((b) => b.length > 0);
+
   if (allBullets.length === 0) return;
 
   const baseTitle = cleanPartTitle(data.title);
-  const sections = groupIntoSections(allBullets);
 
-  // Calculate available content area
+  // 2. Calcular altura disponível para conteúdo
   const baseHeaderH = getHeaderHeight(baseTitle);
-  const contentStartY = baseHeaderH + 0.25;
-  const maxContentH = SLIDE_H - contentStartY - BOTTOM_MARGIN;
+  const maxContentH = SLIDE_H - (baseHeaderH + 0.25) - BOTTOM_MARGIN;
 
-  // Always paginate first — this guarantees no empty pages are created
-  const pages = paginateSections(sections, maxContentH);
-  if (pages.length === 0) return;
+  // 3. Dividir bullets em grupos que cabem em cada slide
+  //    splitBulletsToFit garante: cada grupo tem >= 1 bullet, NUNCA cria grupo vazio
+  const bulletGroups = splitBulletsToFit(allBullets, maxContentH);
 
-  pages.forEach((pageSections, idx) => {
-    // Guard: skip pages that somehow have no bullets after filtering
-    const hasBullets = pageSections.some(s => s.bullets.length > 0);
-    if (!hasBullets) return;
+  // 4. Para cada grupo, criar exatamente 1 slide — somente depois de garantir conteúdo
+  bulletGroups.forEach((groupBullets, idx) => {
+    // Guarda dupla: nunca criar slide com grupo vazio
+    if (groupBullets.length === 0) return;
 
-    const suffix = pages.length > 1 ? ` (Parte ${idx + 1})` : "";
+    const suffix = bulletGroups.length > 1 ? ` (Parte ${idx + 1})` : "";
     const titleText = deduplicateTitle(baseTitle + suffix);
 
-    // Try 2-column layout only when exactly 2 valid sections and both are not too tall
-    if (pageSections.length === 2 &&
-        pageSections[0].bullets.length > 0 &&
-        pageSections[1].bullets.length > 0) {
-      const s0H = estimateSectionHeight(pageSections[0].header, pageSections[0].bullets, COL_W);
-      const s1H = estimateSectionHeight(pageSections[1].header, pageSections[1].bullets, COL_W);
-      if (s0H <= maxContentH && s1H <= maxContentH) {
-        const slide = pptx.addSlide();
-        slide.background = { color: C.BG_LIGHT };
-        const headerH = renderHeaderBar(pptx, slide, titleText);
-        const cStartY = headerH + 0.25;
-        const colMaxY = SLIDE_H - BOTTOM_MARGIN;
-        renderSectionsInArea(slide, [pageSections[0]], COL_LEFT_X, cStartY, COL_W, colMaxY);
-        renderSectionsInArea(slide, [pageSections[1]], COL_RIGHT_X, cStartY, COL_W, colMaxY);
-        return;
-      }
-    }
-
-    // Full-width single slide
+    // Criar slide DEPOIS de confirmar que tem conteúdo
     const slide = pptx.addSlide();
     slide.background = { color: C.BG_LIGHT };
     const headerH = renderHeaderBar(pptx, slide, titleText);
-    const maxY = SLIDE_H - BOTTOM_MARGIN;
-    renderSectionsInArea(slide, pageSections, MARGIN_L, headerH + 0.25, SAFE_W, maxY);
+
+    // Montar array de texto formatado com bullets
+    const textParts: any[] = [];
+    groupBullets.forEach((bullet, bIdx) => {
+      const isLast = bIdx === groupBullets.length - 1;
+      textParts.push(
+        {
+          text: "●  ",
+          options: {
+            color: C.MEDIUM, bold: true,
+            fontSize: BODY_FONT_PT, fontFace: FONT,
+            breakLine: false,
+          },
+        },
+        {
+          text: bullet.trim() + (isLast ? "" : "\n"),
+          options: {
+            color: C.TEXT_BODY,
+            fontSize: BODY_FONT_PT, fontFace: FONT,
+            breakLine: !isLast,
+          },
+        },
+      );
+    });
+
+    const contentY = headerH + 0.25;
+    const contentH = Math.min(
+      calcBulletsHeight(groupBullets),
+      SLIDE_H - contentY - BOTTOM_MARGIN,
+    );
+
+    if (contentH > 0.1) {
+      addTextSafe(slide, textParts, {
+        x: MARGIN_L,
+        y: contentY,
+        w: SAFE_W,
+        h: contentH,
+        valign: "top",
+        paraSpaceAfter: 4,
+        lineSpacingMultiple: 1.15,
+      });
+    }
   });
 }
 
