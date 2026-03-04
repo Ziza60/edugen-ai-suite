@@ -148,39 +148,38 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
   if (!texto) return { texto: "", linhas: 0, truncado: false };
   const t = texto.trim();
   
-  // ESTRATÉGIA 1: Cabe em uma linha → retorna direto
+  // Se cabe em uma linha, retorna direto
   if (t.length <= maxCaracteresPorLinha) {
     return { texto: t, linhas: 1, truncado: false };
   }
   
-  // ESTRATÉGIA 1: Quebrar em N linhas em palavras completas (NUNCA "...")
+  // Se cabe em duas linhas, quebra em palavras completas
   const palavras = t.split(' ');
-  const linhas: string[] = [];
-  let linhaAtual = '';
+  let linha1 = '';
+  let linha2 = '';
   
   for (const palavra of palavras) {
-    const teste = linhaAtual ? linhaAtual + ' ' + palavra : palavra;
-    if (teste.length <= maxCaracteresPorLinha) {
-      linhaAtual = teste;
+    if ((linha1 + palavra).length <= maxCaracteresPorLinha && linha2 === '') {
+      linha1 += palavra + ' ';
+    } else if ((linha2 + palavra).length <= maxCaracteresPorLinha) {
+      linha2 += palavra + ' ';
     } else {
-      if (linhaAtual) linhas.push(linhaAtual);
-      linhaAtual = palavra;
+      // Não cabe nem nas duas linhas, truncar com "..."
+      linha2 = linha2.trim();
+      if (linha2.length > 3) {
+        linha2 = linha2.substring(0, linha2.lastIndexOf(' ') > 0 ? linha2.lastIndexOf(' ') : linha2.length).trim() + '...';
+      } else {
+        linha2 += '...';
+      }
+      break;
     }
   }
-  if (linhaAtual) linhas.push(linhaAtual);
   
-  // Se cabe nas linhas permitidas, retorna todas
-  if (linhas.length <= maxLinhas) {
-    return { texto: linhas.join('\n'), linhas: linhas.length, truncado: false };
-  }
-  
-  // ESTRATÉGIA 4 (último recurso): Pegar as primeiras maxLinhas linhas completas
-  // NUNCA adicionar "..." — apenas usar as palavras que cabem
-  const resultado = linhas.slice(0, maxLinhas).join('\n');
+  const resultado = linha1.trim() + (linha2 ? '\n' + linha2.trim() : '');
   return { 
     texto: resultado, 
-    linhas: maxLinhas, 
-    truncado: linhas.length > maxLinhas
+    linhas: linha2 ? 2 : 1, 
+    truncado: !!(linha2 && linha2.endsWith('...'))
   };
 }
 
@@ -219,12 +218,12 @@ function validarSlide(slideTextos: string[], slideWidth: number, slideHeight: nu
  * Truncates text without EVER cutting a word in the middle.
  * Always ends on a complete word boundary.
  */
-function smartTruncate(text: string, maxChars: number): string {
+function smartTruncate(text: string, maxChars: number, addEllipsis = false): string {
   if (!text) return "";
   const t = text.trim();
   if (t.length <= maxChars) return t;
 
-  // Find last space before or at the limit — NEVER cut mid-word
+  // Find last space before or at the limit
   const truncated = t.substring(0, maxChars);
   const lastSpace = truncated.lastIndexOf(" ");
 
@@ -232,13 +231,13 @@ function smartTruncate(text: string, maxChars: number): string {
   if (lastSpace > maxChars * 0.4) {
     result = truncated.substring(0, lastSpace).trim();
   } else {
-    // If no good space found, extend to next word boundary
+    // If no good space found, take up to limit but find closest word end
     const nextSpace = t.indexOf(" ", maxChars);
     if (nextSpace > 0 && nextSpace < maxChars + 15) {
       result = t.substring(0, nextSpace).trim();
     } else {
       result = truncated.trim();
-      // Ensure we didn't cut mid-word
+      // Ensure we didn't cut mid-word by checking if last char is part of a word
       const lastCharIsLetter = /\w/.test(result[result.length - 1]);
       const nextCharExists = t.length > maxChars && /\w/.test(t[maxChars]);
       if (lastCharIsLetter && nextCharExists) {
@@ -250,8 +249,12 @@ function smartTruncate(text: string, maxChars: number): string {
     }
   }
 
-  // Clean trailing punctuation artifacts — NEVER add "..."
-  result = result.replace(/[\s,;:\-\u2013]+$/, "").trim();
+  // Clean trailing punctuation artifacts
+  result = result.replace(/[\s,;:\-–]+$/, "").trim();
+
+  if (addEllipsis && result.length < t.length && !/[.!?]$/.test(result)) {
+    result += "...";
+  }
 
   return result;
 }
@@ -272,7 +275,7 @@ function smartBullet(text: string): string {
   const words = text.trim().split(/\s+/);
   if (words.length > 8) {
     const eightWords = words.slice(0, 8).join(" ");
-    if (eightWords.length <= 80) return eightWords;
+    if (eightWords.length <= 80) return eightWords + ".";
   }
   return smartTruncate(text, 80);
 }
@@ -401,12 +404,12 @@ function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFo
       return { fontSize: size, truncated: false, text };
     }
   }
-  // Last resort: truncate at word boundary — NEVER add "..."
+  // Last resort: truncate with smartTruncate (word-safe)
   const maxLen = validateTextDensity(text, boxWidth, boxHeight, minFont).maxChars;
   return {
     fontSize: minFont,
     truncated: true,
-    text: smartTruncate(text, Math.max(maxLen, 10)),
+    text: smartTruncate(text, Math.max(maxLen - 3, 10), true),
   };
 }
 
@@ -444,9 +447,10 @@ function compressText(text: string, maxChars: number = 120): string {
   t = t.replace(/\bde\s+forma\s+/gi, "");
   t = t.replace(/\b(na|no|nas|nos|das|dos|da|do|de)\s+(criação|construção)\s+de\s+/gi, "criando ");
   t = t.replace(/\s{2,}/g, " ").trim();
-  // P1: Use smartTruncate instead of raw substring — NEVER add "..."
+  // P1: Use smartTruncate instead of raw substring
   if (t.length > maxChars) {
     t = smartTruncate(t, maxChars);
+    if (!/[.!?]$/.test(t)) t += ".";
   }
   return t;
 }
@@ -1190,7 +1194,7 @@ function renderCapa(pptx: any, data: SlideData) {
   if (erros.length > 0) console.warn("⚠️ Capa validation:", erros);
 }
 
-// ── TABLE OF CONTENTS — V2: "01 - Título Completo" list format ──
+// ── TABLE OF CONTENTS — CORREÇÃO 3: "01 - Título Completo" in 2-column grid ──
 function renderTOC(pptx: any, data: SlideData) {
   const modules = data.modules || [];
   if (modules.length === 0) return;
@@ -1208,52 +1212,58 @@ function renderTOC(pptx: any, data: SlideData) {
     fontSize: 36, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
 
-  // FORMAT: "01 - Título Completo" — one line per module, max 45 chars
-  // If > 45 chars, break into 2 aligned lines
-  const startY = 1.60;
-  const itemW = 6.0;  // Width per item
-  const itemH = 0.60; // Height per item
-  const maxCharsPerLine = 45;
-  
-  // Use 2-column layout if > 5 modules
-  const useTwoCols = modules.length > 5;
-  const cols = useTwoCols ? 2 : 1;
-  const colW = useTwoCols ? (SAFE_W - 0.30) / 2 : SAFE_W;
+  // CORREÇÃO 3: Grid 2 colunas × N linhas — formato "01 - Título"
+  const gridY = 1.60;
+  const cols = 2;
+  const gapX = 0.30;
+  const gapY = 0.20;
+  const cellW = (SAFE_W - gapX) / cols;  // ~5.85" per column
+  const gridRows = Math.ceil(modules.length / cols);
+  const availH = SLIDE_H - gridY - BOTTOM_MARGIN;
+  const cellH = Math.min((availH - (gridRows - 1) * gapY) / gridRows, 1.80);
 
   modules.forEach((mod, idx) => {
-    const col = useTwoCols ? idx % cols : 0;
-    const row = useTwoCols ? Math.floor(idx / cols) : idx;
-    const x = MARGIN + col * (colW + 0.30);
-    const y = startY + row * (itemH + 0.15);
-    if (y + itemH > SLIDE_H - BOTTOM_MARGIN) return;
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const x = MARGIN + col * (cellW + gapX);
+    const y = gridY + row * (cellH + gapY);
+    if (y + cellH > SLIDE_H - BOTTOM_MARGIN) return;
 
     const accentColor = MODULE_NUMBER_COLORS[idx % MODULE_NUMBER_COLORS.length];
     const moduleNum = String(idx + 1).padStart(2, "0");
-    const fullText = moduleNum + " - " + mod.title;
-    
-    // Check if needs 2-line break
-    const ajustado = ajustarTextoAoBox(fullText, maxCharsPerLine, 2);
-    const fontSize = ajustado.linhas === 1 ? 18 : 15;
-    const lineH = ajustado.linhas === 1 ? itemH : itemH + 0.15;
 
-    // Left accent dot
-    slide.addShape(pptx.ShapeType.ellipse, {
-      x: x, y: y + (lineH - 0.14) / 2, w: 0.14, h: 0.14,
-      fill: { color: accentColor },
+    // Card background
+    slide.addShape(pptx.ShapeType.rect, {
+      x, y, w: cellW, h: cellH,
+      fill: { color: C.BG_LIGHT }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
+    });
+    // Left accent bar
+    slide.addShape(pptx.ShapeType.rect, {
+      x, y: y + 0.08, w: 0.06, h: cellH - 0.16,
+      fill: { color: accentColor }, rectRadius: 0.03,
     });
 
-    // Module text: "01 - Title"
-    addTextSafe(slide, ajustado.texto, {
-      x: x + 0.30, y, w: colW - 0.40, h: lineH,
-      fontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+    // Module number (large, module color)
+    addTextSafe(slide, moduleNum, {
+      x: x + 0.20, y: y + 0.15, w: 1.2, h: 0.80,
+      fontSize: 48, fontFace: FONT_TITLE, color: accentColor, bold: true,
+      align: "left", valign: "top",
+    });
+
+    // Module title (beside number, smart wrapped)
+    const tituloAjustado = ajustarTextoAoBox(mod.title, 30, 2);
+    const titleFontSize = tituloAjustado.linhas === 1 ? 16 : 13;
+    addTextSafe(slide, tituloAjustado.texto, {
+      x: x + 1.50, y: y + 0.20, w: cellW - 1.70, h: 0.80,
+      fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
       align: "left", valign: "middle",
     });
   });
   
-  // Validation
-  const textos = modules.map((m, i) => String(i+1).padStart(2,"0") + " - " + m.title);
+  // CORREÇÃO 4: Validate TOC
+  const textos = modules.map((m, i) => `${String(i+1).padStart(2,"0")} - ${m.title}`);
   const erros = validarSlide(textos, SLIDE_W, SLIDE_H);
-  if (erros.length > 0) console.warn("[TOC] validation issues:", erros);
+  if (erros.length > 0) console.warn("⚠️ TOC validation:", erros);
 }
 
 // ── MODULE COVER — CORREÇÃO 2: Smart text wrapping for module titles ──
@@ -2117,8 +2127,7 @@ Deno.serve(async (req: Request) => {
     console.log("[OK] PPTX generated: " + totalSlides + " slides for " + modules.length + " modules");
 
     const audit = runAudit();
-    if (!audit.passed) console.error("Audit: " + audit.errors.length + " violations");
-    console.log("[VALIDATION] Final: ellipsis BANNED, mid-word cuts BANNED, all strategies applied");
+    if (!audit.passed) console.error(`Audit: ${audit.errors.length} violations`);
 
     const pptxData = await pptx.write({ outputType: "uint8array" });
     const dateStr = new Date().toISOString().slice(0, 10);
