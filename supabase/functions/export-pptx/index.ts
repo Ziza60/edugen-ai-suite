@@ -954,7 +954,7 @@ function renderAberturaModulo(pptx: any, data: SlideData) {
   }
 }
 
-// ──── BULLETS (Content slide with dark cards) ────
+// ──── BULLETS (Content slide with visual cards — matching EduGenAI model) ────
 function renderBullets(pptx: any, data: SlideData) {
   const allBullets = (data.items || []).map((b) => sanitize(b)).filter((b) => b.length > 0);
   if (allBullets.length === 0) return;
@@ -962,38 +962,91 @@ function renderBullets(pptx: any, data: SlideData) {
   const baseTitle = cleanPartTitle(data.title);
   const categoryLabel = data.categoryLabel || extractCategoryLabel(baseTitle);
 
-  // Calculate header height to determine content area
-  const headerApproxH = 1.15;
-  const maxContentH = SLIDE_H - headerApproxH - BOTTOM_MARGIN;
-  const bulletGroups = splitBulletsToFit(allBullets, maxContentH);
+  // Parse bullets into card data (title + body)
+  const cards = allBullets.map((bullet) => {
+    const colonIdx = bullet.indexOf(":");
+    if (colonIdx > 2 && colonIdx < 60) {
+      return { title: bullet.substring(0, colonIdx).trim(), body: bullet.substring(colonIdx + 1).trim() };
+    }
+    // Extract first ~4 words as title
+    const words = bullet.split(/\s+/);
+    if (words.length > 6) {
+      return { title: words.slice(0, 4).join(" "), body: words.slice(4).join(" ") };
+    }
+    return { title: "", body: bullet };
+  });
 
-  bulletGroups.forEach((groupBullets, idx) => {
-    if (groupBullets.length === 0) return;
+  // Split into pages if too many cards
+  const maxCardsPerSlide = 6;
+  const cardPages: typeof cards[] = [];
+  for (let i = 0; i < cards.length; i += maxCardsPerSlide) {
+    cardPages.push(cards.slice(i, i + maxCardsPerSlide));
+  }
 
-    const suffix = bulletGroups.length > 1 ? ` (Parte ${idx + 1})` : "";
+  cardPages.forEach((pageCards, pageIdx) => {
+    const suffix = cardPages.length > 1 ? ` (Parte ${pageIdx + 1})` : "";
     const titleText = deduplicateTitle(baseTitle + suffix);
 
     const slide = pptx.addSlide();
     slide.background = { color: C.BG_DARK };
     const contentY = renderContentHeader(slide, categoryLabel, titleText);
 
-    // Render bullets with teal check marks
-    const textParts: any[] = [];
-    groupBullets.forEach((bullet, bIdx) => {
-      const isLast = bIdx === groupBullets.length - 1;
-      textParts.push(
-        { text: "✓  ", options: { color: C.TEAL_LIGHT, bold: true, fontSize: BODY_FONT_PT, fontFace: FONT_BODY, breakLine: false } },
-        { text: bullet.trim() + (isLast ? "" : "\n"), options: { color: C.TEXT_CREAM, fontSize: BODY_FONT_PT, fontFace: FONT_BODY, breakLine: !isLast } }
-      );
-    });
+    const count = pageCards.length;
+    // Use 2 columns for 2+ cards, 1 column for single card
+    const cols = count >= 2 ? 2 : 1;
+    const gapX = 0.20;
+    const gapY = 0.15;
+    const cardW = cols === 1 ? SAFE_W : (SAFE_W - gapX) / cols;
+    const rows = Math.ceil(count / cols);
+    const availH = SLIDE_H - contentY - BOTTOM_MARGIN - 0.10;
+    const cardH = Math.min((availH - (rows - 1) * gapY) / rows, 1.40);
 
-    const contentH = Math.min(calcBulletsHeight(groupBullets), SLIDE_H - contentY - BOTTOM_MARGIN);
-    if (contentH > 0.1) {
-      addTextSafe(slide, textParts, {
-        x: MARGIN_L, y: contentY, w: SAFE_W, h: contentH,
-        valign: "top", paraSpaceAfter: 4, lineSpacingMultiple: 1.15,
+    pageCards.forEach((card, idx) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const x = MARGIN_L + col * (cardW + gapX);
+      const y = contentY + row * (cardH + gapY);
+
+      if (y + cardH > SLIDE_H - BOTTOM_MARGIN) return;
+
+      // Card background
+      slide.addShape(pptx.ShapeType.rect, {
+        x, y, w: cardW, h: cardH,
+        fill: { color: C.BG_CARD },
+        rectRadius: 0.06,
       });
-    }
+
+      // Teal left border
+      addCardBorder(slide, pptx, x, y, cardH);
+
+      // Icon circle
+      const circleSize = 0.34;
+      const iconColor = ICON_COLORS[(pageIdx * 10 + idx) % ICON_COLORS.length];
+      const iconChar = ICON_CHARS[(pageIdx * 10 + idx) % ICON_CHARS.length];
+      addIconCircle(slide, pptx, x + 0.15, y + 0.15, circleSize, iconColor, iconChar);
+
+      // Card content
+      const cardContentX = x + 0.58;
+      const cardContentW = cardW - 0.72;
+      let textY = y + 0.15;
+
+      if (card.title) {
+        addTextSafe(slide, card.title, {
+          x: cardContentX, y: textY, w: cardContentW, h: 0.28,
+          fontSize: 14, fontFace: FONT_BODY, color: C.TEXT_CREAM, bold: true,
+        });
+        textY += 0.32;
+      }
+
+      if (card.body) {
+        const bodyH = cardH - (textY - y) - 0.10;
+        addTextSafe(slide, card.body, {
+          x: cardContentX, y: textY, w: cardContentW, h: Math.max(bodyH, 0.20),
+          fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_MUTED,
+          valign: "top", lineSpacingMultiple: 1.25,
+        });
+      }
+    });
   });
 }
 
@@ -1123,7 +1176,7 @@ function renderCardsGrid(pptx: any, data: SlideData) {
   });
 }
 
-// ──── TABELA (Elegant minimal with gold header line) ────
+// ──── TABELA (Borderless minimal with gold header underline + insight bar) ────
 function renderTabela(pptx: any, data: SlideData) {
   const headers = (data.tableHeaders || []).map((h) => sanitize(h));
   const rows = (data.tableRows || []).map((r) => r.map((c) => sanitize(c)));
@@ -1137,7 +1190,8 @@ function renderTabela(pptx: any, data: SlideData) {
 
   // Calculate available space
   const headerAreaH = 1.15;
-  const maxTableH = SLIDE_H - headerAreaH - 0.15 - BOTTOM_MARGIN;
+  const insightBarH = 0.55; // reserve space for insight bar
+  const maxTableH = SLIDE_H - headerAreaH - insightBarH - BOTTOM_MARGIN;
 
   // Handle table splitting
   const estimatedH = calcTableHeight(rows, colW);
@@ -1156,43 +1210,49 @@ function renderTabela(pptx: any, data: SlideData) {
   slide.background = { color: C.BG_DARK };
   const contentY = renderContentHeader(slide, categoryLabel, titleText);
 
-  // Gold line under header
+  // Gold underline beneath header area
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN_L, y: contentY - 0.05, w: SAFE_W, h: 0.025,
     fill: { color: C.GOLD },
   });
 
-  // Build table data
-  const borderStyle = { type: "solid" as const, pt: 0.5, color: C.TABLE_BORDER };
-  const borders = [borderStyle, borderStyle, borderStyle, borderStyle];
+  // Build table data — minimal borders (thin horizontal lines only)
+  const noBorder = { type: "none" as const, pt: 0, color: "000000" };
+  const subtleLine = { type: "solid" as const, pt: 0.3, color: "2A3A4A" };
+  const headerBorders = [noBorder, noBorder, subtleLine, noBorder]; // only bottom
+  const rowBorders = [noBorder, noBorder, subtleLine, noBorder]; // only bottom
+  const lastRowBorders = [noBorder, noBorder, noBorder, noBorder]; // no borders
+
   const tableData: any[][] = [];
 
-  // Header row
+  // Header row — gold text, no fill (transparent dark bg)
   tableData.push(headers.map((h) => ({
     text: h,
     options: {
       fontSize: 13, fontFace: FONT_BODY, bold: true, color: C.GOLD,
-      fill: { color: C.TABLE_HEADER }, border: borders,
-      valign: "middle" as const, paraSpaceBefore: 4, paraSpaceAfter: 4,
+      fill: { type: "none" }, border: headerBorders,
+      valign: "middle" as const, paraSpaceBefore: 6, paraSpaceAfter: 6,
     },
   })));
 
-  // Data rows
+  // Data rows — cream text, transparent bg, subtle bottom line
   rows.forEach((row, ri) => {
+    const isLast = ri === rows.length - 1;
     const dataRow = row.map((cell, ci) => ({
       text: cell,
       options: {
         fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_CREAM,
         bold: ci === 0,
-        fill: ri % 2 === 0 ? { color: C.TABLE_ROW_ODD } : { color: C.TABLE_ROW_EVEN },
-        border: borders, valign: "middle" as const,
-        paraSpaceBefore: 3, paraSpaceAfter: 3,
+        fill: { type: "none" },
+        border: isLast ? lastRowBorders : rowBorders,
+        valign: "middle" as const,
+        paraSpaceBefore: 5, paraSpaceAfter: 5,
       },
     }));
     while (dataRow.length < colCount) {
       dataRow.push({
         text: "",
-        options: { fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_CREAM, valign: "middle" as const, paraSpaceBefore: 3, paraSpaceAfter: 3 },
+        options: { fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_CREAM, fill: { type: "none" }, border: isLast ? lastRowBorders : rowBorders, valign: "middle" as const, paraSpaceBefore: 5, paraSpaceAfter: 5 },
       });
     }
     tableData.push(dataRow);
@@ -1204,8 +1264,26 @@ function renderTabela(pptx: any, data: SlideData) {
     colW, rowH: ROW_BASE_H, autoPage: false,
   });
 
-  // Insight/callout bar at the bottom (if there's room)
-  // We don't add one by default; the RESUMO slide handles this
+  // Insight callout bar at bottom
+  const calloutY = SLIDE_H - 0.55;
+  const calloutH = 0.40;
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN_L, y: calloutY, w: SAFE_W, h: calloutH,
+    fill: { color: C.BG_CALLOUT },
+    rectRadius: 0.06,
+  });
+  // Teal left accent on callout
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN_L, y: calloutY + 0.06, w: 0.04, h: calloutH - 0.12,
+    fill: { color: C.TEAL },
+  });
+  addTextSafe(slide, [
+    { text: "💡 Insight: ", options: { bold: true, color: C.GOLD, fontSize: 11, fontFace: FONT_BODY } },
+    { text: "Analise os dados acima e reflita sobre como se aplicam ao seu contexto profissional.", options: { color: C.TEXT_MUTED, fontSize: 11, fontFace: FONT_BODY, italic: true } },
+  ], {
+    x: MARGIN_L + 0.20, y: calloutY, w: SAFE_W - 0.40, h: calloutH,
+    valign: "middle",
+  });
 }
 
 // ──── RESUMO (Numbered takeaway cards + reflection callout) ────
