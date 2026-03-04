@@ -135,6 +135,82 @@ const DENSITY_LIMITS: Record<string, { minArea: number; maxChars: number; maxDen
 };
 
 /* ═══════════════════════════════════════════════════════
+   CORREÇÃO 2: SMART TEXT WRAPPING — Multi-line title handling
+   ═══════════════════════════════════════════════════════ */
+
+interface AjusteTextoResult {
+  texto: string;
+  linhas: number;
+  truncado: boolean;
+}
+
+function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinhas = 2): AjusteTextoResult {
+  if (!texto) return { texto: "", linhas: 0, truncado: false };
+  const t = texto.trim();
+  
+  // Se cabe em uma linha, retorna direto
+  if (t.length <= maxCaracteresPorLinha) {
+    return { texto: t, linhas: 1, truncado: false };
+  }
+  
+  // Se cabe em duas linhas, quebra em palavras completas
+  const palavras = t.split(' ');
+  let linha1 = '';
+  let linha2 = '';
+  
+  for (const palavra of palavras) {
+    if ((linha1 + palavra).length <= maxCaracteresPorLinha && linha2 === '') {
+      linha1 += palavra + ' ';
+    } else if ((linha2 + palavra).length <= maxCaracteresPorLinha) {
+      linha2 += palavra + ' ';
+    } else {
+      // Não cabe nem nas duas linhas, truncar com "..."
+      linha2 = linha2.trim();
+      if (linha2.length > 3) {
+        linha2 = linha2.substring(0, linha2.lastIndexOf(' ') > 0 ? linha2.lastIndexOf(' ') : linha2.length).trim() + '...';
+      } else {
+        linha2 += '...';
+      }
+      break;
+    }
+  }
+  
+  const resultado = linha1.trim() + (linha2 ? '\n' + linha2.trim() : '');
+  return { 
+    texto: resultado, 
+    linhas: linha2 ? 2 : 1, 
+    truncado: !!(linha2 && linha2.endsWith('...'))
+  };
+}
+
+/* ═══════════════════════════════════════════════════════
+   CORREÇÃO 4: PRE-RENDER SLIDE VALIDATION
+   ═══════════════════════════════════════════════════════ */
+
+function validarSlide(slideTextos: string[], slideWidth: number, slideHeight: number): string[] {
+  const erros: string[] = [];
+  
+  // 1. Verificar dimensões
+  if (Math.abs(slideWidth - 13.333) > 0.01 || Math.abs(slideHeight - 7.5) > 0.01) {
+    erros.push(`ERRO: Dimensões do slide incorretas! (${slideWidth}x${slideHeight})`);
+  }
+  
+  // 2. Verificar truncamentos
+  for (const texto of slideTextos) {
+    if (!texto || texto.length < 3) continue;
+    // Detect truncation patterns: preposition + short word at end, or abrupt endings
+    if (/\s(d[ao]s?|nas?|em|por|para|a|o)\s+\w{1,3}$/.test(texto) && !/[.!?…]$/.test(texto)) {
+      erros.push(`ERRO: Texto truncado detectado: "${texto.substring(0, 50)}"`);
+    }
+    if (/\b(do\.|das\.|nas\.|em\.|a\.)$/.test(texto)) {
+      erros.push(`ERRO: Texto truncado com preposição: "${texto.substring(0, 50)}"`);
+    }
+  }
+  
+  return erros;
+}
+
+/* ═══════════════════════════════════════════════════════
    P1: SMART TRUNCATION — NEVER CUT WORDS
    ═══════════════════════════════════════════════════════ */
 
@@ -447,12 +523,12 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
       text = adjusted.text;
       options = { ...options, fontSize: adjusted.fontSize };
       if (adjusted.truncated) {
-        console.log(`⚠️ Density auto-adjust on Slide ${_auditSlideCounter}: "${text.substring(0, 30)}..." → ${adjusted.fontSize}pt`);
+        console.log("[DENSITY] auto-adjust on Slide " + _auditSlideCounter + ": " + text.substring(0, 30) + "... -> " + adjusted.fontSize + "pt");
       }
     }
     // Final truncation detection
     if (detectTruncation(text)) {
-      console.warn(`⚠️ Possible truncation detected on Slide ${_auditSlideCounter}: "${text.substring(0, 40)}"`);
+      console.warn("[TRUNCATION] Possible truncation on Slide " + _auditSlideCounter + ": " + text.substring(0, 40));
     }
   }
 
@@ -473,8 +549,8 @@ function runAudit() {
     if (el.x + el.w > SLIDE_W) errors.push(`${el.slideLabel}: overflow R`);
     if (el.y + el.h > SLIDE_H) errors.push(`${el.slideLabel}: overflow B`);
   }
-  if (errors.length === 0) console.log(`✅ Audit PASSED — ${_auditLog.length} elements`);
-  else errors.forEach(e => console.error(`❌ ${e}`));
+  if (errors.length === 0) console.log("[AUDIT] PASSED - " + _auditLog.length + " elements");
+  else errors.forEach(e => console.error("[AUDIT] " + e));
   return { passed: errors.length === 0, errors };
 }
 
@@ -915,7 +991,7 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
         const target = filtered.length > 0 ? filtered[filtered.length - 1] : (i + 1 < slides.length ? slides[i + 1] : null);
         if (target && target.items) target.items.push(...fillerItems);
       }
-      console.log(`🗑️ Removed filler slide: "${slides[i].title}"`);
+      console.log("[FILLER] Removed filler slide: " + slides[i].title);
       continue;
     }
     filtered.push(slides[i]);
@@ -955,7 +1031,7 @@ function consolidateConsecutiveLayouts(slides: SlideData[]): SlideData[] {
         sectionLabel: slides[i].sectionLabel, items: mergedItems.slice(0, 6),
         moduleIndex: slides[i].moduleIndex,
       });
-      console.log(`🔗 Consolidated ${consecutiveCount} slides into 1 grid_cards`);
+      console.log("[CONSOLIDATE] Consolidated " + consecutiveCount + " slides into 1 grid_cards");
       i = j;
     } else {
       result.push(slides[i]);
@@ -990,7 +1066,7 @@ function balanceDensity(slides: SlideData[]): SlideData[] {
           prev.items.push(...(s.items || []));
           prev.densityScore = calculateDensity(prev);
           result.splice(i, 1);
-          console.log(`⬆️ Merged low-density slide "${s.title}" into previous`);
+          console.log("[MERGE] Merged low-density slide into previous: " + s.title);
           i--;
           continue;
         }
@@ -1008,7 +1084,7 @@ function balanceDensity(slides: SlideData[]): SlideData[] {
       s.densityScore = calculateDensity(s);
       newSlide.densityScore = calculateDensity(newSlide);
       result.splice(i + 1, 0, newSlide);
-      console.log(`✂️ Split overloaded slide "${s.title}"`);
+      console.log("[SPLIT] Split overloaded slide: " + s.title);
     }
 
     if (i > 0) {
@@ -1060,7 +1136,7 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
    SLIDE RENDERERS
    ═══════════════════════════════════════════════════════ */
 
-// ── COVER SLIDE (LIGHT theme) ──
+// ── COVER SLIDE (LIGHT theme) — CORREÇÃO 2: Smart text wrapping for titles ──
 function renderCapa(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -1082,13 +1158,14 @@ function renderCapa(pptx: any, data: SlideData) {
     align: "center", valign: "middle", letterSpacing: 4,
   });
 
-  // P1: Smart truncate — never cut words
-  const titleText = smartTruncate(data.title, 80);
-  const titleH = getTitleHeight(titleText, SAFE_W - 2, 44);
+  // CORREÇÃO 2: Use ajustarTextoAoBox — max 40 chars/line, 2 lines
+  const ajustado = ajustarTextoAoBox(data.title, 40, 2);
+  const titleFontSize = ajustado.linhas === 1 ? 44 : 36; // Reduzir se 2 linhas
+  const titleH = ajustado.linhas === 1 ? 1.0 : 1.5;
   const titleY = badgeY + badgeH + 0.50;
-  addTextSafe(slide, titleText, {
+  addTextSafe(slide, ajustado.texto, {
     x: MARGIN + 1, y: titleY, w: SAFE_W - 2, h: titleH,
-    fontSize: 44, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+    fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
     align: "center", valign: "middle",
   });
 
@@ -1097,7 +1174,6 @@ function renderCapa(pptx: any, data: SlideData) {
     x: (SLIDE_W - 1.5) / 2, y: sepY, w: 1.5, h: 0.05, fill: { color: C.SECONDARY },
   });
 
-  // P1: Subtitle with smart truncation
   if (data.description) {
     const desc = smartSubtitle(sanitize(data.description));
     addTextSafe(slide, desc, {
@@ -1112,9 +1188,13 @@ function renderCapa(pptx: any, data: SlideData) {
     x: 1, y: SLIDE_H - 0.80, w: SLIDE_W - 2, h: 0.40,
     fontSize: 14, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
   });
+  
+  // CORREÇÃO 4: Validate slide
+  const erros = validarSlide([ajustado.texto, data.description || ""], SLIDE_W, SLIDE_H);
+  if (erros.length > 0) console.warn("⚠️ Capa validation:", erros);
 }
 
-// ── TABLE OF CONTENTS ──
+// ── TABLE OF CONTENTS — CORREÇÃO 3: "01 - Título Completo" in 2-column grid ──
 function renderTOC(pptx: any, data: SlideData) {
   const modules = data.modules || [];
   if (modules.length === 0) return;
@@ -1132,60 +1212,61 @@ function renderTOC(pptx: any, data: SlideData) {
     fontSize: 36, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
 
-  const gridY = 1.40;
-  const cols = 2; const gapX = 0.25; const gapY = 0.20;
-  const cardW = (SAFE_W - gapX) / cols;
-  const rows = Math.ceil(modules.length / cols);
+  // CORREÇÃO 3: Grid 2 colunas × N linhas — formato "01 - Título"
+  const gridY = 1.60;
+  const cols = 2;
+  const gapX = 0.30;
+  const gapY = 0.20;
+  const cellW = (SAFE_W - gapX) / cols;  // ~5.85" per column
+  const gridRows = Math.ceil(modules.length / cols);
   const availH = SLIDE_H - gridY - BOTTOM_MARGIN;
-  const cardH = Math.min((availH - (rows - 1) * gapY) / rows, 1.40);
+  const cellH = Math.min((availH - (gridRows - 1) * gapY) / gridRows, 1.80);
 
   modules.forEach((mod, idx) => {
     const col = idx % cols;
     const row = Math.floor(idx / cols);
-    const x = MARGIN + col * (cardW + gapX);
-    const y = gridY + row * (cardH + gapY);
-    if (y + cardH > SLIDE_H - BOTTOM_MARGIN) return;
+    const x = MARGIN + col * (cellW + gapX);
+    const y = gridY + row * (cellH + gapY);
+    if (y + cellH > SLIDE_H - BOTTOM_MARGIN) return;
 
     const accentColor = MODULE_NUMBER_COLORS[idx % MODULE_NUMBER_COLORS.length];
+    const moduleNum = String(idx + 1).padStart(2, "0");
 
+    // Card background
     slide.addShape(pptx.ShapeType.rect, {
-      x, y, w: cardW, h: cardH,
+      x, y, w: cellW, h: cellH,
       fill: { color: C.BG_LIGHT }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
     });
+    // Left accent bar
     slide.addShape(pptx.ShapeType.rect, {
-      x, y: y + 0.08, w: 0.06, h: cardH - 0.16,
+      x, y: y + 0.08, w: 0.06, h: cellH - 0.16,
       fill: { color: accentColor }, rectRadius: 0.03,
     });
 
-    const circleSize = 0.44;
-    slide.addShape(pptx.ShapeType.ellipse, {
-      x: x + 0.22, y: y + 0.20, w: circleSize, h: circleSize, fill: { color: accentColor },
-    });
-    addTextSafe(slide, String(idx + 1).padStart(2, "0"), {
-      x: x + 0.22, y: y + 0.20, w: circleSize, h: circleSize,
-      fontSize: 16, fontFace: FONT_TITLE, color: C.TEXT_WHITE, bold: true,
-      align: "center", valign: "middle",
+    // Module number (large, module color)
+    addTextSafe(slide, moduleNum, {
+      x: x + 0.20, y: y + 0.15, w: 1.2, h: 0.80,
+      fontSize: 48, fontFace: FONT_TITLE, color: accentColor, bold: true,
+      align: "left", valign: "top",
     });
 
-    const textX = x + 0.78; const textW = cardW - 0.95;
-    // P1: Smart truncate module title — never cut mid-word
-    const modTitle = smartTitle(mod.title);
-    addTextSafe(slide, modTitle, {
-      x: textX, y: y + 0.20, w: textW, h: 0.35,
-      fontSize: 16, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+    // Module title (beside number, smart wrapped)
+    const tituloAjustado = ajustarTextoAoBox(mod.title, 30, 2);
+    const titleFontSize = tituloAjustado.linhas === 1 ? 16 : 13;
+    addTextSafe(slide, tituloAjustado.texto, {
+      x: x + 1.50, y: y + 0.20, w: cellW - 1.70, h: 0.80,
+      fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+      align: "left", valign: "middle",
     });
-    if (mod.description) {
-      // P1: Smart truncate description — never cut mid-word
-      const desc = smartModuleDesc(mod.description);
-      addTextSafe(slide, desc, {
-        x: textX, y: y + 0.58, w: textW, h: cardH - 0.72,
-        fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
-      });
-    }
   });
+  
+  // CORREÇÃO 4: Validate TOC
+  const textos = modules.map((m, i) => `${String(i+1).padStart(2,"0")} - ${m.title}`);
+  const erros = validarSlide(textos, SLIDE_W, SLIDE_H);
+  if (erros.length > 0) console.warn("⚠️ TOC validation:", erros);
 }
 
-// ── MODULE COVER (P4: Standardized with objectives) ──
+// ── MODULE COVER — CORREÇÃO 2: Smart text wrapping for module titles ──
 function renderModuleCover(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -1209,45 +1290,47 @@ function renderModuleCover(pptx: any, data: SlideData) {
     fontSize: 72, fontFace: FONT_TITLE, color: moduleColor, bold: true,
   });
 
-  // P1: Title with smart truncation — NEVER cut words
-  const titleText = smartTruncate(data.title, 45);
-  addTextSafe(slide, titleText, {
-    x: MARGIN, y: 2.8, w: SAFE_W * 0.70, h: 0.85,
-    fontSize: 32, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+  // CORREÇÃO 2: Title with ajustarTextoAoBox — max 35 chars/line, 2 lines
+  const tituloAjustado = ajustarTextoAoBox(data.title, 35, 2);
+  const titleFontSize = tituloAjustado.linhas === 1 ? 32 : 28;
+  addTextSafe(slide, tituloAjustado.texto, {
+    x: MARGIN, y: 2.8, w: SAFE_W * 0.70, h: tituloAjustado.linhas === 1 ? 0.85 : 1.20,
+    fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
 
   // Separator line
+  const sepY = tituloAjustado.linhas === 1 ? 3.70 : 4.05;
   slide.addShape(pptx.ShapeType.rect, {
-    x: MARGIN, y: 3.70, w: 1.2, h: 0.05, fill: { color: C.SECONDARY },
+    x: MARGIN, y: sepY, w: 1.2, h: 0.05, fill: { color: C.SECONDARY },
   });
 
-  // P1: Subtitle with smart truncation
+  // Subtitle
   if (data.description) {
     const desc = smartSubtitle(data.description);
     addTextSafe(slide, desc, {
-      x: MARGIN, y: 3.90, w: SAFE_W * 0.65, h: 0.55,
+      x: MARGIN, y: sepY + 0.20, w: SAFE_W * 0.65, h: 0.55,
       fontSize: 18, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
     });
   }
 
-  // P4: 3 Objectives bullets on module cover
+  // Objectives — max 50 chars, 1 line each (reduce font if needed)
   const objectives = data.objectives || [];
   if (objectives.length > 0) {
-    const objStartY = 4.65;
+    const objStartY = sepY + 0.85;
     objectives.slice(0, 3).forEach((obj, idx) => {
       const objY = objStartY + idx * 0.42;
       if (objY + 0.35 > SLIDE_H - 0.40) return;
-      // P2: Bullet with colored dot + text
       const dotSize = 0.10;
       slide.addShape(pptx.ShapeType.ellipse, {
         x: MARGIN + 0.05, y: objY + 0.10, w: dotSize, h: dotSize,
         fill: { color: moduleColor },
       });
-      // P1: Smart truncate each objective
-      const objText = smartBullet(obj);
+      // CORREÇÃO 2: Objectives max 50 chars, reduce font if longer
+      const objText = smartTruncate(obj, 50);
+      const objFontSize = objText.length > 40 ? 12 : 14;
       addTextSafe(slide, objText, {
         x: MARGIN + 0.25, y: objY, w: SAFE_W * 0.60, h: 0.35,
-        fontSize: 14, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "middle",
+        fontSize: objFontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "middle",
       });
     });
   }
@@ -1256,6 +1339,11 @@ function renderModuleCover(pptx: any, data: SlideData) {
   slide.addShape(pptx.ShapeType.rect, {
     x: 0, y: SLIDE_H - 0.08, w: SLIDE_W, h: 0.08, fill: { color: moduleColor },
   });
+  
+  // CORREÇÃO 4: Validate module cover
+  const textos = [tituloAjustado.texto, data.description || "", ...(objectives || [])];
+  const erros = validarSlide(textos, SLIDE_W, SLIDE_H);
+  if (erros.length > 0) console.warn(`⚠️ Module ${modIdx + 1} cover validation:`, erros);
 }
 
 // ── DEFINITION CARD WITH PILLARS (P2: bold labels, P3: unique icons) ──
@@ -1845,7 +1933,7 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
   });
 }
 
-// ── CLOSING SLIDE (LIGHT theme) ──
+// ── CLOSING SLIDE — CORREÇÃO 2: Full course title with smart wrapping ──
 function renderEncerramento(pptx: any, courseTitle: string) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -1863,12 +1951,17 @@ function renderEncerramento(pptx: any, courseTitle: string) {
   slide.addShape(pptx.ShapeType.rect, {
     x: (SLIDE_W - 1.5) / 2, y: 3.40, w: 1.5, h: 0.05, fill: { color: C.SECONDARY },
   });
-  addTextSafe(slide, smartTruncate(sanitize(courseTitle), 60), {
-    x: 2, y: 3.70, w: SLIDE_W - 4, h: 0.60,
-    fontSize: 20, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+  
+  // CORREÇÃO 2: Use ajustarTextoAoBox for closing slide title — show FULL title
+  const tituloFechamento = ajustarTextoAoBox(sanitize(courseTitle), 45, 2);
+  const closeFontSize = tituloFechamento.linhas === 1 ? 20 : 18;
+  addTextSafe(slide, tituloFechamento.texto, {
+    x: 2, y: 3.70, w: SLIDE_W - 4, h: tituloFechamento.linhas === 1 ? 0.60 : 0.90,
+    fontSize: closeFontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
   });
+  
   addTextSafe(slide, "Continue praticando  |  Acesse os materiais complementares", {
-    x: 2, y: 4.60, w: SLIDE_W - 4, h: 0.40,
+    x: 2, y: 4.80, w: SLIDE_W - 4, h: 0.40,
     fontSize: 16, fontFace: FONT_BODY, color: C.SECONDARY, align: "center",
   });
 
@@ -1967,17 +2060,29 @@ Deno.serve(async (req: Request) => {
     // Recalculate and log
     allSlides.forEach(s => { s.densityScore = calculateDensity(s); });
     const densityStats = allSlides.map(s => `${s.layout}:${s.densityScore}`);
-    console.log("📊 Density scores:", densityStats.join(", "));
+    console.log("[DENSITY] Density scores: " + densityStats.join(", "));
     const avgDensity = allSlides.reduce((sum, s) => sum + (s.densityScore || 0), 0) / allSlides.length;
-    console.log(`📊 Average density: ${avgDensity.toFixed(1)} | Slides: ${allSlides.length}`);
+    console.log("[DENSITY] Average: " + avgDensity.toFixed(1) + " | Slides: " + allSlides.length);
 
-    /* ─── Build PPTX — §4.1 Configuration ─── */
+    /* ─── Build PPTX — CORREÇÃO 1: Dimensões corretas 13.333" × 7.5" ─── */
     const pptx = new PptxGenJS();
-    pptx.layout = "LAYOUT_16x9";
+    
+    // CORREÇÃO 1: defineLayout com dimensões EXATAS do widescreen 16:9
+    // NUNCA usar LAYOUT_16x9 (resulta em 10" x 5.625" — ERRADO)
+    const WIDESCREEN_LAYOUT = {
+      name: 'WIDESCREEN',
+      width: 13.333,    // polegadas — LARGURA CORRETA
+      height: 7.5,      // polegadas — ALTURA CORRETA
+    };
+    pptx.defineLayout(WIDESCREEN_LAYOUT);
+    pptx.layout = 'WIDESCREEN';
+    
     pptx.author = "Sistema de Cursos";
     pptx.company = "EduGen AI";
     pptx.subject = "Curso Profissional";
     pptx.title = course.title;
+    
+    console.log("Slide dimensions: " + WIDESCREEN_LAYOUT.width + " x " + WIDESCREEN_LAYOUT.height + " (expected: 13.333 x 7.5)");
 
     const _origAddSlide = pptx.addSlide.bind(pptx);
     pptx.addSlide = (...args: any[]) => {
@@ -2019,7 +2124,7 @@ Deno.serve(async (req: Request) => {
     renderEncerramento(pptx, course.title);
 
     const totalSlides = allSlides.length + 3;
-    console.log(`✅ PPTX generated: ${totalSlides} slides for ${modules.length} modules`);
+    console.log("[OK] PPTX generated: " + totalSlides + " slides for " + modules.length + " modules");
 
     const audit = runAudit();
     if (!audit.passed) console.error(`Audit: ${audit.errors.length} violations`);
