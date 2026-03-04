@@ -4,18 +4,15 @@ import PptxGenJS from "https://esm.sh/pptxgenjs@3.12.0";
 
 /**
  * PPTX EXPORT — EduGenAI Professional Light Theme
- *
- * Design System: Montserrat + Open Sans, white background, 
- * orange/purple accents, dark header tables, zebra striping.
- *
- * 7 Layout Types:
- * 1. module_cover — Module opening with large number + gradient feel
- * 2. definition_card_with_pillars — Definition card + 3-4 pillars
- * 3. comparison_table — 3-column table with insight box
- * 4. grid_cards — 2x2 or 2x3 card grid
- * 5. four_quadrants — 2x2 quadrant layout with footer
- * 6. process_timeline — Horizontal numbered timeline
- * 7. numbered_takeaways — 6 numbered cards + reflection
+ * 
+ * 7 Corrections Applied:
+ * 1. Filler slide elimination
+ * 2. Consecutive layout consolidation
+ * 3. 65% text compression
+ * 4. Semantic icon mapping
+ * 5. Table cell truncation & formatting
+ * 6. Takeaway rewrite (grid, not paragraphs)
+ * 7. Density scoring & balancing (target 60-80)
  */
 
 const corsHeaders = {
@@ -25,66 +22,107 @@ const corsHeaders = {
 };
 
 /* ═══════════════════════════════════════════════════════
-   DESIGN SYSTEM — EduGenAI Professional Light
+   DESIGN SYSTEM
    ═══════════════════════════════════════════════════════ */
 
 const C = {
-  // Backgrounds
-  BG_WHITE:       "FFFFFF",
-  BG_LIGHT:       "F8F9FA",
-  BG_CARD:        "FFFFFF",
-  BG_CARD_ALT:    "F2F3F5",
-
-  // Primary palette
-  PRIMARY:        "2C3E50",  // Dark blue-gray (titles, primary text)
-  SECONDARY:      "E67E22",  // Orange (accent, module numbers, badges)
-  ACCENT_PURPLE:  "9B59B6",
-  ACCENT_BLUE:    "3498DB",
-  ACCENT_GREEN:   "27AE60",
-  ACCENT_RED:     "E74C3C",
-
-  // Text
-  TEXT_DARK:      "2C3E50",
-  TEXT_BODY:      "34495E",
-  TEXT_LIGHT:     "7F8C8D",
-  TEXT_WHITE:     "FFFFFF",
-
-  // Table
-  TABLE_HEADER_BG: "34495E",
-  TABLE_ROW_ODD:   "FFFFFF",
-  TABLE_ROW_EVEN:  "ECF0F1",
-  TABLE_BORDER:    "BDC3C7",
-
-  // Cards & accents
-  CARD_BORDER:    "E0E0E0",
-  CARD_SHADOW:    "D5D8DC",
-  INSIGHT_BG:     "FDF2E9",   // Light orange background for insight boxes
-  INSIGHT_BORDER: "E67E22",
-  REFLECTION_BG:  "EBF5FB",   // Light blue background for reflection
+  BG_WHITE: "FFFFFF", BG_LIGHT: "F8F9FA", BG_CARD: "FFFFFF", BG_CARD_ALT: "F2F3F5",
+  PRIMARY: "2C3E50", SECONDARY: "E67E22", ACCENT_PURPLE: "9B59B6", ACCENT_BLUE: "3498DB",
+  ACCENT_GREEN: "27AE60", ACCENT_RED: "E74C3C",
+  TEXT_DARK: "2C3E50", TEXT_BODY: "34495E", TEXT_LIGHT: "7F8C8D", TEXT_WHITE: "FFFFFF",
+  TABLE_HEADER_BG: "34495E", TABLE_ROW_ODD: "FFFFFF", TABLE_ROW_EVEN: "ECF0F1", TABLE_BORDER: "BDC3C7",
+  CARD_BORDER: "E0E0E0", CARD_SHADOW: "D5D8DC",
+  INSIGHT_BG: "FDF2E9", INSIGHT_BORDER: "E67E22",
+  REFLECTION_BG: "EBF5FB",
 };
 
-// Card accent colors for variety
 const CARD_ACCENT_COLORS = [C.ACCENT_BLUE, C.ACCENT_GREEN, C.ACCENT_PURPLE, C.SECONDARY, C.ACCENT_RED, C.PRIMARY];
-
-// Module cover gradient colors (pairs)
 const MODULE_GRADIENTS = [
-  { from: "E67E22", to: "9B59B6" },  // Orange → Purple
-  { from: "3498DB", to: "2C3E50" },  // Blue → Dark
-  { from: "27AE60", to: "2C3E50" },  // Green → Dark
-  { from: "9B59B6", to: "E67E22" },  // Purple → Orange
-  { from: "E74C3C", to: "9B59B6" },  // Red → Purple
+  { from: "E67E22", to: "9B59B6" }, { from: "3498DB", to: "2C3E50" },
+  { from: "27AE60", to: "2C3E50" }, { from: "9B59B6", to: "E67E22" },
+  { from: "E74C3C", to: "9B59B6" },
 ];
 
 const FONT_TITLE = "Montserrat";
-const FONT_BODY  = "Open Sans";
-
+const FONT_BODY = "Open Sans";
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
-
 const MARGIN = 0.50;
-const SAFE_W = SLIDE_W - MARGIN * 2;  // ~12.333
-
+const SAFE_W = SLIDE_W - MARGIN * 2;
 const BOTTOM_MARGIN = 0.35;
+
+/* ═══════════════════════════════════════════════════════
+   CORRECTION 4: SEMANTIC ICON MAPPING
+   ═══════════════════════════════════════════════════════ */
+
+const ICON_KEYWORDS: [RegExp, string][] = [
+  [/\b(inteligência|ia\b|cérebro|cognit|raciocín|aprend)/i, "🧠"],
+  [/\b(automa|robô|máquina|bot|robo)/i, "🤖"],
+  [/\b(busca|análise|analis|pesquis|dado|magnif)/i, "🔍"],
+  [/\b(objetivo|meta|alvo|target|foco)/i, "🎯"],
+  [/\b(processo|config|sistema|engrenal|cog|fluxo|pipeline)/i, "⚙️"],
+  [/\b(pessoa|cliente|usuário|equipe|colabor|grupo|atendimento|rh)/i, "👥"],
+  [/\b(ideia|inovaç|criativ|insight|lightbulb)/i, "💡"],
+  [/\b(dado|gráfico|métrica|chart|indicador|dashboard|kpi)/i, "📊"],
+  [/\b(tempo|velocidade|eficiência|rápid|ágil|clock)/i, "⏱️"],
+  [/\b(seguranç|proteç|escudo|shield|privacidade)/i, "🛡️"],
+  [/\b(comunica|chat|mensag|conversa|diálogo)/i, "💬"],
+  [/\b(educa|ensino|aprendiz|curso|treinamento)/i, "📚"],
+  [/\b(finance|dinheiro|custo|investimento|receita)/i, "💰"],
+  [/\b(saúde|médic|diagnóstico|hospital|clínic)/i, "🏥"],
+  [/\b(marketing|venda|promoç|campanha|anúncio)/i, "📣"],
+  [/\b(visão|imagem|visual|reconhec|computacional|câmer)/i, "👁️"],
+  [/\b(linguag|texto|escrit|plataforma|nlp|pln)/i, "📝"],
+  [/\b(deep learning|rede neural|camada|neural)/i, "🔬"],
+];
+
+function getSemanticIcon(text: string, fallbackIdx: number): string {
+  for (const [pattern, icon] of ICON_KEYWORDS) {
+    if (pattern.test(text)) return icon;
+  }
+  const fallbackIcons = ["🧠", "🎯", "💡", "📊", "⚙️", "🔍"];
+  return fallbackIcons[fallbackIdx % fallbackIcons.length];
+}
+
+/* ═══════════════════════════════════════════════════════
+   CORRECTION 3: TEXT COMPRESSION (65% reduction)
+   ═══════════════════════════════════════════════════════ */
+
+function compressText(text: string, maxChars: number = 120): string {
+  if (!text || text.length <= maxChars) return text;
+  let t = text;
+  // Remove unnecessary articles and prepositions
+  t = t.replace(/\b(o|a|os|as|um|uma|uns|umas)\s+/gi, "");
+  t = t.replace(/\b(que|qual|quais|onde|quando|como|porque|pois)\s+/gi, "");
+  // Simplify common verbose patterns
+  t = t.replace(/\bé\s+um\s+campo\s+d[aoe]\s*/gi, "é campo d");
+  t = t.replace(/\bcapaz(es)?\s+de\s+/gi, "");
+  t = t.replace(/\btipicamente\b/gi, "");
+  t = t.replace(/\bpor\s+exemplo\b/gi, "ex:");
+  t = t.replace(/\bno\s+entanto\b/gi, "porém");
+  t = t.replace(/\balém\s+disso\b/gi, "também");
+  t = t.replace(/\bque\s+permitem?\b/gi, "para");
+  t = t.replace(/\bque\s+foca\b/gi, "focada");
+  t = t.replace(/\bde\s+forma\s+/gi, "");
+  t = t.replace(/\b(na|no|nas|nos|das|dos|da|do|de)\s+(criação|construção)\s+de\s+/gi, "criando ");
+  t = t.replace(/\s{2,}/g, " ").trim();
+  // Truncate to max chars at word boundary
+  if (t.length > maxChars) {
+    t = t.substring(0, maxChars);
+    const lastSpace = t.lastIndexOf(" ");
+    if (lastSpace > maxChars * 0.6) t = t.substring(0, lastSpace);
+    if (!/[.!?]$/.test(t)) t += ".";
+  }
+  return t;
+}
+
+function compressBullet(text: string): string {
+  return compressText(text, 100);
+}
+
+function compressTableCell(text: string): string {
+  return compressText(text, 80);
+}
 
 /* ═══════════════════════════════════════════════════════
    TEXT SANITIZATION
@@ -105,11 +143,8 @@ function sanitize(text: string): string {
   t = t.replace(/^---+$/gm, "");
   t = t.replace(/\s*[→⟶➜➔➞►▶︎⇒⇨]\s*/g, ": ");
   t = t.replace(/\s*->\s*/g, ": ");
-  t = t.replace(/&amp;/gi, "&");
-  t = t.replace(/&lt;/gi, "<");
-  t = t.replace(/&gt;/gi, ">");
-  t = t.replace(/&nbsp;/gi, " ");
-  t = t.replace(/&quot;/gi, '"');
+  t = t.replace(/&amp;/gi, "&"); t = t.replace(/&lt;/gi, "<"); t = t.replace(/&gt;/gi, ">");
+  t = t.replace(/&nbsp;/gi, " "); t = t.replace(/&quot;/gi, '"');
   t = t.replace(/<\/?[a-z][^>]*>/gi, " ");
   t = t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu, "");
   t = t.replace(/\s{2,}/g, " ").trim();
@@ -233,7 +268,7 @@ function parseModuleContent(content: string): ParsedBlock[] {
         inTable = true;
         tHeaders = trimmed.split("|").filter(Boolean).map(c => sanitize(c.trim()));
       } else if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
-        // separator line
+        // separator
       } else {
         tRows.push(trimmed.split("|").filter(Boolean).map(c => sanitize(c.trim())));
       }
@@ -260,29 +295,22 @@ function parseModuleContent(content: string): ParsedBlock[] {
 }
 
 /* ═══════════════════════════════════════════════════════
-   CONTENT CLASSIFICATION — Smart layout assignment
+   CONTENT CLASSIFICATION
    ═══════════════════════════════════════════════════════ */
 
 type LayoutType =
-  | "module_cover"
-  | "definition_card_with_pillars"
-  | "comparison_table"
-  | "grid_cards"
-  | "four_quadrants"
-  | "process_timeline"
-  | "numbered_takeaways"
-  | "bullets";
+  | "module_cover" | "definition_card_with_pillars" | "comparison_table"
+  | "grid_cards" | "four_quadrants" | "process_timeline"
+  | "numbered_takeaways" | "bullets";
 
 function isDefinitionBlock(items: string[]): boolean {
   if (items.length < 2 || items.length > 6) return false;
-  // Check if first item looks like a definition
   const first = items[0] || "";
   return /\b(é|são|refere-se|consiste|define-se|trata-se|significa)\b/i.test(first) && items.length >= 3;
 }
 
 function isProcessBlock(heading: string, items: string[]): boolean {
   if (/\b(processo|etapa|passo|fase|fluxo|como funciona|pipeline|workflow)\b/i.test(heading)) return true;
-  // Check if items are numbered/sequential
   const numberedCount = items.filter(it => /^(etapa|passo|fase|step)\s*\d/i.test(it) || /^\d+[\.\)]/i.test(it)).length;
   return numberedCount >= 3;
 }
@@ -313,19 +341,17 @@ function classifyContent(heading: string, items: string[], isTable: boolean, pre
   if (isProcessBlock(heading, items)) return "process_timeline";
   if (isDefinitionBlock(items)) return "definition_card_with_pillars";
   if (items.length === 4 && isQuadrantBlock(items)) {
-    // Avoid repeating same layout
     return prevLayout === "four_quadrants" ? "grid_cards" : "four_quadrants";
   }
   if (detectParallel(items)) {
     return prevLayout === "grid_cards" ? "four_quadrants" : "grid_cards";
   }
-  // Default: alternate between bullets and grid_cards to avoid monotony
   if (items.length >= 3 && items.length <= 6 && prevLayout !== "grid_cards") return "grid_cards";
   return "bullets";
 }
 
 /* ═══════════════════════════════════════════════════════
-   DENSITY SCORING
+   CORRECTION 7: DENSITY SCORING
    ═══════════════════════════════════════════════════════ */
 
 interface SlideData {
@@ -352,12 +378,31 @@ function calculateDensity(sd: SlideData): number {
   score += Math.min(items.length * 10, 60);
   if (sd.tableHeaders) score += 15;
   if (sd.layout === "process_timeline") score += 10;
-  if (sd.layout === "module_cover") score = 50; // Fixed
+  if (sd.layout === "module_cover") score = 50;
   return Math.min(score, 100);
 }
 
 /* ═══════════════════════════════════════════════════════
-   TABLE HELPERS
+   CORRECTION 1: FILLER SLIDE DETECTION
+   ═══════════════════════════════════════════════════════ */
+
+function isFillerSlide(sd: SlideData): boolean {
+  if (sd.layout === "module_cover" || sd.layout === "numbered_takeaways") return false;
+  if (sd.layout === "comparison_table" && sd.tableRows && sd.tableRows.length > 0) return false;
+  const items = sd.items || [];
+  // Filler: only 1 item that's a generic paragraph (no colon structure, no list)
+  if (items.length === 1 && items[0].length < 200) {
+    const heading = (sd.title || "").toLowerCase();
+    if (/^(introdução|contexto|sobre|visão geral|o que é|overview)/.test(heading)) return true;
+    // Single paragraph without structured content
+    if (!items[0].includes(":") && items[0].length < 100) return true;
+  }
+  if (items.length === 0 && !sd.tableHeaders) return true;
+  return false;
+}
+
+/* ═══════════════════════════════════════════════════════
+   TABLE HELPERS (CORRECTION 5: cell truncation)
    ═══════════════════════════════════════════════════════ */
 
 const HEADER_ROW_H = 0.50;
@@ -400,7 +445,7 @@ function splitTableRows(rows: string[][], colWidths: number[], maxH: number): st
   return chunks;
 }
 
-function getColumnWidths(headers: string[], rows: string[][]): number[] {
+function getColumnWidths(headers: string[]): number[] {
   const colCount = headers.length;
   if (colCount === 2) return [SAFE_W * 0.35, SAFE_W * 0.65];
   if (colCount === 3) return [SAFE_W * 0.20, SAFE_W * 0.40, SAFE_W * 0.40];
@@ -408,13 +453,12 @@ function getColumnWidths(headers: string[], rows: string[][]): number[] {
 }
 
 /* ═══════════════════════════════════════════════════════
-   BUILD MODULE SLIDES (Content Classification)
+   BUILD MODULE SLIDES (with corrections 1, 2, 3)
    ═══════════════════════════════════════════════════════ */
 
 function buildModuleSlides(mod: any, modIndex: number, totalModules: number): SlideData[] {
   const blocks = parseModuleContent(mod.content || "");
   const rawTitle = sanitize(mod.title || "");
-
   const shortTitle = rawTitle.replace(/^módulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
 
   const objItems: string[] = [];
@@ -434,8 +478,8 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
     layout: "module_cover",
     title: shortTitle,
     subtitle: `MÓDULO ${String(modIndex + 1).padStart(2, "0")}`,
-    description: objItems.length > 0 ? objItems[0] : undefined,
-    items: sanitizeBullets(objItems.slice(0, 4).map(sanitize)),
+    description: objItems.length > 0 ? compressText(objItems[0], 80) : undefined,
+    items: sanitizeBullets(objItems.slice(0, 4).map(s => compressBullet(sanitize(s)))),
     moduleIndex: modIndex,
   });
 
@@ -445,92 +489,138 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
     const heading = sanitize(block.heading || shortTitle);
     const sectionLabel = extractSectionLabel(heading);
 
+    // CORRECTION 5: Compress table cell text
     if (block.isTable && block.headers && block.rows && block.rows.length > 0) {
-      // Handle large tables: split if > 6 rows
-      const rows = block.rows.map(r => r.map(sanitize));
+      const rows = block.rows.map(r => r.map(c => compressTableCell(sanitize(c))));
       if (rows.length > 6) {
         const mid = Math.ceil(rows.length / 2);
         slides.push({
-          layout: "comparison_table",
-          title: heading + " (Parte 1)",
-          sectionLabel,
-          tableHeaders: block.headers.map(sanitize),
-          tableRows: rows.slice(0, mid),
+          layout: "comparison_table", title: heading + " (Parte 1)", sectionLabel,
+          tableHeaders: block.headers.map(sanitize), tableRows: rows.slice(0, mid),
         });
         slides.push({
-          layout: "comparison_table",
-          title: heading + " (Parte 2)",
-          sectionLabel,
-          tableHeaders: block.headers.map(sanitize),
-          tableRows: rows.slice(mid),
+          layout: "comparison_table", title: heading + " (Parte 2)", sectionLabel,
+          tableHeaders: block.headers.map(sanitize), tableRows: rows.slice(mid),
         });
         prevLayout = "comparison_table";
       } else {
         slides.push({
-          layout: "comparison_table",
-          title: heading,
-          sectionLabel,
-          tableHeaders: block.headers.map(sanitize),
-          tableRows: rows,
+          layout: "comparison_table", title: heading, sectionLabel,
+          tableHeaders: block.headers.map(sanitize), tableRows: rows,
         });
         prevLayout = "comparison_table";
       }
       continue;
     }
 
-    const items = block.items.map(sanitize).filter(s => s.length > 3);
+    // CORRECTION 3: Compress all bullet items
+    const items = block.items.map(s => compressBullet(sanitize(s))).filter(s => s.length > 3);
     if (items.length === 0) continue;
 
-    // Classify content
     let layout = classifyContent(heading, items, false, prevLayout);
 
-    // Ensure no consecutive repeated layouts
+    // CORRECTION 2: Ensure no consecutive repeated layouts
     if (layout === prevLayout && layout !== "bullets") {
-      const alternatives: LayoutType[] = ["grid_cards", "bullets", "four_quadrants"];
+      const alternatives: LayoutType[] = ["grid_cards", "bullets", "four_quadrants", "definition_card_with_pillars"];
       layout = alternatives.find(l => l !== prevLayout) || "bullets";
     }
 
-    // Split large item lists (>6 items) into multiple slides
+    // Split large item lists (>6 items)
     if (items.length > 6 && layout !== "numbered_takeaways") {
       const mid = Math.ceil(items.length / 2);
-      slides.push({
-        layout,
-        title: heading + " (Parte 1)",
-        sectionLabel,
-        items: sanitizeBullets(items.slice(0, mid)),
-      });
-      slides.push({
-        layout: layout === "grid_cards" ? "bullets" : "grid_cards", // Alternate
-        title: heading + " (Parte 2)",
-        sectionLabel,
-        items: sanitizeBullets(items.slice(mid)),
-      });
-      prevLayout = "grid_cards";
+      slides.push({ layout, title: heading + " (Parte 1)", sectionLabel, items: sanitizeBullets(items.slice(0, mid)) });
+      const altLayout = layout === "grid_cards" ? "bullets" : "grid_cards";
+      slides.push({ layout: altLayout, title: heading + " (Parte 2)", sectionLabel, items: sanitizeBullets(items.slice(mid)) });
+      prevLayout = altLayout;
     } else {
-      slides.push({
-        layout,
-        title: heading,
-        sectionLabel,
-        items: sanitizeBullets(items),
-      });
+      slides.push({ layout, title: heading, sectionLabel, items: sanitizeBullets(items) });
       prevLayout = layout;
     }
   }
 
-  // Summary/takeaways
+  // CORRECTION 6: Takeaways with compressed text
   if (resumoItems.length > 0) {
     slides.push({
       layout: "numbered_takeaways",
       title: `Key Takeaways — Módulo ${modIndex + 1}`,
       sectionLabel: "RESUMO DO MÓDULO",
-      items: sanitizeBullets(resumoItems.slice(0, 6).map(sanitize)),
+      items: sanitizeBullets(resumoItems.slice(0, 6).map(s => compressBullet(sanitize(s)))),
     });
   }
 
-  // Calculate density scores
-  slides.forEach(s => { s.densityScore = calculateDensity(s); });
+  // CORRECTION 1: Remove filler slides and merge content
+  const filtered: SlideData[] = [];
+  for (let i = 0; i < slides.length; i++) {
+    if (isFillerSlide(slides[i])) {
+      // Merge filler content into adjacent slide if possible
+      const fillerItems = slides[i].items || [];
+      if (fillerItems.length > 0) {
+        const target = filtered.length > 0 ? filtered[filtered.length - 1] : (i + 1 < slides.length ? slides[i + 1] : null);
+        if (target && target.items) {
+          target.items.push(...fillerItems);
+        }
+      }
+      console.log(`🗑️ Removed filler slide: "${slides[i].title}"`);
+      continue;
+    }
+    filtered.push(slides[i]);
+  }
 
-  return slides;
+  // CORRECTION 2: Consolidate 3+ consecutive same layouts
+  const consolidated = consolidateConsecutiveLayouts(filtered);
+
+  // Calculate density scores
+  consolidated.forEach(s => { s.densityScore = calculateDensity(s); });
+
+  return consolidated;
+}
+
+/* ═══════════════════════════════════════════════════════
+   CORRECTION 2: CONSOLIDATE CONSECUTIVE SAME LAYOUTS
+   ═══════════════════════════════════════════════════════ */
+
+function consolidateConsecutiveLayouts(slides: SlideData[]): SlideData[] {
+  const result: SlideData[] = [];
+  let i = 0;
+  while (i < slides.length) {
+    // Don't consolidate special layouts
+    if (slides[i].layout === "module_cover" || slides[i].layout === "numbered_takeaways" || slides[i].layout === "comparison_table") {
+      result.push(slides[i]);
+      i++;
+      continue;
+    }
+
+    // Count consecutive same layouts
+    let j = i + 1;
+    while (j < slides.length && slides[j].layout === slides[i].layout && j - i < 4) {
+      j++;
+    }
+
+    const consecutiveCount = j - i;
+    if (consecutiveCount >= 3) {
+      // Merge all items into one grid_cards slide (max 6 items)
+      const mergedItems: string[] = [];
+      const mergedTitle = slides[i].title.replace(/\s*\(Parte \d+\)\s*$/i, "");
+      for (let k = i; k < j; k++) {
+        const items = slides[k].items || [];
+        // Take first item from each (the key point)
+        if (items.length > 0) mergedItems.push(items[0]);
+        if (items.length > 1 && mergedItems.length < 6) mergedItems.push(items[1]);
+      }
+      result.push({
+        layout: "grid_cards",
+        title: mergedTitle,
+        sectionLabel: slides[i].sectionLabel,
+        items: mergedItems.slice(0, 6),
+      });
+      console.log(`🔗 Consolidated ${consecutiveCount} "${slides[i].layout}" slides into 1 grid_cards`);
+      i = j;
+    } else {
+      result.push(slides[i]);
+      i++;
+    }
+  }
+  return result;
 }
 
 function extractSectionLabel(heading: string): string {
@@ -540,23 +630,84 @@ function extractSectionLabel(heading: string): string {
 }
 
 /* ═══════════════════════════════════════════════════════
-   HEADER RENDERING — Section label + Title
+   CORRECTION 7: DENSITY BALANCING PASS
+   ═══════════════════════════════════════════════════════ */
+
+function balanceDensity(slides: SlideData[]): SlideData[] {
+  const result = [...slides];
+  for (let i = 0; i < result.length; i++) {
+    const s = result[i];
+    const density = calculateDensity(s);
+    s.densityScore = density;
+
+    // Skip special slides
+    if (s.layout === "module_cover") continue;
+
+    // Low density (<40): try to expand
+    if (density < 40 && s.items && s.items.length < 3) {
+      // Merge with previous non-cover slide
+      if (i > 0 && result[i - 1].layout !== "module_cover" && result[i - 1].layout !== "numbered_takeaways") {
+        const prev = result[i - 1];
+        if (prev.items) {
+          prev.items.push(...(s.items || []));
+          prev.densityScore = calculateDensity(prev);
+          result.splice(i, 1);
+          console.log(`⬆️ Merged low-density slide "${s.title}" into previous`);
+          i--;
+          continue;
+        }
+      }
+    }
+
+    // High density (>90): split if possible
+    if (density > 90 && s.items && s.items.length > 4 && s.layout !== "numbered_takeaways") {
+      const mid = Math.ceil(s.items.length / 2);
+      const newSlide: SlideData = {
+        layout: s.layout === "grid_cards" ? "bullets" : "grid_cards",
+        title: s.title + " (cont.)",
+        sectionLabel: s.sectionLabel,
+        items: s.items.slice(mid),
+      };
+      s.items = s.items.slice(0, mid);
+      s.densityScore = calculateDensity(s);
+      newSlide.densityScore = calculateDensity(newSlide);
+      result.splice(i + 1, 0, newSlide);
+      console.log(`✂️ Split overloaded slide "${s.title}"`);
+    }
+
+    // Check variance with previous
+    if (i > 0) {
+      const prevDensity = result[i - 1].densityScore || 50;
+      const currDensity = s.densityScore || 50;
+      if (Math.abs(currDensity - prevDensity) > 25 && s.items && result[i - 1].items) {
+        // Redistribute: move 1 item from dense to sparse
+        const denseSlide = currDensity > prevDensity ? s : result[i - 1];
+        const sparseSlide = currDensity > prevDensity ? result[i - 1] : s;
+        if (denseSlide.items && denseSlide.items.length > 2 && sparseSlide.items) {
+          const moved = denseSlide.items.pop()!;
+          sparseSlide.items.push(moved);
+          denseSlide.densityScore = calculateDensity(denseSlide);
+          sparseSlide.densityScore = calculateDensity(sparseSlide);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/* ═══════════════════════════════════════════════════════
+   HEADER RENDERING
    ═══════════════════════════════════════════════════════ */
 
 function renderContentHeader(slide: any, sectionLabel: string, titleText: string): number {
   let y = 0.40;
-
-  // Section label (small, uppercase, light gray)
   if (sectionLabel) {
     addTextSafe(slide, sectionLabel, {
       x: MARGIN, y, w: SAFE_W, h: 0.28,
-      fontSize: 14, fontFace: FONT_BODY, color: C.TEXT_LIGHT, bold: true,
-      letterSpacing: 2,
+      fontSize: 14, fontFace: FONT_BODY, color: C.TEXT_LIGHT, bold: true, letterSpacing: 2,
     });
     y += 0.32;
   }
-
-  // Main title (bold, dark)
   const fontSize = titleText.length > 60 ? 26 : titleText.length > 40 ? 30 : 32;
   const titleH = getTitleHeight(titleText, SAFE_W, fontSize);
   addTextSafe(slide, titleText, {
@@ -564,7 +715,6 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
     fontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
   y += titleH + 0.20;
-
   return y;
 }
 
@@ -572,21 +722,15 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
    SLIDE RENDERERS
    ═══════════════════════════════════════════════════════ */
 
-// ── CAPA (Course Cover) ──
 function renderCapa(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   slide.background = { color: C.PRIMARY };
 
-  // "CURSO COMPLETO" badge
-  const badgeW = 3.2;
-  const badgeH = 0.48;
-  const badgeX = (SLIDE_W - badgeW) / 2;
-  const badgeY = 1.2;
+  const badgeW = 3.2; const badgeH = 0.48;
+  const badgeX = (SLIDE_W - badgeW) / 2; const badgeY = 1.2;
   slide.addShape(pptx.ShapeType.roundRect, {
     x: badgeX, y: badgeY, w: badgeW, h: badgeH,
-    line: { color: C.SECONDARY, width: 2 },
-    fill: { type: "none" },
-    rectRadius: 0.15,
+    line: { color: C.SECONDARY, width: 2 }, fill: { type: "none" }, rectRadius: 0.15,
   });
   addTextSafe(slide, "CURSO COMPLETO", {
     x: badgeX, y: badgeY, w: badgeW, h: badgeH,
@@ -594,7 +738,6 @@ function renderCapa(pptx: any, data: SlideData) {
     align: "center", valign: "middle", letterSpacing: 4,
   });
 
-  // Title
   const titleH = getTitleHeight(data.title, SAFE_W - 2, 48);
   const titleY = badgeY + badgeH + 0.50;
   addTextSafe(slide, data.title, {
@@ -603,15 +746,11 @@ function renderCapa(pptx: any, data: SlideData) {
     align: "center", valign: "middle",
   });
 
-  // Orange separator
   const sepY = titleY + titleH + 0.15;
-  const sepW = 1.5;
   slide.addShape(pptx.ShapeType.rect, {
-    x: (SLIDE_W - sepW) / 2, y: sepY, w: sepW, h: 0.05,
-    fill: { color: C.SECONDARY },
+    x: (SLIDE_W - 1.5) / 2, y: sepY, w: 1.5, h: 0.05, fill: { color: C.SECONDARY },
   });
 
-  // Subtitle
   if (data.description) {
     addTextSafe(slide, sanitize(data.description), {
       x: 2, y: sepY + 0.30, w: SLIDE_W - 4, h: 0.55,
@@ -619,7 +758,6 @@ function renderCapa(pptx: any, data: SlideData) {
     });
   }
 
-  // Footer
   const d = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const footer = data.moduleCount ? `${d}  |  ${data.moduleCount} Módulos` : d;
   addTextSafe(slide, footer, {
@@ -628,7 +766,6 @@ function renderCapa(pptx: any, data: SlideData) {
   });
 }
 
-// ── TOC (Table of Contents) ──
 function renderTOC(pptx: any, data: SlideData) {
   const modules = data.modules || [];
   if (modules.length === 0) return;
@@ -636,23 +773,17 @@ function renderTOC(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   slide.background = { color: C.BG_WHITE };
 
-  // Section label
   addTextSafe(slide, "CONTEÚDO DO CURSO", {
     x: MARGIN, y: 0.35, w: SAFE_W, h: 0.28,
     fontSize: 14, fontFace: FONT_BODY, color: C.SECONDARY, bold: true, letterSpacing: 2,
   });
-
-  // Title
   addTextSafe(slide, "O que você vai aprender", {
     x: MARGIN, y: 0.68, w: SAFE_W, h: 0.55,
     fontSize: 36, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
 
-  // Module cards grid
   const gridY = 1.40;
-  const cols = 2;
-  const gapX = 0.25;
-  const gapY = 0.20;
+  const cols = 2; const gapX = 0.25; const gapY = 0.20;
   const cardW = (SAFE_W - gapX) / cols;
   const rows = Math.ceil(modules.length / cols);
   const availH = SLIDE_H - gridY - BOTTOM_MARGIN;
@@ -665,29 +796,20 @@ function renderTOC(pptx: any, data: SlideData) {
     const y = gridY + row * (cardH + gapY);
     if (y + cardH > SLIDE_H - BOTTOM_MARGIN) return;
 
-    // Card with left accent border
     const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
 
-    // Card background (light gray)
     slide.addShape(pptx.ShapeType.rect, {
       x, y, w: cardW, h: cardH,
-      fill: { color: C.BG_LIGHT },
-      line: { color: C.CARD_BORDER, width: 0.5 },
-      rectRadius: 0.08,
+      fill: { color: C.BG_LIGHT }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
     });
-
-    // Left accent bar
     slide.addShape(pptx.ShapeType.rect, {
       x, y: y + 0.08, w: 0.06, h: cardH - 0.16,
-      fill: { color: accentColor },
-      rectRadius: 0.03,
+      fill: { color: accentColor }, rectRadius: 0.03,
     });
 
-    // Number circle
     const circleSize = 0.44;
     slide.addShape(pptx.ShapeType.ellipse, {
-      x: x + 0.22, y: y + 0.20, w: circleSize, h: circleSize,
-      fill: { color: accentColor },
+      x: x + 0.22, y: y + 0.20, w: circleSize, h: circleSize, fill: { color: accentColor },
     });
     addTextSafe(slide, String(idx + 1).padStart(2, "0"), {
       x: x + 0.22, y: y + 0.20, w: circleSize, h: circleSize,
@@ -695,99 +817,76 @@ function renderTOC(pptx: any, data: SlideData) {
       align: "center", valign: "middle",
     });
 
-    // Title
-    const textX = x + 0.78;
-    const textW = cardW - 0.95;
+    const textX = x + 0.78; const textW = cardW - 0.95;
     addTextSafe(slide, mod.title, {
       x: textX, y: y + 0.20, w: textW, h: 0.35,
       fontSize: 16, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
     });
-
-    // Description
     if (mod.description) {
       addTextSafe(slide, mod.description, {
         x: textX, y: y + 0.58, w: textW, h: cardH - 0.72,
-        fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
-        valign: "top", lineSpacingMultiple: 1.3,
+        fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
       });
     }
   });
 }
 
-// ── MODULE COVER ──
 function renderModuleCover(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   const modIdx = data.moduleIndex || 0;
   const gradient = MODULE_GRADIENTS[modIdx % MODULE_GRADIENTS.length];
 
-  // Gradient background (simulated with two overlapping shapes)
   slide.background = { color: gradient.from };
-  // Overlay darker shape on right half for gradient effect
   slide.addShape(pptx.ShapeType.rect, {
-    x: SLIDE_W * 0.5, y: 0, w: SLIDE_W * 0.5, h: SLIDE_H,
-    fill: { color: gradient.to },
+    x: SLIDE_W * 0.5, y: 0, w: SLIDE_W * 0.5, h: SLIDE_H, fill: { color: gradient.to },
   });
-  // Blend overlay
   slide.addShape(pptx.ShapeType.rect, {
-    x: SLIDE_W * 0.35, y: 0, w: SLIDE_W * 0.30, h: SLIDE_H,
-    fill: { color: gradient.from },
+    x: SLIDE_W * 0.35, y: 0, w: SLIDE_W * 0.30, h: SLIDE_H, fill: { color: gradient.from },
   });
 
-  // Module number (very large)
   const moduleNum = data.subtitle || "MÓDULO 01";
   addTextSafe(slide, moduleNum, {
     x: MARGIN, y: 0.80, w: 5, h: 1.0,
     fontSize: 72, fontFace: FONT_TITLE, color: C.TEXT_WHITE, bold: true,
   });
 
-  // Title
   const titleH = getTitleHeight(data.title, SAFE_W * 0.5, 40);
   addTextSafe(slide, data.title, {
     x: MARGIN, y: 2.00, w: SAFE_W * 0.55, h: titleH,
     fontSize: 40, fontFace: FONT_TITLE, color: C.TEXT_WHITE, bold: true,
   });
 
-  // Orange separator
   const sepY = 2.00 + titleH + 0.10;
   slide.addShape(pptx.ShapeType.rect, {
-    x: MARGIN, y: sepY, w: 1.0, h: 0.05,
-    fill: { color: C.SECONDARY },
+    x: MARGIN, y: sepY, w: 1.0, h: 0.05, fill: { color: C.SECONDARY },
   });
 
-  // Description
   if (data.description) {
     addTextSafe(slide, sanitize(data.description), {
       x: MARGIN, y: sepY + 0.25, w: SAFE_W * 0.50, h: 0.80,
-      fontSize: 18, fontFace: FONT_BODY, color: "FFFFFFCC",
-      valign: "top", lineSpacingMultiple: 1.4,
+      fontSize: 18, fontFace: FONT_BODY, color: "FFFFFFCC", valign: "top", lineSpacingMultiple: 1.4,
     });
   }
 
-  // Keywords at bottom
   if (data.items && data.items.length > 0) {
-    const keywords = data.items.slice(0, 3).map(item => {
-      return sanitize(item).split(/\s+/).slice(0, 4).join(" ");
-    });
+    const keywords = data.items.slice(0, 3).map(item => sanitize(item).split(/\s+/).slice(0, 4).join(" "));
     let pillX = MARGIN;
     const pillY = SLIDE_H - 1.0;
     for (const kw of keywords) {
       const pillW = Math.min(kw.length * 0.12 + 0.4, 3.0);
       slide.addShape(pptx.ShapeType.roundRect, {
-        x: pillX, y: pillY, w: pillW, h: 0.38,
-        fill: { color: "FFFFFF22" },
-        rectRadius: 0.19,
+        x: pillX, y: pillY, w: pillW, h: 0.38, fill: { color: "FFFFFF22" }, rectRadius: 0.19,
       });
       addTextSafe(slide, kw, {
         x: pillX, y: pillY, w: pillW, h: 0.38,
-        fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_WHITE,
-        align: "center", valign: "middle",
+        fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_WHITE, align: "center", valign: "middle",
       });
       pillX += pillW + 0.12;
     }
   }
 }
 
-// ── DEFINITION CARD WITH PILLARS ──
+// ── DEFINITION CARD WITH PILLARS (CORRECTION 4: semantic icons) ──
 function renderDefinitionWithPillars(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   slide.background = { color: C.BG_WHITE };
@@ -796,35 +895,24 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
 
   let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
-  // Definition card (first item as the main definition)
   const defText = items[0];
   const defCardH = Math.max(1.0, estimateTextLines(defText, SAFE_W - 1.2, 16) * 0.35 + 0.40);
-  
-  // Card background
+
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: contentY, w: SAFE_W, h: defCardH,
-    fill: { color: C.BG_LIGHT },
-    line: { color: C.ACCENT_BLUE, width: 1.5 },
-    rectRadius: 0.10,
+    fill: { color: C.BG_LIGHT }, line: { color: C.ACCENT_BLUE, width: 1.5 }, rectRadius: 0.10,
   });
-
-  // "Definição Essencial" label
   addTextSafe(slide, "DEFINIÇÃO ESSENCIAL", {
     x: MARGIN + 0.30, y: contentY + 0.15, w: SAFE_W - 0.60, h: 0.28,
-    fontSize: 11, fontFace: FONT_TITLE, color: C.ACCENT_BLUE, bold: true,
-    letterSpacing: 2,
+    fontSize: 11, fontFace: FONT_TITLE, color: C.ACCENT_BLUE, bold: true, letterSpacing: 2,
   });
-
-  // Definition text
   addTextSafe(slide, defText, {
     x: MARGIN + 0.30, y: contentY + 0.45, w: SAFE_W - 0.60, h: defCardH - 0.60,
-    fontSize: 16, fontFace: FONT_BODY, color: C.TEXT_BODY,
-    valign: "top", lineSpacingMultiple: 1.4,
+    fontSize: 16, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top", lineSpacingMultiple: 1.4,
   });
 
   contentY += defCardH + 0.30;
 
-  // Pillars (remaining items as horizontal cards)
   const pillars = items.slice(1, 5);
   if (pillars.length > 0) {
     const cols = pillars.length;
@@ -837,34 +925,27 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
       const x = MARGIN + idx * (pillarW + gapX);
       const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
 
-      // Pillar card
       slide.addShape(pptx.ShapeType.rect, {
         x, y: contentY, w: pillarW, h: pillarH,
-        fill: { color: C.BG_WHITE },
-        line: { color: C.CARD_BORDER, width: 0.5 },
-        rectRadius: 0.08,
+        fill: { color: C.BG_WHITE }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
       });
-
-      // Top accent line
       slide.addShape(pptx.ShapeType.rect, {
-        x: x + 0.08, y: contentY, w: pillarW - 0.16, h: 0.05,
-        fill: { color: accentColor },
+        x: x + 0.08, y: contentY, w: pillarW - 0.16, h: 0.05, fill: { color: accentColor },
       });
 
-      // Icon circle
+      // CORRECTION 4: Semantic icon
       const circleSize = 0.44;
       slide.addShape(pptx.ShapeType.ellipse, {
         x: x + (pillarW - circleSize) / 2, y: contentY + 0.20, w: circleSize, h: circleSize,
         fill: { color: accentColor },
       });
-      const iconChar = ["◆", "⚙", "◎", "✦"][idx % 4];
+      const iconChar = getSemanticIcon(pillar, idx);
       addTextSafe(slide, iconChar, {
         x: x + (pillarW - circleSize) / 2, y: contentY + 0.20, w: circleSize, h: circleSize,
         fontSize: 18, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
         align: "center", valign: "middle",
       });
 
-      // Extract title from "Title: Description" pattern
       const colonIdx = pillar.indexOf(":");
       const pTitle = colonIdx > 2 && colonIdx < 50 ? pillar.substring(0, colonIdx).trim() : "";
       const pBody = pTitle ? pillar.substring(colonIdx + 1).trim() : pillar;
@@ -873,12 +954,10 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
       if (pTitle) {
         addTextSafe(slide, pTitle, {
           x: x + 0.15, y: textY, w: pillarW - 0.30, h: 0.30,
-          fontSize: 13, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
-          align: "center",
+          fontSize: 13, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true, align: "center",
         });
         textY += 0.32;
       }
-
       addTextSafe(slide, pBody, {
         x: x + 0.15, y: textY, w: pillarW - 0.30, h: pillarH - (textY - contentY) - 0.10,
         fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
@@ -888,31 +967,26 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
   }
 }
 
-// ── COMPARISON TABLE ──
+// ── COMPARISON TABLE (CORRECTION 5: proper formatting) ──
 function renderComparisonTable(pptx: any, data: SlideData) {
   const headers = (data.tableHeaders || []).map(h => sanitize(h));
-  const rows = (data.tableRows || []).map(r => r.map(c => sanitize(c)));
+  const rows = (data.tableRows || []).map(r => r.map(c => compressTableCell(sanitize(c))));
   if (!headers.length || !rows.length) return;
 
   const titleText = deduplicateTitle(data.title);
-  const colWidths = getColumnWidths(headers, rows);
-  
-  // Check if we need to split
+  const colWidths = getColumnWidths(headers);
+
   const headerAreaH = 1.30;
   const insightH = 0.60;
   const maxTableH = SLIDE_H - headerAreaH - insightH - BOTTOM_MARGIN;
-  
+
   const estH = calcTableHeight(rows, colWidths);
   if (estH > maxTableH && rows.length > 4) {
     const chunks = splitTableRows(rows, colWidths, maxTableH);
     if (chunks.length > 1) {
       const bt = titleText.replace(/\s*\(Parte \d+\)\s*$/i, "");
       chunks.forEach((chunk, idx) => {
-        renderComparisonTable(pptx, {
-          ...data,
-          title: `${bt} (Parte ${idx + 1})`,
-          tableRows: chunk,
-        });
+        renderComparisonTable(pptx, { ...data, title: `${bt} (Parte ${idx + 1})`, tableRows: chunk });
       });
       return;
     }
@@ -922,14 +996,13 @@ function renderComparisonTable(pptx: any, data: SlideData) {
   slide.background = { color: C.BG_WHITE };
   const contentY = renderContentHeader(slide, data.sectionLabel || "", titleText);
 
-  // Build table
   const colCount = headers.length;
   const noBorder = { type: "none" as const, pt: 0, color: "000000" };
   const borderBottom = { type: "solid" as const, pt: 0.5, color: C.TABLE_BORDER };
 
   const tableData: any[][] = [];
 
-  // Header row
+  // CORRECTION 5: Proper header styling
   tableData.push(headers.map(h => ({
     text: h,
     options: {
@@ -942,7 +1015,7 @@ function renderComparisonTable(pptx: any, data: SlideData) {
     },
   })));
 
-  // Data rows with zebra striping
+  // CORRECTION 5: Zebra striping with proper padding
   rows.forEach((row, ri) => {
     const isEven = ri % 2 === 1;
     const fillColor = isEven ? C.TABLE_ROW_EVEN : C.TABLE_ROW_ODD;
@@ -950,7 +1023,7 @@ function renderComparisonTable(pptx: any, data: SlideData) {
       text: cell,
       options: {
         fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_BODY,
-        bold: ci === 0, // First column bold
+        bold: ci === 0,
         fill: { color: fillColor },
         border: [noBorder, noBorder, borderBottom, noBorder],
         valign: "middle" as const,
@@ -958,16 +1031,12 @@ function renderComparisonTable(pptx: any, data: SlideData) {
         margin: [0.10, 0.15, 0.10, 0.15],
       },
     }));
-    // Pad if needed
     while (dataRow.length < colCount) {
       dataRow.push({
-        text: "",
-        options: {
+        text: "", options: {
           fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_BODY,
-          fill: { color: fillColor },
-          border: [noBorder, noBorder, borderBottom, noBorder],
-          valign: "middle" as const,
-          paraSpaceBefore: 4, paraSpaceAfter: 4,
+          fill: { color: fillColor }, border: [noBorder, noBorder, borderBottom, noBorder],
+          valign: "middle" as const, paraSpaceBefore: 4, paraSpaceAfter: 4,
           margin: [0.10, 0.15, 0.10, 0.15],
         },
       });
@@ -978,33 +1047,29 @@ function renderComparisonTable(pptx: any, data: SlideData) {
   const safeH = Math.min(estH * 1.15 + 0.2, maxTableH);
   slide.addTable(tableData, {
     x: MARGIN, y: contentY, w: SAFE_W, h: safeH,
-    colW: colWidths,
-    autoPage: false,
+    colW: colWidths, autoPage: false,
   });
 
-  // Insight box at bottom
+  // Insight box
   const insightY = SLIDE_H - 0.70;
   const insightBoxH = 0.45;
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: insightY, w: SAFE_W, h: insightBoxH,
-    fill: { color: C.INSIGHT_BG },
-    rectRadius: 0.08,
+    fill: { color: C.INSIGHT_BG }, rectRadius: 0.08,
   });
-  // Left accent bar on insight
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: insightY + 0.06, w: 0.05, h: insightBoxH - 0.12,
     fill: { color: C.SECONDARY },
   });
   addTextSafe(slide, [
     { text: "💡 Insight: ", options: { bold: true, color: C.SECONDARY, fontSize: 12, fontFace: FONT_TITLE } },
-    { text: "Analise os dados acima e reflita sobre como se aplicam ao seu contexto profissional.", options: { color: C.TEXT_BODY, fontSize: 12, fontFace: FONT_BODY, italic: true } },
+    { text: "Analise os dados acima e reflita sobre como se aplicam ao seu contexto.", options: { color: C.TEXT_BODY, fontSize: 12, fontFace: FONT_BODY, italic: true } },
   ], {
-    x: MARGIN + 0.22, y: insightY, w: SAFE_W - 0.44, h: insightBoxH,
-    valign: "middle",
+    x: MARGIN + 0.22, y: insightY, w: SAFE_W - 0.44, h: insightBoxH, valign: "middle",
   });
 }
 
-// ── GRID CARDS ──
+// ── GRID CARDS (CORRECTION 4: semantic icons) ──
 function renderGridCards(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
@@ -1016,8 +1081,7 @@ function renderGridCards(pptx: any, data: SlideData) {
 
   const count = Math.min(items.length, 6);
   const cols = count === 3 || count === 6 ? 3 : 2;
-  const gapX = 0.22;
-  const gapY = 0.20;
+  const gapX = 0.22; const gapY = 0.20;
   const cardW = (SAFE_W - (cols - 1) * gapX) / cols;
   const rows = Math.ceil(count / cols);
   const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
@@ -1032,41 +1096,32 @@ function renderGridCards(pptx: any, data: SlideData) {
 
     const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
 
-    // Card
     slide.addShape(pptx.ShapeType.rect, {
       x, y, w: cardW, h: cardH,
-      fill: { color: C.BG_LIGHT },
-      line: { color: C.CARD_BORDER, width: 0.5 },
-      rectRadius: 0.08,
+      fill: { color: C.BG_LIGHT }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
     });
-
-    // Left accent bar
     slide.addShape(pptx.ShapeType.rect, {
       x, y: y + 0.08, w: 0.05, h: cardH - 0.16,
-      fill: { color: accentColor },
-      rectRadius: 0.025,
+      fill: { color: accentColor }, rectRadius: 0.025,
     });
 
-    // Icon circle
+    // CORRECTION 4: semantic icon
     const circleSize = 0.40;
     slide.addShape(pptx.ShapeType.ellipse, {
-      x: x + 0.18, y: y + 0.18, w: circleSize, h: circleSize,
-      fill: { color: accentColor },
+      x: x + 0.18, y: y + 0.18, w: circleSize, h: circleSize, fill: { color: accentColor },
     });
-    const iconChar = ["◆", "⚙", "◎", "✦", "▲", "●"][idx % 6];
+    const iconChar = getSemanticIcon(item, idx);
     addTextSafe(slide, iconChar, {
       x: x + 0.18, y: y + 0.18, w: circleSize, h: circleSize,
       fontSize: 16, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
       align: "center", valign: "middle",
     });
 
-    // Extract title:body
     const colonIdx = item.indexOf(":");
     const cardTitle = colonIdx > 2 && colonIdx < 50 ? item.substring(0, colonIdx).trim() : "";
     const cardBody = cardTitle ? item.substring(colonIdx + 1).trim() : item;
 
-    const textX = x + 0.68;
-    const textW = cardW - 0.82;
+    const textX = x + 0.68; const textW = cardW - 0.82;
     let textY = y + 0.18;
 
     if (cardTitle) {
@@ -1076,19 +1131,17 @@ function renderGridCards(pptx: any, data: SlideData) {
       });
       textY += 0.34;
     }
-
     if (cardBody) {
       const bodyH = cardH - (textY - y) - 0.10;
       addTextSafe(slide, cardBody, {
         x: textX, y: textY, w: textW, h: Math.max(bodyH, 0.20),
-        fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
-        valign: "top", lineSpacingMultiple: 1.3,
+        fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
       });
     }
   });
 }
 
-// ── FOUR QUADRANTS ──
+// ── FOUR QUADRANTS (CORRECTION 4: semantic icons) ──
 function renderFourQuadrants(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length < 4) { renderGridCards(pptx, data); return; }
@@ -1097,14 +1150,11 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
   slide.background = { color: C.BG_WHITE };
   let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
-  const cols = 2;
-  const gapX = 0.25;
-  const gapY = 0.22;
+  const cols = 2; const gapX = 0.25; const gapY = 0.22;
   const quadW = (SAFE_W - gapX) / cols;
   const quadrants = items.slice(0, 4);
-  const rows = 2;
   const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
-  const quadH = Math.min((availH - gapY) / rows, 2.0);
+  const quadH = Math.min((availH - gapY) / 2, 2.0);
 
   quadrants.forEach((item, idx) => {
     const col = idx % cols;
@@ -1115,41 +1165,31 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
 
     const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
 
-    // Quadrant background
     slide.addShape(pptx.ShapeType.rect, {
       x, y, w: quadW, h: quadH,
-      fill: { color: C.BG_LIGHT },
-      line: { color: C.CARD_BORDER, width: 0.5 },
-      rectRadius: 0.10,
+      fill: { color: C.BG_LIGHT }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.10,
     });
-
-    // Top accent line
     slide.addShape(pptx.ShapeType.rect, {
-      x: x + 0.10, y, w: quadW - 0.20, h: 0.05,
-      fill: { color: accentColor },
+      x: x + 0.10, y, w: quadW - 0.20, h: 0.05, fill: { color: accentColor },
     });
 
-    // Icon circle (larger for quadrants)
+    // CORRECTION 4: semantic icon
     const circleSize = 0.50;
     slide.addShape(pptx.ShapeType.ellipse, {
-      x: x + 0.25, y: y + 0.25, w: circleSize, h: circleSize,
-      fill: { color: accentColor },
+      x: x + 0.25, y: y + 0.25, w: circleSize, h: circleSize, fill: { color: accentColor },
     });
-    const iconChar = ["⚙", "👥", "💡", "📊"][idx % 4];
+    const iconChar = getSemanticIcon(item, idx);
     addTextSafe(slide, iconChar, {
       x: x + 0.25, y: y + 0.25, w: circleSize, h: circleSize,
-      fontSize: 20, fontFace: FONT_BODY, color: C.TEXT_WHITE,
-      align: "center", valign: "middle",
+      fontSize: 20, fontFace: FONT_BODY, color: C.TEXT_WHITE, align: "center", valign: "middle",
     });
 
-    // Title and body
     const colonIdx = item.indexOf(":");
     const qTitle = colonIdx > 2 && colonIdx < 50 ? item.substring(0, colonIdx).trim() : "";
     const qBody = qTitle ? item.substring(colonIdx + 1).trim() : item;
 
     let textY = y + 0.25;
-    const textX = x + 0.85;
-    const textW = quadW - 1.05;
+    const textX = x + 0.85; const textW = quadW - 1.05;
 
     if (qTitle) {
       addTextSafe(slide, qTitle, {
@@ -1158,15 +1198,12 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
       });
       textY += 0.38;
     }
-
     addTextSafe(slide, qBody, {
       x: textX, y: textY, w: textW, h: quadH - (textY - y) - 0.15,
-      fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
-      valign: "top", lineSpacingMultiple: 1.3,
+      fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
     });
   });
 
-  // If there are more than 4 items, add footer section
   if (items.length > 4) {
     const footerItems = items.slice(4, 10);
     const footerY = SLIDE_H - 0.70;
@@ -1194,13 +1231,9 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
   const circleSize = 0.55;
   const lineY = contentY + circleSize / 2;
 
-  // Connecting line
   slide.addShape(pptx.ShapeType.rect, {
-    x: MARGIN + stepW / 2,
-    y: lineY + circleSize / 2 - 0.02,
-    w: totalW - stepW,
-    h: 0.04,
-    fill: { color: C.CARD_BORDER },
+    x: MARGIN + stepW / 2, y: lineY + circleSize / 2 - 0.02,
+    w: totalW - stepW, h: 0.04, fill: { color: C.CARD_BORDER },
   });
 
   steps.forEach((step, idx) => {
@@ -1209,10 +1242,8 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     const y = contentY;
     const accentColor = idx === 0 ? C.SECONDARY : CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
 
-    // Circle
     slide.addShape(pptx.ShapeType.ellipse, {
-      x, y, w: circleSize, h: circleSize,
-      fill: { color: accentColor },
+      x, y, w: circleSize, h: circleSize, fill: { color: accentColor },
     });
     addTextSafe(slide, String(idx + 1), {
       x, y, w: circleSize, h: circleSize,
@@ -1220,7 +1251,6 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
       align: "center", valign: "middle",
     });
 
-    // Extract title and description
     const colonIdx = step.indexOf(":");
     const stepTitle = colonIdx > 2 && colonIdx < 50 ? step.substring(0, colonIdx).trim() : `Etapa ${idx + 1}`;
     const stepDesc = colonIdx > 2 && colonIdx < 50 ? step.substring(colonIdx + 1).trim() : step;
@@ -1229,14 +1259,10 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     const textW = stepW - 0.16;
     const textY = y + circleSize + 0.15;
 
-    // Step title
     addTextSafe(slide, stepTitle, {
       x: textX, y: textY, w: textW, h: 0.35,
-      fontSize: 14, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
-      align: "center",
+      fontSize: 14, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true, align: "center",
     });
-
-    // Step description
     addTextSafe(slide, stepDesc, {
       x: textX, y: textY + 0.38, w: textW, h: 1.2,
       fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
@@ -1244,15 +1270,13 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     });
   });
 
-  // Supporting text at bottom
   addTextSafe(slide, "Cada etapa contribui para um resultado mais eficiente e robusto.", {
     x: MARGIN, y: SLIDE_H - 0.65, w: SAFE_W, h: 0.35,
-    fontSize: 14, fontFace: FONT_BODY, color: C.TEXT_LIGHT, italic: true,
-    align: "center",
+    fontSize: 14, fontFace: FONT_BODY, color: C.TEXT_LIGHT, italic: true, align: "center",
   });
 }
 
-// ── BULLETS (Clean modern list) ──
+// ── BULLETS ──
 function renderBullets(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
@@ -1270,21 +1294,16 @@ function renderBullets(pptx: any, data: SlideData) {
 
     const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
 
-    // Accent dot
     const dotSize = 0.12;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: MARGIN + 0.10, y: y + (bulletH - dotSize) / 2, w: dotSize, h: dotSize,
       fill: { color: accentColor },
     });
-
-    // Text
     addTextSafe(slide, item, {
       x: MARGIN + 0.35, y, w: SAFE_W - 0.45, h: bulletH,
-      fontSize: 16, fontFace: FONT_BODY, color: C.TEXT_BODY,
-      valign: "middle", lineSpacingMultiple: 1.3,
+      fontSize: 16, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "middle", lineSpacingMultiple: 1.3,
     });
 
-    // Subtle separator line (not on last item)
     if (idx < items.length - 1) {
       slide.addShape(pptx.ShapeType.rect, {
         x: MARGIN + 0.35, y: y + bulletH - 0.02, w: SAFE_W - 0.80, h: 0.01,
@@ -1294,7 +1313,7 @@ function renderBullets(pptx: any, data: SlideData) {
   });
 }
 
-// ── NUMBERED TAKEAWAYS (Summary) ──
+// ── NUMBERED TAKEAWAYS (CORRECTION 6: grid layout, compressed text) ──
 function renderNumberedTakeaways(pptx: any, data: SlideData) {
   const items = (data.items || []).map(i => sanitize(i)).filter(Boolean);
   if (!items.length) return;
@@ -1306,8 +1325,7 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
   const maxItems = Math.min(items.length, 6);
   const cols = maxItems <= 4 ? 2 : 3;
   const rows = Math.ceil(maxItems / cols);
-  const gapX = 0.22;
-  const gapY = 0.18;
+  const gapX = 0.22; const gapY = 0.18;
   const cardW = (SAFE_W - (cols - 1) * gapX) / cols;
   const reflectionH = 0.55;
   const availH = SLIDE_H - contentY - reflectionH - BOTTOM_MARGIN - 0.10;
@@ -1322,26 +1340,18 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
 
     const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
 
-    // Card
     slide.addShape(pptx.ShapeType.rect, {
       x, y, w: cardW, h: cardH,
-      fill: { color: C.BG_LIGHT },
-      line: { color: C.CARD_BORDER, width: 0.5 },
-      rectRadius: 0.08,
+      fill: { color: C.BG_LIGHT }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
     });
-
-    // Left accent
     slide.addShape(pptx.ShapeType.rect, {
       x, y: y + 0.08, w: 0.05, h: cardH - 0.16,
-      fill: { color: accentColor },
-      rectRadius: 0.025,
+      fill: { color: accentColor }, rectRadius: 0.025,
     });
 
-    // Number circle
     const circleSize = 0.40;
     slide.addShape(pptx.ShapeType.ellipse, {
-      x: x + 0.16, y: y + 0.16, w: circleSize, h: circleSize,
-      fill: { color: accentColor },
+      x: x + 0.16, y: y + 0.16, w: circleSize, h: circleSize, fill: { color: accentColor },
     });
     addTextSafe(slide, String(idx + 1), {
       x: x + 0.16, y: y + 0.16, w: circleSize, h: circleSize,
@@ -1349,7 +1359,7 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
       align: "center", valign: "middle",
     });
 
-    // Content
+    // CORRECTION 6: Extract short title (max 4 words) + compressed description
     const colonIdx = bullet.indexOf(":");
     let cardTitle = "";
     let cardBody = bullet;
@@ -1364,8 +1374,11 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
       }
     }
 
-    const textX = x + 0.66;
-    const textW = cardW - 0.80;
+    // CORRECTION 6: Compress description to max 1 sentence
+    cardBody = compressText(cardBody, 90);
+    if (cardTitle.length > 40) cardTitle = cardTitle.substring(0, 40).trim();
+
+    const textX = x + 0.66; const textW = cardW - 0.80;
     let textY = y + 0.16;
 
     if (cardTitle) {
@@ -1375,13 +1388,11 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
       });
       textY += 0.32;
     }
-
     if (cardBody) {
       const bodyH = cardH - (textY - y) - 0.10;
       addTextSafe(slide, cardBody, {
         x: textX, y: textY, w: textW, h: Math.max(bodyH, 0.15),
-        fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
-        valign: "top", lineSpacingMultiple: 1.2,
+        fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.2,
       });
     }
   });
@@ -1390,26 +1401,24 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
   const reflY = SLIDE_H - reflectionH - 0.10;
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: reflY, w: SAFE_W, h: reflectionH,
-    fill: { color: C.REFLECTION_BG },
-    rectRadius: 0.08,
+    fill: { color: C.REFLECTION_BG }, rectRadius: 0.08,
   });
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: reflY + 0.06, w: 0.05, h: reflectionH - 0.12,
     fill: { color: C.ACCENT_BLUE },
   });
   const reflText = data.description
-    ? sanitize(data.description)
-    : "Reflita: Como esses conceitos se aplicam à sua realidade profissional?";
+    ? compressText(sanitize(data.description), 80)
+    : "Como esses conceitos se aplicam à sua realidade profissional?";
   addTextSafe(slide, [
     { text: "🔍 Reflexão: ", options: { bold: true, color: C.ACCENT_BLUE, fontSize: 13, fontFace: FONT_TITLE } },
     { text: reflText, options: { color: C.TEXT_BODY, fontSize: 13, fontFace: FONT_BODY, italic: true } },
   ], {
-    x: MARGIN + 0.22, y: reflY, w: SAFE_W - 0.44, h: reflectionH,
-    valign: "middle",
+    x: MARGIN + 0.22, y: reflY, w: SAFE_W - 0.44, h: reflectionH, valign: "middle",
   });
 }
 
-// ── ENCERRAMENTO (Closing) ──
+// ── ENCERRAMENTO ──
 function renderEncerramento(pptx: any, courseTitle: string) {
   const slide = pptx.addSlide();
   slide.background = { color: C.PRIMARY };
@@ -1419,24 +1428,17 @@ function renderEncerramento(pptx: any, courseTitle: string) {
     fontSize: 56, fontFace: FONT_TITLE, color: C.TEXT_WHITE, bold: true,
     align: "center", valign: "middle",
   });
-
-  // Orange separator
   slide.addShape(pptx.ShapeType.rect, {
-    x: (SLIDE_W - 1.5) / 2, y: 3.40, w: 1.5, h: 0.05,
-    fill: { color: C.SECONDARY },
+    x: (SLIDE_W - 1.5) / 2, y: 3.40, w: 1.5, h: 0.05, fill: { color: C.SECONDARY },
   });
-
   addTextSafe(slide, sanitize(courseTitle), {
     x: 2, y: 3.70, w: SLIDE_W - 4, h: 0.60,
     fontSize: 20, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
   });
-
   addTextSafe(slide, "Continue praticando  |  Acesse os materiais complementares", {
     x: 2, y: 4.60, w: SLIDE_W - 4, h: 0.40,
     fontSize: 16, fontFace: FONT_BODY, color: C.SECONDARY, align: "center",
   });
-
-  // Footer
   addTextSafe(slide, "Gerado com EduGen AI", {
     x: 2, y: SLIDE_H - 0.80, w: SLIDE_W - 4, h: 0.35,
     fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
@@ -1522,20 +1524,23 @@ Deno.serve(async (req: Request) => {
       allSlides.push(...buildModuleSlides(modules[i], i, modules.length));
     }
 
-    // Calculate density scores
-    allSlides.forEach(s => { s.densityScore = calculateDensity(s); });
+    // CORRECTION 7: Density balancing pass
+    allSlides = balanceDensity(allSlides);
 
-    // Log density distribution
-    console.log("Density scores:", allSlides.map(s => `${s.layout}:${s.densityScore}`).join(", "));
+    // Recalculate and log
+    allSlides.forEach(s => { s.densityScore = calculateDensity(s); });
+    const densityStats = allSlides.map(s => `${s.layout}:${s.densityScore}`);
+    console.log("📊 Density scores:", densityStats.join(", "));
+    const avgDensity = allSlides.reduce((sum, s) => sum + (s.densityScore || 0), 0) / allSlides.length;
+    console.log(`📊 Average density: ${avgDensity.toFixed(1)} | Slides: ${allSlides.length}`);
 
     /* ─── Build PPTX ─── */
     const pptx = new PptxGenJS();
     pptx.author = "EduGen AI";
     pptx.title = course.title;
     pptx.subject = course.description || "";
-    pptx.layout = "LAYOUT_WIDE";  // 13.333 x 7.5
+    pptx.layout = "LAYOUT_WIDE";
 
-    // Wrap addSlide for audit
     const _origAddSlide = pptx.addSlide.bind(pptx);
     pptx.addSlide = (...args: any[]) => {
       auditNextSlide();
@@ -1544,25 +1549,18 @@ Deno.serve(async (req: Request) => {
 
     // 1. Cover
     renderCapa(pptx, {
-      layout: "module_cover",
-      title: course.title,
-      description: course.description || "",
-      moduleCount: modules.length,
+      layout: "module_cover", title: course.title,
+      description: course.description || "", moduleCount: modules.length,
     });
 
     // 2. TOC
     const modulesSummary = modules.map((m: any) => {
       const rawTitle = sanitize(m.title || "");
       const shortTitle = rawTitle.replace(/^módulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
-      const firstSentence = sanitize((m.content || "").split(/[.!?]\s/)[0] || "").substring(0, 120);
+      const firstSentence = compressText(sanitize((m.content || "").split(/[.!?]\s/)[0] || ""), 100);
       return { title: shortTitle, description: firstSentence };
     });
-
-    renderTOC(pptx, {
-      layout: "module_cover",
-      title: "O que você vai aprender",
-      modules: modulesSummary,
-    });
+    renderTOC(pptx, { layout: "module_cover", title: "O que você vai aprender", modules: modulesSummary });
 
     // 3. All module slides
     for (const sd of allSlides) {
@@ -1583,9 +1581,8 @@ Deno.serve(async (req: Request) => {
     renderEncerramento(pptx, course.title);
 
     const totalSlides = allSlides.length + 3;
-    console.log(`PPTX generated: ${totalSlides} slides for ${modules.length} modules`);
+    console.log(`✅ PPTX generated: ${totalSlides} slides for ${modules.length} modules`);
 
-    // Audit
     const audit = runAudit();
     if (!audit.passed) console.error(`Audit: ${audit.errors.length} violations`);
 
@@ -1608,8 +1605,7 @@ Deno.serve(async (req: Request) => {
     if (signErr) throw signErr;
 
     await serviceClient.from("usage_events").insert({
-      user_id: userId,
-      event_type: "COURSE_EXPORTED_PPTX",
+      user_id: userId, event_type: "COURSE_EXPORTED_PPTX",
       metadata: { course_id, slide_count: totalSlides },
     });
 
