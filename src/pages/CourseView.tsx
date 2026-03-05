@@ -39,6 +39,8 @@ export default function CourseView() {
   const [certDialogOpen, setCertDialogOpen] = useState(false);
   const [reprocessingFlashcards, setReprocessingFlashcards] = useState(false);
   const [restructuring, setRestructuring] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [qualityReport, setQualityReport] = useState<any>(null);
   const [flashcardView, setFlashcardView] = useState<"list" | "flip">("flip");
   const [flipEntitled, setFlipEntitled] = useState<boolean | null>(null);
   const [showFlashcardsModal, setShowFlashcardsModal] = useState(false);
@@ -250,6 +252,36 @@ export default function CourseView() {
                 variant="outline"
                 size="sm"
                 className="h-9"
+                disabled={validating}
+                onClick={async () => {
+                  setValidating(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("restructure-modules", {
+                      body: { course_id: id, validate_only: true },
+                    });
+                    if (error) throw error;
+                    setQualityReport(data?.markdown_quality_report || null);
+                    console.log("[Quality Report]", JSON.stringify(data?.markdown_quality_report, null, 2));
+                    const summary = data?.markdown_quality_report?.summary;
+                    toast({
+                      title: `Validação: ${summary?.modules_passed || 0}/${summary?.modules_passed + summary?.modules_failed || 0} PASS`,
+                      description: summary?.recommendation || "Checklist concluído.",
+                      variant: summary?.modules_failed > 0 ? "destructive" : "default",
+                    });
+                  } catch (err: any) {
+                    toast({ title: "Erro na validação", description: err.message, variant: "destructive" });
+                  } finally {
+                    setValidating(false);
+                  }
+                }}
+              >
+                {validating ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <FileText className="h-4 w-4 mr-1.5" />}
+                Validar
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
                 disabled={restructuring}
                 onClick={async () => {
                   setRestructuring(true);
@@ -258,6 +290,8 @@ export default function CourseView() {
                       body: { course_id: id },
                     });
                     if (error) throw error;
+                    setQualityReport(data?.markdown_quality_report || null);
+                    console.log("[Quality Report]", JSON.stringify(data?.markdown_quality_report, null, 2));
                     toast({
                       title: "Módulos reestruturados!",
                       description: data?.message || "Conteúdo padronizado com sucesso.",
@@ -277,6 +311,63 @@ export default function CourseView() {
           </div>
         </div>
       </div>
+
+      {/* ═══════════ QUALITY REPORT PANEL ═══════════ */}
+      {qualityReport && (
+        <div className="max-w-[1400px] mx-auto w-full px-6 py-4 border-b border-border bg-card">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Relatório de Qualidade — {qualityReport.course_title}
+            </h3>
+            <div className="flex items-center gap-3">
+              <Badge variant={qualityReport.summary.modules_failed === 0 ? "default" : "destructive"}>
+                {qualityReport.summary.modules_passed}/{qualityReport.modules_checked} PASS
+              </Badge>
+              <Button variant="ghost" size="sm" onClick={() => setQualityReport(null)} className="h-7 text-xs">
+                <XCircle className="h-3.5 w-3.5 mr-1" /> Fechar
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {qualityReport.results.map((r: any) => (
+              <div
+                key={r.module}
+                className={`rounded-lg border p-3 text-xs ${
+                  r.status === "PASS"
+                    ? "border-secondary/30 bg-secondary/5"
+                    : "border-destructive/30 bg-destructive/5"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-semibold text-foreground">Módulo {r.module}</span>
+                  {r.status === "PASS" ? (
+                    <CheckCircle2 className="h-4 w-4 text-secondary" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-destructive" />
+                  )}
+                </div>
+                <p className="text-muted-foreground truncate mb-1">{r.title}</p>
+                {r.errors && r.errors.length > 0 && (
+                  <ul className="space-y-0.5 text-destructive/80">
+                    {r.errors.slice(0, 3).map((e: string, idx: number) => (
+                      <li key={idx} className="truncate">• {e}</li>
+                    ))}
+                    {r.errors.length > 3 && <li className="text-muted-foreground">+{r.errors.length - 3} mais...</li>}
+                  </ul>
+                )}
+                {r.status === "PASS" && <p className="text-secondary">Todos os critérios OK</p>}
+              </div>
+            ))}
+          </div>
+          {qualityReport.summary.critical_errors.length > 0 && (
+            <div className="mt-3 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-xs text-destructive">
+              <strong>Erros críticos:</strong> {qualityReport.summary.critical_errors.join(" · ")}
+            </div>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground italic">{qualityReport.summary.recommendation}</p>
+        </div>
+      )}
 
       {/* ═══════════ TWO-PANEL LAYOUT ═══════════ */}
       <div className="flex-1 flex max-w-[1400px] mx-auto w-full">
