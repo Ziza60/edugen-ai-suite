@@ -654,6 +654,44 @@ function validateAndFixGrammar(text: string): GrammarResult {
   return { text: result, corrections };
 }
 
+const COLON_LABEL_WORDS = new Set([
+  "nota", "dica", "objetivo", "exemplo", "resumo", "etapa", "módulo", "modulo",
+  "slide", "importante", "atenção", "atencao", "definição", "definicao", "pergunta", "resposta",
+]);
+
+function fixBrokenColonWords(text: string): { text: string; fixes: number } {
+  if (!text) return { text: "", fixes: 0 };
+  let result = text;
+  let fixes = 0;
+
+  // Ex: e: mails -> e-mails
+  result = result.replace(/\b([A-Za-zÀ-ÖØ-öø-ÿ]{1,3}):\s+([A-Za-zÀ-ÖØ-öø-ÿ]{3,})\b/g, (_m, a, b) => {
+    fixes++;
+    return `${a}-${b}`;
+  });
+
+  // Ex: tornando: a -> tornando-a
+  result = result.replace(/\b([A-Za-zÀ-ÖØ-öø-ÿ]{4,}(?:ando|endo|indo|ndo|ar|er|ir)):\s+([a-zà-öø-ÿ]{1,3})\b/gi, (_m, a, b) => {
+    fixes++;
+    return `${a}-${b}`;
+  });
+
+  // Ex: transformando: o -> transformando-o (evita labels legítimos como "Nota: ...")
+  result = result.replace(/\b([A-Za-zÀ-ÖØ-öø-ÿ]{4,}):\s+([a-zà-öø-ÿ]{1,2})\b/g, (m, a, b) => {
+    if (COLON_LABEL_WORDS.has(String(a).toLowerCase())) return m;
+    fixes++;
+    return `${a}-${b}`;
+  });
+
+  return { text: result, fixes };
+}
+
+function hasSuspiciousColonBreak(text: string): boolean {
+  if (!text) return false;
+  return /\b[A-Za-zÀ-ÖØ-öø-ÿ]{1,3}:\s+[A-Za-zÀ-ÖØ-öø-ÿ]{3,}\b/.test(text)
+    || /\b[A-Za-zÀ-ÖØ-öø-ÿ]{4,}(?:ando|endo|indo|ndo|ar|er|ir):\s+[a-zà-öø-ÿ]{1,3}\b/i.test(text);
+}
+
 // ── WCAG CONTRAST VALIDATION ──
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
@@ -1356,8 +1394,9 @@ function sanitize(text: string): string {
   t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
   t = t.replace(/^>\s*/gm, "");
   t = t.replace(/^---+$/gm, "");
-  t = t.replace(/\s*[-→⟶➜➔➞►⇒⇨]\s*/g, ": ");
-  t = t.replace(/\s*->\s*/g, ": ");
+  // Converter conectores de fluxo para ':' sem quebrar palavras hifenizadas (ex: e-mails, tornando-a)
+  t = t.replace(/\s*(?:->|→|⟶|➜|➔|➞|►|⇒|⇨)\s*/g, ": ");
+  t = t.replace(/\s+[–—-]\s+/g, ": ");
   t = t.replace(/&amp;/gi, "&"); t = t.replace(/&lt;/gi, "<"); t = t.replace(/&gt;/gi, ">");
   t = t.replace(/&nbsp;/gi, " "); t = t.replace(/&quot;/gi, '"');
   t = t.replace(/<\/?[a-z][^>]*>/gi, " ");
@@ -1546,9 +1585,19 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     }
   }
 
-  // ✓ 5. Terminology normalization
+  // ✓ 5. Terminology normalization + colon break artifacts
   if (sd.items) {
     for (let i = 0; i < sd.items.length; i++) {
+      const colonFixed = fixBrokenColonWords(sd.items[i]);
+      if (colonFixed.fixes > 0) {
+        sd.items[i] = colonFixed.text;
+        fixes.push(label + " QUEBRA POR DOIS-PONTOS CORRIGIDA");
+      }
+
+      if (hasSuspiciousColonBreak(sd.items[i])) {
+        warnings.push(label + " TEXTO COM QUEBRA INVÁLIDA (ex: e-mails/tornando-a)");
+      }
+
       const normalized = normalizeTerminology(sd.items[i]);
       if (normalized !== sd.items[i]) {
         sd.items[i] = normalized;
