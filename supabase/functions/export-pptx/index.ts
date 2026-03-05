@@ -47,47 +47,87 @@ const THEME = {
   },
 };
 
-// Active theme — entire course uses ONE theme, never mix
-const currentTheme = THEME.light;
-
-const C = {
-  BG_WHITE: currentTheme.background,
-  BG_LIGHT: currentTheme.backgroundSecondary,
-  BG_CARD: currentTheme.background,
-  BG_CARD_ALT: "F2F3F5",
-  PRIMARY: currentTheme.text,
-  SECONDARY: currentTheme.accent,
-  ACCENT_PURPLE: "9B59B6",
-  ACCENT_BLUE: "3498DB",
-  ACCENT_GREEN: "27AE60",
-  ACCENT_TEAL: "1ABC9C",
-  ACCENT_RED: "E74C3C",
-  ACCENT_ORANGE: "F39C12",
-  TEXT_DARK: currentTheme.text,
-  TEXT_BODY: "34495E",
-  TEXT_LIGHT: currentTheme.textSecondary,
-  TEXT_WHITE: "FFFFFF",
-  TABLE_HEADER_BG: "34495E",
-  TABLE_ROW_ODD: currentTheme.background,
-  TABLE_ROW_EVEN: "ECF0F1",
-  TABLE_BORDER: currentTheme.borders,
-  CARD_BORDER: "E0E0E0",
-  CARD_SHADOW: "D5D8DC",
-  INSIGHT_BG: "FDF2E9",
-  INSIGHT_BORDER: currentTheme.accent,
-  REFLECTION_BG: "EBF5FB",
+// ── PALETTE SYSTEM (user-selectable color schemes) ──
+const PALETTES: Record<string, string[]> = {
+  default: ["9B59B6", "3498DB", "27AE60", "F39C12", "1ABC9C"],
+  ocean:   ["2980B9", "3498DB", "1ABC9C", "16A085", "2C3E50"],
+  forest:  ["27AE60", "2ECC71", "1ABC9C", "16A085", "2C3E50"],
+  sunset:  ["E74C3C", "E67E22", "F39C12", "D35400", "C0392B"],
+  monochrome: ["2C3E50", "34495E", "7F8C8D", "95A5A6", "BDC3C7"],
 };
 
-const CARD_ACCENT_COLORS = [C.ACCENT_BLUE, C.ACCENT_GREEN, C.ACCENT_PURPLE, C.SECONDARY, C.ACCENT_RED, C.PRIMARY];
+// ── DENSITY MODES ──
+interface DensityConfig {
+  maxBulletsPerSlide: number;
+  maxWordsPerBullet: number;
+  maxCharsPerBullet: number;
+  splitThreshold: number; // items above this count trigger split
+  compressRatio: number;  // text compression target
+}
+const DENSITY_MODES: Record<string, DensityConfig> = {
+  compact: {
+    maxBulletsPerSlide: 5, maxWordsPerBullet: 8, maxCharsPerBullet: 60,
+    splitThreshold: 4, compressRatio: 0.50,
+  },
+  standard: {
+    maxBulletsPerSlide: 7, maxWordsPerBullet: 12, maxCharsPerBullet: 80,
+    splitThreshold: 6, compressRatio: 0.65,
+  },
+  detailed: {
+    maxBulletsPerSlide: 10, maxWordsPerBullet: 18, maxCharsPerBullet: 120,
+    splitThreshold: 10, compressRatio: 0.85,
+  },
+};
 
-// Module cover colors (applied to module number only) — rotates for M06+
-const MODULE_NUMBER_COLORS = [
-  C.ACCENT_PURPLE,  // M01 — Roxo
-  C.ACCENT_BLUE,    // M02 — Azul
-  C.ACCENT_GREEN,   // M03 — Verde
-  C.ACCENT_ORANGE,  // M04 — Laranja
-  C.ACCENT_TEAL,    // M05 — Teal
-];
+// Runtime config — set during request
+let activePalette: string[] = PALETTES.default;
+let activeDensity: DensityConfig = DENSITY_MODES.standard;
+let activeThemeKey: "light" | "dark" = "light";
+
+// Active theme — entire course uses ONE theme, never mix
+let currentTheme = THEME.light;
+
+// C is now a function to support dynamic theme switching
+function getC() {
+  return {
+    BG_WHITE: currentTheme.background,
+    BG_LIGHT: currentTheme.backgroundSecondary,
+    BG_CARD: currentTheme.background,
+    BG_CARD_ALT: activeThemeKey === "dark" ? "3D566E" : "F2F3F5",
+    PRIMARY: currentTheme.text,
+    SECONDARY: currentTheme.accent,
+    ACCENT_PURPLE: activePalette[0] || "9B59B6",
+    ACCENT_BLUE: activePalette[1] || "3498DB",
+    ACCENT_GREEN: activePalette[2] || "27AE60",
+    ACCENT_TEAL: activePalette[4] || "1ABC9C",
+    ACCENT_RED: "E74C3C",
+    ACCENT_ORANGE: activePalette[3] || "F39C12",
+    TEXT_DARK: currentTheme.text,
+    TEXT_BODY: activeThemeKey === "dark" ? "BDC3C7" : "34495E",
+    TEXT_LIGHT: currentTheme.textSecondary,
+    TEXT_WHITE: "FFFFFF",
+    TABLE_HEADER_BG: activeThemeKey === "dark" ? "1A252F" : "34495E",
+    TABLE_ROW_ODD: currentTheme.background,
+    TABLE_ROW_EVEN: activeThemeKey === "dark" ? "3D566E" : "ECF0F1",
+    TABLE_BORDER: currentTheme.borders,
+    CARD_BORDER: activeThemeKey === "dark" ? "4A6278" : "E0E0E0",
+    CARD_SHADOW: activeThemeKey === "dark" ? "1A252F" : "D5D8DC",
+    INSIGHT_BG: activeThemeKey === "dark" ? "3D2E1A" : "FDF2E9",
+    INSIGHT_BORDER: currentTheme.accent,
+    REFLECTION_BG: activeThemeKey === "dark" ? "1A2E3D" : "EBF5FB",
+  };
+}
+
+let C = getC();
+
+function refreshColors() {
+  C = getC();
+}
+
+const CARD_ACCENT_COLORS_FN = () => [C.ACCENT_BLUE, C.ACCENT_GREEN, C.ACCENT_PURPLE, C.SECONDARY, C.ACCENT_RED, C.PRIMARY];
+
+// Module cover colors — uses active palette, rotates for M06+
+const MODULE_NUMBER_COLORS_FN = () => activePalette.slice(0, 5);
 
 // ── TYPOGRAPHY HIERARCHY (Montserrat + Open Sans) ──
 const FONT_TITLE = "Montserrat";
@@ -269,15 +309,17 @@ function smartSubtitle(text: string): string {
   return smartTruncate(text, 60);
 }
 
-/** Bullet text: max 80 chars OR 8 words, whichever comes first */
+/** Bullet text: max chars/words based on active density mode */
 function smartBullet(text: string): string {
   if (!text) return "";
+  const maxWords = activeDensity.maxWordsPerBullet;
+  const maxChars = activeDensity.maxCharsPerBullet;
   const words = text.trim().split(/\s+/);
-  if (words.length > 8) {
-    const eightWords = words.slice(0, 8).join(" ");
-    if (eightWords.length <= 80) return eightWords + ".";
+  if (words.length > maxWords) {
+    const limited = words.slice(0, maxWords).join(" ");
+    if (limited.length <= maxChars) return limited + ".";
   }
-  return smartTruncate(text, 80);
+  return smartTruncate(text, maxChars);
 }
 
 /** Table cell: max 80 chars, no word cutting */
@@ -1229,7 +1271,7 @@ function renderTOC(pptx: any, data: SlideData) {
     const y = gridY + row * (cellH + gapY);
     if (y + cellH > SLIDE_H - BOTTOM_MARGIN) return;
 
-    const accentColor = MODULE_NUMBER_COLORS[idx % MODULE_NUMBER_COLORS.length];
+    const accentColor = MODULE_NUMBER_COLORS_FN()[idx % MODULE_NUMBER_COLORS_FN().length];
     const moduleNum = String(idx + 1).padStart(2, "0");
 
     // Card background
@@ -1271,7 +1313,7 @@ function renderModuleCover(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
   const modIdx = data.moduleIndex || 0;
-  const moduleColor = MODULE_NUMBER_COLORS[modIdx % MODULE_NUMBER_COLORS.length];
+  const moduleColor = MODULE_NUMBER_COLORS_FN()[modIdx % MODULE_NUMBER_COLORS_FN().length];
 
   slide.background = { color: C.BG_WHITE };
 
@@ -1385,7 +1427,7 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
 
     pillars.forEach((pillar, idx) => {
       const x = MARGIN + idx * (pillarW + gapX);
-      const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
+      const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
 
       slide.addShape(pptx.ShapeType.rect, {
         x, y: contentY, w: pillarW, h: pillarH,
@@ -1564,7 +1606,7 @@ function renderGridCards(pptx: any, data: SlideData) {
     const y = contentY + row * (cardH + gapY);
     if (y + cardH > SLIDE_H - BOTTOM_MARGIN) return;
 
-    const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
+    const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
 
     slide.addShape(pptx.ShapeType.rect, {
       x, y, w: cardW, h: cardH,
@@ -1637,7 +1679,7 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
     const y = contentY + row * (quadH + gapY);
     if (y + quadH > SLIDE_H - BOTTOM_MARGIN) return;
 
-    const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
+    const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
 
     slide.addShape(pptx.ShapeType.rect, {
       x, y, w: quadW, h: quadH,
@@ -1716,7 +1758,7 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
 
   // Get module color for circles
   const moduleIdx = data.moduleIndex || 0;
-  const moduleColor = MODULE_NUMBER_COLORS[moduleIdx % MODULE_NUMBER_COLORS.length];
+  const moduleColor = MODULE_NUMBER_COLORS_FN()[moduleIdx % MODULE_NUMBER_COLORS_FN().length];
 
   steps.forEach((step, idx) => {
     const centerX = MARGIN + stepW * idx + stepW / 2;
@@ -1794,7 +1836,7 @@ function renderBullets(pptx: any, data: SlideData) {
     const y = contentY + idx * bulletH;
     if (y + bulletH > SLIDE_H - BOTTOM_MARGIN) return;
 
-    const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
+    const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
 
     const dotSize = 0.12;
     slide.addShape(pptx.ShapeType.ellipse, {
@@ -1844,7 +1886,7 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
     const y = contentY + row * (cardH + gapY);
     if (y + cardH > SLIDE_H - reflectionH - BOTTOM_MARGIN) return;
 
-    const accentColor = CARD_ACCENT_COLORS[idx % CARD_ACCENT_COLORS.length];
+    const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
 
     slide.addShape(pptx.ShapeType.rect, {
       x, y, w: cardW, h: cardH,
@@ -2009,12 +2051,21 @@ Deno.serve(async (req: Request) => {
     }
     const userId = claimsData.user.id;
 
-    const { course_id } = await req.json();
+    const body = await req.json();
+    const { course_id, palette, density, theme, includeImages } = body;
     if (!course_id) {
       return new Response(JSON.stringify({ error: "course_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // ── Apply user customization options ──
+    activeThemeKey = theme === "dark" ? "dark" : "light";
+    currentTheme = THEME[activeThemeKey];
+    activePalette = PALETTES[palette || "default"] || PALETTES.default;
+    activeDensity = DENSITY_MODES[density || "standard"] || DENSITY_MODES.standard;
+    refreshColors();
+    console.log("[CONFIG] Theme: " + activeThemeKey + " | Palette: " + (palette || "default") + " | Density: " + (density || "standard") + " | Images: " + (includeImages || false));
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 

@@ -5,8 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Download, FileText, Loader2, Presentation, Package, StickyNote,
+  Download, FileText, Loader2, Package, StickyNote,
 } from "lucide-react";
+import { PptxExportDialog, type PptxExportOptions } from "./PptxExportDialog";
 
 interface ExportButtonsProps {
   courseId: string;
@@ -106,17 +107,39 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
         PDF {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
       </Button>
 
-      {/* PowerPoint - Pro */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => handleExportWithFunction("export-pptx", "pptx", setExportingPptx, "PowerPoint")}
-        disabled={exportingPptx || !isPublished}
-        title={!isPublished ? "Publique o curso primeiro" : undefined}
-      >
-        {exportingPptx ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Presentation className="h-4 w-4 mr-1" />}
-        PPTX {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-      </Button>
+      {/* PowerPoint - Pro (with customization dialog) */}
+      <PptxExportDialog
+        onExport={(options: PptxExportOptions) => {
+          setExportingPptx(true);
+          supabase.functions.invoke("export-pptx", {
+            body: { course_id: courseId, ...options },
+          }).then(({ data, error }) => {
+            if (error) throw error;
+            if (data?.url) {
+              return fetch(data.url).then(r => {
+                if (!r.ok) throw new Error("Não foi possível baixar o PowerPoint.");
+                return r.blob();
+              }).then(blob => {
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = blobUrl;
+                a.download = formatFileName(courseTitle, "PPTX", "pptx");
+                a.rel = "noopener";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+                toast({ title: "PowerPoint gerado!" });
+              });
+            }
+          }).catch((err: any) => {
+            toast({ title: "Erro ao exportar PowerPoint", description: err.message, variant: "destructive" });
+          }).finally(() => setExportingPptx(false));
+        }}
+        exporting={exportingPptx}
+        disabled={!isPublished}
+        isPro={isPro}
+      />
 
       {/* Notion - Pro */}
       <Button
