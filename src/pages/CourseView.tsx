@@ -38,6 +38,7 @@ export default function CourseView() {
   const [editContent, setEditContent] = useState("");
   const [certDialogOpen, setCertDialogOpen] = useState(false);
   const [reprocessingFlashcards, setReprocessingFlashcards] = useState(false);
+  const [restructuring, setRestructuring] = useState(false);
   const [flashcardView, setFlashcardView] = useState<"list" | "flip">("flip");
   const [flipEntitled, setFlipEntitled] = useState<boolean | null>(null);
   const [showFlashcardsModal, setShowFlashcardsModal] = useState(false);
@@ -244,6 +245,33 @@ export default function CourseView() {
               <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)} className="h-9">
                 <GraduationCap className="h-4 w-4 mr-1.5" />
                 Certificado
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                disabled={restructuring}
+                onClick={async () => {
+                  setRestructuring(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("restructure-modules", {
+                      body: { course_id: id },
+                    });
+                    if (error) throw error;
+                    toast({
+                      title: "Módulos reestruturados!",
+                      description: data?.message || "Conteúdo padronizado com sucesso.",
+                    });
+                    queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
+                  } catch (err: any) {
+                    toast({ title: "Erro ao reestruturar", description: err.message, variant: "destructive" });
+                  } finally {
+                    setRestructuring(false);
+                  }
+                }}
+              >
+                {restructuring ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <RefreshCw className="h-4 w-4 mr-1.5" />}
+                Padronizar
               </Button>
             </div>
           </div>
