@@ -467,19 +467,41 @@ function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFo
 function detectTruncation(text: string): boolean {
   if (!text || text.length < 5) return false;
   const trimmed = text.trim();
-  
-  // SHORT TEXT EXEMPTIONS — labels, headers, proper nouns, acronyms are NOT truncated
-  // Single words or 2-word phrases are legitimate titles/headers
-  const wordCount = trimmed.split(/\s+/).length;
-  if (wordCount <= 3 && trimmed.length < 40) return false; // Headers, labels, short titles
-  if (/^[A-ZÁÉÍÓÚÃÕ\s\d]+$/.test(trimmed)) return false; // ALL-CAPS labels like "FUNDAMENTOS", "MODULO 01"
-  if (/^\d{1,2}[\.\)]\s/.test(trimmed)) return false; // Numbered items like "1. Title"
 
-  // Preposition + short word at end (real truncation signal in Portuguese)
-  if (/\s(d[ao]s?|nas?|em|por|para|a|o|e)\s+\w{1,3}$/.test(trimmed) && !/[.!?…]$/.test(trimmed)) return true;
-  // Ends with dangling preposition
-  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com)\s*$/.test(trimmed)) return true;
+  // SHORT TEXT EXEMPTIONS — labels, headers, proper nouns, acronyms are NOT truncated
+  const wordCount = trimmed.split(/\s+/).length;
+  if (wordCount <= 3 && trimmed.length < 40) return false;
+  if (/^[A-ZÁÉÍÓÚÃÕ\s\d]+$/.test(trimmed)) return false;
+  if (/^\d{1,2}[\.\)]\s/.test(trimmed)) return false;
+
+  // Ends in dangling connector/preposition/article without sentence closure
+  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que)\s*$/i.test(trimmed) && !/[.!?…:]$/.test(trimmed)) {
+    return true;
+  }
+
+  // Ends with very short orphan token (likely cut word) and no punctuation
+  const lastWord = trimmed.split(/\s+/).pop() || "";
+  if (lastWord.length <= 2 && trimmed.length > 24 && !/[.!?…:;\)\]"']$/.test(trimmed)) {
+    if (!/^(é|e|a|o|ou|em|se|já|só|aí|há|IA|AI|TI|UX|UI|ML|BI|CX|RH)$/i.test(lastWord)) return true;
+  }
+
   return false;
+}
+
+function enforceSentenceIntegrity(text: string): string {
+  if (!text) return "";
+  let t = text
+    .replace(/\u00AD/g, "") // soft hyphen
+    .replace(/�/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  // Remove trailing particles that indicate truncation
+  t = t.replace(/\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que)$/i, "").trim();
+  t = t.replace(/[,:;\-–]+$/, "").trim();
+
+  if (t.length > 0 && !/[.!?…:]$/.test(t)) t += ".";
+  return t;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -489,22 +511,15 @@ function detectTruncation(text: string): boolean {
 function compressText(text: string, maxChars: number = 120): string {
   if (!text || text.length <= maxChars) return text;
   let t = text;
-  // Remove filler words (Portuguese)
-  t = t.replace(/\b(um|uma|uns|umas)\s+/gi, "");
-  t = t.replace(/\b(que|qual|quais|onde|quando|como|porque|pois)\s+/gi, "");
-  t = t.replace(/\bcapaz(es)?\s+de\s+/gi, "");
-  t = t.replace(/\btipicamente\b/gi, "");
-  t = t.replace(/\bpor\s+exemplo\b/gi, "ex:");
+  // Conservative compression only (avoid semantic corruption)
+  t = t.replace(/\bpor\s+exemplo\b/gi, "exemplo");
   t = t.replace(/\bno\s+entanto\b/gi, "porém");
   t = t.replace(/\bal[eé]m\s+disso\b/gi, "também");
-  t = t.replace(/\bque\s+permitem?\b/gi, "para");
-  t = t.replace(/\bde\s+forma\s+/gi, "");
-  t = t.replace(/\b(na|no|nas|nos|das|dos|da|do|de)\s+(cria[cç][aã]o|constru[cç][aã]o)\s+de\s+/gi, "criando ");
   t = t.replace(/\s{2,}/g, " ").trim();
-  
+
   if (t.length > maxChars) {
     t = smartTruncate(t, maxChars);
-    if (!/[.!?]$/.test(t)) t += ".";
+    t = enforceSentenceIntegrity(t);
   }
   return t;
 }
@@ -701,11 +716,11 @@ function measureBoundingBox(text: string, fontSize: number, fontFace: string, bo
   const charWidthPx = fontSize * widthFactor;
   const charWidthIn = charWidthPx / 72;
   const lineHeightIn = (fontSize * 1.35) / 72;
-  
+
   const charsPerLine = Math.max(5, Math.floor((boxW - 0.2) / charWidthIn)); // subtract inset
   const maxLines = Math.max(1, Math.floor(boxH / lineHeightIn));
   const maxChars = charsPerLine * maxLines;
-  
+
   // Word-wrap aware line counting
   const words = text.split(/\s+/);
   let currentLineLen = 0;
@@ -718,9 +733,9 @@ function measureBoundingBox(text: string, fontSize: number, fontFace: string, bo
       currentLineLen += (currentLineLen > 0 ? 1 : 0) + word.length;
     }
   }
-  
+
   const overflowChars = Math.max(0, text.length - maxChars);
-  
+
   // Find minimum font size that fits
   let recFont = fontSize;
   if (lineCount > maxLines) {
@@ -737,7 +752,7 @@ function measureBoundingBox(text: string, fontSize: number, fontFace: string, bo
       if (cl <= ml) { recFont = fs; break; }
     }
   }
-  
+
   return {
     fits: lineCount <= maxLines,
     estimatedLines: lineCount,
@@ -745,6 +760,27 @@ function measureBoundingBox(text: string, fontSize: number, fontFace: string, bo
     overflowChars,
     recommendedFontSize: recFont,
   };
+}
+
+function fitTextForBox(text: string, boxW: number, boxH: number, fontSize: number, fontFace: string, minFont = 12): { text: string; fontSize: number; adjusted: boolean } {
+  const clean = enforceSentenceIntegrity(sanitize(text));
+  let currentText = clean;
+  let currentFont = fontSize;
+
+  for (let i = 0; i < 4; i++) {
+    const bbox = measureBoundingBox(currentText, currentFont, fontFace, boxW, boxH);
+    if (bbox.fits) return { text: currentText, fontSize: currentFont, adjusted: i > 0 };
+
+    if (bbox.recommendedFontSize < currentFont && bbox.recommendedFontSize >= minFont) {
+      currentFont = bbox.recommendedFontSize;
+      continue;
+    }
+
+    const targetChars = Math.max(24, currentText.length - Math.max(8, bbox.overflowChars + 4));
+    currentText = compressText(currentText, targetChars);
+  }
+
+  return { text: currentText, fontSize: Math.max(currentFont, minFont), adjusted: true };
 }
 
 // ── CONTENT COHERENCE CHECK ──
@@ -783,27 +819,48 @@ function checkNarrativeCoherence(slides: SlideData[]): string[] {
 // ── FULL NLP PIPELINE (runs on each item array) ──
 function runNLPPipeline(items: string[]): { processed: string[]; stats: { deduped: number; grammarFixes: number; termNormalized: number } } {
   let stats = { deduped: 0, grammarFixes: 0, termNormalized: 0 };
-  
+
   // Step 1: Terminology normalization
   let processed = items.map(item => {
     const normalized = normalizeTerminology(item);
     if (normalized !== item) stats.termNormalized++;
     return normalized;
   });
-  
+
   // Step 2: Grammar validation and auto-fix
   processed = processed.map(item => {
     const result = validateAndFixGrammar(item);
     stats.grammarFixes += result.corrections.length;
-    return result.text;
+    return enforceSentenceIntegrity(result.text);
   });
-  
+
   // Step 3: Deduplication
   const beforeLen = processed.length;
   processed = deduplicateItems(processed);
   stats.deduped = beforeLen - processed.length;
-  
+
   return { processed, stats };
+}
+
+function semanticSimilarity(a: string, b: string): number {
+  return jaccardSimilarity(a, b);
+}
+
+function validateRelevanceWithThreshold(items: string[], context: string, threshold = 0.18): { filtered: string[]; dropped: number } {
+  if (!items.length || !context.trim()) return { filtered: items, dropped: 0 };
+
+  const filtered = items.filter((item) => {
+    const score = semanticSimilarity(item, context);
+    return score >= threshold || item.length <= 40;
+  });
+
+  // Never return empty — keep the most similar item
+  if (filtered.length === 0 && items.length > 0) {
+    const ranked = [...items].sort((a, b) => semanticSimilarity(b, context) - semanticSimilarity(a, context));
+    return { filtered: [ranked[0]], dropped: Math.max(0, items.length - 1) };
+  }
+
+  return { filtered, dropped: items.length - filtered.length };
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -858,17 +915,24 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
   // Density validation for plain text
   if (typeof text === "string" && text.length > 0) {
     const fontSize = Number(options.fontSize || TYPO.BODY);
+    text = enforceSentenceIntegrity(text);
+
     const check = validateTextDensity(text, safeW, safeH, fontSize);
     if (!check.fits) {
       const adjusted = autoAdjustText(text, safeW, safeH, fontSize, TYPO.SUPPORT);
-      text = adjusted.text;
+      text = enforceSentenceIntegrity(adjusted.text);
       options = { ...options, fontSize: adjusted.fontSize };
       if (adjusted.truncated) {
         console.log("[DENSITY] auto-adjust Slide " + _auditSlideCounter + ": " + String(adjusted.fontSize) + "pt");
       }
     }
+
     if (detectTruncation(text)) {
-      console.warn("[TRUNCATION] Slide " + _auditSlideCounter + ": " + text.substring(0, 40));
+      text = enforceSentenceIntegrity(text);
+      if (detectTruncation(text)) {
+        text = smartTruncate(text, Math.max(24, Math.floor(check.maxChars * 0.9)), false);
+        text = enforceSentenceIntegrity(text);
+      }
     }
   }
 
@@ -1551,12 +1615,17 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
       continue;
     }
 
-    // NLP Pipeline: sanitize → compress → normalize → grammar → deduplicate
+    // NLP Pipeline: sanitize → compress → normalize → grammar → deduplicate → relevance threshold
     let items = block.items.map(s => compressBullet(sanitize(s))).filter(s => s.length > 3);
     const nlpResult = runNLPPipeline(items);
     items = nlpResult.processed;
-    if (nlpResult.stats.deduped > 0 || nlpResult.stats.grammarFixes > 0) {
-      console.log("[NLP] Module " + modIndex + ": deduped=" + nlpResult.stats.deduped + " grammar=" + nlpResult.stats.grammarFixes + " terms=" + nlpResult.stats.termNormalized);
+
+    const relevanceContext = sanitize([heading, mod.title || "", mod.content || ""].join(" "));
+    const relevance = validateRelevanceWithThreshold(items, relevanceContext, 0.18);
+    items = relevance.filtered;
+
+    if (nlpResult.stats.deduped > 0 || nlpResult.stats.grammarFixes > 0 || relevance.dropped > 0) {
+      console.log("[NLP] Module " + modIndex + ": deduped=" + nlpResult.stats.deduped + " grammar=" + nlpResult.stats.grammarFixes + " terms=" + nlpResult.stats.termNormalized + " relevance_dropped=" + relevance.dropped);
     }
     if (items.length === 0) continue;
 
@@ -1818,13 +1887,13 @@ function renderCapa(pptx: any, data: SlideData) {
   });
 
   if (data.description) {
-    const desc = smartSubtitle(sanitize(data.description));
-    // Dynamic height: 1 line ≈ 0.35", allow up to 3 lines
-    const estimatedLines = Math.ceil(desc.length / 65);
-    const descH = Math.min(estimatedLines * 0.35, 1.2);
-    addTextSafe(slide, desc, {
+    const descRaw = smartSubtitle(sanitize(data.description));
+    const descFit = fitTextForBox(descRaw, SLIDE_W - 3, 1.5, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    const descH = Math.min(1.5, Math.max(0.55, (descFit.text.split(/\s+/).length / 14) * 0.22));
+
+    addTextSafe(slide, descFit.text, {
       x: 1.5, y: sepY + 0.30, w: SLIDE_W - 3, h: descH,
-      fontSize: TYPO.BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+      fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
     });
   }
 
@@ -2201,24 +2270,26 @@ function renderGridCards(pptx: any, data: SlideData) {
     });
 
     const colonIdx = item.indexOf(":");
-    const cardTitle = colonIdx > 2 && colonIdx < 50 ? smartTruncate(item.substring(0, colonIdx).trim(), 40) : "";
-    const cardBody = cardTitle ? smartTruncate(item.substring(colonIdx + 1).trim(), 100) : smartTruncate(item, 100);
+    const cardTitleRaw = colonIdx > 2 && colonIdx < 50 ? smartTruncate(item.substring(0, colonIdx).trim(), 40) : "";
+    const cardBodyRaw = cardTitleRaw ? smartTruncate(item.substring(colonIdx + 1).trim(), 110) : smartTruncate(item, 110);
 
     const textX = x + 0.70; const textW = cardW - 0.84;
     let textY = y + 0.18;
 
-    if (cardTitle) {
-      addTextSafe(slide, cardTitle, {
+    if (cardTitleRaw) {
+      const titleFit = fitTextForBox(cardTitleRaw, textW, 0.32, TYPO.CARD_TITLE, FONT_TITLE, TYPO.SUPPORT);
+      addTextSafe(slide, titleFit.text, {
         x: textX, y: textY, w: textW, h: 0.32,
-        fontSize: TYPO.CARD_TITLE, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+        fontSize: titleFit.fontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
       });
       textY += 0.36;
     }
-    if (cardBody) {
-      const bodyH = cardH - (textY - y) - 0.10;
-      addTextSafe(slide, cardBody, {
-        x: textX, y: textY, w: textW, h: Math.max(bodyH, 0.20),
-        fontSize: TYPO.CARD_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
+    if (cardBodyRaw) {
+      const bodyH = Math.max(cardH - (textY - y) - 0.10, 0.20);
+      const bodyFit = fitTextForBox(cardBodyRaw, textW, bodyH, TYPO.CARD_BODY, FONT_BODY, 12);
+      addTextSafe(slide, bodyFit.text, {
+        x: textX, y: textY, w: textW, h: bodyH,
+        fontSize: bodyFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
       });
     }
   });
@@ -2268,22 +2339,26 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
     });
 
     const colonIdx = item.indexOf(":");
-    const qTitle = colonIdx > 2 && colonIdx < 50 ? smartTruncate(item.substring(0, colonIdx).trim(), 40) : "";
-    const qBody = qTitle ? smartTruncate(item.substring(colonIdx + 1).trim(), 120) : smartTruncate(item, 120);
+    const qTitleRaw = colonIdx > 2 && colonIdx < 50 ? smartTruncate(item.substring(0, colonIdx).trim(), 40) : "";
+    const qBodyRaw = qTitleRaw ? smartTruncate(item.substring(colonIdx + 1).trim(), 120) : smartTruncate(item, 120);
 
     let textY = y + 0.25;
     const textX = x + 0.85; const textW = quadW - 1.05;
 
-    if (qTitle) {
-      addTextSafe(slide, qTitle, {
+    if (qTitleRaw) {
+      const titleFit = fitTextForBox(qTitleRaw, textW, 0.38, TYPO.CARD_TITLE, FONT_TITLE, TYPO.SUPPORT);
+      addTextSafe(slide, titleFit.text, {
         x: textX, y: textY, w: textW, h: 0.38,
-        fontSize: TYPO.CARD_TITLE, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+        fontSize: titleFit.fontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
       });
       textY += 0.40;
     }
-    addTextSafe(slide, qBody, {
-      x: textX, y: textY, w: textW, h: quadH - (textY - y) - 0.15,
-      fontSize: TYPO.CARD_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
+
+    const qBodyH = Math.max(quadH - (textY - y) - 0.15, 0.28);
+    const bodyFit = fitTextForBox(qBodyRaw, textW, qBodyH, TYPO.CARD_BODY, FONT_BODY, 12);
+    addTextSafe(slide, bodyFit.text, {
+      x: textX, y: textY, w: textW, h: qBodyH,
+      fontSize: bodyFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
     });
   });
 
@@ -2342,26 +2417,28 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     let stepDesc: string;
     if (colonIdx > 2 && colonIdx < 50) {
       stepTitle = smartTruncate(step.substring(0, colonIdx).trim(), 30);
-      stepDesc = smartTruncate(step.substring(colonIdx + 1).trim(), 70);
+      stepDesc = smartTruncate(step.substring(colonIdx + 1).trim(), 78);
     } else {
       const words = step.split(/\s+/);
       stepTitle = smartTruncate(words.slice(0, 3).join(" "), 30);
-      stepDesc = smartTruncate(words.slice(3).join(" "), 70);
+      stepDesc = smartTruncate(words.slice(3).join(" "), 78);
     }
 
     const textY = y + circleSize + 0.30;
     const textW = stepW - 0.40;
     const textX = centerX - textW / 2;
 
-    addTextSafe(slide, stepTitle, {
+    const titleFit = fitTextForBox(stepTitle, textW, 0.45, TYPO.CARD_TITLE, FONT_TITLE, TYPO.SUPPORT);
+    addTextSafe(slide, titleFit.text, {
       x: textX, y: textY, w: textW, h: 0.45,
-      fontSize: TYPO.CARD_TITLE, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+      fontSize: titleFit.fontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
       align: "center",
     });
     if (stepDesc) {
-      addTextSafe(slide, stepDesc, {
+      const descFit = fitTextForBox(stepDesc, textW, 0.60, TYPO.CARD_BODY, FONT_BODY, 12);
+      addTextSafe(slide, descFit.text, {
         x: textX, y: textY + 0.48, w: textW, h: 0.60,
-        fontSize: TYPO.CARD_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
+        fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
         align: "center", valign: "top", lineSpacingMultiple: 1.25,
       });
     }
@@ -2791,57 +2868,66 @@ Deno.serve(async (req: Request) => {
     console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
     // ── STAGE 3: VISUAL VALIDATION (Bounding Box + WCAG) ──
-    // Pre-validate all text will fit in its bounding boxes
     let bboxOverflows = 0;
+    let bboxFixes = 0;
     for (const s of allSlides) {
       if (s.items) {
         const boxW = SAFE_W - 0.50;
         const maxItemH = (SLIDE_H - 2.0 - BOTTOM_MARGIN) / Math.min(s.items.length, activeDensity.maxBulletsPerSlide);
         for (let i = 0; i < s.items.length; i++) {
-          const bbox = measureBoundingBox(s.items[i], TYPO.BULLET_TEXT, FONT_BODY, boxW, maxItemH);
-          if (!bbox.fits) {
+          const fit = fitTextForBox(s.items[i], boxW, maxItemH, TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
+          if (fit.adjusted) {
             bboxOverflows++;
-            // Auto-fix: use recommended font size or compress text
-            if (bbox.recommendedFontSize < TYPO.BULLET_TEXT && bbox.overflowChars > 15) {
-              s.items[i] = compressText(s.items[i], s.items[i].length - bbox.overflowChars - 5);
-            }
+            bboxFixes++;
+            s.items[i] = fit.text;
           }
         }
       }
     }
-    console.log("[STAGE-3] Visual validation: " + bboxOverflows + " bbox overflows handled");
+    console.log("[STAGE-3] Visual validation: " + bboxOverflows + " overflows detected, " + bboxFixes + " auto-fixes");
 
     // ── STAGE 4: FINAL QUALITY CHECKLIST WITH RETRY ──
-    const MAX_QC_RETRIES = 2;
+    const MAX_QC_RETRIES = 3;
     let totalWarnings = 0;
     let totalFixes = 0;
-    
+
     for (let retry = 0; retry <= MAX_QC_RETRIES; retry++) {
       totalWarnings = 0;
       totalFixes = 0;
-      
+
       allSlides.forEach((s, idx) => {
         const qr = runSlideQualityChecklist(s, idx + 3, allSlides);
         totalWarnings += qr.warnings.length;
         totalFixes += qr.fixes.length;
       });
-      
-      // Remove slides marked for removal
+
       allSlides = allSlides.filter(s => !s._markedForRemoval);
-      
+
       if (totalWarnings === 0) {
         console.log("[STAGE-4] Quality checklist PASSED (retry=" + retry + ") | " + totalFixes + " auto-fixes | " + allSlides.length + " slides");
         break;
       }
-      
+
       if (retry < MAX_QC_RETRIES) {
-        console.log("[STAGE-4] Retry " + (retry + 1) + "/" + MAX_QC_RETRIES + ": " + totalWarnings + " warnings, applying fixes...");
+        // Retry strategy: stronger compression and integrity pass
+        allSlides.forEach((s) => {
+          if (!s.items) return;
+          s.items = s.items.map((it) => enforceSentenceIntegrity(compressText(it, Math.max(48, Math.floor(it.length * 0.88)))));
+        });
+        console.log("[STAGE-4] Retry " + (retry + 1) + "/" + MAX_QC_RETRIES + ": " + totalWarnings + " warnings, applying aggressive repairs...");
       } else {
         console.warn("[STAGE-4] Quality checklist completed with " + totalWarnings + " remaining warnings after " + MAX_QC_RETRIES + " retries | " + totalFixes + " fixes | " + allSlides.length + " slides");
       }
     }
-    
-    console.log("[PIPELINE] Pipeline complete: " + allSlides.length + " slides, " + totalFixes + " total fixes, " + totalWarnings + " residual warnings");
+
+    const qualityScore = Math.max(0, Math.min(100,
+      100
+      - Math.min(40, totalWarnings * 2)
+      - Math.min(20, Math.floor(bboxOverflows * 0.5))
+      + Math.min(12, Math.floor(totalFixes * 0.25))
+    ));
+
+    console.log("[PIPELINE] Pipeline complete: " + allSlides.length + " slides, " + totalFixes + " total fixes, " + totalWarnings + " residual warnings, quality=" + qualityScore.toFixed(1));
 
     // Build PPTX
     const pptx = new PptxGenJS();
@@ -2931,7 +3017,17 @@ Deno.serve(async (req: Request) => {
       metadata: { course_id, slide_count: totalSlides },
     });
 
-    return new Response(JSON.stringify({ url: signedUrl.signedUrl }), {
+    return new Response(JSON.stringify({
+      url: signedUrl.signedUrl,
+      quality_report: {
+        quality_score: Number(qualityScore.toFixed(1)),
+        residual_warnings: totalWarnings,
+        auto_fixes: totalFixes,
+        bbox_overflows_detected: bboxOverflows,
+        bbox_overflows_fixed: bboxFixes,
+        total_slides: totalSlides,
+      },
+    }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: any) {
