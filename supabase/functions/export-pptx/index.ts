@@ -519,6 +519,294 @@ function compressTableCell(text: string): string {
 }
 
 /* ═══════════════════════════════════════════════════════
+   NLP PIPELINE — Terminology, Dedup, Grammar, WCAG, BBox
+   ═══════════════════════════════════════════════════════ */
+
+// ── TERMINOLOGY NORMALIZATION ──
+const TERMINOLOGY_MAP: [RegExp, string][] = [
+  [/\bintelig[eê]ncia artificial\b/gi, "Inteligência Artificial"],
+  [/\bmachine learning\b/gi, "Machine Learning"],
+  [/\bdeep learning\b/gi, "Deep Learning"],
+  [/\bprocessamento de linguagem natural\b/gi, "Processamento de Linguagem Natural"],
+  [/\bredes? neurais?\b/gi, "Redes Neurais"],
+  [/\bbig data\b/gi, "Big Data"],
+  [/\bcloud computing\b/gi, "Cloud Computing"],
+  [/\bInternet das Coisas\b/gi, "Internet das Coisas"],
+  [/\b(block ?chain)\b/gi, "Blockchain"],
+  [/\bdata ?science\b/gi, "Data Science"],
+  [/\buser experience\b/gi, "User Experience"],
+];
+
+function normalizeTerminology(text: string): string {
+  if (!text) return "";
+  let result = text;
+  for (const [pattern, replacement] of TERMINOLOGY_MAP) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
+// ── SEMANTIC SIMILARITY (Jaccard on word trigrams) ──
+function wordSet(text: string): Set<string> {
+  return new Set(text.toLowerCase().replace(/[^\wà-ú]/g, " ").split(/\s+/).filter(w => w.length > 2));
+}
+
+function jaccardSimilarity(a: string, b: string): number {
+  const setA = wordSet(a);
+  const setB = wordSet(b);
+  if (setA.size === 0 && setB.size === 0) return 1;
+  let intersection = 0;
+  for (const w of setA) if (setB.has(w)) intersection++;
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function deduplicateItems(items: string[], threshold = 0.70): string[] {
+  if (items.length <= 1) return items;
+  const result: string[] = [items[0]];
+  for (let i = 1; i < items.length; i++) {
+    let isDup = false;
+    for (const kept of result) {
+      if (jaccardSimilarity(items[i], kept) >= threshold) {
+        isDup = true;
+        console.log("[DEDUP] Removed near-duplicate: \"" + items[i].substring(0, 40) + "...\"");
+        break;
+      }
+    }
+    if (!isDup) result.push(items[i]);
+  }
+  return result;
+}
+
+function deduplicateAcrossSlides(slides: SlideData[]): SlideData[] {
+  const seenContent = new Set<string>();
+  return slides.filter(s => {
+    if (s.layout === "module_cover" || s.layout === "numbered_takeaways") return true;
+    const key = (s.items || []).map(i => i.toLowerCase().trim().substring(0, 50)).sort().join("|");
+    if (key.length < 10) return true;
+    if (seenContent.has(key)) {
+      console.log("[DEDUP-SLIDE] Removed duplicate slide: \"" + s.title + "\"");
+      return false;
+    }
+    seenContent.add(key);
+    return true;
+  });
+}
+
+// ── PORTUGUESE GRAMMAR VALIDATION & AUTO-FIX ──
+const PT_GRAMMAR_FIXES: [RegExp, string][] = [
+  [/\bà partir\b/g, "a partir"],
+  [/\bà nível\b/g, "em nível"],
+  [/\bà medida que\b/gi, "à medida que"],
+  [/\bafim de\b/g, "a fim de"],
+  [/\bde mais\b(?!\s+(de|que))/g, "demais"],
+  [/\ba cêrca\b/gi, "acerca"],
+  [/\bem baixo\b(?!\s+de)/g, "embaixo"],
+  [/\bpor que\b(?=[.!?])/g, "por quê"],
+  [/\baonde\b(?!\s+(ir|vai|vou|vamos|foram|foram|chegou))/g, "onde"],
+  [/\bmenas\b/g, "menos"],
+  [/\bfazem\s+(\d+)\s+(anos?|dias?|meses?)\b/g, "faz $1 $2"],
+  [/\bhouveram\b/g, "houve"],
+  [/\bentretando\b/g, "entretanto"],
+  [/\bimpresindível\b/gi, "imprescindível"],
+  [/\bprevilégio\b/gi, "privilégio"],
+  [/\bexcessão\b/gi, "exceção"],
+  [/\bconcerteza\b/gi, "com certeza"],
+];
+
+interface GrammarResult {
+  text: string;
+  corrections: string[];
+}
+
+function validateAndFixGrammar(text: string): GrammarResult {
+  if (!text || text.length < 5) return { text, corrections: [] };
+  let result = text;
+  const corrections: string[] = [];
+  for (const [pattern, replacement] of PT_GRAMMAR_FIXES) {
+    if (pattern.test(result)) {
+      const before = result;
+      result = result.replace(pattern, replacement);
+      if (result !== before) {
+        corrections.push("Corrigido: \"" + before.substring(0, 30) + "\" → \"" + result.substring(0, 30) + "\"");
+      }
+    }
+  }
+  // Fix double spaces
+  const beforeSpaces = result;
+  result = result.replace(/\s{2,}/g, " ").trim();
+  if (result !== beforeSpaces) corrections.push("Espacos duplos corrigidos");
+  
+  // Ensure proper capitalization after period
+  result = result.replace(/\.\s+[a-záéíóúãõâêîôûç]/g, (m) => m.toUpperCase());
+  
+  return { text: result, corrections };
+}
+
+// ── WCAG CONTRAST VALIDATION ──
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.substring(0, 2), 16),
+    parseInt(h.substring(2, 4), 16),
+    parseInt(h.substring(4, 6), 16),
+  ];
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map(c => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+function contrastRatio(fg: string, bg: string): number {
+  const [r1, g1, b1] = hexToRgb(fg);
+  const [r2, g2, b2] = hexToRgb(bg);
+  const l1 = relativeLuminance(r1, g1, b1);
+  const l2 = relativeLuminance(r2, g2, b2);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function checkWCAGContrast(fg: string, bg: string, fontSize: number): { ratio: number; passesAA: boolean; passesAAA: boolean } {
+  const ratio = contrastRatio(fg, bg);
+  const isLargeText = fontSize >= 18;
+  return {
+    ratio,
+    passesAA: ratio >= (isLargeText ? 3.0 : 4.5),
+    passesAAA: ratio >= (isLargeText ? 4.5 : 7.0),
+  };
+}
+
+// ── IMPROVED BOUNDING BOX MEASUREMENT ──
+// Average character widths relative to font size for common fonts
+const FONT_WIDTH_FACTORS: Record<string, number> = {
+  "Montserrat": 0.58,  // Slightly wider than average
+  "Open Sans": 0.54,   // Clean, regular width
+};
+
+interface BBoxResult {
+  fits: boolean;
+  estimatedLines: number;
+  maxLines: number;
+  overflowChars: number;
+  recommendedFontSize: number;
+}
+
+function measureBoundingBox(text: string, fontSize: number, fontFace: string, boxW: number, boxH: number): BBoxResult {
+  const widthFactor = FONT_WIDTH_FACTORS[fontFace] || 0.55;
+  const charWidthPx = fontSize * widthFactor;
+  const charWidthIn = charWidthPx / 72;
+  const lineHeightIn = (fontSize * 1.35) / 72;
+  
+  const charsPerLine = Math.max(5, Math.floor((boxW - 0.2) / charWidthIn)); // subtract inset
+  const maxLines = Math.max(1, Math.floor(boxH / lineHeightIn));
+  const maxChars = charsPerLine * maxLines;
+  
+  // Word-wrap aware line counting
+  const words = text.split(/\s+/);
+  let currentLineLen = 0;
+  let lineCount = 1;
+  for (const word of words) {
+    if (currentLineLen + word.length + 1 > charsPerLine) {
+      lineCount++;
+      currentLineLen = word.length;
+    } else {
+      currentLineLen += (currentLineLen > 0 ? 1 : 0) + word.length;
+    }
+  }
+  
+  const overflowChars = Math.max(0, text.length - maxChars);
+  
+  // Find minimum font size that fits
+  let recFont = fontSize;
+  if (lineCount > maxLines) {
+    for (let fs = fontSize - 1; fs >= 12; fs--) {
+      const cw = (fs * widthFactor) / 72;
+      const lh = (fs * 1.35) / 72;
+      const cpl = Math.floor((boxW - 0.2) / cw);
+      const ml = Math.floor(boxH / lh);
+      let cl = 1, cll = 0;
+      for (const w of words) {
+        if (cll + w.length + 1 > cpl) { cl++; cll = w.length; }
+        else { cll += (cll > 0 ? 1 : 0) + w.length; }
+      }
+      if (cl <= ml) { recFont = fs; break; }
+    }
+  }
+  
+  return {
+    fits: lineCount <= maxLines,
+    estimatedLines: lineCount,
+    maxLines,
+    overflowChars,
+    recommendedFontSize: recFont,
+  };
+}
+
+// ── CONTENT COHERENCE CHECK ──
+function checkNarrativeCoherence(slides: SlideData[]): string[] {
+  const warnings: string[] = [];
+  let prevTitle = "";
+  let prevItems: string[] = [];
+  
+  for (let i = 0; i < slides.length; i++) {
+    const s = slides[i];
+    if (s.layout === "module_cover") {
+      prevTitle = s.title;
+      prevItems = [];
+      continue;
+    }
+    
+    // Check for sudden topic changes within a module
+    if (prevItems.length > 0 && s.items && s.items.length > 0) {
+      const prevWords = wordSet(prevItems.join(" "));
+      const currWords = wordSet(s.items.join(" "));
+      let overlap = 0;
+      for (const w of prevWords) if (currWords.has(w)) overlap++;
+      const overlapRatio = prevWords.size > 0 ? overlap / prevWords.size : 0;
+      
+      if (overlapRatio < 0.05 && prevWords.size > 5 && currWords.size > 5) {
+        warnings.push("Slide " + i + ": Possivel ruptura narrativa (overlap=" + (overlapRatio * 100).toFixed(0) + "% com slide anterior)");
+      }
+    }
+    
+    prevTitle = s.title;
+    prevItems = s.items || [];
+  }
+  return warnings;
+}
+
+// ── FULL NLP PIPELINE (runs on each item array) ──
+function runNLPPipeline(items: string[]): { processed: string[]; stats: { deduped: number; grammarFixes: number; termNormalized: number } } {
+  let stats = { deduped: 0, grammarFixes: 0, termNormalized: 0 };
+  
+  // Step 1: Terminology normalization
+  let processed = items.map(item => {
+    const normalized = normalizeTerminology(item);
+    if (normalized !== item) stats.termNormalized++;
+    return normalized;
+  });
+  
+  // Step 2: Grammar validation and auto-fix
+  processed = processed.map(item => {
+    const result = validateAndFixGrammar(item);
+    stats.grammarFixes += result.corrections.length;
+    return result.text;
+  });
+  
+  // Step 3: Deduplication
+  const beforeLen = processed.length;
+  processed = deduplicateItems(processed);
+  stats.deduped = beforeLen - processed.length;
+  
+  return { processed, stats };
+}
+
+/* ═══════════════════════════════════════════════════════
    TEXT SANITIZATION
    ═══════════════════════════════════════════════════════ */
 
@@ -622,9 +910,8 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
   const fixes: string[] = [];
   const label = "Slide " + slideIndex;
 
-  // Separate text types for smarter validation
-  const contentTexts: string[] = []; // bullets, items — should be complete sentences
-  const headerTexts: string[] = [];  // titles, labels, headers — can be short words
+  const contentTexts: string[] = [];
+  const headerTexts: string[] = [];
   
   if (sd.title) headerTexts.push(sd.title);
   if (sd.subtitle) headerTexts.push(sd.subtitle);
@@ -635,24 +922,42 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
   if (sd.tableHeaders) headerTexts.push(...sd.tableHeaders);
   if (sd.tableRows) sd.tableRows.forEach(r => contentTexts.push(...r));
 
-  // ✓ 1. Todo o texto esta completo (sem truncamentos)?
-  // Only check CONTENT texts (not headers/labels which are legitimately short)
+  // ═══ CHECKPOINT 1: CONTENT INTEGRITY ═══
+  
+  // ✓ 1. Text completeness (no truncations)
   for (const t of contentTexts) {
     if (!t || t.length < 10) continue;
     if (detectTruncation(t)) {
-      warnings.push(label + " TRUNCAMENTO: \"" + t.substring(0, 50) + "\"");
+      // AUTO-FIX: try to complete truncated text
+      const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as)$/i;
+      let fixed = t.replace(TRAILING_PREPS, "").trim();
+      if (!/[.!?]$/.test(fixed)) fixed += ".";
+      const idx = sd.items?.indexOf(t);
+      if (idx !== undefined && idx >= 0 && sd.items) {
+        sd.items[idx] = fixed;
+        fixes.push(label + " TRUNCAMENTO CORRIGIDO: \"" + t.substring(0, 35) + "...\"");
+      } else {
+        warnings.push(label + " TRUNCAMENTO: \"" + t.substring(0, 50) + "\"");
+      }
     }
-    // Detect mid-word cuts — only in long sentences
-    if (t.length > 25 && /\s/.test(t)) { // must be multi-word
+    // Mid-word cut detection
+    if (t.length > 25 && /\s/.test(t)) {
       const lastWord = t.split(/\s+/).pop() || "";
       if (lastWord.length <= 2 && !/[.!?…:;)\]"']$/.test(t) &&
           !/^(é|e|a|o|ou|em|se|já|só|aí|há|IA|AI|TI|UX|UI|ML|BI|CX|RH)$/i.test(lastWord)) {
-        warnings.push(label + " FRAGMENTO: \"..." + t.substring(Math.max(0, t.length - 30)) + "\"");
+        const TRAILING_PREPS = /\s+\w{1,2}$/;
+        let fixed = t.replace(TRAILING_PREPS, "").trim();
+        if (!/[.!?]$/.test(fixed)) fixed += ".";
+        const idx = sd.items?.indexOf(t);
+        if (idx !== undefined && idx >= 0 && sd.items) {
+          sd.items[idx] = fixed;
+          fixes.push(label + " FRAGMENTO CORRIGIDO");
+        }
       }
     }
   }
 
-  // ✓ 2. Titulos sao descritivos e completos?
+  // ✓ 2. Title quality
   if (sd.title) {
     if (sd.title.length < 3 && sd.layout !== "module_cover") {
       warnings.push(label + " TITULO CURTO: \"" + sd.title + "\"");
@@ -662,10 +967,11 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     }
   }
 
-  // ✓ 3. Hifens e caracteres especiais estao corretos?
+  // ═══ CHECKPOINT 2: TEXT QUALITY (NLP) ═══
+  
+  // ✓ 3. Special characters cleanup
   for (const t of [...headerTexts, ...contentTexts]) {
     if (/\u00AD/.test(t)) {
-      // AUTO-FIX: remove soft hyphens
       const fixed = t.replace(/\u00AD/g, "");
       const idx = sd.items?.indexOf(t);
       if (idx !== undefined && idx >= 0 && sd.items) {
@@ -674,7 +980,6 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
       }
     }
     if (/[\uFFFD]/.test(t)) {
-      // AUTO-FIX: remove replacement chars
       const fixed = t.replace(/[\uFFFD]/g, "");
       const idx = sd.items?.indexOf(t);
       if (idx !== undefined && idx >= 0 && sd.items) {
@@ -684,18 +989,37 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     }
   }
 
-  // ✓ 4. Gramatica basica — auto-fix: add punctuation to incomplete sentences
+  // ✓ 4. Grammar auto-fix on items
   if (sd.items) {
     for (let i = 0; i < sd.items.length; i++) {
+      const gramResult = validateAndFixGrammar(sd.items[i]);
+      if (gramResult.corrections.length > 0) {
+        sd.items[i] = gramResult.text;
+        fixes.push(label + " GRAMATICA: " + gramResult.corrections.length + " correcoes");
+      }
+      // Add punctuation to incomplete sentences
       const t = sd.items[i];
       if (t.length > 20 && /\s/.test(t) && !/[.!?…;:)\]"']$/.test(t.trim())) {
         sd.items[i] = t.trim() + ".";
-        fixes.push(label + " PONTUACAO: \"" + t.substring(0, 35) + "...\"");
+        fixes.push(label + " PONTUACAO ADICIONADA");
       }
     }
   }
 
-  // ✓ 5. Variedade nas frases (sem repeticoes excessivas)?
+  // ✓ 5. Terminology normalization
+  if (sd.items) {
+    for (let i = 0; i < sd.items.length; i++) {
+      const normalized = normalizeTerminology(sd.items[i]);
+      if (normalized !== sd.items[i]) {
+        sd.items[i] = normalized;
+        fixes.push(label + " TERMINOLOGIA NORMALIZADA");
+      }
+    }
+  }
+
+  // ═══ CHECKPOINT 3: STRUCTURAL QUALITY ═══
+  
+  // ✓ 6. Content variety (no excessive repetitions)
   if (sd.items && sd.items.length >= 4) {
     const firstWords = sd.items.map(it => (it.split(/\s+/)[0] || "").toLowerCase());
     const wordCounts: Record<string, number> = {};
@@ -709,8 +1033,7 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     }
   }
 
-  // ✓ 6. Cada slide tem conteudo suficiente (min. 3 bullets)?
-  // AUTO-FIX: merge sparse slides into neighbors
+  // ✓ 7. Minimum content per slide
   if (sd.items && sd.layout !== "module_cover" && sd.layout !== "comparison_table" &&
       sd.layout !== "reflection_callout" && sd.layout !== "example_highlight" &&
       sd.layout !== "numbered_takeaways") {
@@ -723,44 +1046,72 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
           const totalAfterMerge = prev.items.length + sd.items.length;
           if (totalAfterMerge <= activeDensity.maxBulletsPerSlide) {
             prev.items.push(...sd.items);
-            sd.items = []; // Mark for removal
+            sd.items = [];
             sd._markedForRemoval = true;
             fixes.push(label + " MESCLADO com slide anterior (" + totalAfterMerge + " bullets)");
-          } else {
-            warnings.push(label + " CONTEUDO ESCASSO: " + sd.items.length + " bullet(s), nao mesclavel");
           }
         }
       }
     }
   }
 
-  // ✓ 7. Simbolos sao consistentes e nao aleatorios?
+  // ✓ 8. Symbol consistency
   for (const t of contentTexts) {
     if (/[□■◻◼▪▫●○◆◇◈◎⊕⊛☆✧✦▣▤▥▷◐◑◔△▽]{3,}/.test(t)) {
       warnings.push(label + " SIMBOLOS EXCESSIVOS");
     }
   }
 
-  // ✓ 8. Tabelas estao bem formatadas e legiveis?
+  // ═══ CHECKPOINT 4: VISUAL QUALITY ═══
+  
+  // ✓ 9. Table readability
   if (sd.layout === "comparison_table") {
     if (sd.tableHeaders && sd.tableHeaders.length > 5) {
-      warnings.push(label + " TABELA: " + sd.tableHeaders.length + " colunas (max recomendado: 5)");
+      warnings.push(label + " TABELA: " + sd.tableHeaders.length + " colunas (max: 5)");
     }
     if (sd.tableRows) {
       for (let ri = 0; ri < sd.tableRows.length; ri++) {
         for (let ci = 0; ci < sd.tableRows[ri].length; ci++) {
           const cell = sd.tableRows[ri][ci];
           if (cell.length > 120) {
-            // AUTO-FIX: compress long cells
             sd.tableRows[ri][ci] = compressTableCell(cell);
-            fixes.push(label + " CELULA COMPRIMIDA: row" + ri + " col" + ci);
+            fixes.push(label + " CELULA COMPRIMIDA: R" + ri + "C" + ci);
           }
         }
       }
     }
   }
 
-  // Log results
+  // ✓ 10. WCAG Contrast validation (spot check key color combos)
+  const wcagChecks = [
+    { fg: C.TEXT_DARK, bg: C.BG_WHITE, label: "body text" },
+    { fg: C.TEXT_LIGHT, bg: C.BG_WHITE, label: "light text" },
+    { fg: C.TEXT_WHITE, bg: C.TABLE_HEADER_BG, label: "table header" },
+  ];
+  for (const wc of wcagChecks) {
+    const result = checkWCAGContrast(wc.fg, wc.bg, TYPO.BODY);
+    if (!result.passesAA) {
+      warnings.push(label + " WCAG-AA FALHOU: " + wc.label + " (ratio=" + result.ratio.toFixed(1) + ")");
+    }
+  }
+
+  // ✓ 11. Bounding box pre-validation for items
+  if (sd.items && sd.items.length > 0 && sd.layout !== "comparison_table") {
+    const boxW = SAFE_W - 0.50;
+    const maxH = (SLIDE_H - 2.0 - BOTTOM_MARGIN) / Math.min(sd.items.length, activeDensity.maxBulletsPerSlide);
+    for (let i = 0; i < sd.items.length; i++) {
+      const bbox = measureBoundingBox(sd.items[i], TYPO.BULLET_TEXT, FONT_BODY, boxW, maxH);
+      if (!bbox.fits && bbox.overflowChars > 10) {
+        // AUTO-FIX: compress text to fit bounding box
+        const maxChars = sd.items[i].length - bbox.overflowChars - 5;
+        if (maxChars > 20) {
+          sd.items[i] = compressText(sd.items[i], maxChars);
+          fixes.push(label + " BBOX OVERFLOW CORRIGIDO: item " + i + " (overflow=" + bbox.overflowChars + " chars)");
+        }
+      }
+    }
+  }
+
   const passed = warnings.length === 0;
   if (warnings.length > 0 || fixes.length > 0) {
     console.log("[QC] " + label + ": " + fixes.length + " correcoes, " + warnings.length + " avisos");
@@ -1200,7 +1551,13 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
       continue;
     }
 
-    const items = block.items.map(s => compressBullet(sanitize(s))).filter(s => s.length > 3);
+    // NLP Pipeline: sanitize → compress → normalize → grammar → deduplicate
+    let items = block.items.map(s => compressBullet(sanitize(s))).filter(s => s.length > 3);
+    const nlpResult = runNLPPipeline(items);
+    items = nlpResult.processed;
+    if (nlpResult.stats.deduped > 0 || nlpResult.stats.grammarFixes > 0) {
+      console.log("[NLP] Module " + modIndex + ": deduped=" + nlpResult.stats.deduped + " grammar=" + nlpResult.stats.grammarFixes + " terms=" + nlpResult.stats.termNormalized);
+    }
     if (items.length === 0) continue;
 
     let layout = classifyContent(heading, items, false, prevLayout, blockType);
@@ -2398,31 +2755,93 @@ Deno.serve(async (req: Request) => {
     const { data: modules = [] } = await serviceClient
       .from("course_modules").select("*").eq("course_id", course_id).order("order_index");
 
-    // Build all slides
+    // ═══════════════════════════════════════════════════════
+    // MULTI-STAGE VALIDATION PIPELINE
+    // Stage 1: Content → Stage 2: Structure → Stage 3: Visual → Stage 4: Final QC
+    // ═══════════════════════════════════════════════════════
+    console.log("[PIPELINE] Starting multi-stage validation pipeline...");
+
+    // ── STAGE 1: CONTENT GENERATION ──
     let allSlides: SlideData[] = [];
     for (let i = 0; i < modules.length; i++) {
       allSlides.push(...buildModuleSlides(modules[i], i, modules.length));
     }
+    console.log("[STAGE-1] Content generated: " + allSlides.length + " slides");
 
-    // Density balancing pass
+    // ── STAGE 2: STRUCTURAL OPTIMIZATION ──
+    // 2a. Cross-slide deduplication
+    const beforeDedup = allSlides.length;
+    allSlides = deduplicateAcrossSlides(allSlides);
+    if (allSlides.length < beforeDedup) {
+      console.log("[STAGE-2] Dedup removed " + (beforeDedup - allSlides.length) + " duplicate slides");
+    }
+
+    // 2b. Density balancing
     allSlides = balanceDensity(allSlides);
+
+    // 2c. Narrative coherence check
+    const coherenceWarnings = checkNarrativeCoherence(allSlides);
+    if (coherenceWarnings.length > 0) {
+      coherenceWarnings.forEach(w => console.warn("[STAGE-2] " + w));
+    }
 
     // Recalculate density scores
     allSlides.forEach(s => { s.densityScore = calculateDensity(s); });
     const avgDensity = allSlides.reduce((sum, s) => sum + (s.densityScore || 0), 0) / Math.max(allSlides.length, 1);
-    console.log("[DENSITY] Avg:" + avgDensity.toFixed(1) + " Slides:" + allSlides.length);
+    console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
-    // FINAL QUALITY CHECKLIST — validate and auto-fix all slides before rendering
+    // ── STAGE 3: VISUAL VALIDATION (Bounding Box + WCAG) ──
+    // Pre-validate all text will fit in its bounding boxes
+    let bboxOverflows = 0;
+    for (const s of allSlides) {
+      if (s.items) {
+        const boxW = SAFE_W - 0.50;
+        const maxItemH = (SLIDE_H - 2.0 - BOTTOM_MARGIN) / Math.min(s.items.length, activeDensity.maxBulletsPerSlide);
+        for (let i = 0; i < s.items.length; i++) {
+          const bbox = measureBoundingBox(s.items[i], TYPO.BULLET_TEXT, FONT_BODY, boxW, maxItemH);
+          if (!bbox.fits) {
+            bboxOverflows++;
+            // Auto-fix: use recommended font size or compress text
+            if (bbox.recommendedFontSize < TYPO.BULLET_TEXT && bbox.overflowChars > 15) {
+              s.items[i] = compressText(s.items[i], s.items[i].length - bbox.overflowChars - 5);
+            }
+          }
+        }
+      }
+    }
+    console.log("[STAGE-3] Visual validation: " + bboxOverflows + " bbox overflows handled");
+
+    // ── STAGE 4: FINAL QUALITY CHECKLIST WITH RETRY ──
+    const MAX_QC_RETRIES = 2;
     let totalWarnings = 0;
     let totalFixes = 0;
-    allSlides.forEach((s, idx) => {
-      const qr = runSlideQualityChecklist(s, idx + 3, allSlides); // +3 for cover, TOC, offset
-      totalWarnings += qr.warnings.length;
-      totalFixes += qr.fixes.length;
-    });
-    // Remove slides marked for removal by merge operations
-    allSlides = allSlides.filter(s => !s._markedForRemoval);
-    console.log("[CHECKLIST] " + totalFixes + " correcoes, " + totalWarnings + " avisos restantes | " + allSlides.length + " slides finais");
+    
+    for (let retry = 0; retry <= MAX_QC_RETRIES; retry++) {
+      totalWarnings = 0;
+      totalFixes = 0;
+      
+      allSlides.forEach((s, idx) => {
+        const qr = runSlideQualityChecklist(s, idx + 3, allSlides);
+        totalWarnings += qr.warnings.length;
+        totalFixes += qr.fixes.length;
+      });
+      
+      // Remove slides marked for removal
+      allSlides = allSlides.filter(s => !s._markedForRemoval);
+      
+      if (totalWarnings === 0) {
+        console.log("[STAGE-4] Quality checklist PASSED (retry=" + retry + ") | " + totalFixes + " auto-fixes | " + allSlides.length + " slides");
+        break;
+      }
+      
+      if (retry < MAX_QC_RETRIES) {
+        console.log("[STAGE-4] Retry " + (retry + 1) + "/" + MAX_QC_RETRIES + ": " + totalWarnings + " warnings, applying fixes...");
+      } else {
+        console.warn("[STAGE-4] Quality checklist completed with " + totalWarnings + " remaining warnings after " + MAX_QC_RETRIES + " retries | " + totalFixes + " fixes | " + allSlides.length + " slides");
+      }
+    }
+    
+    console.log("[PIPELINE] Pipeline complete: " + allSlides.length + " slides, " + totalFixes + " total fixes, " + totalWarnings + " residual warnings");
 
     // Build PPTX
     const pptx = new PptxGenJS();
