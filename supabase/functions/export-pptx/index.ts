@@ -585,6 +585,165 @@ function runAudit() {
 }
 
 /* ═══════════════════════════════════════════════════════
+   QUALITY CHECKLIST — runs before finalizing each slide
+   10-point validation per the acceptance criteria
+   ═══════════════════════════════════════════════════════ */
+
+interface QualityResult {
+  passed: boolean;
+  warnings: string[];
+  fixes: string[];
+}
+
+function runSlideQualityChecklist(sd: SlideData, slideIndex: number): QualityResult {
+  const warnings: string[] = [];
+  const fixes: string[] = [];
+  const label = "Slide " + slideIndex;
+  const allTexts: string[] = [];
+
+  // Collect all text from slide data
+  if (sd.title) allTexts.push(sd.title);
+  if (sd.subtitle) allTexts.push(sd.subtitle);
+  if (sd.description) allTexts.push(sd.description);
+  if (sd.sectionLabel) allTexts.push(sd.sectionLabel);
+  if (sd.items) allTexts.push(...sd.items);
+  if (sd.objectives) allTexts.push(...sd.objectives);
+  if (sd.tableHeaders) allTexts.push(...sd.tableHeaders);
+  if (sd.tableRows) sd.tableRows.forEach(r => allTexts.push(...r));
+
+  // ✓ 1. Todo o texto esta completo (sem truncamentos)?
+  for (const t of allTexts) {
+    if (!t || t.length < 4) continue;
+    if (detectTruncation(t)) {
+      warnings.push(label + " TRUNCAMENTO: \"" + t.substring(0, 50) + "\"");
+    }
+    // Detect mid-word cuts
+    if (/[a-zA-ZáéíóúãõâêîôûçÁÉÍÓÚÃÕÂÊÎÔÛÇ]{1,2}$/.test(t) && t.length > 15 && !/[.!?…:;)\]"']$/.test(t)) {
+      const lastWord = t.split(/\s+/).pop() || "";
+      if (lastWord.length <= 2 && !/^(é|e|a|o|ou|em|se|já|só|aí|há|IA|AI|TI|UX|UI)$/i.test(lastWord)) {
+        warnings.push(label + " FRAGMENTO: \"..." + t.substring(Math.max(0, t.length - 30)) + "\"");
+      }
+    }
+  }
+
+  // ✓ 2. Titulos sao descritivos e completos?
+  if (sd.title) {
+    if (sd.title.length < 5 && sd.layout !== "module_cover") {
+      warnings.push(label + " TITULO CURTO: \"" + sd.title + "\"");
+    }
+    if (/^(cont\.|continuacao|parte)$/i.test(sd.title.trim())) {
+      warnings.push(label + " TITULO NAO DESCRITIVO: \"" + sd.title + "\"");
+    }
+  }
+
+  // ✓ 3. Hifens e caracteres especiais estao corretos?
+  for (const t of allTexts) {
+    if (/\u00AD/.test(t)) warnings.push(label + " SOFT HYPHEN encontrado");
+    if (/[–—]{2,}/.test(t)) warnings.push(label + " HIFENS DUPLICADOS");
+    if (/[\uFFFD]/.test(t)) warnings.push(label + " CHAR SUBSTITUICAO (?)");
+  }
+
+  // ✓ 4. Gramatica basica — frases incompletas (sem verbo aparente em textos longos)
+  for (const t of allTexts) {
+    if (t.length > 30 && /^[A-ZÁÉÍÓÚÃÕ]/.test(t) && !/[.!?…]$/.test(t.trim())) {
+      // Sentence starts uppercase but doesn't end with punctuation
+      if (sd.layout !== "module_cover" && !sd.sectionLabel?.includes(t)) {
+        // Auto-fix: add period
+        const idx = sd.items?.indexOf(t);
+        if (idx !== undefined && idx >= 0 && sd.items) {
+          sd.items[idx] = t.trim() + ".";
+          fixes.push(label + " PONTUACAO ADICIONADA: \"" + t.substring(0, 40) + "...\"");
+        }
+      }
+    }
+  }
+
+  // ✓ 5. Variedade nas frases (sem repeticoes excessivas)?
+  if (sd.items && sd.items.length >= 3) {
+    const firstWords = sd.items.map(it => it.split(/\s+/)[0]?.toLowerCase());
+    const wordCounts: Record<string, number> = {};
+    for (const w of firstWords) {
+      if (w) wordCounts[w] = (wordCounts[w] || 0) + 1;
+    }
+    for (const [word, count] of Object.entries(wordCounts)) {
+      if (count >= 3 && sd.items.length >= 4) {
+        warnings.push(label + " REPETICAO: " + count + "x bullets iniciam com \"" + word + "\"");
+      }
+    }
+  }
+
+  // ✓ 6. Cada slide tem conteudo suficiente (min. 3 bullets)?
+  if (sd.items && sd.layout !== "module_cover" && sd.layout !== "comparison_table" &&
+      sd.layout !== "reflection_callout" && sd.layout !== "example_highlight") {
+    if (sd.items.length < 3 && sd.items.length > 0) {
+      warnings.push(label + " CONTEUDO ESCASSO: apenas " + sd.items.length + " bullet(s)");
+    }
+  }
+
+  // ✓ 7. Simbolos sao consistentes e nao aleatorios?
+  for (const t of allTexts) {
+    if (/[□■◻◼▪▫●○◆◇◈◎⊕⊛☆✧✦▣▤▥▷◐◑◔△▽]{3,}/.test(t)) {
+      warnings.push(label + " SIMBOLOS EXCESSIVOS no texto");
+    }
+  }
+
+  // ✓ 8. Tabelas estao bem formatadas e legiveis?
+  if (sd.layout === "comparison_table") {
+    if (sd.tableHeaders && sd.tableHeaders.length > 5) {
+      warnings.push(label + " TABELA COM MUITAS COLUNAS: " + sd.tableHeaders.length);
+    }
+    if (sd.tableRows) {
+      for (const row of sd.tableRows) {
+        for (const cell of row) {
+          if (cell.length > 120) {
+            warnings.push(label + " CELULA LONGA: " + cell.length + " chars");
+          }
+        }
+      }
+    }
+  }
+
+  // ✓ 9. Ha exemplos praticos incluidos? (check at module level, warn if absent)
+  // This is tracked at module aggregation level — see buildModuleSlides integration
+
+  // ✓ 10. Existe pergunta de reflexao no modulo? (same — tracked at module level)
+
+  const passed = warnings.length === 0;
+  if (!passed) {
+    console.warn("[CHECKLIST] " + label + ": " + warnings.length + " avisos");
+    warnings.forEach(w => console.warn("  " + w));
+  }
+  if (fixes.length > 0) {
+    fixes.forEach(f => console.log("  [FIX] " + f));
+  }
+  return { passed, warnings, fixes };
+}
+
+/** Module-level checklist: verifies examples and reflections exist */
+function checkModuleCompleteness(moduleSlides: SlideData[], modIndex: number): string[] {
+  const warnings: string[] = [];
+  const label = "Modulo " + (modIndex + 1);
+
+  const hasExample = moduleSlides.some(s =>
+    s.layout === "example_highlight" || s.blockType === "example"
+  );
+  const hasReflection = moduleSlides.some(s =>
+    s.layout === "reflection_callout" || s.blockType === "reflection" ||
+    s.layout === "numbered_takeaways"
+  );
+  const hasTakeaways = moduleSlides.some(s => s.layout === "numbered_takeaways");
+
+  if (!hasExample) warnings.push(label + ": SEM EXEMPLO PRATICO");
+  if (!hasReflection) warnings.push(label + ": SEM REFLEXAO/CHECKPOINT");
+  if (!hasTakeaways) warnings.push(label + ": SEM KEY TAKEAWAYS");
+
+  if (warnings.length > 0) {
+    warnings.forEach(w => console.warn("[MODULE-CHECK] " + w));
+  }
+  return warnings;
+}
+
+/* ═══════════════════════════════════════════════════════
    BULLET SANITIZATION & HEIGHT HELPERS
    ═══════════════════════════════════════════════════════ */
 
@@ -1064,6 +1223,15 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
 
   const consolidated = consolidateConsecutiveLayouts(filtered);
   consolidated.forEach(s => { s.densityScore = calculateDensity(s); });
+
+  // Module-level completeness check (examples, reflections, takeaways)
+  checkModuleCompleteness(consolidated, modIndex);
+
+  // Per-slide quality checklist
+  consolidated.forEach((s, idx) => {
+    runSlideQualityChecklist(s, idx);
+  });
+
   return consolidated;
 }
 
@@ -2187,6 +2355,16 @@ Deno.serve(async (req: Request) => {
     allSlides.forEach(s => { s.densityScore = calculateDensity(s); });
     const avgDensity = allSlides.reduce((sum, s) => sum + (s.densityScore || 0), 0) / Math.max(allSlides.length, 1);
     console.log("[DENSITY] Avg:" + avgDensity.toFixed(1) + " Slides:" + allSlides.length);
+
+    // FINAL QUALITY CHECKLIST — validate all slides before rendering
+    let totalWarnings = 0;
+    let totalFixes = 0;
+    allSlides.forEach((s, idx) => {
+      const qr = runSlideQualityChecklist(s, idx + 3); // +3 for cover, TOC, offset
+      totalWarnings += qr.warnings.length;
+      totalFixes += qr.fixes.length;
+    });
+    console.log("[CHECKLIST] Total: " + totalWarnings + " avisos, " + totalFixes + " correcoes auto");
 
     // Build PPTX
     const pptx = new PptxGenJS();
