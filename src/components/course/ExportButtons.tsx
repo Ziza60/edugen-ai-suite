@@ -120,17 +120,22 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
             console.log("[PPTX] Starting export to:", url);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 300000);
-            const res = await fetch(url, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${session.access_token}`,
-                "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-              },
-              body: JSON.stringify({ course_id: courseId, ...options }),
-              signal: controller.signal,
-            });
-            clearTimeout(timeoutId);
+            let res: Response;
+            try {
+              res = await fetch(url, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${session.access_token}`,
+                  "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                },
+                body: JSON.stringify({ course_id: courseId, ...options }),
+                signal: controller.signal,
+              });
+            } finally {
+              clearTimeout(timeoutId);
+            }
+
             console.log("[PPTX] Response status:", res.status);
             const data = await res.json();
             console.log("[PPTX] Response data keys:", Object.keys(data));
@@ -150,7 +155,15 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               if (data.quality_report) {
                 console.log("[PPTX Quality Report]", JSON.stringify(data.quality_report, null, 2));
               }
-              const fileRes = await fetch(data.url);
+
+              const downloadController = new AbortController();
+              const downloadTimeoutId = setTimeout(() => downloadController.abort(), 120000);
+              let fileRes: Response;
+              try {
+                fileRes = await fetch(data.url, { signal: downloadController.signal });
+              } finally {
+                clearTimeout(downloadTimeoutId);
+              }
               if (!fileRes.ok) throw new Error("Não foi possível baixar o PowerPoint.");
               const blob = await fileRes.blob();
               const blobUrl = URL.createObjectURL(blob);
