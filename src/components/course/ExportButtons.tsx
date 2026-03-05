@@ -109,51 +109,67 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
 
       {/* PowerPoint - Pro (with customization dialog) */}
       <PptxExportDialog
-        onExport={(options: PptxExportOptions) => {
+        onExport={async (options: PptxExportOptions) => {
           setExportingPptx(true);
-          supabase.functions.invoke("export-pptx", {
-            body: { course_id: courseId, ...options },
-          }).then(({ data, error }) => {
-            if (error) throw error;
-            // Handle quality gate block (422)
+          try {
+            const session = (await supabase.auth.getSession()).data.session;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 300000);
+            const res = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${session?.access_token}`,
+                  "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                },
+                body: JSON.stringify({ course_id: courseId, ...options }),
+                signal: controller.signal,
+              }
+            );
+            clearTimeout(timeoutId);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Erro na exportação");
+
             if (data?.quality_report && !data?.url) {
               const qr = data.quality_report;
               toast({
                 title: "Exportação bloqueada",
-                description: `Qualidade insuficiente (score=${qr.quality_score}/100). ${qr.stage4_final_warnings} warnings restantes. LLM corrigiu ${qr.stage1_5_llm_grammar_fixes} gramática, ${qr.stage1_5_llm_truncation_fixes} truncamentos, removeu ${qr.stage1_5_llm_nonsense_dropped} sem sentido.`,
+                description: `Qualidade insuficiente (score=${qr.quality_score}/100).`,
                 variant: "destructive",
               });
               console.log("[PPTX Quality Report]", JSON.stringify(qr, null, 2));
               return;
             }
             if (data?.url) {
-              // Log quality report
               if (data.quality_report) {
                 console.log("[PPTX Quality Report]", JSON.stringify(data.quality_report, null, 2));
               }
-              return fetch(data.url).then(r => {
-                if (!r.ok) throw new Error("Não foi possível baixar o PowerPoint.");
-                return r.blob();
-              }).then(blob => {
-                const blobUrl = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = blobUrl;
-                a.download = formatFileName(courseTitle, "PPTX", "pptx");
-                a.rel = "noopener";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(blobUrl);
-                const qr = data.quality_report;
-                toast({
-                  title: "PowerPoint gerado!",
-                  description: qr ? `Score: ${qr.quality_score}/100 | LLM: ${qr.stage1_5_llm_grammar_fixes} gramática, ${qr.stage1_5_llm_truncation_fixes} truncamentos corrigidos` : undefined,
-                });
+              const fileRes = await fetch(data.url);
+              if (!fileRes.ok) throw new Error("Não foi possível baixar o PowerPoint.");
+              const blob = await fileRes.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = blobUrl;
+              a.download = formatFileName(courseTitle, "PPTX", "pptx");
+              a.rel = "noopener";
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(blobUrl);
+              const qr = data.quality_report;
+              toast({
+                title: "PowerPoint gerado!",
+                description: qr ? `Score: ${qr.quality_score}/100` : undefined,
               });
             }
-          }).catch((err: any) => {
-            toast({ title: "Erro ao exportar PowerPoint", description: err.message, variant: "destructive" });
-          }).finally(() => setExportingPptx(false));
+          } catch (err: any) {
+            const msg = err.name === "AbortError" ? "Timeout — tente novamente" : err.message;
+            toast({ title: "Erro ao exportar PowerPoint", description: msg, variant: "destructive" });
+          } finally {
+            setExportingPptx(false);
+          }
         }}
         exporting={exportingPptx}
         disabled={!isPublished}
