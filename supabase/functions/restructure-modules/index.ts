@@ -7,6 +7,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const REQUIRED_SECTIONS = [
+  { emoji: "🎯", label: "Objetivo do Módulo" },
+  { emoji: "🧠", label: "Fundamentos" },
+  { emoji: "⚙️", label: "Como funciona" },
+  { emoji: "🧩", label: "Modelos / Tipos" },
+  { emoji: "🛠️", label: "Aplicações reais" },
+  { emoji: "💡", label: "Exemplo prático" },
+  { emoji: "⚠️", label: "Desafios e cuidados" },
+  { emoji: "🧾", label: "Resumo do Módulo" },
+  { emoji: "📌", label: "Key Takeaways" },
+];
+
 const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestruture o conteúdo do módulo de curso abaixo aplicando TODAS as regras a seguir. Retorne APENAS o markdown reestruturado, sem explicações.
 
 ## Regras obrigatórias:
@@ -56,6 +68,157 @@ const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestr
    - NÃO adicione conteúdo que não existia (apenas reorganize e complete seções)
    - NÃO use heading H1 (#) - use apenas H2 (##) para título e H3 (###) para seções`;
 
+// ─── Quality Checklist Validation ───────────────────────────────────────
+interface ModuleCheckResult {
+  module: number;
+  title: string;
+  title_unique: boolean;
+  sections_complete: boolean;
+  missing_sections: string[];
+  separators_consistent: boolean;
+  example_practical_complete: boolean;
+  reflection_position_correct: boolean;
+  key_takeaways_count: number;
+  lists_within_limit: boolean;
+  tables_standardized: boolean;
+  html_removed: boolean;
+  redundancy_detected: boolean;
+  status: "PASS" | "FAIL";
+  errors: string[];
+}
+
+function validateModuleMarkdown(content: string, moduleIndex: number, title: string): ModuleCheckResult {
+  const errors: string[] = [];
+  const lines = content.split("\n");
+
+  // 1. Title unique: only one H2
+  const h2Count = lines.filter(l => /^## /.test(l)).length;
+  const h1Count = lines.filter(l => /^# [^#]/.test(l)).length;
+  const titleUnique = h2Count <= 1 && h1Count === 0;
+  if (!titleUnique) errors.push(`Títulos duplicados: ${h2Count} H2, ${h1Count} H1`);
+
+  // 2. Check required sections
+  const missingSections: string[] = [];
+  for (const sec of REQUIRED_SECTIONS) {
+    const pattern = new RegExp(`###\\s*${sec.emoji}\\s*${sec.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, "i");
+    if (!pattern.test(content)) {
+      // Try looser match with just the emoji
+      const loosePattern = new RegExp(`###.*${sec.emoji}`, "i");
+      if (!loosePattern.test(content)) {
+        missingSections.push(`${sec.emoji} ${sec.label}`);
+      }
+    }
+  }
+  const sectionsComplete = missingSections.length === 0;
+  if (!sectionsComplete) errors.push(`Seções ausentes: ${missingSections.join(", ")}`);
+
+  // 3. Separators: count --- lines, should be >= 8 (between 9+ sections)
+  const separatorCount = lines.filter(l => /^---\s*$/.test(l.trim())).length;
+  const separatorsConsistent = separatorCount >= 7;
+  if (!separatorsConsistent) errors.push(`Separadores insuficientes: ${separatorCount} (min 7)`);
+
+  // 4. Example practical completeness: must have Cenário, Solução, Resultado
+  const hasExampleSection = /###.*💡/.test(content);
+  let examplePracticalComplete = false;
+  if (hasExampleSection) {
+    const hasCenario = /\*\*Cenário[:\s]/i.test(content) || /cenário:/i.test(content);
+    const hasSolucao = /\*\*Solução[:\s]/i.test(content) || /solução:/i.test(content);
+    const hasResultado = /\*\*Resultado[:\s]/i.test(content) || /resultado:/i.test(content);
+    examplePracticalComplete = hasCenario && hasSolucao && hasResultado;
+    if (!examplePracticalComplete) errors.push("Exemplo prático incompleto (falta cenário/solução/resultado)");
+  } else {
+    errors.push("Seção de exemplo prático ausente");
+  }
+
+  // 5. Reflection position: 💭 should come after ⚠️ and before 🧾
+  const reflectionIdx = content.indexOf("💭");
+  const challengesIdx = content.indexOf("⚠️");
+  const summaryIdx = content.indexOf("🧾");
+  const reflectionPositionCorrect = reflectionIdx > -1 && 
+    (challengesIdx === -1 || reflectionIdx > challengesIdx) &&
+    (summaryIdx === -1 || reflectionIdx < summaryIdx);
+  if (!reflectionPositionCorrect) errors.push("Reflexão mal posicionada (deve ficar após Desafios e antes do Resumo)");
+
+  // 6. Key takeaways count
+  const ktMatch = content.match(/###.*📌[\s\S]*?(?=\n##|\n---|\n$|$)/);
+  let keyTakeawaysCount = 0;
+  if (ktMatch) {
+    const ktLines = ktMatch[0].split("\n").filter(l => /^\s*[-*]\s/.test(l));
+    keyTakeawaysCount = ktLines.length;
+  }
+  if (keyTakeawaysCount < 5 || keyTakeawaysCount > 7) {
+    errors.push(`Key Takeaways: ${keyTakeawaysCount} itens (esperado 5-7)`);
+  }
+
+  // 7. Lists within limit (no list > 7 items)
+  let listsWithinLimit = true;
+  let currentListCount = 0;
+  for (const line of lines) {
+    if (/^\s*[-*]\s/.test(line)) {
+      currentListCount++;
+      if (currentListCount > 7) {
+        listsWithinLimit = false;
+        break;
+      }
+    } else if (line.trim() !== "") {
+      currentListCount = 0;
+    }
+  }
+  if (!listsWithinLimit) errors.push("Lista com mais de 7 itens detectada");
+
+  // 8. Tables standardized (pipe format, max 5 data rows)
+  let tablesStandardized = true;
+  const tableRows = lines.filter(l => /^\|/.test(l.trim()));
+  if (tableRows.length > 0) {
+    // Count data rows (exclude header and separator)
+    const dataRows = tableRows.filter(l => !/^[\|\s-]+$/.test(l.trim()));
+    // Subtract header row
+    const dataCount = Math.max(0, dataRows.length - 1);
+    if (dataCount > 5) {
+      tablesStandardized = false;
+      errors.push(`Tabela com ${dataCount} linhas de dados (max 5)`);
+    }
+  }
+
+  // 9. HTML removed
+  const htmlRemoved = !/<[a-z][^>]*>/i.test(content);
+  if (!htmlRemoved) errors.push("Tags HTML detectadas no conteúdo");
+
+  // 10. Redundancy: simple heuristic - check for duplicate paragraphs
+  const paragraphs = content.split(/\n\n+/).filter(p => p.trim().length > 50);
+  let redundancyDetected = false;
+  for (let i = 0; i < paragraphs.length; i++) {
+    for (let j = i + 1; j < paragraphs.length; j++) {
+      if (paragraphs[i].trim() === paragraphs[j].trim()) {
+        redundancyDetected = true;
+        break;
+      }
+    }
+    if (redundancyDetected) break;
+  }
+  if (redundancyDetected) errors.push("Conteúdo redundante detectado");
+
+  const status: "PASS" | "FAIL" = errors.length === 0 ? "PASS" : "FAIL";
+
+  return {
+    module: moduleIndex + 1,
+    title,
+    title_unique: titleUnique,
+    sections_complete: sectionsComplete,
+    missing_sections: missingSections,
+    separators_consistent: separatorsConsistent,
+    example_practical_complete: examplePracticalComplete,
+    reflection_position_correct: reflectionPositionCorrect,
+    key_takeaways_count: keyTakeawaysCount,
+    lists_within_limit: listsWithinLimit,
+    tables_standardized: tablesStandardized,
+    html_removed: htmlRemoved,
+    redundancy_detected: redundancyDetected,
+    status,
+    errors,
+  };
+}
+
 async function callLLM(prompt: string, content: string): Promise<string> {
   const aiGatewayUrl = Deno.env.get("SUPABASE_URL")!.replace(".supabase.co", ".functions.supabase.co");
   
@@ -83,10 +246,7 @@ async function callLLM(prompt: string, content: string): Promise<string> {
 
   const data = await response.json();
   let result = data.choices?.[0]?.message?.content || "";
-  
-  // Strip markdown code fences if present
   result = result.replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
-  
   return result;
 }
 
@@ -118,7 +278,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { course_id } = await req.json();
+    const body = await req.json();
+    const { course_id, validate_only } = body;
     if (!course_id) {
       return new Response(JSON.stringify({ error: "course_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -146,9 +307,35 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const results: { module_id: string; title: string; status: string; error?: string }[] = [];
+    // ─── VALIDATE ONLY MODE ─────────────────────────────────────────
+    if (validate_only) {
+      const checkResults = modules.map((mod, i) => validateModuleMarkdown(mod.content || "", i, mod.title));
+      const passed = checkResults.filter(r => r.status === "PASS").length;
+      const failed = checkResults.filter(r => r.status === "FAIL").length;
+      const criticalErrors = [...new Set(checkResults.flatMap(r => r.errors))];
 
-    // Process modules sequentially to avoid rate limits
+      return new Response(JSON.stringify({
+        markdown_quality_report: {
+          course_title: course.title,
+          modules_checked: modules.length,
+          results: checkResults,
+          summary: {
+            modules_passed: passed,
+            modules_failed: failed,
+            critical_errors: criticalErrors,
+            recommendation: failed > 0
+              ? "Corrigir módulos com FAIL antes da exportação para PPTX."
+              : "Todos os módulos passaram. Pronto para exportação.",
+          },
+        },
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── RESTRUCTURE + VALIDATE LOOP ────────────────────────────────
+    const results: { module_id: string; title: string; status: string; error?: string; validation?: ModuleCheckResult }[] = [];
+
     for (const mod of modules) {
       try {
         console.log(`[Restructure] Processing module: ${mod.title}`);
@@ -159,16 +346,20 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        // Update module content
+        // Validate the restructured content
+        const moduleIdx = modules.indexOf(mod);
+        const validation = validateModuleMarkdown(restructured, moduleIdx, mod.title);
+
+        // Update module content regardless (it's always better than before)
         const { error: updateErr } = await serviceClient
           .from("course_modules")
           .update({ content: restructured, updated_at: new Date().toISOString() })
           .eq("id", mod.id);
 
         if (updateErr) {
-          results.push({ module_id: mod.id, title: mod.title, status: "error", error: updateErr.message });
+          results.push({ module_id: mod.id, title: mod.title, status: "error", error: updateErr.message, validation });
         } else {
-          results.push({ module_id: mod.id, title: mod.title, status: "ok" });
+          results.push({ module_id: mod.id, title: mod.title, status: validation.status === "PASS" ? "ok" : "warn", validation });
         }
       } catch (err: any) {
         console.error(`[Restructure] Error on module ${mod.title}:`, err);
@@ -177,10 +368,26 @@ Deno.serve(async (req: Request) => {
     }
 
     const successCount = results.filter(r => r.status === "ok").length;
+    const warnCount = results.filter(r => r.status === "warn").length;
+    const allValidations = results.filter(r => r.validation).map(r => r.validation!);
+    const criticalErrors = [...new Set(allValidations.flatMap(v => v.errors))];
 
     return new Response(JSON.stringify({
-      message: `${successCount}/${modules.length} modules restructured`,
+      message: `${successCount}/${modules.length} módulos PASS, ${warnCount} com warnings`,
       results,
+      markdown_quality_report: {
+        course_title: course.title,
+        modules_checked: modules.length,
+        results: allValidations,
+        summary: {
+          modules_passed: successCount,
+          modules_failed: modules.length - successCount,
+          critical_errors: criticalErrors,
+          recommendation: warnCount > 0 || criticalErrors.length > 0
+            ? "Corrigir módulos com FAIL antes da exportação para PPTX."
+            : "Todos os módulos passaram. Pronto para exportação.",
+        },
+      },
     }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

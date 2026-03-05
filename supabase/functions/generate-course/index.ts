@@ -620,8 +620,37 @@ STRICT RULES:
     }
     await serviceClient.from("usage_events").insert(usageInserts);
 
+    // 7. AUTO-STANDARDIZE: Call restructure-modules automatically
+    let qualityReport = null;
+    try {
+      console.log("[generate-course] Auto-invoking restructure-modules...");
+      const restructureUrl = `${supabaseUrl}/functions/v1/restructure-modules`;
+      const restructureRes = await fetch(restructureUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": authHeader,
+          "apikey": anonKey,
+        },
+        body: JSON.stringify({ course_id: course.id }),
+      });
+      if (restructureRes.ok) {
+        const restructureData = await restructureRes.json();
+        qualityReport = restructureData.markdown_quality_report || null;
+        console.log("[generate-course] Auto-restructure complete:", restructureData.message);
+      } else {
+        console.warn("[generate-course] Auto-restructure failed:", await restructureRes.text());
+      }
+    } catch (restructureErr: any) {
+      console.warn("[generate-course] Auto-restructure error (non-blocking):", restructureErr.message);
+    }
+
     return new Response(
-      JSON.stringify({ course_id: course.id, message: "Course generated successfully" }),
+      JSON.stringify({
+        course_id: course.id,
+        message: "Course generated successfully",
+        quality_report: qualityReport,
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
