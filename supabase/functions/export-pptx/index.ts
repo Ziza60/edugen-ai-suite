@@ -852,12 +852,264 @@ function validateRelevanceWithThreshold(items: string[], context: string, thresh
 }
 
 /* ═══════════════════════════════════════════════════════
+   STAGE 0: LLM SEMANTIC CONTENT PLANNER
+   Uses LLM to intelligently plan how content should be
+   distributed across slides BEFORE rendering.
+   This replaces dumb regex splitting with semantic understanding.
+   ═══════════════════════════════════════════════════════ */
+
+interface SemanticSlidePlan {
+  slideTitle: string;
+  sectionLabel: string;
+  layout: "definition" | "bullets" | "grid_cards" | "process" | "table" | "example" | "reflection" | "takeaways";
+  items: string[];
+  tableHeaders?: string[];
+  tableRows?: string[][];
+}
+
+interface SemanticModulePlan {
+  moduleTitle: string;
+  moduleDescription: string;
+  objectives: string[];
+  slides: SemanticSlidePlan[];
+}
+
+async function llmPlanModuleSlides(moduleTitle: string, moduleContent: string, moduleIndex: number, language: string): Promise<SemanticModulePlan | null> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    console.warn("[SEMANTIC-PLANNER] LOVABLE_API_KEY not available, falling back to regex parser");
+    return null;
+  }
+
+  // Truncate content if too large (keep under ~12k chars to avoid token limits)
+  const maxContentLen = 12000;
+  const truncatedContent = moduleContent.length > maxContentLen
+    ? moduleContent.substring(0, maxContentLen) + "\n\n[... conteúdo truncado para processamento ...]"
+    : moduleContent;
+
+  const systemPrompt = `Você é um designer instrucional especialista em criar apresentações PowerPoint de alta qualidade a partir de conteúdo educacional.
+
+Sua tarefa é planejar a DISTRIBUIÇÃO SEMÂNTICA do conteúdo de um módulo em slides, garantindo que:
+
+## REGRAS FUNDAMENTAIS
+1. **Frases COMPLETAS**: Cada item de cada slide DEVE ser uma frase completa com sujeito, verbo e predicado. NUNCA corte frases no meio.
+2. **Coerência semântica**: Agrupe conteúdos relacionados no mesmo slide. Não misture temas diferentes.
+3. **Cada slide = 1 ideia central**: Um slide deve cobrir UM conceito, NÃO múltiplos.
+4. **Máximo 5-6 items por slide**: Se um tema tem mais pontos, distribua em slides de continuação.
+5. **Máximo 120 caracteres por item**: Resuma sem perder significado. Toda frase termina com ponto.
+6. **Títulos descritivos**: Cada slide deve ter um título que descreve O QUE aquele slide cobre (não genéricos como "Introdução").
+7. **Preservar exemplos e reflexões**: Exemplos práticos e reflexões DEVEM ter slides dedicados.
+8. **Key Takeaways**: O último grupo de slides deve ser "takeaways" com 5-7 pontos concisos e acionáveis.
+
+## LAYOUTS DISPONÍVEIS
+- "definition": Para definir um conceito (1 definição principal + 2-3 pilares)
+- "bullets": Para lista de pontos (3-6 items)
+- "grid_cards": Para conceitos paralelos com "Título: descrição" (3-6 items)
+- "process": Para etapas sequenciais (3-4 etapas com "Etapa: descrição")
+- "table": Para comparações (headers + rows, máx 5 linhas)
+- "example": Para exemplos práticos (cenário, solução, resultado)
+- "reflection": Para perguntas de reflexão (2-4 perguntas)
+- "takeaways": Para resumo final (5-7 takeaways concisos)
+
+## DISTRIBUIÇÃO IDEAL
+Para um módulo típico, gere entre 4-8 slides de conteúdo:
+1. Fundamentos/Definição (1-2 slides)
+2. Como funciona/Processo (1-2 slides)
+3. Tipos/Modelos/Comparação (1 slide)
+4. Aplicações reais (1 slide)
+5. Exemplo prático (1 slide obrigatório)
+6. Reflexão (1 slide obrigatório)
+7. Key Takeaways (1 slide obrigatório)
+
+Idioma: ${language || "pt-BR"}`;
+
+  const userPrompt = `Planeje a distribuição de slides para o módulo "${moduleTitle}" (Módulo ${moduleIndex + 1}).
+
+CONTEÚDO DO MÓDULO:
+${truncatedContent}`;
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: "submit_slide_plan",
+            description: "Submit the planned slide distribution for this module",
+            parameters: {
+              type: "object",
+              properties: {
+                moduleTitle: { type: "string", description: "Clean module title (without 'Módulo N:' prefix)" },
+                moduleDescription: { type: "string", description: "One sentence describing the module objective (max 60 chars)" },
+                objectives: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "2-3 learning objectives for this module (max 60 chars each)"
+                },
+                slides: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      slideTitle: { type: "string", description: "Descriptive slide title (max 50 chars)" },
+                      sectionLabel: { type: "string", description: "Short uppercase label (max 25 chars)" },
+                      layout: {
+                        type: "string",
+                        enum: ["definition", "bullets", "grid_cards", "process", "table", "example", "reflection", "takeaways"],
+                        description: "Slide layout type"
+                      },
+                      items: {
+                        type: "array",
+                        items: { type: "string" },
+                        description: "Content items (complete sentences, max 120 chars each, ending with period)"
+                      },
+                      tableHeaders: {
+                        type: "array",
+                        items: { type: "string" },
+                        description: "Table column headers (only for 'table' layout)"
+                      },
+                      tableRows: {
+                        type: "array",
+                        items: {
+                          type: "array",
+                          items: { type: "string" }
+                        },
+                        description: "Table rows (only for 'table' layout, max 5 rows)"
+                      },
+                    },
+                    required: ["slideTitle", "sectionLabel", "layout", "items"],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: ["moduleTitle", "moduleDescription", "objectives", "slides"],
+              additionalProperties: false,
+            },
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "submit_slide_plan" } },
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("[SEMANTIC-PLANNER] Gateway error " + response.status + ": " + errText.substring(0, 200));
+      return null;
+    }
+
+    const data = await response.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall?.function?.arguments) {
+      console.warn("[SEMANTIC-PLANNER] No tool call in response");
+      return null;
+    }
+
+    let parsed: SemanticModulePlan;
+    try {
+      parsed = JSON.parse(toolCall.function.arguments);
+    } catch {
+      console.error("[SEMANTIC-PLANNER] Failed to parse tool call arguments");
+      return null;
+    }
+
+    // Validate basic structure
+    if (!parsed.slides || parsed.slides.length < 2) {
+      console.warn("[SEMANTIC-PLANNER] Plan has too few slides (" + (parsed.slides?.length || 0) + "), falling back");
+      return null;
+    }
+
+    // Post-process: enforce sentence integrity on all items
+    for (const slide of parsed.slides) {
+      slide.items = (slide.items || []).map(item => {
+        let t = item.trim();
+        if (t.length > 0 && !/[.!?…]$/.test(t)) t += ".";
+        return t;
+      }).filter(item => item.length > 3);
+
+      // Enforce max items
+      if (slide.layout !== "takeaways" && slide.items.length > 6) {
+        slide.items = slide.items.slice(0, 6);
+      }
+      if (slide.layout === "takeaways" && slide.items.length > 7) {
+        slide.items = slide.items.slice(0, 7);
+      }
+    }
+
+    console.log("[SEMANTIC-PLANNER] Module " + (moduleIndex + 1) + " planned: " + parsed.slides.length + " slides");
+    return parsed;
+
+  } catch (err: any) {
+    console.error("[SEMANTIC-PLANNER] Error: " + (err.message || err));
+    return null;
+  }
+}
+
+/** Convert semantic plan to SlideData array */
+function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): SlideData[] {
+  const slides: SlideData[] = [];
+
+  // Module cover
+  slides.push({
+    layout: "module_cover",
+    title: smartTitle(plan.moduleTitle),
+    subtitle: "MODULO " + String(moduleIndex + 1).padStart(2, "0"),
+    description: plan.moduleDescription,
+    moduleIndex,
+    objectives: plan.objectives.slice(0, 3),
+  });
+
+  const LAYOUT_MAP: Record<string, LayoutType> = {
+    definition: "definition_card_with_pillars",
+    bullets: "bullets",
+    grid_cards: "grid_cards",
+    process: "process_timeline",
+    table: "comparison_table",
+    example: "example_highlight",
+    reflection: "reflection_callout",
+    takeaways: "numbered_takeaways",
+  };
+
+  for (const slidePlan of plan.slides) {
+    const layout = LAYOUT_MAP[slidePlan.layout] || "bullets";
+    const blockType = slidePlan.layout === "example" ? "example"
+      : slidePlan.layout === "reflection" ? "reflection"
+      : slidePlan.layout === "takeaways" ? "conclusion"
+      : "normal";
+
+    const sd: SlideData = {
+      layout,
+      title: smartTitle(slidePlan.slideTitle),
+      sectionLabel: slidePlan.sectionLabel.toUpperCase().substring(0, 25),
+      items: sanitizeBullets(slidePlan.items),
+      moduleIndex,
+      blockType,
+    };
+
+    // Handle table layout
+    if (slidePlan.layout === "table" && slidePlan.tableHeaders && slidePlan.tableRows) {
+      sd.tableHeaders = slidePlan.tableHeaders;
+      sd.tableRows = slidePlan.tableRows.slice(0, 5);
+    }
+
+    slides.push(sd);
+  }
+
+  return slides;
+}
+
+/* ═══════════════════════════════════════════════════════
    LLM-POWERED NLP VALIDATION — Lovable AI Gateway
-   Replaces basic regex with trained model for:
-   1. Grammar correction (PT-BR)
-   2. Sentence completion (truncated phrases)
-   3. Semantic relevance filtering
-   4. Nonsense/gibberish detection
+   Post-rendering validation pass for grammar, truncation, nonsense
    ═══════════════════════════════════════════════════════ */
 
 interface LLMSlideValidation {
@@ -885,7 +1137,6 @@ async function llmValidateSlideContent(allSlides: SlideData[]): Promise<LLMValid
     return { slides: [], totalGrammarFixes: 0, totalTruncationFixes: 0, totalNonsenseDropped: 0, totalRelevanceDropped: 0 };
   }
 
-  // Build a compact representation of slides needing validation
   const slidesForValidation: { idx: number; title: string; items: string[] }[] = [];
   for (let i = 0; i < allSlides.length; i++) {
     const s = allSlides[i];
@@ -899,7 +1150,6 @@ async function llmValidateSlideContent(allSlides: SlideData[]): Promise<LLMValid
     return { slides: [], totalGrammarFixes: 0, totalTruncationFixes: 0, totalNonsenseDropped: 0, totalRelevanceDropped: 0 };
   }
 
-  // Batch slides into chunks to avoid token limits (max ~30 slides per call)
   const BATCH_SIZE = 30;
   const allResults: LLMSlideValidation[] = [];
   let totalGF = 0, totalTF = 0, totalND = 0, totalRD = 0;
@@ -1036,13 +1286,11 @@ REGRAS CRÍTICAS:
             validation.nonsenseDetected.push(originalText.substring(0, 50));
             validation.droppedItems.push(originalText.substring(0, 50));
             totalND++;
-            console.log("[LLM-NLP] NONSENSE dropped: \"" + originalText.substring(0, 50) + "\"");
             continue;
           }
           if (status === "irrelevant") {
             validation.droppedItems.push(originalText.substring(0, 50));
             totalRD++;
-            console.log("[LLM-NLP] IRRELEVANT dropped: \"" + originalText.substring(0, 50) + "\"");
             continue;
           }
           if (!fixedText || fixedText.length < 3) {
@@ -1059,13 +1307,11 @@ REGRAS CRÍTICAS:
             totalTF++;
           }
 
-          // Enforce sentence integrity on LLM output too
           let final = fixedText;
           if (final.length > 0 && !/[.!?…]$/.test(final)) final += ".";
           newItems.push(final);
         }
 
-        // Only apply if we got reasonable results (at least 50% items survived)
         if (newItems.length >= Math.max(1, Math.floor(slide.items.length * 0.4))) {
           slide.items = newItems;
           validation.fixedItems = newItems;
@@ -1077,11 +1323,10 @@ REGRAS CRÍTICAS:
         allResults.push(validation);
       }
 
-      console.log("[LLM-NLP] Batch processed: " + batch.length + " slides, " + totalGF + " grammar fixes, " + totalTF + " truncation fixes, " + totalND + " nonsense, " + totalRD + " irrelevant");
+      console.log("[LLM-NLP] Batch processed: " + batch.length + " slides, " + totalGF + " grammar, " + totalTF + " truncation, " + totalND + " nonsense");
 
     } catch (err: any) {
-      console.error("[LLM-NLP] Error calling AI Gateway: " + (err.message || err));
-      // Continue without LLM validation — regex fallback already ran
+      console.error("[LLM-NLP] Error: " + (err.message || err));
     }
   }
 
@@ -3071,6 +3316,8 @@ Deno.serve(async (req: Request) => {
 
     // Accumulative quality report (persists across ALL retries)
     const qualityReport = {
+      stage0_semantic_planner_modules: 0,
+      stage0_regex_fallback_modules: 0,
       stage1_slides_generated: 0,
       stage1_5_llm_grammar_fixes: 0,
       stage1_5_llm_truncation_fixes: 0,
@@ -3089,11 +3336,50 @@ Deno.serve(async (req: Request) => {
       stage4_final_fixes: 0,
     };
 
-    // ── STAGE 1: CONTENT GENERATION ──
+    // ── STAGE 0: LLM SEMANTIC CONTENT PLANNER ──
+    // Uses AI to plan slide distribution with semantic understanding
+    // Falls back to regex parser if LLM is unavailable or fails
+    console.log("[STAGE-0] Starting LLM semantic content planner...");
     let allSlides: SlideData[] = [];
-    for (let i = 0; i < modules.length; i++) {
-      allSlides.push(...buildModuleSlides(modules[i], i, modules.length));
+    let semanticPlannerUsed = 0;
+    let regexFallbackUsed = 0;
+
+    // Process modules in parallel batches of 3 to speed up
+    const PLANNER_BATCH = 3;
+    for (let batchStart = 0; batchStart < modules.length; batchStart += PLANNER_BATCH) {
+      const batchModules = modules.slice(batchStart, batchStart + PLANNER_BATCH);
+      const planPromises = batchModules.map((mod: any, localIdx: number) => {
+        const globalIdx = batchStart + localIdx;
+        return llmPlanModuleSlides(
+          sanitize(mod.title || ""),
+          mod.content || "",
+          globalIdx,
+          course.language || "pt-BR"
+        ).then(plan => ({ plan, mod, globalIdx }));
+      });
+
+      const results = await Promise.all(planPromises);
+
+      for (const { plan, mod, globalIdx } of results) {
+        if (plan) {
+          // LLM planner succeeded — use semantic plan
+          const slides = semanticPlanToSlides(plan, globalIdx);
+          allSlides.push(...slides);
+          semanticPlannerUsed++;
+          console.log("[STAGE-0] Module " + (globalIdx + 1) + ": LLM semantic plan (" + slides.length + " slides)");
+        } else {
+          // Fallback to regex-based parser
+          const slides = buildModuleSlides(mod, globalIdx, modules.length);
+          allSlides.push(...slides);
+          regexFallbackUsed++;
+          console.log("[STAGE-0] Module " + (globalIdx + 1) + ": regex fallback (" + slides.length + " slides)");
+        }
+      }
     }
+
+    console.log("[STAGE-0] Complete: " + semanticPlannerUsed + " modules via LLM, " + regexFallbackUsed + " via regex fallback");
+    qualityReport.stage0_semantic_planner_modules = semanticPlannerUsed;
+    qualityReport.stage0_regex_fallback_modules = regexFallbackUsed;
     qualityReport.stage1_slides_generated = allSlides.length;
     console.log("[STAGE-1] Content generated: " + allSlides.length + " slides");
 
