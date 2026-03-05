@@ -115,7 +115,22 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
             body: { course_id: courseId, ...options },
           }).then(({ data, error }) => {
             if (error) throw error;
+            // Handle quality gate block (422)
+            if (data?.quality_report && !data?.url) {
+              const qr = data.quality_report;
+              toast({
+                title: "Exportação bloqueada",
+                description: `Qualidade insuficiente (score=${qr.quality_score}/100). ${qr.stage4_final_warnings} warnings restantes. LLM corrigiu ${qr.stage1_5_llm_grammar_fixes} gramática, ${qr.stage1_5_llm_truncation_fixes} truncamentos, removeu ${qr.stage1_5_llm_nonsense_dropped} sem sentido.`,
+                variant: "destructive",
+              });
+              console.log("[PPTX Quality Report]", JSON.stringify(qr, null, 2));
+              return;
+            }
             if (data?.url) {
+              // Log quality report
+              if (data.quality_report) {
+                console.log("[PPTX Quality Report]", JSON.stringify(data.quality_report, null, 2));
+              }
               return fetch(data.url).then(r => {
                 if (!r.ok) throw new Error("Não foi possível baixar o PowerPoint.");
                 return r.blob();
@@ -129,7 +144,11 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(blobUrl);
-                toast({ title: "PowerPoint gerado!" });
+                const qr = data.quality_report;
+                toast({
+                  title: "PowerPoint gerado!",
+                  description: qr ? `Score: ${qr.quality_score}/100 | LLM: ${qr.stage1_5_llm_grammar_fixes} gramática, ${qr.stage1_5_llm_truncation_fixes} truncamentos corrigidos` : undefined,
+                });
               });
             }
           }).catch((err: any) => {

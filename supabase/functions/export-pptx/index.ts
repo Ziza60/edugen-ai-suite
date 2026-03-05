@@ -561,7 +561,7 @@ function normalizeTerminology(text: string): string {
   return result;
 }
 
-// ── SEMANTIC SIMILARITY (Jaccard on word trigrams) ──
+// ── SEMANTIC SIMILARITY (Jaccard on word trigrams — fallback) ──
 function wordSet(text: string): Set<string> {
   return new Set(text.toLowerCase().replace(/[^\wà-ú]/g, " ").split(/\s+/).filter(w => w.length > 2));
 }
@@ -608,7 +608,7 @@ function deduplicateAcrossSlides(slides: SlideData[]): SlideData[] {
   });
 }
 
-// ── PORTUGUESE GRAMMAR VALIDATION & AUTO-FIX ──
+// ── PORTUGUESE GRAMMAR VALIDATION & AUTO-FIX (regex fallback) ──
 const PT_GRAMMAR_FIXES: [RegExp, string][] = [
   [/\bà partir\b/g, "a partir"],
   [/\bà nível\b/g, "em nível"],
@@ -647,14 +647,10 @@ function validateAndFixGrammar(text: string): GrammarResult {
       }
     }
   }
-  // Fix double spaces
   const beforeSpaces = result;
   result = result.replace(/\s{2,}/g, " ").trim();
   if (result !== beforeSpaces) corrections.push("Espacos duplos corrigidos");
-  
-  // Ensure proper capitalization after period
   result = result.replace(/\.\s+[a-záéíóúãõâêîôûç]/g, (m) => m.toUpperCase());
-  
   return { text: result, corrections };
 }
 
@@ -697,10 +693,9 @@ function checkWCAGContrast(fg: string, bg: string, fontSize: number): { ratio: n
 }
 
 // ── IMPROVED BOUNDING BOX MEASUREMENT ──
-// Average character widths relative to font size for common fonts
 const FONT_WIDTH_FACTORS: Record<string, number> = {
-  "Montserrat": 0.58,  // Slightly wider than average
-  "Open Sans": 0.54,   // Clean, regular width
+  "Montserrat": 0.58,
+  "Open Sans": 0.54,
 };
 
 interface BBoxResult {
@@ -717,11 +712,10 @@ function measureBoundingBox(text: string, fontSize: number, fontFace: string, bo
   const charWidthIn = charWidthPx / 72;
   const lineHeightIn = (fontSize * 1.35) / 72;
 
-  const charsPerLine = Math.max(5, Math.floor((boxW - 0.2) / charWidthIn)); // subtract inset
+  const charsPerLine = Math.max(5, Math.floor((boxW - 0.2) / charWidthIn));
   const maxLines = Math.max(1, Math.floor(boxH / lineHeightIn));
   const maxChars = charsPerLine * maxLines;
 
-  // Word-wrap aware line counting
   const words = text.split(/\s+/);
   let currentLineLen = 0;
   let lineCount = 1;
@@ -736,7 +730,6 @@ function measureBoundingBox(text: string, fontSize: number, fontFace: string, bo
 
   const overflowChars = Math.max(0, text.length - maxChars);
 
-  // Find minimum font size that fits
   let recFont = fontSize;
   if (lineCount > maxLines) {
     for (let fs = fontSize - 1; fs >= 12; fs--) {
@@ -797,7 +790,6 @@ function checkNarrativeCoherence(slides: SlideData[]): string[] {
       continue;
     }
     
-    // Check for sudden topic changes within a module
     if (prevItems.length > 0 && s.items && s.items.length > 0) {
       const prevWords = wordSet(prevItems.join(" "));
       const currWords = wordSet(s.items.join(" "));
@@ -816,25 +808,22 @@ function checkNarrativeCoherence(slides: SlideData[]): string[] {
   return warnings;
 }
 
-// ── FULL NLP PIPELINE (runs on each item array) ──
+// ── FULL NLP PIPELINE (regex fallback — runs before LLM validation) ──
 function runNLPPipeline(items: string[]): { processed: string[]; stats: { deduped: number; grammarFixes: number; termNormalized: number } } {
   let stats = { deduped: 0, grammarFixes: 0, termNormalized: 0 };
 
-  // Step 1: Terminology normalization
   let processed = items.map(item => {
     const normalized = normalizeTerminology(item);
     if (normalized !== item) stats.termNormalized++;
     return normalized;
   });
 
-  // Step 2: Grammar validation and auto-fix
   processed = processed.map(item => {
     const result = validateAndFixGrammar(item);
     stats.grammarFixes += result.corrections.length;
     return enforceSentenceIntegrity(result.text);
   });
 
-  // Step 3: Deduplication
   const beforeLen = processed.length;
   processed = deduplicateItems(processed);
   stats.deduped = beforeLen - processed.length;
@@ -854,13 +843,255 @@ function validateRelevanceWithThreshold(items: string[], context: string, thresh
     return score >= threshold || item.length <= 40;
   });
 
-  // Never return empty — keep the most similar item
   if (filtered.length === 0 && items.length > 0) {
     const ranked = [...items].sort((a, b) => semanticSimilarity(b, context) - semanticSimilarity(a, context));
     return { filtered: [ranked[0]], dropped: Math.max(0, items.length - 1) };
   }
 
   return { filtered, dropped: items.length - filtered.length };
+}
+
+/* ═══════════════════════════════════════════════════════
+   LLM-POWERED NLP VALIDATION — Lovable AI Gateway
+   Replaces basic regex with trained model for:
+   1. Grammar correction (PT-BR)
+   2. Sentence completion (truncated phrases)
+   3. Semantic relevance filtering
+   4. Nonsense/gibberish detection
+   ═══════════════════════════════════════════════════════ */
+
+interface LLMSlideValidation {
+  slideIndex: number;
+  title: string;
+  fixedItems: string[];
+  droppedItems: string[];
+  grammarFixes: string[];
+  truncationFixes: string[];
+  nonsenseDetected: string[];
+}
+
+interface LLMValidationResult {
+  slides: LLMSlideValidation[];
+  totalGrammarFixes: number;
+  totalTruncationFixes: number;
+  totalNonsenseDropped: number;
+  totalRelevanceDropped: number;
+}
+
+async function llmValidateSlideContent(allSlides: SlideData[]): Promise<LLMValidationResult> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    console.warn("[LLM-NLP] LOVABLE_API_KEY not available, skipping LLM validation");
+    return { slides: [], totalGrammarFixes: 0, totalTruncationFixes: 0, totalNonsenseDropped: 0, totalRelevanceDropped: 0 };
+  }
+
+  // Build a compact representation of slides needing validation
+  const slidesForValidation: { idx: number; title: string; items: string[] }[] = [];
+  for (let i = 0; i < allSlides.length; i++) {
+    const s = allSlides[i];
+    if (s.layout === "module_cover" && !s.items?.length) continue;
+    if (s.items && s.items.length > 0) {
+      slidesForValidation.push({ idx: i, title: s.title, items: s.items });
+    }
+  }
+
+  if (slidesForValidation.length === 0) {
+    return { slides: [], totalGrammarFixes: 0, totalTruncationFixes: 0, totalNonsenseDropped: 0, totalRelevanceDropped: 0 };
+  }
+
+  // Batch slides into chunks to avoid token limits (max ~30 slides per call)
+  const BATCH_SIZE = 30;
+  const allResults: LLMSlideValidation[] = [];
+  let totalGF = 0, totalTF = 0, totalND = 0, totalRD = 0;
+
+  for (let batchStart = 0; batchStart < slidesForValidation.length; batchStart += BATCH_SIZE) {
+    const batch = slidesForValidation.slice(batchStart, batchStart + BATCH_SIZE);
+    
+    const slidesPayload = batch.map(s => ({
+      slideIndex: s.idx,
+      title: s.title,
+      items: s.items.map((it, i) => ({ id: i, text: it })),
+    }));
+
+    const systemPrompt = `Você é um revisor profissional de conteúdo educacional em PT-BR para slides de apresentação (PowerPoint).
+
+Sua tarefa é analisar CADA item de texto de CADA slide e retornar uma versão corrigida.
+
+Para cada item, você DEVE:
+1. **Gramática**: Corrigir erros gramaticais, ortográficos e de concordância em português brasileiro.
+2. **Frases truncadas**: Se uma frase está incompleta (termina em preposição, artigo, ou parece cortada), COMPLETE a frase de forma lógica e concisa ou remova a parte incompleta e finalize com pontuação.
+3. **Sem sentido**: Se o texto é incompreensível, sem sentido, ou contém palavras aleatórias/sem conexão lógica, marque como "nonsense".
+4. **Relevância**: Se o item não tem relação com o título do slide, marque como "irrelevant".
+5. **Pontuação**: Toda frase deve terminar com ponto, exclamação ou interrogação.
+6. **Máximo**: Cada item corrigido deve ter no máximo 120 caracteres. Se ultrapassar, resuma mantendo o significado essencial.
+
+REGRAS CRÍTICAS:
+- NÃO invente informação nova — apenas corrija/complete o que existe.
+- Se uma frase está truncada, prefira ENCURTAR e fechar com ponto do que inventar conteúdo.
+- Mantenha o tom profissional/educacional.
+- Retorne TODOS os slides processados, mesmo que sem correções.`;
+
+    const userPrompt = `Analise e corrija os seguintes slides:\n\n${JSON.stringify(slidesPayload, null, 0)}`;
+
+    try {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "submit_validated_slides",
+              description: "Submit the validated and corrected slide content",
+              parameters: {
+                type: "object",
+                properties: {
+                  slides: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        slideIndex: { type: "number", description: "Original slide index" },
+                        correctedItems: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              id: { type: "number", description: "Original item index" },
+                              text: { type: "string", description: "Corrected text (empty string if should be dropped)" },
+                              status: { type: "string", enum: ["ok", "grammar_fixed", "truncation_fixed", "nonsense", "irrelevant"], description: "What was done" },
+                              original: { type: "string", description: "Original text before fix" },
+                            },
+                            required: ["id", "text", "status"],
+                            additionalProperties: false,
+                          },
+                        },
+                      },
+                      required: ["slideIndex", "correctedItems"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["slides"],
+                additionalProperties: false,
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "submit_validated_slides" } },
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error("[LLM-NLP] Gateway error " + response.status + ": " + errText.substring(0, 200));
+        continue;
+      }
+
+      const data = await response.json();
+      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+      if (!toolCall?.function?.arguments) {
+        console.warn("[LLM-NLP] No tool call in response");
+        continue;
+      }
+
+      let parsed: { slides: any[] };
+      try {
+        parsed = JSON.parse(toolCall.function.arguments);
+      } catch {
+        console.error("[LLM-NLP] Failed to parse tool call arguments");
+        continue;
+      }
+
+      for (const slideResult of (parsed.slides || [])) {
+        const slideIdx = slideResult.slideIndex;
+        const slide = allSlides[slideIdx];
+        if (!slide || !slide.items) continue;
+
+        const validation: LLMSlideValidation = {
+          slideIndex: slideIdx,
+          title: slide.title,
+          fixedItems: [],
+          droppedItems: [],
+          grammarFixes: [],
+          truncationFixes: [],
+          nonsenseDetected: [],
+        };
+
+        const newItems: string[] = [];
+        for (const corrected of (slideResult.correctedItems || [])) {
+          const itemId = corrected.id;
+          const originalText = slide.items[itemId] || "";
+          const status = corrected.status || "ok";
+          const fixedText = (corrected.text || "").trim();
+
+          if (status === "nonsense") {
+            validation.nonsenseDetected.push(originalText.substring(0, 50));
+            validation.droppedItems.push(originalText.substring(0, 50));
+            totalND++;
+            console.log("[LLM-NLP] NONSENSE dropped: \"" + originalText.substring(0, 50) + "\"");
+            continue;
+          }
+          if (status === "irrelevant") {
+            validation.droppedItems.push(originalText.substring(0, 50));
+            totalRD++;
+            console.log("[LLM-NLP] IRRELEVANT dropped: \"" + originalText.substring(0, 50) + "\"");
+            continue;
+          }
+          if (!fixedText || fixedText.length < 3) {
+            validation.droppedItems.push(originalText.substring(0, 50));
+            continue;
+          }
+
+          if (status === "grammar_fixed") {
+            validation.grammarFixes.push(originalText.substring(0, 30) + " → " + fixedText.substring(0, 30));
+            totalGF++;
+          }
+          if (status === "truncation_fixed") {
+            validation.truncationFixes.push(originalText.substring(0, 30) + " → " + fixedText.substring(0, 30));
+            totalTF++;
+          }
+
+          // Enforce sentence integrity on LLM output too
+          let final = fixedText;
+          if (final.length > 0 && !/[.!?…]$/.test(final)) final += ".";
+          newItems.push(final);
+        }
+
+        // Only apply if we got reasonable results (at least 50% items survived)
+        if (newItems.length >= Math.max(1, Math.floor(slide.items.length * 0.4))) {
+          slide.items = newItems;
+          validation.fixedItems = newItems;
+        } else {
+          console.warn("[LLM-NLP] Slide " + slideIdx + ": Too many items dropped (" + newItems.length + "/" + slide.items.length + "), keeping originals");
+          validation.fixedItems = [...slide.items];
+        }
+
+        allResults.push(validation);
+      }
+
+      console.log("[LLM-NLP] Batch processed: " + batch.length + " slides, " + totalGF + " grammar fixes, " + totalTF + " truncation fixes, " + totalND + " nonsense, " + totalRD + " irrelevant");
+
+    } catch (err: any) {
+      console.error("[LLM-NLP] Error calling AI Gateway: " + (err.message || err));
+      // Continue without LLM validation — regex fallback already ran
+    }
+  }
+
+  return {
+    slides: allResults,
+    totalGrammarFixes: totalGF,
+    totalTruncationFixes: totalTF,
+    totalNonsenseDropped: totalND,
+    totalRelevanceDropped: totalRD,
+  };
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2834,37 +3065,76 @@ Deno.serve(async (req: Request) => {
 
     // ═══════════════════════════════════════════════════════
     // MULTI-STAGE VALIDATION PIPELINE
-    // Stage 1: Content → Stage 2: Structure → Stage 3: Visual → Stage 4: Final QC
+    // Stage 1: Content → Stage 1.5: LLM NLP → Stage 2: Structure → Stage 3: Visual → Stage 4: Final QC
     // ═══════════════════════════════════════════════════════
     console.log("[PIPELINE] Starting multi-stage validation pipeline...");
+
+    // Accumulative quality report (persists across ALL retries)
+    const qualityReport = {
+      stage1_slides_generated: 0,
+      stage1_5_llm_grammar_fixes: 0,
+      stage1_5_llm_truncation_fixes: 0,
+      stage1_5_llm_nonsense_dropped: 0,
+      stage1_5_llm_relevance_dropped: 0,
+      stage2_dedup_removed: 0,
+      stage2_coherence_warnings: [] as string[],
+      stage2_avg_density: 0,
+      stage3_bbox_overflows: 0,
+      stage3_bbox_fixes: 0,
+      stage3_wcag_failures: [] as string[],
+      stage4_all_warnings: [] as string[],
+      stage4_all_fixes: [] as string[],
+      stage4_retries_used: 0,
+      stage4_final_warnings: 0,
+      stage4_final_fixes: 0,
+    };
 
     // ── STAGE 1: CONTENT GENERATION ──
     let allSlides: SlideData[] = [];
     for (let i = 0; i < modules.length; i++) {
       allSlides.push(...buildModuleSlides(modules[i], i, modules.length));
     }
+    qualityReport.stage1_slides_generated = allSlides.length;
     console.log("[STAGE-1] Content generated: " + allSlides.length + " slides");
 
+    // ── STAGE 1.5: LLM-POWERED NLP VALIDATION ──
+    console.log("[STAGE-1.5] Running LLM-powered NLP validation...");
+    const llmResult = await llmValidateSlideContent(allSlides);
+    qualityReport.stage1_5_llm_grammar_fixes = llmResult.totalGrammarFixes;
+    qualityReport.stage1_5_llm_truncation_fixes = llmResult.totalTruncationFixes;
+    qualityReport.stage1_5_llm_nonsense_dropped = llmResult.totalNonsenseDropped;
+    qualityReport.stage1_5_llm_relevance_dropped = llmResult.totalRelevanceDropped;
+    console.log("[STAGE-1.5] LLM NLP complete: grammar=" + llmResult.totalGrammarFixes + " truncation=" + llmResult.totalTruncationFixes + " nonsense=" + llmResult.totalNonsenseDropped + " irrelevant=" + llmResult.totalRelevanceDropped);
+
+    // Remove slides that lost all items after LLM validation
+    allSlides = allSlides.filter(s => {
+      if (s.layout === "module_cover" || s.layout === "numbered_takeaways") return true;
+      if (s.items && s.items.length === 0 && s.layout !== "comparison_table") {
+        console.log("[STAGE-1.5] Removed empty slide after LLM: " + s.title);
+        return false;
+      }
+      return true;
+    });
+
     // ── STAGE 2: STRUCTURAL OPTIMIZATION ──
-    // 2a. Cross-slide deduplication
     const beforeDedup = allSlides.length;
     allSlides = deduplicateAcrossSlides(allSlides);
+    qualityReport.stage2_dedup_removed = beforeDedup - allSlides.length;
     if (allSlides.length < beforeDedup) {
       console.log("[STAGE-2] Dedup removed " + (beforeDedup - allSlides.length) + " duplicate slides");
     }
 
-    // 2b. Density balancing
     allSlides = balanceDensity(allSlides);
 
-    // 2c. Narrative coherence check
     const coherenceWarnings = checkNarrativeCoherence(allSlides);
+    qualityReport.stage2_coherence_warnings = coherenceWarnings;
     if (coherenceWarnings.length > 0) {
       coherenceWarnings.forEach(w => console.warn("[STAGE-2] " + w));
     }
 
-    // Recalculate density scores
     allSlides.forEach(s => { s.densityScore = calculateDensity(s); });
     const avgDensity = allSlides.reduce((sum, s) => sum + (s.densityScore || 0), 0) / Math.max(allSlides.length, 1);
+    qualityReport.stage2_avg_density = Number(avgDensity.toFixed(1));
     console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
     // ── STAGE 3: VISUAL VALIDATION (Bounding Box + WCAG) ──
@@ -2884,50 +3154,95 @@ Deno.serve(async (req: Request) => {
         }
       }
     }
-    console.log("[STAGE-3] Visual validation: " + bboxOverflows + " overflows detected, " + bboxFixes + " auto-fixes");
+    qualityReport.stage3_bbox_overflows = bboxOverflows;
+    qualityReport.stage3_bbox_fixes = bboxFixes;
 
-    // ── STAGE 4: FINAL QUALITY CHECKLIST WITH RETRY ──
+    // WCAG spot check
+    const wcagSpotChecks = [
+      { fg: C.TEXT_DARK, bg: C.BG_WHITE, label: "body-on-white" },
+      { fg: C.TEXT_LIGHT, bg: C.BG_WHITE, label: "light-on-white" },
+      { fg: C.TEXT_WHITE, bg: C.TABLE_HEADER_BG, label: "white-on-header" },
+      { fg: C.TEXT_BODY, bg: C.BG_LIGHT, label: "body-on-light" },
+      { fg: C.TEXT_DARK, bg: C.INSIGHT_BG, label: "dark-on-insight" },
+    ];
+    for (const wc of wcagSpotChecks) {
+      const result = checkWCAGContrast(wc.fg, wc.bg, TYPO.BODY);
+      if (!result.passesAA) {
+        qualityReport.stage3_wcag_failures.push(wc.label + " (ratio=" + result.ratio.toFixed(1) + ", need 4.5)");
+      }
+    }
+    if (qualityReport.stage3_wcag_failures.length > 0) {
+      console.warn("[STAGE-3] WCAG failures: " + qualityReport.stage3_wcag_failures.join(", "));
+    }
+    console.log("[STAGE-3] Visual validation: " + bboxOverflows + " overflows, " + bboxFixes + " fixes, " + qualityReport.stage3_wcag_failures.length + " WCAG failures");
+
+    // ── STAGE 4: FINAL QUALITY CHECKLIST WITH RETRY (accumulative) ──
     const MAX_QC_RETRIES = 3;
-    let totalWarnings = 0;
-    let totalFixes = 0;
 
     for (let retry = 0; retry <= MAX_QC_RETRIES; retry++) {
-      totalWarnings = 0;
-      totalFixes = 0;
+      let retryWarnings = 0;
+      let retryFixes = 0;
 
       allSlides.forEach((s, idx) => {
         const qr = runSlideQualityChecklist(s, idx + 3, allSlides);
-        totalWarnings += qr.warnings.length;
-        totalFixes += qr.fixes.length;
+        retryWarnings += qr.warnings.length;
+        retryFixes += qr.fixes.length;
+        qualityReport.stage4_all_warnings.push(...qr.warnings);
+        qualityReport.stage4_all_fixes.push(...qr.fixes);
       });
 
       allSlides = allSlides.filter(s => !s._markedForRemoval);
+      qualityReport.stage4_retries_used = retry;
+      qualityReport.stage4_final_warnings = retryWarnings;
+      qualityReport.stage4_final_fixes = retryFixes;
 
-      if (totalWarnings === 0) {
-        console.log("[STAGE-4] Quality checklist PASSED (retry=" + retry + ") | " + totalFixes + " auto-fixes | " + allSlides.length + " slides");
+      if (retryWarnings === 0) {
+        console.log("[STAGE-4] Quality checklist PASSED (retry=" + retry + ") | " + retryFixes + " fixes | " + allSlides.length + " slides");
         break;
       }
 
       if (retry < MAX_QC_RETRIES) {
-        // Retry strategy: stronger compression and integrity pass
         allSlides.forEach((s) => {
           if (!s.items) return;
           s.items = s.items.map((it) => enforceSentenceIntegrity(compressText(it, Math.max(48, Math.floor(it.length * 0.88)))));
         });
-        console.log("[STAGE-4] Retry " + (retry + 1) + "/" + MAX_QC_RETRIES + ": " + totalWarnings + " warnings, applying aggressive repairs...");
+        console.log("[STAGE-4] Retry " + (retry + 1) + "/" + MAX_QC_RETRIES + ": " + retryWarnings + " warnings, repairing...");
       } else {
-        console.warn("[STAGE-4] Quality checklist completed with " + totalWarnings + " remaining warnings after " + MAX_QC_RETRIES + " retries | " + totalFixes + " fixes | " + allSlides.length + " slides");
+        console.warn("[STAGE-4] Completed with " + retryWarnings + " remaining warnings after " + MAX_QC_RETRIES + " retries");
       }
     }
 
+    // ── QUALITY SCORE CALCULATION ──
     const qualityScore = Math.max(0, Math.min(100,
       100
-      - Math.min(40, totalWarnings * 2)
-      - Math.min(20, Math.floor(bboxOverflows * 0.5))
-      + Math.min(12, Math.floor(totalFixes * 0.25))
+      - Math.min(40, qualityReport.stage4_final_warnings * 3)
+      - Math.min(15, qualityReport.stage3_wcag_failures.length * 5)
+      - Math.min(15, Math.floor(bboxOverflows * 0.5))
+      + Math.min(10, Math.floor(qualityReport.stage4_all_fixes.length * 0.2))
     ));
 
-    console.log("[PIPELINE] Pipeline complete: " + allSlides.length + " slides, " + totalFixes + " total fixes, " + totalWarnings + " residual warnings, quality=" + qualityScore.toFixed(1));
+    console.log("[PIPELINE] Pipeline complete: " + allSlides.length + " slides, quality=" + qualityScore.toFixed(1));
+
+    // ── EXPORT GATE: Block if quality < 85 ──
+    if (qualityScore < 85) {
+      console.error("[GATE] Export BLOCKED: quality_score=" + qualityScore.toFixed(1) + " < 85");
+      return new Response(JSON.stringify({
+        error: "Exportação bloqueada: qualidade insuficiente (score=" + qualityScore.toFixed(1) + "/100).",
+        quality_report: {
+          quality_score: Number(qualityScore.toFixed(1)),
+          passed: false,
+          ...qualityReport,
+          stage4_all_warnings_count: qualityReport.stage4_all_warnings.length,
+          stage4_all_fixes_count: qualityReport.stage4_all_fixes.length,
+          stage4_sample_warnings: qualityReport.stage4_all_warnings.slice(0, 15),
+          stage4_sample_fixes: qualityReport.stage4_all_fixes.slice(0, 15),
+        },
+      }), {
+        status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log("[GATE] Export APPROVED: quality_score=" + qualityScore.toFixed(1));
 
     // Build PPTX
     const pptx = new PptxGenJS();
@@ -3021,11 +3336,13 @@ Deno.serve(async (req: Request) => {
       url: signedUrl.signedUrl,
       quality_report: {
         quality_score: Number(qualityScore.toFixed(1)),
-        residual_warnings: totalWarnings,
-        auto_fixes: totalFixes,
-        bbox_overflows_detected: bboxOverflows,
-        bbox_overflows_fixed: bboxFixes,
+        passed: true,
         total_slides: totalSlides,
+        ...qualityReport,
+        stage4_all_warnings_count: qualityReport.stage4_all_warnings.length,
+        stage4_all_fixes_count: qualityReport.stage4_all_fixes.length,
+        stage4_sample_warnings: qualityReport.stage4_all_warnings.slice(0, 15),
+        stage4_sample_fixes: qualityReport.stage4_all_fixes.slice(0, 15),
       },
     }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
