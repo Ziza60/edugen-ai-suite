@@ -113,23 +113,27 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
           setExportingPptx(true);
           try {
             const session = (await supabase.auth.getSession()).data.session;
+            if (!session?.access_token) {
+              throw new Error("Sessão expirada. Faça login novamente.");
+            }
+            const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx`;
+            console.log("[PPTX] Starting export to:", url);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 300000);
-            const res = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${session?.access_token}`,
-                  "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-                },
-                body: JSON.stringify({ course_id: courseId, ...options }),
-                signal: controller.signal,
-              }
-            );
+            const res = await fetch(url, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${session.access_token}`,
+                "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              },
+              body: JSON.stringify({ course_id: courseId, ...options }),
+              signal: controller.signal,
+            });
             clearTimeout(timeoutId);
+            console.log("[PPTX] Response status:", res.status);
             const data = await res.json();
+            console.log("[PPTX] Response data keys:", Object.keys(data));
             if (!res.ok) throw new Error(data.error || "Erro na exportação");
 
             if (data?.quality_report && !data?.url) {
