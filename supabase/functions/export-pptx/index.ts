@@ -298,8 +298,10 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
     }
   }
 
-  // Clean trailing artifacts
+  // Clean trailing artifacts AND trailing prepositions/articles
   result = result.replace(/[\s,;:\-–]+$/, "").trim();
+  const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as)$/i;
+  result = result.replace(TRAILING_PREPS, "").trim();
 
   if (addEllipsis && result.length < t.length && !/[.!?]$/.test(result)) {
     result += "...";
@@ -313,7 +315,21 @@ function smartTitle(text: string): string {
 }
 
 function smartSubtitle(text: string): string {
-  return smartTruncate(text, 70); // Increased from 60
+  if (!text) return "";
+  const t = text.trim();
+  // Allow up to 200 chars for cover descriptions (2-3 lines at 18pt)
+  if (t.length <= 200) return t;
+  // Find sentence boundary within 200 chars
+  const sub = t.substring(0, 200);
+  const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
+  if (sentenceEnd > 80) return sub.substring(0, sentenceEnd + 1).trim();
+  // Fall back to word boundary, but NEVER cut at prepositions/articles
+  const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as)$/i;
+  let result = sub.substring(0, sub.lastIndexOf(" ")).trim();
+  result = result.replace(TRAILING_PREPS, "").trim();
+  result = result.replace(/[,;:\-–]+$/, "").trim();
+  if (!/[.!?]$/.test(result)) result += ".";
+  return result;
 }
 
 function smartBullet(text: string): string {
@@ -1446,9 +1462,12 @@ function renderCapa(pptx: any, data: SlideData) {
 
   if (data.description) {
     const desc = smartSubtitle(sanitize(data.description));
+    // Dynamic height: 1 line ≈ 0.35", allow up to 3 lines
+    const estimatedLines = Math.ceil(desc.length / 65);
+    const descH = Math.min(estimatedLines * 0.35, 1.2);
     addTextSafe(slide, desc, {
-      x: 2, y: sepY + 0.30, w: SLIDE_W - 4, h: 0.55,
-      fontSize: TYPO.SUBTITLE, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+      x: 1.5, y: sepY + 0.30, w: SLIDE_W - 3, h: descH,
+      fontSize: TYPO.BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
     });
   }
 
