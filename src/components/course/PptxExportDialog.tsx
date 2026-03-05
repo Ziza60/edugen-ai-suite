@@ -43,8 +43,8 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
   const [theme, setTheme] = useState<PptxExportOptions["theme"]>("light");
 
   const handleExport = () => {
-    onExport({ palette, density, includeImages, theme });
     setOpen(false);
+    onExport({ palette, density, includeImages, theme });
   };
 
   return (
