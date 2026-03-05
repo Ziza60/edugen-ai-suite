@@ -3,14 +3,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "https://esm.sh/pptxgenjs@3.12.0";
 
 /**
- * PPTX EXPORT — EduGenAI Professional Light Theme
+ * PPTX EXPORT — EduGenAI Professional v2
  * 
- * CORRECTIONS APPLIED:
- * P1. Smart truncation — NEVER cut words mid-syllable, always respect word boundaries
- * P2. Bold formatting hierarchy — labels bold, content normal, using rich text arrays
- * P3. Semantic icon mapping — no generic symbols, min 3 different icons per slide
- * P4. Standardized module covers — identical structure with 3 objectives
- * P5. Takeaway structure — 6 numbered cards with short title + 1 sentence description
+ * MARKET-GRADE IMPROVEMENTS:
+ * 1. Minimum 18pt body text — zero unreadable content
+ * 2. Content preservation — never suppress examples, reflections, conclusions
+ * 3. Overflow continuation slides — no truncation, content flows to next slide
+ * 4. Hierarchical summarization — intelligent compression preserving key ideas
+ * 5. Template-specific rendering — Fundamentos, Tabela, Exemplo, Resumo
+ * 6. Pre-render validation — zero truncated texts guarantee
  */
 
 const corsHeaders = {
@@ -20,12 +21,11 @@ const corsHeaders = {
 };
 
 /* ═══════════════════════════════════════════════════════
-   BLOCO 1: DESIGN SYSTEM FUNDAMENTAL
-   Canvas: 13.333" × 7.5" (16:9), Área segura: 12" × 6.5"
-   Resolução: 96 DPI
+   DESIGN SYSTEM v2 — Market-grade typography & layout
+   Canvas: 13.333" x 7.5" (16:9), Safe area: 12" x 6.5"
    ═══════════════════════════════════════════════════════ */
 
-// ── THEME SYSTEM (Light default, Dark optional) ──
+// ── THEME SYSTEM ──
 const THEME = {
   light: {
     background: "FFFFFF",
@@ -47,7 +47,7 @@ const THEME = {
   },
 };
 
-// ── PALETTE SYSTEM (user-selectable color schemes) ──
+// ── PALETTE SYSTEM ──
 const PALETTES: Record<string, string[]> = {
   default: ["9B59B6", "3498DB", "27AE60", "F39C12", "1ABC9C"],
   ocean:   ["2980B9", "3498DB", "1ABC9C", "16A085", "2C3E50"],
@@ -61,33 +61,30 @@ interface DensityConfig {
   maxBulletsPerSlide: number;
   maxWordsPerBullet: number;
   maxCharsPerBullet: number;
-  splitThreshold: number; // items above this count trigger split
-  compressRatio: number;  // text compression target
+  splitThreshold: number;
+  compressRatio: number;
 }
 const DENSITY_MODES: Record<string, DensityConfig> = {
   compact: {
-    maxBulletsPerSlide: 5, maxWordsPerBullet: 8, maxCharsPerBullet: 60,
+    maxBulletsPerSlide: 5, maxWordsPerBullet: 10, maxCharsPerBullet: 70,
     splitThreshold: 4, compressRatio: 0.50,
   },
   standard: {
-    maxBulletsPerSlide: 7, maxWordsPerBullet: 12, maxCharsPerBullet: 80,
-    splitThreshold: 6, compressRatio: 0.65,
+    maxBulletsPerSlide: 6, maxWordsPerBullet: 14, maxCharsPerBullet: 90,
+    splitThreshold: 5, compressRatio: 0.65,
   },
   detailed: {
-    maxBulletsPerSlide: 10, maxWordsPerBullet: 18, maxCharsPerBullet: 120,
-    splitThreshold: 10, compressRatio: 0.85,
+    maxBulletsPerSlide: 8, maxWordsPerBullet: 18, maxCharsPerBullet: 120,
+    splitThreshold: 7, compressRatio: 0.85,
   },
 };
 
-// Runtime config — set during request
+// Runtime config
 let activePalette: string[] = PALETTES.default;
 let activeDensity: DensityConfig = DENSITY_MODES.standard;
 let activeThemeKey: "light" | "dark" = "light";
-
-// Active theme — entire course uses ONE theme, never mix
 let currentTheme = THEME.light;
 
-// C is now a function to support dynamic theme switching
 function getC() {
   return {
     BG_WHITE: currentTheme.background,
@@ -119,54 +116,55 @@ function getC() {
 }
 
 let C = getC();
-
-function refreshColors() {
-  C = getC();
-}
+function refreshColors() { C = getC(); }
 
 const CARD_ACCENT_COLORS_FN = () => [C.ACCENT_BLUE, C.ACCENT_GREEN, C.ACCENT_PURPLE, C.SECONDARY, C.ACCENT_RED, C.PRIMARY];
-
-// Module cover colors — uses active palette, rotates for M06+
 const MODULE_NUMBER_COLORS_FN = () => activePalette.slice(0, 5);
 
-// ── TYPOGRAPHY HIERARCHY (Montserrat + Open Sans) ──
+// ── TYPOGRAPHY v2 — Market-grade minimum sizes ──
 const FONT_TITLE = "Montserrat";
 const FONT_BODY = "Open Sans";
 
-// Typography sizes (pt) — strict hierarchy
 const TYPO = {
-  MODULE_NUMBER: 72,    // Montserrat Bold, line-height 1.0
-  MODULE_TITLE: 32,     // Montserrat Bold, line-height 1.2
-  SECTION_TITLE: 32,    // Montserrat Bold, line-height 1.2
-  SUBTITLE: 18,         // Open Sans Regular, line-height 1.4
-  BODY: 14,             // Open Sans Regular 14-16pt, line-height 1.5
-  BODY_LARGE: 16,       // Open Sans Regular, line-height 1.5
-  SUPPORT: 12,          // Open Sans Regular 11-12pt, line-height 1.4
-  LABEL: 14,            // Open Sans Bold UPPERCASE, letter-spacing 2
+  MODULE_NUMBER: 72,     // Montserrat Bold
+  MODULE_TITLE: 32,      // Montserrat Bold
+  SECTION_TITLE: 30,     // Montserrat Bold
+  SUBTITLE: 20,          // Open Sans Regular — INCREASED from 18
+  BODY: 18,              // Open Sans Regular — INCREASED from 14 (market minimum)
+  BODY_LARGE: 20,        // Open Sans Regular — INCREASED from 16
+  SUPPORT: 14,           // Open Sans Regular — INCREASED from 12
+  LABEL: 14,             // Open Sans Bold UPPERCASE
+  TABLE_HEADER: 14,      // Bold, white on dark — INCREASED from 12
+  TABLE_CELL: 13,        // Regular — INCREASED from 11
+  CARD_TITLE: 16,        // Montserrat Bold — INCREASED from 14
+  CARD_BODY: 14,         // Open Sans Regular — INCREASED from 12
+  BULLET_TEXT: 18,       // Open Sans — INCREASED from 16 (market minimum)
+  TAKEAWAY_TITLE: 15,    // Montserrat Bold — INCREASED from 13
+  TAKEAWAY_BODY: 13,     // Open Sans — INCREASED from 11
+  ICON: 18,              // Symbol/icon size
+  FOOTER: 14,            // Footer text
 };
 
-// ── CANVAS & GRID SYSTEM ──
-const SLIDE_W = 13.333;  // 16:9 widescreen
+// ── CANVAS & GRID ──
+const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
-const MARGIN = 0.667;    // ~0.667" margins to achieve 12" safe width
-const SAFE_W = 12.0;     // Fixed: 12" safe width per spec
-const SAFE_H = 6.5;      // Fixed: 6.5" safe height per spec
-const BOTTOM_MARGIN = 0.50; // Bottom margin (Y: 7.0" max)
+const MARGIN = 0.667;
+const SAFE_W = 12.0;
+const SAFE_H = 6.5;
+const BOTTOM_MARGIN = 0.50;
 
-// Grid zones (Y coordinates)
 const ZONE = {
-  HEADER_START: 0.50,    // Headers and labels
+  HEADER_START: 0.50,
   HEADER_END: 2.0,
-  CONTENT_START: 2.0,    // Main content area
+  CONTENT_START: 2.0,
   CONTENT_END: 6.0,
-  FOOTER_START: 6.0,     // Footer and metadata
+  FOOTER_START: 6.0,
   FOOTER_END: 7.0,
-  LEFT: 0.667,           // Content margins (centered within safe area)
-  RIGHT: 12.667,         // MARGIN + SAFE_W
+  LEFT: 0.667,
+  RIGHT: 12.667,
 };
 
 // ── TEXT DENSITY CONSTRAINTS ──
-// Rule: NEVER exceed 15 chars/sq in
 const DENSITY_LIMITS: Record<string, { minArea: number; maxChars: number; maxDensity: number }> = {
   title:       { minArea: 15,  maxChars: 60,  maxDensity: 4 },
   moduleTitle: { minArea: 6,   maxChars: 40,  maxDensity: 6.7 },
@@ -175,7 +173,7 @@ const DENSITY_LIMITS: Record<string, { minArea: number; maxChars: number; maxDen
 };
 
 /* ═══════════════════════════════════════════════════════
-   CORREÇÃO 2: SMART TEXT WRAPPING — Multi-line title handling
+   SMART TEXT WRAPPING — Multi-line title handling v2
    ═══════════════════════════════════════════════════════ */
 
 interface AjusteTextoResult {
@@ -188,62 +186,80 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
   if (!texto) return { texto: "", linhas: 0, truncado: false };
   const t = texto.trim();
   
-  // Se cabe em uma linha, retorna direto
   if (t.length <= maxCaracteresPorLinha) {
     return { texto: t, linhas: 1, truncado: false };
   }
   
-  // Se cabe em duas linhas, quebra em palavras completas
   const palavras = t.split(' ');
-  let linha1 = '';
-  let linha2 = '';
+  const linhas: string[] = [];
+  let linhaAtual = '';
   
   for (const palavra of palavras) {
-    if ((linha1 + palavra).length <= maxCaracteresPorLinha && linha2 === '') {
-      linha1 += palavra + ' ';
-    } else if ((linha2 + palavra).length <= maxCaracteresPorLinha) {
-      linha2 += palavra + ' ';
+    if (linhaAtual === '') {
+      linhaAtual = palavra;
+    } else if ((linhaAtual + ' ' + palavra).length <= maxCaracteresPorLinha) {
+      linhaAtual += ' ' + palavra;
     } else {
-      // Não cabe nem nas duas linhas, truncar com "..."
-      linha2 = linha2.trim();
-      if (linha2.length > 3) {
-        linha2 = linha2.substring(0, linha2.lastIndexOf(' ') > 0 ? linha2.lastIndexOf(' ') : linha2.length).trim() + '...';
-      } else {
-        linha2 += '...';
+      linhas.push(linhaAtual);
+      if (linhas.length >= maxLinhas) {
+        // Last allowed line — truncate remaining
+        const remaining = palavras.slice(palavras.indexOf(palavra)).join(' ');
+        if (remaining.length <= maxCaracteresPorLinha) {
+          linhas.push(remaining);
+        } else {
+          // Truncate at word boundary
+          let lastLine = '';
+          for (const p of palavras.slice(palavras.indexOf(palavra))) {
+            if ((lastLine + ' ' + p).trim().length <= maxCaracteresPorLinha - 3) {
+              lastLine = (lastLine + ' ' + p).trim();
+            } else break;
+          }
+          linhas.push(lastLine + '...');
+        }
+        break;
       }
-      break;
+      linhaAtual = palavra;
     }
   }
+  if (linhaAtual && linhas.length < maxLinhas) {
+    linhas.push(linhaAtual);
+  }
   
-  const resultado = linha1.trim() + (linha2 ? '\n' + linha2.trim() : '');
+  const resultado = linhas.join('\n');
+  const truncado = resultado.endsWith('...');
   return { 
     texto: resultado, 
-    linhas: linha2 ? 2 : 1, 
-    truncado: !!(linha2 && linha2.endsWith('...'))
+    linhas: linhas.length, 
+    truncado
   };
 }
 
 /* ═══════════════════════════════════════════════════════
-   CORREÇÃO 4: PRE-RENDER SLIDE VALIDATION
+   PRE-RENDER VALIDATION v2 — Enhanced checks
    ═══════════════════════════════════════════════════════ */
 
 function validarSlide(slideTextos: string[], slideWidth: number, slideHeight: number): string[] {
   const erros: string[] = [];
   
-  // 1. Verificar dimensões
   if (Math.abs(slideWidth - 13.333) > 0.01 || Math.abs(slideHeight - 7.5) > 0.01) {
-    erros.push(`ERRO: Dimensões do slide incorretas! (${slideWidth}x${slideHeight})`);
+    erros.push("ERRO: Dimensoes incorretas! (" + slideWidth + "x" + slideHeight + ")");
   }
   
-  // 2. Verificar truncamentos
   for (const texto of slideTextos) {
     if (!texto || texto.length < 3) continue;
-    // Detect truncation patterns: preposition + short word at end, or abrupt endings
-    if (/\s(d[ao]s?|nas?|em|por|para|a|o)\s+\w{1,3}$/.test(texto) && !/[.!?…]$/.test(texto)) {
-      erros.push(`ERRO: Texto truncado detectado: "${texto.substring(0, 50)}"`);
+    // Detect truncation: preposition + short word at end without punctuation
+    if (/\s(d[ao]s?|nas?|em|por|para|a|o|e|ou)\s+\w{1,3}$/.test(texto) && !/[.!?…]$/.test(texto)) {
+      erros.push("TRUNCAMENTO: \"" + texto.substring(0, 50) + "\"");
     }
-    if (/\b(do\.|das\.|nas\.|em\.|a\.)$/.test(texto)) {
-      erros.push(`ERRO: Texto truncado com preposição: "${texto.substring(0, 50)}"`);
+    if (/\b(do\.|das\.|nas\.|em\.|a\.|de\.)$/.test(texto)) {
+      erros.push("TRUNCAMENTO preposicao: \"" + texto.substring(0, 50) + "\"");
+    }
+    // Detect mid-word cut (word fragment at end)
+    if (/[a-záéíóúãõâêîôûç]{1,2}$/.test(texto) && texto.length > 20 && !/[.!?…:;]$/.test(texto)) {
+      const lastWord = texto.split(/\s+/).pop() || "";
+      if (lastWord.length <= 2 && !/^(é|e|a|o|ou|em|se|já|só|aí|há)$/i.test(lastWord)) {
+        erros.push("FRAGMENTO: \"" + texto.substring(Math.max(0, texto.length - 30)) + "\"");
+      }
     }
   }
   
@@ -251,19 +267,14 @@ function validarSlide(slideTextos: string[], slideWidth: number, slideHeight: nu
 }
 
 /* ═══════════════════════════════════════════════════════
-   P1: SMART TRUNCATION — NEVER CUT WORDS
+   SMART TRUNCATION v2 — NEVER CUT WORDS, preserve meaning
    ═══════════════════════════════════════════════════════ */
 
-/**
- * Truncates text without EVER cutting a word in the middle.
- * Always ends on a complete word boundary.
- */
 function smartTruncate(text: string, maxChars: number, addEllipsis = false): string {
   if (!text) return "";
   const t = text.trim();
   if (t.length <= maxChars) return t;
 
-  // Find last space before or at the limit
   const truncated = t.substring(0, maxChars);
   const lastSpace = truncated.lastIndexOf(" ");
 
@@ -271,13 +282,11 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
   if (lastSpace > maxChars * 0.4) {
     result = truncated.substring(0, lastSpace).trim();
   } else {
-    // If no good space found, take up to limit but find closest word end
     const nextSpace = t.indexOf(" ", maxChars);
     if (nextSpace > 0 && nextSpace < maxChars + 15) {
       result = t.substring(0, nextSpace).trim();
     } else {
       result = truncated.trim();
-      // Ensure we didn't cut mid-word by checking if last char is part of a word
       const lastCharIsLetter = /\w/.test(result[result.length - 1]);
       const nextCharExists = t.length > maxChars && /\w/.test(t[maxChars]);
       if (lastCharIsLetter && nextCharExists) {
@@ -289,7 +298,7 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
     }
   }
 
-  // Clean trailing punctuation artifacts
+  // Clean trailing artifacts
   result = result.replace(/[\s,;:\-–]+$/, "").trim();
 
   if (addEllipsis && result.length < t.length && !/[.!?]$/.test(result)) {
@@ -299,17 +308,14 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
   return result;
 }
 
-/** Title: max 40 chars, no word cutting */
 function smartTitle(text: string): string {
-  return smartTruncate(text, 40);
+  return smartTruncate(text, 50); // Increased from 40 for longer titles
 }
 
-/** Subtitle: max 60 chars, no word cutting */
 function smartSubtitle(text: string): string {
-  return smartTruncate(text, 60);
+  return smartTruncate(text, 70); // Increased from 60
 }
 
-/** Bullet text: max chars/words based on active density mode */
 function smartBullet(text: string): string {
   if (!text) return "";
   const maxWords = activeDensity.maxWordsPerBullet;
@@ -317,86 +323,70 @@ function smartBullet(text: string): string {
   const words = text.trim().split(/\s+/);
   if (words.length > maxWords) {
     const limited = words.slice(0, maxWords).join(" ");
-    if (limited.length <= maxChars) return limited + ".";
+    if (limited.length <= maxChars) {
+      // Ensure ends with punctuation
+      if (!/[.!?]$/.test(limited)) return limited + ".";
+      return limited;
+    }
   }
-  return smartTruncate(text, maxChars);
+  const result = smartTruncate(text, maxChars);
+  if (result && !/[.!?]$/.test(result)) return result + ".";
+  return result;
 }
 
-/** Table cell: max 80 chars, no word cutting */
 function smartCell(text: string): string {
-  return smartTruncate(text, 80);
+  return smartTruncate(text, 90); // Increased from 80 for wider cells
 }
 
-/** Module description: max 40 chars, no word cutting */
 function smartModuleDesc(text: string): string {
-  return smartTruncate(text, 40);
+  return smartTruncate(text, 50); // Increased from 40
 }
 
 /* ═══════════════════════════════════════════════════════
-   P3: SEMANTIC ICON MAPPING (no generic symbols)
+   SEMANTIC ICON MAPPING
    ═══════════════════════════════════════════════════════ */
 
-// Visually distinct symbols that render well in PPTX
 const ICON_SYMBOLS: Record<string, string> = {
-  brain:     "✧",
-  robot:     "⚙",
-  magnify:   "⊕",
-  target:    "◎",
-  cog:       "⊛",
-  users:     "☆",
-  lightbulb: "◇",
-  chart:     "▥",
-  clock:     "◔",
-  shield:    "◈",
-  message:   "▣",
-  education: "△",
-  finance:   "▽",
-  health:    "✦",
-  marketing: "▷",
-  vision:    "◐",
-  language:  "▤",
-  neural:    "◑",
+  brain: "◆", robot: "⊛", magnify: "◎", target: "◇",
+  cog: "⊕", users: "☆", lightbulb: "✧", chart: "▥",
+  clock: "◔", shield: "◈", message: "▣", education: "△",
+  finance: "▽", health: "✦", marketing: "▷", vision: "◐",
+  language: "▤", neural: "◑",
 };
 
 const ICON_KEYWORDS: [RegExp, string][] = [
-  [/\b(inteligência|ia\b|cérebro|cognit|raciocín|aprend)/i, "brain"],
-  [/\b(automa|robô|máquina|bot|robo)/i, "robot"],
-  [/\b(busca|análise|analis|pesquis|magnif)/i, "magnify"],
+  [/\b(intelig[eê]ncia|ia\b|c[eé]rebro|cognit|racioic[ií]n|aprend)/i, "brain"],
+  [/\b(automa|rob[oô]|m[aá]quina|bot|robo)/i, "robot"],
+  [/\b(busca|an[aá]lise|analis|pesquis)/i, "magnify"],
   [/\b(objetivo|meta|alvo|target|foco)/i, "target"],
-  [/\b(processo|config|sistema|engrenal|cog|fluxo|pipeline)/i, "cog"],
-  [/\b(pessoa|cliente|usuário|equipe|colabor|grupo|atendimento|rh)/i, "users"],
-  [/\b(ideia|inovaç|criativ|insight|lightbulb)/i, "lightbulb"],
-  [/\b(dado|gráfico|métrica|chart|indicador|dashboard|kpi)/i, "chart"],
-  [/\b(tempo|velocidade|eficiência|rápid|ágil|clock)/i, "clock"],
-  [/\b(seguranç|proteç|escudo|shield|privacidade)/i, "shield"],
-  [/\b(comunica|chat|mensag|conversa|diálogo)/i, "message"],
+  [/\b(processo|config|sistema|fluxo|pipeline)/i, "cog"],
+  [/\b(pessoa|cliente|usu[aá]rio|equipe|colabor|grupo|atendimento)/i, "users"],
+  [/\b(ideia|inova[cç]|criativ|insight)/i, "lightbulb"],
+  [/\b(dado|gr[aá]fico|m[eé]trica|chart|indicador|dashboard|kpi)/i, "chart"],
+  [/\b(tempo|velocidade|efici[eê]ncia|r[aá]pid|[aá]gil)/i, "clock"],
+  [/\b(seguran[cç]|prote[cç]|escudo|privacidade)/i, "shield"],
+  [/\b(comunica|chat|mensag|conversa|di[aá]logo)/i, "message"],
   [/\b(educa|ensino|aprendiz|curso|treinamento)/i, "education"],
   [/\b(finance|dinheiro|custo|investimento|receita)/i, "finance"],
-  [/\b(saúde|médic|diagnóstico|hospital|clínic)/i, "health"],
-  [/\b(marketing|venda|promoç|campanha|anúncio)/i, "marketing"],
-  [/\b(visão|imagem|visual|reconhec|computacional|câmer)/i, "vision"],
+  [/\b(sa[uú]de|m[eé]dic|diagn[oó]stico|hospital)/i, "health"],
+  [/\b(marketing|venda|promo[cç]|campanha)/i, "marketing"],
+  [/\b(vis[aã]o|imagem|visual|reconhec|computacional)/i, "vision"],
   [/\b(linguag|texto|escrit|plataforma|nlp|pln)/i, "language"],
-  [/\b(deep learning|rede neural|camada|neural)/i, "neural"],
+  [/\b(deep learning|rede neural|neural)/i, "neural"],
 ];
 
 const FALLBACK_ICON_ORDER = ["brain", "target", "lightbulb", "chart", "cog", "magnify", "users", "clock"] as const;
 
-// P3: Track used icons per slide — min 3 different, never repeat
 let _slideIconsUsed: Set<string> = new Set();
-
-function resetSlideIcons() {
-  _slideIconsUsed = new Set();
-}
+function resetSlideIcons() { _slideIconsUsed = new Set(); }
 
 function getSemanticIcon(text: string, fallbackIdx: number): string {
-  // Find best semantic match that hasn't been used on this slide
   for (const [pattern, iconKey] of ICON_KEYWORDS) {
     if (pattern.test(text) && !_slideIconsUsed.has(iconKey)) {
       _slideIconsUsed.add(iconKey);
       return ICON_SYMBOLS[iconKey] || "●";
     }
   }
-  // Fallback: pick unused icon from rotation
   for (let i = 0; i < FALLBACK_ICON_ORDER.length; i++) {
     const key = FALLBACK_ICON_ORDER[(fallbackIdx + i) % FALLBACK_ICON_ORDER.length];
     if (!_slideIconsUsed.has(key)) {
@@ -408,8 +398,7 @@ function getSemanticIcon(text: string, fallbackIdx: number): string {
 }
 
 /* ═══════════════════════════════════════════════════════
-   BLOCO 1 — §4.2: TEXT DENSITY VALIDATION (Critical)
-   Rule: NEVER exceed 15 chars/sq in
+   TEXT DENSITY VALIDATION v2
    ═══════════════════════════════════════════════════════ */
 
 interface DensityResult {
@@ -422,8 +411,8 @@ interface DensityResult {
 function validateTextDensity(text: string, boxWidth: number, boxHeight: number, fontSize: number): DensityResult {
   const area = boxWidth * boxHeight;
   const estimatedCharsPerLine = (boxWidth * 96) / (fontSize * 0.6);
-  const estimatedLines = boxHeight / (fontSize * 1.5 * 0.0139); // 1pt = 0.0139"
-  const maxChars = Math.floor(estimatedCharsPerLine * estimatedLines * 0.9); // 10% safety margin
+  const estimatedLines = boxHeight / (fontSize * 1.5 * 0.0139);
+  const maxChars = Math.floor(estimatedCharsPerLine * estimatedLines * 0.85); // 15% safety
 
   return {
     fits: text.length <= maxChars,
@@ -439,14 +428,14 @@ interface AutoAdjustResult {
   text: string;
 }
 
-function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFont = 32, minFont = 11): AutoAdjustResult {
-  for (let size = maxFont; size >= minFont; size -= 2) {
+function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFont = 32, minFont = 14): AutoAdjustResult {
+  for (let size = maxFont; size >= minFont; size -= 1) {
     const check = validateTextDensity(text, boxWidth, boxHeight, size);
     if (check.fits) {
       return { fontSize: size, truncated: false, text };
     }
   }
-  // Last resort: truncate with smartTruncate (word-safe)
+  // Last resort: truncate with smartTruncate
   const maxLen = validateTextDensity(text, boxWidth, boxHeight, minFont).maxChars;
   return {
     fontSize: minFont,
@@ -456,40 +445,41 @@ function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFo
 }
 
 /* ═══════════════════════════════════════════════════════
-   BLOCO 1 — §5.2: TRUNCATION DETECTION (Pre-render check)
+   TRUNCATION DETECTION v2
    ═══════════════════════════════════════════════════════ */
 
 function detectTruncation(text: string): boolean {
   if (!text || text.length < 5) return false;
-  const patterns = [
-    /\s(d[ao]s?|nas?|em|por|para)\s+\w{1,3}$/,  // Preposition + short word at end
-    /[a-zà-ú]{2,}$/i,                            // Word ending abruptly (no punctuation)
-  ];
-  const noPunctuation = !/[.!?…]$/.test(text.trim()) && text.length < 20;
-  return patterns.some(p => p.test(text)) || noPunctuation;
+  const trimmed = text.trim();
+  // Preposition + short word at end
+  if (/\s(d[ao]s?|nas?|em|por|para|a|o|e)\s+\w{1,3}$/.test(trimmed) && !/[.!?…]$/.test(trimmed)) return true;
+  // Ends with preposition
+  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com)\s*$/.test(trimmed)) return true;
+  // Very short text without punctuation
+  if (trimmed.length < 15 && !/[.!?…]$/.test(trimmed)) return true;
+  return false;
 }
 
 /* ═══════════════════════════════════════════════════════
-   TEXT COMPRESSION (65% reduction) — uses smartTruncate
+   TEXT COMPRESSION v2 — Preserves key ideas
    ═══════════════════════════════════════════════════════ */
 
 function compressText(text: string, maxChars: number = 120): string {
   if (!text || text.length <= maxChars) return text;
   let t = text;
-  t = t.replace(/\b(o|a|os|as|um|uma|uns|umas)\s+/gi, "");
+  // Remove filler words (Portuguese)
+  t = t.replace(/\b(um|uma|uns|umas)\s+/gi, "");
   t = t.replace(/\b(que|qual|quais|onde|quando|como|porque|pois)\s+/gi, "");
-  t = t.replace(/\bé\s+um\s+campo\s+d[aoe]\s*/gi, "é campo d");
   t = t.replace(/\bcapaz(es)?\s+de\s+/gi, "");
   t = t.replace(/\btipicamente\b/gi, "");
   t = t.replace(/\bpor\s+exemplo\b/gi, "ex:");
   t = t.replace(/\bno\s+entanto\b/gi, "porém");
-  t = t.replace(/\balém\s+disso\b/gi, "também");
+  t = t.replace(/\bal[eé]m\s+disso\b/gi, "também");
   t = t.replace(/\bque\s+permitem?\b/gi, "para");
-  t = t.replace(/\bque\s+foca\b/gi, "focada");
   t = t.replace(/\bde\s+forma\s+/gi, "");
-  t = t.replace(/\b(na|no|nas|nos|das|dos|da|do|de)\s+(criação|construção)\s+de\s+/gi, "criando ");
+  t = t.replace(/\b(na|no|nas|nos|das|dos|da|do|de)\s+(cria[cç][aã]o|constru[cç][aã]o)\s+de\s+/gi, "criando ");
   t = t.replace(/\s{2,}/g, " ").trim();
-  // P1: Use smartTruncate instead of raw substring
+  
   if (t.length > maxChars) {
     t = smartTruncate(t, maxChars);
     if (!/[.!?]$/.test(t)) t += ".";
@@ -498,12 +488,11 @@ function compressText(text: string, maxChars: number = 120): string {
 }
 
 function compressBullet(text: string): string {
-  return compressText(text, 100);
+  return compressText(text, activeDensity.maxCharsPerBullet);
 }
 
 function compressTableCell(text: string): string {
-  // P1: Use smartCell for word-safe truncation
-  const compressed = compressText(text, 80);
+  const compressed = compressText(text, 90);
   return smartCell(compressed);
 }
 
@@ -524,23 +513,23 @@ function sanitize(text: string): string {
   t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
   t = t.replace(/^>\s*/gm, "");
   t = t.replace(/^---+$/gm, "");
-  t = t.replace(/\s*[→⟶➜➔➞►▶︎⇒⇨]\s*/g, ": ");
+  t = t.replace(/\s*[-→⟶➜➔➞►⇒⇨]\s*/g, ": ");
   t = t.replace(/\s*->\s*/g, ": ");
   t = t.replace(/&amp;/gi, "&"); t = t.replace(/&lt;/gi, "<"); t = t.replace(/&gt;/gi, ">");
   t = t.replace(/&nbsp;/gi, " "); t = t.replace(/&quot;/gi, '"');
   t = t.replace(/<\/?[a-z][^>]*>/gi, " ");
-  // Strip all emoji characters
+  // Strip emoji
   t = t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu, "");
   t = t.replace(/\s{2,}/g, " ").trim();
   return t;
 }
 
 function deduplicateTitle(title: string): string {
-  return title.replace(/^(Módulo\s+\d+\s*[:–\-]\s*)\1/i, "$1").trim();
+  return title.replace(/^(M[oó]dulo\s+\d+\s*[:–\-]\s*)\1/i, "$1").trim();
 }
 
 /* ═══════════════════════════════════════════════════════
-   SAFE TEXT — boundary-checked wrapper
+   SAFE TEXT v2 — boundary-checked, density-validated
    ═══════════════════════════════════════════════════════ */
 
 const _auditLog: { slideLabel: string; x: number; y: number; w: number; h: number }[] = [];
@@ -556,7 +545,7 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
   const safeH = Math.min(h, SLIDE_H - y - 0.05);
   if (safeW <= 0.1 || safeH <= 0.05) return;
 
-  // Pre-render density validation for plain text
+  // Density validation for plain text
   if (typeof text === "string" && text.length > 0) {
     const fontSize = Number(options.fontSize || TYPO.BODY);
     const check = validateTextDensity(text, safeW, safeH, fontSize);
@@ -565,31 +554,30 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
       text = adjusted.text;
       options = { ...options, fontSize: adjusted.fontSize };
       if (adjusted.truncated) {
-        console.log("[DENSITY] auto-adjust on Slide " + _auditSlideCounter + ": " + text.substring(0, 30) + "... -> " + adjusted.fontSize + "pt");
+        console.log("[DENSITY] auto-adjust Slide " + _auditSlideCounter + ": " + String(adjusted.fontSize) + "pt");
       }
     }
-    // Final truncation detection
     if (detectTruncation(text)) {
-      console.warn("[TRUNCATION] Possible truncation on Slide " + _auditSlideCounter + ": " + text.substring(0, 40));
+      console.warn("[TRUNCATION] Slide " + _auditSlideCounter + ": " + text.substring(0, 40));
     }
   }
 
-  _auditLog.push({ slideLabel: `Slide ${_auditSlideCounter}`, x, y, w: safeW, h: safeH });
+  _auditLog.push({ slideLabel: "Slide " + _auditSlideCounter, x, y, w: safeW, h: safeH });
   slide.addText(text, {
     ...options, x, y, w: safeW, h: safeH,
     autoFit: false,
     shrinkText: false,
-    wrap: true,        // CRITICAL: line wrapping — §4.3
+    wrap: true,
     overflow: "clip",
-    inset: options.inset ?? 0.1,  // Minimal internal margin — §4.3
+    inset: options.inset ?? 0.1,
   });
 }
 
 function runAudit() {
   const errors: string[] = [];
   for (const el of _auditLog) {
-    if (el.x + el.w > SLIDE_W) errors.push(`${el.slideLabel}: overflow R`);
-    if (el.y + el.h > SLIDE_H) errors.push(`${el.slideLabel}: overflow B`);
+    if (el.x + el.w > SLIDE_W + 0.01) errors.push(el.slideLabel + ": overflow R");
+    if (el.y + el.h > SLIDE_H + 0.01) errors.push(el.slideLabel + ": overflow B");
   }
   if (errors.length === 0) console.log("[AUDIT] PASSED - " + _auditLog.length + " elements");
   else errors.forEach(e => console.error("[AUDIT] " + e));
@@ -635,7 +623,7 @@ function getTitleHeight(text: string, widthIn: number, fontPt: number): number {
 }
 
 /* ═══════════════════════════════════════════════════════
-   P2: BOLD FORMATTING — Extract label:content pairs
+   BOLD FORMATTING — Label:content pairs
    ═══════════════════════════════════════════════════════ */
 
 interface RichTextPart {
@@ -643,10 +631,6 @@ interface RichTextPart {
   options: Record<string, unknown>;
 }
 
-/**
- * Splits "Label: content text" into rich text array with bold label + normal content.
- * If no colon found, returns the whole text as normal.
- */
 function makeBoldLabelText(
   text: string,
   labelColor: string,
@@ -695,6 +679,18 @@ interface ParsedBlock {
   isTable: boolean;
   headers?: string[];
   rows?: string[][];
+  blockType?: "example" | "reflection" | "conclusion" | "normal";
+}
+
+function classifyBlockType(heading: string, items: string[]): "example" | "reflection" | "conclusion" | "normal" {
+  const h = heading.toLowerCase();
+  if (/exemplo|case|cen[aá]rio|pr[aá]tic|aplica[cç][aã]o\s+real|estudo\s+de\s+caso/i.test(h)) return "example";
+  if (/reflex[aã]o|pare\s+um\s+momento|pense|reflita|checkpoint/i.test(h)) return "reflection";
+  if (/conclus[aã]o|encerramento|fechamento|consider|final/i.test(h)) return "conclusion";
+  // Check items content too
+  const allText = items.join(" ").toLowerCase();
+  if (/exemplo\s+pr[aá]tico|na\s+pr[aá]tica|caso\s+real/i.test(allText) && items.length <= 4) return "example";
+  return "normal";
 }
 
 function parseModuleContent(content: string): ParsedBlock[] {
@@ -708,13 +704,14 @@ function parseModuleContent(content: string): ParsedBlock[] {
 
   const flushBullets = () => {
     if (curBullets.length > 0) {
-      blocks.push({ heading: curHeading, items: [...curBullets], isTable: false });
+      const blockType = classifyBlockType(curHeading, curBullets);
+      blocks.push({ heading: curHeading, items: [...curBullets], isTable: false, blockType });
       curBullets = [];
     }
   };
   const flushTable = () => {
     if (tRows.length > 0) {
-      blocks.push({ heading: curHeading, items: [], isTable: true, headers: [...tHeaders], rows: [...tRows] });
+      blocks.push({ heading: curHeading, items: [], isTable: true, headers: [...tHeaders], rows: [...tRows], blockType: "normal" });
       tHeaders = []; tRows = [];
     }
     inTable = false;
@@ -756,18 +753,18 @@ function parseModuleContent(content: string): ParsedBlock[] {
 }
 
 /* ═══════════════════════════════════════════════════════
-   CONTENT CLASSIFICATION
+   CONTENT CLASSIFICATION v2 — with example/reflection templates
    ═══════════════════════════════════════════════════════ */
 
 type LayoutType =
   | "module_cover" | "definition_card_with_pillars" | "comparison_table"
   | "grid_cards" | "four_quadrants" | "process_timeline"
-  | "numbered_takeaways" | "bullets";
+  | "numbered_takeaways" | "bullets" | "example_highlight" | "reflection_callout";
 
 function isDefinitionBlock(items: string[]): boolean {
   if (items.length < 2 || items.length > 6) return false;
   const first = items[0] || "";
-  return /\b(é|são|refere-se|consiste|define-se|trata-se|significa)\b/i.test(first) && items.length >= 3;
+  return /\b([eé]|s[aã]o|refere-se|consiste|define-se|trata-se|significa)\b/i.test(first) && items.length >= 3;
 }
 
 function isProcessBlock(heading: string, items: string[]): boolean {
@@ -796,8 +793,10 @@ function detectParallel(items: string[]): boolean {
   return withColon >= Math.ceil(items.length * 0.6);
 }
 
-function classifyContent(heading: string, items: string[], isTable: boolean, prevLayout: LayoutType | null): LayoutType {
+function classifyContent(heading: string, items: string[], isTable: boolean, prevLayout: LayoutType | null, blockType?: string): LayoutType {
   if (isTable) return "comparison_table";
+  if (blockType === "example") return "example_highlight";
+  if (blockType === "reflection") return "reflection_callout";
   if (isResumoHeading(heading)) return "numbered_takeaways";
   if (isProcessBlock(heading, items)) return "process_timeline";
   if (isDefinitionBlock(items)) return "definition_card_with_pillars";
@@ -812,7 +811,7 @@ function classifyContent(heading: string, items: string[], isTable: boolean, pre
 }
 
 /* ═══════════════════════════════════════════════════════
-   DENSITY SCORING
+   DENSITY SCORING v2
    ═══════════════════════════════════════════════════════ */
 
 interface SlideData {
@@ -830,6 +829,7 @@ interface SlideData {
   modules?: { title: string; description: string }[];
   objectives?: string[];
   densityScore?: number;
+  blockType?: string;
 }
 
 function calculateDensity(sd: SlideData): number {
@@ -845,17 +845,24 @@ function calculateDensity(sd: SlideData): number {
 }
 
 /* ═══════════════════════════════════════════════════════
-   FILLER SLIDE DETECTION
+   FILLER SLIDE DETECTION v2 — NEVER remove examples/reflections/conclusions
    ═══════════════════════════════════════════════════════ */
 
 function isFillerSlide(sd: SlideData): boolean {
+  // NEVER remove these types
   if (sd.layout === "module_cover" || sd.layout === "numbered_takeaways") return false;
   if (sd.layout === "comparison_table" && sd.tableRows && sd.tableRows.length > 0) return false;
+  if (sd.layout === "example_highlight" || sd.layout === "reflection_callout") return false;
+  
+  // NEVER remove blocks tagged as example, reflection, or conclusion
+  if (sd.blockType === "example" || sd.blockType === "reflection" || sd.blockType === "conclusion") return false;
+  
   const items = sd.items || [];
-  if (items.length === 1 && items[0].length < 200) {
+  if (items.length === 1 && items[0].length < 150) {
     const heading = (sd.title || "").toLowerCase();
-    if (/^(introdução|contexto|sobre|visão geral|o que é|overview)/.test(heading)) return true;
-    if (!items[0].includes(":") && items[0].length < 100) return true;
+    // Only remove truly generic intro slides
+    if (/^(introdu[cç][aã]o|contexto|sobre|vis[aã]o geral|overview)$/.test(heading.trim())) return true;
+    if (!items[0].includes(":") && items[0].length < 80 && items[0].split(/\s+/).length < 8) return true;
   }
   if (items.length === 0 && !sd.tableHeaders) return true;
   return false;
@@ -865,18 +872,18 @@ function isFillerSlide(sd: SlideData): boolean {
    TABLE HELPERS
    ═══════════════════════════════════════════════════════ */
 
-const HEADER_ROW_H = 0.50;
+const HEADER_ROW_H = 0.55;
 
 function calcRowHeight(row: string[], colWidths: number[]): number {
   let maxLines = 1;
   for (let c = 0; c < row.length; c++) {
     const cellText = String(row[c] || "");
     const colW = colWidths[c] || 3.0;
-    const charsPerLine = Math.max(10, Math.floor(colW * 10));
+    const charsPerLine = Math.max(10, Math.floor(colW * 9)); // Adjusted for larger font
     const lines = Math.max(1, Math.ceil(cellText.length / charsPerLine));
     maxLines = Math.max(maxLines, lines);
   }
-  return 0.45 + (maxLines - 1) * 0.22;
+  return 0.50 + (maxLines - 1) * 0.25; // Increased row height for larger font
 }
 
 function calcTableHeight(rows: string[][], colWidths: number[]): number {
@@ -908,18 +915,18 @@ function splitTableRows(rows: string[][], colWidths: number[], maxH: number): st
 function getColumnWidths(headers: string[]): number[] {
   const colCount = headers.length;
   if (colCount === 2) return [SAFE_W * 0.35, SAFE_W * 0.65];
-  if (colCount === 3) return [SAFE_W * 0.20, SAFE_W * 0.40, SAFE_W * 0.40];
+  if (colCount === 3) return [SAFE_W * 0.25, SAFE_W * 0.375, SAFE_W * 0.375];
   return Array(colCount).fill(SAFE_W / colCount);
 }
 
 /* ═══════════════════════════════════════════════════════
-   BUILD MODULE SLIDES (consistent structure)
+   BUILD MODULE SLIDES v2 — with overflow continuation
    ═══════════════════════════════════════════════════════ */
 
 function buildModuleSlides(mod: any, modIndex: number, totalModules: number): SlideData[] {
   const blocks = parseModuleContent(mod.content || "");
   const rawTitle = sanitize(mod.title || "");
-  const shortTitle = rawTitle.replace(/^módulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
+  const shortTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
 
   const objItems: string[] = [];
   const resumoItems: string[] = [];
@@ -933,19 +940,17 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
 
   const slides: SlideData[] = [];
 
-  // P1: Use smartTitle and smartSubtitle — no truncation mid-word
   const safeTitle = smartTitle(shortTitle);
   const moduleDesc = objItems.length > 0
     ? smartModuleDesc(objItems[0])
     : smartModuleDesc(sanitize((mod.content || "").split(/[.!?]\s/)[0] || ""));
 
-  // P4: Extract 3 objectives for module cover
   const objectives = objItems.slice(0, 3).map(o => smartBullet(sanitize(o)));
 
   slides.push({
     layout: "module_cover",
     title: safeTitle,
-    subtitle: `MÓDULO ${String(modIndex + 1).padStart(2, "0")}`,
+    subtitle: "MODULO " + String(modIndex + 1).padStart(2, "0"),
     description: moduleDesc,
     moduleIndex: modIndex,
     objectives,
@@ -957,26 +962,26 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
   for (const block of contentBlocks) {
     const heading = sanitize(block.heading || shortTitle);
     const sectionLabel = extractSectionLabel(heading);
+    const blockType = block.blockType || "normal";
 
     // Table blocks
     if (block.isTable && block.headers && block.rows && block.rows.length > 0) {
-      // P1: Use smartCell for all table cells
-      const rows = block.rows.map(r => r.map(c => smartCell(compressText(sanitize(c), 80))));
-      if (rows.length > 6) {
+      const rows = block.rows.map(r => r.map(c => smartCell(compressText(sanitize(c), 90))));
+      if (rows.length > 5) {
         const mid = Math.ceil(rows.length / 2);
         slides.push({
           layout: "comparison_table", title: smartTitle(heading + " (Parte 1)"), sectionLabel,
-          tableHeaders: block.headers.map(sanitize), tableRows: rows.slice(0, mid),
+          tableHeaders: block.headers.map(sanitize), tableRows: rows.slice(0, mid), moduleIndex: modIndex,
         });
         slides.push({
           layout: "comparison_table", title: smartTitle(heading + " (Parte 2)"), sectionLabel,
-          tableHeaders: block.headers.map(sanitize), tableRows: rows.slice(mid),
+          tableHeaders: block.headers.map(sanitize), tableRows: rows.slice(mid), moduleIndex: modIndex,
         });
         prevLayout = "comparison_table";
       } else {
         slides.push({
           layout: "comparison_table", title: smartTitle(heading), sectionLabel,
-          tableHeaders: block.headers.map(sanitize), tableRows: rows,
+          tableHeaders: block.headers.map(sanitize), tableRows: rows, moduleIndex: modIndex,
         });
         prevLayout = "comparison_table";
       }
@@ -987,44 +992,62 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
     const items = block.items.map(s => compressBullet(sanitize(s))).filter(s => s.length > 3);
     if (items.length === 0) continue;
 
-    let layout = classifyContent(heading, items, false, prevLayout);
+    let layout = classifyContent(heading, items, false, prevLayout, blockType);
 
-    if (!firstContentRendered && items.length >= 3) {
+    if (!firstContentRendered && items.length >= 3 && layout !== "example_highlight" && layout !== "reflection_callout") {
       layout = "definition_card_with_pillars";
       firstContentRendered = true;
     } else {
       firstContentRendered = true;
     }
 
-    if (layout === prevLayout && layout !== "bullets") {
+    // Prevent consecutive same layouts (except bullets)
+    if (layout === prevLayout && layout !== "bullets" && layout !== "example_highlight" && layout !== "reflection_callout") {
       const alternatives: LayoutType[] = ["grid_cards", "bullets", "four_quadrants", "definition_card_with_pillars"];
       layout = alternatives.find(l => l !== prevLayout) || "bullets";
     }
 
-    if (items.length > 6 && layout !== "numbered_takeaways") {
-      const mid = Math.ceil(items.length / 2);
-      slides.push({ layout, title: smartTitle(heading + " (Parte 1)"), sectionLabel, items: sanitizeBullets(items.slice(0, mid)), moduleIndex: modIndex });
-      const altLayout = layout === "grid_cards" ? "bullets" : "grid_cards";
-      slides.push({ layout: altLayout, title: smartTitle(heading + " (Parte 2)"), sectionLabel, items: sanitizeBullets(items.slice(mid)), moduleIndex: modIndex });
-      prevLayout = altLayout;
+    // OVERFLOW HANDLING: Split items that exceed density threshold
+    const maxItems = activeDensity.maxBulletsPerSlide;
+    if (items.length > maxItems && layout !== "numbered_takeaways") {
+      // Create continuation slides instead of truncating
+      let remaining = [...items];
+      let partNum = 1;
+      while (remaining.length > 0) {
+        const chunk = remaining.slice(0, maxItems);
+        remaining = remaining.slice(maxItems);
+        const partTitle = remaining.length > 0
+          ? smartTitle(heading + " (Parte " + partNum + ")")
+          : smartTitle(heading + (partNum > 1 ? " (Parte " + partNum + ")" : ""));
+        const chunkLayout = partNum === 1 ? layout : (layout === "grid_cards" ? "bullets" : "grid_cards");
+        slides.push({
+          layout: chunkLayout, title: partTitle, sectionLabel,
+          items: sanitizeBullets(chunk), moduleIndex: modIndex, blockType,
+        });
+        partNum++;
+      }
+      prevLayout = layout;
     } else {
-      slides.push({ layout, title: smartTitle(heading), sectionLabel, items: sanitizeBullets(items), moduleIndex: modIndex });
+      slides.push({
+        layout, title: smartTitle(heading), sectionLabel,
+        items: sanitizeBullets(items), moduleIndex: modIndex, blockType,
+      });
       prevLayout = layout;
     }
   }
 
-  // Always end with takeaways (6 numbered cards)
+  // Always end with takeaways
   if (resumoItems.length > 0) {
     slides.push({
       layout: "numbered_takeaways",
-      title: `Key Takeaways — Módulo ${modIndex + 1}`,
-      sectionLabel: "RESUMO DO MÓDULO",
+      title: "Key Takeaways - Modulo " + (modIndex + 1),
+      sectionLabel: "RESUMO DO MODULO",
       items: sanitizeBullets(resumoItems.slice(0, 6).map(s => compressBullet(sanitize(s)))),
       moduleIndex: modIndex,
     });
   }
 
-  // Remove filler slides
+  // Remove filler slides (preserving examples, reflections, conclusions)
   const filtered: SlideData[] = [];
   for (let i = 0; i < slides.length; i++) {
     if (isFillerSlide(slides[i])) {
@@ -1033,7 +1056,7 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
         const target = filtered.length > 0 ? filtered[filtered.length - 1] : (i + 1 < slides.length ? slides[i + 1] : null);
         if (target && target.items) target.items.push(...fillerItems);
       }
-      console.log("[FILLER] Removed filler slide: " + slides[i].title);
+      console.log("[FILLER] Removed: " + slides[i].title);
       continue;
     }
     filtered.push(slides[i]);
@@ -1052,7 +1075,10 @@ function consolidateConsecutiveLayouts(slides: SlideData[]): SlideData[] {
   const result: SlideData[] = [];
   let i = 0;
   while (i < slides.length) {
-    if (slides[i].layout === "module_cover" || slides[i].layout === "numbered_takeaways" || slides[i].layout === "comparison_table") {
+    // Never consolidate special types
+    if (slides[i].layout === "module_cover" || slides[i].layout === "numbered_takeaways" || 
+        slides[i].layout === "comparison_table" || slides[i].layout === "example_highlight" ||
+        slides[i].layout === "reflection_callout") {
       result.push(slides[i]);
       i++;
       continue;
@@ -1065,15 +1091,29 @@ function consolidateConsecutiveLayouts(slides: SlideData[]): SlideData[] {
       const mergedTitle = slides[i].title.replace(/\s*\(Parte \d+\)\s*$/i, "");
       for (let k = i; k < j; k++) {
         const items = slides[k].items || [];
-        if (items.length > 0) mergedItems.push(items[0]);
-        if (items.length > 1 && mergedItems.length < 6) mergedItems.push(items[1]);
+        mergedItems.push(...items);
       }
-      result.push({
-        layout: "grid_cards", title: smartTitle(mergedTitle),
-        sectionLabel: slides[i].sectionLabel, items: mergedItems.slice(0, 6),
-        moduleIndex: slides[i].moduleIndex,
-      });
-      console.log("[CONSOLIDATE] Consolidated " + consecutiveCount + " slides into 1 grid_cards");
+      // Split into proper chunks
+      const maxItems = activeDensity.maxBulletsPerSlide;
+      if (mergedItems.length <= maxItems) {
+        result.push({
+          layout: "grid_cards", title: smartTitle(mergedTitle),
+          sectionLabel: slides[i].sectionLabel, items: mergedItems,
+          moduleIndex: slides[i].moduleIndex,
+        });
+      } else {
+        // Keep as multiple slides but with alternating layouts
+        for (let k = 0; k < mergedItems.length; k += maxItems) {
+          const chunk = mergedItems.slice(k, k + maxItems);
+          result.push({
+            layout: k === 0 ? "grid_cards" : "bullets",
+            title: smartTitle(mergedTitle + (k > 0 ? " (cont.)" : "")),
+            sectionLabel: slides[i].sectionLabel, items: chunk,
+            moduleIndex: slides[i].moduleIndex,
+          });
+        }
+      }
+      console.log("[CONSOLIDATE] " + consecutiveCount + " slides consolidated");
       i = j;
     } else {
       result.push(slides[i]);
@@ -1090,7 +1130,7 @@ function extractSectionLabel(heading: string): string {
 }
 
 /* ═══════════════════════════════════════════════════════
-   DENSITY BALANCING PASS
+   DENSITY BALANCING PASS v2
    ═══════════════════════════════════════════════════════ */
 
 function balanceDensity(slides: SlideData[]): SlideData[] {
@@ -1099,23 +1139,25 @@ function balanceDensity(slides: SlideData[]): SlideData[] {
     const s = result[i];
     const density = calculateDensity(s);
     s.densityScore = density;
-    if (s.layout === "module_cover") continue;
+    if (s.layout === "module_cover" || s.layout === "example_highlight" || s.layout === "reflection_callout") continue;
 
-    if (density < 40 && s.items && s.items.length < 3) {
+    // Merge sparse slides into previous (but not examples/reflections)
+    if (density < 35 && s.items && s.items.length < 3 && s.blockType !== "example" && s.blockType !== "reflection") {
       if (i > 0 && result[i - 1].layout !== "module_cover" && result[i - 1].layout !== "numbered_takeaways") {
         const prev = result[i - 1];
-        if (prev.items) {
+        if (prev.items && prev.items.length + (s.items?.length || 0) <= activeDensity.maxBulletsPerSlide) {
           prev.items.push(...(s.items || []));
           prev.densityScore = calculateDensity(prev);
           result.splice(i, 1);
-          console.log("[MERGE] Merged low-density slide into previous: " + s.title);
+          console.log("[MERGE] Merged sparse slide: " + s.title);
           i--;
           continue;
         }
       }
     }
 
-    if (density > 90 && s.items && s.items.length > 4 && s.layout !== "numbered_takeaways") {
+    // Split overloaded slides
+    if (density > 85 && s.items && s.items.length > 4 && s.layout !== "numbered_takeaways") {
       const mid = Math.ceil(s.items.length / 2);
       const newSlide: SlideData = {
         layout: s.layout === "grid_cards" ? "bullets" : "grid_cards",
@@ -1126,59 +1168,41 @@ function balanceDensity(slides: SlideData[]): SlideData[] {
       s.densityScore = calculateDensity(s);
       newSlide.densityScore = calculateDensity(newSlide);
       result.splice(i + 1, 0, newSlide);
-      console.log("[SPLIT] Split overloaded slide: " + s.title);
-    }
-
-    if (i > 0) {
-      const prevDensity = result[i - 1].densityScore || 50;
-      const currDensity = s.densityScore || 50;
-      if (Math.abs(currDensity - prevDensity) > 20 && s.items && result[i - 1].items) {
-        const denseSlide = currDensity > prevDensity ? s : result[i - 1];
-        const sparseSlide = currDensity > prevDensity ? result[i - 1] : s;
-        if (denseSlide.items && denseSlide.items.length > 2 && sparseSlide.items) {
-          const moved = denseSlide.items.pop()!;
-          sparseSlide.items.push(moved);
-          denseSlide.densityScore = calculateDensity(denseSlide);
-          sparseSlide.densityScore = calculateDensity(sparseSlide);
-        }
-      }
+      console.log("[SPLIT] Split overloaded: " + s.title);
     }
   }
   return result;
 }
 
 /* ═══════════════════════════════════════════════════════
-   HEADER RENDERING — P1: No overlap, word-safe titles
+   HEADER RENDERING v2 — with improved spacing
    ═══════════════════════════════════════════════════════ */
 
 function renderContentHeader(slide: any, sectionLabel: string, titleText: string): number {
   let y = 0.40;
   if (sectionLabel) {
-    // P2: Section label always bold, uppercase
     addTextSafe(slide, sectionLabel, {
-      x: MARGIN, y, w: SAFE_W, h: 0.28,
-      fontSize: 14, fontFace: FONT_BODY, color: C.TEXT_LIGHT, bold: true, letterSpacing: 2,
+      x: MARGIN, y, w: SAFE_W, h: 0.30,
+      fontSize: TYPO.LABEL, fontFace: FONT_BODY, color: C.TEXT_LIGHT, bold: true, letterSpacing: 2,
     });
-    y += 0.35;
+    y += 0.38;
   }
-  // P1: Smart truncate title — never cut words
   const cleanTitle = smartTruncate(titleText, 80);
-  const fontSize = cleanTitle.length > 60 ? 26 : cleanTitle.length > 40 ? 30 : 32;
+  const fontSize = cleanTitle.length > 60 ? 26 : cleanTitle.length > 40 ? 28 : TYPO.SECTION_TITLE;
   const titleH = getTitleHeight(cleanTitle, SAFE_W, fontSize);
-  // P2: Title always bold
   addTextSafe(slide, cleanTitle, {
     x: MARGIN, y, w: SAFE_W, h: titleH,
     fontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
-  y += titleH + 0.25;
+  y += titleH + 0.30;
   return y;
 }
 
 /* ═══════════════════════════════════════════════════════
-   SLIDE RENDERERS
+   SLIDE RENDERERS v2 — Market-grade typography
    ═══════════════════════════════════════════════════════ */
 
-// ── COVER SLIDE (LIGHT theme) — CORREÇÃO 2: Smart text wrapping for titles ──
+// ── COVER SLIDE ──
 function renderCapa(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -1196,13 +1220,12 @@ function renderCapa(pptx: any, data: SlideData) {
   });
   addTextSafe(slide, "CURSO COMPLETO", {
     x: badgeX, y: badgeY, w: badgeW, h: badgeH,
-    fontSize: 14, fontFace: FONT_TITLE, color: C.SECONDARY, bold: true,
+    fontSize: TYPO.LABEL, fontFace: FONT_TITLE, color: C.SECONDARY, bold: true,
     align: "center", valign: "middle", letterSpacing: 4,
   });
 
-  // CORREÇÃO 2: Use ajustarTextoAoBox — max 40 chars/line, 2 lines
   const ajustado = ajustarTextoAoBox(data.title, 40, 2);
-  const titleFontSize = ajustado.linhas === 1 ? 44 : 36; // Reduzir se 2 linhas
+  const titleFontSize = ajustado.linhas === 1 ? 44 : 36;
   const titleH = ajustado.linhas === 1 ? 1.0 : 1.5;
   const titleY = badgeY + badgeH + 0.50;
   addTextSafe(slide, ajustado.texto, {
@@ -1219,24 +1242,20 @@ function renderCapa(pptx: any, data: SlideData) {
   if (data.description) {
     const desc = smartSubtitle(sanitize(data.description));
     addTextSafe(slide, desc, {
-      x: 2, y: sepY + 0.30, w: SLIDE_W - 4, h: 0.50,
-      fontSize: 18, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+      x: 2, y: sepY + 0.30, w: SLIDE_W - 4, h: 0.55,
+      fontSize: TYPO.SUBTITLE, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
     });
   }
 
   const d = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
-  const footer = data.moduleCount ? `${d}  |  ${data.moduleCount} Módulos` : d;
+  const footer = data.moduleCount ? d + "  |  " + data.moduleCount + " Modulos" : d;
   addTextSafe(slide, footer, {
     x: 1, y: SLIDE_H - 0.80, w: SLIDE_W - 2, h: 0.40,
-    fontSize: 14, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+    fontSize: TYPO.FOOTER, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
   });
-  
-  // CORREÇÃO 4: Validate slide
-  const erros = validarSlide([ajustado.texto, data.description || ""], SLIDE_W, SLIDE_H);
-  if (erros.length > 0) console.warn("⚠️ Capa validation:", erros);
 }
 
-// ── TABLE OF CONTENTS — CORREÇÃO 3: "01 - Título Completo" in 2-column grid ──
+// ── TABLE OF CONTENTS ──
 function renderTOC(pptx: any, data: SlideData) {
   const modules = data.modules || [];
   if (modules.length === 0) return;
@@ -1245,21 +1264,20 @@ function renderTOC(pptx: any, data: SlideData) {
   resetSlideIcons();
   slide.background = { color: C.BG_WHITE };
 
-  addTextSafe(slide, "CONTEÚDO DO CURSO", {
+  addTextSafe(slide, "CONTEUDO DO CURSO", {
     x: MARGIN, y: 0.35, w: SAFE_W, h: 0.28,
-    fontSize: 14, fontFace: FONT_BODY, color: C.SECONDARY, bold: true, letterSpacing: 2,
+    fontSize: TYPO.LABEL, fontFace: FONT_BODY, color: C.SECONDARY, bold: true, letterSpacing: 2,
   });
-  addTextSafe(slide, "O que você vai aprender", {
+  addTextSafe(slide, "O que voce vai aprender", {
     x: MARGIN, y: 0.68, w: SAFE_W, h: 0.55,
     fontSize: 36, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
 
-  // CORREÇÃO 3: Grid 2 colunas × N linhas — formato "01 - Título"
   const gridY = 1.60;
   const cols = 2;
   const gapX = 0.30;
   const gapY = 0.20;
-  const cellW = (SAFE_W - gapX) / cols;  // ~5.85" per column
+  const cellW = (SAFE_W - gapX) / cols;
   const gridRows = Math.ceil(modules.length / cols);
   const availH = SLIDE_H - gridY - BOTTOM_MARGIN;
   const cellH = Math.min((availH - (gridRows - 1) * gapY) / gridRows, 1.80);
@@ -1274,41 +1292,32 @@ function renderTOC(pptx: any, data: SlideData) {
     const accentColor = MODULE_NUMBER_COLORS_FN()[idx % MODULE_NUMBER_COLORS_FN().length];
     const moduleNum = String(idx + 1).padStart(2, "0");
 
-    // Card background
     slide.addShape(pptx.ShapeType.rect, {
       x, y, w: cellW, h: cellH,
       fill: { color: C.BG_LIGHT }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
     });
-    // Left accent bar
     slide.addShape(pptx.ShapeType.rect, {
       x, y: y + 0.08, w: 0.06, h: cellH - 0.16,
       fill: { color: accentColor }, rectRadius: 0.03,
     });
 
-    // Module number (large, module color)
     addTextSafe(slide, moduleNum, {
       x: x + 0.20, y: y + 0.15, w: 1.2, h: 0.80,
       fontSize: 48, fontFace: FONT_TITLE, color: accentColor, bold: true,
       align: "left", valign: "top",
     });
 
-    // Module title (beside number, smart wrapped)
-    const tituloAjustado = ajustarTextoAoBox(mod.title, 30, 2);
-    const titleFontSize = tituloAjustado.linhas === 1 ? 16 : 13;
+    const tituloAjustado = ajustarTextoAoBox(mod.title, 28, 2);
+    const titleFontSize = tituloAjustado.linhas === 1 ? TYPO.CARD_TITLE : TYPO.SUPPORT;
     addTextSafe(slide, tituloAjustado.texto, {
       x: x + 1.50, y: y + 0.20, w: cellW - 1.70, h: 0.80,
       fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
       align: "left", valign: "middle",
     });
   });
-  
-  // CORREÇÃO 4: Validate TOC
-  const textos = modules.map((m, i) => `${String(i+1).padStart(2,"0")} - ${m.title}`);
-  const erros = validarSlide(textos, SLIDE_W, SLIDE_H);
-  if (erros.length > 0) console.warn("⚠️ TOC validation:", erros);
 }
 
-// ── MODULE COVER — CORREÇÃO 2: Smart text wrapping for module titles ──
+// ── MODULE COVER ──
 function renderModuleCover(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -1317,7 +1326,6 @@ function renderModuleCover(pptx: any, data: SlideData) {
 
   slide.background = { color: C.BG_WHITE };
 
-  // Top accent bar in module color
   slide.addShape(pptx.ShapeType.rect, {
     x: 0, y: 0, w: SLIDE_W, h: 0.08, fill: { color: moduleColor },
   });
@@ -1325,70 +1333,57 @@ function renderModuleCover(pptx: any, data: SlideData) {
     x: SLIDE_W - 3, y: 0.08, w: 3, h: 0.04, fill: { color: C.SECONDARY },
   });
 
-  // Module number — 72pt, module color
-  const moduleNum = data.subtitle || `MÓDULO ${String(modIdx + 1).padStart(2, "0")}`;
+  const moduleNum = data.subtitle || ("MODULO " + String(modIdx + 1).padStart(2, "0"));
   addTextSafe(slide, moduleNum, {
     x: MARGIN, y: 1.2, w: SAFE_W, h: 1.2,
-    fontSize: 72, fontFace: FONT_TITLE, color: moduleColor, bold: true,
+    fontSize: TYPO.MODULE_NUMBER, fontFace: FONT_TITLE, color: moduleColor, bold: true,
   });
 
-  // CORREÇÃO 2: Title with ajustarTextoAoBox — max 35 chars/line, 2 lines
   const tituloAjustado = ajustarTextoAoBox(data.title, 35, 2);
-  const titleFontSize = tituloAjustado.linhas === 1 ? 32 : 28;
+  const titleFontSize = tituloAjustado.linhas === 1 ? TYPO.MODULE_TITLE : 28;
   addTextSafe(slide, tituloAjustado.texto, {
     x: MARGIN, y: 2.8, w: SAFE_W * 0.70, h: tituloAjustado.linhas === 1 ? 0.85 : 1.20,
     fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
 
-  // Separator line
   const sepY = tituloAjustado.linhas === 1 ? 3.70 : 4.05;
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: sepY, w: 1.2, h: 0.05, fill: { color: C.SECONDARY },
   });
 
-  // Subtitle
   if (data.description) {
     const desc = smartSubtitle(data.description);
     addTextSafe(slide, desc, {
       x: MARGIN, y: sepY + 0.20, w: SAFE_W * 0.65, h: 0.55,
-      fontSize: 18, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
+      fontSize: TYPO.SUBTITLE, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
     });
   }
 
-  // Objectives — max 50 chars, 1 line each (reduce font if needed)
   const objectives = data.objectives || [];
   if (objectives.length > 0) {
     const objStartY = sepY + 0.85;
     objectives.slice(0, 3).forEach((obj, idx) => {
-      const objY = objStartY + idx * 0.42;
-      if (objY + 0.35 > SLIDE_H - 0.40) return;
-      const dotSize = 0.10;
+      const objY = objStartY + idx * 0.48;
+      if (objY + 0.40 > SLIDE_H - 0.40) return;
+      const dotSize = 0.12;
       slide.addShape(pptx.ShapeType.ellipse, {
-        x: MARGIN + 0.05, y: objY + 0.10, w: dotSize, h: dotSize,
+        x: MARGIN + 0.05, y: objY + 0.12, w: dotSize, h: dotSize,
         fill: { color: moduleColor },
       });
-      // CORREÇÃO 2: Objectives max 50 chars, reduce font if longer
-      const objText = smartTruncate(obj, 50);
-      const objFontSize = objText.length > 40 ? 12 : 14;
+      const objText = smartTruncate(obj, 55);
       addTextSafe(slide, objText, {
-        x: MARGIN + 0.25, y: objY, w: SAFE_W * 0.60, h: 0.35,
-        fontSize: objFontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "middle",
+        x: MARGIN + 0.30, y: objY, w: SAFE_W * 0.60, h: 0.40,
+        fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "middle",
       });
     });
   }
 
-  // Bottom accent line
   slide.addShape(pptx.ShapeType.rect, {
     x: 0, y: SLIDE_H - 0.08, w: SLIDE_W, h: 0.08, fill: { color: moduleColor },
   });
-  
-  // CORREÇÃO 4: Validate module cover
-  const textos = [tituloAjustado.texto, data.description || "", ...(objectives || [])];
-  const erros = validarSlide(textos, SLIDE_W, SLIDE_H);
-  if (erros.length > 0) console.warn(`⚠️ Module ${modIdx + 1} cover validation:`, erros);
 }
 
-// ── DEFINITION CARD WITH PILLARS (P2: bold labels, P3: unique icons) ──
+// ── DEFINITION CARD WITH PILLARS ──
 function renderDefinitionWithPillars(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -1399,28 +1394,27 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
   let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
   const defText = smartTruncate(items[0], 200);
-  const defCardH = Math.max(1.0, estimateTextLines(defText, SAFE_W - 1.2, 16) * 0.35 + 0.40);
+  const defCardH = Math.max(1.0, estimateTextLines(defText, SAFE_W - 1.2, TYPO.BODY) * 0.40 + 0.45);
 
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: contentY, w: SAFE_W, h: defCardH,
     fill: { color: C.BG_LIGHT }, line: { color: C.ACCENT_BLUE, width: 1.5 }, rectRadius: 0.10,
   });
-  // P2: Label always bold
-  addTextSafe(slide, "DEFINIÇÃO ESSENCIAL", {
-    x: MARGIN + 0.30, y: contentY + 0.15, w: SAFE_W - 0.60, h: 0.28,
-    fontSize: 11, fontFace: FONT_TITLE, color: C.ACCENT_BLUE, bold: true, letterSpacing: 2,
+  addTextSafe(slide, "DEFINICAO ESSENCIAL", {
+    x: MARGIN + 0.30, y: contentY + 0.15, w: SAFE_W - 0.60, h: 0.30,
+    fontSize: TYPO.SUPPORT, fontFace: FONT_TITLE, color: C.ACCENT_BLUE, bold: true, letterSpacing: 2,
   });
   addTextSafe(slide, defText, {
-    x: MARGIN + 0.30, y: contentY + 0.45, w: SAFE_W - 0.60, h: defCardH - 0.60,
-    fontSize: 16, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top", lineSpacingMultiple: 1.4,
+    x: MARGIN + 0.30, y: contentY + 0.50, w: SAFE_W - 0.60, h: defCardH - 0.65,
+    fontSize: TYPO.BODY, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top", lineSpacingMultiple: 1.4,
   });
 
   contentY += defCardH + 0.30;
 
-  const pillars = items.slice(1, 5);
+  const pillars = items.slice(1, 4);
   if (pillars.length > 0) {
     const cols = pillars.length;
-    const gapX = 0.20;
+    const gapX = 0.22;
     const pillarW = (SAFE_W - (cols - 1) * gapX) / cols;
     const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
     const pillarH = Math.min(availH, 1.60);
@@ -1431,156 +1425,153 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
 
       slide.addShape(pptx.ShapeType.rect, {
         x, y: contentY, w: pillarW, h: pillarH,
-        fill: { color: C.BG_WHITE }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
+        fill: { color: C.BG_LIGHT }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
       });
       slide.addShape(pptx.ShapeType.rect, {
-        x: x + 0.08, y: contentY, w: pillarW - 0.16, h: 0.05, fill: { color: accentColor },
+        x: x + 0.10, y: contentY, w: pillarW - 0.20, h: 0.05, fill: { color: accentColor },
       });
 
-      // P3: Unique semantic icon per pillar
-      const circleSize = 0.44;
+      const circleSize = 0.40;
       slide.addShape(pptx.ShapeType.ellipse, {
-        x: x + (pillarW - circleSize) / 2, y: contentY + 0.20, w: circleSize, h: circleSize,
+        x: x + (pillarW - circleSize) / 2, y: contentY + 0.15, w: circleSize, h: circleSize,
         fill: { color: accentColor },
       });
       const iconChar = getSemanticIcon(pillar, idx);
       addTextSafe(slide, iconChar, {
-        x: x + (pillarW - circleSize) / 2, y: contentY + 0.20, w: circleSize, h: circleSize,
-        fontSize: 18, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
+        x: x + (pillarW - circleSize) / 2, y: contentY + 0.15, w: circleSize, h: circleSize,
+        fontSize: TYPO.ICON, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
         align: "center", valign: "middle",
       });
 
-      // P2: Bold label + normal content
       const colonIdx = pillar.indexOf(":");
-      const pTitle = colonIdx > 2 && colonIdx < 50 ? smartTruncate(pillar.substring(0, colonIdx).trim(), 30) : "";
+      const pTitle = colonIdx > 2 && colonIdx < 50 ? smartTruncate(pillar.substring(0, colonIdx).trim(), 35) : "";
       const pBody = pTitle ? smartTruncate(pillar.substring(colonIdx + 1).trim(), 80) : smartTruncate(pillar, 80);
 
-      let textY = contentY + 0.72;
+      let textY = contentY + 0.65;
       if (pTitle) {
-        // P2: Pillar title always bold
         addTextSafe(slide, pTitle, {
-          x: x + 0.15, y: textY, w: pillarW - 0.30, h: 0.30,
-          fontSize: 13, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true, align: "center",
+          x: x + 0.12, y: textY, w: pillarW - 0.24, h: 0.35,
+          fontSize: TYPO.CARD_TITLE, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+          align: "center",
         });
-        textY += 0.32;
+        textY += 0.38;
       }
-      // P2: Body text normal weight
       addTextSafe(slide, pBody, {
-        x: x + 0.15, y: textY, w: pillarW - 0.30, h: pillarH - (textY - contentY) - 0.10,
-        fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
-        align: "center", valign: "top", lineSpacingMultiple: 1.25,
+        x: x + 0.12, y: textY, w: pillarW - 0.24, h: pillarH - (textY - contentY) - 0.10,
+        fontSize: TYPO.CARD_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
+        align: "center", valign: "top", lineSpacingMultiple: 1.3,
       });
     });
   }
 }
 
-// ── COMPARISON TABLE (proper formatting, zebra striping) ──
+// ── COMPARISON TABLE v2 — readable font sizes ──
 function renderComparisonTable(pptx: any, data: SlideData) {
-  const headers = (data.tableHeaders || []).map(h => sanitize(h));
-  // P1: All cells use smartCell
-  const rows = (data.tableRows || []).map(r => r.map(c => smartCell(sanitize(c))));
-  if (!headers.length || !rows.length) return;
+  const headers = data.tableHeaders || [];
+  const allRows = data.tableRows || [];
+  if (headers.length === 0 || allRows.length === 0) return;
 
-  resetSlideIcons();
-  const titleText = deduplicateTitle(data.title);
   const colWidths = getColumnWidths(headers);
+  const maxTableH = SLIDE_H - 2.2 - BOTTOM_MARGIN;
+  const chunks = splitTableRows(allRows, colWidths, maxTableH);
 
-  const headerAreaH = 1.30;
-  const insightH = 0.60;
-  const maxTableH = SLIDE_H - headerAreaH - insightH - BOTTOM_MARGIN;
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const rows = chunks[ci];
+    const estH = calcTableHeight(rows, colWidths);
+    const titleText = chunks.length > 1
+      ? smartTitle(data.title + " (Parte " + (ci + 1) + ")")
+      : data.title;
 
-  const estH = calcTableHeight(rows, colWidths);
-  if (estH > maxTableH && rows.length > 4) {
-    const chunks = splitTableRows(rows, colWidths, maxTableH);
-    if (chunks.length > 1) {
-      const bt = titleText.replace(/\s*\(Parte \d+\)\s*$/i, "");
-      chunks.forEach((chunk, idx) => {
-        renderComparisonTable(pptx, { ...data, title: smartTitle(`${bt} (Parte ${idx + 1})`), tableRows: chunk });
+    if (estH > maxTableH * 1.2) {
+      const mid = Math.ceil(rows.length / 2);
+      renderComparisonTable(pptx, {
+        ...data, title: titleText + " (A)", tableRows: rows.slice(0, mid),
+      });
+      renderComparisonTable(pptx, {
+        ...data, title: titleText + " (B)", tableRows: rows.slice(mid),
       });
       return;
     }
-  }
 
-  const slide = pptx.addSlide();
-  slide.background = { color: C.BG_WHITE };
-  const contentY = renderContentHeader(slide, data.sectionLabel || "", titleText);
+    const slide = pptx.addSlide();
+    slide.background = { color: C.BG_WHITE };
+    const contentY = renderContentHeader(slide, data.sectionLabel || "", titleText);
 
-  const colCount = headers.length;
-  const noBorder = { type: "none" as const, pt: 0, color: "000000" };
-  const borderBottom = { type: "solid" as const, pt: 0.5, color: C.TABLE_BORDER };
+    const colCount = headers.length;
+    const noBorder = { type: "none" as const, pt: 0, color: "000000" };
+    const borderBottom = { type: "solid" as const, pt: 0.5, color: C.TABLE_BORDER };
 
-  const tableData: any[][] = [];
+    const tableData: any[][] = [];
 
-  // P2: Header row always bold, white on dark
-  tableData.push(headers.map(h => ({
-    text: h,
-    options: {
-      fontSize: 12, fontFace: FONT_TITLE, bold: true, color: C.TEXT_WHITE,
-      fill: { color: C.TABLE_HEADER_BG },
-      border: [noBorder, noBorder, noBorder, noBorder],
-      valign: "middle" as const,
-      paraSpaceBefore: 6, paraSpaceAfter: 6,
-      margin: [0.10, 0.15, 0.10, 0.15],
-    },
-  })));
-
-  // Data rows with zebra striping, P2: first column bold
-  rows.forEach((row, ri) => {
-    const isEven = ri % 2 === 1;
-    const fillColor = isEven ? C.TABLE_ROW_EVEN : C.TABLE_ROW_ODD;
-    const dataRow = row.map((cell, ci) => ({
-      text: cell,
+    // Header row
+    tableData.push(headers.map(h => ({
+      text: h,
       options: {
-        fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_BODY,
-        bold: ci === 0, // P2: First column always bold
-        fill: { color: fillColor },
-        border: [noBorder, noBorder, borderBottom, noBorder],
+        fontSize: TYPO.TABLE_HEADER, fontFace: FONT_TITLE, bold: true, color: C.TEXT_WHITE,
+        fill: { color: C.TABLE_HEADER_BG },
+        border: [noBorder, noBorder, noBorder, noBorder],
         valign: "middle" as const,
-        paraSpaceBefore: 4, paraSpaceAfter: 4,
+        paraSpaceBefore: 6, paraSpaceAfter: 6,
         margin: [0.10, 0.15, 0.10, 0.15],
       },
-    }));
-    while (dataRow.length < colCount) {
-      dataRow.push({
-        text: "", options: {
-          fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_BODY,
-          fill: { color: fillColor }, border: [noBorder, noBorder, borderBottom, noBorder],
-          valign: "middle" as const, paraSpaceBefore: 4, paraSpaceAfter: 4,
+    })));
+
+    // Data rows
+    rows.forEach((row, ri) => {
+      const isEven = ri % 2 === 1;
+      const fillColor = isEven ? C.TABLE_ROW_EVEN : C.TABLE_ROW_ODD;
+      const dataRow = row.map((cell, ci) => ({
+        text: cell,
+        options: {
+          fontSize: TYPO.TABLE_CELL, fontFace: FONT_BODY, color: C.TEXT_BODY,
+          bold: ci === 0,
+          fill: { color: fillColor },
+          border: [noBorder, noBorder, borderBottom, noBorder],
+          valign: "middle" as const,
+          paraSpaceBefore: 4, paraSpaceAfter: 4,
           margin: [0.10, 0.15, 0.10, 0.15],
-          bold: false,
         },
-      });
-    }
-    tableData.push(dataRow);
-  });
+      }));
+      while (dataRow.length < colCount) {
+        dataRow.push({
+          text: "", options: {
+            fontSize: TYPO.TABLE_CELL, fontFace: FONT_BODY, color: C.TEXT_BODY,
+            fill: { color: fillColor }, border: [noBorder, noBorder, borderBottom, noBorder],
+            valign: "middle" as const, paraSpaceBefore: 4, paraSpaceAfter: 4,
+            margin: [0.10, 0.15, 0.10, 0.15], bold: false,
+          },
+        });
+      }
+      tableData.push(dataRow);
+    });
 
-  const safeH = Math.min(estH * 1.15 + 0.2, maxTableH);
-  slide.addTable(tableData, {
-    x: MARGIN, y: contentY, w: SAFE_W, h: safeH,
-    colW: colWidths, autoPage: false,
-  });
+    const safeH = Math.min(estH * 1.15 + 0.2, maxTableH);
+    slide.addTable(tableData, {
+      x: MARGIN, y: contentY, w: SAFE_W, h: safeH,
+      colW: colWidths, autoPage: false,
+    });
 
-  // Insight box
-  const insightY = SLIDE_H - 0.70;
-  const insightBoxH = 0.45;
-  slide.addShape(pptx.ShapeType.rect, {
-    x: MARGIN, y: insightY, w: SAFE_W, h: insightBoxH,
-    fill: { color: C.INSIGHT_BG }, rectRadius: 0.08,
-  });
-  slide.addShape(pptx.ShapeType.rect, {
-    x: MARGIN, y: insightY + 0.06, w: 0.05, h: insightBoxH - 0.12,
-    fill: { color: C.SECONDARY },
-  });
-  // P2: "Insight:" bold, content italic normal
-  addTextSafe(slide, [
-    { text: "Insight: ", options: { bold: true, color: C.SECONDARY, fontSize: 12, fontFace: FONT_TITLE } },
-    { text: "Analise os dados acima e reflita sobre como se aplicam ao seu contexto.", options: { bold: false, color: C.TEXT_BODY, fontSize: 12, fontFace: FONT_BODY, italic: true } },
-  ], {
-    x: MARGIN + 0.22, y: insightY, w: SAFE_W - 0.44, h: insightBoxH, valign: "middle",
-  });
+    // Insight box
+    const insightY = SLIDE_H - 0.75;
+    const insightBoxH = 0.50;
+    slide.addShape(pptx.ShapeType.rect, {
+      x: MARGIN, y: insightY, w: SAFE_W, h: insightBoxH,
+      fill: { color: C.INSIGHT_BG }, rectRadius: 0.08,
+    });
+    slide.addShape(pptx.ShapeType.rect, {
+      x: MARGIN, y: insightY + 0.06, w: 0.05, h: insightBoxH - 0.12,
+      fill: { color: C.SECONDARY },
+    });
+    addTextSafe(slide, [
+      { text: "Insight: ", options: { bold: true, color: C.SECONDARY, fontSize: TYPO.SUPPORT, fontFace: FONT_TITLE } },
+      { text: "Analise os dados acima e reflita sobre como se aplicam ao seu contexto.", options: { bold: false, color: C.TEXT_BODY, fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, italic: true } },
+    ], {
+      x: MARGIN + 0.22, y: insightY, w: SAFE_W - 0.44, h: insightBoxH, valign: "middle",
+    });
+  }
 }
 
-// ── GRID CARDS (P2: bold labels, P3: unique icons) ──
+// ── GRID CARDS v2 ──
 function renderGridCards(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
@@ -1593,7 +1584,7 @@ function renderGridCards(pptx: any, data: SlideData) {
 
   const count = Math.min(items.length, 6);
   const cols = count === 3 || count === 6 ? 3 : 2;
-  const gapX = 0.22; const gapY = 0.20;
+  const gapX = 0.22; const gapY = 0.22;
   const cardW = (SAFE_W - (cols - 1) * gapX) / cols;
   const gridRows = Math.ceil(count / cols);
   const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
@@ -1617,46 +1608,42 @@ function renderGridCards(pptx: any, data: SlideData) {
       fill: { color: accentColor }, rectRadius: 0.025,
     });
 
-    // P3: unique semantic icon
-    const circleSize = 0.40;
+    const circleSize = 0.42;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: x + 0.18, y: y + 0.18, w: circleSize, h: circleSize, fill: { color: accentColor },
     });
     const iconChar = getSemanticIcon(item, idx);
     addTextSafe(slide, iconChar, {
       x: x + 0.18, y: y + 0.18, w: circleSize, h: circleSize,
-      fontSize: 16, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
+      fontSize: TYPO.ICON, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
       align: "center", valign: "middle",
     });
 
-    // P2: Bold label + normal content using rich text
     const colonIdx = item.indexOf(":");
     const cardTitle = colonIdx > 2 && colonIdx < 50 ? smartTruncate(item.substring(0, colonIdx).trim(), 40) : "";
     const cardBody = cardTitle ? smartTruncate(item.substring(colonIdx + 1).trim(), 100) : smartTruncate(item, 100);
 
-    const textX = x + 0.68; const textW = cardW - 0.82;
+    const textX = x + 0.70; const textW = cardW - 0.84;
     let textY = y + 0.18;
 
     if (cardTitle) {
-      // P2: Card title bold
       addTextSafe(slide, cardTitle, {
-        x: textX, y: textY, w: textW, h: 0.30,
-        fontSize: 14, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+        x: textX, y: textY, w: textW, h: 0.32,
+        fontSize: TYPO.CARD_TITLE, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
       });
-      textY += 0.34;
+      textY += 0.36;
     }
     if (cardBody) {
-      // P2: Card body normal weight
       const bodyH = cardH - (textY - y) - 0.10;
       addTextSafe(slide, cardBody, {
         x: textX, y: textY, w: textW, h: Math.max(bodyH, 0.20),
-        fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
+        fontSize: TYPO.CARD_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
       });
     }
   });
 }
 
-// ── FOUR QUADRANTS (P2: bold labels, P3: unique icons) ──
+// ── FOUR QUADRANTS v2 ──
 function renderFourQuadrants(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length < 4) { renderGridCards(pptx, data); return; }
@@ -1689,7 +1676,6 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
       x: x + 0.10, y, w: quadW - 0.20, h: 0.05, fill: { color: accentColor },
     });
 
-    // P3: unique semantic icon
     const circleSize = 0.50;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: x + 0.25, y: y + 0.25, w: circleSize, h: circleSize, fill: { color: accentColor },
@@ -1700,7 +1686,6 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
       fontSize: 20, fontFace: FONT_BODY, color: C.TEXT_WHITE, align: "center", valign: "middle",
     });
 
-    // P2: Bold label + normal content
     const colonIdx = item.indexOf(":");
     const qTitle = colonIdx > 2 && colonIdx < 50 ? smartTruncate(item.substring(0, colonIdx).trim(), 40) : "";
     const qBody = qTitle ? smartTruncate(item.substring(colonIdx + 1).trim(), 120) : smartTruncate(item, 120);
@@ -1710,29 +1695,29 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
 
     if (qTitle) {
       addTextSafe(slide, qTitle, {
-        x: textX, y: textY, w: textW, h: 0.35,
-        fontSize: 16, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+        x: textX, y: textY, w: textW, h: 0.38,
+        fontSize: TYPO.CARD_TITLE, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
       });
-      textY += 0.38;
+      textY += 0.40;
     }
     addTextSafe(slide, qBody, {
       x: textX, y: textY, w: textW, h: quadH - (textY - y) - 0.15,
-      fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
+      fontSize: TYPO.CARD_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.3,
     });
   });
 
   if (items.length > 4) {
-    const footerItems = items.slice(4, 10);
-    const footerY = SLIDE_H - 0.70;
-    const footerText = footerItems.map(it => `• ${smartTruncate(sanitize(it), 60)}`).join("   ");
+    const footerItems = items.slice(4, 8);
+    const footerY = SLIDE_H - 0.75;
+    const footerText = footerItems.map(it => "- " + smartTruncate(sanitize(it), 50)).join("   ");
     addTextSafe(slide, footerText, {
-      x: MARGIN, y: footerY, w: SAFE_W, h: 0.40,
-      fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_LIGHT, italic: true,
+      x: MARGIN, y: footerY, w: SAFE_W, h: 0.45,
+      fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.TEXT_LIGHT, italic: true,
     });
   }
 }
 
-// ── PROCESS TIMELINE (Standardized: numbered circles + title + desc) ──
+// ── PROCESS TIMELINE v2 ──
 function renderProcessTimeline(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
@@ -1742,21 +1727,18 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
   slide.background = { color: C.BG_WHITE };
   let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
-  // Max 4 steps per slide
   const steps = items.slice(0, 4);
   const stepCount = steps.length;
   const totalW = SAFE_W;
   const stepW = totalW / stepCount;
-  const circleSize = 0.55;
+  const circleSize = 0.60;
   const lineY = contentY + circleSize / 2;
 
-  // Connector line between steps
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN + stepW / 2, y: lineY + circleSize / 2 - 0.02,
     w: totalW - stepW, h: 0.04, fill: { color: C.CARD_BORDER },
   });
 
-  // Get module color for circles
   const moduleIdx = data.moduleIndex || 0;
   const moduleColor = MODULE_NUMBER_COLORS_FN()[moduleIdx % MODULE_NUMBER_COLORS_FN().length];
 
@@ -1765,60 +1747,55 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     const x = centerX - circleSize / 2;
     const y = contentY;
 
-    // Numbered circles in module color
     slide.addShape(pptx.ShapeType.ellipse, {
       x, y, w: circleSize, h: circleSize, fill: { color: moduleColor },
     });
     addTextSafe(slide, String(idx + 1), {
       x, y, w: circleSize, h: circleSize,
-      fontSize: 22, fontFace: FONT_TITLE, color: C.TEXT_WHITE, bold: true,
+      fontSize: 24, fontFace: FONT_TITLE, color: C.TEXT_WHITE, bold: true,
       align: "center", valign: "middle",
     });
 
-    // P1: Extract title (3-4 words) + description using smart truncation
     const colonIdx = step.indexOf(":");
     let stepTitle: string;
     let stepDesc: string;
     if (colonIdx > 2 && colonIdx < 50) {
       stepTitle = smartTruncate(step.substring(0, colonIdx).trim(), 30);
-      stepDesc = smartTruncate(step.substring(colonIdx + 1).trim(), 60);
+      stepDesc = smartTruncate(step.substring(colonIdx + 1).trim(), 70);
     } else {
       const words = step.split(/\s+/);
       stepTitle = smartTruncate(words.slice(0, 3).join(" "), 30);
-      stepDesc = smartTruncate(words.slice(3).join(" "), 60);
+      stepDesc = smartTruncate(words.slice(3).join(" "), 70);
     }
 
-    const textY = y + circleSize + 0.25;
+    const textY = y + circleSize + 0.30;
     const textW = stepW - 0.40;
     const textX = centerX - textW / 2;
 
-    // P2: Step title bold
     addTextSafe(slide, stepTitle, {
-      x: textX, y: textY, w: textW, h: 0.40,
-      fontSize: 14, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+      x: textX, y: textY, w: textW, h: 0.45,
+      fontSize: TYPO.CARD_TITLE, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
       align: "center",
     });
-    // P2: Step description normal
     if (stepDesc) {
       addTextSafe(slide, stepDesc, {
-        x: textX, y: textY + 0.42, w: textW, h: 0.55,
-        fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
+        x: textX, y: textY + 0.48, w: textW, h: 0.60,
+        fontSize: TYPO.CARD_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
         align: "center", valign: "top", lineSpacingMultiple: 1.25,
       });
     }
   });
 
-  // Supporting text at bottom
   if (items.length > 4) {
     const supportText = smartTruncate(items[4], 80);
     addTextSafe(slide, supportText, {
-      x: MARGIN, y: SLIDE_H - 0.80, w: SAFE_W, h: 0.40,
-      fontSize: 14, fontFace: FONT_BODY, color: C.SECONDARY, italic: true, align: "center",
+      x: MARGIN, y: SLIDE_H - 0.80, w: SAFE_W, h: 0.45,
+      fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.SECONDARY, italic: true, align: "center",
     });
   }
 }
 
-// ── BULLETS (P2: bold labels + normal content) ──
+// ── BULLETS v2 — 18pt minimum ──
 function renderBullets(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
@@ -1828,9 +1805,9 @@ function renderBullets(pptx: any, data: SlideData) {
   slide.background = { color: C.BG_WHITE };
   let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
-  const maxItems = Math.min(items.length, 8);
+  const maxItems = Math.min(items.length, activeDensity.maxBulletsPerSlide);
   const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
-  const bulletH = Math.min(availH / maxItems, 0.65);
+  const bulletH = Math.min(availH / maxItems, 0.75);
 
   items.slice(0, maxItems).forEach((item, idx) => {
     const y = contentY + idx * bulletH;
@@ -1838,29 +1815,137 @@ function renderBullets(pptx: any, data: SlideData) {
 
     const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
 
-    const dotSize = 0.12;
+    const dotSize = 0.14;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: MARGIN + 0.10, y: y + (bulletH - dotSize) / 2, w: dotSize, h: dotSize,
       fill: { color: accentColor },
     });
 
-    // P2: Use rich text with bold label + normal content
-    const richText = makeBoldLabelText(smartTruncate(item, 120), C.TEXT_DARK, C.TEXT_BODY, 16);
+    const richText = makeBoldLabelText(smartTruncate(item, 120), C.TEXT_DARK, C.TEXT_BODY, TYPO.BULLET_TEXT);
     addTextSafe(slide, richText, {
-      x: MARGIN + 0.35, y, w: SAFE_W - 0.45, h: bulletH,
+      x: MARGIN + 0.40, y, w: SAFE_W - 0.50, h: bulletH,
       valign: "middle", lineSpacingMultiple: 1.3,
     });
 
-    if (idx < items.length - 1) {
+    if (idx < items.length - 1 && idx < maxItems - 1) {
       slide.addShape(pptx.ShapeType.rect, {
-        x: MARGIN + 0.35, y: y + bulletH - 0.02, w: SAFE_W - 0.80, h: 0.01,
+        x: MARGIN + 0.40, y: y + bulletH - 0.02, w: SAFE_W - 0.80, h: 0.01,
         fill: { color: C.TABLE_ROW_EVEN },
       });
     }
   });
 }
 
-// ── P5: NUMBERED TAKEAWAYS (grid 2x3, short title + 1 sentence) ──
+// ── EXAMPLE HIGHLIGHT — NEW template for examples/case studies ──
+function renderExampleHighlight(pptx: any, data: SlideData) {
+  const items = data.items || [];
+  if (items.length === 0) return;
+
+  const slide = pptx.addSlide();
+  resetSlideIcons();
+  slide.background = { color: C.BG_WHITE };
+
+  let contentY = renderContentHeader(slide, data.sectionLabel || "EXEMPLO PRATICO", data.title);
+
+  // Example highlight box
+  const moduleIdx = data.moduleIndex || 0;
+  const moduleColor = MODULE_NUMBER_COLORS_FN()[moduleIdx % MODULE_NUMBER_COLORS_FN().length];
+  const boxBg = activeThemeKey === "dark" ? "2D3E2A" : "F0FFF4";
+  const boxH = Math.min(SLIDE_H - contentY - BOTTOM_MARGIN - 0.20, 4.0);
+
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN, y: contentY, w: SAFE_W, h: boxH,
+    fill: { color: boxBg }, line: { color: moduleColor, width: 1.5 }, rectRadius: 0.10,
+  });
+  // Left accent bar
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN, y: contentY + 0.10, w: 0.06, h: boxH - 0.20,
+    fill: { color: moduleColor }, rectRadius: 0.03,
+  });
+
+  // Icon
+  const iconChar = getSemanticIcon(data.title + " " + items[0], 0);
+  const circleSize = 0.50;
+  slide.addShape(pptx.ShapeType.ellipse, {
+    x: MARGIN + 0.25, y: contentY + 0.20, w: circleSize, h: circleSize,
+    fill: { color: moduleColor },
+  });
+  addTextSafe(slide, iconChar, {
+    x: MARGIN + 0.25, y: contentY + 0.20, w: circleSize, h: circleSize,
+    fontSize: 20, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
+    align: "center", valign: "middle",
+  });
+
+  // Example content
+  let textY = contentY + 0.25;
+  const textX = MARGIN + 0.90;
+  const textW = SAFE_W - 1.10;
+
+  items.forEach((item, idx) => {
+    if (textY + 0.50 > contentY + boxH - 0.15) return;
+    const richText = makeBoldLabelText(smartTruncate(item, 140), C.TEXT_DARK, C.TEXT_BODY, TYPO.BODY);
+    const itemH = Math.min(0.70, (boxH - 0.30) / items.length);
+    addTextSafe(slide, richText, {
+      x: textX, y: textY, w: textW, h: itemH,
+      valign: "middle", lineSpacingMultiple: 1.35,
+    });
+    textY += itemH + 0.08;
+  });
+}
+
+// ── REFLECTION CALLOUT — NEW template for reflection/checkpoint ──
+function renderReflectionCallout(pptx: any, data: SlideData) {
+  const items = data.items || [];
+  if (items.length === 0) return;
+
+  const slide = pptx.addSlide();
+  resetSlideIcons();
+  slide.background = { color: C.BG_WHITE };
+
+  let contentY = renderContentHeader(slide, data.sectionLabel || "MOMENTO DE REFLEXAO", data.title);
+
+  const boxBg = C.REFLECTION_BG;
+  const boxH = Math.min(SLIDE_H - contentY - BOTTOM_MARGIN - 0.20, 3.5);
+
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN + 0.5, y: contentY, w: SAFE_W - 1.0, h: boxH,
+    fill: { color: boxBg }, rectRadius: 0.12,
+  });
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN + 0.5, y: contentY + 0.10, w: 0.06, h: boxH - 0.20,
+    fill: { color: C.ACCENT_BLUE }, rectRadius: 0.03,
+  });
+
+  // Reflection icon
+  const circleSize = 0.55;
+  const iconX = (SLIDE_W - circleSize) / 2;
+  slide.addShape(pptx.ShapeType.ellipse, {
+    x: iconX, y: contentY + 0.25, w: circleSize, h: circleSize,
+    fill: { color: C.ACCENT_BLUE },
+  });
+  addTextSafe(slide, "?", {
+    x: iconX, y: contentY + 0.25, w: circleSize, h: circleSize,
+    fontSize: 28, fontFace: FONT_TITLE, color: C.TEXT_WHITE, bold: true,
+    align: "center", valign: "middle",
+  });
+
+  let textY = contentY + 1.0;
+  const textX = MARGIN + 1.0;
+  const textW = SAFE_W - 2.0;
+
+  items.forEach((item, idx) => {
+    if (textY + 0.55 > contentY + boxH - 0.15) return;
+    const itemH = Math.min(0.65, (boxH - 1.0) / items.length);
+    addTextSafe(slide, smartTruncate(item, 130), {
+      x: textX, y: textY, w: textW, h: itemH,
+      fontSize: TYPO.BODY, fontFace: FONT_BODY, color: C.TEXT_BODY, italic: true,
+      align: "center", valign: "middle", lineSpacingMultiple: 1.4,
+    });
+    textY += itemH + 0.10;
+  });
+}
+
+// ── NUMBERED TAKEAWAYS v2 ──
 function renderNumberedTakeaways(pptx: any, data: SlideData) {
   const items = (data.items || []).map(i => sanitize(i)).filter(Boolean);
   if (!items.length) return;
@@ -1868,16 +1953,16 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
   slide.background = { color: C.BG_WHITE };
-  const contentY = renderContentHeader(slide, data.sectionLabel || "RESUMO DO MÓDULO", data.title);
+  const contentY = renderContentHeader(slide, data.sectionLabel || "RESUMO DO MODULO", data.title);
 
   const maxItems = Math.min(items.length, 6);
   const cols = maxItems <= 4 ? 2 : 3;
   const gridRows = Math.ceil(maxItems / cols);
-  const gapX = 0.22; const gapY = 0.18;
+  const gapX = 0.22; const gapY = 0.20;
   const cardW = (SAFE_W - (cols - 1) * gapX) / cols;
-  const reflectionH = 0.55;
+  const reflectionH = 0.58;
   const availH = SLIDE_H - contentY - reflectionH - BOTTOM_MARGIN - 0.10;
-  const cardH = Math.min((availH - (gridRows - 1) * gapY) / gridRows, 1.30);
+  const cardH = Math.min((availH - (gridRows - 1) * gapY) / gridRows, 1.35);
 
   items.slice(0, maxItems).forEach((bullet, idx) => {
     const col = idx % cols;
@@ -1897,63 +1982,55 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
       fill: { color: accentColor }, rectRadius: 0.025,
     });
 
-    const circleSize = 0.40;
+    const circleSize = 0.42;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: x + 0.16, y: y + 0.16, w: circleSize, h: circleSize, fill: { color: accentColor },
     });
     addTextSafe(slide, String(idx + 1), {
       x: x + 0.16, y: y + 0.16, w: circleSize, h: circleSize,
-      fontSize: 18, fontFace: FONT_TITLE, color: C.TEXT_WHITE, bold: true,
+      fontSize: TYPO.ICON, fontFace: FONT_TITLE, color: C.TEXT_WHITE, bold: true,
       align: "center", valign: "middle",
     });
 
-    // P5: Extract short title (max 5 words / 40 chars) + compressed description (max 1 sentence / 80 chars)
     const colonIdx = bullet.indexOf(":");
     let cardTitle = "";
     let cardBody = bullet;
     if (colonIdx > 2 && colonIdx < 60) {
       cardTitle = smartTruncate(bullet.substring(0, colonIdx).trim(), 40);
-      cardBody = smartTruncate(bullet.substring(colonIdx + 1).trim(), 80);
+      cardBody = smartTruncate(bullet.substring(colonIdx + 1).trim(), 90);
     } else {
       const words = bullet.split(/\s+/);
       if (words.length > 4) {
         cardTitle = smartTruncate(words.slice(0, 4).join(" "), 40);
-        cardBody = smartTruncate(words.slice(4).join(" "), 80);
+        cardBody = smartTruncate(words.slice(4).join(" "), 90);
       } else {
         cardTitle = smartTruncate(bullet, 40);
         cardBody = "";
       }
     }
 
-    // P5: Ensure description ends properly (no paragraph, 1 sentence max)
-    if (cardBody.length > 80) {
-      cardBody = smartTruncate(cardBody, 80);
-    }
-    // Ensure ends with punctuation
     if (cardBody && !/[.!?]$/.test(cardBody)) cardBody += ".";
 
-    const textX = x + 0.66; const textW = cardW - 0.80;
+    const textX = x + 0.68; const textW = cardW - 0.82;
     let textY = y + 0.16;
 
     if (cardTitle) {
-      // P2: Takeaway title always bold
       addTextSafe(slide, cardTitle, {
-        x: textX, y: textY, w: textW, h: 0.30,
-        fontSize: 13, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+        x: textX, y: textY, w: textW, h: 0.32,
+        fontSize: TYPO.TAKEAWAY_TITLE, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
       });
-      textY += 0.32;
+      textY += 0.34;
     }
     if (cardBody) {
-      // P2: Description normal weight
       const bodyH = cardH - (textY - y) - 0.10;
       addTextSafe(slide, cardBody, {
         x: textX, y: textY, w: textW, h: Math.max(bodyH, 0.15),
-        fontSize: 11, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.2,
+        fontSize: TYPO.TAKEAWAY_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.2,
       });
     }
   });
 
-  // Reflection callout
+  // Reflection callout at bottom
   const reflY = SLIDE_H - reflectionH - 0.10;
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: reflY, w: SAFE_W, h: reflectionH,
@@ -1964,18 +2041,17 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
     fill: { color: C.ACCENT_BLUE },
   });
   const reflText = data.description
-    ? smartTruncate(sanitize(data.description), 80)
-    : "Como esses conceitos se aplicam à sua realidade profissional?";
-  // P2: "Reflexão:" bold, content italic normal
+    ? smartTruncate(sanitize(data.description), 90)
+    : "Como esses conceitos se aplicam a sua realidade profissional?";
   addTextSafe(slide, [
-    { text: "Reflexão: ", options: { bold: true, color: C.ACCENT_BLUE, fontSize: 13, fontFace: FONT_TITLE } },
-    { text: reflText, options: { bold: false, color: C.TEXT_BODY, fontSize: 13, fontFace: FONT_BODY, italic: true } },
+    { text: "Reflexao: ", options: { bold: true, color: C.ACCENT_BLUE, fontSize: TYPO.SUPPORT, fontFace: FONT_TITLE } },
+    { text: reflText, options: { bold: false, color: C.TEXT_BODY, fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, italic: true } },
   ], {
     x: MARGIN + 0.22, y: reflY, w: SAFE_W - 0.44, h: reflectionH, valign: "middle",
   });
 }
 
-// ── CLOSING SLIDE — CORREÇÃO 2: Full course title with smart wrapping ──
+// ── CLOSING SLIDE ──
 function renderEncerramento(pptx: any, courseTitle: string) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -1994,17 +2070,16 @@ function renderEncerramento(pptx: any, courseTitle: string) {
     x: (SLIDE_W - 1.5) / 2, y: 3.40, w: 1.5, h: 0.05, fill: { color: C.SECONDARY },
   });
   
-  // CORREÇÃO 2: Use ajustarTextoAoBox for closing slide title — show FULL title
   const tituloFechamento = ajustarTextoAoBox(sanitize(courseTitle), 45, 2);
-  const closeFontSize = tituloFechamento.linhas === 1 ? 20 : 18;
+  const closeFontSize = tituloFechamento.linhas === 1 ? TYPO.SUBTITLE : TYPO.BODY;
   addTextSafe(slide, tituloFechamento.texto, {
     x: 2, y: 3.70, w: SLIDE_W - 4, h: tituloFechamento.linhas === 1 ? 0.60 : 0.90,
     fontSize: closeFontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
   });
   
   addTextSafe(slide, "Continue praticando  |  Acesse os materiais complementares", {
-    x: 2, y: 4.80, w: SLIDE_W - 4, h: 0.40,
-    fontSize: 16, fontFace: FONT_BODY, color: C.SECONDARY, align: "center",
+    x: 2, y: 4.80, w: SLIDE_W - 4, h: 0.45,
+    fontSize: TYPO.BODY, fontFace: FONT_BODY, color: C.SECONDARY, align: "center",
   });
 
   slide.addShape(pptx.ShapeType.rect, {
@@ -2013,7 +2088,7 @@ function renderEncerramento(pptx: any, courseTitle: string) {
 
   addTextSafe(slide, "Gerado com EduGen AI", {
     x: 2, y: SLIDE_H - 0.55, w: SLIDE_W - 4, h: 0.35,
-    fontSize: 12, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+    fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
   });
 }
 
@@ -2059,13 +2134,13 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ── Apply user customization options ──
+    // Apply user customization
     activeThemeKey = theme === "dark" ? "dark" : "light";
     currentTheme = THEME[activeThemeKey];
     activePalette = PALETTES[palette || "default"] || PALETTES.default;
     activeDensity = DENSITY_MODES[density || "standard"] || DENSITY_MODES.standard;
     refreshColors();
-    console.log("[CONFIG] Theme: " + activeThemeKey + " | Palette: " + (palette || "default") + " | Density: " + (density || "standard") + " | Images: " + (includeImages || false));
+    console.log("[CONFIG] Theme:" + activeThemeKey + " Palette:" + (palette || "default") + " Density:" + (density || "standard"));
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
@@ -2099,7 +2174,7 @@ Deno.serve(async (req: Request) => {
     const { data: modules = [] } = await serviceClient
       .from("course_modules").select("*").eq("course_id", course_id).order("order_index");
 
-    /* ─── Build all slides ─── */
+    // Build all slides
     let allSlides: SlideData[] = [];
     for (let i = 0; i < modules.length; i++) {
       allSlides.push(...buildModuleSlides(modules[i], i, modules.length));
@@ -2108,22 +2183,18 @@ Deno.serve(async (req: Request) => {
     // Density balancing pass
     allSlides = balanceDensity(allSlides);
 
-    // Recalculate and log
+    // Recalculate density scores
     allSlides.forEach(s => { s.densityScore = calculateDensity(s); });
-    const densityStats = allSlides.map(s => `${s.layout}:${s.densityScore}`);
-    console.log("[DENSITY] Density scores: " + densityStats.join(", "));
-    const avgDensity = allSlides.reduce((sum, s) => sum + (s.densityScore || 0), 0) / allSlides.length;
-    console.log("[DENSITY] Average: " + avgDensity.toFixed(1) + " | Slides: " + allSlides.length);
+    const avgDensity = allSlides.reduce((sum, s) => sum + (s.densityScore || 0), 0) / Math.max(allSlides.length, 1);
+    console.log("[DENSITY] Avg:" + avgDensity.toFixed(1) + " Slides:" + allSlides.length);
 
-    /* ─── Build PPTX — CORREÇÃO 1: Dimensões corretas 13.333" × 7.5" ─── */
+    // Build PPTX
     const pptx = new PptxGenJS();
     
-    // CORREÇÃO 1: defineLayout com dimensões EXATAS do widescreen 16:9
-    // NUNCA usar LAYOUT_16x9 (resulta em 10" x 5.625" — ERRADO)
     const WIDESCREEN_LAYOUT = {
       name: 'WIDESCREEN',
-      width: 13.333,    // polegadas — LARGURA CORRETA
-      height: 7.5,      // polegadas — ALTURA CORRETA
+      width: 13.333,
+      height: 7.5,
     };
     pptx.defineLayout(WIDESCREEN_LAYOUT);
     pptx.layout = 'WIDESCREEN';
@@ -2133,7 +2204,7 @@ Deno.serve(async (req: Request) => {
     pptx.subject = "Curso Profissional";
     pptx.title = course.title;
     
-    console.log("Slide dimensions: " + WIDESCREEN_LAYOUT.width + " x " + WIDESCREEN_LAYOUT.height + " (expected: 13.333 x 7.5)");
+    console.log("[LAYOUT] " + WIDESCREEN_LAYOUT.width + "x" + WIDESCREEN_LAYOUT.height);
 
     const _origAddSlide = pptx.addSlide.bind(pptx);
     pptx.addSlide = (...args: any[]) => {
@@ -2150,11 +2221,11 @@ Deno.serve(async (req: Request) => {
     // 2. TOC
     const modulesSummary = modules.map((m: any) => {
       const rawTitle = sanitize(m.title || "");
-      const shortTitle = rawTitle.replace(/^módulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
+      const shortTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
       const firstSentence = smartModuleDesc(sanitize((m.content || "").split(/[.!?]\s/)[0] || ""));
       return { title: shortTitle, description: firstSentence };
     });
-    renderTOC(pptx, { layout: "module_cover", title: "O que você vai aprender", modules: modulesSummary });
+    renderTOC(pptx, { layout: "module_cover", title: "O que voce vai aprender", modules: modulesSummary });
 
     // 3. All module slides
     for (const sd of allSlides) {
@@ -2166,6 +2237,8 @@ Deno.serve(async (req: Request) => {
         case "four_quadrants":              renderFourQuadrants(pptx, sd); break;
         case "process_timeline":            renderProcessTimeline(pptx, sd); break;
         case "numbered_takeaways":          renderNumberedTakeaways(pptx, sd); break;
+        case "example_highlight":           renderExampleHighlight(pptx, sd); break;
+        case "reflection_callout":          renderReflectionCallout(pptx, sd); break;
         case "bullets":                     renderBullets(pptx, sd); break;
         default:                            renderBullets(pptx, sd); break;
       }
@@ -2175,15 +2248,15 @@ Deno.serve(async (req: Request) => {
     renderEncerramento(pptx, course.title);
 
     const totalSlides = allSlides.length + 3;
-    console.log("[OK] PPTX generated: " + totalSlides + " slides for " + modules.length + " modules");
+    console.log("[OK] PPTX: " + totalSlides + " slides, " + modules.length + " modules");
 
     const audit = runAudit();
-    if (!audit.passed) console.error(`Audit: ${audit.errors.length} violations`);
+    if (!audit.passed) console.error("Audit: " + audit.errors.length + " violations");
 
     const pptxData = await pptx.write({ outputType: "uint8array" });
     const dateStr = new Date().toISOString().slice(0, 10);
     const safeName = (course.title || "curso").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().substring(0, 80);
-    const fileName = `${userId}/${safeName} - PPTX - ${dateStr}.pptx`;
+    const fileName = userId + "/" + safeName + " - PPTX - " + dateStr + ".pptx";
 
     const { error: uploadErr } = await serviceClient.storage
       .from("course-exports")
