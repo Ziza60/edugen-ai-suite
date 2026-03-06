@@ -214,6 +214,11 @@ interface AjusteTextoResult {
   truncado: boolean;
 }
 
+/**
+ * PRE-RENDER TEXT WRAPPING v3 — NEVER produces "..."
+ * When text exceeds capacity, cuts at sentence boundary or last complete word.
+ * Adds period if needed instead of ellipsis.
+ */
 function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinhas = 2): AjusteTextoResult {
   if (!texto) return { texto: "", linhas: 0, truncado: false };
   const t = texto.trim();
@@ -222,10 +227,43 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
     return { texto: t, linhas: 1, truncado: false };
   }
   
-  const palavras = t.split(' ');
+  const totalCapacity = maxCaracteresPorLinha * maxLinhas;
+  
+  // If text fits within total capacity, just wrap it
+  if (t.length <= totalCapacity) {
+    const palavras = t.split(' ');
+    const linhas: string[] = [];
+    let linhaAtual = '';
+    for (const palavra of palavras) {
+      if (linhaAtual === '') {
+        linhaAtual = palavra;
+      } else if ((linhaAtual + ' ' + palavra).length <= maxCaracteresPorLinha) {
+        linhaAtual += ' ' + palavra;
+      } else {
+        linhas.push(linhaAtual);
+        linhaAtual = palavra;
+      }
+    }
+    if (linhaAtual) linhas.push(linhaAtual);
+    return { texto: linhas.join('\n'), linhas: linhas.length, truncado: false };
+  }
+  
+  // Text exceeds total capacity — cut at sentence boundary (NO ellipsis)
+  const sub = t.substring(0, totalCapacity);
+  const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
+  let cutText: string;
+  if (sentenceEnd > totalCapacity * 0.45) {
+    cutText = t.substring(0, sentenceEnd + 1).trim();
+  } else {
+    // Cut at last complete word, clean trailing prepositions
+    cutText = smartTruncate(t, totalCapacity, false);
+    if (!/[.!?]$/.test(cutText)) cutText += ".";
+  }
+  
+  // Re-wrap the cut text
+  const palavras = cutText.split(' ');
   const linhas: string[] = [];
   let linhaAtual = '';
-  
   for (const palavra of palavras) {
     if (linhaAtual === '') {
       linhaAtual = palavra;
@@ -233,36 +271,17 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
       linhaAtual += ' ' + palavra;
     } else {
       linhas.push(linhaAtual);
-      if (linhas.length >= maxLinhas) {
-        // Last allowed line — truncate remaining
-        const remaining = palavras.slice(palavras.indexOf(palavra)).join(' ');
-        if (remaining.length <= maxCaracteresPorLinha) {
-          linhas.push(remaining);
-        } else {
-          // Truncate at word boundary
-          let lastLine = '';
-          for (const p of palavras.slice(palavras.indexOf(palavra))) {
-            if ((lastLine + ' ' + p).trim().length <= maxCaracteresPorLinha - 3) {
-              lastLine = (lastLine + ' ' + p).trim();
-            } else break;
-          }
-          linhas.push(lastLine + '...');
-        }
-        break;
-      }
+      if (linhas.length >= maxLinhas) break;
       linhaAtual = palavra;
     }
   }
-  if (linhaAtual && linhas.length < maxLinhas) {
-    linhas.push(linhaAtual);
-  }
+  if (linhaAtual && linhas.length < maxLinhas) linhas.push(linhaAtual);
   
   const resultado = linhas.join('\n');
-  const truncado = resultado.endsWith('...');
   return { 
     texto: resultado, 
     linhas: linhas.length, 
-    truncado
+    truncado: cutText.length < t.length
   };
 }
 
@@ -354,27 +373,34 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
 }
 
 function smartTitle(text: string): string {
-  return smartTruncate(text, 80); // Titles need space for context
+  return smartTruncate(text, 100, false); // v6: Increased from 80 — titles wrapped by renderer
 }
 
+/**
+ * SMART SUBTITLE v2 — Increased capacity for cover descriptions.
+ * Allows up to 280 chars (3+ lines at 18pt on wide slides).
+ * Never produces "..." — always cuts at sentence boundary.
+ */
 function smartSubtitle(text: string): string {
   if (!text) return "";
   const t = text.trim();
-  // Allow up to 200 chars for cover descriptions (2-3 lines at 18pt)
-  if (t.length <= 200) return t;
-  // Find sentence boundary within 200 chars
-  const sub = t.substring(0, 200);
+  // v6: Increased from 200 to 280 chars — covers have enough space for 3-4 lines
+  if (t.length <= 280) return t;
+  // Find sentence boundary within 280 chars
+  const sub = t.substring(0, 280);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
   if (sentenceEnd > 80) return sub.substring(0, sentenceEnd + 1).trim();
-  // Fall back to word boundary, but NEVER cut at prepositions/articles
-  const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as|seu|sua|seus|suas)$/i;
-  let result = sub.substring(0, sub.lastIndexOf(" ")).trim();
-  result = result.replace(TRAILING_PREPS, "").trim();
-  result = result.replace(/[,;:\-–]+$/, "").trim();
-  if (!/[.!?]$/.test(result)) result += ".";
+  // Fall back to word boundary with sentence integrity (no ellipsis)
+  let result = smartTruncate(t, 280, false);
+  result = enforceSentenceIntegrity(result);
   return result;
 }
 
+/**
+ * SMART BULLET v2 — structural pre-processing for long bullets
+ * For "Label: long explanation" patterns, compresses the explanation part only,
+ * preserving the label. Never produces "..." — uses sentence boundaries.
+ */
 function smartBullet(text: string): string {
   if (!text) return "";
   const maxChars = activeDensity.maxCharsPerBullet;
@@ -386,6 +412,22 @@ function smartBullet(text: string): string {
     return t;
   }
   
+  // STRUCTURAL PRE-PROCESSING for "Label: long explanation" patterns
+  // e.g., "Deep Learning: Subcampo do Machine Learning que utiliza Redes Neurais..."
+  const colonIdx = t.indexOf(":");
+  if (colonIdx > 2 && colonIdx < 55) {
+    const label = t.substring(0, colonIdx).trim();
+    const explanation = t.substring(colonIdx + 1).trim();
+    const remainingBudget = maxChars - label.length - 2; // ": " takes 2 chars
+    
+    if (remainingBudget > 30 && explanation.length > remainingBudget) {
+      // Compress only the explanation part, preserving the label
+      const compressedExplanation = smartTruncate(explanation, remainingBudget, false);
+      const result = label + ": " + enforceSentenceIntegrity(compressedExplanation);
+      return result;
+    }
+  }
+  
   // Try to cut at a sentence boundary first (preserve complete sentences)
   const sub = t.substring(0, maxChars);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
@@ -393,8 +435,8 @@ function smartBullet(text: string): string {
     return t.substring(0, sentenceEnd + 1).trim();
   }
   
-  // Fall back to smartTruncate
-  const result = smartTruncate(t, maxChars);
+  // Fall back to smartTruncate (never with ellipsis)
+  const result = smartTruncate(t, maxChars, false);
   if (result && !/[.!?]$/.test(result)) return result + ".";
   return result;
 }
@@ -550,6 +592,11 @@ interface AutoAdjustResult {
   text: string;
 }
 
+/**
+ * AUTO-ADJUST TEXT v2 — NEVER produces "..."
+ * Tries reducing font size first. If text still doesn't fit at minFont,
+ * cuts at sentence boundary and adds period (not ellipsis).
+ */
 function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFont = 32, minFont = 12): AutoAdjustResult {
   for (let size = maxFont; size >= minFont; size -= 1) {
     const check = validateTextDensity(text, boxWidth, boxHeight, size);
@@ -557,21 +604,20 @@ function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFo
       return { fontSize: size, truncated: false, text };
     }
   }
-  // Last resort: truncate with smartTruncate but try to preserve sentence boundaries
+  // Last resort: cut at sentence boundary (NEVER add "...")
   const maxLen = validateTextDensity(text, boxWidth, boxHeight, minFont).maxChars;
-  if (maxLen >= text.length * 0.85) {
-    // Close enough — find sentence boundary instead of hard truncate
-    const sub = text.substring(0, maxLen);
-    const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
-    if (sentenceEnd > maxLen * 0.5) {
-      return { fontSize: minFont, truncated: true, text: text.substring(0, sentenceEnd + 1).trim() };
-    }
+  
+  // Try sentence boundary first
+  const sub = text.substring(0, Math.max(maxLen, 20));
+  const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
+  if (sentenceEnd > maxLen * 0.4) {
+    return { fontSize: minFont, truncated: true, text: text.substring(0, sentenceEnd + 1).trim() };
   }
-  return {
-    fontSize: minFont,
-    truncated: true,
-    text: smartTruncate(text, Math.max(maxLen - 3, 10), true),
-  };
+  
+  // Fall back to word boundary with sentence integrity (no ellipsis)
+  let result = smartTruncate(text, Math.max(maxLen, 10), false);
+  result = enforceSentenceIntegrity(result);
+  return { fontSize: minFont, truncated: true, text: result };
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -3898,7 +3944,7 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
    SLIDE RENDERERS v2 — Market-grade typography
    ═══════════════════════════════════════════════════════ */
 
-// ── COVER SLIDE ──
+// ── COVER SLIDE v2 — Expanded capacity: 3 lines for title, larger description box ──
 function renderCapa(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -3908,13 +3954,14 @@ function renderCapa(pptx: any, data: SlideData) {
     x: 0, y: 0, w: SLIDE_W, h: 0.08, fill: { color: C.SECONDARY },
   });
 
-  const titleY = 1.9;
+  const titleY = 1.6;
 
-  const ajustado = ajustarTextoAoBox(data.title, 40, 2);
-  const titleFontSize = ajustado.linhas === 1 ? 44 : 36;
-  const titleH = ajustado.linhas === 1 ? 1.0 : 1.5;
+  // v6: Allow 3 lines with 45 chars/line (135 chars total) for long course titles
+  const ajustado = ajustarTextoAoBox(data.title, 45, 3);
+  const titleFontSize = ajustado.linhas === 1 ? 44 : ajustado.linhas === 2 ? 36 : 30;
+  const titleH = ajustado.linhas === 1 ? 1.0 : ajustado.linhas === 2 ? 1.5 : 1.8;
   addTextSafe(slide, ajustado.texto, {
-    x: MARGIN + 1, y: titleY, w: SAFE_W - 2, h: titleH,
+    x: MARGIN + 0.5, y: titleY, w: SAFE_W - 1, h: titleH,
     fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
     align: "center", valign: "middle",
   });
@@ -3926,8 +3973,10 @@ function renderCapa(pptx: any, data: SlideData) {
 
   if (data.description) {
     const descRaw = smartSubtitle(sanitize(data.description));
-    const descFit = fitTextForBox(descRaw, SLIDE_W - 3, 1.5, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
-    const descH = Math.min(1.5, Math.max(0.55, (descFit.text.split(/\s+/).length / 14) * 0.22));
+    // v6: Increased description box height for longer descriptions
+    const descBoxH = 1.8;
+    const descFit = fitTextForBox(descRaw, SLIDE_W - 3, descBoxH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    const descH = Math.min(descBoxH, Math.max(0.60, estimateTextLines(descFit.text, SLIDE_W - 3, descFit.fontSize) * (descFit.fontSize * 1.4 / 72) + 0.10));
 
     addTextSafe(slide, descFit.text, {
       x: 1.5, y: sepY + 0.30, w: SLIDE_W - 3, h: descH,
@@ -4005,7 +4054,7 @@ function renderTOC(pptx: any, data: SlideData) {
   });
 }
 
-// ── MODULE COVER ──
+// ── MODULE COVER v2 — Expanded title capacity, fitTextForBox for objectives ──
 function renderModuleCover(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -4027,14 +4076,16 @@ function renderModuleCover(pptx: any, data: SlideData) {
     fontSize: TYPO.MODULE_NUMBER, fontFace: FONT_TITLE, color: moduleColor, bold: true,
   });
 
-  const tituloAjustado = ajustarTextoAoBox(data.title, 35, 2);
-  const titleFontSize = tituloAjustado.linhas === 1 ? TYPO.MODULE_TITLE : 28;
+  // v6: Allow 3 lines with 42 chars/line (126 chars total) for long module titles
+  const tituloAjustado = ajustarTextoAoBox(data.title, 42, 3);
+  const titleFontSize = tituloAjustado.linhas === 1 ? TYPO.MODULE_TITLE : tituloAjustado.linhas === 2 ? 28 : 24;
+  const titleH = tituloAjustado.linhas === 1 ? 0.85 : tituloAjustado.linhas === 2 ? 1.20 : 1.50;
   addTextSafe(slide, tituloAjustado.texto, {
-    x: MARGIN, y: 2.8, w: SAFE_W * 0.70, h: tituloAjustado.linhas === 1 ? 0.85 : 1.20,
+    x: MARGIN, y: 2.8, w: SAFE_W * 0.70, h: titleH,
     fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
 
-  const sepY = tituloAjustado.linhas === 1 ? 3.70 : 4.05;
+  const sepY = 2.8 + titleH + 0.05;
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: sepY, w: 1.2, h: 0.05, fill: { color: C.SECONDARY },
   });
@@ -4042,34 +4093,37 @@ function renderModuleCover(pptx: any, data: SlideData) {
   // Calculate description height dynamically to avoid overlap with objectives
   let descEndY = sepY + 0.20;
   if (data.description) {
-    const desc = smartSubtitle(data.description);
-    // Estimate lines needed for description
-    const descCharsPerLine = Math.floor((SAFE_W * 0.65 * 96) / (TYPO.SUBTITLE * 0.54));
-    const descLines = Math.max(1, Math.ceil(desc.length / descCharsPerLine));
-    const descH = Math.max(0.55, descLines * (TYPO.SUBTITLE * 1.35 / 72) + 0.15);
-    addTextSafe(slide, desc, {
-      x: MARGIN, y: descEndY, w: SAFE_W * 0.65, h: descH,
-      fontSize: TYPO.SUBTITLE, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
+    const descW = SAFE_W * 0.65;
+    // v6: Use fitTextForBox for description instead of fixed subtitle truncation
+    const descFit = fitTextForBox(data.description, descW, 1.0, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
+    const descLines = estimateTextLines(descFit.text, descW, descFit.fontSize);
+    const descH = Math.max(0.45, descLines * (descFit.fontSize * 1.35 / 72) + 0.10);
+    addTextSafe(slide, descFit.text, {
+      x: MARGIN, y: descEndY, w: descW, h: descH,
+      fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
     });
-    descEndY += descH + 0.25;
+    descEndY += descH + 0.20;
   }
 
   const objectives = data.objectives || [];
   if (objectives.length > 0) {
-    const objStartY = Math.max(descEndY, sepY + 0.85);
+    const objStartY = Math.max(descEndY, sepY + 0.75);
+    const objW = SAFE_W * 0.60;
+    // v6: Use fitTextForBox per objective instead of hard smartTruncate(90)
+    // This allows font size reduction before cutting, avoiding "..." entirely
     objectives.slice(0, 3).forEach((obj, idx) => {
-      const objY = objStartY + idx * 0.48;
-      if (objY + 0.40 > SLIDE_H - 0.40) return;
+      const objY = objStartY + idx * 0.50;
+      if (objY + 0.44 > SLIDE_H - 0.40) return;
       const dotSize = 0.12;
-      const objLineH = (TYPO.SUPPORT * 1.35) / 72;
+      const objFit = fitTextForBox(obj, objW - 0.30, 0.44, TYPO.SUPPORT, FONT_BODY, 12);
+      const objLineH = (objFit.fontSize * 1.35) / 72;
       slide.addShape(pptx.ShapeType.ellipse, {
         x: MARGIN + 0.05, y: objY + (objLineH - dotSize) / 2 + 0.04, w: dotSize, h: dotSize,
         fill: { color: moduleColor },
       });
-      const objText = smartTruncate(obj, 90);
-      addTextSafe(slide, objText, {
-        x: MARGIN + 0.30, y: objY, w: SAFE_W * 0.60, h: 0.40,
-        fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
+      addTextSafe(slide, objFit.text, {
+        x: MARGIN + 0.30, y: objY, w: objW, h: 0.44,
+        fontSize: objFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
       });
     });
   }
@@ -5354,6 +5408,73 @@ Deno.serve(async (req: Request) => {
     qualityReport.stage2_avg_density = Number(avgDensity.toFixed(1));
     console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
+    // ── STAGE 2.5: PRE-RENDER STRUCTURAL PASS — Cover, objectives, long bullets ──
+    // Prevents truncation at render time by structurally adapting content BEFORE rendering.
+    // This is the key prevention layer that stops "..." from appearing in the final output.
+    console.log("[STAGE-2.5] Running pre-render structural pass...");
+    let preRenderFixes = 0;
+    for (const s of allSlides) {
+      // A. Module cover objectives: ensure they fit without hard truncation
+      if (s.layout === "module_cover" && s.objectives) {
+        const objW = SAFE_W * 0.60 - 0.30;
+        const objH = 0.44;
+        for (let i = 0; i < s.objectives.length; i++) {
+          const obj = s.objectives[i];
+          if (!obj || obj.length < 10) continue;
+          const bbox = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW, objH);
+          if (!bbox.fits) {
+            // Structurally shorten: find sentence boundary or compress
+            const shortened = smartTruncate(obj, Math.max(bbox.maxLines * Math.floor(objW * 9), 50), false);
+            s.objectives[i] = enforceSentenceIntegrity(shortened);
+            preRenderFixes++;
+            console.log("[STAGE-2.5] Objective shortened: \"" + obj.substring(0, 40) + "...\" → " + s.objectives[i].length + " chars");
+          }
+        }
+      }
+      
+      // B. Module cover description: ensure it fits the description box
+      if (s.layout === "module_cover" && s.description) {
+        const descW = SAFE_W * 0.65;
+        const descH = 1.0;
+        const bbox = measureBoundingBox(s.description, TYPO.SUBTITLE, FONT_BODY, descW, descH);
+        if (!bbox.fits) {
+          const shortened = smartTruncate(s.description, Math.max(bbox.maxLines * Math.floor(descW * 8), 40), false);
+          s.description = enforceSentenceIntegrity(shortened);
+          preRenderFixes++;
+          console.log("[STAGE-2.5] Description shortened for module cover: " + s.title);
+        }
+      }
+      
+      // C. Long "Label: explanation" bullets: split label from content, compress content only
+      if (s.items && s.items.length > 0 && s.layout !== "module_cover") {
+        const maxChars = activeDensity.maxCharsPerBullet;
+        for (let i = 0; i < s.items.length; i++) {
+          const item = s.items[i];
+          if (!item || item.length <= maxChars) continue;
+          
+          const colonIdx = item.indexOf(":");
+          if (colonIdx > 2 && colonIdx < 55) {
+            // "Label: long explanation" → compress explanation, preserve label
+            const label = item.substring(0, colonIdx).trim();
+            const explanation = item.substring(colonIdx + 1).trim();
+            const budget = maxChars - label.length - 2;
+            if (budget > 25 && explanation.length > budget) {
+              const compressed = smartTruncate(explanation, budget, false);
+              s.items[i] = label + ": " + enforceSentenceIntegrity(compressed);
+              preRenderFixes++;
+            }
+          } else {
+            // Regular long bullet: find sentence boundary
+            s.items[i] = smartBullet(item);
+            if (s.items[i] !== item) preRenderFixes++;
+          }
+        }
+      }
+    }
+    if (preRenderFixes > 0) {
+      console.log("[STAGE-2.5] Pre-render structural pass: " + preRenderFixes + " fixes applied");
+    }
+
     // ── STAGE 3: STRUCTURAL OVERFLOW RESOLUTION (6-level cascade) ──
     // Uses the new overflow resolution engine instead of simple bbox + split.
     // Cascade: layout_swap → redistribute → semantic_split → continuation → summarize → truncate
@@ -5686,7 +5807,7 @@ Deno.serve(async (req: Request) => {
       quality_score: Number(qualityScore.toFixed(1)),
       passed,
       blocked_reason: blockReason,
-      pipeline_version: "v5-bullet-calibration",
+      pipeline_version: "v6-pre-render-prevention",
       checkpoints,
       problematic_slides: problematicSlides.slice(0, 15),
       corrections_attempted: {
