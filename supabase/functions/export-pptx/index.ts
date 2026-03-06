@@ -1269,9 +1269,12 @@ O markdown do módulo contém estas seções, nesta ordem. Cada uma DEVE gerar u
 
 Idioma: ${language || "pt-BR"}`;
 
+  const contentLabel = preParsedSummary
+    ? "CONTEÚDO PRÉ-SEGMENTADO (cada ### é uma seção pedagógica identificada, tags [TIPO] indicam o tipo de bloco):"
+    : "CONTEÚDO DO MÓDULO:";
   const userPrompt = `Planeje a distribuição de slides para o módulo "${moduleTitle}" (Módulo ${moduleIndex + 1}).
 
-CONTEÚDO DO MÓDULO:
+${contentLabel}
 ${truncatedContent}`;
 
   try {
