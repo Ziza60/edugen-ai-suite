@@ -5525,21 +5525,31 @@ Deno.serve(async (req: Request) => {
     // Weights: content=40, structure=20, visual=25, file=15
 
     // --- Checkpoint 1: CONTENT (weight 40%) ---
-    // v4 calibration: Deduplicated warnings feed into scoring, reducing false inflation.
-    // Penalty per real truncation remains strong (10 pts) but false positives no longer accumulate.
-    const contentTruncationWarnings = qualityReport.stage4_all_warnings.filter(
-      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|SPLIT ARTIFICIAL/i.test(w)
-    ).length;
+    // v5 calibration: dedupe repeated warnings and suppress bullet/list false positives only.
+    // Real truncations (semantic or structural) remain hard blockers.
+    const dedupedWarnings = dedupeWarnings(qualityReport.stage4_all_warnings);
+    const contentWarningCandidates = dedupedWarnings.filter(
+      (w: string) => /TRUNCAMENTO|FRAGMENTO|POST-RENDER|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA/i.test(w)
+    );
+    const contentHardWarnings = contentWarningCandidates.filter(
+      (w: string) => !isFalsePositiveTruncationWarning(w)
+    );
+    const contentSoftWarnings = dedupedWarnings.filter(
+      (w: string) => /PONTUACAO|GRAMATICA/i.test(w)
+    );
+
+    const contentTruncationWarnings = contentHardWarnings.length;
     const contentFixes = qualityReport.stage4_all_fixes.filter(
       (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
     ).length;
     const contentScore = Math.max(0, Math.min(100,
       100
-      - Math.min(70, contentTruncationWarnings * 10) // v4: 10 pts per real truncation (was 12 — calibrated after FP reduction)
+      - Math.min(70, contentTruncationWarnings * 10) // mantém rigor para truncamento real
+      - Math.min(15, contentSoftWarnings.length * 2)
       - Math.min(20, (qualityReport.stage1_5_llm_nonsense_dropped || 0) * 5)
       + Math.min(10, contentFixes * 0.3)
     ));
-    const contentCritical = contentTruncationWarnings > 4; // v4: relaxed from >3 since FPs are now filtered
+    const contentCritical = contentTruncationWarnings > 4;
 
     // --- Checkpoint 2: STRUCTURE (weight 25%) ---
     // Measures: repetition, empty slides, density, coherence
