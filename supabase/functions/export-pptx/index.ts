@@ -2055,7 +2055,7 @@ function makeBoldLabelText(
     const content = text.substring(colonIdx + 1).trim();
     parts.push({
       text: label + ": ",
-      options: { bold: true, color: labelColor, fontSize, fontFace: FONT_TITLE },
+      options: { bold: true, color: labelColor, fontSize, fontFace: FONT_BODY },
     });
     parts.push({
       text: content,
@@ -3485,7 +3485,8 @@ function renderReflectionCallout(pptx: any, data: SlideData) {
   let contentY = renderContentHeader(slide, data.sectionLabel || "MOMENTO DE REFLEXAO", data.title);
 
   const boxBg = C.REFLECTION_BG;
-  const boxH = Math.min(SLIDE_H - contentY - BOTTOM_MARGIN - 0.20, 3.5);
+  const REFLECTION_BOTTOM_GAP = 0.55;
+  const boxH = Math.min(SLIDE_H - contentY - BOTTOM_MARGIN - REFLECTION_BOTTOM_GAP, 3.2);
 
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN + 0.5, y: contentY, w: SAFE_W - 1.0, h: boxH,
@@ -3516,7 +3517,7 @@ function renderReflectionCallout(pptx: any, data: SlideData) {
   items.forEach((item, idx) => {
     if (textY + 0.55 > contentY + boxH - 0.15) return;
     const itemH = Math.min(0.65, (boxH - 1.0) / items.length);
-    addTextSafe(slide, smartTruncate(item, 130), {
+    addTextSafe(slide, item, {
       x: textX, y: textY, w: textW, h: itemH,
       fontSize: TYPO.BODY, fontFace: FONT_BODY, color: C.TEXT_BODY, italic: true,
       align: "center", valign: "middle", lineSpacingMultiple: 1.4,
