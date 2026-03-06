@@ -436,6 +436,63 @@ function getSemanticIcon(text: string, fallbackIdx: number): string {
   return "●";
 }
 
+type IconOffset = { x: number; y: number };
+const ICON_OPTICAL_OFFSETS: Record<string, IconOffset> = {
+  "◆": { x: 0.00, y: -0.01 },
+  "⊛": { x: 0.00, y: -0.01 },
+  "◎": { x: 0.00, y: -0.01 },
+  "◇": { x: 0.00, y: -0.01 },
+  "⊕": { x: 0.00, y: -0.01 },
+  "☆": { x: 0.00, y: -0.01 },
+  "✧": { x: 0.00, y: -0.02 },
+  "▥": { x: 0.00, y: -0.01 },
+  "◔": { x: 0.00, y: -0.01 },
+  "◈": { x: 0.00, y: -0.01 },
+  "▣": { x: 0.00, y: -0.01 },
+  "△": { x: 0.00, y: -0.01 },
+  "▽": { x: 0.00, y: -0.01 },
+  "✦": { x: 0.00, y: -0.02 },
+  "▷": { x: 0.00, y: -0.01 },
+  "◐": { x: 0.00, y: -0.01 },
+  "◑": { x: 0.00, y: -0.01 },
+};
+
+function addCenteredIconInCircle(slide: any, pptx: any, cfg: {
+  x: number;
+  y: number;
+  size: number;
+  circleColor: string;
+  iconChar: string;
+  iconColor?: string;
+  fontSize?: number;
+}) {
+  const iconColor = cfg.iconColor || C.TEXT_WHITE;
+  const iconSize = cfg.fontSize || TYPO.ICON;
+  const offset = ICON_OPTICAL_OFFSETS[cfg.iconChar] || { x: 0, y: -0.01 };
+
+  slide.addShape(pptx.ShapeType.ellipse, {
+    x: cfg.x,
+    y: cfg.y,
+    w: cfg.size,
+    h: cfg.size,
+    fill: { color: cfg.circleColor },
+  });
+
+  addTextSafe(slide, cfg.iconChar, {
+    x: cfg.x + offset.x,
+    y: cfg.y + offset.y,
+    w: cfg.size,
+    h: cfg.size,
+    fontSize: iconSize,
+    fontFace: FONT_BODY,
+    color: iconColor,
+    bold: true,
+    align: "center",
+    valign: "middle",
+    inset: 0,
+  });
+}
+
 /* ═══════════════════════════════════════════════════════
    TEXT DENSITY VALIDATION v2
    ═══════════════════════════════════════════════════════ */
@@ -2578,22 +2635,11 @@ function renderCapa(pptx: any, data: SlideData) {
     x: 0, y: 0, w: SLIDE_W, h: 0.08, fill: { color: C.SECONDARY },
   });
 
-  const badgeW = 3.2; const badgeH = 0.48;
-  const badgeX = (SLIDE_W - badgeW) / 2; const badgeY = 1.5;
-  slide.addShape(pptx.ShapeType.roundRect, {
-    x: badgeX, y: badgeY, w: badgeW, h: badgeH,
-    line: { color: C.SECONDARY, width: 2 }, fill: { type: "none" }, rectRadius: 0.15,
-  });
-  addTextSafe(slide, "CURSO COMPLETO", {
-    x: badgeX, y: badgeY, w: badgeW, h: badgeH,
-    fontSize: TYPO.LABEL, fontFace: FONT_TITLE, color: C.SECONDARY, bold: true,
-    align: "center", valign: "middle", letterSpacing: 4,
-  });
+  const titleY = 1.9;
 
   const ajustado = ajustarTextoAoBox(data.title, 40, 2);
   const titleFontSize = ajustado.linhas === 1 ? 44 : 36;
   const titleH = ajustado.linhas === 1 ? 1.0 : 1.5;
-  const titleY = badgeY + badgeH + 0.50;
   addTextSafe(slide, ajustado.texto, {
     x: MARGIN + 1, y: titleY, w: SAFE_W - 2, h: titleH,
     fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
@@ -2811,15 +2857,14 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
       const circleSize = 0.40;
       const circleX = x + (pillarW - circleSize) / 2;
       const circleY = contentY + 0.18;
-      slide.addShape(pptx.ShapeType.ellipse, {
-        x: circleX, y: circleY, w: circleSize, h: circleSize,
-        fill: { color: accentColor },
-      });
       const iconChar = getSemanticIcon(pillar, idx);
-      addTextSafe(slide, iconChar, {
-        x: circleX, y: circleY, w: circleSize, h: circleSize,
-        fontSize: TYPO.ICON, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
-        align: "center", valign: "middle",
+      addCenteredIconInCircle(slide, pptx, {
+        x: circleX,
+        y: circleY,
+        size: circleSize,
+        circleColor: accentColor,
+        iconChar,
+        fontSize: TYPO.ICON,
       });
 
       const colonIdx = pillar.indexOf(":");
@@ -2988,14 +3033,14 @@ function renderGridCards(pptx: any, data: SlideData) {
     });
 
     const circleSize = 0.42;
-    slide.addShape(pptx.ShapeType.ellipse, {
-      x: x + 0.18, y: y + 0.18, w: circleSize, h: circleSize, fill: { color: accentColor },
-    });
     const iconChar = getSemanticIcon(item, idx);
-    addTextSafe(slide, iconChar, {
-      x: x + 0.18, y: y + 0.18, w: circleSize, h: circleSize,
-      fontSize: TYPO.ICON, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
-      align: "center", valign: "middle",
+    addCenteredIconInCircle(slide, pptx, {
+      x: x + 0.18,
+      y: y + 0.18,
+      size: circleSize,
+      circleColor: accentColor,
+      iconChar,
+      fontSize: TYPO.ICON,
     });
 
     const colonIdx = item.indexOf(":");
@@ -3058,13 +3103,14 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
     });
 
     const circleSize = 0.50;
-    slide.addShape(pptx.ShapeType.ellipse, {
-      x: x + 0.25, y: y + 0.25, w: circleSize, h: circleSize, fill: { color: accentColor },
-    });
     const iconChar = getSemanticIcon(item, idx);
-    addTextSafe(slide, iconChar, {
-      x: x + 0.25, y: y + 0.25, w: circleSize, h: circleSize,
-      fontSize: 20, fontFace: FONT_BODY, color: C.TEXT_WHITE, align: "center", valign: "middle",
+    addCenteredIconInCircle(slide, pptx, {
+      x: x + 0.25,
+      y: y + 0.25,
+      size: circleSize,
+      circleColor: accentColor,
+      iconChar,
+      fontSize: 20,
     });
 
     const colonIdx = item.indexOf(":");
@@ -3190,41 +3236,81 @@ function renderBullets(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
   slide.background = { color: C.BG_WHITE };
-  let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
+  const contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
   const maxItems = Math.min(items.length, activeDensity.maxBulletsPerSlide);
+  const textX = MARGIN + 0.40;
+  const textW = SAFE_W - 0.50;
   const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
-  const bulletH = Math.min(availH / maxItems, 0.75);
+  const selected = items.slice(0, maxItems).map((item) => smartBullet(item));
 
-  items.slice(0, maxItems).forEach((item, idx) => {
-    const y = contentY + idx * bulletH;
-    if (y + bulletH > SLIDE_H - BOTTOM_MARGIN) return;
+  const rawHeights = selected.map((txt) => {
+    const lineCount = Math.max(1, estimateTextLines(txt, textW, TYPO.BULLET_TEXT));
+    const lineHeight = (TYPO.BULLET_TEXT * 1.35) / 72;
+    return Math.max(0.52, Math.min(1.15, lineCount * lineHeight + 0.10));
+  });
+
+  const rawTotal = rawHeights.reduce((sum, h) => sum + h, 0);
+  const minRowH = 0.48;
+  let heights = [...rawHeights];
+
+  if (rawTotal > availH) {
+    const minTotal = minRowH * heights.length;
+    if (minTotal >= availH) {
+      heights = heights.map(() => availH / heights.length);
+    } else {
+      const extraTotal = heights.reduce((sum, h) => sum + Math.max(0, h - minRowH), 0);
+      const availableExtra = availH - minTotal;
+      heights = heights.map((h) => {
+        const extra = Math.max(0, h - minRowH);
+        return minRowH + (extraTotal > 0 ? (extra / extraTotal) * availableExtra : 0);
+      });
+    }
+  }
+
+  let cursorY = contentY;
+  selected.forEach((item, idx) => {
+    const rowH = heights[idx];
+    if (cursorY + rowH > SLIDE_H - BOTTOM_MARGIN + 0.01) return;
 
     const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
+    const textFit = fitTextForBox(item, textW, Math.max(rowH - 0.03, 0.22), TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
+    const textY = cursorY + 0.01;
 
-    // Estimate text height to position dot at first line level
-    const textFontSize = TYPO.BULLET_TEXT;
-    const lineHeightIn = (textFontSize * 1.35) / 72;
     const dotSize = 0.14;
-    // Position dot at the TOP of the bullet area, aligned with first line center
-    const dotY = y + (lineHeightIn - dotSize) / 2 + 0.06;
+    const lineHeightIn = (textFit.fontSize * 1.35) / 72;
+    const dotY = textY + Math.max(0, (lineHeightIn - dotSize) / 2);
+
     slide.addShape(pptx.ShapeType.ellipse, {
-      x: MARGIN + 0.10, y: dotY, w: dotSize, h: dotSize,
+      x: MARGIN + 0.10,
+      y: dotY,
+      w: dotSize,
+      h: dotSize,
       fill: { color: accentColor },
     });
 
-    const richText = makeBoldLabelText(smartTruncate(item, 120), C.TEXT_DARK, C.TEXT_BODY, TYPO.BULLET_TEXT);
+    const richText = makeBoldLabelText(textFit.text, C.TEXT_DARK, C.TEXT_BODY, textFit.fontSize);
     addTextSafe(slide, richText, {
-      x: MARGIN + 0.40, y, w: SAFE_W - 0.50, h: bulletH,
-      valign: "top", lineSpacingMultiple: 1.3,
+      x: textX,
+      y: textY,
+      w: textW,
+      h: Math.max(rowH - 0.02, 0.22),
+      valign: "top",
+      lineSpacingMultiple: 1.3,
+      inset: 0,
     });
 
-    if (idx < items.length - 1 && idx < maxItems - 1) {
+    if (idx < selected.length - 1) {
       slide.addShape(pptx.ShapeType.rect, {
-        x: MARGIN + 0.40, y: y + bulletH - 0.02, w: SAFE_W - 0.80, h: 0.01,
+        x: textX,
+        y: cursorY + rowH - 0.02,
+        w: SAFE_W - 0.80,
+        h: 0.01,
         fill: { color: C.TABLE_ROW_EVEN },
       });
     }
+
+    cursorY += rowH;
   });
 }
 
@@ -3258,14 +3344,13 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
   // Icon
   const iconChar = getSemanticIcon(data.title + " " + items[0], 0);
   const circleSize = 0.50;
-  slide.addShape(pptx.ShapeType.ellipse, {
-    x: MARGIN + 0.25, y: contentY + 0.20, w: circleSize, h: circleSize,
-    fill: { color: moduleColor },
-  });
-  addTextSafe(slide, iconChar, {
-    x: MARGIN + 0.25, y: contentY + 0.20, w: circleSize, h: circleSize,
-    fontSize: 20, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
-    align: "center", valign: "middle",
+  addCenteredIconInCircle(slide, pptx, {
+    x: MARGIN + 0.25,
+    y: contentY + 0.20,
+    size: circleSize,
+    circleColor: moduleColor,
+    iconChar,
+    fontSize: 20,
   });
 
   // Example content
