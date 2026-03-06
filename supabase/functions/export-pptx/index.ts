@@ -376,21 +376,23 @@ function smartTitle(text: string): string {
   return smartTruncate(text, 100, false); // v6: Increased from 80 — titles wrapped by renderer
 }
 
+/**
+ * SMART SUBTITLE v2 — Increased capacity for cover descriptions.
+ * Allows up to 280 chars (3+ lines at 18pt on wide slides).
+ * Never produces "..." — always cuts at sentence boundary.
+ */
 function smartSubtitle(text: string): string {
   if (!text) return "";
   const t = text.trim();
-  // Allow up to 200 chars for cover descriptions (2-3 lines at 18pt)
-  if (t.length <= 200) return t;
-  // Find sentence boundary within 200 chars
-  const sub = t.substring(0, 200);
+  // v6: Increased from 200 to 280 chars — covers have enough space for 3-4 lines
+  if (t.length <= 280) return t;
+  // Find sentence boundary within 280 chars
+  const sub = t.substring(0, 280);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
   if (sentenceEnd > 80) return sub.substring(0, sentenceEnd + 1).trim();
-  // Fall back to word boundary, but NEVER cut at prepositions/articles
-  const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as|seu|sua|seus|suas)$/i;
-  let result = sub.substring(0, sub.lastIndexOf(" ")).trim();
-  result = result.replace(TRAILING_PREPS, "").trim();
-  result = result.replace(/[,;:\-–]+$/, "").trim();
-  if (!/[.!?]$/.test(result)) result += ".";
+  // Fall back to word boundary with sentence integrity (no ellipsis)
+  let result = smartTruncate(t, 280, false);
+  result = enforceSentenceIntegrity(result);
   return result;
 }
 
