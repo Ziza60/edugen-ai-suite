@@ -5438,6 +5438,8 @@ Deno.serve(async (req: Request) => {
       stage2_coherence_warnings: [] as string[],
       stage2_avg_density: 0,
       stage2_relevance_dropped: 0,
+      stage2_5_redistributions: 0,
+      stage2_5_semantic_losses: [] as string[],
       stage3_bbox_overflows: 0,
       stage3_bbox_fixes: 0,
       stage3_overflow_splits: 0,
