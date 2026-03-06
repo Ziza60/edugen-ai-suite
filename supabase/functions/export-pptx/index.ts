@@ -85,6 +85,12 @@ let activeDensity: DensityConfig = DENSITY_MODES.standard;
 let activeThemeKey: "light" | "dark" = "light";
 let currentTheme = THEME.light;
 
+// Performance guardrails (previnem timeout/conexão fechada em cursos longos)
+const MAX_SEMANTIC_SLIDES_PER_MODULE = 6;
+const MAX_LLM_VALIDATION_SLIDES = 24;
+const LLM_BATCH_SIZE = 12;
+const LLM_REQUEST_TIMEOUT_MS = 18000;
+
 function getC() {
   return {
     BG_WHITE: currentTheme.background,
@@ -1146,6 +1152,34 @@ ${truncatedContent}`;
       }
     }
 
+    // Hard cap de slides por módulo para manter exportação estável e rápida
+    if (parsed.slides.length > MAX_SEMANTIC_SLIDES_PER_MODULE) {
+      const selected = new Set<number>();
+
+      // Sempre manter início do raciocínio
+      for (let i = 0; i < Math.min(3, parsed.slides.length); i++) selected.add(i);
+
+      // Sempre manter blocos pedagógicos críticos
+      const mustKeepLayouts: Array<SemanticSlidePlan["layout"]> = ["example", "reflection", "takeaways"];
+      for (const layout of mustKeepLayouts) {
+        for (let i = parsed.slides.length - 1; i >= 0; i--) {
+          if (parsed.slides[i].layout === layout) {
+            selected.add(i);
+            break;
+          }
+        }
+      }
+
+      // Completar em ordem até o limite
+      for (let i = 0; i < parsed.slides.length && selected.size < MAX_SEMANTIC_SLIDES_PER_MODULE; i++) {
+        selected.add(i);
+      }
+
+      const keepIndices = Array.from(selected).sort((a, b) => a - b).slice(0, MAX_SEMANTIC_SLIDES_PER_MODULE);
+      parsed.slides = keepIndices.map((idx) => parsed.slides[idx]);
+      console.log("[SEMANTIC-PLANNER] Module " + (moduleIndex + 1) + " capped to " + parsed.slides.length + " slides");
+    }
+
     console.log("[SEMANTIC-PLANNER] Module " + (moduleIndex + 1) + " planned: " + parsed.slides.length + " slides");
     return parsed;
 
@@ -1238,25 +1272,42 @@ async function llmValidateSlideContent(allSlides: SlideData[]): Promise<LLMValid
     return { slides: [], totalGrammarFixes: 0, totalTruncationFixes: 0, totalNonsenseDropped: 0, totalRelevanceDropped: 0 };
   }
 
-  const slidesForValidation: { idx: number; title: string; items: string[] }[] = [];
+  const slidesForValidation: { idx: number; title: string; items: string[]; score: number }[] = [];
   for (let i = 0; i < allSlides.length; i++) {
     const s = allSlides[i];
-    if (s.layout === "module_cover" && !s.items?.length) continue;
-    if (s.items && s.items.length > 0) {
-      slidesForValidation.push({ idx: i, title: s.title, items: s.items });
+    if (!s.items || s.items.length === 0 || s.layout === "module_cover") continue;
+
+    let score = 0;
+    for (const item of s.items) {
+      const txt = (item || "").trim();
+      if (!txt) continue;
+      if (txt.length > 110) score += 3;
+      if (txt.length > 80) score += 2;
+      if (detectTruncation(txt)) score += 4;
+      if (!/[.!?…:]$/.test(txt)) score += 1;
     }
+
+    // Também validar blocos sensíveis de storytelling
+    if (s.blockType === "example" || s.blockType === "conclusion") score += 2;
+
+    if (score > 0) slidesForValidation.push({ idx: i, title: s.title, items: s.items, score });
   }
 
   if (slidesForValidation.length === 0) {
     return { slides: [], totalGrammarFixes: 0, totalTruncationFixes: 0, totalNonsenseDropped: 0, totalRelevanceDropped: 0 };
   }
 
-  const BATCH_SIZE = 30;
+  // Validação LLM parcial e priorizada para garantir estabilidade em cursos grandes
+  const prioritized = slidesForValidation
+    .sort((a, b) => b.score - a.score || a.idx - b.idx)
+    .slice(0, MAX_LLM_VALIDATION_SLIDES)
+    .sort((a, b) => a.idx - b.idx);
+
   const allResults: LLMSlideValidation[] = [];
   let totalGF = 0, totalTF = 0, totalND = 0, totalRD = 0;
 
-  for (let batchStart = 0; batchStart < slidesForValidation.length; batchStart += BATCH_SIZE) {
-    const batch = slidesForValidation.slice(batchStart, batchStart + BATCH_SIZE);
+  for (let batchStart = 0; batchStart < prioritized.length; batchStart += LLM_BATCH_SIZE) {
+    const batch = prioritized.slice(batchStart, batchStart + LLM_BATCH_SIZE);
     
     const slidesPayload = batch.map(s => ({
       slideIndex: s.idx,
@@ -1285,60 +1336,68 @@ REGRAS CRÍTICAS:
     const userPrompt = `Analise e corrija os seguintes slides:\n\n${JSON.stringify(slidesPayload, null, 0)}`;
 
     try {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "submit_validated_slides",
-              description: "Submit the validated and corrected slide content",
-              parameters: {
-                type: "object",
-                properties: {
-                  slides: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        slideIndex: { type: "number", description: "Original slide index" },
-                        correctedItems: {
-                          type: "array",
-                          items: {
-                            type: "object",
-                            properties: {
-                              id: { type: "number", description: "Original item index" },
-                              text: { type: "string", description: "Corrected text (empty string if should be dropped)" },
-                              status: { type: "string", enum: ["ok", "grammar_fixed", "truncation_fixed", "nonsense", "irrelevant"], description: "What was done" },
-                              original: { type: "string", description: "Original text before fix" },
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            tools: [{
+              type: "function",
+              function: {
+                name: "submit_validated_slides",
+                description: "Submit the validated and corrected slide content",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    slides: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          slideIndex: { type: "number", description: "Original slide index" },
+                          correctedItems: {
+                            type: "array",
+                            items: {
+                              type: "object",
+                              properties: {
+                                id: { type: "number", description: "Original item index" },
+                                text: { type: "string", description: "Corrected text (empty string if should be dropped)" },
+                                status: { type: "string", enum: ["ok", "grammar_fixed", "truncation_fixed", "nonsense", "irrelevant"], description: "What was done" },
+                                original: { type: "string", description: "Original text before fix" },
+                              },
+                              required: ["id", "text", "status"],
+                              additionalProperties: false,
                             },
-                            required: ["id", "text", "status"],
-                            additionalProperties: false,
                           },
                         },
+                        required: ["slideIndex", "correctedItems"],
+                        additionalProperties: false,
                       },
-                      required: ["slideIndex", "correctedItems"],
-                      additionalProperties: false,
                     },
                   },
+                  required: ["slides"],
+                  additionalProperties: false,
                 },
-                required: ["slides"],
-                additionalProperties: false,
               },
-            },
-          }],
-          tool_choice: { type: "function", function: { name: "submit_validated_slides" } },
-        }),
-      });
+            }],
+            tool_choice: { type: "function", function: { name: "submit_validated_slides" } },
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         const errText = await response.text();
@@ -1427,7 +1486,11 @@ REGRAS CRÍTICAS:
       console.log("[LLM-NLP] Batch processed: " + batch.length + " slides, " + totalGF + " grammar, " + totalTF + " truncation, " + totalND + " nonsense");
 
     } catch (err: any) {
-      console.error("[LLM-NLP] Error: " + (err.message || err));
+      if (err?.name === "AbortError") {
+        console.warn("[LLM-NLP] Batch timeout after " + LLM_REQUEST_TIMEOUT_MS + "ms; seguindo sem validação deste lote");
+      } else {
+        console.error("[LLM-NLP] Error: " + (err.message || err));
+      }
     }
   }
 
@@ -3722,8 +3785,8 @@ Deno.serve(async (req: Request) => {
         stage2_coherence_warnings_sample: qualityReport.stage2_coherence_warnings.slice(0, 10),
         stage3_bbox_overflows: qualityReport.stage3_bbox_overflows,
         stage3_bbox_fixes: qualityReport.stage3_bbox_fixes,
-        stage3_wcag_failures: qualityReport.stage3_wcag_failures,
-        stage4_retries_used: qualityReport.stage4_retries_used,
+        stage3_wcag_failures_count: qualityReport.stage3_wcag_failures.length,
+        stage3_wcag_failures_sample: qualityReport.stage3_wcag_failures.slice(0, 10),
         stage4_final_warnings: qualityReport.stage4_final_warnings,
         stage4_final_fixes: qualityReport.stage4_final_fixes,
         stage4_all_warnings_count: qualityReport.stage4_all_warnings.length,
@@ -3846,8 +3909,8 @@ Deno.serve(async (req: Request) => {
       stage2_coherence_warnings_sample: qualityReport.stage2_coherence_warnings.slice(0, 10),
       stage3_bbox_overflows: qualityReport.stage3_bbox_overflows,
       stage3_bbox_fixes: qualityReport.stage3_bbox_fixes,
-      stage3_wcag_failures: qualityReport.stage3_wcag_failures,
-      stage4_retries_used: qualityReport.stage4_retries_used,
+      stage3_wcag_failures_count: qualityReport.stage3_wcag_failures.length,
+      stage3_wcag_failures_sample: qualityReport.stage3_wcag_failures.slice(0, 10),
       stage4_final_warnings: qualityReport.stage4_final_warnings,
       stage4_final_fixes: qualityReport.stage4_final_fixes,
       stage4_all_warnings_count: qualityReport.stage4_all_warnings.length,
