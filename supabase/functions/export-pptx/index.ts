@@ -5553,7 +5553,7 @@ Deno.serve(async (req: Request) => {
 
     // --- Checkpoint 2: STRUCTURE (weight 25%) ---
     // Measures: repetition, empty slides, density, coherence
-    const structureWarnings = qualityReport.stage4_all_warnings.filter(
+    const structureWarnings = dedupedWarnings.filter(
       (w: string) => /REPETICAO|TITULO CURTO|TITULO GENERICO|MESCLADO|SIMBOLOS/i.test(w)
     ).length;
     const structureFixes = qualityReport.stage4_all_fixes.filter(
