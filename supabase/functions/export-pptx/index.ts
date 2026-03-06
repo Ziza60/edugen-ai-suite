@@ -5503,7 +5503,7 @@ Deno.serve(async (req: Request) => {
       },
       structure: {
         score: Number(structureScore.toFixed(1)),
-        weight: 25,
+        weight: 20,
         critical: structureCritical,
         issues: [
           ...qualityReport.stage4_all_warnings.filter(
