@@ -275,6 +275,13 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
   const t = text.trim();
   if (t.length <= maxChars) return t;
 
+  // Try to find a sentence boundary within the limit first
+  const sub = t.substring(0, maxChars);
+  const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
+  if (sentenceEnd > maxChars * 0.5) {
+    return t.substring(0, sentenceEnd + 1).trim();
+  }
+
   const truncated = t.substring(0, maxChars);
   const lastSpace = truncated.lastIndexOf(" ");
 
@@ -298,10 +305,14 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
     }
   }
 
-  // Clean trailing artifacts AND trailing prepositions/articles
-  result = result.replace(/[\s,;:\-–]+$/, "").trim();
+  // Clean trailing artifacts AND trailing prepositions/articles (iterative)
   const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as)$/i;
-  result = result.replace(TRAILING_PREPS, "").trim();
+  let prevResult = "";
+  while (prevResult !== result) {
+    prevResult = result;
+    result = result.replace(/[\s,;:\-–]+$/, "").trim();
+    result = result.replace(TRAILING_PREPS, "").trim();
+  }
 
   if (addEllipsis && result.length < t.length && !/[.!?]$/.test(result)) {
     result += "...";
@@ -580,32 +591,78 @@ function deduplicateItems(items: string[], threshold = 0.70): string[] {
   if (items.length <= 1) return items;
   const result: string[] = [items[0]];
   for (let i = 1; i < items.length; i++) {
-    let isDup = false;
-    for (const kept of result) {
-      if (jaccardSimilarity(items[i], kept) >= threshold) {
-        isDup = true;
-        console.log("[DEDUP] Removed near-duplicate: \"" + items[i].substring(0, 40) + "...\"");
+    let dupIdx = -1;
+    for (let k = 0; k < result.length; k++) {
+      if (jaccardSimilarity(items[i], result[k]) >= threshold) {
+        dupIdx = k;
         break;
       }
     }
-    if (!isDup) result.push(items[i]);
+    if (dupIdx >= 0) {
+      // MERGE: keep the longer/more complete version, append unique info from shorter
+      const existing = result[dupIdx];
+      const incoming = items[i];
+      const existingWords = wordSet(existing);
+      const incomingWords = wordSet(incoming);
+      const uniqueIncoming = [...incomingWords].filter(w => !existingWords.has(w));
+      
+      if (incoming.length > existing.length) {
+        // Incoming is more complete — replace
+        result[dupIdx] = incoming;
+        console.log("[DEDUP] Merged (replaced shorter): \"" + existing.substring(0, 35) + "...\"");
+      } else if (uniqueIncoming.length >= 3 && existing.length + 30 < 130) {
+        // Existing is longer but incoming has unique content — append summary
+        const suffix = uniqueIncoming.slice(0, 4).join(", ");
+        let merged = existing.replace(/[.!?]\s*$/, "") + " (" + suffix + ").";
+        if (merged.length > 130) merged = existing; // Don't bloat
+        result[dupIdx] = merged;
+        console.log("[DEDUP] Merged (appended unique): \"" + incoming.substring(0, 35) + "...\"");
+      } else {
+        console.log("[DEDUP] Merged (kept existing): \"" + incoming.substring(0, 35) + "...\"");
+      }
+    } else {
+      result.push(items[i]);
+    }
   }
   return result;
 }
 
 function deduplicateAcrossSlides(slides: SlideData[]): SlideData[] {
-  const seenContent = new Set<string>();
-  return slides.filter(s => {
-    if (s.layout === "module_cover" || s.layout === "numbered_takeaways") return true;
-    const key = (s.items || []).map(i => i.toLowerCase().trim().substring(0, 50)).sort().join("|");
-    if (key.length < 10) return true;
-    if (seenContent.has(key)) {
-      console.log("[DEDUP-SLIDE] Removed duplicate slide: \"" + s.title + "\"");
-      return false;
+  const seenContent = new Map<string, number>(); // key -> slide index
+  const result: SlideData[] = [];
+  
+  for (let i = 0; i < slides.length; i++) {
+    const s = slides[i];
+    if (s.layout === "module_cover" || s.layout === "numbered_takeaways" || 
+        s.layout === "example_highlight" || s.layout === "reflection_callout") {
+      result.push(s);
+      continue;
     }
-    seenContent.add(key);
-    return true;
-  });
+    const key = (s.items || []).map(it => it.toLowerCase().trim().substring(0, 50)).sort().join("|");
+    if (key.length < 10) {
+      result.push(s);
+      continue;
+    }
+    const existingIdx = seenContent.get(key);
+    if (existingIdx !== undefined) {
+      // MERGE unique items from duplicate into existing slide instead of discarding
+      const existing = result[existingIdx];
+      if (existing.items && s.items) {
+        const existingSet = new Set(existing.items.map(it => it.toLowerCase().trim().substring(0, 50)));
+        const uniqueItems = s.items.filter(it => !existingSet.has(it.toLowerCase().trim().substring(0, 50)));
+        if (uniqueItems.length > 0 && existing.items.length + uniqueItems.length <= activeDensity.maxBulletsPerSlide) {
+          existing.items.push(...uniqueItems);
+          console.log("[DEDUP-SLIDE] Merged " + uniqueItems.length + " unique items from: \"" + s.title + "\"");
+        } else {
+          console.log("[DEDUP-SLIDE] Removed duplicate slide: \"" + s.title + "\"");
+        }
+      }
+    } else {
+      seenContent.set(key, result.length);
+      result.push(s);
+    }
+  }
+  return result;
 }
 
 // ── PORTUGUESE GRAMMAR VALIDATION & AUTO-FIX (regex fallback) ──
@@ -935,7 +992,7 @@ Sua tarefa é planejar a DISTRIBUIÇÃO SEMÂNTICA do conteúdo de um módulo em
 3. **Cada slide = 1 ideia central**: Um slide deve cobrir UM conceito, NÃO múltiplos.
 4. **Máximo 5-6 items por slide**: Se um tema tem mais pontos, distribua em slides de continuação.
 5. **Máximo 120 caracteres por item**: Resuma sem perder significado. Toda frase termina com ponto.
-6. **Títulos descritivos**: Cada slide deve ter um título que descreve O QUE aquele slide cobre (não genéricos como "Introdução").
+6. **Títulos descritivos**: Cada slide deve ter um título que descreve O QUE aquele slide cobre COM CONTEXTO DO MÓDULO. PROIBIDO usar títulos genéricos como "Introdução", "Conceitos", "Visão Geral", "Detalhes". Sempre inclua o tópico específico (ex: "Tipos de Redes Neurais" em vez de "Tipos").
 7. **Preservar exemplos e reflexões**: Exemplos práticos e reflexões DEVEM ter slides dedicados.
 8. **Key Takeaways**: O último grupo de slides deve ser "takeaways" com 5-7 pontos concisos e acionáveis.
 
@@ -999,7 +1056,7 @@ ${truncatedContent}`;
                   items: {
                     type: "object",
                     properties: {
-                      slideTitle: { type: "string", description: "Descriptive slide title (max 50 chars)" },
+                      slideTitle: { type: "string", description: "Descriptive slide title with module context (max 50 chars). NEVER use generic titles like 'Introdução', 'Conceitos', 'Visão Geral'. Always include the specific topic." },
                       sectionLabel: { type: "string", description: "Short uppercase label (max 25 chars)" },
                       layout: {
                         type: "string",
@@ -1400,8 +1457,30 @@ function sanitize(text: string): string {
   t = t.replace(/&amp;/gi, "&"); t = t.replace(/&lt;/gi, "<"); t = t.replace(/&gt;/gi, ">");
   t = t.replace(/&nbsp;/gi, " "); t = t.replace(/&quot;/gi, '"');
   t = t.replace(/<\/?[a-z][^>]*>/gi, " ");
-  // Strip emoji
+  // Map emojis to semantic text markers before stripping
+  const EMOJI_MAP: [RegExp, string][] = [
+    [/[\u{1F4A1}]/gu, "[ideia] "],
+    [/[\u{2705}\u{2714}]/gu, "[ok] "],
+    [/[\u{26A0}\u{2757}]/gu, "[alerta] "],
+    [/[\u{1F4CA}\u{1F4C8}\u{1F4C9}]/gu, "[dados] "],
+    [/[\u{1F50D}\u{1F50E}]/gu, "[busca] "],
+    [/[\u{1F4DD}\u{270F}]/gu, "[nota] "],
+    [/[\u{1F680}]/gu, "[acao] "],
+    [/[\u{1F4BB}\u{1F5A5}]/gu, "[tech] "],
+    [/[\u{1F464}\u{1F465}]/gu, "[pessoas] "],
+    [/[\u{2B50}\u{1F31F}]/gu, "[destaque] "],
+    [/[\u{1F3AF}]/gu, "[objetivo] "],
+    [/[\u{1F512}\u{1F513}]/gu, "[seguranca] "],
+    [/[\u{2764}\u{1F49A}\u{1F499}]/gu, ""],
+  ];
+  for (const [pattern, replacement] of EMOJI_MAP) {
+    t = t.replace(pattern, replacement);
+  }
+  // Strip remaining emojis
   t = t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu, "");
+  // Apply fixBrokenColonWords early in sanitization to catch issues at source
+  const colonFix = fixBrokenColonWords(t);
+  t = colonFix.text;
   t = t.replace(/\s{2,}/g, " ").trim();
   return t;
 }
@@ -1536,13 +1615,14 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     }
   }
 
-  // ✓ 2. Title quality
+  // ✓ 2. Title quality — reject generic titles
   if (sd.title) {
     if (sd.title.length < 3 && sd.layout !== "module_cover") {
       warnings.push(label + " TITULO CURTO: \"" + sd.title + "\"");
     }
-    if (/^(cont\.|continuacao|parte)$/i.test(sd.title.trim())) {
-      warnings.push(label + " TITULO NAO DESCRITIVO: \"" + sd.title + "\"");
+    const genericTitles = /^(cont\.|continuacao|parte|introdu[cç][aã]o|conceitos?|vis[aã]o geral|overview|detalhes|t[oó]picos?|aspectos?)$/i;
+    if (genericTitles.test(sd.title.trim())) {
+      warnings.push(label + " TITULO GENERICO: \"" + sd.title + "\"");
     }
   }
 
@@ -1585,23 +1665,49 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     }
   }
 
-  // ✓ 5. Terminology normalization + colon break artifacts
-  if (sd.items) {
-    for (let i = 0; i < sd.items.length; i++) {
-      const colonFixed = fixBrokenColonWords(sd.items[i]);
+  // ✓ 5. Terminology normalization + colon break artifacts (on ALL text fields)
+  const allTextFields: { items: string[]; field: string }[] = [];
+  if (sd.items) allTextFields.push({ items: sd.items, field: "items" });
+  if (sd.objectives) allTextFields.push({ items: sd.objectives, field: "objectives" });
+  
+  for (const { items: textItems, field } of allTextFields) {
+    for (let i = 0; i < textItems.length; i++) {
+      const colonFixed = fixBrokenColonWords(textItems[i]);
       if (colonFixed.fixes > 0) {
-        sd.items[i] = colonFixed.text;
-        fixes.push(label + " QUEBRA POR DOIS-PONTOS CORRIGIDA");
+        textItems[i] = colonFixed.text;
+        fixes.push(label + " QUEBRA POR DOIS-PONTOS CORRIGIDA (" + field + ")");
       }
 
-      if (hasSuspiciousColonBreak(sd.items[i])) {
-        warnings.push(label + " TEXTO COM QUEBRA INVÁLIDA (ex: e-mails/tornando-a)");
+      if (hasSuspiciousColonBreak(textItems[i])) {
+        warnings.push(label + " TEXTO COM QUEBRA INVÁLIDA (" + field + ")");
       }
 
-      const normalized = normalizeTerminology(sd.items[i]);
-      if (normalized !== sd.items[i]) {
-        sd.items[i] = normalized;
-        fixes.push(label + " TERMINOLOGIA NORMALIZADA");
+      const normalized = normalizeTerminology(textItems[i]);
+      if (normalized !== textItems[i]) {
+        textItems[i] = normalized;
+        fixes.push(label + " TERMINOLOGIA NORMALIZADA (" + field + ")");
+      }
+    }
+  }
+  
+  // Also fix title and description
+  if (sd.title) {
+    const titleFix = fixBrokenColonWords(sd.title);
+    if (titleFix.fixes > 0) { sd.title = titleFix.text; fixes.push(label + " TITULO DOIS-PONTOS CORRIGIDO"); }
+  }
+  if (sd.description) {
+    const descFix = fixBrokenColonWords(sd.description);
+    if (descFix.fixes > 0) { sd.description = descFix.text; fixes.push(label + " DESCRICAO DOIS-PONTOS CORRIGIDA"); }
+  }
+  // Fix table cells
+  if (sd.tableRows) {
+    for (let ri = 0; ri < sd.tableRows.length; ri++) {
+      for (let ci = 0; ci < sd.tableRows[ri].length; ci++) {
+        const cellFix = fixBrokenColonWords(sd.tableRows[ri][ci]);
+        if (cellFix.fixes > 0) {
+          sd.tableRows[ri][ci] = cellFix.text;
+          fixes.push(label + " CELULA DOIS-PONTOS CORRIGIDA R" + ri + "C" + ci);
+        }
       }
     }
   }
@@ -1874,11 +1980,30 @@ function parseModuleContent(content: string): ParsedBlock[] {
       if (!inTable) {
         flushBullets();
         inTable = true;
-        tHeaders = trimmed.split("|").filter(Boolean).map(c => sanitize(c.trim()));
+        const rawCells = trimmed.split("|").filter(Boolean).map(c => c.trim());
+        // Validate: skip if all cells are empty or it looks malformed
+        if (rawCells.length >= 2 && rawCells.some(c => c.length > 0)) {
+          tHeaders = rawCells.map(c => sanitize(c));
+        } else {
+          inTable = false; // Not a real table
+          const clean = sanitize(trimmed.replace(/\|/g, " "));
+          if (clean.length > 8) curBullets.push(clean);
+        }
       } else if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
-        // separator
+        // separator — validate it matches header count
+        const sepCells = trimmed.split("|").filter(Boolean);
+        if (tHeaders.length > 0 && sepCells.length !== tHeaders.length) {
+          // Mismatched separator — this isn't a real table
+          flushTable();
+          const clean = sanitize(trimmed.replace(/\|/g, " "));
+          if (clean.length > 8) curBullets.push(clean);
+        }
       } else {
-        tRows.push(trimmed.split("|").filter(Boolean).map(c => sanitize(c.trim())));
+        const rowCells = trimmed.split("|").filter(Boolean).map(c => sanitize(c.trim()));
+        // Normalize column count to match headers
+        while (rowCells.length < tHeaders.length) rowCells.push("");
+        if (rowCells.length > tHeaders.length) rowCells.length = tHeaders.length;
+        tRows.push(rowCells);
       }
       continue;
     }
@@ -2313,8 +2438,8 @@ function balanceDensity(slides: SlideData[]): SlideData[] {
     s.densityScore = density;
     if (s.layout === "module_cover" || s.layout === "example_highlight" || s.layout === "reflection_callout") continue;
 
-    // Merge sparse slides into previous (but not examples/reflections)
-    if (density < 35 && s.items && s.items.length < 3 && s.blockType !== "example" && s.blockType !== "reflection") {
+    // Merge sparse slides into previous (but not examples/reflections) — raised threshold
+    if (density < 30 && s.items && s.items.length < 2 && s.blockType !== "example" && s.blockType !== "reflection") {
       if (i > 0 && result[i - 1].layout !== "module_cover" && result[i - 1].layout !== "numbered_takeaways") {
         const prev = result[i - 1];
         if (prev.items && prev.items.length + (s.items?.length || 0) <= activeDensity.maxBulletsPerSlide) {
@@ -2328,8 +2453,8 @@ function balanceDensity(slides: SlideData[]): SlideData[] {
       }
     }
 
-    // Split overloaded slides
-    if (density > 85 && s.items && s.items.length > 4 && s.layout !== "numbered_takeaways") {
+    // Split overloaded slides — raised threshold to avoid excessive fragmentation
+    if (density > 92 && s.items && s.items.length > 5 && s.layout !== "numbered_takeaways") {
       const mid = Math.ceil(s.items.length / 2);
       const newSlide: SlideData = {
         layout: s.layout === "grid_cards" ? "bullets" : "grid_cards",
