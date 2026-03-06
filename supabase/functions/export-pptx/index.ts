@@ -3066,6 +3066,9 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
     }
     if (items.length === 0) continue;
 
+    // Build structured items for this slide, preserving hierarchy from parsing
+    const slideStructured = block.structuredItems ? buildSlideStructuredItems(block.structuredItems, items) : undefined;
+
     let layout = classifyContent(heading, items, false, prevLayout, blockType);
 
     if (!firstContentRendered && items.length >= 3 && layout !== "example_highlight" && layout !== "reflection_callout") {
@@ -3086,17 +3089,20 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
     if (items.length > maxItems && layout !== "numbered_takeaways") {
       // Create continuation slides instead of truncating
       let remaining = [...items];
+      let remainingStructured = slideStructured ? [...slideStructured] : undefined;
       let partNum = 1;
       while (remaining.length > 0) {
         const chunk = remaining.slice(0, maxItems);
         remaining = remaining.slice(maxItems);
+        const chunkStructured = remainingStructured ? remainingStructured.slice(0, maxItems) : undefined;
+        if (remainingStructured) remainingStructured = remainingStructured.slice(maxItems);
         const partTitle = remaining.length > 0
           ? smartTitle(heading + " (Parte " + partNum + ")")
           : smartTitle(heading + (partNum > 1 ? " (Parte " + partNum + ")" : ""));
         const chunkLayout = partNum === 1 ? layout : (layout === "grid_cards" ? "bullets" : "grid_cards");
         slides.push({
           layout: chunkLayout, title: partTitle, sectionLabel,
-          items: sanitizeBullets(chunk), moduleIndex: modIndex, blockType,
+          items: sanitizeBullets(chunk), structuredItems: chunkStructured, moduleIndex: modIndex, blockType,
         });
         partNum++;
       }
@@ -3104,7 +3110,7 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
     } else {
       slides.push({
         layout, title: smartTitle(heading), sectionLabel,
-        items: sanitizeBullets(items), moduleIndex: modIndex, blockType,
+        items: sanitizeBullets(items), structuredItems: slideStructured, moduleIndex: modIndex, blockType,
       });
       prevLayout = layout;
     }
