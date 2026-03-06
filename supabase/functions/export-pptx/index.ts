@@ -1210,18 +1210,20 @@ interface SemanticModulePlan {
   slides: SemanticSlidePlan[];
 }
 
-async function llmPlanModuleSlides(moduleTitle: string, moduleContent: string, moduleIndex: number, language: string): Promise<SemanticModulePlan | null> {
+async function llmPlanModuleSlides(moduleTitle: string, moduleContent: string, moduleIndex: number, language: string, preParsedSummary?: string): Promise<SemanticModulePlan | null> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("[SEMANTIC-PLANNER] LOVABLE_API_KEY not available, falling back to regex parser");
     return null;
   }
 
-  // Truncate content if too large (keep under ~12k chars to avoid token limits)
+  // Use pre-parsed structured summary if available (from semantic parser),
+  // otherwise fall back to raw markdown content
+  const contentForPlanner = preParsedSummary || moduleContent;
   const maxContentLen = 12000;
-  const truncatedContent = moduleContent.length > maxContentLen
-    ? moduleContent.substring(0, maxContentLen) + "\n\n[... conteúdo truncado para processamento ...]"
-    : moduleContent;
+  const truncatedContent = contentForPlanner.length > maxContentLen
+    ? contentForPlanner.substring(0, maxContentLen) + "\n\n[... conteúdo truncado para processamento ...]"
+    : contentForPlanner;
 
   const systemPrompt = `Você é um designer instrucional especialista em criar apresentações PowerPoint de alta qualidade a partir de conteúdo educacional.
 
@@ -1267,9 +1269,12 @@ O markdown do módulo contém estas seções, nesta ordem. Cada uma DEVE gerar u
 
 Idioma: ${language || "pt-BR"}`;
 
+  const contentLabel = preParsedSummary
+    ? "CONTEÚDO PRÉ-SEGMENTADO (cada ### é uma seção pedagógica identificada, tags [TIPO] indicam o tipo de bloco):"
+    : "CONTEÚDO DO MÓDULO:";
   const userPrompt = `Planeje a distribuição de slides para o módulo "${moduleTitle}" (Módulo ${moduleIndex + 1}).
 
-CONTEÚDO DO MÓDULO:
+${contentLabel}
 ${truncatedContent}`;
 
   try {
@@ -2502,33 +2507,73 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
     }
   };
 
+  // ── Nested list processing ──
+  // Track parent items so sub-items (indent > 0) get merged into their parent
+  // as "Parent: sub1; sub2; sub3" — preserving hierarchy for slide rendering.
+  let pendingParent: { text: string; indent: number } | null = null;
+  let subItems: string[] = [];
+
+  const flushListItem = () => {
+    if (pendingParent) {
+      let merged = sanitize(pendingParent.text);
+      if (subItems.length > 0) {
+        // Append sub-items as semicolon-separated suffix
+        const subText = subItems.map(s => sanitize(s)).filter(s => s.length > 2).join("; ");
+        if (subText) {
+          // If parent ends with colon, just append; otherwise add colon
+          if (/:\s*$/.test(merged)) {
+            merged = merged.replace(/:\s*$/, ": " + subText + ".");
+          } else {
+            merged = merged.replace(/[.!?]\s*$/, "") + ": " + subText + ".";
+          }
+        }
+      }
+      if (merged.length > 3) items.push(merged);
+      pendingParent = null;
+      subItems = [];
+    }
+  };
+
   for (const token of tokens) {
     switch (token.type) {
       case "bullet":
       case "numbered": {
         flushParagraph();
-        const clean = sanitize(token.content);
-        if (clean.length > 3) items.push(clean);
+        const indent = token.indent || 0;
+
+        if (indent === 0) {
+          // Top-level item: flush any pending parent, start new one
+          flushListItem();
+          pendingParent = { text: token.content, indent: 0 };
+        } else {
+          // Sub-item: attach to pending parent
+          if (pendingParent) {
+            subItems.push(token.content);
+          } else {
+            // Orphan sub-item (no parent above) — treat as top-level
+            const clean = sanitize(token.content);
+            if (clean.length > 3) items.push(clean);
+          }
+        }
         break;
       }
       case "blockquote": {
         flushParagraph();
+        flushListItem();
         const clean = sanitize(token.content);
         if (clean.length > 3) items.push(clean);
         break;
       }
       case "paragraph": {
-        // Short paragraphs (< 300 chars) become items
-        // Long paragraphs get split at sentence boundaries
+        flushParagraph();
+        flushListItem();
         const clean = sanitize(token.content);
         if (clean.length <= 3) break;
 
         if (clean.length <= 300) {
-          flushParagraph();
           items.push(clean);
         } else {
-          // Split long paragraph into sentences, group into ~150-char chunks
-          flushParagraph();
+          // Split long paragraph into sentences, group into ~250-char chunks
           const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
           let chunk = "";
           for (const sentence of sentences) {
@@ -2549,6 +2594,7 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
     }
   }
 
+  flushListItem();
   flushParagraph();
   return items;
 }
@@ -2641,8 +2687,81 @@ function parseModuleContent(content: string): ParsedBlock[] {
   return allBlocks;
 }
 
-/* ═══════════════════════════════════════════════════════
-   CONTENT CLASSIFICATION v2 — with example/reflection templates
+/**
+ * Convert pre-parsed blocks into a structured text summary for the LLM planner.
+ * This replaces sending raw markdown — the LLM receives a clean, pre-segmented
+ * representation that preserves section boundaries and content types.
+ */
+function blocksToStructuredSummary(blocks: ParsedBlock[]): string {
+  const lines: string[] = [];
+  for (const block of blocks) {
+    const typeTag = block.blockType && block.blockType !== "normal"
+      ? ` [${block.blockType.toUpperCase()}]`
+      : "";
+    if (block.heading) {
+      lines.push("### " + block.heading + typeTag);
+    }
+    if (block.isTable && block.headers && block.rows) {
+      lines.push("[TABELA: " + block.headers.join(" | ") + "]");
+      for (const row of block.rows.slice(0, 5)) {
+        lines.push("  " + row.join(" | "));
+      }
+    } else if (block.items.length > 0) {
+      for (const item of block.items) {
+        lines.push("- " + item);
+      }
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Pre-parse result stored per module for reuse across pipeline stages.
+ */
+interface PreParsedModule {
+  blocks: ParsedBlock[];
+  structuredSummary: string;
+  sectionCount: number;
+  pedagogicalSections: string[];
+}
+
+/**
+ * PRE-STAGE: Run semantic parser on all modules.
+ * Returns pre-parsed blocks and structured summaries that feed BOTH
+ * the LLM planner (main path) and buildModuleSlides (fallback path).
+ */
+function preParseAllModules(modules: any[]): Map<number, PreParsedModule> {
+  const result = new Map<number, PreParsedModule>();
+
+  for (let i = 0; i < modules.length; i++) {
+    const content = modules[i].content || "";
+    const blocks = parseModuleContent(content);
+    const structuredSummary = blocksToStructuredSummary(blocks);
+
+    // Detect which pedagogical sections exist
+    const pedagogicalSections: string[] = [];
+    for (const block of blocks) {
+      if (block.blockType && block.blockType !== "normal") {
+        pedagogicalSections.push(block.blockType);
+      }
+    }
+
+    result.set(i, {
+      blocks,
+      structuredSummary,
+      sectionCount: blocks.length,
+      pedagogicalSections,
+    });
+
+    console.log("[PRE-PARSE] Module " + (i + 1) + ": " + blocks.length + " blocks, " +
+      blocks.filter(b => b.isTable).length + " tables, sections=[" + pedagogicalSections.join(",") + "]");
+  }
+
+  return result;
+}
+
+
    ═══════════════════════════════════════════════════════ */
 
 type LayoutType =
@@ -2833,6 +2952,15 @@ function getColumnWidths(headers: string[]): number[] {
 
 function buildModuleSlides(mod: any, modIndex: number, totalModules: number): SlideData[] {
   const blocks = parseModuleContent(mod.content || "");
+  return buildModuleSlidesFromBlocks(blocks, mod, modIndex, totalModules);
+}
+
+/**
+ * Build slides from pre-parsed blocks. This is the core slide builder
+ * used by both the fallback path (with pre-parsed blocks from PRE-STAGE B)
+ * and the legacy path (via buildModuleSlides which parses first).
+ */
+function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: number, totalModules: number): SlideData[] {
   const rawTitle = sanitize(mod.title || "");
   const shortTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
 
@@ -4418,15 +4546,30 @@ Deno.serve(async (req: Request) => {
     // ═══════════════════════════════════════════════════════
     console.log("[PIPELINE] Starting multi-stage validation pipeline v3...");
 
-    // ── PRE-STAGE: Build TF-IDF corpus from all module content for semantic operations ──
+    // ── PRE-STAGE A: Build TF-IDF corpus from all module content for semantic operations ──
     const corpusDocs = modules.map((m: any) => sanitize(m.content || "")).filter((c: string) => c.length > 20);
     resetIdfCache();
     buildIdfFromCorpus(corpusDocs);
+
+    // ── PRE-STAGE B: Semantic pre-parse ALL modules ──
+    // This runs the semantic parser on every module BEFORE the LLM planner,
+    // producing structured blocks that feed both the main path and the fallback path.
+    console.log("[PRE-PARSE] Running semantic parser on all " + modules.length + " modules...");
+    const preParsedModules = preParseAllModules(modules);
+    let totalPreParsedBlocks = 0;
+    let totalPreParsedTables = 0;
+    for (const [, pp] of preParsedModules) {
+      totalPreParsedBlocks += pp.sectionCount;
+      totalPreParsedTables += pp.blocks.filter(b => b.isTable).length;
+    }
+    console.log("[PRE-PARSE] Complete: " + totalPreParsedBlocks + " blocks, " + totalPreParsedTables + " tables across " + modules.length + " modules");
 
     // Accumulative quality report (persists across ALL retries)
     const qualityReport = {
       pre_tfidf_corpus_size: corpusDocs.length,
       pre_tfidf_terms: _idfCache.size,
+      pre_parse_total_blocks: totalPreParsedBlocks,
+      pre_parse_total_tables: totalPreParsedTables,
       stage0_semantic_planner_modules: 0,
       stage0_regex_fallback_modules: 0,
       stage1_slides_generated: 0,
@@ -4450,10 +4593,13 @@ Deno.serve(async (req: Request) => {
       stage4_final_fixes: 0,
     };
 
-    // ── STAGE 0: LLM SEMANTIC CONTENT PLANNER ──
-    // Uses AI to plan slide distribution with semantic understanding
-    // Falls back to regex parser if LLM is unavailable or fails
-    console.log("[STAGE-0] Starting LLM semantic content planner...");
+    // ── STAGE 0: SLIDE PLANNING (LLM with pre-parsed input + fallback) ──
+    // The LLM planner now receives pre-segmented structured content from the
+    // semantic parser instead of raw markdown. This gives it cleaner section
+    // boundaries, identified pedagogical types, and properly separated tables.
+    // If the LLM planner fails, buildModuleSlides reuses the same pre-parsed
+    // blocks (no double-parsing).
+    console.log("[STAGE-0] Starting slide planning with pre-parsed semantic input...");
     let allSlides: SlideData[] = [];
     let semanticPlannerUsed = 0;
     let regexFallbackUsed = 0;
@@ -4464,11 +4610,13 @@ Deno.serve(async (req: Request) => {
       const batchModules = modules.slice(batchStart, batchStart + PLANNER_BATCH);
       const planPromises = batchModules.map((mod: any, localIdx: number) => {
         const globalIdx = batchStart + localIdx;
+        const preParsed = preParsedModules.get(globalIdx);
         return llmPlanModuleSlides(
           sanitize(mod.title || ""),
           mod.content || "",
           globalIdx,
-          course.language || "pt-BR"
+          course.language || "pt-BR",
+          preParsed?.structuredSummary  // Feed pre-parsed structured content to LLM
         ).then(plan => ({ plan, mod, globalIdx }));
       });
 
@@ -4476,22 +4624,31 @@ Deno.serve(async (req: Request) => {
 
       for (const { plan, mod, globalIdx } of results) {
         if (plan) {
-          // LLM planner succeeded — use semantic plan
+          // LLM planner succeeded — use semantic plan (built from pre-parsed input)
           const slides = semanticPlanToSlides(plan, globalIdx);
           allSlides.push(...slides);
           semanticPlannerUsed++;
-          console.log("[STAGE-0] Module " + (globalIdx + 1) + ": LLM semantic plan (" + slides.length + " slides)");
+          console.log("[STAGE-0] Module " + (globalIdx + 1) + ": LLM plan from pre-parsed input (" + slides.length + " slides)");
         } else {
-          // Fallback to regex-based parser
-          const slides = buildModuleSlides(mod, globalIdx, modules.length);
-          allSlides.push(...slides);
-          regexFallbackUsed++;
-          console.log("[STAGE-0] Module " + (globalIdx + 1) + ": regex fallback (" + slides.length + " slides)");
+          // Fallback: build slides directly from pre-parsed blocks (reuse, no re-parsing)
+          const preParsed = preParsedModules.get(globalIdx);
+          if (preParsed && preParsed.blocks.length > 0) {
+            const slides = buildModuleSlidesFromBlocks(preParsed.blocks, mod, globalIdx, modules.length);
+            allSlides.push(...slides);
+            regexFallbackUsed++;
+            console.log("[STAGE-0] Module " + (globalIdx + 1) + ": fallback from pre-parsed blocks (" + slides.length + " slides)");
+          } else {
+            // Last resort: full parse + build (shouldn't happen since pre-parse ran)
+            const slides = buildModuleSlides(mod, globalIdx, modules.length);
+            allSlides.push(...slides);
+            regexFallbackUsed++;
+            console.log("[STAGE-0] Module " + (globalIdx + 1) + ": full fallback (" + slides.length + " slides)");
+          }
         }
       }
     }
 
-    console.log("[STAGE-0] Complete: " + semanticPlannerUsed + " modules via LLM, " + regexFallbackUsed + " via regex fallback");
+    console.log("[STAGE-0] Complete: " + semanticPlannerUsed + " LLM (pre-parsed input), " + regexFallbackUsed + " fallback");
     qualityReport.stage0_semantic_planner_modules = semanticPlannerUsed;
     qualityReport.stage0_regex_fallback_modules = regexFallbackUsed;
     qualityReport.stage1_slides_generated = allSlides.length;
@@ -4690,6 +4847,8 @@ Deno.serve(async (req: Request) => {
         passed: false,
         pipeline_version: "v3-tfidf-rag",
         pre_tfidf_corpus: qualityReport.pre_tfidf_corpus_size + " docs, " + qualityReport.pre_tfidf_terms + " terms",
+        pre_parse_blocks: qualityReport.pre_parse_total_blocks,
+        pre_parse_tables: qualityReport.pre_parse_total_tables,
         stage0_semantic_planner_modules: qualityReport.stage0_semantic_planner_modules,
         stage0_regex_fallback_modules: qualityReport.stage0_regex_fallback_modules,
         stage1_slides_generated: qualityReport.stage1_slides_generated,
@@ -4821,6 +4980,8 @@ Deno.serve(async (req: Request) => {
       total_slides: totalSlides,
       pipeline_version: "v3-tfidf-rag",
       pre_tfidf_corpus: qualityReport.pre_tfidf_corpus_size + " docs, " + qualityReport.pre_tfidf_terms + " terms",
+      pre_parse_blocks: qualityReport.pre_parse_total_blocks,
+      pre_parse_tables: qualityReport.pre_parse_total_tables,
       stage0_semantic_planner_modules: qualityReport.stage0_semantic_planner_modules,
       stage0_regex_fallback_modules: qualityReport.stage0_regex_fallback_modules,
       stage1_slides_generated: qualityReport.stage1_slides_generated,
