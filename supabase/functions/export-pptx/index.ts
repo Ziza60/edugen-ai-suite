@@ -2502,33 +2502,73 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
     }
   };
 
+  // ── Nested list processing ──
+  // Track parent items so sub-items (indent > 0) get merged into their parent
+  // as "Parent: sub1; sub2; sub3" — preserving hierarchy for slide rendering.
+  let pendingParent: { text: string; indent: number } | null = null;
+  let subItems: string[] = [];
+
+  const flushListItem = () => {
+    if (pendingParent) {
+      let merged = sanitize(pendingParent.text);
+      if (subItems.length > 0) {
+        // Append sub-items as semicolon-separated suffix
+        const subText = subItems.map(s => sanitize(s)).filter(s => s.length > 2).join("; ");
+        if (subText) {
+          // If parent ends with colon, just append; otherwise add colon
+          if (/:\s*$/.test(merged)) {
+            merged = merged.replace(/:\s*$/, ": " + subText + ".");
+          } else {
+            merged = merged.replace(/[.!?]\s*$/, "") + ": " + subText + ".";
+          }
+        }
+      }
+      if (merged.length > 3) items.push(merged);
+      pendingParent = null;
+      subItems = [];
+    }
+  };
+
   for (const token of tokens) {
     switch (token.type) {
       case "bullet":
       case "numbered": {
         flushParagraph();
-        const clean = sanitize(token.content);
-        if (clean.length > 3) items.push(clean);
+        const indent = token.indent || 0;
+
+        if (indent === 0) {
+          // Top-level item: flush any pending parent, start new one
+          flushListItem();
+          pendingParent = { text: token.content, indent: 0 };
+        } else {
+          // Sub-item: attach to pending parent
+          if (pendingParent) {
+            subItems.push(token.content);
+          } else {
+            // Orphan sub-item (no parent above) — treat as top-level
+            const clean = sanitize(token.content);
+            if (clean.length > 3) items.push(clean);
+          }
+        }
         break;
       }
       case "blockquote": {
         flushParagraph();
+        flushListItem();
         const clean = sanitize(token.content);
         if (clean.length > 3) items.push(clean);
         break;
       }
       case "paragraph": {
-        // Short paragraphs (< 300 chars) become items
-        // Long paragraphs get split at sentence boundaries
+        flushParagraph();
+        flushListItem();
         const clean = sanitize(token.content);
         if (clean.length <= 3) break;
 
         if (clean.length <= 300) {
-          flushParagraph();
           items.push(clean);
         } else {
-          // Split long paragraph into sentences, group into ~150-char chunks
-          flushParagraph();
+          // Split long paragraph into sentences, group into ~250-char chunks
           const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
           let chunk = "";
           for (const sentence of sentences) {
@@ -2549,6 +2589,7 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
     }
   }
 
+  flushListItem();
   flushParagraph();
   return items;
 }
