@@ -5406,6 +5406,73 @@ Deno.serve(async (req: Request) => {
     qualityReport.stage2_avg_density = Number(avgDensity.toFixed(1));
     console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
+    // ── STAGE 2.5: PRE-RENDER STRUCTURAL PASS — Cover, objectives, long bullets ──
+    // Prevents truncation at render time by structurally adapting content BEFORE rendering.
+    // This is the key prevention layer that stops "..." from appearing in the final output.
+    console.log("[STAGE-2.5] Running pre-render structural pass...");
+    let preRenderFixes = 0;
+    for (const s of allSlides) {
+      // A. Module cover objectives: ensure they fit without hard truncation
+      if (s.layout === "module_cover" && s.objectives) {
+        const objW = SAFE_W * 0.60 - 0.30;
+        const objH = 0.44;
+        for (let i = 0; i < s.objectives.length; i++) {
+          const obj = s.objectives[i];
+          if (!obj || obj.length < 10) continue;
+          const bbox = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW, objH);
+          if (!bbox.fits) {
+            // Structurally shorten: find sentence boundary or compress
+            const shortened = smartTruncate(obj, Math.max(bbox.maxLines * Math.floor(objW * 9), 50), false);
+            s.objectives[i] = enforceSentenceIntegrity(shortened);
+            preRenderFixes++;
+            console.log("[STAGE-2.5] Objective shortened: \"" + obj.substring(0, 40) + "...\" → " + s.objectives[i].length + " chars");
+          }
+        }
+      }
+      
+      // B. Module cover description: ensure it fits the description box
+      if (s.layout === "module_cover" && s.description) {
+        const descW = SAFE_W * 0.65;
+        const descH = 1.0;
+        const bbox = measureBoundingBox(s.description, TYPO.SUBTITLE, FONT_BODY, descW, descH);
+        if (!bbox.fits) {
+          const shortened = smartTruncate(s.description, Math.max(bbox.maxLines * Math.floor(descW * 8), 40), false);
+          s.description = enforceSentenceIntegrity(shortened);
+          preRenderFixes++;
+          console.log("[STAGE-2.5] Description shortened for module cover: " + s.title);
+        }
+      }
+      
+      // C. Long "Label: explanation" bullets: split label from content, compress content only
+      if (s.items && s.items.length > 0 && s.layout !== "module_cover") {
+        const maxChars = activeDensity.maxCharsPerBullet;
+        for (let i = 0; i < s.items.length; i++) {
+          const item = s.items[i];
+          if (!item || item.length <= maxChars) continue;
+          
+          const colonIdx = item.indexOf(":");
+          if (colonIdx > 2 && colonIdx < 55) {
+            // "Label: long explanation" → compress explanation, preserve label
+            const label = item.substring(0, colonIdx).trim();
+            const explanation = item.substring(colonIdx + 1).trim();
+            const budget = maxChars - label.length - 2;
+            if (budget > 25 && explanation.length > budget) {
+              const compressed = smartTruncate(explanation, budget, false);
+              s.items[i] = label + ": " + enforceSentenceIntegrity(compressed);
+              preRenderFixes++;
+            }
+          } else {
+            // Regular long bullet: find sentence boundary
+            s.items[i] = smartBullet(item);
+            if (s.items[i] !== item) preRenderFixes++;
+          }
+        }
+      }
+    }
+    if (preRenderFixes > 0) {
+      console.log("[STAGE-2.5] Pre-render structural pass: " + preRenderFixes + " fixes applied");
+    }
+
     // ── STAGE 3: STRUCTURAL OVERFLOW RESOLUTION (6-level cascade) ──
     // Uses the new overflow resolution engine instead of simple bbox + split.
     // Cascade: layout_swap → redistribute → semantic_split → continuation → summarize → truncate
