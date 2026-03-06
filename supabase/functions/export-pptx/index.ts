@@ -2181,6 +2181,57 @@ function sanitizeBullets(bullets: string[]): string[] {
   return result;
 }
 
+/**
+ * Build slide-level structured items by matching NLP-processed flat items
+ * back to the original StructuredItem hierarchy.
+ */
+function buildSlideStructuredItems(original: StructuredItem[], processedItems: string[]): StructuredItem[] {
+  if (!original || original.length === 0) return processedItems.map(t => ({ text: t, subItems: [] }));
+
+  const result: StructuredItem[] = [];
+  const usedProcessed = new Set<number>();
+
+  for (const orig of original) {
+    let matchIdx = -1;
+    for (let i = 0; i < processedItems.length; i++) {
+      if (usedProcessed.has(i)) continue;
+      const pi = processedItems[i];
+      const origPrefix = orig.text.substring(0, Math.min(25, orig.text.length));
+      const piPrefix = pi.substring(0, Math.min(25, pi.length));
+      if (pi === orig.text || origPrefix === piPrefix || pi.startsWith(orig.text.substring(0, 15))) {
+        matchIdx = i;
+        break;
+      }
+    }
+
+    if (matchIdx >= 0) {
+      usedProcessed.add(matchIdx);
+      // Collect arrow sub-items that follow in flat list
+      const matchedSubs: string[] = [];
+      for (let j = matchIdx + 1; j < processedItems.length; j++) {
+        if (usedProcessed.has(j)) continue;
+        if (processedItems[j].startsWith("  → ")) {
+          matchedSubs.push(processedItems[j].replace(/^\s*→\s*/, ""));
+          usedProcessed.add(j);
+        } else {
+          break;
+        }
+      }
+      const subs = matchedSubs.length > 0 ? matchedSubs : orig.subItems;
+      result.push({ text: processedItems[matchIdx], subItems: subs });
+    }
+  }
+
+  // Unmatched processed items become standalone
+  for (let i = 0; i < processedItems.length; i++) {
+    if (!usedProcessed.has(i) && !processedItems[i].startsWith("  → ")) {
+      result.push({ text: processedItems[i], subItems: [] });
+    }
+  }
+
+  return result;
+}
+
 function estimateTextLines(text: string, widthInches: number, fontPt: number): number {
   const charsPerInch = Math.max(5, 110 / fontPt);
   const charsPerLine = Math.max(10, Math.floor(widthInches * charsPerInch));
@@ -2246,9 +2297,16 @@ function makeBoldLabelText(
    tokenization → section grouping → pedagogical mapping.
    ═══════════════════════════════════════════════════════ */
 
+/** Structured item preserving parent/sub-item hierarchy */
+interface StructuredItem {
+  text: string;
+  subItems: string[];
+}
+
 interface ParsedBlock {
   heading: string;
   items: string[];
+  structuredItems?: StructuredItem[];
   isTable: boolean;
   headers?: string[];
   rows?: string[][];
@@ -2446,9 +2504,9 @@ function sectionToParsedBlocks(section: MarkdownSection): ParsedBlock[] {
     if (token.type === "table_row" || token.type === "table_sep") {
       // If we have accumulated non-table content before this table, flush it
       if (!inTableSequence && contentTokens.length > 0) {
-        const items = extractItemsFromTokens(contentTokens);
-        if (items.length > 0) {
-          blocks.push({ heading, items, isTable: false, blockType });
+        const result = extractItemsFromTokens(contentTokens);
+        if (result.items.length > 0) {
+          blocks.push({ heading, items: result.items, structuredItems: result.structuredItems, isTable: false, blockType });
         }
         contentTokens.length = 0;
       }
@@ -2474,9 +2532,9 @@ function sectionToParsedBlocks(section: MarkdownSection): ParsedBlock[] {
 
   // Flush remaining content
   if (contentTokens.length > 0) {
-    const items = extractItemsFromTokens(contentTokens);
-    if (items.length > 0) {
-      blocks.push({ heading, items, isTable: false, blockType });
+    const result = extractItemsFromTokens(contentTokens);
+    if (result.items.length > 0) {
+      blocks.push({ heading, items: result.items, structuredItems: result.structuredItems, isTable: false, blockType });
     }
   }
 
@@ -2491,46 +2549,41 @@ function sectionToParsedBlocks(section: MarkdownSection): ParsedBlock[] {
 
 /**
  * Extract clean items from a sequence of non-table tokens.
- * Paragraphs are merged into items only if they're short enough.
- * Lists stay as individual items.
- * Blockquotes become items.
+ * Returns both flat items (for backward compat) and structuredItems (preserving hierarchy).
  */
-function extractItemsFromTokens(tokens: MdToken[]): string[] {
-  const items: string[] = [];
+interface ExtractResult {
+  items: string[];
+  structuredItems: StructuredItem[];
+}
+
+function extractItemsFromTokens(tokens: MdToken[]): ExtractResult {
+  const structured: StructuredItem[] = [];
   let paragraphBuffer = "";
 
   const flushParagraph = () => {
     if (paragraphBuffer.trim()) {
       const clean = sanitize(paragraphBuffer.trim());
-      if (clean.length > 3) items.push(clean);
+      if (clean.length > 3) structured.push({ text: clean, subItems: [] });
       paragraphBuffer = "";
     }
   };
 
-  // ── Nested list processing ──
-  // Track parent items so sub-items (indent > 0) get merged into their parent
-  // as "Parent: sub1; sub2; sub3" — preserving hierarchy for slide rendering.
-  let pendingParent: { text: string; indent: number } | null = null;
-  let subItems: string[] = [];
+  // Track parent items so sub-items (indent > 0) are preserved as children
+  let pendingParent: { text: string } | null = null;
+  let pendingSubItems: string[] = [];
 
   const flushListItem = () => {
     if (pendingParent) {
-      let merged = sanitize(pendingParent.text);
-      if (subItems.length > 0) {
-        // Append sub-items as semicolon-separated suffix
-        const subText = subItems.map(s => sanitize(s)).filter(s => s.length > 2).join("; ");
-        if (subText) {
-          // If parent ends with colon, just append; otherwise add colon
-          if (/:\s*$/.test(merged)) {
-            merged = merged.replace(/:\s*$/, ": " + subText + ".");
-          } else {
-            merged = merged.replace(/[.!?]\s*$/, "") + ": " + subText + ".";
-          }
-        }
+      const parentText = sanitize(pendingParent.text);
+      const subs = pendingSubItems.map(s => sanitize(s)).filter(s => s.length > 2);
+      if (parentText.length > 3) {
+        structured.push({ text: parentText, subItems: subs });
+      } else if (subs.length > 0) {
+        // Parent too short, promote sub-items
+        for (const s of subs) structured.push({ text: s, subItems: [] });
       }
-      if (merged.length > 3) items.push(merged);
       pendingParent = null;
-      subItems = [];
+      pendingSubItems = [];
     }
   };
 
@@ -2542,17 +2595,14 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
         const indent = token.indent || 0;
 
         if (indent === 0) {
-          // Top-level item: flush any pending parent, start new one
           flushListItem();
-          pendingParent = { text: token.content, indent: 0 };
+          pendingParent = { text: token.content };
         } else {
-          // Sub-item: attach to pending parent
           if (pendingParent) {
-            subItems.push(token.content);
+            pendingSubItems.push(token.content);
           } else {
-            // Orphan sub-item (no parent above) — treat as top-level
             const clean = sanitize(token.content);
-            if (clean.length > 3) items.push(clean);
+            if (clean.length > 3) structured.push({ text: clean, subItems: [] });
           }
         }
         break;
@@ -2561,7 +2611,7 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
         flushParagraph();
         flushListItem();
         const clean = sanitize(token.content);
-        if (clean.length > 3) items.push(clean);
+        if (clean.length > 3) structured.push({ text: clean, subItems: [] });
         break;
       }
       case "paragraph": {
@@ -2571,21 +2621,20 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
         if (clean.length <= 3) break;
 
         if (clean.length <= 300) {
-          items.push(clean);
+          structured.push({ text: clean, subItems: [] });
         } else {
-          // Split long paragraph into sentences, group into ~250-char chunks
           const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
           let chunk = "";
           for (const sentence of sentences) {
             const s = sentence.trim();
             if (chunk.length + s.length > 250 && chunk.length > 0) {
-              items.push(chunk.trim());
+              structured.push({ text: chunk.trim(), subItems: [] });
               chunk = s;
             } else {
               chunk = chunk ? chunk + " " + s : s;
             }
           }
-          if (chunk.trim().length > 3) items.push(chunk.trim());
+          if (chunk.trim().length > 3) structured.push({ text: chunk.trim(), subItems: [] });
         }
         break;
       }
@@ -2596,7 +2645,22 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
 
   flushListItem();
   flushParagraph();
-  return items;
+
+  // Generate flat items for backward compatibility
+  const items: string[] = [];
+  for (const si of structured) {
+    if (si.subItems.length === 0) {
+      items.push(si.text);
+    } else {
+      // Flatten: parent text + sub-items as indented entries
+      items.push(si.text);
+      for (const sub of si.subItems) {
+        items.push("  → " + sub);
+      }
+    }
+  }
+
+  return { items, structuredItems: structured };
 }
 
 /**
@@ -2761,7 +2825,8 @@ function preParseAllModules(modules: any[]): Map<number, PreParsedModule> {
   return result;
 }
 
-
+/* ═══════════════════════════════════════════════════════
+   LAYOUT CLASSIFICATION & SLIDE BUILDING
    ═══════════════════════════════════════════════════════ */
 
 type LayoutType =
@@ -2845,6 +2910,7 @@ interface SlideData {
   subtitle?: string;
   sectionLabel?: string;
   items?: string[];
+  structuredItems?: StructuredItem[];
   tableHeaders?: string[];
   tableRows?: string[][];
   moduleIndex?: number;
@@ -3052,6 +3118,9 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
     }
     if (items.length === 0) continue;
 
+    // Build structured items for this slide, preserving hierarchy from parsing
+    const slideStructured = block.structuredItems ? buildSlideStructuredItems(block.structuredItems, items) : undefined;
+
     let layout = classifyContent(heading, items, false, prevLayout, blockType);
 
     if (!firstContentRendered && items.length >= 3 && layout !== "example_highlight" && layout !== "reflection_callout") {
@@ -3072,17 +3141,20 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
     if (items.length > maxItems && layout !== "numbered_takeaways") {
       // Create continuation slides instead of truncating
       let remaining = [...items];
+      let remainingStructured = slideStructured ? [...slideStructured] : undefined;
       let partNum = 1;
       while (remaining.length > 0) {
         const chunk = remaining.slice(0, maxItems);
         remaining = remaining.slice(maxItems);
+        const chunkStructured = remainingStructured ? remainingStructured.slice(0, maxItems) : undefined;
+        if (remainingStructured) remainingStructured = remainingStructured.slice(maxItems);
         const partTitle = remaining.length > 0
           ? smartTitle(heading + " (Parte " + partNum + ")")
           : smartTitle(heading + (partNum > 1 ? " (Parte " + partNum + ")" : ""));
         const chunkLayout = partNum === 1 ? layout : (layout === "grid_cards" ? "bullets" : "grid_cards");
         slides.push({
           layout: chunkLayout, title: partTitle, sectionLabel,
-          items: sanitizeBullets(chunk), moduleIndex: modIndex, blockType,
+          items: sanitizeBullets(chunk), structuredItems: chunkStructured, moduleIndex: modIndex, blockType,
         });
         partNum++;
       }
@@ -3090,7 +3162,7 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
     } else {
       slides.push({
         layout, title: smartTitle(heading), sectionLabel,
-        items: sanitizeBullets(items), moduleIndex: modIndex, blockType,
+        items: sanitizeBullets(items), structuredItems: slideStructured, moduleIndex: modIndex, blockType,
       });
       prevLayout = layout;
     }
@@ -3929,7 +4001,7 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
   }
 }
 
-// ── BULLETS v2 — 18pt minimum ──
+// ── BULLETS v3 — with sub-item hierarchy support ──
 function renderBullets(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
@@ -3939,82 +4011,131 @@ function renderBullets(pptx: any, data: SlideData) {
   slide.background = { color: C.BG_WHITE };
   const contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
-  const maxItems = Math.min(items.length, activeDensity.maxBulletsPerSlide);
-  const textX = MARGIN + 0.40;
-  const textW = SAFE_W - 0.50;
-  const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
-  const selected = items.slice(0, maxItems).map((item) => smartBullet(item));
+  const structured = data.structuredItems;
+  const hasHierarchy = structured && structured.some(si => si.subItems.length > 0);
 
-  // ── UNIFORM FONT SIZE: calculate ONE font size for ALL bullets ──
-  // Find the smallest font that fits the longest bullet, then use it for all
-  let uniformFontSize = TYPO.BULLET_TEXT;
-  const maxRowH = Math.max(0.48, availH / selected.length - 0.06);
-  for (const item of selected) {
-    const fit = fitTextForBox(item, textW, Math.max(maxRowH, 0.22), TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
-    if (fit.fontSize < uniformFontSize) uniformFontSize = fit.fontSize;
+  // Build render entries: each entry is either a parent or a sub-item
+  interface RenderEntry {
+    text: string;
+    isSubItem: boolean;
+    accentIdx: number;
+  }
+  const entries: RenderEntry[] = [];
+  let parentIdx = 0;
+
+  if (hasHierarchy && structured) {
+    for (const si of structured) {
+      entries.push({ text: smartBullet(si.text), isSubItem: false, accentIdx: parentIdx });
+      for (const sub of si.subItems) {
+        entries.push({ text: smartBullet(sub), isSubItem: true, accentIdx: parentIdx });
+      }
+      parentIdx++;
+    }
+  } else {
+    for (let i = 0; i < items.length; i++) {
+      entries.push({ text: smartBullet(items[i]), isSubItem: false, accentIdx: i });
+    }
   }
 
-  const rawHeights = selected.map((txt) => {
-    const lineCount = Math.max(1, estimateTextLines(txt, textW, uniformFontSize));
-    const lineHeight = (uniformFontSize * 1.35) / 72;
-    return Math.max(0.52, Math.min(1.15, lineCount * lineHeight + 0.10));
+  const maxEntries = Math.min(entries.length, activeDensity.maxBulletsPerSlide + 3); // allow extra for sub-items
+  const selected = entries.slice(0, maxEntries);
+
+  const textX = MARGIN + 0.40;
+  const subTextX = MARGIN + 0.70; // indented for sub-items
+  const textW = SAFE_W - 0.50;
+  const subTextW = SAFE_W - 0.80;
+  const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
+
+  // Calculate uniform font sizes
+  const parentFontSize = TYPO.BULLET_TEXT;
+  const subFontSize = Math.max(TYPO.SUPPORT, parentFontSize - 2);
+
+  let uniformFontSize = parentFontSize;
+  const maxRowH = Math.max(0.40, availH / selected.length - 0.04);
+  for (const entry of selected) {
+    const w = entry.isSubItem ? subTextW : textW;
+    const fit = fitTextForBox(entry.text, w, Math.max(maxRowH, 0.20), entry.isSubItem ? subFontSize : parentFontSize, FONT_BODY, TYPO.SUPPORT);
+    if (!entry.isSubItem && fit.fontSize < uniformFontSize) uniformFontSize = fit.fontSize;
+  }
+  const uniformSubFontSize = Math.max(TYPO.SUPPORT, uniformFontSize - 2);
+
+  const rawHeights = selected.map((entry) => {
+    const fs = entry.isSubItem ? uniformSubFontSize : uniformFontSize;
+    const w = entry.isSubItem ? subTextW : textW;
+    const lineCount = Math.max(1, estimateTextLines(entry.text, w, fs));
+    const lineHeight = (fs * 1.35) / 72;
+    const minH = entry.isSubItem ? 0.36 : 0.48;
+    return Math.max(minH, Math.min(1.10, lineCount * lineHeight + 0.08));
   });
 
-  const GAP_BETWEEN_BULLETS = 0.10;
+  const GAP_BETWEEN_BULLETS = 0.08;
   const rawTotal = rawHeights.reduce((sum, h) => sum + h, 0) + (selected.length - 1) * GAP_BETWEEN_BULLETS;
-  const minRowH = 0.48;
   let heights = [...rawHeights];
 
   if (rawTotal > availH) {
     const totalGaps = (selected.length - 1) * GAP_BETWEEN_BULLETS;
     const availForRows = availH - totalGaps;
-    const minTotal = minRowH * heights.length;
-    if (minTotal >= availForRows) {
-      heights = heights.map(() => availForRows / heights.length);
-    } else {
-      const extraTotal = heights.reduce((sum, h) => sum + Math.max(0, h - minRowH), 0);
-      const availableExtra = availForRows - minTotal;
-      heights = heights.map((h) => {
-        const extra = Math.max(0, h - minRowH);
-        return minRowH + (extraTotal > 0 ? (extra / extraTotal) * availableExtra : 0);
-      });
-    }
+    const scale = availForRows / rawHeights.reduce((s, h) => s + h, 0);
+    heights = rawHeights.map((h, i) => {
+      const minH = selected[i].isSubItem ? 0.30 : 0.40;
+      return Math.max(minH, h * scale);
+    });
   }
 
   let cursorY = contentY;
-  selected.forEach((item, idx) => {
+  selected.forEach((entry, idx) => {
     const rowH = heights[idx];
     if (cursorY + rowH > SLIDE_H - BOTTOM_MARGIN + 0.01) return;
 
-    const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
-    // Use uniform font size (already computed) — compress text if needed at this size
-    const textFit = fitTextForBox(item, textW, Math.max(rowH - 0.03, 0.22), uniformFontSize, FONT_BODY, uniformFontSize);
+    const accentColor = CARD_ACCENT_COLORS_FN()[entry.accentIdx % CARD_ACCENT_COLORS_FN().length];
+    const fs = entry.isSubItem ? uniformSubFontSize : uniformFontSize;
+    const x = entry.isSubItem ? subTextX : textX;
+    const w = entry.isSubItem ? subTextW : textW;
+
+    const textFit = fitTextForBox(entry.text, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, fs);
     const textY = cursorY + 0.01;
+    const lineHeightIn = (fs * 1.35) / 72;
 
-    const dotSize = 0.14;
-    const lineHeightIn = (uniformFontSize * 1.35) / 72;
-    const dotY = textY + Math.max(0, (lineHeightIn - dotSize) / 2);
+    if (entry.isSubItem) {
+      // Sub-item: smaller triangle marker instead of dot
+      const triSize = 0.09;
+      const triY = textY + Math.max(0, (lineHeightIn - triSize) / 2);
+      slide.addShape(pptx.ShapeType.rect, {
+        x: MARGIN + 0.50,
+        y: triY,
+        w: triSize,
+        h: triSize,
+        fill: { color: accentColor },
+        rectRadius: 0.02,
+      });
+    } else {
+      // Parent item: circle dot
+      const dotSize = 0.14;
+      const dotY = textY + Math.max(0, (lineHeightIn - dotSize) / 2);
+      slide.addShape(pptx.ShapeType.ellipse, {
+        x: MARGIN + 0.10,
+        y: dotY,
+        w: dotSize,
+        h: dotSize,
+        fill: { color: accentColor },
+      });
+    }
 
-    slide.addShape(pptx.ShapeType.ellipse, {
-      x: MARGIN + 0.10,
-      y: dotY,
-      w: dotSize,
-      h: dotSize,
-      fill: { color: accentColor },
-    });
-
-    const richText = makeBoldLabelText(textFit.text, C.TEXT_DARK, C.TEXT_BODY, uniformFontSize);
+    const textColor = entry.isSubItem ? C.TEXT_BODY : C.TEXT_DARK;
+    const richText = makeBoldLabelText(textFit.text, textColor, C.TEXT_BODY, fs);
     addTextSafe(slide, richText, {
-      x: textX,
+      x: x,
       y: textY,
-      w: textW,
-      h: Math.max(rowH - 0.02, 0.22),
+      w: w,
+      h: Math.max(rowH - 0.02, 0.20),
       valign: "top",
       lineSpacingMultiple: 1.3,
       inset: 0,
     });
 
-    if (idx < selected.length - 1) {
+    // Separator line between parent items (not after sub-items unless next is parent)
+    const nextEntry = idx < selected.length - 1 ? selected[idx + 1] : null;
+    if (nextEntry && !entry.isSubItem && !nextEntry.isSubItem) {
       slide.addShape(pptx.ShapeType.rect, {
         x: textX,
         y: cursorY + rowH - 0.02,
