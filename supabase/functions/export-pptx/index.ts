@@ -649,12 +649,92 @@ function normalizeTerminology(text: string): string {
   return result;
 }
 
-// ── SEMANTIC SIMILARITY (Jaccard on word trigrams — fallback) ──
-function wordSet(text: string): Set<string> {
-  return new Set(text.toLowerCase().replace(/[^\wà-ú]/g, " ").split(/\s+/).filter(w => w.length > 2));
+// ── TF-IDF EMBEDDINGS & COSINE SIMILARITY ──
+// Replaces basic Jaccard with TF-IDF weighted cosine similarity for semantic coherence
+
+function tokenize(text: string): string[] {
+  if (!text) return [];
+  return text
+    .toLowerCase()
+    .replace(/[^\wà-úÀ-Ú]/g, " ")
+    .split(/\s+/)
+    .filter(w => w.length > 2);
 }
 
+function wordSet(text: string): Set<string> {
+  return new Set(tokenize(text));
+}
+
+// Build TF vector: term frequency normalized by document length
+function buildTF(tokens: string[]): Map<string, number> {
+  const tf = new Map<string, number>();
+  if (tokens.length === 0) return tf;
+  for (const t of tokens) tf.set(t, (tf.get(t) || 0) + 1);
+  for (const [k, v] of tf) tf.set(k, v / tokens.length);
+  return tf;
+}
+
+// Corpus-level IDF cache (populated per export run)
+let _idfCache: Map<string, number> = new Map();
+let _idfCorpusSize = 0;
+
+function resetIdfCache() { _idfCache = new Map(); _idfCorpusSize = 0; }
+
+function buildIdfFromCorpus(documents: string[]) {
+  const docCount = documents.length;
+  if (docCount === 0) return;
+  const df = new Map<string, number>();
+  for (const doc of documents) {
+    const unique = new Set(tokenize(doc));
+    for (const t of unique) df.set(t, (df.get(t) || 0) + 1);
+  }
+  _idfCache = new Map();
+  for (const [term, count] of df) {
+    _idfCache.set(term, Math.log((docCount + 1) / (count + 1)) + 1);
+  }
+  _idfCorpusSize = docCount;
+  console.log("[TF-IDF] Corpus built: " + docCount + " docs, " + _idfCache.size + " terms");
+}
+
+function getIdf(term: string): number {
+  return _idfCache.get(term) || Math.log((_idfCorpusSize + 1) / 1) + 1;
+}
+
+// TF-IDF cosine similarity (replaces Jaccard — higher quality semantic matching)
+function tfidfCosineSimilarity(a: string, b: string): number {
+  const tokensA = tokenize(a);
+  const tokensB = tokenize(b);
+  if (tokensA.length === 0 && tokensB.length === 0) return 1;
+  if (tokensA.length === 0 || tokensB.length === 0) return 0;
+
+  const tfA = buildTF(tokensA);
+  const tfB = buildTF(tokensB);
+
+  // Collect all terms
+  const allTerms = new Set([...tfA.keys(), ...tfB.keys()]);
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (const term of allTerms) {
+    const idf = getIdf(term);
+    const weightA = (tfA.get(term) || 0) * idf;
+    const weightB = (tfB.get(term) || 0) * idf;
+    dotProduct += weightA * weightB;
+    normA += weightA * weightA;
+    normB += weightB * weightB;
+  }
+
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dotProduct / denom;
+}
+
+// Backward-compatible alias (all callers use this)
 function jaccardSimilarity(a: string, b: string): number {
+  // Use TF-IDF when corpus is built, fallback to basic overlap otherwise
+  if (_idfCorpusSize > 0) return tfidfCosineSimilarity(a, b);
+  // Basic fallback
   const setA = wordSet(a);
   const setB = wordSet(b);
   if (setA.size === 0 && setB.size === 0) return 1;
@@ -864,10 +944,10 @@ function checkWCAGContrast(fg: string, bg: string, fontSize: number): { ratio: n
   };
 }
 
-// ── IMPROVED BOUNDING BOX MEASUREMENT ──
+// ── IMPROVED BOUNDING BOX MEASUREMENT v3 — More accurate with safety margins ──
 const FONT_WIDTH_FACTORS: Record<string, number> = {
-  "Montserrat": 0.58,
-  "Open Sans": 0.54,
+  "Montserrat": 0.60,  // Slightly wider than before for safety
+  "Open Sans": 0.56,    // Slightly wider than before for safety
 };
 
 interface BBoxResult {
@@ -879,40 +959,51 @@ interface BBoxResult {
 }
 
 function measureBoundingBox(text: string, fontSize: number, fontFace: string, boxW: number, boxH: number): BBoxResult {
-  const widthFactor = FONT_WIDTH_FACTORS[fontFace] || 0.55;
+  const widthFactor = FONT_WIDTH_FACTORS[fontFace] || 0.57;
   const charWidthPx = fontSize * widthFactor;
   const charWidthIn = charWidthPx / 72;
-  const lineHeightIn = (fontSize * 1.35) / 72;
+  // More conservative line height with padding
+  const lineHeightIn = (fontSize * 1.45) / 72;
 
-  const charsPerLine = Math.max(5, Math.floor((boxW - 0.2) / charWidthIn));
-  const maxLines = Math.max(1, Math.floor(boxH / lineHeightIn));
+  // Account for inset/padding (0.1" each side = 0.2" total)
+  const effectiveW = Math.max(0.5, boxW - 0.25);
+  const effectiveH = Math.max(0.2, boxH - 0.10);
+
+  const charsPerLine = Math.max(5, Math.floor(effectiveW / charWidthIn));
+  const maxLines = Math.max(1, Math.floor(effectiveH / lineHeightIn));
   const maxChars = charsPerLine * maxLines;
 
+  // Word-wrap simulation for accurate line counting
   const words = text.split(/\s+/);
   let currentLineLen = 0;
   let lineCount = 1;
   for (const word of words) {
-    if (currentLineLen + word.length + 1 > charsPerLine) {
+    const wordLen = word.length;
+    if (currentLineLen === 0) {
+      currentLineLen = wordLen;
+    } else if (currentLineLen + 1 + wordLen > charsPerLine) {
       lineCount++;
-      currentLineLen = word.length;
+      currentLineLen = wordLen;
     } else {
-      currentLineLen += (currentLineLen > 0 ? 1 : 0) + word.length;
+      currentLineLen += 1 + wordLen;
     }
   }
 
   const overflowChars = Math.max(0, text.length - maxChars);
 
+  // Find recommended font size if text doesn't fit
   let recFont = fontSize;
   if (lineCount > maxLines) {
     for (let fs = fontSize - 1; fs >= 12; fs--) {
       const cw = (fs * widthFactor) / 72;
-      const lh = (fs * 1.35) / 72;
-      const cpl = Math.floor((boxW - 0.2) / cw);
-      const ml = Math.floor(boxH / lh);
+      const lh = (fs * 1.45) / 72;
+      const cpl = Math.floor(effectiveW / cw);
+      const ml = Math.floor(effectiveH / lh);
       let cl = 1, cll = 0;
       for (const w of words) {
-        if (cll + w.length + 1 > cpl) { cl++; cll = w.length; }
-        else { cll += (cll > 0 ? 1 : 0) + w.length; }
+        if (cll === 0) { cll = w.length; }
+        else if (cll + 1 + w.length > cpl) { cl++; cll = w.length; }
+        else { cll += 1 + w.length; }
       }
       if (cl <= ml) { recFont = fs; break; }
     }
@@ -980,22 +1071,50 @@ function checkNarrativeCoherence(slides: SlideData[]): string[] {
   return warnings;
 }
 
-// ── FULL NLP PIPELINE (regex fallback — runs before LLM validation) ──
-function runNLPPipeline(items: string[]): { processed: string[]; stats: { deduped: number; grammarFixes: number; termNormalized: number } } {
-  let stats = { deduped: 0, grammarFixes: 0, termNormalized: 0 };
+// ── FULL NLP PIPELINE v3 — Tokenization + Grammar + Dedup + Hybrid Summarization ──
+function runNLPPipeline(items: string[]): { processed: string[]; stats: { deduped: number; grammarFixes: number; termNormalized: number; summarized: number } } {
+  let stats = { deduped: 0, grammarFixes: 0, termNormalized: 0, summarized: 0 };
 
+  // Step 1: Consistent tokenization & terminology normalization
   let processed = items.map(item => {
     const normalized = normalizeTerminology(item);
     if (normalized !== item) stats.termNormalized++;
     return normalized;
   });
 
+  // Step 2: Grammar validation & auto-fix
   processed = processed.map(item => {
     const result = validateAndFixGrammar(item);
     stats.grammarFixes += result.corrections.length;
     return enforceSentenceIntegrity(result.text);
   });
 
+  // Step 3: Hybrid summarization — compress long items heuristically
+  processed = processed.map(item => {
+    if (item.length <= activeDensity.maxCharsPerBullet) return item;
+    // Heuristic summarization: extract key sentences
+    const sentences = item.match(/[^.!?]+[.!?]+/g) || [item];
+    if (sentences.length <= 1) return compressBullet(item);
+    // Keep first and last sentences (intro + conclusion pattern)
+    const summary = sentences.length > 2
+      ? [sentences[0].trim(), sentences[sentences.length - 1].trim()].join(" ")
+      : item;
+    if (summary.length <= activeDensity.maxCharsPerBullet) {
+      stats.summarized++;
+      return enforceSentenceIntegrity(summary);
+    }
+    return compressBullet(item);
+  });
+
+  // Step 4: Sentence completeness validation
+  processed = processed.map(item => {
+    if (detectTruncation(item)) {
+      return enforceSentenceIntegrity(item);
+    }
+    return item;
+  });
+
+  // Step 5: Deduplication with TF-IDF similarity
   const beforeLen = processed.length;
   processed = deduplicateItems(processed);
   stats.deduped = beforeLen - processed.length;
@@ -1007,20 +1126,39 @@ function semanticSimilarity(a: string, b: string): number {
   return jaccardSimilarity(a, b);
 }
 
-function validateRelevanceWithThreshold(items: string[], context: string, threshold = 0.18): { filtered: string[]; dropped: number } {
+// ── RAG-STYLE RELEVANCE VALIDATION ──
+// Validates each item's relevance to context using TF-IDF cosine similarity
+// Items below threshold are dropped unless doing so would empty the slide
+function validateRelevanceWithThreshold(items: string[], context: string, threshold = 0.12): { filtered: string[]; dropped: number } {
   if (!items.length || !context.trim()) return { filtered: items, dropped: 0 };
 
-  const filtered = items.filter((item) => {
-    const score = semanticSimilarity(item, context);
-    return score >= threshold || item.length <= 40;
-  });
+  // Score each item against context
+  const scored = items.map(item => ({
+    item,
+    score: semanticSimilarity(item, context),
+    isShort: item.length <= 50,
+  }));
 
+  // Filter: keep items above threshold OR short labels
+  const filtered = scored
+    .filter(s => s.score >= threshold || s.isShort)
+    .map(s => s.item);
+
+  // Safety: never drop ALL items
   if (filtered.length === 0 && items.length > 0) {
-    const ranked = [...items].sort((a, b) => semanticSimilarity(b, context) - semanticSimilarity(a, context));
-    return { filtered: [ranked[0]], dropped: Math.max(0, items.length - 1) };
+    const ranked = [...scored].sort((a, b) => b.score - a.score);
+    const keepCount = Math.max(1, Math.ceil(items.length * 0.5));
+    return {
+      filtered: ranked.slice(0, keepCount).map(s => s.item),
+      dropped: items.length - keepCount,
+    };
   }
 
-  return { filtered, dropped: items.length - filtered.length };
+  const dropped = items.length - filtered.length;
+  if (dropped > 0) {
+    console.log("[RAG] Relevance filter: kept " + filtered.length + "/" + items.length + " items (threshold=" + threshold + ")");
+  }
+  return { filtered, dropped };
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -3928,16 +4066,25 @@ Deno.serve(async (req: Request) => {
       .from("course_modules").select("*").eq("course_id", course_id).order("order_index");
 
     // ═══════════════════════════════════════════════════════
-    // MULTI-STAGE VALIDATION PIPELINE
-    // Stage 1: Content → Stage 1.5: LLM NLP → Stage 2: Structure → Stage 3: Visual → Stage 4: Final QC
+    // MULTI-STAGE VALIDATION PIPELINE v3
+    // Stage 0: TF-IDF Corpus + Semantic Planner → Stage 1: Content
+    // Stage 1.5: LLM NLP → Stage 2: Structure → Stage 3: Visual → Stage 4: Final QC
     // ═══════════════════════════════════════════════════════
-    console.log("[PIPELINE] Starting multi-stage validation pipeline...");
+    console.log("[PIPELINE] Starting multi-stage validation pipeline v3...");
+
+    // ── PRE-STAGE: Build TF-IDF corpus from all module content for semantic operations ──
+    const corpusDocs = modules.map((m: any) => sanitize(m.content || "")).filter((c: string) => c.length > 20);
+    resetIdfCache();
+    buildIdfFromCorpus(corpusDocs);
 
     // Accumulative quality report (persists across ALL retries)
     const qualityReport = {
+      pre_tfidf_corpus_size: corpusDocs.length,
+      pre_tfidf_terms: _idfCache.size,
       stage0_semantic_planner_modules: 0,
       stage0_regex_fallback_modules: 0,
       stage1_slides_generated: 0,
+      stage1_nlp_summarized: 0,
       stage1_5_llm_grammar_fixes: 0,
       stage1_5_llm_truncation_fixes: 0,
       stage1_5_llm_nonsense_dropped: 0,
@@ -3945,8 +4092,10 @@ Deno.serve(async (req: Request) => {
       stage2_dedup_removed: 0,
       stage2_coherence_warnings: [] as string[],
       stage2_avg_density: 0,
+      stage2_relevance_dropped: 0,
       stage3_bbox_overflows: 0,
       stage3_bbox_fixes: 0,
+      stage3_overflow_splits: 0,
       stage3_wcag_failures: [] as string[],
       stage4_all_warnings: [] as string[],
       stage4_all_fixes: [] as string[],
@@ -4042,13 +4191,17 @@ Deno.serve(async (req: Request) => {
     qualityReport.stage2_avg_density = Number(avgDensity.toFixed(1));
     console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
-    // ── STAGE 3: VISUAL VALIDATION (Bounding Box + WCAG + Overflow Split) ──
+    // ── STAGE 3: VISUAL VALIDATION (Bounding Box + WCAG + Overflow Split + Auto-Continuation) ──
     let bboxOverflows = 0;
     let bboxFixes = 0;
     let overflowSplits = 0;
 
-    // 3a. Pre-render overflow detection for definition_card slides
-    for (const s of allSlides) {
+    // 3a. Pre-render overflow detection with auto-split for ALL slide types
+    const slidesToInsert: { afterIndex: number; slide: SlideData }[] = [];
+    for (let si = 0; si < allSlides.length; si++) {
+      const s = allSlides[si];
+
+      // Definition cards — check text vs pillar space
       if (s.layout === "definition_card_with_pillars" && s.items && s.items.length > 0) {
         const defText = s.items[0];
         const defBoxW = SAFE_W - 0.60;
@@ -4062,23 +4215,60 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // Standard bbox check for bullet-based slides
-      if (s.items) {
+      // Bullet/warning/example slides — auto-split if too many items overflow
+      if (s.items && s.items.length > 0 && s.layout !== "comparison_table" && s.layout !== "module_cover") {
         const boxW = SAFE_W - 0.50;
-        const maxItemH = (SLIDE_H - 2.0 - BOTTOM_MARGIN) / Math.min(s.items.length, activeDensity.maxBulletsPerSlide);
+        const maxItems = activeDensity.maxBulletsPerSlide;
+        const maxItemH = (SLIDE_H - 2.0 - BOTTOM_MARGIN) / Math.min(s.items.length, maxItems);
+        let overflowCount = 0;
+
         for (let i = 0; i < s.items.length; i++) {
           const minFontForItem = s.layout === "definition_card_with_pillars" ? TYPO.BODY : TYPO.SUPPORT;
           const fit = fitTextForBox(s.items[i], boxW, maxItemH, TYPO.BULLET_TEXT, FONT_BODY, minFontForItem);
           if (fit.adjusted) {
             bboxOverflows++;
-            bboxFixes++;
-            s.items[i] = fit.text;
+            // Try font reduction first, only truncate as last resort
+            if (fit.text.length >= s.items[i].length * 0.85) {
+              bboxFixes++;
+              s.items[i] = fit.text;
+            } else {
+              overflowCount++;
+            }
           }
+        }
+
+        // If too many items overflow even after font reduction, create continuation slide
+        if (overflowCount >= 2 && s.items.length > 3 && s.layout !== "numbered_takeaways") {
+          const mid = Math.ceil(s.items.length / 2);
+          const contSlide: SlideData = {
+            layout: s.layout,
+            title: smartTitle(s.title.replace(/\s*\(Parte \d+\)\s*$/i, "") + " (Parte 2)"),
+            sectionLabel: s.sectionLabel,
+            items: s.items.slice(mid),
+            moduleIndex: s.moduleIndex,
+            blockType: s.blockType,
+          };
+          s.items = s.items.slice(0, mid);
+          if (!s.title.includes("Parte")) {
+            s.title = smartTitle(s.title + " (Parte 1)");
+          }
+          slidesToInsert.push({ afterIndex: si, slide: contSlide });
+          overflowSplits++;
+          bboxFixes += overflowCount;
+          console.log("[STAGE-3] Auto-split slide: " + s.title + " → 2 slides");
         }
       }
     }
+
+    // Insert continuation slides in reverse order to maintain indices
+    for (let i = slidesToInsert.length - 1; i >= 0; i--) {
+      const { afterIndex, slide } = slidesToInsert[i];
+      allSlides.splice(afterIndex + 1, 0, slide);
+    }
+
     qualityReport.stage3_bbox_overflows = bboxOverflows;
     qualityReport.stage3_bbox_fixes = bboxFixes;
+    qualityReport.stage3_overflow_splits = overflowSplits;
 
     // WCAG spot check
     const wcagSpotChecks = [
@@ -4152,18 +4342,23 @@ Deno.serve(async (req: Request) => {
       const reportSummary = {
         quality_score: Number(qualityScore.toFixed(1)),
         passed: false,
+        pipeline_version: "v3-tfidf-rag",
+        pre_tfidf_corpus: qualityReport.pre_tfidf_corpus_size + " docs, " + qualityReport.pre_tfidf_terms + " terms",
         stage0_semantic_planner_modules: qualityReport.stage0_semantic_planner_modules,
         stage0_regex_fallback_modules: qualityReport.stage0_regex_fallback_modules,
         stage1_slides_generated: qualityReport.stage1_slides_generated,
+        stage1_nlp_summarized: qualityReport.stage1_nlp_summarized,
         stage1_5_llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
         stage1_5_llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
         stage1_5_llm_nonsense_dropped: qualityReport.stage1_5_llm_nonsense_dropped,
         stage1_5_llm_relevance_dropped: qualityReport.stage1_5_llm_relevance_dropped,
         stage2_dedup_removed: qualityReport.stage2_dedup_removed,
+        stage2_relevance_dropped: qualityReport.stage2_relevance_dropped,
         stage2_avg_density: qualityReport.stage2_avg_density,
         stage2_coherence_warnings_sample: qualityReport.stage2_coherence_warnings.slice(0, 10),
         stage3_bbox_overflows: qualityReport.stage3_bbox_overflows,
         stage3_bbox_fixes: qualityReport.stage3_bbox_fixes,
+        stage3_overflow_splits: qualityReport.stage3_overflow_splits,
         stage3_wcag_failures_count: qualityReport.stage3_wcag_failures.length,
         stage3_wcag_failures_sample: qualityReport.stage3_wcag_failures.slice(0, 10),
         stage4_final_warnings: qualityReport.stage4_final_warnings,
@@ -4278,18 +4473,23 @@ Deno.serve(async (req: Request) => {
       quality_score: Number(qualityScore.toFixed(1)),
       passed: true,
       total_slides: totalSlides,
+      pipeline_version: "v3-tfidf-rag",
+      pre_tfidf_corpus: qualityReport.pre_tfidf_corpus_size + " docs, " + qualityReport.pre_tfidf_terms + " terms",
       stage0_semantic_planner_modules: qualityReport.stage0_semantic_planner_modules,
       stage0_regex_fallback_modules: qualityReport.stage0_regex_fallback_modules,
       stage1_slides_generated: qualityReport.stage1_slides_generated,
+      stage1_nlp_summarized: qualityReport.stage1_nlp_summarized,
       stage1_5_llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
       stage1_5_llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
       stage1_5_llm_nonsense_dropped: qualityReport.stage1_5_llm_nonsense_dropped,
       stage1_5_llm_relevance_dropped: qualityReport.stage1_5_llm_relevance_dropped,
       stage2_dedup_removed: qualityReport.stage2_dedup_removed,
+      stage2_relevance_dropped: qualityReport.stage2_relevance_dropped,
       stage2_avg_density: qualityReport.stage2_avg_density,
       stage2_coherence_warnings_sample: qualityReport.stage2_coherence_warnings.slice(0, 10),
       stage3_bbox_overflows: qualityReport.stage3_bbox_overflows,
       stage3_bbox_fixes: qualityReport.stage3_bbox_fixes,
+      stage3_overflow_splits: qualityReport.stage3_overflow_splits,
       stage3_wcag_failures_count: qualityReport.stage3_wcag_failures.length,
       stage3_wcag_failures_sample: qualityReport.stage3_wcag_failures.slice(0, 10),
       stage4_final_warnings: qualityReport.stage4_final_warnings,
