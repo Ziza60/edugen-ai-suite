@@ -5670,10 +5670,12 @@ Deno.serve(async (req: Request) => {
         ? "Score final (" + qualityScore.toFixed(1) + ") abaixo do mínimo (85)"
         : null;
 
-    // Problematic slides (slides that had warnings)
+    // Problematic slides (deduplicated warnings per slide/pattern)
     const problematicSlides: { index: number; title: string; issues: string[] }[] = [];
     allSlides.forEach((s, idx) => {
-      const slideWarnings = qualityReport.stage4_all_warnings.filter((w: string) => w.startsWith("Slide " + (idx + 3)));
+      const slideWarnings = dedupeWarnings(
+        dedupedWarnings.filter((w: string) => w.startsWith("Slide " + (idx + 3)))
+      );
       if (slideWarnings.length > 0) {
         problematicSlides.push({ index: idx + 3, title: s.title || "(sem título)", issues: slideWarnings.slice(0, 5) });
       }
@@ -5684,12 +5686,12 @@ Deno.serve(async (req: Request) => {
       quality_score: Number(qualityScore.toFixed(1)),
       passed,
       blocked_reason: blockReason,
-      pipeline_version: "v4-checkpoints",
+      pipeline_version: "v5-bullet-calibration",
       checkpoints,
       problematic_slides: problematicSlides.slice(0, 15),
       corrections_attempted: {
         total_fixes: qualityReport.stage4_all_fixes.length,
-        total_warnings: qualityReport.stage4_all_warnings.length,
+        total_warnings: dedupedWarnings.length,
         retries_used: qualityReport.stage4_retries_used,
         overflow_splits: qualityReport.stage3_overflow_splits,
         dedup_removed: qualityReport.stage2_dedup_removed,
