@@ -306,7 +306,7 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
   }
 
   // Clean trailing artifacts AND trailing prepositions/articles (iterative)
-  const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as)$/i;
+  const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as|seu|sua|seus|suas|este|esta|esse|essa|esses|essas|estes|estas|seu|nosso|nossa|nossos|nossas)$/i;
   let prevResult = "";
   while (prevResult !== result) {
     prevResult = result;
@@ -335,7 +335,7 @@ function smartSubtitle(text: string): string {
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
   if (sentenceEnd > 80) return sub.substring(0, sentenceEnd + 1).trim();
   // Fall back to word boundary, but NEVER cut at prepositions/articles
-  const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as)$/i;
+  const TRAILING_PREPS = /\s+(da|de|do|das|dos|na|no|nas|nos|em|ao|à|um|uma|com|por|para|que|e|ou|o|a|os|as|seu|sua|seus|suas)$/i;
   let result = sub.substring(0, sub.lastIndexOf(" ")).trim();
   result = result.replace(TRAILING_PREPS, "").trim();
   result = result.replace(/[,;:\-–]+$/, "").trim();
@@ -486,7 +486,7 @@ function detectTruncation(text: string): boolean {
   if (/^\d{1,2}[\.\)]\s/.test(trimmed)) return false;
 
   // Ends in dangling connector/preposition/article without sentence closure
-  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que)\s*$/i.test(trimmed) && !/[.!?…:]$/.test(trimmed)) {
+  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas)\s*$/i.test(trimmed) && !/[.!?…:]$/.test(trimmed)) {
     return true;
   }
 
@@ -508,7 +508,7 @@ function enforceSentenceIntegrity(text: string): string {
     .trim();
 
   // Remove trailing particles that indicate truncation
-  t = t.replace(/\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que)$/i, "").trim();
+  t = t.replace(/\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas)$/i, "").trim();
   t = t.replace(/[,:;\-–]+$/, "").trim();
 
   if (t.length > 0 && !/[.!?…:]$/.test(t)) t += ".";
@@ -2651,29 +2651,37 @@ function renderModuleCover(pptx: any, data: SlideData) {
     x: MARGIN, y: sepY, w: 1.2, h: 0.05, fill: { color: C.SECONDARY },
   });
 
+  // Calculate description height dynamically to avoid overlap with objectives
+  let descEndY = sepY + 0.20;
   if (data.description) {
     const desc = smartSubtitle(data.description);
+    // Estimate lines needed for description
+    const descCharsPerLine = Math.floor((SAFE_W * 0.65 * 96) / (TYPO.SUBTITLE * 0.54));
+    const descLines = Math.max(1, Math.ceil(desc.length / descCharsPerLine));
+    const descH = Math.max(0.55, descLines * (TYPO.SUBTITLE * 1.35 / 72) + 0.15);
     addTextSafe(slide, desc, {
-      x: MARGIN, y: sepY + 0.20, w: SAFE_W * 0.65, h: 0.55,
+      x: MARGIN, y: descEndY, w: SAFE_W * 0.65, h: descH,
       fontSize: TYPO.SUBTITLE, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
     });
+    descEndY += descH + 0.25;
   }
 
   const objectives = data.objectives || [];
   if (objectives.length > 0) {
-    const objStartY = sepY + 0.85;
+    const objStartY = Math.max(descEndY, sepY + 0.85);
     objectives.slice(0, 3).forEach((obj, idx) => {
       const objY = objStartY + idx * 0.48;
       if (objY + 0.40 > SLIDE_H - 0.40) return;
       const dotSize = 0.12;
+      const objLineH = (TYPO.SUPPORT * 1.35) / 72;
       slide.addShape(pptx.ShapeType.ellipse, {
-        x: MARGIN + 0.05, y: objY + 0.12, w: dotSize, h: dotSize,
+        x: MARGIN + 0.05, y: objY + (objLineH - dotSize) / 2 + 0.04, w: dotSize, h: dotSize,
         fill: { color: moduleColor },
       });
       const objText = smartTruncate(obj, 55);
       addTextSafe(slide, objText, {
         x: MARGIN + 0.30, y: objY, w: SAFE_W * 0.60, h: 0.40,
-        fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "middle",
+        fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
       });
     });
   }
@@ -2700,7 +2708,7 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
     x: MARGIN, y: contentY, w: SAFE_W, h: defCardH,
     fill: { color: C.BG_LIGHT }, line: { color: C.ACCENT_BLUE, width: 1.5 }, rectRadius: 0.10,
   });
-  addTextSafe(slide, "DEFINICAO ESSENCIAL", {
+  addTextSafe(slide, "DEFINIÇÃO ESSENCIAL", {
     x: MARGIN + 0.30, y: contentY + 0.15, w: SAFE_W - 0.60, h: 0.30,
     fontSize: TYPO.SUPPORT, fontFace: FONT_TITLE, color: C.ACCENT_BLUE, bold: true, letterSpacing: 2,
   });
@@ -2732,13 +2740,15 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
       });
 
       const circleSize = 0.40;
+      const circleX = x + (pillarW - circleSize) / 2;
+      const circleY = contentY + 0.18;
       slide.addShape(pptx.ShapeType.ellipse, {
-        x: x + (pillarW - circleSize) / 2, y: contentY + 0.15, w: circleSize, h: circleSize,
+        x: circleX, y: circleY, w: circleSize, h: circleSize,
         fill: { color: accentColor },
       });
       const iconChar = getSemanticIcon(pillar, idx);
       addTextSafe(slide, iconChar, {
-        x: x + (pillarW - circleSize) / 2, y: contentY + 0.15, w: circleSize, h: circleSize,
+        x: circleX, y: circleY, w: circleSize, h: circleSize,
         fontSize: TYPO.ICON, fontFace: FONT_BODY, color: C.TEXT_WHITE, bold: true,
         align: "center", valign: "middle",
       });
@@ -3123,16 +3133,21 @@ function renderBullets(pptx: any, data: SlideData) {
 
     const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
 
+    // Estimate text height to position dot at first line level
+    const textFontSize = TYPO.BULLET_TEXT;
+    const lineHeightIn = (textFontSize * 1.35) / 72;
     const dotSize = 0.14;
+    // Position dot at the TOP of the bullet area, aligned with first line center
+    const dotY = y + (lineHeightIn - dotSize) / 2 + 0.06;
     slide.addShape(pptx.ShapeType.ellipse, {
-      x: MARGIN + 0.10, y: y + (bulletH - dotSize) / 2, w: dotSize, h: dotSize,
+      x: MARGIN + 0.10, y: dotY, w: dotSize, h: dotSize,
       fill: { color: accentColor },
     });
 
     const richText = makeBoldLabelText(smartTruncate(item, 120), C.TEXT_DARK, C.TEXT_BODY, TYPO.BULLET_TEXT);
     addTextSafe(slide, richText, {
       x: MARGIN + 0.40, y, w: SAFE_W - 0.50, h: bulletH,
-      valign: "middle", lineSpacingMultiple: 1.3,
+      valign: "top", lineSpacingMultiple: 1.3,
     });
 
     if (idx < items.length - 1 && idx < maxItems - 1) {
