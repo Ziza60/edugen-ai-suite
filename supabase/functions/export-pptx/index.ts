@@ -524,15 +524,23 @@ interface AutoAdjustResult {
   text: string;
 }
 
-function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFont = 32, minFont = 14): AutoAdjustResult {
+function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFont = 32, minFont = 12): AutoAdjustResult {
   for (let size = maxFont; size >= minFont; size -= 1) {
     const check = validateTextDensity(text, boxWidth, boxHeight, size);
     if (check.fits) {
       return { fontSize: size, truncated: false, text };
     }
   }
-  // Last resort: truncate with smartTruncate
+  // Last resort: truncate with smartTruncate but try to preserve sentence boundaries
   const maxLen = validateTextDensity(text, boxWidth, boxHeight, minFont).maxChars;
+  if (maxLen >= text.length * 0.85) {
+    // Close enough — find sentence boundary instead of hard truncate
+    const sub = text.substring(0, maxLen);
+    const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
+    if (sentenceEnd > maxLen * 0.5) {
+      return { fontSize: minFont, truncated: true, text: text.substring(0, sentenceEnd + 1).trim() };
+    }
+  }
   return {
     fontSize: minFont,
     truncated: true,
@@ -1074,7 +1082,7 @@ O markdown do módulo contém estas seções, nesta ordem. Cada uma DEVE gerar u
 2. **Frases COMPLETAS**: Cada item DEVE ser uma frase completa. NUNCA corte frases no meio.
 3. **Cada slide = 1 seção**: Um slide mapeia exatamente UMA seção pedagógica.
 4. **Máximo 5-6 items por slide**: Se uma seção tem mais pontos, use os mais importantes.
-5. **Máximo 120 caracteres por item**: Resuma sem perder significado. Toda frase termina com ponto.
+5. **Máximo 180 caracteres por item**: Resuma sem perder significado. Toda frase termina com ponto. Para seções de Exemplo, Desafios e Resumo, escreva frases COMPLETAS sem abreviação — até 250 caracteres se necessário.
 6. **Títulos descritivos COM contexto**: O título do slide deve incluir o tópico do módulo (ex: "Fundamentos da IA Generativa" em vez de apenas "Fundamentos").
 7. **Exemplo prático OBRIGATÓRIO**: O slide de exemplo deve ter exatamente 3 items: "Cenário: ...", "Solução: ...", "Resultado: ...".
 8. **Key Takeaways OBRIGATÓRIO**: 5-7 pontos concisos e acionáveis.
@@ -1143,7 +1151,7 @@ ${truncatedContent}`;
                       items: {
                         type: "array",
                         items: { type: "string" },
-                        description: "Content items (complete sentences, max 120 chars each, ending with period)"
+                        description: "Content items (complete sentences, max 180 chars each, ending with period. For example/warning/summary sections use up to 250 chars to ensure completeness)"
                       },
                       tableHeaders: {
                         type: "array",
@@ -2425,7 +2433,18 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
     }
 
     // NLP Pipeline: sanitize → compress → normalize → grammar → deduplicate → relevance threshold
-    let items = block.items.map(s => compressBullet(sanitize(s))).filter(s => s.length > 3);
+    // For pedagogical sections (example, warning, summary), preserve full sentences — skip aggressive compression
+    const isPreservationBlock = blockType === "example" || blockType === "warning" || blockType === "summary" || blockType === "reflection";
+    let items = block.items.map(s => {
+      const sanitized = sanitize(s);
+      if (isPreservationBlock) {
+        // Only add period if missing, no truncation
+        const trimmed = sanitized.trim();
+        if (trimmed.length > 0 && !/[.!?…]$/.test(trimmed)) return trimmed + ".";
+        return trimmed;
+      }
+      return compressBullet(sanitized);
+    }).filter(s => s.length > 3);
     const nlpResult = runNLPPipeline(items);
     items = nlpResult.processed;
 
@@ -2488,7 +2507,11 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
       layout: "summary_slide",
       title: "Resumo - " + smartTitle(shortTitle),
       sectionLabel: "RESUMO DO MÓDULO",
-      items: sanitizeBullets(summaryItems.slice(0, 5).map(s => compressBullet(sanitize(s)))),
+      items: sanitizeBullets(summaryItems.slice(0, 5).map(s => {
+        const t = sanitize(s).trim();
+        if (t.length > 0 && !/[.!?…]$/.test(t)) return t + ".";
+        return t;
+      })),
       moduleIndex: modIndex,
       blockType: "summary",
     });
@@ -2500,7 +2523,11 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
       layout: "numbered_takeaways",
       title: "Key Takeaways - Modulo " + (modIndex + 1),
       sectionLabel: "KEY TAKEAWAYS",
-      items: sanitizeBullets(resumoItems.slice(0, 7).map(s => compressBullet(sanitize(s)))),
+      items: sanitizeBullets(resumoItems.slice(0, 7).map(s => {
+        const t = sanitize(s).trim();
+        if (t.length > 0 && !/[.!?…]$/.test(t)) return t + ".";
+        return t;
+      })),
       moduleIndex: modIndex,
       blockType: "conclusion",
     });
@@ -3407,7 +3434,7 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
 
   items.forEach((item, idx) => {
     if (textY + 0.50 > contentY + boxH - 0.15) return;
-    const richText = makeBoldLabelText(smartTruncate(item, 140), C.TEXT_DARK, C.TEXT_BODY, TYPO.BODY);
+    const richText = makeBoldLabelText(item, C.TEXT_DARK, C.TEXT_BODY, TYPO.BODY);
     const itemH = Math.min(0.70, (boxH - 0.30) / items.length);
     addTextSafe(slide, richText, {
       x: textX, y: textY, w: textW, h: itemH,
@@ -3635,7 +3662,7 @@ function renderWarningCallout(pptx: any, data: SlideData) {
       w: dotSize, h: dotSize, fill: { color: warningColor },
     });
 
-    const richText = makeBoldLabelText(smartTruncate(item, 140), warningColor, C.TEXT_BODY, TYPO.BODY);
+    const richText = makeBoldLabelText(item, warningColor, C.TEXT_BODY, TYPO.BODY);
     addTextSafe(slide, richText, {
       x: textX, y: textY, w: textW, h: itemH,
       valign: "top", lineSpacingMultiple: 1.35,
@@ -3691,7 +3718,7 @@ function renderSummarySlide(pptx: any, data: SlideData) {
 
   items.forEach((item, idx) => {
     if (textY + itemH > contentY + boxH - 0.15) return;
-    const textFit = fitTextForBox(smartTruncate(item, 160), textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    const textFit = fitTextForBox(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
     addTextSafe(slide, textFit.text, {
       x: textX, y: textY, w: textW, h: itemH,
       fontSize: textFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
