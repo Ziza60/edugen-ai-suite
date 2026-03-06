@@ -2682,8 +2682,81 @@ function parseModuleContent(content: string): ParsedBlock[] {
   return allBlocks;
 }
 
-/* ═══════════════════════════════════════════════════════
-   CONTENT CLASSIFICATION v2 — with example/reflection templates
+/**
+ * Convert pre-parsed blocks into a structured text summary for the LLM planner.
+ * This replaces sending raw markdown — the LLM receives a clean, pre-segmented
+ * representation that preserves section boundaries and content types.
+ */
+function blocksToStructuredSummary(blocks: ParsedBlock[]): string {
+  const lines: string[] = [];
+  for (const block of blocks) {
+    const typeTag = block.blockType && block.blockType !== "normal"
+      ? ` [${block.blockType.toUpperCase()}]`
+      : "";
+    if (block.heading) {
+      lines.push("### " + block.heading + typeTag);
+    }
+    if (block.isTable && block.headers && block.rows) {
+      lines.push("[TABELA: " + block.headers.join(" | ") + "]");
+      for (const row of block.rows.slice(0, 5)) {
+        lines.push("  " + row.join(" | "));
+      }
+    } else if (block.items.length > 0) {
+      for (const item of block.items) {
+        lines.push("- " + item);
+      }
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Pre-parse result stored per module for reuse across pipeline stages.
+ */
+interface PreParsedModule {
+  blocks: ParsedBlock[];
+  structuredSummary: string;
+  sectionCount: number;
+  pedagogicalSections: string[];
+}
+
+/**
+ * PRE-STAGE: Run semantic parser on all modules.
+ * Returns pre-parsed blocks and structured summaries that feed BOTH
+ * the LLM planner (main path) and buildModuleSlides (fallback path).
+ */
+function preParseAllModules(modules: any[]): Map<number, PreParsedModule> {
+  const result = new Map<number, PreParsedModule>();
+
+  for (let i = 0; i < modules.length; i++) {
+    const content = modules[i].content || "";
+    const blocks = parseModuleContent(content);
+    const structuredSummary = blocksToStructuredSummary(blocks);
+
+    // Detect which pedagogical sections exist
+    const pedagogicalSections: string[] = [];
+    for (const block of blocks) {
+      if (block.blockType && block.blockType !== "normal") {
+        pedagogicalSections.push(block.blockType);
+      }
+    }
+
+    result.set(i, {
+      blocks,
+      structuredSummary,
+      sectionCount: blocks.length,
+      pedagogicalSections,
+    });
+
+    console.log("[PRE-PARSE] Module " + (i + 1) + ": " + blocks.length + " blocks, " +
+      blocks.filter(b => b.isTable).length + " tables, sections=[" + pedagogicalSections.join(",") + "]");
+  }
+
+  return result;
+}
+
+
    ═══════════════════════════════════════════════════════ */
 
 type LayoutType =
