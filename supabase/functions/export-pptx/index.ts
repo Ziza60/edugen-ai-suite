@@ -2498,46 +2498,41 @@ function sectionToParsedBlocks(section: MarkdownSection): ParsedBlock[] {
 
 /**
  * Extract clean items from a sequence of non-table tokens.
- * Paragraphs are merged into items only if they're short enough.
- * Lists stay as individual items.
- * Blockquotes become items.
+ * Returns both flat items (for backward compat) and structuredItems (preserving hierarchy).
  */
-function extractItemsFromTokens(tokens: MdToken[]): string[] {
-  const items: string[] = [];
+interface ExtractResult {
+  items: string[];
+  structuredItems: StructuredItem[];
+}
+
+function extractItemsFromTokens(tokens: MdToken[]): ExtractResult {
+  const structured: StructuredItem[] = [];
   let paragraphBuffer = "";
 
   const flushParagraph = () => {
     if (paragraphBuffer.trim()) {
       const clean = sanitize(paragraphBuffer.trim());
-      if (clean.length > 3) items.push(clean);
+      if (clean.length > 3) structured.push({ text: clean, subItems: [] });
       paragraphBuffer = "";
     }
   };
 
-  // ── Nested list processing ──
-  // Track parent items so sub-items (indent > 0) get merged into their parent
-  // as "Parent: sub1; sub2; sub3" — preserving hierarchy for slide rendering.
-  let pendingParent: { text: string; indent: number } | null = null;
-  let subItems: string[] = [];
+  // Track parent items so sub-items (indent > 0) are preserved as children
+  let pendingParent: { text: string } | null = null;
+  let pendingSubItems: string[] = [];
 
   const flushListItem = () => {
     if (pendingParent) {
-      let merged = sanitize(pendingParent.text);
-      if (subItems.length > 0) {
-        // Append sub-items as semicolon-separated suffix
-        const subText = subItems.map(s => sanitize(s)).filter(s => s.length > 2).join("; ");
-        if (subText) {
-          // If parent ends with colon, just append; otherwise add colon
-          if (/:\s*$/.test(merged)) {
-            merged = merged.replace(/:\s*$/, ": " + subText + ".");
-          } else {
-            merged = merged.replace(/[.!?]\s*$/, "") + ": " + subText + ".";
-          }
-        }
+      const parentText = sanitize(pendingParent.text);
+      const subs = pendingSubItems.map(s => sanitize(s)).filter(s => s.length > 2);
+      if (parentText.length > 3) {
+        structured.push({ text: parentText, subItems: subs });
+      } else if (subs.length > 0) {
+        // Parent too short, promote sub-items
+        for (const s of subs) structured.push({ text: s, subItems: [] });
       }
-      if (merged.length > 3) items.push(merged);
       pendingParent = null;
-      subItems = [];
+      pendingSubItems = [];
     }
   };
 
@@ -2549,17 +2544,14 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
         const indent = token.indent || 0;
 
         if (indent === 0) {
-          // Top-level item: flush any pending parent, start new one
           flushListItem();
-          pendingParent = { text: token.content, indent: 0 };
+          pendingParent = { text: token.content };
         } else {
-          // Sub-item: attach to pending parent
           if (pendingParent) {
-            subItems.push(token.content);
+            pendingSubItems.push(token.content);
           } else {
-            // Orphan sub-item (no parent above) — treat as top-level
             const clean = sanitize(token.content);
-            if (clean.length > 3) items.push(clean);
+            if (clean.length > 3) structured.push({ text: clean, subItems: [] });
           }
         }
         break;
@@ -2568,7 +2560,7 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
         flushParagraph();
         flushListItem();
         const clean = sanitize(token.content);
-        if (clean.length > 3) items.push(clean);
+        if (clean.length > 3) structured.push({ text: clean, subItems: [] });
         break;
       }
       case "paragraph": {
@@ -2578,21 +2570,20 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
         if (clean.length <= 3) break;
 
         if (clean.length <= 300) {
-          items.push(clean);
+          structured.push({ text: clean, subItems: [] });
         } else {
-          // Split long paragraph into sentences, group into ~250-char chunks
           const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
           let chunk = "";
           for (const sentence of sentences) {
             const s = sentence.trim();
             if (chunk.length + s.length > 250 && chunk.length > 0) {
-              items.push(chunk.trim());
+              structured.push({ text: chunk.trim(), subItems: [] });
               chunk = s;
             } else {
               chunk = chunk ? chunk + " " + s : s;
             }
           }
-          if (chunk.trim().length > 3) items.push(chunk.trim());
+          if (chunk.trim().length > 3) structured.push({ text: chunk.trim(), subItems: [] });
         }
         break;
       }
@@ -2603,7 +2594,22 @@ function extractItemsFromTokens(tokens: MdToken[]): string[] {
 
   flushListItem();
   flushParagraph();
-  return items;
+
+  // Generate flat items for backward compatibility
+  const items: string[] = [];
+  for (const si of structured) {
+    if (si.subItems.length === 0) {
+      items.push(si.text);
+    } else {
+      // Flatten: parent text + sub-items as indented entries
+      items.push(si.text);
+      for (const sub of si.subItems) {
+        items.push("  → " + sub);
+      }
+    }
+  }
+
+  return { items, structuredItems: structured };
 }
 
 /**
