@@ -2890,23 +2890,31 @@ function renderDefinitionWithPillars(pptx: any, data: SlideData) {
 
   let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
-  const defText = smartTruncate(items[0], 200);
-  const defCardH = Math.max(1.0, estimateTextLines(defText, SAFE_W - 1.2, TYPO.BODY) * 0.40 + 0.45);
+  // ── FIT DEFINITION TEXT TO BOX — prevent overflow ──
+  const defTextRaw = items[0];
+  const defBoxW = SAFE_W - 0.60;
+  // Pre-fit text to determine required height accurately
+  const defFit = fitTextForBox(defTextRaw, defBoxW, 2.5, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+  const defTextLines = estimateTextLines(defFit.text, defBoxW, defFit.fontSize);
+  const defTextH = Math.max(0.50, defTextLines * (defFit.fontSize * 1.4) / 72 + 0.10);
+  const defCardH = Math.max(1.0, defTextH + 0.65);
+  // Cap to available space
+  const maxDefCardH = Math.min(defCardH, SLIDE_H - contentY - BOTTOM_MARGIN - 1.80);
 
   slide.addShape(pptx.ShapeType.rect, {
-    x: MARGIN, y: contentY, w: SAFE_W, h: defCardH,
+    x: MARGIN, y: contentY, w: SAFE_W, h: maxDefCardH,
     fill: { color: C.BG_LIGHT }, line: { color: C.ACCENT_BLUE, width: 1.5 }, rectRadius: 0.10,
   });
   addTextSafe(slide, "DEFINIÇÃO ESSENCIAL", {
-    x: MARGIN + 0.30, y: contentY + 0.15, w: SAFE_W - 0.60, h: 0.30,
+    x: MARGIN + 0.30, y: contentY + 0.15, w: defBoxW, h: 0.30,
     fontSize: TYPO.SUPPORT, fontFace: FONT_TITLE, color: C.ACCENT_BLUE, bold: true, letterSpacing: 2,
   });
-  addTextSafe(slide, defText, {
-    x: MARGIN + 0.30, y: contentY + 0.50, w: SAFE_W - 0.60, h: defCardH - 0.65,
-    fontSize: TYPO.BODY, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top", lineSpacingMultiple: 1.4,
+  addTextSafe(slide, defFit.text, {
+    x: MARGIN + 0.30, y: contentY + 0.50, w: defBoxW, h: maxDefCardH - 0.65,
+    fontSize: defFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top", lineSpacingMultiple: 1.4,
   });
 
-  contentY += defCardH + 0.30;
+  contentY += maxDefCardH + 0.30;
 
   const pillars = items.slice(1, 4);
   if (pillars.length > 0) {
@@ -3318,23 +3326,35 @@ function renderBullets(pptx: any, data: SlideData) {
   const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
   const selected = items.slice(0, maxItems).map((item) => smartBullet(item));
 
+  // ── UNIFORM FONT SIZE: calculate ONE font size for ALL bullets ──
+  // Find the smallest font that fits the longest bullet, then use it for all
+  let uniformFontSize = TYPO.BULLET_TEXT;
+  const maxRowH = Math.max(0.48, availH / selected.length - 0.06);
+  for (const item of selected) {
+    const fit = fitTextForBox(item, textW, Math.max(maxRowH, 0.22), TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
+    if (fit.fontSize < uniformFontSize) uniformFontSize = fit.fontSize;
+  }
+
   const rawHeights = selected.map((txt) => {
-    const lineCount = Math.max(1, estimateTextLines(txt, textW, TYPO.BULLET_TEXT));
-    const lineHeight = (TYPO.BULLET_TEXT * 1.35) / 72;
+    const lineCount = Math.max(1, estimateTextLines(txt, textW, uniformFontSize));
+    const lineHeight = (uniformFontSize * 1.35) / 72;
     return Math.max(0.52, Math.min(1.15, lineCount * lineHeight + 0.10));
   });
 
-  const rawTotal = rawHeights.reduce((sum, h) => sum + h, 0);
+  const GAP_BETWEEN_BULLETS = 0.10;
+  const rawTotal = rawHeights.reduce((sum, h) => sum + h, 0) + (selected.length - 1) * GAP_BETWEEN_BULLETS;
   const minRowH = 0.48;
   let heights = [...rawHeights];
 
   if (rawTotal > availH) {
+    const totalGaps = (selected.length - 1) * GAP_BETWEEN_BULLETS;
+    const availForRows = availH - totalGaps;
     const minTotal = minRowH * heights.length;
-    if (minTotal >= availH) {
-      heights = heights.map(() => availH / heights.length);
+    if (minTotal >= availForRows) {
+      heights = heights.map(() => availForRows / heights.length);
     } else {
       const extraTotal = heights.reduce((sum, h) => sum + Math.max(0, h - minRowH), 0);
-      const availableExtra = availH - minTotal;
+      const availableExtra = availForRows - minTotal;
       heights = heights.map((h) => {
         const extra = Math.max(0, h - minRowH);
         return minRowH + (extraTotal > 0 ? (extra / extraTotal) * availableExtra : 0);
@@ -3348,11 +3368,12 @@ function renderBullets(pptx: any, data: SlideData) {
     if (cursorY + rowH > SLIDE_H - BOTTOM_MARGIN + 0.01) return;
 
     const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
-    const textFit = fitTextForBox(item, textW, Math.max(rowH - 0.03, 0.22), TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
+    // Use uniform font size (already computed) — compress text if needed at this size
+    const textFit = fitTextForBox(item, textW, Math.max(rowH - 0.03, 0.22), uniformFontSize, FONT_BODY, uniformFontSize);
     const textY = cursorY + 0.01;
 
     const dotSize = 0.14;
-    const lineHeightIn = (textFit.fontSize * 1.35) / 72;
+    const lineHeightIn = (uniformFontSize * 1.35) / 72;
     const dotY = textY + Math.max(0, (lineHeightIn - dotSize) / 2);
 
     slide.addShape(pptx.ShapeType.ellipse, {
@@ -3363,7 +3384,7 @@ function renderBullets(pptx: any, data: SlideData) {
       fill: { color: accentColor },
     });
 
-    const richText = makeBoldLabelText(textFit.text, C.TEXT_DARK, C.TEXT_BODY, textFit.fontSize);
+    const richText = makeBoldLabelText(textFit.text, C.TEXT_DARK, C.TEXT_BODY, uniformFontSize);
     addTextSafe(slide, richText, {
       x: textX,
       y: textY,
@@ -3384,7 +3405,7 @@ function renderBullets(pptx: any, data: SlideData) {
       });
     }
 
-    cursorY += rowH;
+    cursorY += rowH + GAP_BETWEEN_BULLETS;
   });
 }
 
@@ -3427,20 +3448,28 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
     fontSize: 20,
   });
 
-  // Example content
+  // Example content — UNIFORM font size + proper spacing
   let textY = contentY + 0.25;
   const textX = MARGIN + 0.90;
   const textW = SAFE_W - 1.10;
+  const exItemH = Math.min(0.70, (boxH - 0.30) / items.length);
+  const EXAMPLE_GAP = 0.12;
+
+  // Calculate uniform font size for all example items
+  let exampleFontSize = TYPO.BODY;
+  for (const item of items) {
+    const fit = fitTextForBox(item, textW, exItemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    if (fit.fontSize < exampleFontSize) exampleFontSize = fit.fontSize;
+  }
 
   items.forEach((item, idx) => {
     if (textY + 0.50 > contentY + boxH - 0.15) return;
-    const richText = makeBoldLabelText(item, C.TEXT_DARK, C.TEXT_BODY, TYPO.BODY);
-    const itemH = Math.min(0.70, (boxH - 0.30) / items.length);
+    const richText = makeBoldLabelText(item, C.TEXT_DARK, C.TEXT_BODY, exampleFontSize);
     addTextSafe(slide, richText, {
-      x: textX, y: textY, w: textW, h: itemH,
+      x: textX, y: textY, w: textW, h: exItemH,
       valign: "middle", lineSpacingMultiple: 1.35,
     });
-    textY += itemH + 0.08;
+    textY += exItemH + EXAMPLE_GAP;
   });
 }
 
@@ -3646,28 +3675,36 @@ function renderWarningCallout(pptx: any, data: SlideData) {
     fontSize: TYPO.LABEL, fontFace: FONT_TITLE, color: warningColor, bold: true, letterSpacing: 2,
   });
 
-  // Bullet items with warning dots
+  // Bullet items with warning dots — UNIFORM font size
   let textY = contentY + 0.85;
   const textX = MARGIN + 0.55;
   const textW = SAFE_W - 0.75;
   const itemH = Math.min(0.65, (boxH - 1.0) / Math.max(items.length, 1));
+  const WARNING_GAP = 0.10;
+
+  // Calculate uniform font size for all warning items
+  let warningFontSize = TYPO.BODY;
+  for (const item of items) {
+    const fit = fitTextForBox(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    if (fit.fontSize < warningFontSize) warningFontSize = fit.fontSize;
+  }
 
   items.forEach((item, idx) => {
     if (textY + itemH > contentY + boxH - 0.10) return;
 
     const dotSize = 0.12;
-    const lineHeightIn = (TYPO.BODY * 1.35) / 72;
+    const lineHeightIn = (warningFontSize * 1.35) / 72;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: MARGIN + 0.25, y: textY + (lineHeightIn - dotSize) / 2,
       w: dotSize, h: dotSize, fill: { color: warningColor },
     });
 
-    const richText = makeBoldLabelText(item, warningColor, C.TEXT_BODY, TYPO.BODY);
+    const richText = makeBoldLabelText(item, warningColor, C.TEXT_BODY, warningFontSize);
     addTextSafe(slide, richText, {
       x: textX, y: textY, w: textW, h: itemH,
       valign: "top", lineSpacingMultiple: 1.35,
     });
-    textY += itemH + 0.05;
+    textY += itemH + WARNING_GAP;
   });
 }
 
@@ -3710,21 +3747,29 @@ function renderSummarySlide(pptx: any, data: SlideData) {
     fontSize: 18,
   });
 
-  // Summary text items
+  // Summary text items — use UNIFORM font size across all items
   let textY = contentY + 0.85;
   const textX = MARGIN + 0.70;
   const textW = SAFE_W - 1.40;
   const itemH = Math.min(0.70, (boxH - 1.0) / Math.max(items.length, 1));
+  const SUMMARY_GAP = 0.12;
+
+  // Find smallest font that fits ALL items (uniform sizing)
+  let summaryFontSize = TYPO.BODY;
+  for (const item of items) {
+    const fit = fitTextForBox(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    if (fit.fontSize < summaryFontSize) summaryFontSize = fit.fontSize;
+  }
 
   items.forEach((item, idx) => {
     if (textY + itemH > contentY + boxH - 0.15) return;
-    const textFit = fitTextForBox(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    const textFit = fitTextForBox(item, textW, itemH, summaryFontSize, FONT_BODY, summaryFontSize);
     addTextSafe(slide, textFit.text, {
       x: textX, y: textY, w: textW, h: itemH,
-      fontSize: textFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
+      fontSize: summaryFontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
       valign: "top", lineSpacingMultiple: 1.4,
     });
-    textY += itemH + 0.05;
+    textY += itemH + SUMMARY_GAP;
   });
 
   // Bottom accent
