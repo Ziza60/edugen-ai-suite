@@ -2483,6 +2483,17 @@ function groupTokensIntoSections(tokens: MdToken[]): MarkdownSection[] {
  * - Blockquotes → item block with reflection detection
  * - Mixed content → split into sub-blocks to avoid mixing topics
  */
+/** Classify block type from heading keywords when no pedagogical emoji is present */
+function classifyBlockType(heading: string, _items: string[]): ParsedBlock["blockType"] {
+  const h = heading.toLowerCase();
+  if (/exemplo|case|caso pr[aá]tico/i.test(h)) return "example";
+  if (/aten[çc][ãa]o|cuidado|aviso|warning|⚠/i.test(h)) return "warning";
+  if (/reflex[ãa]o|pense|considere/i.test(h)) return "reflection";
+  if (/resumo|recap|s[ií]ntese/i.test(h)) return "summary";
+  if (/conclus[ãa]o|takeaway|encerramento/i.test(h)) return "conclusion";
+  return "normal";
+}
+
 function sectionToParsedBlocks(section: MarkdownSection): ParsedBlock[] {
   const blocks: ParsedBlock[] = [];
   const heading = sanitize(section.heading);
