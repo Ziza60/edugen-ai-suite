@@ -575,8 +575,20 @@ function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFo
 }
 
 /* ═══════════════════════════════════════════════════════
-   TRUNCATION DETECTION v2
+   TRUNCATION DETECTION v3 — Semantic completeness checks
    ═══════════════════════════════════════════════════════ */
+
+// Common Portuguese transitive verbs that REQUIRE a complement/object
+const PT_TRANSITIVE_VERBS = /\b(aumentar|tornar|transformar|otimizar|permitir|identificar|analisar|desenvolver|aplicar|compreender|utilizar|habilitar|melhorar|garantir|possibilitar|facilitar|impulsionar|promover|acelerar|revolucionar|aprimorar|categorizar|classificar|gerar|criar|reduzir|eliminar|integrar|implementar|estabelecer|definir|processar|extrair|automatizar|monitorar|prever|avaliar|gerenciar|coordenar|simplificar|personalizar|detectar|prevenir|consolidar|organizar|estruturar|sintetizar)\s*$/i;
+
+// Gerunds/participles that need complements  
+const PT_INCOMPLETE_GERUNDS = /\b(transformando|otimizando|analisando|identificando|auxiliando|tornando|permitindo|facilitando|melhorando|garantindo|promovendo|reduzindo|eliminando|integrando|organizando|processando|gerando|criando|desenvolvendo|simplificando)\s*$/i;
+
+// Present-tense transitive verbs that need objects
+const PT_PRESENT_TRANSITIVE = /\b(envolve|permite|identifica|analisa|utiliza|categoriza|classifica|transforma|otimiza|facilita|garante|promove|gera|cria|reduz|elimina|integra|processa|extrai|monitora|prevê|avalia|gerencia|coordena|simplifica|personaliza|detecta|previne|consolida|organiza|estrutura|sintetiza|inclui|oferece|fornece|possui|contém|abrange|compreende|requer|exige|demanda|necessita|implica)\s*$/i;
+
+// Words that are clearly self-contained nouns (NOT truncations)
+const PT_COMPLETE_ENDINGS = /\b(IA|AI|TI|UX|UI|ML|BI|CX|RH|SEO|ROI|KPI|PLN|NLP|OCR|ERP|CRM|API|IoT|SaaS|B2B|B2C|dados|resultados|trabalho|profissional|negócios|clientes|empresa|equipe|mercado|processo|custos|tempo|eficiência|produtividade|qualidade|inovação|segurança|privacidade|desempenho|informações|decisões|operações|estratégias|ferramentas|tecnologia|sistemas|soluções|plataforma|insights)\s*$/i;
 
 function detectTruncation(text: string): boolean {
   if (!text || text.length < 5) return false;
@@ -587,28 +599,99 @@ function detectTruncation(text: string): boolean {
   if (wordCount <= 2 && trimmed.length < 30) return false;
   if (/^[A-ZÁÉÍÓÚÃÕ\s\d]+$/.test(trimmed)) return false;
   if (/^\d{1,2}[\.\)]\s/.test(trimmed)) return false;
-  // Section labels like "Cenário", "Solução", "Resultado", "Reflexão" are not truncated
-  if (/^(Cenário|Solução|Resultado|Reflexão|Reflexao|Resumo|Objetivo|Insight|Atenção|Dica)\s*$/i.test(trimmed)) return false;
+  // Section labels
+  if (/^(Cenário|Solução|Resultado|Reflexão|Reflexao|Resumo|Objetivo|Insight|Atenção|Dica|Nota|Importante)\s*$/i.test(trimmed)) return false;
+  // Label:value patterns like "Cenário: ..." are not truncated
+  if (/^(Cenário|Solução|Resultado|Prompt para IA|Reflexão)\s*[:–-]\s*.{15,}/i.test(trimmed)) return false;
 
+  // ═══ DANGLING CONNECTORS ═══
   // Ends in dangling connector/preposition/article (even if period was appended)
-  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|este|esta|esse|essa)\s*$/i.test(trimmed)) {
+  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|este|esta|esse|essa|como|mais)\s*$/i.test(trimmed)) {
     return true;
   }
 
-  // Ends with very short orphan token (likely cut word)
+  // ═══ ORPHAN TOKENS ═══
   const lastWord = trimmed.split(/\s+/).pop() || "";
   if (lastWord.length <= 2 && trimmed.length > 24) {
     if (!/^(é|e|a|o|ou|em|se|já|só|aí|há|IA|AI|TI|UX|UI|ML|BI|CX|RH)$/i.test(lastWord)) return true;
   }
 
-  // Sentence seems incomplete: ends with verb infinitive or starts a clause without finishing
-  if (/\s(aprenderem|otimiza|desenvolver|aplicar|compreender|identificar|utilizar|habilitar)\s*$/i.test(trimmed) && wordCount <= 6) {
+  // ═══ INCOMPLETE VERBS (the core regression fix) ═══
+  // Infinitive verbs at end of sentence WITHOUT complement
+  if (PT_TRANSITIVE_VERBS.test(trimmed)) return true;
+
+  // Gerunds/participles that need complements
+  if (PT_INCOMPLETE_GERUNDS.test(trimmed)) return true;
+
+  // Present-tense transitive verbs that need objects
+  if (PT_PRESENT_TRANSITIVE.test(trimmed)) return true;
+
+  // ═══ SUSPICIOUSLY SHORT SENTENCES ═══
+  // Very short sentence (< 35 chars, >= 3 words) that isn't a label or self-contained noun phrase
+  if (wordCount >= 3 && wordCount <= 5 && trimmed.length < 35) {
+    // Check if it ends with a self-contained noun — those are OK
+    if (!PT_COMPLETE_ENDINGS.test(trimmed)) {
+      // Check if it looks like a sentence fragment
+      if (!/^(Cenário|Solução|Resultado|Reflexão|Resumo|Objetivo|Insight|Atenção|Dica|Nota|Importante)/i.test(trimmed)) {
+        return true;
+      }
+    }
+  }
+
+  // ═══ ARTIFICIAL SPLITS (e.g., "A gestão de documentos. IA permite...") ═══
+  if (/\.\s+(IA|A IA|Ela|Ele|Isso|Esta|Este|Essa|Esse)\s/i.test(text.trim()) && wordCount <= 12) {
     return true;
   }
 
-  // Very short sentence with a transitive verb but no object — likely truncated
-  if (wordCount >= 3 && wordCount <= 5 && /\s(classifica|identifica|permite|analisa|utilizam|categoriza)\s*$/i.test(trimmed)) {
-    return true;
+  // ═══ ELLIPSIS INDICATING CUT ═══
+  if (/\.\.\.\s/.test(text.trim()) && wordCount >= 4) {
+    return true; // "A IA automatiza tarefas... liberando tempo"
+  }
+
+  return false;
+
+}
+
+/**
+ * Deeper semantic truncation detection for post-render scan.
+ * Catches cases where period was added to mask a cut sentence.
+ */
+function detectSemanticTruncation(text: string): boolean {
+  if (!text || text.length < 10) return false;
+  
+  // First run the basic check
+  if (detectTruncation(text)) return true;
+  
+  const stripped = text.trim().replace(/\.+$/, "").trim();
+  const wordCount = stripped.split(/\s+/).length;
+  
+  // Sentence ends with a VERB (not a noun/adjective) — likely needs an object
+  // E.g., "A IA atua como um catalisador para aumentar" → "aumentar" WHAT?
+  if (wordCount >= 4 && /[aeiou]r\s*$/i.test(stripped)) {
+    // Ends with infinitive verb
+    const lastWord = stripped.split(/\s+/).pop() || "";
+    if (lastWord.length >= 5 && /[aeiou]r$/i.test(lastWord)) {
+      return true;
+    }
+  }
+  
+  // Very short sentence ending in a single noun without context
+  // E.g., "Baseada em treinamento." "O processo envolve." "Algoritmos de IA, como."
+  if (wordCount >= 2 && wordCount <= 4 && stripped.length < 30) {
+    if (/,\s*como\s*$/i.test(stripped)) return true; // "..., como."
+    if (/\bem\b\s+\w+\s*$/i.test(stripped) && stripped.length < 25) return true; // "em treinamento."
+  }
+  
+  // Sentence ends with "massa.", "sentimentos.", "grandes." etc. — nouns that need more context
+  // Check if last word is a noun following a preposition or article
+  if (wordCount >= 3) {
+    const words = stripped.split(/\s+/);
+    const last = words[words.length - 1];
+    const secondLast = words[words.length - 2] || "";
+    if (/^(de|da|do|das|dos|em|na|no|nas|nos|a|à)$/i.test(secondLast) && last.length >= 4) {
+      // "...de grandes" "...a tomada" "...de sentimentos" — likely truncated
+      return true;
+    }
   }
 
   return false;
@@ -634,7 +717,7 @@ function enforceSentenceIntegrity(text: string): string {
    TEXT COMPRESSION v2 — Preserves key ideas
    ═══════════════════════════════════════════════════════ */
 
-function compressText(text: string, maxChars: number = 120): string {
+function compressText(text: string, maxChars: number = 160): string {
   if (!text || text.length <= maxChars) return text;
   let t = text;
   // Conservative compression only (avoid semantic corruption)
@@ -644,8 +727,21 @@ function compressText(text: string, maxChars: number = 120): string {
   t = t.replace(/\s{2,}/g, " ").trim();
 
   if (t.length > maxChars) {
-    t = smartTruncate(t, maxChars);
-    t = enforceSentenceIntegrity(t);
+    // CRITICAL: try sentence boundary first, never cut at verbs/prepositions
+    const sub = t.substring(0, maxChars);
+    const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
+    if (sentenceEnd > maxChars * 0.45) {
+      t = t.substring(0, sentenceEnd + 1).trim();
+    } else {
+      t = smartTruncate(t, maxChars);
+      t = enforceSentenceIntegrity(t);
+    }
+    // Post-check: if result is semantically truncated, try with more chars
+    if (detectSemanticTruncation(t) && maxChars < text.length * 0.95) {
+      const expanded = smartTruncate(text, Math.min(text.length, Math.floor(maxChars * 1.3)));
+      const expandedClean = enforceSentenceIntegrity(expanded);
+      if (!detectSemanticTruncation(expandedClean)) t = expandedClean;
+    }
   }
   return t;
 }
@@ -4292,13 +4388,23 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     const colonIdx = step.indexOf(":");
     let stepTitle: string;
     let stepDesc: string;
-    if (colonIdx > 2 && colonIdx < 50) {
-      stepTitle = smartTruncate(step.substring(0, colonIdx).trim(), 45);
-      stepDesc = smartTruncate(step.substring(colonIdx + 1).trim(), 130);
+    if (colonIdx > 2 && colonIdx < 60) {
+      stepTitle = smartTruncate(step.substring(0, colonIdx).trim(), 55);
+      stepDesc = step.substring(colonIdx + 1).trim(); // NO truncation — let fitTextForBox handle it
     } else {
-      const words = step.split(/\s+/);
-      stepTitle = smartTruncate(words.slice(0, 4).join(" "), 45);
-      stepDesc = smartTruncate(words.slice(4).join(" "), 130);
+      // Find a natural break point — prefer sentence boundary or comma
+      const commaIdx = step.indexOf(",");
+      const dashIdx = step.indexOf(" – ");
+      const breakIdx = commaIdx > 8 && commaIdx < 55 ? commaIdx
+        : dashIdx > 8 && dashIdx < 55 ? dashIdx
+        : -1;
+      if (breakIdx > 0) {
+        stepTitle = step.substring(0, breakIdx).trim();
+        stepDesc = step.substring(breakIdx + 1).trim();
+      } else {
+        stepTitle = step.length <= 55 ? step : smartTruncate(step, 55);
+        stepDesc = step.length <= 55 ? "" : step.substring(stepTitle.replace(/\.\.\.$/, "").trim().length).trim();
+      }
     }
 
     const textY = y + circleSize + 0.30;
@@ -4646,17 +4752,14 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
     let cardTitle = "";
     let cardBody = bullet;
     if (colonIdx > 2 && colonIdx < 60) {
-      cardTitle = smartTruncate(bullet.substring(0, colonIdx).trim(), 50);
-      cardBody = smartTruncate(bullet.substring(colonIdx + 1).trim(), 130);
+      cardTitle = bullet.substring(0, colonIdx).trim();
+      if (cardTitle.length > 55) cardTitle = smartTruncate(cardTitle, 55);
+      cardBody = bullet.substring(colonIdx + 1).trim(); // Keep full text — renderer handles overflow
     } else {
-      const words = bullet.split(/\s+/);
-      if (words.length > 5) {
-        cardTitle = smartTruncate(words.slice(0, 5).join(" "), 50);
-        cardBody = smartTruncate(words.slice(5).join(" "), 130);
-      } else {
-        cardTitle = smartTruncate(bullet, 50);
-        cardBody = "";
-      }
+      // DON'T artificially split at word 5 — this creates broken half-sentences
+      // Keep the whole text as body (no title) to preserve semantic completeness
+      cardTitle = "";
+      cardBody = bullet;
     }
 
     if (cardBody && !/[.!?]$/.test(cardBody)) cardBody += ".";
@@ -5269,25 +5372,37 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ── POST-RENDER TRUNCATION SCAN ──
-    // Scan all slide items for truncation patterns that were NOT caught by Stage 4
+    // ── POST-RENDER TRUNCATION SCAN v2 ──
+    // Uses the deeper detectSemanticTruncation to catch period-masked truncations
     let postRenderTruncations = 0;
     const postRenderTruncationWarnings: string[] = [];
     allSlides.forEach((s, idx) => {
       const textsToCheck = [s.title, s.description, ...(s.items || []), ...(s.objectives || [])].filter(Boolean);
       for (const txt of textsToCheck) {
-        if (detectTruncation(txt)) {
+        // Use semantic detection which catches verb-ending and noun-after-preposition patterns
+        if (detectSemanticTruncation(txt)) {
           postRenderTruncations++;
           const msg = `Slide ${idx + 3} POST-RENDER TRUNCAMENTO: "${txt.substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
           qualityReport.stage4_all_warnings.push(msg);
         }
-        // Also detect suspiciously short sentences (< 25 chars with > 3 words expected context)
-        const stripped = (txt || "").replace(/\.$/, "").trim();
+        // Detect suspiciously short sentences (< 30 chars with > 2 words)
+        const stripped = (txt || "").replace(/\.+$/, "").trim();
         const wc = stripped.split(/\s+/).length;
-        if (wc >= 2 && wc <= 3 && stripped.length < 25 && !/^(Cenário|Solução|Resultado|Reflexão|Resumo|Objetivo|Insight|Atenção|Dica)/i.test(stripped)) {
+        if (wc >= 2 && wc <= 4 && stripped.length < 30 && stripped.length > 3 &&
+            !/^(Cenário|Solução|Resultado|Reflexão|Resumo|Objetivo|Insight|Atenção|Dica|Nota|Importante|Automação|Identificação|Análise|Gerenciamento)/i.test(stripped)) {
+          // Check it's not a label:value pattern
+          if (!/^[A-Z][\w\s]+:\s+/.test(txt || "")) {
+            postRenderTruncations++;
+            const msg = `Slide ${idx + 3} FRASE CURTA SUSPEITA: "${stripped}"`;
+            postRenderTruncationWarnings.push(msg);
+            qualityReport.stage4_all_warnings.push(msg);
+          }
+        }
+        // Detect artificial splits with "..." mid-sentence
+        if (/\.\.\.\s/.test(txt || "") && wc >= 4) {
           postRenderTruncations++;
-          const msg = `Slide ${idx + 3} FRASE CURTA SUSPEITA: "${stripped}"`;
+          const msg = `Slide ${idx + 3} SPLIT ARTIFICIAL: "${(txt || "").substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
           qualityReport.stage4_all_warnings.push(msg);
         }
@@ -5295,27 +5410,28 @@ Deno.serve(async (req: Request) => {
     });
     if (postRenderTruncations > 0) {
       console.warn(`[POST-RENDER] Found ${postRenderTruncations} truncation issues across slides`);
+      postRenderTruncationWarnings.slice(0, 10).forEach(w => console.warn(`  ${w}`));
     }
 
     // ── CHECKPOINT-BASED QUALITY SCORING ──
     // 4 formal checkpoints with individual scores and weighted final score.
-    // Weights: content=35, structure=25, visual=25, file=15
+    // Weights: content=40, structure=20, visual=25, file=15
 
-    // --- Checkpoint 1: CONTENT (weight 35%) ---
+    // --- Checkpoint 1: CONTENT (weight 40% — INCREASED from 35%) ---
     // Measures: truncation warnings (including post-render scan), grammar fixes, NLP quality
     const contentTruncationWarnings = qualityReport.stage4_all_warnings.filter(
-      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|FRASE CURTA/i.test(w)
+      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|FRASE CURTA|SPLIT ARTIFICIAL/i.test(w)
     ).length;
     const contentFixes = qualityReport.stage4_all_fixes.filter(
       (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
     ).length;
     const contentScore = Math.max(0, Math.min(100,
       100
-      - Math.min(50, contentTruncationWarnings * 8)
+      - Math.min(70, contentTruncationWarnings * 12) // INCREASED from *8 — each truncation costs 12 points
       - Math.min(20, (qualityReport.stage1_5_llm_nonsense_dropped || 0) * 5)
-      + Math.min(15, contentFixes * 0.5)
+      + Math.min(10, contentFixes * 0.3) // REDUCED fix bonus — fixes don't compensate for truncations
     ));
-    const contentCritical = contentTruncationWarnings > 5;
+    const contentCritical = contentTruncationWarnings > 3; // TIGHTENED from > 5
 
     // --- Checkpoint 2: STRUCTURE (weight 25%) ---
     // Measures: repetition, empty slides, density, coherence
@@ -5365,9 +5481,9 @@ Deno.serve(async (req: Request) => {
     ));
     const fileCritical = !slideSanity;
 
-    // --- Weighted final score ---
+    // --- Weighted final score (content=40%, structure=20%, visual=25%, file=15%) ---
     const qualityScore = Math.max(0, Math.min(100,
-      contentScore * 0.35 + structureScore * 0.25 + visualScore * 0.25 + fileScore * 0.15
+      contentScore * 0.40 + structureScore * 0.20 + visualScore * 0.25 + fileScore * 0.15
     ));
 
     const hasCriticalFailure = contentCritical || visualCritical || fileCritical;
@@ -5376,7 +5492,7 @@ Deno.serve(async (req: Request) => {
     const checkpoints = {
       content: {
         score: Number(contentScore.toFixed(1)),
-        weight: 35,
+        weight: 40,
         critical: contentCritical,
         issues: qualityReport.stage4_all_warnings.filter(
           (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|FRASE CURTA/i.test(w)
@@ -5387,7 +5503,7 @@ Deno.serve(async (req: Request) => {
       },
       structure: {
         score: Number(structureScore.toFixed(1)),
-        weight: 25,
+        weight: 20,
         critical: structureCritical,
         issues: [
           ...qualityReport.stage4_all_warnings.filter(
