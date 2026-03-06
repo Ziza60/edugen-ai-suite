@@ -1210,18 +1210,20 @@ interface SemanticModulePlan {
   slides: SemanticSlidePlan[];
 }
 
-async function llmPlanModuleSlides(moduleTitle: string, moduleContent: string, moduleIndex: number, language: string): Promise<SemanticModulePlan | null> {
+async function llmPlanModuleSlides(moduleTitle: string, moduleContent: string, moduleIndex: number, language: string, preParsedSummary?: string): Promise<SemanticModulePlan | null> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("[SEMANTIC-PLANNER] LOVABLE_API_KEY not available, falling back to regex parser");
     return null;
   }
 
-  // Truncate content if too large (keep under ~12k chars to avoid token limits)
+  // Use pre-parsed structured summary if available (from semantic parser),
+  // otherwise fall back to raw markdown content
+  const contentForPlanner = preParsedSummary || moduleContent;
   const maxContentLen = 12000;
-  const truncatedContent = moduleContent.length > maxContentLen
-    ? moduleContent.substring(0, maxContentLen) + "\n\n[... conteúdo truncado para processamento ...]"
-    : moduleContent;
+  const truncatedContent = contentForPlanner.length > maxContentLen
+    ? contentForPlanner.substring(0, maxContentLen) + "\n\n[... conteúdo truncado para processamento ...]"
+    : contentForPlanner;
 
   const systemPrompt = `Você é um designer instrucional especialista em criar apresentações PowerPoint de alta qualidade a partir de conteúdo educacional.
 
