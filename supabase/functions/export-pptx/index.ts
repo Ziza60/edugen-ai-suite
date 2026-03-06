@@ -1696,15 +1696,61 @@ ${truncatedContent}`;
 function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): SlideData[] {
   const slides: SlideData[] = [];
 
-  // Module cover
-  slides.push({
-    layout: "module_cover",
-    title: smartTitle(plan.moduleTitle),
-    subtitle: "MODULO " + String(moduleIndex + 1).padStart(2, "0"),
-    description: plan.moduleDescription,
-    moduleIndex,
-    objectives: plan.objectives.slice(0, 3),
-  });
+  // ── STRUCTURAL REDISTRIBUTION for module cover (v7) ──
+  // Instead of compressing long titles/descriptions/objectives, we redistribute:
+  // 1. If title + description + objectives all fit → single cover slide
+  // 2. If objectives overflow → move objectives to a dedicated continuation slide
+  // 3. If title itself overflows → allow 3 lines, and move description to continuation
+  const coverTitle = plan.moduleTitle;
+  const coverDesc = plan.moduleDescription;
+  const coverObjectives = plan.objectives.slice(0, 4); // allow up to 4 for redistribution
+
+  // Measure: will objectives fit on the cover?
+  const objW = SAFE_W * 0.60 - 0.30;
+  const objH = 0.44;
+  const titleBbox = measureBoundingBox(coverTitle, TYPO.MODULE_TITLE, FONT_TITLE, SAFE_W * 0.70, 1.50);
+  let objectivesOverflow = false;
+  for (const obj of coverObjectives) {
+    const bbox = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW, objH);
+    if (!bbox.fits && obj.length > 60) { objectivesOverflow = true; break; }
+  }
+  // Also check if we have too many objectives + long description
+  const totalCoverContent = coverDesc.length + coverObjectives.reduce((s, o) => s + o.length, 0);
+  if (totalCoverContent > 350 || coverObjectives.length > 3) objectivesOverflow = true;
+
+  if (objectivesOverflow) {
+    // Split: cover gets title + description, objectives go to dedicated slide
+    slides.push({
+      layout: "module_cover",
+      title: coverTitle, // full title, renderer handles wrapping
+      subtitle: "MODULO " + String(moduleIndex + 1).padStart(2, "0"),
+      description: coverDesc,
+      moduleIndex,
+      objectives: [], // no objectives on cover — they go to next slide
+    });
+    // Dedicated objectives slide
+    slides.push({
+      layout: "bullets",
+      title: "Objetivos - " + smartTitle(coverTitle),
+      sectionLabel: "OBJETIVOS DO MÓDULO",
+      items: sanitizeBullets(coverObjectives.map(o => {
+        const t = o.trim();
+        return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
+      })),
+      moduleIndex,
+      blockType: "normal",
+    });
+    console.log("[REDISTRIB] Module " + (moduleIndex + 1) + ": objectives moved to dedicated slide (" + coverObjectives.length + " objectives)");
+  } else {
+    slides.push({
+      layout: "module_cover",
+      title: coverTitle,
+      subtitle: "MODULO " + String(moduleIndex + 1).padStart(2, "0"),
+      description: coverDesc,
+      moduleIndex,
+      objectives: coverObjectives.slice(0, 3),
+    });
+  }
 
   const LAYOUT_MAP: Record<string, LayoutType> = {
     definition: "definition_card_with_pillars",
@@ -1728,11 +1774,72 @@ function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): Sl
       : slidePlan.layout === "summary" ? "summary"
       : "normal";
 
+    // ── STRUCTURAL REDISTRIBUTION for long bullet items (v7) ──
+    // Instead of compressing "Label: long explanation" bullets, split them
+    // into multiple items when they exceed capacity.
+    let processedItems = slidePlan.items;
+    const maxBulletLen = activeDensity.maxCharsPerBullet;
+    const expandedItems: string[] = [];
+    let didRedistribute = false;
+
+    for (const item of processedItems) {
+      if (item.length <= maxBulletLen) {
+        expandedItems.push(item);
+        continue;
+      }
+      // Try to split "Label: long explanation" into "Label" + explanation sentences
+      const colonIdx = item.indexOf(":");
+      if (colonIdx > 2 && colonIdx < 55) {
+        const label = item.substring(0, colonIdx).trim();
+        const explanation = item.substring(colonIdx + 1).trim();
+        // Split explanation into sentences
+        const sentences = explanation.match(/[^.!?]+[.!?]+/g);
+        if (sentences && sentences.length >= 2) {
+          // First item keeps label + first sentence(s)
+          let first = label + ": " + sentences[0].trim();
+          if (first.length <= maxBulletLen && sentences.length > 2) {
+            first = label + ": " + sentences.slice(0, 2).join(" ").trim();
+          }
+          expandedItems.push(first.length > 0 && !/[.!?]$/.test(first) ? first + "." : first);
+          // Remaining sentences become standalone items
+          const remaining = sentences.slice(first.includes(sentences[1]?.trim() || "__") ? 2 : 1);
+          if (remaining.length > 0) {
+            const remainText = remaining.join(" ").trim();
+            if (remainText.length > 3) {
+              expandedItems.push(remainText.length > 0 && !/[.!?]$/.test(remainText) ? remainText + "." : remainText);
+            }
+          }
+          didRedistribute = true;
+          continue;
+        }
+      }
+      // Regular long item: split at sentence boundary into two items
+      const sentences = item.match(/[^.!?]+[.!?]+/g);
+      if (sentences && sentences.length >= 2) {
+        const mid = Math.ceil(sentences.length / 2);
+        const part1 = sentences.slice(0, mid).join(" ").trim();
+        const part2 = sentences.slice(mid).join(" ").trim();
+        if (part1.length > 10 && part2.length > 10) {
+          expandedItems.push(part1);
+          expandedItems.push(part2);
+          didRedistribute = true;
+          continue;
+        }
+      }
+      // Fall back to smartBullet compression (last resort)
+      expandedItems.push(smartBullet(item));
+    }
+
+    if (didRedistribute) {
+      console.log("[REDISTRIB] Slide '" + slidePlan.slideTitle + "': items expanded " + processedItems.length + " → " + expandedItems.length);
+      processedItems = expandedItems;
+    }
+
     const sd: SlideData = {
       layout,
       title: smartTitle(slidePlan.slideTitle),
       sectionLabel: slidePlan.sectionLabel.toUpperCase().substring(0, 25),
-      items: sanitizeBullets(slidePlan.items),
+      items: sanitizeBullets(processedItems),
       moduleIndex,
       blockType,
     };
