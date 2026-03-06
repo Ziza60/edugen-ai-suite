@@ -5612,9 +5612,7 @@ Deno.serve(async (req: Request) => {
         score: Number(contentScore.toFixed(1)),
         weight: 40,
         critical: contentCritical,
-        issues: qualityReport.stage4_all_warnings.filter(
-          (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|FRASE CURTA/i.test(w)
-        ).slice(0, 15),
+        issues: contentHardWarnings.slice(0, 15),
         fixes: qualityReport.stage4_all_fixes.filter(
           (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
         ).slice(0, 10),
@@ -5624,7 +5622,7 @@ Deno.serve(async (req: Request) => {
         weight: 20,
         critical: structureCritical,
         issues: [
-          ...qualityReport.stage4_all_warnings.filter(
+          ...dedupedWarnings.filter(
             (w: string) => /REPETICAO|TITULO CURTO|TITULO GENERICO|MESCLADO|SIMBOLOS/i.test(w)
           ).slice(0, 10),
           ...qualityReport.stage2_coherence_warnings.slice(0, 5),
@@ -5639,7 +5637,7 @@ Deno.serve(async (req: Request) => {
         critical: visualCritical,
         issues: [
           ...qualityReport.stage3_wcag_failures.slice(0, 5),
-          ...qualityReport.stage4_all_warnings.filter(
+          ...dedupedWarnings.filter(
             (w: string) => /WCAG|TABELA|BBOX|CELULA/i.test(w)
           ).slice(0, 10),
         ],
