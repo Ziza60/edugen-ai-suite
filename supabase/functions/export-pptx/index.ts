@@ -5379,8 +5379,8 @@ Deno.serve(async (req: Request) => {
         weight: 35,
         critical: contentCritical,
         issues: qualityReport.stage4_all_warnings.filter(
-          (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA/i.test(w)
-        ).slice(0, 10),
+          (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|FRASE CURTA/i.test(w)
+        ).slice(0, 15),
         fixes: qualityReport.stage4_all_fixes.filter(
           (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
         ).slice(0, 10),
