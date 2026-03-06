@@ -3701,17 +3701,34 @@ Deno.serve(async (req: Request) => {
     // ── EXPORT GATE: Block if quality < 85 ──
     if (qualityScore < 85) {
       console.error("[GATE] Export BLOCKED: quality_score=" + qualityScore.toFixed(1) + " < 85");
+      const reportSummary = {
+        quality_score: Number(qualityScore.toFixed(1)),
+        passed: false,
+        stage0_semantic_planner_modules: qualityReport.stage0_semantic_planner_modules,
+        stage0_regex_fallback_modules: qualityReport.stage0_regex_fallback_modules,
+        stage1_slides_generated: qualityReport.stage1_slides_generated,
+        stage1_5_llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
+        stage1_5_llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
+        stage1_5_llm_nonsense_dropped: qualityReport.stage1_5_llm_nonsense_dropped,
+        stage1_5_llm_relevance_dropped: qualityReport.stage1_5_llm_relevance_dropped,
+        stage2_dedup_removed: qualityReport.stage2_dedup_removed,
+        stage2_avg_density: qualityReport.stage2_avg_density,
+        stage2_coherence_warnings_sample: qualityReport.stage2_coherence_warnings.slice(0, 10),
+        stage3_bbox_overflows: qualityReport.stage3_bbox_overflows,
+        stage3_bbox_fixes: qualityReport.stage3_bbox_fixes,
+        stage3_wcag_failures: qualityReport.stage3_wcag_failures,
+        stage4_retries_used: qualityReport.stage4_retries_used,
+        stage4_final_warnings: qualityReport.stage4_final_warnings,
+        stage4_final_fixes: qualityReport.stage4_final_fixes,
+        stage4_all_warnings_count: qualityReport.stage4_all_warnings.length,
+        stage4_all_fixes_count: qualityReport.stage4_all_fixes.length,
+        stage4_sample_warnings: qualityReport.stage4_all_warnings.slice(0, 15),
+        stage4_sample_fixes: qualityReport.stage4_all_fixes.slice(0, 15),
+      };
+
       return new Response(JSON.stringify({
         error: "Exportação bloqueada: qualidade insuficiente (score=" + qualityScore.toFixed(1) + "/100).",
-        quality_report: {
-          quality_score: Number(qualityScore.toFixed(1)),
-          passed: false,
-          ...qualityReport,
-          stage4_all_warnings_count: qualityReport.stage4_all_warnings.length,
-          stage4_all_fixes_count: qualityReport.stage4_all_fixes.length,
-          stage4_sample_warnings: qualityReport.stage4_all_warnings.slice(0, 15),
-          stage4_sample_fixes: qualityReport.stage4_all_fixes.slice(0, 15),
-        },
+        quality_report: reportSummary,
       }), {
         status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -3807,18 +3824,35 @@ Deno.serve(async (req: Request) => {
       metadata: { course_id, slide_count: totalSlides },
     });
 
+    const reportSummary = {
+      quality_score: Number(qualityScore.toFixed(1)),
+      passed: true,
+      total_slides: totalSlides,
+      stage0_semantic_planner_modules: qualityReport.stage0_semantic_planner_modules,
+      stage0_regex_fallback_modules: qualityReport.stage0_regex_fallback_modules,
+      stage1_slides_generated: qualityReport.stage1_slides_generated,
+      stage1_5_llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
+      stage1_5_llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
+      stage1_5_llm_nonsense_dropped: qualityReport.stage1_5_llm_nonsense_dropped,
+      stage1_5_llm_relevance_dropped: qualityReport.stage1_5_llm_relevance_dropped,
+      stage2_dedup_removed: qualityReport.stage2_dedup_removed,
+      stage2_avg_density: qualityReport.stage2_avg_density,
+      stage2_coherence_warnings_sample: qualityReport.stage2_coherence_warnings.slice(0, 10),
+      stage3_bbox_overflows: qualityReport.stage3_bbox_overflows,
+      stage3_bbox_fixes: qualityReport.stage3_bbox_fixes,
+      stage3_wcag_failures: qualityReport.stage3_wcag_failures,
+      stage4_retries_used: qualityReport.stage4_retries_used,
+      stage4_final_warnings: qualityReport.stage4_final_warnings,
+      stage4_final_fixes: qualityReport.stage4_final_fixes,
+      stage4_all_warnings_count: qualityReport.stage4_all_warnings.length,
+      stage4_all_fixes_count: qualityReport.stage4_all_fixes.length,
+      stage4_sample_warnings: qualityReport.stage4_all_warnings.slice(0, 15),
+      stage4_sample_fixes: qualityReport.stage4_all_fixes.slice(0, 15),
+    };
+
     return new Response(JSON.stringify({
       url: signedUrl.signedUrl,
-      quality_report: {
-        quality_score: Number(qualityScore.toFixed(1)),
-        passed: true,
-        total_slides: totalSlides,
-        ...qualityReport,
-        stage4_all_warnings_count: qualityReport.stage4_all_warnings.length,
-        stage4_all_fixes_count: qualityReport.stage4_all_fixes.length,
-        stage4_sample_warnings: qualityReport.stage4_all_warnings.slice(0, 15),
-        stage4_sample_fixes: qualityReport.stage4_all_fixes.slice(0, 15),
-      },
+      quality_report: reportSummary,
     }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
