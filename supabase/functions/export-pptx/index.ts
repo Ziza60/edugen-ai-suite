@@ -6054,7 +6054,7 @@ Deno.serve(async (req: Request) => {
       quality_score: Number(qualityScore.toFixed(1)),
       passed,
       blocked_reason: blockReason,
-      pipeline_version: "v6-pre-render-prevention",
+      pipeline_version: "v7-structural-redistribution",
       checkpoints,
       problematic_slides: problematicSlides.slice(0, 15),
       corrections_attempted: {
@@ -6066,6 +6066,9 @@ Deno.serve(async (req: Request) => {
         relevance_dropped: qualityReport.stage2_relevance_dropped,
         llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
         llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
+        redistributions: qualityReport.stage2_5_redistributions,
+        semantic_losses: qualityReport.stage2_5_semantic_losses.length,
+        semantic_loss_details: qualityReport.stage2_5_semantic_losses.slice(0, 10),
       },
       summary: {
         total_slides: allSlides.length + 3,
