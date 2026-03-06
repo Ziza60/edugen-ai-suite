@@ -53,6 +53,11 @@ export function FlashcardsFlipView({ flashcards }: FlashcardsFlipViewProps) {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Don't capture keys when user is typing in an input/textarea or inside a dialog
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isInsideDialog = (e.target as HTMLElement)?.closest('[role="dialog"]');
+      if (tag === "INPUT" || tag === "TEXTAREA" || isInsideDialog) return;
+
       if (e.key === "ArrowRight") goNext();
       else if (e.key === "ArrowLeft") goPrev();
       else if (e.key === " " || e.key === "Enter") {
