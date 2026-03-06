@@ -597,38 +597,103 @@ const PT_COMPLETE_ENDINGS = /\b(IA|AI|TI|UX|UI|ML|BI|CX|RH|SEO|ROI|KPI|PLN|NLP|O
  */
 function isValidBullet(text: string): boolean {
   const t = text.trim().replace(/\.+$/, "").trim();
+  if (!t) return false;
+
   const wc = t.split(/\s+/).length;
 
   // Comma-separated enumerations: "ChatGPT, Google Gemini, Claude"
-  if ((t.match(/,/g) || []).length >= 1 && wc <= 8) return true;
+  if ((t.match(/,/g) || []).length >= 1 && wc <= 10) {
+    const chunks = t.split(",").map((s) => s.trim()).filter(Boolean);
+    if (chunks.length >= 2) return true;
+  }
 
-  // Action bullet: starts with verb in 3rd person and has object: "Aprimora textos existentes"
-  if (/^[A-ZÁÉÍÓÚÃÕ]?[a-záéíóúãõ]+[aei]\s+\w+/i.test(t) && wc >= 3 && wc <= 7) {
-    // Has object after verb — valid action bullet
+  // Tool/category lists with proper nouns/acronyms, even without commas
+  if (wc >= 2 && wc <= 6) {
+    const properNounOrAcronymCount = t.split(/\s+/).filter((w) =>
+      /^[A-ZÁÉÍÓÚÃÕ][a-záéíóúãõâêîôûç]+$/.test(w) || /^[A-Z]{2,}$/.test(w)
+    ).length;
+    if (properNounOrAcronymCount >= 2) return true;
+  }
+
+  // Action bullet: "Aprimora textos existentes"
+  if (/^[A-ZÁÉÍÓÚÃÕ]?[a-záéíóúãõâêîôûç]+\s+\w+/i.test(t) && wc >= 3 && wc <= 8) {
     const words = t.split(/\s+/);
     const firstWord = words[0];
-    // 3rd-person verb ending in -a, -e, -i followed by a noun/object
-    if (/^[A-Z]?[a-záéíóúãõ]+(a|e|i)$/i.test(firstWord) && words.length >= 3) return true;
+    if (/^[A-Z]?[a-záéíóúãõâêîôûç]+(a|e|i)$/.test(firstWord) && words.length >= 3) return true;
   }
 
   // Nominal phrase ending in noun/adjective (typical slide bullet)
-  // "Modelos específicos para marketing" — ends in a noun, has a qualifier
-  if (wc >= 3 && wc <= 6 && t.length >= 20 && t.length < 60) {
-    const lastWord = t.split(/\s+/).pop() || "";
-    // Ends with a noun (not a preposition/article/verb-infinitive)
-    if (lastWord.length >= 4 && !/[aeiou]r$/i.test(lastWord) && 
-        !/^(de|da|do|das|dos|na|no|em|para|por|com|ao|à|que|como)$/i.test(lastWord)) {
+  if (wc >= 3 && wc <= 7 && t.length >= 16 && t.length <= 70) {
+    const words = t.split(/\s+/);
+    const lastWord = words[words.length - 1] || "";
+    if (
+      lastWord.length >= 4
+      && !/[aeiou]r$/i.test(lastWord)
+      && !/^(de|da|do|das|dos|na|no|em|para|por|com|ao|à|que|como)$/i.test(lastWord)
+    ) {
       return true;
     }
   }
 
-  // Very short label-like items (2-3 words): "Atas de reunião", "Longos documentos"
-  if (wc <= 3 && t.length < 30 && t.length >= 5) return true;
+  // Short labels are valid only when they look like noun phrases (not arbitrary fragments)
+  if (wc >= 2 && wc <= 4 && t.length <= 42) {
+    if (/\b(de|da|do|das|dos|para|com|em)\b/i.test(t)) return true;
+    if (/^[A-ZÁÉÍÓÚÃÕ][\wÀ-ÖØ-öø-ÿ-]+\s+[a-zà-öø-ÿ]{3,}/.test(t)) return true;
+  }
 
   // Items with semicolons (enumeration style)
   if (t.includes(";")) return true;
 
   return false;
+}
+
+function extractWarningQuotedText(warning: string): string {
+  const quoted = warning.match(/"([^"]+)"/);
+  return (quoted?.[1] || "").trim();
+}
+
+function warningDedupKey(warning: string): string {
+  const type = (warning.match(/TRUNCAMENTO|FRAGMENTO|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA|GRAMATICA|PONTUACAO|REPETICAO|TITULO CURTO|TITULO GENERICO|WCAG|BBOX|CELULA|MESCLADO|SIMBOLOS/i)?.[0] || "WARN").toUpperCase();
+  const quoted = extractWarningQuotedText(warning)
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\.+$/, "")
+    .trim();
+
+  if (quoted) return `${type}|${quoted.slice(0, 120)}`;
+
+  const normalized = warning
+    .replace(/^Slide\s+\d+\s*/i, "")
+    .replace(/\([^)]*\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  return `${type}|${normalized}`;
+}
+
+function dedupeWarnings(warnings: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const warning of warnings) {
+    const key = warningDedupKey(warning);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(warning);
+  }
+  return unique;
+}
+
+function isFalsePositiveTruncationWarning(warning: string): boolean {
+  if (!/TRUNCAMENTO|FRAGMENTO|POST-RENDER|SPLIT ARTIFICIAL/i.test(warning)) return false;
+  if (/SPLIT ARTIFICIAL/i.test(warning)) return false; // always real issue
+
+  const snippet = extractWarningQuotedText(warning);
+  if (!snippet) return false;
+
+  // Only suppress when snippet looks like valid slide bullet AND has no semantic truncation
+  const normalizedSnippet = snippet.replace(/\.+$/, "").trim();
+  return isValidBullet(normalizedSnippet) && !detectSemanticTruncation(normalizedSnippet);
 }
 
 function detectTruncation(text: string): boolean {
