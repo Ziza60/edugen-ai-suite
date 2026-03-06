@@ -5121,17 +5121,34 @@ Deno.serve(async (req: Request) => {
     qualityReport.stage2_avg_density = Number(avgDensity.toFixed(1));
     console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
-    // ── STAGE 3: VISUAL VALIDATION (Bounding Box + WCAG + Overflow Split + Auto-Continuation) ──
+    // ── STAGE 3: STRUCTURAL OVERFLOW RESOLUTION (6-level cascade) ──
+    // Uses the new overflow resolution engine instead of simple bbox + split.
+    // Cascade: layout_swap → redistribute → semantic_split → continuation → summarize → truncate
     let bboxOverflows = 0;
     let bboxFixes = 0;
     let overflowSplits = 0;
+    const overflowResolutions: Record<string, number> = {
+      layout_swap: 0, redistribute: 0, semantic_split: 0,
+      continuation: 0, summarize: 0, truncate: 0, none: 0,
+    };
 
-    // 3a. Pre-render overflow detection with auto-split for ALL slide types
-    const slidesToInsert: { afterIndex: number; slide: SlideData }[] = [];
+    // 3a. Run overflow resolution engine on every slide
+    const resolvedSlides: SlideData[] = [];
     for (let si = 0; si < allSlides.length; si++) {
       const s = allSlides[si];
+      const { slides: resolved, resolution } = resolveSlideOverflow(s, si);
+      resolvedSlides.push(...resolved);
+      overflowResolutions[resolution.strategy]++;
+      if (resolution.strategy !== "none") {
+        bboxOverflows++;
+        bboxFixes++;
+        if (resolution.slidesProduced > 1) overflowSplits += resolution.slidesProduced - 1;
+      }
+    }
+    allSlides = resolvedSlides;
 
-      // Definition cards — check text vs pillar space
+    // 3b. Definition card overflow (specific to its split rendering logic)
+    for (const s of allSlides) {
       if (s.layout === "definition_card_with_pillars" && s.items && s.items.length > 0) {
         const defText = s.items[0];
         const defBoxW = SAFE_W - 0.60;
@@ -5141,64 +5158,17 @@ Deno.serve(async (req: Request) => {
         const testFit = fitTextForBox(defText, defBoxW, availWithPillars, TYPO.BODY, FONT_BODY, TYPO.BODY);
         if (testFit.adjusted && s.items.length > 1) {
           overflowSplits++;
-          console.log("[STAGE-3] Definition overflow detected, will auto-split: " + s.title);
+          console.log("[STAGE-3] Definition overflow detected, will auto-split at render: " + s.title);
         }
       }
-
-      // Bullet/warning/example slides — auto-split if too many items overflow
-      if (s.items && s.items.length > 0 && s.layout !== "comparison_table" && s.layout !== "module_cover") {
-        const boxW = SAFE_W - 0.50;
-        const maxItems = activeDensity.maxBulletsPerSlide;
-        const maxItemH = (SLIDE_H - 2.0 - BOTTOM_MARGIN) / Math.min(s.items.length, maxItems);
-        let overflowCount = 0;
-
-        for (let i = 0; i < s.items.length; i++) {
-          const minFontForItem = s.layout === "definition_card_with_pillars" ? TYPO.BODY : TYPO.SUPPORT;
-          const fit = fitTextForBox(s.items[i], boxW, maxItemH, TYPO.BULLET_TEXT, FONT_BODY, minFontForItem);
-          if (fit.adjusted) {
-            bboxOverflows++;
-            // Try font reduction first, only truncate as last resort
-            if (fit.text.length >= s.items[i].length * 0.85) {
-              bboxFixes++;
-              s.items[i] = fit.text;
-            } else {
-              overflowCount++;
-            }
-          }
-        }
-
-        // If too many items overflow even after font reduction, create continuation slide
-        if (overflowCount >= 2 && s.items.length > 3 && s.layout !== "numbered_takeaways") {
-          const mid = Math.ceil(s.items.length / 2);
-          const contSlide: SlideData = {
-            layout: s.layout,
-            title: smartTitle(s.title.replace(/\s*\(Parte \d+\)\s*$/i, "") + " (Parte 2)"),
-            sectionLabel: s.sectionLabel,
-            items: s.items.slice(mid),
-            moduleIndex: s.moduleIndex,
-            blockType: s.blockType,
-          };
-          s.items = s.items.slice(0, mid);
-          if (!s.title.includes("Parte")) {
-            s.title = smartTitle(s.title + " (Parte 1)");
-          }
-          slidesToInsert.push({ afterIndex: si, slide: contSlide });
-          overflowSplits++;
-          bboxFixes += overflowCount;
-          console.log("[STAGE-3] Auto-split slide: " + s.title + " → 2 slides");
-        }
-      }
-    }
-
-    // Insert continuation slides in reverse order to maintain indices
-    for (let i = slidesToInsert.length - 1; i >= 0; i--) {
-      const { afterIndex, slide } = slidesToInsert[i];
-      allSlides.splice(afterIndex + 1, 0, slide);
     }
 
     qualityReport.stage3_bbox_overflows = bboxOverflows;
     qualityReport.stage3_bbox_fixes = bboxFixes;
     qualityReport.stage3_overflow_splits = overflowSplits;
+
+    console.log("[STAGE-3] Overflow resolution: " + JSON.stringify(overflowResolutions) +
+      " | Total splits=" + overflowSplits + " | Final slides=" + allSlides.length);
 
     // WCAG spot check
     const wcagSpotChecks = [
@@ -5217,9 +5187,13 @@ Deno.serve(async (req: Request) => {
     if (qualityReport.stage3_wcag_failures.length > 0) {
       console.warn("[STAGE-3] WCAG failures: " + qualityReport.stage3_wcag_failures.join(", "));
     }
-    console.log("[STAGE-3] Visual validation: " + bboxOverflows + " overflows, " + bboxFixes + " fixes, " + overflowSplits + " def-splits, " + qualityReport.stage3_wcag_failures.length + " WCAG failures");
+    console.log("[STAGE-3] Visual validation: " + bboxOverflows + " overflows, " + bboxFixes + " fixes, " + overflowSplits + " splits, " + qualityReport.stage3_wcag_failures.length + " WCAG failures");
 
-    // ── STAGE 4: FINAL QUALITY CHECKLIST WITH RETRY (accumulative) ──
+    // ── STAGE 4: PROGRESSIVE QUALITY RETRIES ──
+    // Each retry uses a DIFFERENT strategy instead of repeating the same compression.
+    // Retry 1: Layout swap for overflowing slides
+    // Retry 2: Redistribute + re-split overflowing slides
+    // Retry 3: Summarize remaining overflows (last resort before truncation)
     const MAX_QC_RETRIES = 3;
 
     for (let retry = 0; retry <= MAX_QC_RETRIES; retry++) {
@@ -5245,11 +5219,28 @@ Deno.serve(async (req: Request) => {
       }
 
       if (retry < MAX_QC_RETRIES) {
+        const strategy = retry === 0 ? "layout_swap" : retry === 1 ? "redistribute" : "summarize";
+        console.log("[STAGE-4] Retry " + (retry + 1) + "/" + MAX_QC_RETRIES + ": " + retryWarnings + " warnings, strategy=" + strategy);
+
         allSlides.forEach((s) => {
-          if (!s.items) return;
-          s.items = s.items.map((it) => enforceSentenceIntegrity(compressText(it, Math.max(48, Math.floor(it.length * 0.88)))));
+          if (!s.items || s.items.length === 0) return;
+          const overflow = detectSlideOverflow(s);
+          if (!overflow.overflows) return;
+
+          if (strategy === "layout_swap") {
+            const alt = findAlternativeLayout(s);
+            if (alt) {
+              console.log("[STAGE-4] Retry layout swap: " + s.title + " " + s.layout + " → " + alt);
+              s.layout = alt;
+            }
+          } else if (strategy === "redistribute") {
+            redistributeContent(s);
+          } else if (strategy === "summarize") {
+            const targetCount = Math.max(2, activeDensity.maxBulletsPerSlide - 1);
+            s.items = summarizeItemsForOverflow(s.items, targetCount);
+            s.items = s.items.map(it => enforceSentenceIntegrity(compressText(it, Math.max(48, Math.floor(it.length * 0.88)))));
+          }
         });
-        console.log("[STAGE-4] Retry " + (retry + 1) + "/" + MAX_QC_RETRIES + ": " + retryWarnings + " warnings, repairing...");
       } else {
         console.warn("[STAGE-4] Completed with " + retryWarnings + " remaining warnings after " + MAX_QC_RETRIES + " retries");
       }
