@@ -127,9 +127,35 @@ function refreshColors() { C = getC(); }
 const CARD_ACCENT_COLORS_FN = () => [C.ACCENT_BLUE, C.ACCENT_GREEN, C.ACCENT_PURPLE, C.SECONDARY, C.ACCENT_RED, C.PRIMARY];
 const MODULE_NUMBER_COLORS_FN = () => activePalette.slice(0, 5);
 
+// ── SLIDE TEMPLATES ──
+interface SlideTemplate {
+  fonts: { title: string; body: string };
+  colors: { primary: string; secondary: string; accent: string };
+}
+const SLIDE_TEMPLATES: Record<string, SlideTemplate> = {
+  default: {
+    fonts: { title: "Montserrat", body: "Open Sans" },
+    colors: { primary: "2C3E50", secondary: "9B59B6", accent: "E67E22" },
+  },
+  academic: {
+    fonts: { title: "Times New Roman", body: "Arial" },
+    colors: { primary: "003366", secondary: "6699CC", accent: "FF6600" },
+  },
+  corporate: {
+    fonts: { title: "Montserrat", body: "Open Sans" },
+    colors: { primary: "1A1A1A", secondary: "4A4A4A", accent: "007BFF" },
+  },
+  creative: {
+    fonts: { title: "Playfair Display", body: "Lato" },
+    colors: { primary: "2C3E50", secondary: "E74C3C", accent: "F39C12" },
+  },
+};
+
+let activeTemplate: SlideTemplate = SLIDE_TEMPLATES.default;
+
 // ── TYPOGRAPHY v2 — Market-grade minimum sizes ──
-const FONT_TITLE = "Montserrat";
-const FONT_BODY = "Open Sans";
+let FONT_TITLE = "Montserrat";
+let FONT_BODY = "Open Sans";
 
 const TYPO = {
   MODULE_NUMBER: 72,     // Montserrat Bold

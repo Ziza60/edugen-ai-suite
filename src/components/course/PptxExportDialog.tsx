@@ -12,6 +12,7 @@ export interface PptxExportOptions {
   density: "compact" | "standard" | "detailed";
   includeImages: boolean;
   theme: "light" | "dark";
+  template: "default" | "academic" | "corporate" | "creative";
 }
 
 const PALETTES: Record<string, { label: string; colors: string[] }> = {
@@ -28,6 +29,33 @@ const DENSITY_LABELS: Record<string, { label: string; desc: string }> = {
   detailed: { label: "Detalhado", desc: "Menos slides, mais conteúdo denso" },
 };
 
+const TEMPLATES: Record<string, { label: string; desc: string; fonts: string; colors: string[] }> = {
+  default: {
+    label: "Padrão (EduGen)",
+    desc: "Montserrat + Open Sans — Estilo educacional moderno",
+    fonts: "Montserrat / Open Sans",
+    colors: ["#9B59B6", "#3498DB", "#27AE60"],
+  },
+  academic: {
+    label: "Acadêmico",
+    desc: "Times New Roman + Arial — Formal e institucional",
+    fonts: "Times New Roman / Arial",
+    colors: ["#003366", "#6699CC", "#FF6600"],
+  },
+  corporate: {
+    label: "Corporativo",
+    desc: "Montserrat + Open Sans — Sóbrio e profissional",
+    fonts: "Montserrat / Open Sans",
+    colors: ["#1A1A1A", "#4A4A4A", "#007BFF"],
+  },
+  creative: {
+    label: "Criativo",
+    desc: "Playfair Display + Lato — Elegante e expressivo",
+    fonts: "Playfair Display / Lato",
+    colors: ["#2C3E50", "#E74C3C", "#F39C12"],
+  },
+};
+
 interface Props {
   onExport: (options: PptxExportOptions) => void;
   exporting: boolean;
@@ -41,10 +69,11 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
   const [density, setDensity] = useState<PptxExportOptions["density"]>("standard");
   const [includeImages, setIncludeImages] = useState(false);
   const [theme, setTheme] = useState<PptxExportOptions["theme"]>("light");
+  const [template, setTemplate] = useState<PptxExportOptions["template"]>("default");
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme });
+    onExport({ palette, density, includeImages, theme, template });
   };
 
   return (
@@ -61,6 +90,33 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
         </DialogHeader>
 
         <div className="space-y-5 py-2">
+          {/* Template */}
+          <div className="space-y-2">
+            <Label>Template</Label>
+            <Select value={template} onValueChange={(v) => setTemplate(v as PptxExportOptions["template"])}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(TEMPLATES).map(([key, { label, desc, colors }]) => (
+                  <SelectItem key={key} value={key}>
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span>{label}</span>
+                          <div className="flex gap-0.5">
+                            {colors.map((c, i) => (
+                              <span key={i} className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: c }} />
+                            ))}
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground">{desc}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Palette */}
           <div className="space-y-2">
             <Label>Paleta de Cores</Label>
