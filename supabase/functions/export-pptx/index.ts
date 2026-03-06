@@ -2952,6 +2952,15 @@ function getColumnWidths(headers: string[]): number[] {
 
 function buildModuleSlides(mod: any, modIndex: number, totalModules: number): SlideData[] {
   const blocks = parseModuleContent(mod.content || "");
+  return buildModuleSlidesFromBlocks(blocks, mod, modIndex, totalModules);
+}
+
+/**
+ * Build slides from pre-parsed blocks. This is the core slide builder
+ * used by both the fallback path (with pre-parsed blocks from PRE-STAGE B)
+ * and the legacy path (via buildModuleSlides which parses first).
+ */
+function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: number, totalModules: number): SlideData[] {
   const rawTitle = sanitize(mod.title || "");
   const shortTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
 
