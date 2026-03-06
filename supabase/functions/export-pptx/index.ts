@@ -5269,14 +5269,42 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── POST-RENDER TRUNCATION SCAN ──
+    // Scan all slide items for truncation patterns that were NOT caught by Stage 4
+    let postRenderTruncations = 0;
+    const postRenderTruncationWarnings: string[] = [];
+    allSlides.forEach((s, idx) => {
+      const textsToCheck = [s.title, s.description, ...(s.items || []), ...(s.objectives || [])].filter(Boolean);
+      for (const txt of textsToCheck) {
+        if (detectTruncation(txt)) {
+          postRenderTruncations++;
+          const msg = `Slide ${idx + 3} POST-RENDER TRUNCAMENTO: "${txt.substring(0, 60)}..."`;
+          postRenderTruncationWarnings.push(msg);
+          qualityReport.stage4_all_warnings.push(msg);
+        }
+        // Also detect suspiciously short sentences (< 25 chars with > 3 words expected context)
+        const stripped = (txt || "").replace(/\.$/, "").trim();
+        const wc = stripped.split(/\s+/).length;
+        if (wc >= 2 && wc <= 3 && stripped.length < 25 && !/^(Cenário|Solução|Resultado|Reflexão|Resumo|Objetivo|Insight|Atenção|Dica)/i.test(stripped)) {
+          postRenderTruncations++;
+          const msg = `Slide ${idx + 3} FRASE CURTA SUSPEITA: "${stripped}"`;
+          postRenderTruncationWarnings.push(msg);
+          qualityReport.stage4_all_warnings.push(msg);
+        }
+      }
+    });
+    if (postRenderTruncations > 0) {
+      console.warn(`[POST-RENDER] Found ${postRenderTruncations} truncation issues across slides`);
+    }
+
     // ── CHECKPOINT-BASED QUALITY SCORING ──
     // 4 formal checkpoints with individual scores and weighted final score.
     // Weights: content=35, structure=25, visual=25, file=15
 
     // --- Checkpoint 1: CONTENT (weight 35%) ---
-    // Measures: truncation warnings, grammar fixes, NLP quality
+    // Measures: truncation warnings (including post-render scan), grammar fixes, NLP quality
     const contentTruncationWarnings = qualityReport.stage4_all_warnings.filter(
-      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA/i.test(w)
+      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|FRASE CURTA/i.test(w)
     ).length;
     const contentFixes = qualityReport.stage4_all_fixes.filter(
       (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
