@@ -354,7 +354,7 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
 }
 
 function smartTitle(text: string): string {
-  return smartTruncate(text, 50); // Increased from 40 for longer titles
+  return smartTruncate(text, 80); // Titles need space for context
 }
 
 function smartSubtitle(text: string): string {
@@ -400,11 +400,11 @@ function smartBullet(text: string): string {
 }
 
 function smartCell(text: string): string {
-  return smartTruncate(text, 90); // Increased from 80 for wider cells
+  return smartTruncate(text, 120); // Wider cells need more space for complete sentences
 }
 
 function smartModuleDesc(text: string): string {
-  return smartTruncate(text, 50); // Increased from 40
+  return smartTruncate(text, 100); // Module descriptions need complete sentences
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -580,23 +580,35 @@ function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFo
 
 function detectTruncation(text: string): boolean {
   if (!text || text.length < 5) return false;
-  const trimmed = text.trim();
+  const trimmed = text.trim().replace(/\.+$/, "").trim(); // Strip trailing period for analysis
 
   // SHORT TEXT EXEMPTIONS — labels, headers, proper nouns, acronyms are NOT truncated
   const wordCount = trimmed.split(/\s+/).length;
-  if (wordCount <= 3 && trimmed.length < 40) return false;
+  if (wordCount <= 2 && trimmed.length < 30) return false;
   if (/^[A-ZÁÉÍÓÚÃÕ\s\d]+$/.test(trimmed)) return false;
   if (/^\d{1,2}[\.\)]\s/.test(trimmed)) return false;
+  // Section labels like "Cenário", "Solução", "Resultado", "Reflexão" are not truncated
+  if (/^(Cenário|Solução|Resultado|Reflexão|Reflexao|Resumo|Objetivo|Insight|Atenção|Dica)\s*$/i.test(trimmed)) return false;
 
-  // Ends in dangling connector/preposition/article without sentence closure
-  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas)\s*$/i.test(trimmed) && !/[.!?…:]$/.test(trimmed)) {
+  // Ends in dangling connector/preposition/article (even if period was appended)
+  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|este|esta|esse|essa)\s*$/i.test(trimmed)) {
     return true;
   }
 
-  // Ends with very short orphan token (likely cut word) and no punctuation
+  // Ends with very short orphan token (likely cut word)
   const lastWord = trimmed.split(/\s+/).pop() || "";
-  if (lastWord.length <= 2 && trimmed.length > 24 && !/[.!?…:;\)\]"']$/.test(trimmed)) {
+  if (lastWord.length <= 2 && trimmed.length > 24) {
     if (!/^(é|e|a|o|ou|em|se|já|só|aí|há|IA|AI|TI|UX|UI|ML|BI|CX|RH)$/i.test(lastWord)) return true;
+  }
+
+  // Sentence seems incomplete: ends with verb infinitive or starts a clause without finishing
+  if (/\s(aprenderem|otimiza|desenvolver|aplicar|compreender|identificar|utilizar|habilitar)\s*$/i.test(trimmed) && wordCount <= 6) {
+    return true;
+  }
+
+  // Very short sentence with a transitive verb but no object — likely truncated
+  if (wordCount >= 3 && wordCount <= 5 && /\s(classifica|identifica|permite|analisa|utilizam|categoriza)\s*$/i.test(trimmed)) {
+    return true;
   }
 
   return false;
@@ -3851,7 +3863,7 @@ function renderModuleCover(pptx: any, data: SlideData) {
         x: MARGIN + 0.05, y: objY + (objLineH - dotSize) / 2 + 0.04, w: dotSize, h: dotSize,
         fill: { color: moduleColor },
       });
-      const objText = smartTruncate(obj, 55);
+      const objText = smartTruncate(obj, 90);
       addTextSafe(slide, objText, {
         x: MARGIN + 0.30, y: objY, w: SAFE_W * 0.60, h: 0.40,
         fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
@@ -4281,12 +4293,12 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     let stepTitle: string;
     let stepDesc: string;
     if (colonIdx > 2 && colonIdx < 50) {
-      stepTitle = smartTruncate(step.substring(0, colonIdx).trim(), 30);
-      stepDesc = smartTruncate(step.substring(colonIdx + 1).trim(), 78);
+      stepTitle = smartTruncate(step.substring(0, colonIdx).trim(), 45);
+      stepDesc = smartTruncate(step.substring(colonIdx + 1).trim(), 130);
     } else {
       const words = step.split(/\s+/);
-      stepTitle = smartTruncate(words.slice(0, 3).join(" "), 30);
-      stepDesc = smartTruncate(words.slice(3).join(" "), 78);
+      stepTitle = smartTruncate(words.slice(0, 4).join(" "), 45);
+      stepDesc = smartTruncate(words.slice(4).join(" "), 130);
     }
 
     const textY = y + circleSize + 0.30;
@@ -4634,15 +4646,15 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
     let cardTitle = "";
     let cardBody = bullet;
     if (colonIdx > 2 && colonIdx < 60) {
-      cardTitle = smartTruncate(bullet.substring(0, colonIdx).trim(), 40);
-      cardBody = smartTruncate(bullet.substring(colonIdx + 1).trim(), 90);
+      cardTitle = smartTruncate(bullet.substring(0, colonIdx).trim(), 50);
+      cardBody = smartTruncate(bullet.substring(colonIdx + 1).trim(), 130);
     } else {
       const words = bullet.split(/\s+/);
-      if (words.length > 4) {
-        cardTitle = smartTruncate(words.slice(0, 4).join(" "), 40);
-        cardBody = smartTruncate(words.slice(4).join(" "), 90);
+      if (words.length > 5) {
+        cardTitle = smartTruncate(words.slice(0, 5).join(" "), 50);
+        cardBody = smartTruncate(words.slice(5).join(" "), 130);
       } else {
-        cardTitle = smartTruncate(bullet, 40);
+        cardTitle = smartTruncate(bullet, 50);
         cardBody = "";
       }
     }
