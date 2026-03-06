@@ -37,6 +37,9 @@ export interface QualityReport {
     relevance_dropped: number;
     llm_grammar_fixes: number;
     llm_truncation_fixes: number;
+    redistributions?: number;
+    semantic_losses?: number;
+    semantic_loss_details?: string[];
   };
   summary: {
     total_slides: number;
