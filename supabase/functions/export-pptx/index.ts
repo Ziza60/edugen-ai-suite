@@ -86,7 +86,7 @@ let activeThemeKey: "light" | "dark" = "light";
 let currentTheme = THEME.light;
 
 // Performance guardrails (previnem timeout/conexão fechada em cursos longos)
-const MAX_SEMANTIC_SLIDES_PER_MODULE = 9;
+const MAX_SEMANTIC_SLIDES_PER_MODULE = 11;
 const MAX_LLM_VALIDATION_SLIDES = 24;
 const LLM_BATCH_SIZE = 12;
 const LLM_REQUEST_TIMEOUT_MS = 18000;
@@ -1058,16 +1058,16 @@ O conteúdo do módulo segue uma ESTRUTURA PEDAGÓGICA FIXA com seções marcada
 ## ESTRUTURA PEDAGÓGICA OBRIGATÓRIA (siga EXATAMENTE esta ordem)
 O markdown do módulo contém estas seções, nesta ordem. Cada uma DEVE gerar um slide dedicado:
 
-1. 🎯 **Objetivo do Módulo** → layout "definition" (sectionLabel: "OBJETIVO DO MÓDULO")
-2. 🧠 **Fundamentos** → layout "definition" ou "bullets" (sectionLabel: "FUNDAMENTOS")
+1. 🎯 **Objetivo do Módulo** → Os objetivos vão para o slide "module_cover" (gerado automaticamente). NÃO gere slide separado para objetivos.
+2. 🧠 **Fundamentos** → layout "definition" (sectionLabel: "FUNDAMENTOS")
 3. ⚙️ **Como funciona** → layout "process" (sectionLabel: "COMO FUNCIONA")
-4. 🧩 **Modelos / Tipos** → layout "grid_cards" ou "table" (sectionLabel: "MODELOS E TIPOS")
-5. 🛠️ **Aplicações reais** → layout "grid_cards" ou "bullets" (sectionLabel: "APLICAÇÕES REAIS")
-6. 💡 **Exemplo prático** → layout "example" (sectionLabel: "EXEMPLO PRÁTICO") — cenário, solução, resultado
-7. ⚠️ **Desafios e cuidados** → layout "bullets" (sectionLabel: "DESAFIOS E CUIDADOS")
+4. 🧩 **Modelos / Tipos** → layout "table" preferencialmente, ou "grid_cards" se não houver tabela (sectionLabel: "MODELOS E TIPOS")
+5. 🛠️ **Aplicações reais** → layout "grid_cards" (sectionLabel: "APLICAÇÕES REAIS")
+6. 💡 **Exemplo prático** → layout "example" (sectionLabel: "EXEMPLO PRÁTICO") — exatamente 3 items: Cenário, Solução, Resultado
+7. ⚠️ **Desafios e cuidados** → layout "warning" (sectionLabel: "DESAFIOS E CUIDADOS")
 8. 💭 **Reflexão** → layout "reflection" (sectionLabel: "REFLEXÃO")
-9. 🧾 **Resumo do Módulo** → NÃO gerar slide (conteúdo será usado internamente)
-10. 📌 **Key Takeaways** → layout "takeaways" (sectionLabel: "KEY TAKEAWAYS") — 5-7 items
+9. 🧾 **Resumo do Módulo** → layout "summary" (sectionLabel: "RESUMO DO MÓDULO") — síntese textual dos pontos principais
+10. 📌 **Key Takeaways** → layout "takeaways" (sectionLabel: "KEY TAKEAWAYS") — 5-7 items numerados
 
 ## REGRAS FUNDAMENTAIS
 1. **Preservar TODAS as seções**: Cada seção do markdown DEVE ter um slide correspondente. NÃO pule, NÃO mescle seções diferentes.
@@ -1076,8 +1076,10 @@ O markdown do módulo contém estas seções, nesta ordem. Cada uma DEVE gerar u
 4. **Máximo 5-6 items por slide**: Se uma seção tem mais pontos, use os mais importantes.
 5. **Máximo 120 caracteres por item**: Resuma sem perder significado. Toda frase termina com ponto.
 6. **Títulos descritivos COM contexto**: O título do slide deve incluir o tópico do módulo (ex: "Fundamentos da IA Generativa" em vez de apenas "Fundamentos").
-7. **Exemplo prático OBRIGATÓRIO**: O slide de exemplo deve ter exatamente 3 items: Cenário, Solução, Resultado.
+7. **Exemplo prático OBRIGATÓRIO**: O slide de exemplo deve ter exatamente 3 items: "Cenário: ...", "Solução: ...", "Resultado: ...".
 8. **Key Takeaways OBRIGATÓRIO**: 5-7 pontos concisos e acionáveis.
+9. **Desafios = warning**: Sempre use layout "warning" para desafios e cuidados.
+10. **Resumo ≠ Takeaways**: Resumo é uma síntese textual (3-5 frases). Takeaways são itens numerados concisos.
 
 ## LAYOUTS DISPONÍVEIS
 - "definition": Para definir um conceito (1 definição principal + 2-3 pilares)
@@ -1085,9 +1087,11 @@ O markdown do módulo contém estas seções, nesta ordem. Cada uma DEVE gerar u
 - "grid_cards": Para conceitos paralelos com "Título: descrição" (3-6 items)
 - "process": Para etapas sequenciais (3-4 etapas com "Etapa: descrição")
 - "table": Para comparações (headers + rows, máx 5 linhas)
-- "example": Para exemplos práticos (cenário, solução, resultado)
+- "example": Para exemplos práticos (Cenário, Solução, Resultado)
+- "warning": Para desafios, riscos e cuidados (3-5 items com alertas)
 - "reflection": Para perguntas de reflexão (2-4 perguntas)
-- "takeaways": Para resumo final (5-7 takeaways concisos)
+- "summary": Para resumo textual do módulo (3-5 frases de síntese)
+- "takeaways": Para resumo final numerado (5-7 takeaways concisos)
 
 Idioma: ${language || "pt-BR"}`;
 
@@ -1133,7 +1137,7 @@ ${truncatedContent}`;
                       sectionLabel: { type: "string", description: "Short uppercase label (max 25 chars)" },
                       layout: {
                         type: "string",
-                        enum: ["definition", "bullets", "grid_cards", "process", "table", "example", "reflection", "takeaways"],
+                        enum: ["definition", "bullets", "grid_cards", "process", "table", "example", "warning", "reflection", "summary", "takeaways"],
                         description: "Slide layout type"
                       },
                       items: {
@@ -1271,7 +1275,9 @@ function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): Sl
     process: "process_timeline",
     table: "comparison_table",
     example: "example_highlight",
+    warning: "warning_callout",
     reflection: "reflection_callout",
+    summary: "summary_slide",
     takeaways: "numbered_takeaways",
   };
 
@@ -1280,6 +1286,8 @@ function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): Sl
     const blockType = slidePlan.layout === "example" ? "example"
       : slidePlan.layout === "reflection" ? "reflection"
       : slidePlan.layout === "takeaways" ? "conclusion"
+      : slidePlan.layout === "warning" ? "warning"
+      : slidePlan.layout === "summary" ? "summary"
       : "normal";
 
     const sd: SlideData = {
@@ -2065,13 +2073,14 @@ interface ParsedBlock {
   isTable: boolean;
   headers?: string[];
   rows?: string[][];
-  blockType?: "example" | "reflection" | "conclusion" | "normal";
+  blockType?: "example" | "reflection" | "conclusion" | "warning" | "summary" | "normal";
 }
 
-function classifyBlockType(heading: string, items: string[]): "example" | "reflection" | "conclusion" | "normal" {
+function classifyBlockType(heading: string, items: string[]): "example" | "reflection" | "conclusion" | "warning" | "summary" | "normal" {
   const h = heading.toLowerCase();
   if (/exemplo|case|cen[aá]rio|pr[aá]tic|aplica[cç][aã]o\s+real|estudo\s+de\s+caso|\[ideia\]/i.test(h)) return "example";
   if (/reflex[aã]o|pare\s+um\s+momento|pense|reflita|checkpoint/i.test(h)) return "reflection";
+  if (/desafio|cuidado|risco|limita[cç]/i.test(h)) return "warning";
   if (/conclus[aã]o|encerramento|fechamento|consider|final|key\s*takeaway|takeaway/i.test(h)) return "conclusion";
   // Check items content too
   const allText = items.join(" ").toLowerCase();
@@ -2164,7 +2173,8 @@ function parseModuleContent(content: string): ParsedBlock[] {
 type LayoutType =
   | "module_cover" | "definition_card_with_pillars" | "comparison_table"
   | "grid_cards" | "four_quadrants" | "process_timeline"
-  | "numbered_takeaways" | "bullets" | "example_highlight" | "reflection_callout";
+  | "numbered_takeaways" | "bullets" | "example_highlight" | "reflection_callout"
+  | "warning_callout" | "summary_slide";
 
 function isDefinitionBlock(items: string[]): boolean {
   if (items.length < 2 || items.length > 6) return false;
@@ -2185,7 +2195,11 @@ function isQuadrantBlock(items: string[]): boolean {
 }
 
 function isResumoHeading(heading: string): boolean {
-  return /resumo|conclus|encerramento|pontos[- ]chave|key takeaway|takeaway|recapitula/i.test(heading);
+  return /pontos[- ]chave|key takeaway|takeaway|recapitula/i.test(heading);
+}
+
+function isSummaryHeading(heading: string): boolean {
+  return /resumo|s[ií]ntese/i.test(heading) && !/key takeaway|takeaway/i.test(heading);
 }
 
 function isObjectivesHeading(heading: string): boolean {
@@ -2202,6 +2216,8 @@ function classifyContent(heading: string, items: string[], isTable: boolean, pre
   if (isTable) return "comparison_table";
   if (blockType === "example") return "example_highlight";
   if (blockType === "reflection") return "reflection_callout";
+  if (blockType === "warning") return "warning_callout";
+  if (blockType === "summary") return "summary_slide";
   if (isResumoHeading(heading)) return "numbered_takeaways";
   
   // Map pedagogical section headings to appropriate layouts
@@ -2211,7 +2227,7 @@ function classifyContent(heading: string, items: string[], isTable: boolean, pre
   if (/como funciona|processo|etapa|passo|pipeline/i.test(h)) return "process_timeline";
   if (/modelo|tipo|categorias|classifica/i.test(h)) return items.length >= 3 ? "grid_cards" : "bullets";
   if (/aplica[cç][oõ]|uso|caso de uso/i.test(h)) return items.length >= 3 ? "grid_cards" : "bullets";
-  if (/desafio|cuidado|risco|limita/i.test(h)) return "bullets";
+  if (/desafio|cuidado|risco|limita/i.test(h)) return "warning_callout";
   
   if (isProcessBlock(heading, items)) return "process_timeline";
   if (isDefinitionBlock(items)) return "definition_card_with_pillars";
@@ -2269,9 +2285,10 @@ function isFillerSlide(sd: SlideData): boolean {
   if (sd.layout === "module_cover" || sd.layout === "numbered_takeaways") return false;
   if (sd.layout === "comparison_table" && sd.tableRows && sd.tableRows.length > 0) return false;
   if (sd.layout === "example_highlight" || sd.layout === "reflection_callout") return false;
+  if (sd.layout === "warning_callout" || sd.layout === "summary_slide") return false;
   
-  // NEVER remove blocks tagged as example, reflection, or conclusion
-  if (sd.blockType === "example" || sd.blockType === "reflection" || sd.blockType === "conclusion") return false;
+  // NEVER remove blocks tagged as example, reflection, conclusion, warning, or summary
+  if (sd.blockType === "example" || sd.blockType === "reflection" || sd.blockType === "conclusion" || sd.blockType === "warning" || sd.blockType === "summary") return false;
   
   const items = sd.items || [];
   if (items.length === 1 && items[0].length < 150) {
@@ -2346,11 +2363,13 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
 
   const objItems: string[] = [];
   const resumoItems: string[] = [];
+  const summaryItems: string[] = [];
   const contentBlocks: ParsedBlock[] = [];
 
   for (const block of blocks) {
     if (isObjectivesHeading(block.heading) && !block.isTable) objItems.push(...block.items);
     else if (isResumoHeading(block.heading) && !block.isTable) resumoItems.push(...block.items);
+    else if (isSummaryHeading(block.heading) && !block.isTable) summaryItems.push(...block.items);
     else contentBlocks.push(block);
   }
 
@@ -2463,14 +2482,27 @@ function buildModuleSlides(mod: any, modIndex: number, totalModules: number): Sl
     }
   }
 
-  // Always end with takeaways
+  // Summary slide (Resumo do Módulo)
+  if (summaryItems.length > 0) {
+    slides.push({
+      layout: "summary_slide",
+      title: "Resumo - " + smartTitle(shortTitle),
+      sectionLabel: "RESUMO DO MÓDULO",
+      items: sanitizeBullets(summaryItems.slice(0, 5).map(s => compressBullet(sanitize(s)))),
+      moduleIndex: modIndex,
+      blockType: "summary",
+    });
+  }
+
+  // Always end with takeaways (Key Takeaways)
   if (resumoItems.length > 0) {
     slides.push({
       layout: "numbered_takeaways",
       title: "Key Takeaways - Modulo " + (modIndex + 1),
-      sectionLabel: "RESUMO DO MODULO",
-      items: sanitizeBullets(resumoItems.slice(0, 6).map(s => compressBullet(sanitize(s)))),
+      sectionLabel: "KEY TAKEAWAYS",
+      items: sanitizeBullets(resumoItems.slice(0, 7).map(s => compressBullet(sanitize(s)))),
       moduleIndex: modIndex,
+      blockType: "conclusion",
     });
   }
 
@@ -2515,7 +2547,8 @@ function consolidateConsecutiveLayouts(slides: SlideData[]): SlideData[] {
     // Never consolidate special types
     if (slides[i].layout === "module_cover" || slides[i].layout === "numbered_takeaways" || 
         slides[i].layout === "comparison_table" || slides[i].layout === "example_highlight" ||
-        slides[i].layout === "reflection_callout") {
+        slides[i].layout === "reflection_callout" || slides[i].layout === "warning_callout" ||
+        slides[i].layout === "summary_slide") {
       result.push(slides[i]);
       i++;
       continue;
@@ -2576,10 +2609,10 @@ function balanceDensity(slides: SlideData[]): SlideData[] {
     const s = result[i];
     const density = calculateDensity(s);
     s.densityScore = density;
-    if (s.layout === "module_cover" || s.layout === "example_highlight" || s.layout === "reflection_callout") continue;
+    if (s.layout === "module_cover" || s.layout === "example_highlight" || s.layout === "reflection_callout" || s.layout === "warning_callout" || s.layout === "summary_slide") continue;
 
-    // Merge sparse slides into previous (but not examples/reflections) — raised threshold
-    if (density < 30 && s.items && s.items.length < 2 && s.blockType !== "example" && s.blockType !== "reflection") {
+    // Merge sparse slides into previous (but not examples/reflections/warnings/summaries) — raised threshold
+    if (density < 30 && s.items && s.items.length < 2 && s.blockType !== "example" && s.blockType !== "reflection" && s.blockType !== "warning" && s.blockType !== "summary") {
       if (i > 0 && result[i - 1].layout !== "module_cover" && result[i - 1].layout !== "numbered_takeaways") {
         const prev = result[i - 1];
         if (prev.items && prev.items.length + (s.items?.length || 0) <= activeDensity.maxBulletsPerSlide) {
@@ -3542,6 +3575,138 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
   });
 }
 
+// ── WARNING CALLOUT — Desafios e cuidados ──
+function renderWarningCallout(pptx: any, data: SlideData) {
+  const items = data.items || [];
+  if (items.length === 0) return;
+
+  const slide = pptx.addSlide();
+  resetSlideIcons();
+  slide.background = { color: C.BG_WHITE };
+
+  let contentY = renderContentHeader(slide, data.sectionLabel || "DESAFIOS E CUIDADOS", data.title);
+
+  const moduleIdx = data.moduleIndex || 0;
+  const warningColor = C.ACCENT_RED;
+  const warningBg = activeThemeKey === "dark" ? "3D2A2A" : "FFF5F5";
+  const boxH = Math.min(SLIDE_H - contentY - BOTTOM_MARGIN - 0.20, 4.0);
+
+  // Warning box background
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN, y: contentY, w: SAFE_W, h: boxH,
+    fill: { color: warningBg }, line: { color: warningColor, width: 1.5 }, rectRadius: 0.10,
+  });
+  // Left accent bar (red)
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN, y: contentY + 0.10, w: 0.06, h: boxH - 0.20,
+    fill: { color: warningColor }, rectRadius: 0.03,
+  });
+
+  // Warning icon
+  const circleSize = 0.50;
+  addCenteredIconInCircle(slide, pptx, {
+    x: MARGIN + 0.25,
+    y: contentY + 0.20,
+    size: circleSize,
+    circleColor: warningColor,
+    iconChar: "◈",
+    fontSize: 20,
+  });
+
+  // Warning label
+  addTextSafe(slide, "ATENÇÃO", {
+    x: MARGIN + 0.90, y: contentY + 0.22, w: 3.0, h: 0.40,
+    fontSize: TYPO.LABEL, fontFace: FONT_TITLE, color: warningColor, bold: true, letterSpacing: 2,
+  });
+
+  // Bullet items with warning dots
+  let textY = contentY + 0.85;
+  const textX = MARGIN + 0.55;
+  const textW = SAFE_W - 0.75;
+  const itemH = Math.min(0.65, (boxH - 1.0) / Math.max(items.length, 1));
+
+  items.forEach((item, idx) => {
+    if (textY + itemH > contentY + boxH - 0.10) return;
+
+    const dotSize = 0.12;
+    const lineHeightIn = (TYPO.BODY * 1.35) / 72;
+    slide.addShape(pptx.ShapeType.ellipse, {
+      x: MARGIN + 0.25, y: textY + (lineHeightIn - dotSize) / 2,
+      w: dotSize, h: dotSize, fill: { color: warningColor },
+    });
+
+    const richText = makeBoldLabelText(smartTruncate(item, 140), warningColor, C.TEXT_BODY, TYPO.BODY);
+    addTextSafe(slide, richText, {
+      x: textX, y: textY, w: textW, h: itemH,
+      valign: "top", lineSpacingMultiple: 1.35,
+    });
+    textY += itemH + 0.05;
+  });
+}
+
+// ── SUMMARY SLIDE — Resumo do Módulo ──
+function renderSummarySlide(pptx: any, data: SlideData) {
+  const items = data.items || [];
+  if (items.length === 0) return;
+
+  const slide = pptx.addSlide();
+  resetSlideIcons();
+  slide.background = { color: C.BG_WHITE };
+
+  let contentY = renderContentHeader(slide, data.sectionLabel || "RESUMO DO MÓDULO", data.title);
+
+  const moduleIdx = data.moduleIndex || 0;
+  const moduleColor = MODULE_NUMBER_COLORS_FN()[moduleIdx % MODULE_NUMBER_COLORS_FN().length];
+
+  // Summary box
+  const boxH = Math.min(SLIDE_H - contentY - BOTTOM_MARGIN - 0.20, 4.0);
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN + 0.3, y: contentY, w: SAFE_W - 0.6, h: boxH,
+    fill: { color: C.BG_LIGHT }, line: { color: moduleColor, width: 1.0 }, rectRadius: 0.10,
+  });
+
+  // Top accent bar
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN + 0.4, y: contentY, w: SAFE_W - 0.8, h: 0.05,
+    fill: { color: moduleColor },
+  });
+
+  // Summary icon
+  const circleSize = 0.48;
+  const iconX = (SLIDE_W - circleSize) / 2;
+  addCenteredIconInCircle(slide, pptx, {
+    x: iconX,
+    y: contentY + 0.20,
+    size: circleSize,
+    circleColor: moduleColor,
+    iconChar: "▣",
+    fontSize: 18,
+  });
+
+  // Summary text items
+  let textY = contentY + 0.85;
+  const textX = MARGIN + 0.70;
+  const textW = SAFE_W - 1.40;
+  const itemH = Math.min(0.70, (boxH - 1.0) / Math.max(items.length, 1));
+
+  items.forEach((item, idx) => {
+    if (textY + itemH > contentY + boxH - 0.15) return;
+    const textFit = fitTextForBox(smartTruncate(item, 160), textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    addTextSafe(slide, textFit.text, {
+      x: textX, y: textY, w: textW, h: itemH,
+      fontSize: textFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
+      valign: "top", lineSpacingMultiple: 1.4,
+    });
+    textY += itemH + 0.05;
+  });
+
+  // Bottom accent
+  slide.addShape(pptx.ShapeType.rect, {
+    x: MARGIN + 0.4, y: contentY + boxH - 0.05, w: SAFE_W - 0.8, h: 0.05,
+    fill: { color: moduleColor },
+  });
+}
+
 // ── CLOSING SLIDE ──
 function renderEncerramento(pptx: any, courseTitle: string) {
   const slide = pptx.addSlide();
@@ -3955,6 +4120,8 @@ Deno.serve(async (req: Request) => {
         case "numbered_takeaways":          renderNumberedTakeaways(pptx, sd); break;
         case "example_highlight":           renderExampleHighlight(pptx, sd); break;
         case "reflection_callout":          renderReflectionCallout(pptx, sd); break;
+        case "warning_callout":             renderWarningCallout(pptx, sd); break;
+        case "summary_slide":              renderSummarySlide(pptx, sd); break;
         case "bullets":                     renderBullets(pptx, sd); break;
         default:                            renderBullets(pptx, sd); break;
       }
