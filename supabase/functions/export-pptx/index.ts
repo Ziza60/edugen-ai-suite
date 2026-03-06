@@ -3423,21 +3423,56 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
 
   const slides: SlideData[] = [];
 
-  const safeTitle = smartTitle(shortTitle);
+  const safeTitle = shortTitle; // v7: pass full title — renderer handles wrapping
   const moduleDesc = objItems.length > 0
     ? smartModuleDesc(objItems[0])
     : smartModuleDesc(sanitize((mod.content || "").split(/[.!?]\s/)[0] || ""));
 
-  const objectives = objItems.slice(0, 3).map(o => smartBullet(sanitize(o)));
+  const objectives = objItems.slice(0, 4).map(o => sanitize(o));
 
-  slides.push({
-    layout: "module_cover",
-    title: safeTitle,
-    subtitle: "MODULO " + String(modIndex + 1).padStart(2, "0"),
-    description: moduleDesc,
-    moduleIndex: modIndex,
-    objectives,
-  });
+  // ── STRUCTURAL REDISTRIBUTION for fallback path (v7) ──
+  // Same logic as semanticPlanToSlides: if objectives overflow, move them to dedicated slide
+  const objW = SAFE_W * 0.60 - 0.30;
+  const objH = 0.44;
+  let objectivesOverflow = false;
+  for (const obj of objectives) {
+    const bbox = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW, objH);
+    if (!bbox.fits && obj.length > 60) { objectivesOverflow = true; break; }
+  }
+  const totalCoverContent = moduleDesc.length + objectives.reduce((s, o) => s + o.length, 0);
+  if (totalCoverContent > 350 || objectives.length > 3) objectivesOverflow = true;
+
+  if (objectivesOverflow && objectives.length > 0) {
+    slides.push({
+      layout: "module_cover",
+      title: safeTitle,
+      subtitle: "MODULO " + String(modIndex + 1).padStart(2, "0"),
+      description: moduleDesc,
+      moduleIndex: modIndex,
+      objectives: [],
+    });
+    slides.push({
+      layout: "bullets",
+      title: "Objetivos - " + smartTitle(shortTitle),
+      sectionLabel: "OBJETIVOS DO MÓDULO",
+      items: sanitizeBullets(objectives.map(o => {
+        const t = o.trim();
+        return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
+      })),
+      moduleIndex: modIndex,
+      blockType: "normal",
+    });
+    console.log("[REDISTRIB-FALLBACK] Module " + (modIndex + 1) + ": objectives moved to dedicated slide");
+  } else {
+    slides.push({
+      layout: "module_cover",
+      title: safeTitle,
+      subtitle: "MODULO " + String(modIndex + 1).padStart(2, "0"),
+      description: moduleDesc,
+      moduleIndex: modIndex,
+      objectives: objectives.slice(0, 3).map(o => smartBullet(o)),
+    });
+  }
 
   let prevLayout: LayoutType | null = "module_cover";
   let firstContentRendered = false;
