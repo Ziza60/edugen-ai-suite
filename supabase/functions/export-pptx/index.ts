@@ -4000,7 +4000,7 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
   }
 }
 
-// ── BULLETS v2 — 18pt minimum ──
+// ── BULLETS v3 — with sub-item hierarchy support ──
 function renderBullets(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
@@ -4010,82 +4010,131 @@ function renderBullets(pptx: any, data: SlideData) {
   slide.background = { color: C.BG_WHITE };
   const contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
-  const maxItems = Math.min(items.length, activeDensity.maxBulletsPerSlide);
-  const textX = MARGIN + 0.40;
-  const textW = SAFE_W - 0.50;
-  const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
-  const selected = items.slice(0, maxItems).map((item) => smartBullet(item));
+  const structured = data.structuredItems;
+  const hasHierarchy = structured && structured.some(si => si.subItems.length > 0);
 
-  // ── UNIFORM FONT SIZE: calculate ONE font size for ALL bullets ──
-  // Find the smallest font that fits the longest bullet, then use it for all
-  let uniformFontSize = TYPO.BULLET_TEXT;
-  const maxRowH = Math.max(0.48, availH / selected.length - 0.06);
-  for (const item of selected) {
-    const fit = fitTextForBox(item, textW, Math.max(maxRowH, 0.22), TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
-    if (fit.fontSize < uniformFontSize) uniformFontSize = fit.fontSize;
+  // Build render entries: each entry is either a parent or a sub-item
+  interface RenderEntry {
+    text: string;
+    isSubItem: boolean;
+    accentIdx: number;
+  }
+  const entries: RenderEntry[] = [];
+  let parentIdx = 0;
+
+  if (hasHierarchy && structured) {
+    for (const si of structured) {
+      entries.push({ text: smartBullet(si.text), isSubItem: false, accentIdx: parentIdx });
+      for (const sub of si.subItems) {
+        entries.push({ text: smartBullet(sub), isSubItem: true, accentIdx: parentIdx });
+      }
+      parentIdx++;
+    }
+  } else {
+    for (let i = 0; i < items.length; i++) {
+      entries.push({ text: smartBullet(items[i]), isSubItem: false, accentIdx: i });
+    }
   }
 
-  const rawHeights = selected.map((txt) => {
-    const lineCount = Math.max(1, estimateTextLines(txt, textW, uniformFontSize));
-    const lineHeight = (uniformFontSize * 1.35) / 72;
-    return Math.max(0.52, Math.min(1.15, lineCount * lineHeight + 0.10));
+  const maxEntries = Math.min(entries.length, activeDensity.maxBulletsPerSlide + 3); // allow extra for sub-items
+  const selected = entries.slice(0, maxEntries);
+
+  const textX = MARGIN + 0.40;
+  const subTextX = MARGIN + 0.70; // indented for sub-items
+  const textW = SAFE_W - 0.50;
+  const subTextW = SAFE_W - 0.80;
+  const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
+
+  // Calculate uniform font sizes
+  const parentFontSize = TYPO.BULLET_TEXT;
+  const subFontSize = Math.max(TYPO.SUPPORT, parentFontSize - 2);
+
+  let uniformFontSize = parentFontSize;
+  const maxRowH = Math.max(0.40, availH / selected.length - 0.04);
+  for (const entry of selected) {
+    const w = entry.isSubItem ? subTextW : textW;
+    const fit = fitTextForBox(entry.text, w, Math.max(maxRowH, 0.20), entry.isSubItem ? subFontSize : parentFontSize, FONT_BODY, TYPO.SUPPORT);
+    if (!entry.isSubItem && fit.fontSize < uniformFontSize) uniformFontSize = fit.fontSize;
+  }
+  const uniformSubFontSize = Math.max(TYPO.SUPPORT, uniformFontSize - 2);
+
+  const rawHeights = selected.map((entry) => {
+    const fs = entry.isSubItem ? uniformSubFontSize : uniformFontSize;
+    const w = entry.isSubItem ? subTextW : textW;
+    const lineCount = Math.max(1, estimateTextLines(entry.text, w, fs));
+    const lineHeight = (fs * 1.35) / 72;
+    const minH = entry.isSubItem ? 0.36 : 0.48;
+    return Math.max(minH, Math.min(1.10, lineCount * lineHeight + 0.08));
   });
 
-  const GAP_BETWEEN_BULLETS = 0.10;
+  const GAP_BETWEEN_BULLETS = 0.08;
   const rawTotal = rawHeights.reduce((sum, h) => sum + h, 0) + (selected.length - 1) * GAP_BETWEEN_BULLETS;
-  const minRowH = 0.48;
   let heights = [...rawHeights];
 
   if (rawTotal > availH) {
     const totalGaps = (selected.length - 1) * GAP_BETWEEN_BULLETS;
     const availForRows = availH - totalGaps;
-    const minTotal = minRowH * heights.length;
-    if (minTotal >= availForRows) {
-      heights = heights.map(() => availForRows / heights.length);
-    } else {
-      const extraTotal = heights.reduce((sum, h) => sum + Math.max(0, h - minRowH), 0);
-      const availableExtra = availForRows - minTotal;
-      heights = heights.map((h) => {
-        const extra = Math.max(0, h - minRowH);
-        return minRowH + (extraTotal > 0 ? (extra / extraTotal) * availableExtra : 0);
-      });
-    }
+    const scale = availForRows / rawHeights.reduce((s, h) => s + h, 0);
+    heights = rawHeights.map((h, i) => {
+      const minH = selected[i].isSubItem ? 0.30 : 0.40;
+      return Math.max(minH, h * scale);
+    });
   }
 
   let cursorY = contentY;
-  selected.forEach((item, idx) => {
+  selected.forEach((entry, idx) => {
     const rowH = heights[idx];
     if (cursorY + rowH > SLIDE_H - BOTTOM_MARGIN + 0.01) return;
 
-    const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
-    // Use uniform font size (already computed) — compress text if needed at this size
-    const textFit = fitTextForBox(item, textW, Math.max(rowH - 0.03, 0.22), uniformFontSize, FONT_BODY, uniformFontSize);
+    const accentColor = CARD_ACCENT_COLORS_FN()[entry.accentIdx % CARD_ACCENT_COLORS_FN().length];
+    const fs = entry.isSubItem ? uniformSubFontSize : uniformFontSize;
+    const x = entry.isSubItem ? subTextX : textX;
+    const w = entry.isSubItem ? subTextW : textW;
+
+    const textFit = fitTextForBox(entry.text, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, fs);
     const textY = cursorY + 0.01;
+    const lineHeightIn = (fs * 1.35) / 72;
 
-    const dotSize = 0.14;
-    const lineHeightIn = (uniformFontSize * 1.35) / 72;
-    const dotY = textY + Math.max(0, (lineHeightIn - dotSize) / 2);
+    if (entry.isSubItem) {
+      // Sub-item: smaller triangle marker instead of dot
+      const triSize = 0.09;
+      const triY = textY + Math.max(0, (lineHeightIn - triSize) / 2);
+      slide.addShape(pptx.ShapeType.rect, {
+        x: MARGIN + 0.50,
+        y: triY,
+        w: triSize,
+        h: triSize,
+        fill: { color: accentColor },
+        rectRadius: 0.02,
+      });
+    } else {
+      // Parent item: circle dot
+      const dotSize = 0.14;
+      const dotY = textY + Math.max(0, (lineHeightIn - dotSize) / 2);
+      slide.addShape(pptx.ShapeType.ellipse, {
+        x: MARGIN + 0.10,
+        y: dotY,
+        w: dotSize,
+        h: dotSize,
+        fill: { color: accentColor },
+      });
+    }
 
-    slide.addShape(pptx.ShapeType.ellipse, {
-      x: MARGIN + 0.10,
-      y: dotY,
-      w: dotSize,
-      h: dotSize,
-      fill: { color: accentColor },
-    });
-
-    const richText = makeBoldLabelText(textFit.text, C.TEXT_DARK, C.TEXT_BODY, uniformFontSize);
+    const textColor = entry.isSubItem ? C.TEXT_BODY : C.TEXT_DARK;
+    const richText = makeBoldLabelText(textFit.text, textColor, C.TEXT_BODY, fs);
     addTextSafe(slide, richText, {
-      x: textX,
+      x: x,
       y: textY,
-      w: textW,
-      h: Math.max(rowH - 0.02, 0.22),
+      w: w,
+      h: Math.max(rowH - 0.02, 0.20),
       valign: "top",
       lineSpacingMultiple: 1.3,
       inset: 0,
     });
 
-    if (idx < selected.length - 1) {
+    // Separator line between parent items (not after sub-items unless next is parent)
+    const nextEntry = idx < selected.length - 1 ? selected[idx + 1] : null;
+    if (nextEntry && !entry.isSubItem && !nextEntry.isSubItem) {
       slide.addShape(pptx.ShapeType.rect, {
         x: textX,
         y: cursorY + rowH - 0.02,
