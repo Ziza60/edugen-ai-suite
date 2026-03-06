@@ -5414,35 +5414,35 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ── POST-RENDER TRUNCATION SCAN v2 ──
-    // Uses the deeper detectSemanticTruncation to catch period-masked truncations
+    // ── POST-RENDER TRUNCATION SCAN v3 (calibrated) ──
+    // v4 calibration: removed redundant "short sentence" check that caused false positives.
+    // Now relies solely on detectSemanticTruncation which already exempts valid bullets.
+    // Added deduplication to prevent the same pattern from inflating the count.
     let postRenderTruncations = 0;
     const postRenderTruncationWarnings: string[] = [];
+    const seenTruncationPatterns = new Set<string>(); // Deduplication
+
     allSlides.forEach((s, idx) => {
       const textsToCheck = [s.title, s.description, ...(s.items || []), ...(s.objectives || [])].filter(Boolean);
       for (const txt of textsToCheck) {
-        // Use semantic detection which catches verb-ending and noun-after-preposition patterns
+        // Use semantic detection which now respects bullet/enumeration exemptions
         if (detectSemanticTruncation(txt)) {
+          // Deduplicate: normalize text to first 40 chars to avoid counting same pattern twice
+          const dedupKey = (txt || "").substring(0, 40).trim().toLowerCase();
+          if (seenTruncationPatterns.has(dedupKey)) continue;
+          seenTruncationPatterns.add(dedupKey);
+
           postRenderTruncations++;
           const msg = `Slide ${idx + 3} POST-RENDER TRUNCAMENTO: "${txt.substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
           qualityReport.stage4_all_warnings.push(msg);
         }
-        // Detect suspiciously short sentences (< 30 chars with > 2 words)
-        const stripped = (txt || "").replace(/\.+$/, "").trim();
-        const wc = stripped.split(/\s+/).length;
-        if (wc >= 2 && wc <= 4 && stripped.length < 30 && stripped.length > 3 &&
-            !/^(Cenário|Solução|Resultado|Reflexão|Resumo|Objetivo|Insight|Atenção|Dica|Nota|Importante|Automação|Identificação|Análise|Gerenciamento)/i.test(stripped)) {
-          // Check it's not a label:value pattern
-          if (!/^[A-Z][\w\s]+:\s+/.test(txt || "")) {
-            postRenderTruncations++;
-            const msg = `Slide ${idx + 3} FRASE CURTA SUSPEITA: "${stripped}"`;
-            postRenderTruncationWarnings.push(msg);
-            qualityReport.stage4_all_warnings.push(msg);
-          }
-        }
-        // Detect artificial splits with "..." mid-sentence
-        if (/\.\.\.\s/.test(txt || "") && wc >= 4) {
+        // Detect artificial splits with "..." mid-sentence (kept — these are always real issues)
+        if (/\.\.\.\s/.test(txt || "") && (txt || "").split(/\s+/).length >= 4) {
+          const dedupKey = "split:" + (txt || "").substring(0, 40).trim().toLowerCase();
+          if (seenTruncationPatterns.has(dedupKey)) continue;
+          seenTruncationPatterns.add(dedupKey);
+
           postRenderTruncations++;
           const msg = `Slide ${idx + 3} SPLIT ARTIFICIAL: "${(txt || "").substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
@@ -5451,7 +5451,7 @@ Deno.serve(async (req: Request) => {
       }
     });
     if (postRenderTruncations > 0) {
-      console.warn(`[POST-RENDER] Found ${postRenderTruncations} truncation issues across slides`);
+      console.warn(`[POST-RENDER] Found ${postRenderTruncations} truncation issues (deduplicated) across slides`);
       postRenderTruncationWarnings.slice(0, 10).forEach(w => console.warn(`  ${w}`));
     }
 
@@ -5459,21 +5459,22 @@ Deno.serve(async (req: Request) => {
     // 4 formal checkpoints with individual scores and weighted final score.
     // Weights: content=40, structure=20, visual=25, file=15
 
-    // --- Checkpoint 1: CONTENT (weight 40% — INCREASED from 35%) ---
-    // Measures: truncation warnings (including post-render scan), grammar fixes, NLP quality
+    // --- Checkpoint 1: CONTENT (weight 40%) ---
+    // v4 calibration: Deduplicated warnings feed into scoring, reducing false inflation.
+    // Penalty per real truncation remains strong (10 pts) but false positives no longer accumulate.
     const contentTruncationWarnings = qualityReport.stage4_all_warnings.filter(
-      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|FRASE CURTA|SPLIT ARTIFICIAL/i.test(w)
+      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|SPLIT ARTIFICIAL/i.test(w)
     ).length;
     const contentFixes = qualityReport.stage4_all_fixes.filter(
       (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
     ).length;
     const contentScore = Math.max(0, Math.min(100,
       100
-      - Math.min(70, contentTruncationWarnings * 12) // INCREASED from *8 — each truncation costs 12 points
+      - Math.min(70, contentTruncationWarnings * 10) // v4: 10 pts per real truncation (was 12 — calibrated after FP reduction)
       - Math.min(20, (qualityReport.stage1_5_llm_nonsense_dropped || 0) * 5)
-      + Math.min(10, contentFixes * 0.3) // REDUCED fix bonus — fixes don't compensate for truncations
+      + Math.min(10, contentFixes * 0.3)
     ));
-    const contentCritical = contentTruncationWarnings > 3; // TIGHTENED from > 5
+    const contentCritical = contentTruncationWarnings > 4; // v4: relaxed from >3 since FPs are now filtered
 
     // --- Checkpoint 2: STRUCTURE (weight 25%) ---
     // Measures: repetition, empty slides, density, coherence
