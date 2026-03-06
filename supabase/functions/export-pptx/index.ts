@@ -5711,6 +5711,13 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Wire Stage 2.5 results into quality report
+    qualityReport.stage2_5_redistributions = preRenderRedistributions;
+    qualityReport.stage2_5_semantic_losses = semanticLossEvents;
+    // Add semantic loss events as warnings so they appear in the quality report
+    for (const loss of semanticLossEvents) {
+      qualityReport.stage4_all_warnings.push("COMPRESSÃO SEMÂNTICA: " + loss);
+    }
     if (preRenderRedistributions > 0 || semanticLossEvents.length > 0) {
       console.log("[STAGE-2.5] Structural redistribution: " + preRenderRedistributions + " redistributions, " + semanticLossEvents.length + " compression losses");
     }
