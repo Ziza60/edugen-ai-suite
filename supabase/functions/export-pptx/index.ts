@@ -5481,9 +5481,9 @@ Deno.serve(async (req: Request) => {
     ));
     const fileCritical = !slideSanity;
 
-    // --- Weighted final score ---
+    // --- Weighted final score (content=40%, structure=20%, visual=25%, file=15%) ---
     const qualityScore = Math.max(0, Math.min(100,
-      contentScore * 0.35 + structureScore * 0.25 + visualScore * 0.25 + fileScore * 0.15
+      contentScore * 0.40 + structureScore * 0.20 + visualScore * 0.25 + fileScore * 0.15
     ));
 
     const hasCriticalFailure = contentCritical || visualCritical || fileCritical;
