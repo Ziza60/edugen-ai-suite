@@ -5550,71 +5550,167 @@ Deno.serve(async (req: Request) => {
     qualityReport.stage2_avg_density = Number(avgDensity.toFixed(1));
     console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
-    // ── STAGE 2.5: PRE-RENDER STRUCTURAL PASS — Cover, objectives, long bullets ──
-    // Prevents truncation at render time by structurally adapting content BEFORE rendering.
-    // This is the key prevention layer that stops "..." from appearing in the final output.
-    console.log("[STAGE-2.5] Running pre-render structural pass...");
-    let preRenderFixes = 0;
-    for (const s of allSlides) {
-      // A. Module cover objectives: ensure they fit without hard truncation
-      if (s.layout === "module_cover" && s.objectives) {
+    // ── STAGE 2.5: PRE-RENDER STRUCTURAL REDISTRIBUTION (v7) ──
+    // Instead of compressing text to fit, this stage REDISTRIBUTES content structurally:
+    // - Module covers with overflowing objectives → move objectives to dedicated slide
+    // - Module covers with overflowing descriptions → move description to dedicated slide
+    // - Long "Label: explanation" bullets → split into multiple items
+    // - Any remaining long bullets → split at sentence boundary into multiple items
+    // Key principle: NO COMPRESSION here. Only redistribution into more slides/items.
+    console.log("[STAGE-2.5] Running pre-render STRUCTURAL REDISTRIBUTION (v7)...");
+    let preRenderRedistributions = 0;
+    let semanticLossEvents: string[] = []; // Track compression losses for quality report
+    const slidesToInsert: { afterIndex: number; slides: SlideData[] }[] = [];
+
+    for (let si = 0; si < allSlides.length; si++) {
+      const s = allSlides[si];
+
+      // A. Module cover: if objectives overflow, move to dedicated continuation slide
+      if (s.layout === "module_cover" && s.objectives && s.objectives.length > 0) {
         const objW = SAFE_W * 0.60 - 0.30;
         const objH = 0.44;
-        for (let i = 0; i < s.objectives.length; i++) {
-          const obj = s.objectives[i];
+        let anyObjOverflow = false;
+        for (const obj of s.objectives) {
           if (!obj || obj.length < 10) continue;
           const bbox = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW, objH);
-          if (!bbox.fits) {
-            // Structurally shorten: find sentence boundary or compress
-            const shortened = smartTruncate(obj, Math.max(bbox.maxLines * Math.floor(objW * 9), 50), false);
-            s.objectives[i] = enforceSentenceIntegrity(shortened);
-            preRenderFixes++;
-            console.log("[STAGE-2.5] Objective shortened: \"" + obj.substring(0, 40) + "...\" → " + s.objectives[i].length + " chars");
-          }
+          if (!bbox.fits && obj.length > 55) { anyObjOverflow = true; break; }
+        }
+        if (anyObjOverflow) {
+          // REDISTRIBUTE: move objectives to a new dedicated slide instead of compressing
+          const movedObjectives = [...s.objectives];
+          s.objectives = []; // clear from cover
+          slidesToInsert.push({
+            afterIndex: si,
+            slides: [{
+              layout: "bullets",
+              title: "Objetivos - " + smartTitle(s.title),
+              sectionLabel: "OBJETIVOS DO MÓDULO",
+              items: sanitizeBullets(movedObjectives.map(o => {
+                const t = o.trim();
+                return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
+              })),
+              moduleIndex: s.moduleIndex,
+              blockType: "normal",
+            }],
+          });
+          preRenderRedistributions++;
+          console.log("[STAGE-2.5] REDISTRIBUTED: Module cover objectives → dedicated slide (" + s.title + ")");
         }
       }
-      
-      // B. Module cover description: ensure it fits the description box
-      if (s.layout === "module_cover" && s.description) {
+
+      // B. Module cover description: if it overflows, split into cover + description slide
+      if (s.layout === "module_cover" && s.description && s.description.length > 200) {
         const descW = SAFE_W * 0.65;
         const descH = 1.0;
         const bbox = measureBoundingBox(s.description, TYPO.SUBTITLE, FONT_BODY, descW, descH);
         if (!bbox.fits) {
-          const shortened = smartTruncate(s.description, Math.max(bbox.maxLines * Math.floor(descW * 8), 40), false);
-          s.description = enforceSentenceIntegrity(shortened);
-          preRenderFixes++;
-          console.log("[STAGE-2.5] Description shortened for module cover: " + s.title);
-        }
-      }
-      
-      // C. Long "Label: explanation" bullets: split label from content, compress content only
-      if (s.items && s.items.length > 0 && s.layout !== "module_cover") {
-        const maxChars = activeDensity.maxCharsPerBullet;
-        for (let i = 0; i < s.items.length; i++) {
-          const item = s.items[i];
-          if (!item || item.length <= maxChars) continue;
-          
-          const colonIdx = item.indexOf(":");
-          if (colonIdx > 2 && colonIdx < 55) {
-            // "Label: long explanation" → compress explanation, preserve label
-            const label = item.substring(0, colonIdx).trim();
-            const explanation = item.substring(colonIdx + 1).trim();
-            const budget = maxChars - label.length - 2;
-            if (budget > 25 && explanation.length > budget) {
-              const compressed = smartTruncate(explanation, budget, false);
-              s.items[i] = label + ": " + enforceSentenceIntegrity(compressed);
-              preRenderFixes++;
+          // REDISTRIBUTE: keep first sentence on cover, rest goes to a detail slide
+          const sentences = s.description.match(/[^.!?]+[.!?]+/g) || [s.description];
+          if (sentences.length >= 2) {
+            const coverDesc = sentences[0].trim();
+            const restDesc = sentences.slice(1).join(" ").trim();
+            if (restDesc.length > 20) {
+              s.description = coverDesc;
+              slidesToInsert.push({
+                afterIndex: si,
+                slides: [{
+                  layout: "bullets",
+                  title: smartTitle(s.title),
+                  sectionLabel: "VISÃO GERAL",
+                  items: sanitizeBullets([restDesc]),
+                  moduleIndex: s.moduleIndex,
+                  blockType: "normal",
+                }],
+              });
+              preRenderRedistributions++;
+              console.log("[STAGE-2.5] REDISTRIBUTED: Module cover description → detail slide (" + s.title + ")");
             }
-          } else {
-            // Regular long bullet: find sentence boundary
-            s.items[i] = smartBullet(item);
-            if (s.items[i] !== item) preRenderFixes++;
           }
         }
       }
+
+      // C. Long bullets: REDISTRIBUTE by splitting into multiple items instead of compressing
+      if (s.items && s.items.length > 0 && s.layout !== "module_cover") {
+        const maxChars = activeDensity.maxCharsPerBullet;
+        const newItems: string[] = [];
+        let didRedistribute = false;
+
+        for (const item of s.items) {
+          if (!item || item.length <= maxChars) {
+            newItems.push(item);
+            continue;
+          }
+
+          // Try structural split for "Label: long explanation"
+          const colonIdx = item.indexOf(":");
+          if (colonIdx > 2 && colonIdx < 55) {
+            const label = item.substring(0, colonIdx).trim();
+            const explanation = item.substring(colonIdx + 1).trim();
+            const sentences = explanation.match(/[^.!?]+[.!?]+/g);
+            if (sentences && sentences.length >= 2) {
+              // Split into label + first sentence, then remaining sentences
+              let first = label + ": " + sentences[0].trim();
+              newItems.push(first.length > 0 && !/[.!?]$/.test(first) ? first + "." : first);
+              const remaining = sentences.slice(1).join(" ").trim();
+              if (remaining.length > 3) {
+                newItems.push(remaining.length > 0 && !/[.!?]$/.test(remaining) ? remaining + "." : remaining);
+              }
+              didRedistribute = true;
+              continue;
+            }
+          }
+
+          // Try splitting at sentence boundary
+          const sentences = item.match(/[^.!?]+[.!?]+/g);
+          if (sentences && sentences.length >= 2) {
+            const mid = Math.ceil(sentences.length / 2);
+            const part1 = sentences.slice(0, mid).join(" ").trim();
+            const part2 = sentences.slice(mid).join(" ").trim();
+            if (part1.length > 10 && part2.length > 10) {
+              newItems.push(part1);
+              newItems.push(part2);
+              didRedistribute = true;
+              continue;
+            }
+          }
+
+          // LAST RESORT: compress and LOG semantic loss
+          const originalLen = item.length;
+          const compressed = smartBullet(item);
+          const lossRatio = 1 - (compressed.length / originalLen);
+          if (lossRatio > 0.25) {
+            semanticLossEvents.push(
+              "Slide '" + (s.title || "").substring(0, 30) + "': compressão com " +
+              Math.round(lossRatio * 100) + "% de perda (" + originalLen + " → " + compressed.length + " chars)"
+            );
+            console.warn("[STAGE-2.5] SEMANTIC LOSS: " + semanticLossEvents[semanticLossEvents.length - 1]);
+          }
+          newItems.push(compressed);
+          if (compressed !== item) didRedistribute = true;
+        }
+
+        if (didRedistribute) {
+          s.items = newItems;
+          preRenderRedistributions++;
+          console.log("[STAGE-2.5] REDISTRIBUTED: Bullet items for '" + s.title + "' (" + s.items.length + " items after split)");
+
+          // If splitting created too many items, let overflow resolution handle it in Stage 3
+          // (which will create continuation slides instead of compressing)
+        }
+      }
     }
-    if (preRenderFixes > 0) {
-      console.log("[STAGE-2.5] Pre-render structural pass: " + preRenderFixes + " fixes applied");
+
+    // Insert redistributed slides at correct positions
+    if (slidesToInsert.length > 0) {
+      // Insert in reverse order to preserve indices
+      for (let i = slidesToInsert.length - 1; i >= 0; i--) {
+        const { afterIndex, slides: newSlides } = slidesToInsert[i];
+        allSlides.splice(afterIndex + 1, 0, ...newSlides);
+      }
+    }
+
+    if (preRenderRedistributions > 0 || semanticLossEvents.length > 0) {
+      console.log("[STAGE-2.5] Structural redistribution: " + preRenderRedistributions + " redistributions, " + semanticLossEvents.length + " compression losses");
     }
 
     // ── STAGE 3: STRUCTURAL OVERFLOW RESOLUTION (6-level cascade) ──
