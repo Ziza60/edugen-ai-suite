@@ -8,6 +8,7 @@ import {
   Download, FileText, Loader2, Package, StickyNote,
 } from "lucide-react";
 import { PptxExportDialog, type PptxExportOptions } from "./PptxExportDialog";
+import { PptxQualityReport, type QualityReport } from "./PptxQualityReport";
 
 interface ExportButtonsProps {
   courseId: string;
@@ -24,6 +25,8 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const [exportingPptx, setExportingPptx] = useState(false);
   const [exportingScorm, setExportingScorm] = useState(false);
   const [exportingNotion, setExportingNotion] = useState(false);
+  const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const formatFileName = (title: string, format: string, ext: string) => {
     const safe = (title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/gi, "").trim();
@@ -89,147 +92,162 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const isPublished = courseStatus === "published";
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {/* Markdown - Free + Pro */}
-      <Button variant="outline" size="sm" onClick={handleExportMarkdown}>
-        <Download className="h-4 w-4 mr-1" /> MD
-      </Button>
+    <>
+      <div className="flex flex-wrap gap-2">
+        {/* Markdown - Free + Pro */}
+        <Button variant="outline" size="sm" onClick={handleExportMarkdown}>
+          <Download className="h-4 w-4 mr-1" /> MD
+        </Button>
 
-      {/* PDF - Pro */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => handleExportWithFunction("export-pdf", "pdf", setExportingPdf, "PDF")}
-        disabled={exportingPdf}
-        title={!isPublished ? "Publique o curso primeiro" : undefined}
-      >
-        {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
-        PDF {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-      </Button>
+        {/* PDF - Pro */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleExportWithFunction("export-pdf", "pdf", setExportingPdf, "PDF")}
+          disabled={exportingPdf}
+          title={!isPublished ? "Publique o curso primeiro" : undefined}
+        >
+          {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
+          PDF {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+        </Button>
 
-      {/* PowerPoint - Pro (with customization dialog) */}
-      <PptxExportDialog
-        onExport={async (options: PptxExportOptions) => {
-          setExportingPptx(true);
-          try {
-            const session = (await supabase.auth.getSession()).data.session;
-            if (!session?.access_token) {
-              throw new Error("Sessão expirada. Faça login novamente.");
-            }
-            const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx`;
-            console.log("[PPTX] Starting export to:", url);
-            const EXPORT_TIMEOUT_MS = 480000;
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
-            let res: Response;
+        {/* PowerPoint - Pro (with customization dialog) */}
+        <PptxExportDialog
+          onExport={async (options: PptxExportOptions) => {
+            setExportingPptx(true);
             try {
-              res = await fetch(url, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${session.access_token}`,
-                  "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-                },
-                body: JSON.stringify({ course_id: courseId, ...options }),
-                signal: controller.signal,
-              });
-            } finally {
-              clearTimeout(timeoutId);
-            }
-
-            console.log("[PPTX] Response status:", res.status);
-            const responseText = await res.text();
-            let data: any = {};
-            try {
-              data = responseText ? JSON.parse(responseText) : {};
-            } catch {
-              if (!res.ok) {
-                throw new Error(`Erro na exportação (HTTP ${res.status}).`);
+              const session = (await supabase.auth.getSession()).data.session;
+              if (!session?.access_token) {
+                throw new Error("Sessão expirada. Faça login novamente.");
               }
-              throw new Error("Resposta inválida da exportação.");
-            }
+              const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx`;
+              console.log("[PPTX] Starting export to:", url);
+              const EXPORT_TIMEOUT_MS = 480000;
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
+              let res: Response;
+              try {
+                res = await fetch(url, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`,
+                    "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                  },
+                  body: JSON.stringify({ course_id: courseId, ...options }),
+                  signal: controller.signal,
+                });
+              } finally {
+                clearTimeout(timeoutId);
+              }
 
-            console.log("[PPTX] Response data keys:", Object.keys(data || {}));
-            if (!res.ok) throw new Error(data?.error || `Erro na exportação (HTTP ${res.status})`);
+              console.log("[PPTX] Response status:", res.status);
+              const responseText = await res.text();
+              let data: any = {};
+              try {
+                data = responseText ? JSON.parse(responseText) : {};
+              } catch {
+                if (!res.ok) {
+                  throw new Error(`Erro na exportação (HTTP ${res.status}).`);
+                }
+                throw new Error("Resposta inválida da exportação.");
+              }
 
-            if (data?.quality_report && !data?.url) {
+              console.log("[PPTX] Response data keys:", Object.keys(data || {}));
+
+              // Store quality report for display
+              if (data?.quality_report) {
+                setQualityReport(data.quality_report);
+              }
+
+              if (!res.ok) {
+                // If blocked with quality report, show the report dialog
+                if (data?.quality_report && !data?.quality_report?.passed) {
+                  setReportOpen(true);
+                  return;
+                }
+                throw new Error(data?.error || `Erro na exportação (HTTP ${res.status})`);
+              }
+
+              if (!data?.url) {
+                throw new Error("Exportação concluída sem URL de download.");
+              }
+
+              const DOWNLOAD_TIMEOUT_MS = 240000;
+              const downloadController = new AbortController();
+              const downloadTimeoutId = setTimeout(() => downloadController.abort(), DOWNLOAD_TIMEOUT_MS);
+              let fileRes: Response;
+              try {
+                fileRes = await fetch(data.url, { signal: downloadController.signal });
+              } finally {
+                clearTimeout(downloadTimeoutId);
+              }
+              if (!fileRes.ok) throw new Error("Não foi possível baixar o PowerPoint.");
+              const blob = await fileRes.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = blobUrl;
+              a.download = formatFileName(courseTitle, "PPTX", "pptx");
+              a.rel = "noopener";
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(blobUrl);
+
               const qr = data.quality_report;
               toast({
-                title: "Exportação bloqueada",
-                description: `Qualidade insuficiente (score=${qr.quality_score}/100).`,
-                variant: "destructive",
+                title: "PowerPoint gerado!",
+                description: qr
+                  ? `Score: ${qr.quality_score}/100 — Clique em "Ver Relatório" para detalhes`
+                  : undefined,
+                action: qr ? (
+                  <Button variant="outline" size="sm" onClick={() => setReportOpen(true)}>
+                    Ver Relatório
+                  </Button>
+                ) : undefined,
               });
-              console.log("[PPTX Quality Report]", JSON.stringify(qr, null, 2));
-              return;
-            }
-
-            if (!data?.url) {
-              throw new Error("Exportação concluída sem URL de download.");
-            }
-
-            if (data.quality_report) {
-              console.log("[PPTX Quality Report]", JSON.stringify(data.quality_report, null, 2));
-            }
-
-            const DOWNLOAD_TIMEOUT_MS = 240000;
-            const downloadController = new AbortController();
-            const downloadTimeoutId = setTimeout(() => downloadController.abort(), DOWNLOAD_TIMEOUT_MS);
-            let fileRes: Response;
-            try {
-              fileRes = await fetch(data.url, { signal: downloadController.signal });
+            } catch (err: any) {
+              const msg = err.name === "AbortError" ? "Timeout — tente novamente" : err.message;
+              toast({ title: "Erro ao exportar PowerPoint", description: msg, variant: "destructive" });
             } finally {
-              clearTimeout(downloadTimeoutId);
+              setExportingPptx(false);
             }
-            if (!fileRes.ok) throw new Error("Não foi possível baixar o PowerPoint.");
-            const blob = await fileRes.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = blobUrl;
-            a.download = formatFileName(courseTitle, "PPTX", "pptx");
-            a.rel = "noopener";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(blobUrl);
-            const qr = data.quality_report;
-            toast({
-              title: "PowerPoint gerado!",
-              description: qr ? `Score: ${qr.quality_score}/100` : undefined,
-            });
-          } catch (err: any) {
-            const msg = err.name === "AbortError" ? "Timeout — tente novamente" : err.message;
-            toast({ title: "Erro ao exportar PowerPoint", description: msg, variant: "destructive" });
-          } finally {
-            setExportingPptx(false);
-          }
-        }}
-        exporting={exportingPptx}
-        disabled={!isPublished}
-        isPro={isPro}
+          }}
+          exporting={exportingPptx}
+          disabled={!isPublished}
+          isPro={isPro}
+        />
+
+        {/* Notion - Pro */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleExportWithFunction("export-notion", "md", setExportingNotion, "Notion")}
+          disabled={exportingNotion || !isPublished}
+          title={!isPublished ? "Publique o curso primeiro" : undefined}
+        >
+          {exportingNotion ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <StickyNote className="h-4 w-4 mr-1" />}
+          Notion {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+        </Button>
+
+        {/* SCORM - Business */}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={true}
+          title="Disponível no plano Business (em breve)"
+        >
+          <Package className="h-4 w-4 mr-1" />
+          SCORM <Badge variant="outline" className="ml-1 text-[10px] px-1">Business</Badge>
+        </Button>
+      </div>
+
+      {/* Quality Report Dialog */}
+      <PptxQualityReport
+        report={qualityReport}
+        open={reportOpen}
+        onOpenChange={setReportOpen}
       />
-
-      {/* Notion - Pro */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => handleExportWithFunction("export-notion", "md", setExportingNotion, "Notion")}
-        disabled={exportingNotion || !isPublished}
-        title={!isPublished ? "Publique o curso primeiro" : undefined}
-      >
-        {exportingNotion ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <StickyNote className="h-4 w-4 mr-1" />}
-        Notion {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-      </Button>
-
-      {/* SCORM - Business */}
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={true}
-        title="Disponível no plano Business (em breve)"
-      >
-        <Package className="h-4 w-4 mr-1" />
-        SCORM <Badge variant="outline" className="ml-1 text-[10px] px-1">Business</Badge>
-      </Button>
-    </div>
+    </>
   );
 }
