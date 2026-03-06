@@ -3320,22 +3320,328 @@ function balanceDensity(slides: SlideData[]): SlideData[] {
       }
     }
 
-    // Split overloaded slides — raised threshold to avoid excessive fragmentation
+    // Split overloaded slides using semantic split
     if (density > 92 && s.items && s.items.length > 5 && s.layout !== "numbered_takeaways") {
-      const mid = Math.ceil(s.items.length / 2);
-      const newSlide: SlideData = {
-        layout: s.layout === "grid_cards" ? "bullets" : "grid_cards",
-        title: smartTitle(s.title + " (cont.)"),
-        sectionLabel: s.sectionLabel, items: s.items.slice(mid), moduleIndex: s.moduleIndex,
-      };
-      s.items = s.items.slice(0, mid);
-      s.densityScore = calculateDensity(s);
-      newSlide.densityScore = calculateDensity(newSlide);
-      result.splice(i + 1, 0, newSlide);
-      console.log("[SPLIT] Split overloaded: " + s.title);
+      const { first, second } = semanticSplitSlide(s);
+      result[i] = first;
+      result.splice(i + 1, 0, second);
+      console.log("[SPLIT] Semantic split overloaded: " + s.title);
     }
   }
   return result;
+}
+
+/* ═══════════════════════════════════════════════════════
+   OVERFLOW RESOLUTION ENGINE — Sprint 2
+   6-level structural fallback cascade:
+   1. Layout swap → 2. Redistribute → 3. Semantic split
+   4. Continuation slide → 5. Summarize → 6. Truncate
+   ═══════════════════════════════════════════════════════ */
+
+/** Check if a slide's content overflows its available space */
+function detectSlideOverflow(s: SlideData): { overflows: boolean; overflowCount: number; totalChars: number } {
+  if (!s.items || s.items.length === 0) return { overflows: false, overflowCount: 0, totalChars: 0 };
+  if (s.layout === "module_cover" || s.layout === "comparison_table") return { overflows: false, overflowCount: 0, totalChars: 0 };
+
+  const boxW = SAFE_W - 0.50;
+  const maxItems = activeDensity.maxBulletsPerSlide;
+  const maxItemH = (SLIDE_H - 2.0 - BOTTOM_MARGIN) / Math.min(s.items.length, maxItems);
+  let overflowCount = 0;
+  let totalChars = 0;
+
+  for (const item of s.items) {
+    totalChars += item.length;
+    const minFont = s.layout === "definition_card_with_pillars" ? TYPO.BODY : TYPO.SUPPORT;
+    const fit = fitTextForBox(item, boxW, maxItemH, TYPO.BULLET_TEXT, FONT_BODY, minFont);
+    if (fit.adjusted) overflowCount++;
+  }
+
+  // Also check if item count exceeds density limit
+  const itemOverflow = s.items.length > maxItems && s.layout !== "numbered_takeaways";
+
+  return {
+    overflows: overflowCount >= 2 || itemOverflow,
+    overflowCount,
+    totalChars,
+  };
+}
+
+/** Level 1: Try swapping to a layout that handles more content */
+const LAYOUT_CAPACITY_ORDER: LayoutType[] = [
+  "bullets",                      // highest capacity: vertical list
+  "grid_cards",                   // medium: 2-3 col cards
+  "definition_card_with_pillars", // medium: def + pillars
+  "four_quadrants",               // medium: 2x2
+  "process_timeline",             // lower: sequential
+];
+
+function findAlternativeLayout(s: SlideData): LayoutType | null {
+  // Protected layouts that should never be swapped
+  const protectedLayouts: LayoutType[] = [
+    "module_cover", "comparison_table", "numbered_takeaways",
+    "example_highlight", "reflection_callout", "warning_callout", "summary_slide",
+  ];
+  if (protectedLayouts.includes(s.layout)) return null;
+
+  const items = s.items || [];
+  // "bullets" handles the most content vertically
+  if (s.layout !== "bullets" && items.length > 4) return "bullets";
+  // If already bullets with many items, grid_cards can show more compactly
+  if (s.layout === "bullets" && items.length >= 3 && items.length <= 6) return "grid_cards";
+  // grid_cards overflowing → bullets
+  if (s.layout === "grid_cards") return "bullets";
+  // four_quadrants → grid_cards (3-col fits more)
+  if (s.layout === "four_quadrants" && items.length >= 3) return "grid_cards";
+  // process_timeline → bullets
+  if (s.layout === "process_timeline") return "bullets";
+
+  return null;
+}
+
+/** Level 2: Redistribute content within the slide (rebalance long items) */
+function redistributeContent(s: SlideData): boolean {
+  if (!s.items || s.items.length === 0) return false;
+  let changed = false;
+
+  // Split overly long items into two shorter items at sentence boundary
+  const newItems: string[] = [];
+  const newStructured: StructuredItem[] = [];
+  const structured = s.structuredItems || [];
+
+  for (let i = 0; i < s.items.length; i++) {
+    const item = s.items[i];
+    const si = structured[i];
+
+    if (item.length > activeDensity.maxCharsPerBullet * 1.5) {
+      // Try to split at sentence boundary
+      const sentences = item.match(/[^.!?]+[.!?]+/g) || [item];
+      if (sentences.length >= 2) {
+        const mid = Math.ceil(sentences.length / 2);
+        const part1 = sentences.slice(0, mid).join(" ").trim();
+        const part2 = sentences.slice(mid).join(" ").trim();
+        if (part1.length > 10 && part2.length > 10) {
+          newItems.push(enforceSentenceIntegrity(part1));
+          newItems.push(enforceSentenceIntegrity(part2));
+          // Split structured item: sub-items stay with first part
+          if (si) {
+            newStructured.push({ text: enforceSentenceIntegrity(part1), subItems: si.subItems });
+            newStructured.push({ text: enforceSentenceIntegrity(part2), subItems: [] });
+          }
+          changed = true;
+          continue;
+        }
+      }
+    }
+    newItems.push(item);
+    if (si) newStructured.push(si);
+  }
+
+  if (changed) {
+    s.items = newItems;
+    if (s.structuredItems) s.structuredItems = newStructured;
+  }
+  return changed;
+}
+
+/**
+ * Level 3: Semantic split respecting structuredItems hierarchy.
+ * Parent + subItems are treated as an atomic unit — never separated.
+ */
+function semanticSplitSlide(s: SlideData): { first: SlideData; second: SlideData } {
+  const items = s.items || [];
+  const structured = s.structuredItems;
+  const baseTitle = s.title.replace(/\s*\(Parte \d+\)\s*$/i, "").replace(/\s*\(cont\.\)\s*$/i, "");
+
+  if (structured && structured.some(si => si.subItems.length > 0)) {
+    // Semantic split: find the best split point that doesn't break parent-child groups
+    const groups: { items: string[]; structured: StructuredItem[] }[] = [];
+    let currentGroup: { items: string[]; structured: StructuredItem[] } = { items: [], structured: [] };
+    let totalItemCount = 0;
+
+    for (const si of structured) {
+      const groupSize = 1 + si.subItems.length;
+      currentGroup.items.push(si.text);
+      for (const sub of si.subItems) currentGroup.items.push("  → " + sub);
+      currentGroup.structured.push(si);
+      totalItemCount += groupSize;
+
+      // Check if we've passed the midpoint in terms of items
+      if (totalItemCount >= Math.ceil(items.length / 2) && groups.length === 0) {
+        groups.push(currentGroup);
+        currentGroup = { items: [], structured: [] };
+      }
+    }
+    if (currentGroup.items.length > 0) groups.push(currentGroup);
+
+    if (groups.length >= 2) {
+      const first: SlideData = {
+        ...s,
+        title: smartTitle(baseTitle + " (Parte 1)"),
+        items: sanitizeBullets(groups[0].items),
+        structuredItems: groups[0].structured,
+      };
+      const secondItems = groups.slice(1).flatMap(g => g.items);
+      const secondStructured = groups.slice(1).flatMap(g => g.structured);
+      const second: SlideData = {
+        layout: s.layout === "grid_cards" ? "bullets" : s.layout,
+        title: smartTitle(baseTitle + " (Parte 2)"),
+        sectionLabel: s.sectionLabel,
+        items: sanitizeBullets(secondItems),
+        structuredItems: secondStructured,
+        moduleIndex: s.moduleIndex,
+        blockType: s.blockType,
+      };
+      console.log("[SEMANTIC-SPLIT] Split '" + baseTitle + "' preserving " + structured.length + " parent-child groups");
+      return { first, second };
+    }
+  }
+
+  // Fallback: split at sentence-aware midpoint in flat items
+  const mid = findSemanticMidpoint(items);
+  const first: SlideData = {
+    ...s,
+    title: smartTitle(baseTitle + " (Parte 1)"),
+    items: items.slice(0, mid),
+    structuredItems: structured ? structured.slice(0, mid) : undefined,
+  };
+  const second: SlideData = {
+    layout: s.layout === "grid_cards" ? "bullets" : s.layout,
+    title: smartTitle(baseTitle + " (Parte 2)"),
+    sectionLabel: s.sectionLabel,
+    items: items.slice(mid),
+    structuredItems: structured ? structured.slice(mid) : undefined,
+    moduleIndex: s.moduleIndex,
+    blockType: s.blockType,
+  };
+  return { first, second };
+}
+
+/** Find best split point that doesn't break sentences or related items */
+function findSemanticMidpoint(items: string[]): number {
+  if (items.length <= 2) return 1;
+  const mid = Math.ceil(items.length / 2);
+
+  // Check if the item at mid starts with a continuation marker
+  for (let offset = 0; offset <= 1 && mid + offset < items.length; offset++) {
+    const candidate = mid + offset;
+    const item = items[candidate];
+    // Don't split right after a "  → " sub-item marker
+    if (item && !item.startsWith("  → ")) return candidate;
+  }
+  // Try before mid
+  for (let offset = 1; offset <= 2 && mid - offset > 0; offset++) {
+    const candidate = mid - offset;
+    const item = items[candidate + 1]; // check next item
+    if (item && !item.startsWith("  → ")) return candidate + 1;
+  }
+  return mid;
+}
+
+/** Level 5: Heuristic summarization (no LLM needed) */
+function summarizeItemsForOverflow(items: string[], targetCount: number): string[] {
+  if (items.length <= targetCount) return items;
+
+  // Score each item by information density (longer + more unique words = higher)
+  const scored = items.map((item, idx) => {
+    const words = new Set(tokenize(item));
+    const score = words.size * 2 + (item.includes(":") ? 10 : 0) + (idx === 0 ? 5 : 0) + (idx === items.length - 1 ? 5 : 0);
+    return { item, score, idx };
+  });
+
+  // Keep top N by score, maintaining original order
+  scored.sort((a, b) => b.score - a.score);
+  const kept = scored.slice(0, targetCount).sort((a, b) => a.idx - b.idx);
+  return kept.map(k => k.item);
+}
+
+/**
+ * MAIN OVERFLOW RESOLVER — 6-level cascade
+ * Returns modified slides array with overflow resolved.
+ */
+interface OverflowResolution {
+  strategy: "layout_swap" | "redistribute" | "semantic_split" | "continuation" | "summarize" | "truncate" | "none";
+  slidesProduced: number;
+}
+
+function resolveSlideOverflow(s: SlideData, slideIndex: number): { slides: SlideData[]; resolution: OverflowResolution } {
+  const overflow = detectSlideOverflow(s);
+  if (!overflow.overflows) {
+    return { slides: [s], resolution: { strategy: "none", slidesProduced: 1 } };
+  }
+
+  const label = "[OVERFLOW S" + slideIndex + "]";
+  console.log(label + " Detected: " + overflow.overflowCount + " items overflow, " + (s.items?.length || 0) + " total items, layout=" + s.layout);
+
+  // ── LEVEL 1: Layout swap ──
+  const altLayout = findAlternativeLayout(s);
+  if (altLayout) {
+    const candidate = { ...s, layout: altLayout };
+    const recheck = detectSlideOverflow(candidate);
+    if (!recheck.overflows) {
+      console.log(label + " RESOLVED by layout swap: " + s.layout + " → " + altLayout);
+      return { slides: [candidate], resolution: { strategy: "layout_swap", slidesProduced: 1 } };
+    }
+  }
+
+  // ── LEVEL 2: Redistribute content (split long items) ──
+  const redistCopy: SlideData = JSON.parse(JSON.stringify(s));
+  if (redistributeContent(redistCopy)) {
+    const recheck = detectSlideOverflow(redistCopy);
+    if (!recheck.overflows) {
+      console.log(label + " RESOLVED by redistribution");
+      return { slides: [redistCopy], resolution: { strategy: "redistribute", slidesProduced: 1 } };
+    }
+    // Even if still overflows, the redistributed version may be better for splitting
+    Object.assign(s, redistCopy);
+  }
+
+  // ── LEVEL 3: Semantic split (respects structuredItems) ──
+  if (s.items && s.items.length > 3) {
+    const { first, second } = semanticSplitSlide(s);
+    const check1 = detectSlideOverflow(first);
+    const check2 = detectSlideOverflow(second);
+    if (!check1.overflows && !check2.overflows) {
+      console.log(label + " RESOLVED by semantic split → 2 slides");
+      return { slides: [first, second], resolution: { strategy: "semantic_split", slidesProduced: 2 } };
+    }
+    // If one still overflows, try summarizing it
+    if (check1.overflows && first.items) {
+      first.items = summarizeItemsForOverflow(first.items, activeDensity.maxBulletsPerSlide);
+    }
+    if (check2.overflows && second.items) {
+      second.items = summarizeItemsForOverflow(second.items, activeDensity.maxBulletsPerSlide);
+    }
+    console.log(label + " RESOLVED by semantic split + summarize → 2 slides");
+    return { slides: [first, second], resolution: { strategy: "semantic_split", slidesProduced: 2 } };
+  }
+
+  // ── LEVEL 4: Continuation slide (simple split for small sets) ──
+  if (s.items && s.items.length > 2) {
+    const { first, second } = semanticSplitSlide(s);
+    console.log(label + " RESOLVED by continuation slide");
+    return { slides: [first, second], resolution: { strategy: "continuation", slidesProduced: 2 } };
+  }
+
+  // ── LEVEL 5: Summarize (reduce item count) ──
+  if (s.items && s.items.length > 0) {
+    const targetCount = Math.max(2, activeDensity.maxBulletsPerSlide - 1);
+    const summarized = { ...s, items: summarizeItemsForOverflow(s.items, targetCount) };
+    const recheck = detectSlideOverflow(summarized);
+    if (!recheck.overflows) {
+      console.log(label + " RESOLVED by summarization: " + s.items.length + " → " + summarized.items.length + " items");
+      return { slides: [summarized], resolution: { strategy: "summarize", slidesProduced: 1 } };
+    }
+  }
+
+  // ── LEVEL 6: Truncate (last resort) ──
+  console.warn(label + " LAST RESORT: truncation applied");
+  if (s.items) {
+    s.items = s.items.map(item => {
+      const fit = fitTextForBox(item, SAFE_W - 0.50, 0.60, TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
+      return fit.text;
+    });
+  }
+  return { slides: [s], resolution: { strategy: "truncate", slidesProduced: 1 } };
 }
 
 /* ═══════════════════════════════════════════════════════
