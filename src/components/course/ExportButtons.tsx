@@ -118,8 +118,9 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
             }
             const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx`;
             console.log("[PPTX] Starting export to:", url);
+            const EXPORT_TIMEOUT_MS = 480000;
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 300000);
+            const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
             let res: Response;
             try {
               res = await fetch(url, {
@@ -137,9 +138,19 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
             }
 
             console.log("[PPTX] Response status:", res.status);
-            const data = await res.json();
-            console.log("[PPTX] Response data keys:", Object.keys(data));
-            if (!res.ok) throw new Error(data.error || "Erro na exportação");
+            const responseText = await res.text();
+            let data: any = {};
+            try {
+              data = responseText ? JSON.parse(responseText) : {};
+            } catch {
+              if (!res.ok) {
+                throw new Error(`Erro na exportação (HTTP ${res.status}).`);
+              }
+              throw new Error("Resposta inválida da exportação.");
+            }
+
+            console.log("[PPTX] Response data keys:", Object.keys(data || {}));
+            if (!res.ok) throw new Error(data?.error || `Erro na exportação (HTTP ${res.status})`);
 
             if (data?.quality_report && !data?.url) {
               const qr = data.quality_report;
@@ -151,36 +162,40 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               console.log("[PPTX Quality Report]", JSON.stringify(qr, null, 2));
               return;
             }
-            if (data?.url) {
-              if (data.quality_report) {
-                console.log("[PPTX Quality Report]", JSON.stringify(data.quality_report, null, 2));
-              }
 
-              const downloadController = new AbortController();
-              const downloadTimeoutId = setTimeout(() => downloadController.abort(), 120000);
-              let fileRes: Response;
-              try {
-                fileRes = await fetch(data.url, { signal: downloadController.signal });
-              } finally {
-                clearTimeout(downloadTimeoutId);
-              }
-              if (!fileRes.ok) throw new Error("Não foi possível baixar o PowerPoint.");
-              const blob = await fileRes.blob();
-              const blobUrl = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = blobUrl;
-              a.download = formatFileName(courseTitle, "PPTX", "pptx");
-              a.rel = "noopener";
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(blobUrl);
-              const qr = data.quality_report;
-              toast({
-                title: "PowerPoint gerado!",
-                description: qr ? `Score: ${qr.quality_score}/100` : undefined,
-              });
+            if (!data?.url) {
+              throw new Error("Exportação concluída sem URL de download.");
             }
+
+            if (data.quality_report) {
+              console.log("[PPTX Quality Report]", JSON.stringify(data.quality_report, null, 2));
+            }
+
+            const DOWNLOAD_TIMEOUT_MS = 240000;
+            const downloadController = new AbortController();
+            const downloadTimeoutId = setTimeout(() => downloadController.abort(), DOWNLOAD_TIMEOUT_MS);
+            let fileRes: Response;
+            try {
+              fileRes = await fetch(data.url, { signal: downloadController.signal });
+            } finally {
+              clearTimeout(downloadTimeoutId);
+            }
+            if (!fileRes.ok) throw new Error("Não foi possível baixar o PowerPoint.");
+            const blob = await fileRes.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = formatFileName(courseTitle, "PPTX", "pptx");
+            a.rel = "noopener";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(blobUrl);
+            const qr = data.quality_report;
+            toast({
+              title: "PowerPoint gerado!",
+              description: qr ? `Score: ${qr.quality_score}/100` : undefined,
+            });
           } catch (err: any) {
             const msg = err.name === "AbortError" ? "Timeout — tente novamente" : err.message;
             toast({ title: "Erro ao exportar PowerPoint", description: msg, variant: "destructive" });
