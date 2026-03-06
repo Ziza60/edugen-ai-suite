@@ -5492,7 +5492,7 @@ Deno.serve(async (req: Request) => {
     const checkpoints = {
       content: {
         score: Number(contentScore.toFixed(1)),
-        weight: 35,
+        weight: 40,
         critical: contentCritical,
         issues: qualityReport.stage4_all_warnings.filter(
           (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|FRASE CURTA/i.test(w)
