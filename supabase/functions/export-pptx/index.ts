@@ -86,7 +86,7 @@ let activeThemeKey: "light" | "dark" = "light";
 let currentTheme = THEME.light;
 
 // Performance guardrails (previnem timeout/conexão fechada em cursos longos)
-const MAX_SEMANTIC_SLIDES_PER_MODULE = 6;
+const MAX_SEMANTIC_SLIDES_PER_MODULE = 9;
 const MAX_LLM_VALIDATION_SLIDES = 24;
 const LLM_BATCH_SIZE = 12;
 const LLM_REQUEST_TIMEOUT_MS = 18000;
@@ -1053,17 +1053,31 @@ async function llmPlanModuleSlides(moduleTitle: string, moduleContent: string, m
 
   const systemPrompt = `Você é um designer instrucional especialista em criar apresentações PowerPoint de alta qualidade a partir de conteúdo educacional.
 
-Sua tarefa é planejar a DISTRIBUIÇÃO SEMÂNTICA do conteúdo de um módulo em slides, garantindo que:
+O conteúdo do módulo segue uma ESTRUTURA PEDAGÓGICA FIXA com seções marcadas por emojis. Sua tarefa é mapear CADA seção para um slide, preservando a ordem e a identidade de cada seção.
+
+## ESTRUTURA PEDAGÓGICA OBRIGATÓRIA (siga EXATAMENTE esta ordem)
+O markdown do módulo contém estas seções, nesta ordem. Cada uma DEVE gerar um slide dedicado:
+
+1. 🎯 **Objetivo do Módulo** → layout "definition" (sectionLabel: "OBJETIVO DO MÓDULO")
+2. 🧠 **Fundamentos** → layout "definition" ou "bullets" (sectionLabel: "FUNDAMENTOS")
+3. ⚙️ **Como funciona** → layout "process" (sectionLabel: "COMO FUNCIONA")
+4. 🧩 **Modelos / Tipos** → layout "grid_cards" ou "table" (sectionLabel: "MODELOS E TIPOS")
+5. 🛠️ **Aplicações reais** → layout "grid_cards" ou "bullets" (sectionLabel: "APLICAÇÕES REAIS")
+6. 💡 **Exemplo prático** → layout "example" (sectionLabel: "EXEMPLO PRÁTICO") — cenário, solução, resultado
+7. ⚠️ **Desafios e cuidados** → layout "bullets" (sectionLabel: "DESAFIOS E CUIDADOS")
+8. 💭 **Reflexão** → layout "reflection" (sectionLabel: "REFLEXÃO")
+9. 🧾 **Resumo do Módulo** → NÃO gerar slide (conteúdo será usado internamente)
+10. 📌 **Key Takeaways** → layout "takeaways" (sectionLabel: "KEY TAKEAWAYS") — 5-7 items
 
 ## REGRAS FUNDAMENTAIS
-1. **Frases COMPLETAS**: Cada item de cada slide DEVE ser uma frase completa com sujeito, verbo e predicado. NUNCA corte frases no meio.
-2. **Coerência semântica**: Agrupe conteúdos relacionados no mesmo slide. Não misture temas diferentes.
-3. **Cada slide = 1 ideia central**: Um slide deve cobrir UM conceito, NÃO múltiplos.
-4. **Máximo 5-6 items por slide**: Se um tema tem mais pontos, distribua em slides de continuação.
+1. **Preservar TODAS as seções**: Cada seção do markdown DEVE ter um slide correspondente. NÃO pule, NÃO mescle seções diferentes.
+2. **Frases COMPLETAS**: Cada item DEVE ser uma frase completa. NUNCA corte frases no meio.
+3. **Cada slide = 1 seção**: Um slide mapeia exatamente UMA seção pedagógica.
+4. **Máximo 5-6 items por slide**: Se uma seção tem mais pontos, use os mais importantes.
 5. **Máximo 120 caracteres por item**: Resuma sem perder significado. Toda frase termina com ponto.
-6. **Títulos descritivos**: Cada slide deve ter um título que descreve O QUE aquele slide cobre COM CONTEXTO DO MÓDULO. PROIBIDO usar títulos genéricos como "Introdução", "Conceitos", "Visão Geral", "Detalhes". Sempre inclua o tópico específico (ex: "Tipos de Redes Neurais" em vez de "Tipos").
-7. **Preservar exemplos e reflexões**: Exemplos práticos e reflexões DEVEM ter slides dedicados.
-8. **Key Takeaways**: O último grupo de slides deve ser "takeaways" com 5-7 pontos concisos e acionáveis.
+6. **Títulos descritivos COM contexto**: O título do slide deve incluir o tópico do módulo (ex: "Fundamentos da IA Generativa" em vez de apenas "Fundamentos").
+7. **Exemplo prático OBRIGATÓRIO**: O slide de exemplo deve ter exatamente 3 items: Cenário, Solução, Resultado.
+8. **Key Takeaways OBRIGATÓRIO**: 5-7 pontos concisos e acionáveis.
 
 ## LAYOUTS DISPONÍVEIS
 - "definition": Para definir um conceito (1 definição principal + 2-3 pilares)
@@ -1074,16 +1088,6 @@ Sua tarefa é planejar a DISTRIBUIÇÃO SEMÂNTICA do conteúdo de um módulo em
 - "example": Para exemplos práticos (cenário, solução, resultado)
 - "reflection": Para perguntas de reflexão (2-4 perguntas)
 - "takeaways": Para resumo final (5-7 takeaways concisos)
-
-## DISTRIBUIÇÃO IDEAL
-Para um módulo típico, gere entre 4-8 slides de conteúdo:
-1. Fundamentos/Definição (1-2 slides)
-2. Como funciona/Processo (1-2 slides)
-3. Tipos/Modelos/Comparação (1 slide)
-4. Aplicações reais (1 slide)
-5. Exemplo prático (1 slide obrigatório)
-6. Reflexão (1 slide obrigatório)
-7. Key Takeaways (1 slide obrigatório)
 
 Idioma: ${language || "pt-BR"}`;
 
@@ -2066,9 +2070,9 @@ interface ParsedBlock {
 
 function classifyBlockType(heading: string, items: string[]): "example" | "reflection" | "conclusion" | "normal" {
   const h = heading.toLowerCase();
-  if (/exemplo|case|cen[aá]rio|pr[aá]tic|aplica[cç][aã]o\s+real|estudo\s+de\s+caso/i.test(h)) return "example";
+  if (/exemplo|case|cen[aá]rio|pr[aá]tic|aplica[cç][aã]o\s+real|estudo\s+de\s+caso|\[ideia\]/i.test(h)) return "example";
   if (/reflex[aã]o|pare\s+um\s+momento|pense|reflita|checkpoint/i.test(h)) return "reflection";
-  if (/conclus[aã]o|encerramento|fechamento|consider|final/i.test(h)) return "conclusion";
+  if (/conclus[aã]o|encerramento|fechamento|consider|final|key\s*takeaway|takeaway/i.test(h)) return "conclusion";
   // Check items content too
   const allText = items.join(" ").toLowerCase();
   if (/exemplo\s+pr[aá]tico|na\s+pr[aá]tica|caso\s+real/i.test(allText) && items.length <= 4) return "example";
@@ -2199,6 +2203,16 @@ function classifyContent(heading: string, items: string[], isTable: boolean, pre
   if (blockType === "example") return "example_highlight";
   if (blockType === "reflection") return "reflection_callout";
   if (isResumoHeading(heading)) return "numbered_takeaways";
+  
+  // Map pedagogical section headings to appropriate layouts
+  const h = heading.toLowerCase();
+  if (/objetivo/i.test(h)) return "definition_card_with_pillars";
+  if (/fundamento/i.test(h)) return items.length >= 3 ? "definition_card_with_pillars" : "bullets";
+  if (/como funciona|processo|etapa|passo|pipeline/i.test(h)) return "process_timeline";
+  if (/modelo|tipo|categorias|classifica/i.test(h)) return items.length >= 3 ? "grid_cards" : "bullets";
+  if (/aplica[cç][oõ]|uso|caso de uso/i.test(h)) return items.length >= 3 ? "grid_cards" : "bullets";
+  if (/desafio|cuidado|risco|limita/i.test(h)) return "bullets";
+  
   if (isProcessBlock(heading, items)) return "process_timeline";
   if (isDefinitionBlock(items)) return "definition_card_with_pillars";
   if (items.length === 4 && isQuadrantBlock(items)) {
