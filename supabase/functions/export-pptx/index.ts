@@ -4044,20 +4044,37 @@ Deno.serve(async (req: Request) => {
     const userId = claimsData.user.id;
 
     const body = await req.json();
-    const { course_id, palette, density, theme, includeImages } = body;
+    const { course_id, palette, density, theme, includeImages, template } = body;
     if (!course_id) {
       return new Response(JSON.stringify({ error: "course_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Apply user customization
+    // Apply template first (fonts + base colors)
+    activeTemplate = SLIDE_TEMPLATES[template || "default"] || SLIDE_TEMPLATES.default;
+    FONT_TITLE = activeTemplate.fonts.title;
+    FONT_BODY = activeTemplate.fonts.body;
+
+    // Apply user customization (theme, palette, density override template colors when set)
     activeThemeKey = theme === "dark" ? "dark" : "light";
     currentTheme = THEME[activeThemeKey];
     activePalette = PALETTES[palette || "default"] || PALETTES.default;
     activeDensity = DENSITY_MODES[density || "standard"] || DENSITY_MODES.standard;
+
+    // If template != default AND palette == default, apply template accent colors into the palette
+    if ((template || "default") !== "default" && (palette || "default") === "default") {
+      activePalette = [
+        activeTemplate.colors.secondary,
+        activeTemplate.colors.accent,
+        activeTemplate.colors.primary,
+        activeTemplate.colors.accent,
+        activeTemplate.colors.secondary,
+      ];
+    }
+
     refreshColors();
-    console.log("[CONFIG] Theme:" + activeThemeKey + " Palette:" + (palette || "default") + " Density:" + (density || "standard"));
+    console.log("[CONFIG] Template:" + (template || "default") + " Theme:" + activeThemeKey + " Palette:" + (palette || "default") + " Density:" + (density || "standard"));
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
