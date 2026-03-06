@@ -590,6 +590,47 @@ const PT_PRESENT_TRANSITIVE = /\b(envolve|permite|identifica|analisa|utiliza|cat
 // Words that are clearly self-contained nouns (NOT truncations)
 const PT_COMPLETE_ENDINGS = /\b(IA|AI|TI|UX|UI|ML|BI|CX|RH|SEO|ROI|KPI|PLN|NLP|OCR|ERP|CRM|API|IoT|SaaS|B2B|B2C|dados|resultados|trabalho|profissional|negócios|clientes|empresa|equipe|mercado|processo|custos|tempo|eficiência|produtividade|qualidade|inovação|segurança|privacidade|desempenho|informações|decisões|operações|estratégias|ferramentas|tecnologia|sistemas|soluções|plataforma|insights)\s*$/i;
 
+/**
+ * Checks if a text looks like a valid bullet/enumeration rather than a truncated sentence.
+ * Valid bullets include: comma-separated lists, tool names, short action descriptions,
+ * nominal phrases typical in presentations.
+ */
+function isValidBullet(text: string): boolean {
+  const t = text.trim().replace(/\.+$/, "").trim();
+  const wc = t.split(/\s+/).length;
+
+  // Comma-separated enumerations: "ChatGPT, Google Gemini, Claude"
+  if ((t.match(/,/g) || []).length >= 1 && wc <= 8) return true;
+
+  // Action bullet: starts with verb in 3rd person and has object: "Aprimora textos existentes"
+  if (/^[A-ZÁÉÍÓÚÃÕ]?[a-záéíóúãõ]+[aei]\s+\w+/i.test(t) && wc >= 3 && wc <= 7) {
+    // Has object after verb — valid action bullet
+    const words = t.split(/\s+/);
+    const firstWord = words[0];
+    // 3rd-person verb ending in -a, -e, -i followed by a noun/object
+    if (/^[A-Z]?[a-záéíóúãõ]+(a|e|i)$/i.test(firstWord) && words.length >= 3) return true;
+  }
+
+  // Nominal phrase ending in noun/adjective (typical slide bullet)
+  // "Modelos específicos para marketing" — ends in a noun, has a qualifier
+  if (wc >= 3 && wc <= 6 && t.length >= 20 && t.length < 60) {
+    const lastWord = t.split(/\s+/).pop() || "";
+    // Ends with a noun (not a preposition/article/verb-infinitive)
+    if (lastWord.length >= 4 && !/[aeiou]r$/i.test(lastWord) && 
+        !/^(de|da|do|das|dos|na|no|em|para|por|com|ao|à|que|como)$/i.test(lastWord)) {
+      return true;
+    }
+  }
+
+  // Very short label-like items (2-3 words): "Atas de reunião", "Longos documentos"
+  if (wc <= 3 && t.length < 30 && t.length >= 5) return true;
+
+  // Items with semicolons (enumeration style)
+  if (t.includes(";")) return true;
+
+  return false;
+}
+
 function detectTruncation(text: string): boolean {
   if (!text || text.length < 5) return false;
   const trimmed = text.trim().replace(/\.+$/, "").trim(); // Strip trailing period for analysis
@@ -603,6 +644,10 @@ function detectTruncation(text: string): boolean {
   if (/^(Cenário|Solução|Resultado|Reflexão|Reflexao|Resumo|Objetivo|Insight|Atenção|Dica|Nota|Importante)\s*$/i.test(trimmed)) return false;
   // Label:value patterns like "Cenário: ..." are not truncated
   if (/^(Cenário|Solução|Resultado|Prompt para IA|Reflexão)\s*[:–-]\s*.{15,}/i.test(trimmed)) return false;
+
+  // ═══ BULLET/ENUMERATION EXEMPTION (v4 calibration) ═══
+  // Valid bullets, enumerations, and nominal phrases typical of slides are NOT truncated
+  if (isValidBullet(trimmed)) return false;
 
   // ═══ DANGLING CONNECTORS ═══
   // Ends in dangling connector/preposition/article (even if period was appended)
@@ -627,16 +672,10 @@ function detectTruncation(text: string): boolean {
   if (PT_PRESENT_TRANSITIVE.test(trimmed)) return true;
 
   // ═══ SUSPICIOUSLY SHORT SENTENCES ═══
-  // Very short sentence (< 35 chars, >= 3 words) that isn't a label or self-contained noun phrase
-  if (wordCount >= 3 && wordCount <= 5 && trimmed.length < 35) {
-    // Check if it ends with a self-contained noun — those are OK
-    if (!PT_COMPLETE_ENDINGS.test(trimmed)) {
-      // Check if it looks like a sentence fragment
-      if (!/^(Cenário|Solução|Resultado|Reflexão|Resumo|Objetivo|Insight|Atenção|Dica|Nota|Importante)/i.test(trimmed)) {
-        return true;
-      }
-    }
-  }
+  // Very short sentence (< 35 chars, >= 3 words) — ONLY flag if clearly incomplete
+  // v4 calibration: removed this as a standalone rule — isValidBullet handles the exemption above,
+  // and the verb/preposition checks catch real truncations regardless of length
+  // This prevents false positives on valid short bullets like "Modelos específicos para marketing."
 
   // ═══ ARTIFICIAL SPLITS (e.g., "A gestão de documentos. IA permite...") ═══
   if (/\.\s+(IA|A IA|Ela|Ele|Isso|Esta|Este|Essa|Esse)\s/i.test(text.trim()) && wordCount <= 12) {
@@ -645,7 +684,7 @@ function detectTruncation(text: string): boolean {
 
   // ═══ ELLIPSIS INDICATING CUT ═══
   if (/\.\.\.\s/.test(text.trim()) && wordCount >= 4) {
-    return true; // "A IA automatiza tarefas... liberando tempo"
+    return true;
   }
 
   return false;
