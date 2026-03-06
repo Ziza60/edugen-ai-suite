@@ -2825,7 +2825,8 @@ function preParseAllModules(modules: any[]): Map<number, PreParsedModule> {
   return result;
 }
 
-
+/* ═══════════════════════════════════════════════════════
+   LAYOUT CLASSIFICATION & SLIDE BUILDING
    ═══════════════════════════════════════════════════════ */
 
 type LayoutType =
