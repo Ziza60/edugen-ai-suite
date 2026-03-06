@@ -2882,89 +2882,113 @@ function renderModuleCover(pptx: any, data: SlideData) {
 
 // ── DEFINITION CARD WITH PILLARS ──
 function renderDefinitionWithPillars(pptx: any, data: SlideData) {
-  const slide = pptx.addSlide();
-  resetSlideIcons();
-  slide.background = { color: C.BG_WHITE };
   const items = data.items || [];
   if (items.length === 0) return;
 
-  let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
-
-  // ── FIT DEFINITION TEXT TO BOX — prevent overflow ──
   const defTextRaw = items[0];
+  const pillars = items.slice(1, 4);
   const defBoxW = SAFE_W - 0.60;
-  // Pre-fit text to determine required height accurately
-  const defFit = fitTextForBox(defTextRaw, defBoxW, 2.5, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+
+  // ── PRE-CHECK: Does the full text fit with pillars on the same slide? ──
+  // We need ~2.0" for pillars. Check if definition fits in remaining space at 18pt min.
+  const PILLAR_ZONE_H = pillars.length > 0 ? 2.10 : 0;
+  const HEADER_ESTIMATE = 1.60; // header + spacing
+  const availForDefWithPillars = SLIDE_H - HEADER_ESTIMATE - BOTTOM_MARGIN - PILLAR_ZONE_H - 0.30;
+  const availForDefAlone = SLIDE_H - HEADER_ESTIMATE - BOTTOM_MARGIN - 0.30;
+
+  // Test fit at TYPO.BODY (18pt) minimum — never go below 18pt for body text
+  const testFitWithPillars = fitTextForBox(defTextRaw, defBoxW, availForDefWithPillars, TYPO.BODY, FONT_BODY, TYPO.BODY);
+  const needsSplit = testFitWithPillars.adjusted && pillars.length > 0;
+
+  // ── SLIDE 1: Definition ──
+  const slide1 = pptx.addSlide();
+  resetSlideIcons();
+  slide1.background = { color: C.BG_WHITE };
+  let contentY = renderContentHeader(slide1, data.sectionLabel || "", data.title);
+
+  // If splitting, definition gets the full slide height; otherwise share with pillars
+  const maxDefAvail = needsSplit ? (SLIDE_H - contentY - BOTTOM_MARGIN - 0.20) : (SLIDE_H - contentY - BOTTOM_MARGIN - PILLAR_ZONE_H - 0.30);
+  const defFit = fitTextForBox(defTextRaw, defBoxW, maxDefAvail, TYPO.BODY, FONT_BODY, TYPO.BODY);
   const defTextLines = estimateTextLines(defFit.text, defBoxW, defFit.fontSize);
   const defTextH = Math.max(0.50, defTextLines * (defFit.fontSize * 1.4) / 72 + 0.10);
-  const defCardH = Math.max(1.0, defTextH + 0.65);
-  // Cap to available space
-  const maxDefCardH = Math.min(defCardH, SLIDE_H - contentY - BOTTOM_MARGIN - 1.80);
+  const defCardH = Math.min(Math.max(1.0, defTextH + 0.65), maxDefAvail);
 
-  slide.addShape(pptx.ShapeType.rect, {
-    x: MARGIN, y: contentY, w: SAFE_W, h: maxDefCardH,
+  slide1.addShape(pptx.ShapeType.rect, {
+    x: MARGIN, y: contentY, w: SAFE_W, h: defCardH,
     fill: { color: C.BG_LIGHT }, line: { color: C.ACCENT_BLUE, width: 1.5 }, rectRadius: 0.10,
   });
-  addTextSafe(slide, "DEFINIÇÃO ESSENCIAL", {
+  addTextSafe(slide1, "DEFINIÇÃO ESSENCIAL", {
     x: MARGIN + 0.30, y: contentY + 0.15, w: defBoxW, h: 0.30,
     fontSize: TYPO.SUPPORT, fontFace: FONT_TITLE, color: C.ACCENT_BLUE, bold: true, letterSpacing: 2,
   });
-  addTextSafe(slide, defFit.text, {
-    x: MARGIN + 0.30, y: contentY + 0.50, w: defBoxW, h: maxDefCardH - 0.65,
+  addTextSafe(slide1, defFit.text, {
+    x: MARGIN + 0.30, y: contentY + 0.50, w: defBoxW, h: defCardH - 0.65,
     fontSize: defFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top", lineSpacingMultiple: 1.4,
   });
 
-  contentY += maxDefCardH + 0.30;
+  contentY += defCardH + 0.30;
 
-  const pillars = items.slice(1, 4);
+  // ── PILLARS: Render on same slide or continuation slide ──
   if (pillars.length > 0) {
+    let pillarSlide: any;
+    let pillarY: number;
+
+    if (needsSplit) {
+      // Continuation slide for pillars
+      pillarSlide = pptx.addSlide();
+      resetSlideIcons();
+      pillarSlide.background = { color: C.BG_WHITE };
+      pillarY = renderContentHeader(pillarSlide, data.sectionLabel || "", smartTitle(data.title + " (cont.)"));
+    } else {
+      pillarSlide = slide1;
+      pillarY = contentY;
+    }
+
     const cols = pillars.length;
     const gapX = 0.22;
     const pillarW = (SAFE_W - (cols - 1) * gapX) / cols;
-    const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
-    const pillarH = Math.min(availH, 1.60);
+    const availH = SLIDE_H - pillarY - BOTTOM_MARGIN;
+    const pillarH = Math.min(availH, 1.80);
 
     pillars.forEach((pillar, idx) => {
       const x = MARGIN + idx * (pillarW + gapX);
       const accentColor = CARD_ACCENT_COLORS_FN()[idx % CARD_ACCENT_COLORS_FN().length];
 
-      slide.addShape(pptx.ShapeType.rect, {
-        x, y: contentY, w: pillarW, h: pillarH,
+      pillarSlide.addShape(pptx.ShapeType.rect, {
+        x, y: pillarY, w: pillarW, h: pillarH,
         fill: { color: C.BG_LIGHT }, line: { color: C.CARD_BORDER, width: 0.5 }, rectRadius: 0.08,
       });
-      slide.addShape(pptx.ShapeType.rect, {
-        x: x + 0.10, y: contentY, w: pillarW - 0.20, h: 0.05, fill: { color: accentColor },
+      pillarSlide.addShape(pptx.ShapeType.rect, {
+        x: x + 0.10, y: pillarY, w: pillarW - 0.20, h: 0.05, fill: { color: accentColor },
       });
 
       const circleSize = 0.40;
       const circleX = x + (pillarW - circleSize) / 2;
-      const circleY = contentY + 0.18;
+      const circleY = pillarY + 0.18;
       const iconChar = getSemanticIcon(pillar, idx);
-      addCenteredIconInCircle(slide, pptx, {
-        x: circleX,
-        y: circleY,
-        size: circleSize,
-        circleColor: accentColor,
-        iconChar,
-        fontSize: TYPO.ICON,
+      addCenteredIconInCircle(pillarSlide, pptx, {
+        x: circleX, y: circleY, size: circleSize,
+        circleColor: accentColor, iconChar, fontSize: TYPO.ICON,
       });
 
       const colonIdx = pillar.indexOf(":");
       const pTitle = colonIdx > 2 && colonIdx < 50 ? smartTruncate(pillar.substring(0, colonIdx).trim(), 35) : "";
-      const pBody = pTitle ? smartTruncate(pillar.substring(colonIdx + 1).trim(), 80) : smartTruncate(pillar, 80);
+      const pBody = pTitle ? pillar.substring(colonIdx + 1).trim() : pillar;
+      // Fit pillar body text to its box
+      const pBodyFit = fitTextForBox(pBody, pillarW - 0.24, pillarH - 0.75, TYPO.CARD_BODY, FONT_BODY, 12);
 
-      let textY = contentY + 0.65;
+      let textY = pillarY + 0.65;
       if (pTitle) {
-        addTextSafe(slide, pTitle, {
+        addTextSafe(pillarSlide, pTitle, {
           x: x + 0.12, y: textY, w: pillarW - 0.24, h: 0.35,
           fontSize: TYPO.CARD_TITLE, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
           align: "center",
         });
         textY += 0.38;
       }
-      addTextSafe(slide, pBody, {
-        x: x + 0.12, y: textY, w: pillarW - 0.24, h: pillarH - (textY - contentY) - 0.10,
-        fontSize: TYPO.CARD_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
+      addTextSafe(pillarSlide, pBodyFit.text, {
+        x: x + 0.12, y: textY, w: pillarW - 0.24, h: pillarH - (textY - pillarY) - 0.10,
+        fontSize: pBodyFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT,
         align: "center", valign: "top", lineSpacingMultiple: 1.3,
       });
     });
@@ -4018,15 +4042,33 @@ Deno.serve(async (req: Request) => {
     qualityReport.stage2_avg_density = Number(avgDensity.toFixed(1));
     console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
-    // ── STAGE 3: VISUAL VALIDATION (Bounding Box + WCAG) ──
+    // ── STAGE 3: VISUAL VALIDATION (Bounding Box + WCAG + Overflow Split) ──
     let bboxOverflows = 0;
     let bboxFixes = 0;
+    let overflowSplits = 0;
+
+    // 3a. Pre-render overflow detection for definition_card slides
     for (const s of allSlides) {
+      if (s.layout === "definition_card_with_pillars" && s.items && s.items.length > 0) {
+        const defText = s.items[0];
+        const defBoxW = SAFE_W - 0.60;
+        const HEADER_EST = 1.60;
+        const PILLAR_ZONE = s.items.length > 1 ? 2.10 : 0;
+        const availWithPillars = SLIDE_H - HEADER_EST - BOTTOM_MARGIN - PILLAR_ZONE - 0.30;
+        const testFit = fitTextForBox(defText, defBoxW, availWithPillars, TYPO.BODY, FONT_BODY, TYPO.BODY);
+        if (testFit.adjusted && s.items.length > 1) {
+          overflowSplits++;
+          console.log("[STAGE-3] Definition overflow detected, will auto-split: " + s.title);
+        }
+      }
+
+      // Standard bbox check for bullet-based slides
       if (s.items) {
         const boxW = SAFE_W - 0.50;
         const maxItemH = (SLIDE_H - 2.0 - BOTTOM_MARGIN) / Math.min(s.items.length, activeDensity.maxBulletsPerSlide);
         for (let i = 0; i < s.items.length; i++) {
-          const fit = fitTextForBox(s.items[i], boxW, maxItemH, TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
+          const minFontForItem = s.layout === "definition_card_with_pillars" ? TYPO.BODY : TYPO.SUPPORT;
+          const fit = fitTextForBox(s.items[i], boxW, maxItemH, TYPO.BULLET_TEXT, FONT_BODY, minFontForItem);
           if (fit.adjusted) {
             bboxOverflows++;
             bboxFixes++;
@@ -4055,7 +4097,7 @@ Deno.serve(async (req: Request) => {
     if (qualityReport.stage3_wcag_failures.length > 0) {
       console.warn("[STAGE-3] WCAG failures: " + qualityReport.stage3_wcag_failures.join(", "));
     }
-    console.log("[STAGE-3] Visual validation: " + bboxOverflows + " overflows, " + bboxFixes + " fixes, " + qualityReport.stage3_wcag_failures.length + " WCAG failures");
+    console.log("[STAGE-3] Visual validation: " + bboxOverflows + " overflows, " + bboxFixes + " fixes, " + overflowSplits + " def-splits, " + qualityReport.stage3_wcag_failures.length + " WCAG failures");
 
     // ── STAGE 4: FINAL QUALITY CHECKLIST WITH RETRY (accumulative) ──
     const MAX_QC_RETRIES = 3;
