@@ -214,6 +214,11 @@ interface AjusteTextoResult {
   truncado: boolean;
 }
 
+/**
+ * PRE-RENDER TEXT WRAPPING v3 — NEVER produces "..."
+ * When text exceeds capacity, cuts at sentence boundary or last complete word.
+ * Adds period if needed instead of ellipsis.
+ */
 function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinhas = 2): AjusteTextoResult {
   if (!texto) return { texto: "", linhas: 0, truncado: false };
   const t = texto.trim();
@@ -222,10 +227,43 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
     return { texto: t, linhas: 1, truncado: false };
   }
   
-  const palavras = t.split(' ');
+  const totalCapacity = maxCaracteresPorLinha * maxLinhas;
+  
+  // If text fits within total capacity, just wrap it
+  if (t.length <= totalCapacity) {
+    const palavras = t.split(' ');
+    const linhas: string[] = [];
+    let linhaAtual = '';
+    for (const palavra of palavras) {
+      if (linhaAtual === '') {
+        linhaAtual = palavra;
+      } else if ((linhaAtual + ' ' + palavra).length <= maxCaracteresPorLinha) {
+        linhaAtual += ' ' + palavra;
+      } else {
+        linhas.push(linhaAtual);
+        linhaAtual = palavra;
+      }
+    }
+    if (linhaAtual) linhas.push(linhaAtual);
+    return { texto: linhas.join('\n'), linhas: linhas.length, truncado: false };
+  }
+  
+  // Text exceeds total capacity — cut at sentence boundary (NO ellipsis)
+  const sub = t.substring(0, totalCapacity);
+  const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
+  let cutText: string;
+  if (sentenceEnd > totalCapacity * 0.45) {
+    cutText = t.substring(0, sentenceEnd + 1).trim();
+  } else {
+    // Cut at last complete word, clean trailing prepositions
+    cutText = smartTruncate(t, totalCapacity, false);
+    if (!/[.!?]$/.test(cutText)) cutText += ".";
+  }
+  
+  // Re-wrap the cut text
+  const palavras = cutText.split(' ');
   const linhas: string[] = [];
   let linhaAtual = '';
-  
   for (const palavra of palavras) {
     if (linhaAtual === '') {
       linhaAtual = palavra;
@@ -233,36 +271,17 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
       linhaAtual += ' ' + palavra;
     } else {
       linhas.push(linhaAtual);
-      if (linhas.length >= maxLinhas) {
-        // Last allowed line — truncate remaining
-        const remaining = palavras.slice(palavras.indexOf(palavra)).join(' ');
-        if (remaining.length <= maxCaracteresPorLinha) {
-          linhas.push(remaining);
-        } else {
-          // Truncate at word boundary
-          let lastLine = '';
-          for (const p of palavras.slice(palavras.indexOf(palavra))) {
-            if ((lastLine + ' ' + p).trim().length <= maxCaracteresPorLinha - 3) {
-              lastLine = (lastLine + ' ' + p).trim();
-            } else break;
-          }
-          linhas.push(lastLine + '...');
-        }
-        break;
-      }
+      if (linhas.length >= maxLinhas) break;
       linhaAtual = palavra;
     }
   }
-  if (linhaAtual && linhas.length < maxLinhas) {
-    linhas.push(linhaAtual);
-  }
+  if (linhaAtual && linhas.length < maxLinhas) linhas.push(linhaAtual);
   
   const resultado = linhas.join('\n');
-  const truncado = resultado.endsWith('...');
   return { 
     texto: resultado, 
     linhas: linhas.length, 
-    truncado
+    truncado: cutText.length < t.length
   };
 }
 
@@ -375,6 +394,11 @@ function smartSubtitle(text: string): string {
   return result;
 }
 
+/**
+ * SMART BULLET v2 — structural pre-processing for long bullets
+ * For "Label: long explanation" patterns, compresses the explanation part only,
+ * preserving the label. Never produces "..." — uses sentence boundaries.
+ */
 function smartBullet(text: string): string {
   if (!text) return "";
   const maxChars = activeDensity.maxCharsPerBullet;
@@ -386,6 +410,22 @@ function smartBullet(text: string): string {
     return t;
   }
   
+  // STRUCTURAL PRE-PROCESSING for "Label: long explanation" patterns
+  // e.g., "Deep Learning: Subcampo do Machine Learning que utiliza Redes Neurais..."
+  const colonIdx = t.indexOf(":");
+  if (colonIdx > 2 && colonIdx < 55) {
+    const label = t.substring(0, colonIdx).trim();
+    const explanation = t.substring(colonIdx + 1).trim();
+    const remainingBudget = maxChars - label.length - 2; // ": " takes 2 chars
+    
+    if (remainingBudget > 30 && explanation.length > remainingBudget) {
+      // Compress only the explanation part, preserving the label
+      const compressedExplanation = smartTruncate(explanation, remainingBudget, false);
+      const result = label + ": " + enforceSentenceIntegrity(compressedExplanation);
+      return result;
+    }
+  }
+  
   // Try to cut at a sentence boundary first (preserve complete sentences)
   const sub = t.substring(0, maxChars);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
@@ -393,8 +433,8 @@ function smartBullet(text: string): string {
     return t.substring(0, sentenceEnd + 1).trim();
   }
   
-  // Fall back to smartTruncate
-  const result = smartTruncate(t, maxChars);
+  // Fall back to smartTruncate (never with ellipsis)
+  const result = smartTruncate(t, maxChars, false);
   if (result && !/[.!?]$/.test(result)) return result + ".";
   return result;
 }
@@ -550,6 +590,11 @@ interface AutoAdjustResult {
   text: string;
 }
 
+/**
+ * AUTO-ADJUST TEXT v2 — NEVER produces "..."
+ * Tries reducing font size first. If text still doesn't fit at minFont,
+ * cuts at sentence boundary and adds period (not ellipsis).
+ */
 function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFont = 32, minFont = 12): AutoAdjustResult {
   for (let size = maxFont; size >= minFont; size -= 1) {
     const check = validateTextDensity(text, boxWidth, boxHeight, size);
@@ -557,21 +602,20 @@ function autoAdjustText(text: string, boxWidth: number, boxHeight: number, maxFo
       return { fontSize: size, truncated: false, text };
     }
   }
-  // Last resort: truncate with smartTruncate but try to preserve sentence boundaries
+  // Last resort: cut at sentence boundary (NEVER add "...")
   const maxLen = validateTextDensity(text, boxWidth, boxHeight, minFont).maxChars;
-  if (maxLen >= text.length * 0.85) {
-    // Close enough — find sentence boundary instead of hard truncate
-    const sub = text.substring(0, maxLen);
-    const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
-    if (sentenceEnd > maxLen * 0.5) {
-      return { fontSize: minFont, truncated: true, text: text.substring(0, sentenceEnd + 1).trim() };
-    }
+  
+  // Try sentence boundary first
+  const sub = text.substring(0, Math.max(maxLen, 20));
+  const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
+  if (sentenceEnd > maxLen * 0.4) {
+    return { fontSize: minFont, truncated: true, text: text.substring(0, sentenceEnd + 1).trim() };
   }
-  return {
-    fontSize: minFont,
-    truncated: true,
-    text: smartTruncate(text, Math.max(maxLen - 3, 10), true),
-  };
+  
+  // Fall back to word boundary with sentence integrity (no ellipsis)
+  let result = smartTruncate(text, Math.max(maxLen, 10), false);
+  result = enforceSentenceIntegrity(result);
+  return { fontSize: minFont, truncated: true, text: result };
 }
 
 /* ═══════════════════════════════════════════════════════
