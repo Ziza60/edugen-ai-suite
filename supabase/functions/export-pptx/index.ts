@@ -373,7 +373,7 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
 }
 
 function smartTitle(text: string): string {
-  return smartTruncate(text, 80); // Titles need space for context
+  return smartTruncate(text, 100, false); // v6: Increased from 80 — titles wrapped by renderer
 }
 
 function smartSubtitle(text: string): string {
@@ -5805,7 +5805,7 @@ Deno.serve(async (req: Request) => {
       quality_score: Number(qualityScore.toFixed(1)),
       passed,
       blocked_reason: blockReason,
-      pipeline_version: "v5-bullet-calibration",
+      pipeline_version: "v6-pre-render-prevention",
       checkpoints,
       problematic_slides: problematicSlides.slice(0, 15),
       corrections_attempted: {
