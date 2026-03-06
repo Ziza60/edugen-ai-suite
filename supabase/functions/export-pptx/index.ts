@@ -4216,8 +4216,8 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
     });
 
     const colonIdx = item.indexOf(":");
-    const qTitleRaw = colonIdx > 2 && colonIdx < 50 ? smartTruncate(item.substring(0, colonIdx).trim(), 40) : "";
-    const qBodyRaw = qTitleRaw ? smartTruncate(item.substring(colonIdx + 1).trim(), 120) : smartTruncate(item, 120);
+    const qTitleRaw = colonIdx > 2 && colonIdx < 50 ? smartTruncate(item.substring(0, colonIdx).trim(), 50) : "";
+    const qBodyRaw = qTitleRaw ? smartTruncate(item.substring(colonIdx + 1).trim(), 150) : smartTruncate(item, 150);
 
     let textY = y + 0.25;
     const textX = x + 0.85; const textW = quadW - 1.05;
