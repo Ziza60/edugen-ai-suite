@@ -2181,6 +2181,57 @@ function sanitizeBullets(bullets: string[]): string[] {
   return result;
 }
 
+/**
+ * Build slide-level structured items by matching NLP-processed flat items
+ * back to the original StructuredItem hierarchy.
+ */
+function buildSlideStructuredItems(original: StructuredItem[], processedItems: string[]): StructuredItem[] {
+  if (!original || original.length === 0) return processedItems.map(t => ({ text: t, subItems: [] }));
+
+  const result: StructuredItem[] = [];
+  const usedProcessed = new Set<number>();
+
+  for (const orig of original) {
+    let matchIdx = -1;
+    for (let i = 0; i < processedItems.length; i++) {
+      if (usedProcessed.has(i)) continue;
+      const pi = processedItems[i];
+      const origPrefix = orig.text.substring(0, Math.min(25, orig.text.length));
+      const piPrefix = pi.substring(0, Math.min(25, pi.length));
+      if (pi === orig.text || origPrefix === piPrefix || pi.startsWith(orig.text.substring(0, 15))) {
+        matchIdx = i;
+        break;
+      }
+    }
+
+    if (matchIdx >= 0) {
+      usedProcessed.add(matchIdx);
+      // Collect arrow sub-items that follow in flat list
+      const matchedSubs: string[] = [];
+      for (let j = matchIdx + 1; j < processedItems.length; j++) {
+        if (usedProcessed.has(j)) continue;
+        if (processedItems[j].startsWith("  → ")) {
+          matchedSubs.push(processedItems[j].replace(/^\s*→\s*/, ""));
+          usedProcessed.add(j);
+        } else {
+          break;
+        }
+      }
+      const subs = matchedSubs.length > 0 ? matchedSubs : orig.subItems;
+      result.push({ text: processedItems[matchIdx], subItems: subs });
+    }
+  }
+
+  // Unmatched processed items become standalone
+  for (let i = 0; i < processedItems.length; i++) {
+    if (!usedProcessed.has(i) && !processedItems[i].startsWith("  → ")) {
+      result.push({ text: processedItems[i], subItems: [] });
+    }
+  }
+
+  return result;
+}
+
 function estimateTextLines(text: string, widthInches: number, fontPt: number): number {
   const charsPerInch = Math.max(5, 110 / fontPt);
   const charsPerLine = Math.max(10, Math.floor(widthInches * charsPerInch));
