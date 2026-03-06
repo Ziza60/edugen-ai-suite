@@ -590,6 +590,47 @@ const PT_PRESENT_TRANSITIVE = /\b(envolve|permite|identifica|analisa|utiliza|cat
 // Words that are clearly self-contained nouns (NOT truncations)
 const PT_COMPLETE_ENDINGS = /\b(IA|AI|TI|UX|UI|ML|BI|CX|RH|SEO|ROI|KPI|PLN|NLP|OCR|ERP|CRM|API|IoT|SaaS|B2B|B2C|dados|resultados|trabalho|profissional|negócios|clientes|empresa|equipe|mercado|processo|custos|tempo|eficiência|produtividade|qualidade|inovação|segurança|privacidade|desempenho|informações|decisões|operações|estratégias|ferramentas|tecnologia|sistemas|soluções|plataforma|insights)\s*$/i;
 
+/**
+ * Checks if a text looks like a valid bullet/enumeration rather than a truncated sentence.
+ * Valid bullets include: comma-separated lists, tool names, short action descriptions,
+ * nominal phrases typical in presentations.
+ */
+function isValidBullet(text: string): boolean {
+  const t = text.trim().replace(/\.+$/, "").trim();
+  const wc = t.split(/\s+/).length;
+
+  // Comma-separated enumerations: "ChatGPT, Google Gemini, Claude"
+  if ((t.match(/,/g) || []).length >= 1 && wc <= 8) return true;
+
+  // Action bullet: starts with verb in 3rd person and has object: "Aprimora textos existentes"
+  if (/^[A-ZÁÉÍÓÚÃÕ]?[a-záéíóúãõ]+[aei]\s+\w+/i.test(t) && wc >= 3 && wc <= 7) {
+    // Has object after verb — valid action bullet
+    const words = t.split(/\s+/);
+    const firstWord = words[0];
+    // 3rd-person verb ending in -a, -e, -i followed by a noun/object
+    if (/^[A-Z]?[a-záéíóúãõ]+(a|e|i)$/i.test(firstWord) && words.length >= 3) return true;
+  }
+
+  // Nominal phrase ending in noun/adjective (typical slide bullet)
+  // "Modelos específicos para marketing" — ends in a noun, has a qualifier
+  if (wc >= 3 && wc <= 6 && t.length >= 20 && t.length < 60) {
+    const lastWord = t.split(/\s+/).pop() || "";
+    // Ends with a noun (not a preposition/article/verb-infinitive)
+    if (lastWord.length >= 4 && !/[aeiou]r$/i.test(lastWord) && 
+        !/^(de|da|do|das|dos|na|no|em|para|por|com|ao|à|que|como)$/i.test(lastWord)) {
+      return true;
+    }
+  }
+
+  // Very short label-like items (2-3 words): "Atas de reunião", "Longos documentos"
+  if (wc <= 3 && t.length < 30 && t.length >= 5) return true;
+
+  // Items with semicolons (enumeration style)
+  if (t.includes(";")) return true;
+
+  return false;
+}
+
 function detectTruncation(text: string): boolean {
   if (!text || text.length < 5) return false;
   const trimmed = text.trim().replace(/\.+$/, "").trim(); // Strip trailing period for analysis
@@ -603,6 +644,10 @@ function detectTruncation(text: string): boolean {
   if (/^(Cenário|Solução|Resultado|Reflexão|Reflexao|Resumo|Objetivo|Insight|Atenção|Dica|Nota|Importante)\s*$/i.test(trimmed)) return false;
   // Label:value patterns like "Cenário: ..." are not truncated
   if (/^(Cenário|Solução|Resultado|Prompt para IA|Reflexão)\s*[:–-]\s*.{15,}/i.test(trimmed)) return false;
+
+  // ═══ BULLET/ENUMERATION EXEMPTION (v4 calibration) ═══
+  // Valid bullets, enumerations, and nominal phrases typical of slides are NOT truncated
+  if (isValidBullet(trimmed)) return false;
 
   // ═══ DANGLING CONNECTORS ═══
   // Ends in dangling connector/preposition/article (even if period was appended)
@@ -627,16 +672,10 @@ function detectTruncation(text: string): boolean {
   if (PT_PRESENT_TRANSITIVE.test(trimmed)) return true;
 
   // ═══ SUSPICIOUSLY SHORT SENTENCES ═══
-  // Very short sentence (< 35 chars, >= 3 words) that isn't a label or self-contained noun phrase
-  if (wordCount >= 3 && wordCount <= 5 && trimmed.length < 35) {
-    // Check if it ends with a self-contained noun — those are OK
-    if (!PT_COMPLETE_ENDINGS.test(trimmed)) {
-      // Check if it looks like a sentence fragment
-      if (!/^(Cenário|Solução|Resultado|Reflexão|Resumo|Objetivo|Insight|Atenção|Dica|Nota|Importante)/i.test(trimmed)) {
-        return true;
-      }
-    }
-  }
+  // Very short sentence (< 35 chars, >= 3 words) — ONLY flag if clearly incomplete
+  // v4 calibration: removed this as a standalone rule — isValidBullet handles the exemption above,
+  // and the verb/preposition checks catch real truncations regardless of length
+  // This prevents false positives on valid short bullets like "Modelos específicos para marketing."
 
   // ═══ ARTIFICIAL SPLITS (e.g., "A gestão de documentos. IA permite...") ═══
   if (/\.\s+(IA|A IA|Ela|Ele|Isso|Esta|Este|Essa|Esse)\s/i.test(text.trim()) && wordCount <= 12) {
@@ -645,7 +684,7 @@ function detectTruncation(text: string): boolean {
 
   // ═══ ELLIPSIS INDICATING CUT ═══
   if (/\.\.\.\s/.test(text.trim()) && wordCount >= 4) {
-    return true; // "A IA automatiza tarefas... liberando tempo"
+    return true;
   }
 
   return false;
@@ -656,40 +695,43 @@ function detectTruncation(text: string): boolean {
  * Deeper semantic truncation detection for post-render scan.
  * Catches cases where period was added to mask a cut sentence.
  */
+/**
+ * Deeper semantic truncation detection for post-render scan.
+ * v4: Respects bullet/enumeration exemptions to avoid false positives.
+ * Catches cases where period was added to mask a cut sentence.
+ */
 function detectSemanticTruncation(text: string): boolean {
   if (!text || text.length < 10) return false;
   
-  // First run the basic check
+  // v4: Exempt valid bullets/enumerations FIRST — before any heuristic
+  if (isValidBullet(text.trim().replace(/\.+$/, "").trim())) return false;
+  
+  // Run the basic check (which also calls isValidBullet internally)
   if (detectTruncation(text)) return true;
   
   const stripped = text.trim().replace(/\.+$/, "").trim();
   const wordCount = stripped.split(/\s+/).length;
   
-  // Sentence ends with a VERB (not a noun/adjective) — likely needs an object
+  // Sentence ends with an infinitive VERB — likely needs an object
   // E.g., "A IA atua como um catalisador para aumentar" → "aumentar" WHAT?
-  if (wordCount >= 4 && /[aeiou]r\s*$/i.test(stripped)) {
-    // Ends with infinitive verb
+  // v4: Only flag for longer sentences (>= 6 words) to avoid flagging action bullets
+  if (wordCount >= 6 && /[aeiou]r\s*$/i.test(stripped)) {
     const lastWord = stripped.split(/\s+/).pop() || "";
     if (lastWord.length >= 5 && /[aeiou]r$/i.test(lastWord)) {
       return true;
     }
   }
   
-  // Very short sentence ending in a single noun without context
-  // E.g., "Baseada em treinamento." "O processo envolve." "Algoritmos de IA, como."
-  if (wordCount >= 2 && wordCount <= 4 && stripped.length < 30) {
-    if (/,\s*como\s*$/i.test(stripped)) return true; // "..., como."
-    if (/\bem\b\s+\w+\s*$/i.test(stripped) && stripped.length < 25) return true; // "em treinamento."
-  }
-  
-  // Sentence ends with "massa.", "sentimentos.", "grandes." etc. — nouns that need more context
-  // Check if last word is a noun following a preposition or article
-  if (wordCount >= 3) {
+  // "..., como." — dangling comparative
+  if (/,\s*como\s*$/i.test(stripped)) return true;
+
+  // Sentence ending in preposition + noun is ONLY truncation if the sentence is long enough
+  // to indicate a complex clause was cut. Short phrases like "Atas de reunião" are valid bullets.
+  if (wordCount >= 6) {
     const words = stripped.split(/\s+/);
     const last = words[words.length - 1];
     const secondLast = words[words.length - 2] || "";
     if (/^(de|da|do|das|dos|em|na|no|nas|nos|a|à)$/i.test(secondLast) && last.length >= 4) {
-      // "...de grandes" "...a tomada" "...de sentimentos" — likely truncated
       return true;
     }
   }
@@ -5372,35 +5414,35 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ── POST-RENDER TRUNCATION SCAN v2 ──
-    // Uses the deeper detectSemanticTruncation to catch period-masked truncations
+    // ── POST-RENDER TRUNCATION SCAN v3 (calibrated) ──
+    // v4 calibration: removed redundant "short sentence" check that caused false positives.
+    // Now relies solely on detectSemanticTruncation which already exempts valid bullets.
+    // Added deduplication to prevent the same pattern from inflating the count.
     let postRenderTruncations = 0;
     const postRenderTruncationWarnings: string[] = [];
+    const seenTruncationPatterns = new Set<string>(); // Deduplication
+
     allSlides.forEach((s, idx) => {
       const textsToCheck = [s.title, s.description, ...(s.items || []), ...(s.objectives || [])].filter(Boolean);
       for (const txt of textsToCheck) {
-        // Use semantic detection which catches verb-ending and noun-after-preposition patterns
+        // Use semantic detection which now respects bullet/enumeration exemptions
         if (detectSemanticTruncation(txt)) {
+          // Deduplicate: normalize text to first 40 chars to avoid counting same pattern twice
+          const dedupKey = (txt || "").substring(0, 40).trim().toLowerCase();
+          if (seenTruncationPatterns.has(dedupKey)) continue;
+          seenTruncationPatterns.add(dedupKey);
+
           postRenderTruncations++;
           const msg = `Slide ${idx + 3} POST-RENDER TRUNCAMENTO: "${txt.substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
           qualityReport.stage4_all_warnings.push(msg);
         }
-        // Detect suspiciously short sentences (< 30 chars with > 2 words)
-        const stripped = (txt || "").replace(/\.+$/, "").trim();
-        const wc = stripped.split(/\s+/).length;
-        if (wc >= 2 && wc <= 4 && stripped.length < 30 && stripped.length > 3 &&
-            !/^(Cenário|Solução|Resultado|Reflexão|Resumo|Objetivo|Insight|Atenção|Dica|Nota|Importante|Automação|Identificação|Análise|Gerenciamento)/i.test(stripped)) {
-          // Check it's not a label:value pattern
-          if (!/^[A-Z][\w\s]+:\s+/.test(txt || "")) {
-            postRenderTruncations++;
-            const msg = `Slide ${idx + 3} FRASE CURTA SUSPEITA: "${stripped}"`;
-            postRenderTruncationWarnings.push(msg);
-            qualityReport.stage4_all_warnings.push(msg);
-          }
-        }
-        // Detect artificial splits with "..." mid-sentence
-        if (/\.\.\.\s/.test(txt || "") && wc >= 4) {
+        // Detect artificial splits with "..." mid-sentence (kept — these are always real issues)
+        if (/\.\.\.\s/.test(txt || "") && (txt || "").split(/\s+/).length >= 4) {
+          const dedupKey = "split:" + (txt || "").substring(0, 40).trim().toLowerCase();
+          if (seenTruncationPatterns.has(dedupKey)) continue;
+          seenTruncationPatterns.add(dedupKey);
+
           postRenderTruncations++;
           const msg = `Slide ${idx + 3} SPLIT ARTIFICIAL: "${(txt || "").substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
@@ -5409,7 +5451,7 @@ Deno.serve(async (req: Request) => {
       }
     });
     if (postRenderTruncations > 0) {
-      console.warn(`[POST-RENDER] Found ${postRenderTruncations} truncation issues across slides`);
+      console.warn(`[POST-RENDER] Found ${postRenderTruncations} truncation issues (deduplicated) across slides`);
       postRenderTruncationWarnings.slice(0, 10).forEach(w => console.warn(`  ${w}`));
     }
 
@@ -5417,21 +5459,22 @@ Deno.serve(async (req: Request) => {
     // 4 formal checkpoints with individual scores and weighted final score.
     // Weights: content=40, structure=20, visual=25, file=15
 
-    // --- Checkpoint 1: CONTENT (weight 40% — INCREASED from 35%) ---
-    // Measures: truncation warnings (including post-render scan), grammar fixes, NLP quality
+    // --- Checkpoint 1: CONTENT (weight 40%) ---
+    // v4 calibration: Deduplicated warnings feed into scoring, reducing false inflation.
+    // Penalty per real truncation remains strong (10 pts) but false positives no longer accumulate.
     const contentTruncationWarnings = qualityReport.stage4_all_warnings.filter(
-      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|FRASE CURTA|SPLIT ARTIFICIAL/i.test(w)
+      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA|POST-RENDER|SPLIT ARTIFICIAL/i.test(w)
     ).length;
     const contentFixes = qualityReport.stage4_all_fixes.filter(
       (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
     ).length;
     const contentScore = Math.max(0, Math.min(100,
       100
-      - Math.min(70, contentTruncationWarnings * 12) // INCREASED from *8 — each truncation costs 12 points
+      - Math.min(70, contentTruncationWarnings * 10) // v4: 10 pts per real truncation (was 12 — calibrated after FP reduction)
       - Math.min(20, (qualityReport.stage1_5_llm_nonsense_dropped || 0) * 5)
-      + Math.min(10, contentFixes * 0.3) // REDUCED fix bonus — fixes don't compensate for truncations
+      + Math.min(10, contentFixes * 0.3)
     ));
-    const contentCritical = contentTruncationWarnings > 3; // TIGHTENED from > 5
+    const contentCritical = contentTruncationWarnings > 4; // v4: relaxed from >3 since FPs are now filtered
 
     // --- Checkpoint 2: STRUCTURE (weight 25%) ---
     // Measures: repetition, empty slides, density, coherence
