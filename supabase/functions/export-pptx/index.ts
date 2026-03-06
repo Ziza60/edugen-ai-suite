@@ -5573,7 +5573,7 @@ Deno.serve(async (req: Request) => {
     // --- Checkpoint 3: VISUAL (weight 25%) ---
     // Measures: WCAG contrast, bounding box overflows, overflow splits
     const wcagFailures = qualityReport.stage3_wcag_failures.length;
-    const visualWarnings = qualityReport.stage4_all_warnings.filter(
+    const visualWarnings = dedupedWarnings.filter(
       (w: string) => /WCAG|TABELA|BBOX|CELULA/i.test(w)
     ).length;
     const visualFixes = qualityReport.stage4_all_fixes.filter(
