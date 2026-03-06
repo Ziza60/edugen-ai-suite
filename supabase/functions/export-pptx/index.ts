@@ -2453,9 +2453,9 @@ function sectionToParsedBlocks(section: MarkdownSection): ParsedBlock[] {
     if (token.type === "table_row" || token.type === "table_sep") {
       // If we have accumulated non-table content before this table, flush it
       if (!inTableSequence && contentTokens.length > 0) {
-        const items = extractItemsFromTokens(contentTokens);
-        if (items.length > 0) {
-          blocks.push({ heading, items, isTable: false, blockType });
+        const result = extractItemsFromTokens(contentTokens);
+        if (result.items.length > 0) {
+          blocks.push({ heading, items: result.items, structuredItems: result.structuredItems, isTable: false, blockType });
         }
         contentTokens.length = 0;
       }
@@ -2481,9 +2481,9 @@ function sectionToParsedBlocks(section: MarkdownSection): ParsedBlock[] {
 
   // Flush remaining content
   if (contentTokens.length > 0) {
-    const items = extractItemsFromTokens(contentTokens);
-    if (items.length > 0) {
-      blocks.push({ heading, items, isTable: false, blockType });
+    const result = extractItemsFromTokens(contentTokens);
+    if (result.items.length > 0) {
+      blocks.push({ heading, items: result.items, structuredItems: result.structuredItems, isTable: false, blockType });
     }
   }
 
