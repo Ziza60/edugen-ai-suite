@@ -66,15 +66,15 @@ interface DensityConfig {
 }
 const DENSITY_MODES: Record<string, DensityConfig> = {
   compact: {
-    maxBulletsPerSlide: 5, maxWordsPerBullet: 10, maxCharsPerBullet: 70,
+    maxBulletsPerSlide: 5, maxWordsPerBullet: 18, maxCharsPerBullet: 140,
     splitThreshold: 4, compressRatio: 0.50,
   },
   standard: {
-    maxBulletsPerSlide: 6, maxWordsPerBullet: 14, maxCharsPerBullet: 90,
+    maxBulletsPerSlide: 5, maxWordsPerBullet: 25, maxCharsPerBullet: 180,
     splitThreshold: 5, compressRatio: 0.65,
   },
   detailed: {
-    maxBulletsPerSlide: 8, maxWordsPerBullet: 18, maxCharsPerBullet: 120,
+    maxBulletsPerSlide: 6, maxWordsPerBullet: 30, maxCharsPerBullet: 220,
     splitThreshold: 7, compressRatio: 0.85,
   },
 };
@@ -345,18 +345,24 @@ function smartSubtitle(text: string): string {
 
 function smartBullet(text: string): string {
   if (!text) return "";
-  const maxWords = activeDensity.maxWordsPerBullet;
   const maxChars = activeDensity.maxCharsPerBullet;
-  const words = text.trim().split(/\s+/);
-  if (words.length > maxWords) {
-    const limited = words.slice(0, maxWords).join(" ");
-    if (limited.length <= maxChars) {
-      // Ensure ends with punctuation
-      if (!/[.!?]$/.test(limited)) return limited + ".";
-      return limited;
-    }
+  const t = text.trim();
+  
+  // If text fits within limit, return as-is (preserve full sentences)
+  if (t.length <= maxChars) {
+    if (!/[.!?]$/.test(t)) return t + ".";
+    return t;
   }
-  const result = smartTruncate(text, maxChars);
+  
+  // Try to cut at a sentence boundary first (preserve complete sentences)
+  const sub = t.substring(0, maxChars);
+  const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
+  if (sentenceEnd > maxChars * 0.4) {
+    return t.substring(0, sentenceEnd + 1).trim();
+  }
+  
+  // Fall back to smartTruncate
+  const result = smartTruncate(t, maxChars);
   if (result && !/[.!?]$/.test(result)) return result + ".";
   return result;
 }
