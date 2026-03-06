@@ -3942,7 +3942,7 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
    SLIDE RENDERERS v2 — Market-grade typography
    ═══════════════════════════════════════════════════════ */
 
-// ── COVER SLIDE ──
+// ── COVER SLIDE v2 — Expanded capacity: 3 lines for title, larger description box ──
 function renderCapa(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -3952,13 +3952,14 @@ function renderCapa(pptx: any, data: SlideData) {
     x: 0, y: 0, w: SLIDE_W, h: 0.08, fill: { color: C.SECONDARY },
   });
 
-  const titleY = 1.9;
+  const titleY = 1.6;
 
-  const ajustado = ajustarTextoAoBox(data.title, 40, 2);
-  const titleFontSize = ajustado.linhas === 1 ? 44 : 36;
-  const titleH = ajustado.linhas === 1 ? 1.0 : 1.5;
+  // v6: Allow 3 lines with 45 chars/line (135 chars total) for long course titles
+  const ajustado = ajustarTextoAoBox(data.title, 45, 3);
+  const titleFontSize = ajustado.linhas === 1 ? 44 : ajustado.linhas === 2 ? 36 : 30;
+  const titleH = ajustado.linhas === 1 ? 1.0 : ajustado.linhas === 2 ? 1.5 : 1.8;
   addTextSafe(slide, ajustado.texto, {
-    x: MARGIN + 1, y: titleY, w: SAFE_W - 2, h: titleH,
+    x: MARGIN + 0.5, y: titleY, w: SAFE_W - 1, h: titleH,
     fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
     align: "center", valign: "middle",
   });
@@ -3970,8 +3971,10 @@ function renderCapa(pptx: any, data: SlideData) {
 
   if (data.description) {
     const descRaw = smartSubtitle(sanitize(data.description));
-    const descFit = fitTextForBox(descRaw, SLIDE_W - 3, 1.5, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
-    const descH = Math.min(1.5, Math.max(0.55, (descFit.text.split(/\s+/).length / 14) * 0.22));
+    // v6: Increased description box height for longer descriptions
+    const descBoxH = 1.8;
+    const descFit = fitTextForBox(descRaw, SLIDE_W - 3, descBoxH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    const descH = Math.min(descBoxH, Math.max(0.60, estimateTextLines(descFit.text, SLIDE_W - 3, descFit.fontSize) * (descFit.fontSize * 1.4 / 72) + 0.10));
 
     addTextSafe(slide, descFit.text, {
       x: 1.5, y: sepY + 0.30, w: SLIDE_W - 3, h: descH,
@@ -4049,7 +4052,7 @@ function renderTOC(pptx: any, data: SlideData) {
   });
 }
 
-// ── MODULE COVER ──
+// ── MODULE COVER v2 — Expanded title capacity, fitTextForBox for objectives ──
 function renderModuleCover(pptx: any, data: SlideData) {
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -4071,14 +4074,16 @@ function renderModuleCover(pptx: any, data: SlideData) {
     fontSize: TYPO.MODULE_NUMBER, fontFace: FONT_TITLE, color: moduleColor, bold: true,
   });
 
-  const tituloAjustado = ajustarTextoAoBox(data.title, 35, 2);
-  const titleFontSize = tituloAjustado.linhas === 1 ? TYPO.MODULE_TITLE : 28;
+  // v6: Allow 3 lines with 42 chars/line (126 chars total) for long module titles
+  const tituloAjustado = ajustarTextoAoBox(data.title, 42, 3);
+  const titleFontSize = tituloAjustado.linhas === 1 ? TYPO.MODULE_TITLE : tituloAjustado.linhas === 2 ? 28 : 24;
+  const titleH = tituloAjustado.linhas === 1 ? 0.85 : tituloAjustado.linhas === 2 ? 1.20 : 1.50;
   addTextSafe(slide, tituloAjustado.texto, {
-    x: MARGIN, y: 2.8, w: SAFE_W * 0.70, h: tituloAjustado.linhas === 1 ? 0.85 : 1.20,
+    x: MARGIN, y: 2.8, w: SAFE_W * 0.70, h: titleH,
     fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
 
-  const sepY = tituloAjustado.linhas === 1 ? 3.70 : 4.05;
+  const sepY = 2.8 + titleH + 0.05;
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: sepY, w: 1.2, h: 0.05, fill: { color: C.SECONDARY },
   });
@@ -4086,34 +4091,37 @@ function renderModuleCover(pptx: any, data: SlideData) {
   // Calculate description height dynamically to avoid overlap with objectives
   let descEndY = sepY + 0.20;
   if (data.description) {
-    const desc = smartSubtitle(data.description);
-    // Estimate lines needed for description
-    const descCharsPerLine = Math.floor((SAFE_W * 0.65 * 96) / (TYPO.SUBTITLE * 0.54));
-    const descLines = Math.max(1, Math.ceil(desc.length / descCharsPerLine));
-    const descH = Math.max(0.55, descLines * (TYPO.SUBTITLE * 1.35 / 72) + 0.15);
-    addTextSafe(slide, desc, {
-      x: MARGIN, y: descEndY, w: SAFE_W * 0.65, h: descH,
-      fontSize: TYPO.SUBTITLE, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
+    const descW = SAFE_W * 0.65;
+    // v6: Use fitTextForBox for description instead of fixed subtitle truncation
+    const descFit = fitTextForBox(data.description, descW, 1.0, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
+    const descLines = estimateTextLines(descFit.text, descW, descFit.fontSize);
+    const descH = Math.max(0.45, descLines * (descFit.fontSize * 1.35 / 72) + 0.10);
+    addTextSafe(slide, descFit.text, {
+      x: MARGIN, y: descEndY, w: descW, h: descH,
+      fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
     });
-    descEndY += descH + 0.25;
+    descEndY += descH + 0.20;
   }
 
   const objectives = data.objectives || [];
   if (objectives.length > 0) {
-    const objStartY = Math.max(descEndY, sepY + 0.85);
+    const objStartY = Math.max(descEndY, sepY + 0.75);
+    const objW = SAFE_W * 0.60;
+    // v6: Use fitTextForBox per objective instead of hard smartTruncate(90)
+    // This allows font size reduction before cutting, avoiding "..." entirely
     objectives.slice(0, 3).forEach((obj, idx) => {
-      const objY = objStartY + idx * 0.48;
-      if (objY + 0.40 > SLIDE_H - 0.40) return;
+      const objY = objStartY + idx * 0.50;
+      if (objY + 0.44 > SLIDE_H - 0.40) return;
       const dotSize = 0.12;
-      const objLineH = (TYPO.SUPPORT * 1.35) / 72;
+      const objFit = fitTextForBox(obj, objW - 0.30, 0.44, TYPO.SUPPORT, FONT_BODY, 12);
+      const objLineH = (objFit.fontSize * 1.35) / 72;
       slide.addShape(pptx.ShapeType.ellipse, {
         x: MARGIN + 0.05, y: objY + (objLineH - dotSize) / 2 + 0.04, w: dotSize, h: dotSize,
         fill: { color: moduleColor },
       });
-      const objText = smartTruncate(obj, 90);
-      addTextSafe(slide, objText, {
-        x: MARGIN + 0.30, y: objY, w: SAFE_W * 0.60, h: 0.40,
-        fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
+      addTextSafe(slide, objFit.text, {
+        x: MARGIN + 0.30, y: objY, w: objW, h: 0.44,
+        fontSize: objFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
       });
     });
   }
