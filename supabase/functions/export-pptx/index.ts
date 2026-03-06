@@ -2246,9 +2246,16 @@ function makeBoldLabelText(
    tokenization → section grouping → pedagogical mapping.
    ═══════════════════════════════════════════════════════ */
 
+/** Structured item preserving parent/sub-item hierarchy */
+interface StructuredItem {
+  text: string;
+  subItems: string[];
+}
+
 interface ParsedBlock {
   heading: string;
   items: string[];
+  structuredItems?: StructuredItem[];
   isTable: boolean;
   headers?: string[];
   rows?: string[][];
@@ -2845,6 +2852,7 @@ interface SlideData {
   subtitle?: string;
   sectionLabel?: string;
   items?: string[];
+  structuredItems?: StructuredItem[];
   tableHeaders?: string[];
   tableRows?: string[][];
   moduleIndex?: number;
