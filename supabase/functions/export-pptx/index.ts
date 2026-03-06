@@ -695,40 +695,43 @@ function detectTruncation(text: string): boolean {
  * Deeper semantic truncation detection for post-render scan.
  * Catches cases where period was added to mask a cut sentence.
  */
+/**
+ * Deeper semantic truncation detection for post-render scan.
+ * v4: Respects bullet/enumeration exemptions to avoid false positives.
+ * Catches cases where period was added to mask a cut sentence.
+ */
 function detectSemanticTruncation(text: string): boolean {
   if (!text || text.length < 10) return false;
   
-  // First run the basic check
+  // v4: Exempt valid bullets/enumerations FIRST — before any heuristic
+  if (isValidBullet(text.trim().replace(/\.+$/, "").trim())) return false;
+  
+  // Run the basic check (which also calls isValidBullet internally)
   if (detectTruncation(text)) return true;
   
   const stripped = text.trim().replace(/\.+$/, "").trim();
   const wordCount = stripped.split(/\s+/).length;
   
-  // Sentence ends with a VERB (not a noun/adjective) — likely needs an object
+  // Sentence ends with an infinitive VERB — likely needs an object
   // E.g., "A IA atua como um catalisador para aumentar" → "aumentar" WHAT?
-  if (wordCount >= 4 && /[aeiou]r\s*$/i.test(stripped)) {
-    // Ends with infinitive verb
+  // v4: Only flag for longer sentences (>= 6 words) to avoid flagging action bullets
+  if (wordCount >= 6 && /[aeiou]r\s*$/i.test(stripped)) {
     const lastWord = stripped.split(/\s+/).pop() || "";
     if (lastWord.length >= 5 && /[aeiou]r$/i.test(lastWord)) {
       return true;
     }
   }
   
-  // Very short sentence ending in a single noun without context
-  // E.g., "Baseada em treinamento." "O processo envolve." "Algoritmos de IA, como."
-  if (wordCount >= 2 && wordCount <= 4 && stripped.length < 30) {
-    if (/,\s*como\s*$/i.test(stripped)) return true; // "..., como."
-    if (/\bem\b\s+\w+\s*$/i.test(stripped) && stripped.length < 25) return true; // "em treinamento."
-  }
-  
-  // Sentence ends with "massa.", "sentimentos.", "grandes." etc. — nouns that need more context
-  // Check if last word is a noun following a preposition or article
-  if (wordCount >= 3) {
+  // "..., como." — dangling comparative
+  if (/,\s*como\s*$/i.test(stripped)) return true;
+
+  // Sentence ending in preposition + noun is ONLY truncation if the sentence is long enough
+  // to indicate a complex clause was cut. Short phrases like "Atas de reunião" are valid bullets.
+  if (wordCount >= 6) {
     const words = stripped.split(/\s+/);
     const last = words[words.length - 1];
     const secondLast = words[words.length - 2] || "";
     if (/^(de|da|do|das|dos|em|na|no|nas|nos|a|à)$/i.test(secondLast) && last.length >= 4) {
-      // "...de grandes" "...a tomada" "...de sentimentos" — likely truncated
       return true;
     }
   }
