@@ -5246,55 +5246,189 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ── QUALITY SCORE CALCULATION ──
-    const qualityScore = Math.max(0, Math.min(100,
+    // ── CHECKPOINT-BASED QUALITY SCORING ──
+    // 4 formal checkpoints with individual scores and weighted final score.
+    // Weights: content=35, structure=25, visual=25, file=15
+
+    // --- Checkpoint 1: CONTENT (weight 35%) ---
+    // Measures: truncation warnings, grammar fixes, NLP quality
+    const contentTruncationWarnings = qualityReport.stage4_all_warnings.filter(
+      (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA/i.test(w)
+    ).length;
+    const contentFixes = qualityReport.stage4_all_fixes.filter(
+      (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
+    ).length;
+    const contentScore = Math.max(0, Math.min(100,
       100
-      - Math.min(40, qualityReport.stage4_final_warnings * 3)
-      - Math.min(15, qualityReport.stage3_wcag_failures.length * 5)
-      - Math.min(15, Math.floor(bboxOverflows * 0.5))
-      + Math.min(10, Math.floor(qualityReport.stage4_all_fixes.length * 0.2))
+      - Math.min(50, contentTruncationWarnings * 8)
+      - Math.min(20, (qualityReport.stage1_5_llm_nonsense_dropped || 0) * 5)
+      + Math.min(15, contentFixes * 0.5)
+    ));
+    const contentCritical = contentTruncationWarnings > 5;
+
+    // --- Checkpoint 2: STRUCTURE (weight 25%) ---
+    // Measures: repetition, empty slides, density, coherence
+    const structureWarnings = qualityReport.stage4_all_warnings.filter(
+      (w: string) => /REPETICAO|TITULO CURTO|TITULO GENERICO|MESCLADO|SIMBOLOS/i.test(w)
+    ).length;
+    const structureFixes = qualityReport.stage4_all_fixes.filter(
+      (f: string) => /MESCLADO|NORMALIZADA/i.test(f)
+    ).length;
+    const densityPenalty = qualityReport.stage2_avg_density < 30 ? 15 : qualityReport.stage2_avg_density < 50 ? 5 : 0;
+    const coherencePenalty = Math.min(20, (qualityReport.stage2_coherence_warnings?.length || 0) * 2);
+    const structureScore = Math.max(0, Math.min(100,
+      100
+      - Math.min(40, structureWarnings * 6)
+      - densityPenalty
+      - coherencePenalty
+      + Math.min(10, structureFixes * 1)
+    ));
+    const structureCritical = false; // structure issues are never hard-blockers alone
+
+    // --- Checkpoint 3: VISUAL (weight 25%) ---
+    // Measures: WCAG contrast, bounding box overflows, overflow splits
+    const wcagFailures = qualityReport.stage3_wcag_failures.length;
+    const visualWarnings = qualityReport.stage4_all_warnings.filter(
+      (w: string) => /WCAG|TABELA|BBOX|CELULA/i.test(w)
+    ).length;
+    const visualFixes = qualityReport.stage4_all_fixes.filter(
+      (f: string) => /BBOX|CELULA COMPRIMIDA|WCAG/i.test(f)
+    ).length;
+    const visualScore = Math.max(0, Math.min(100,
+      100
+      - Math.min(30, wcagFailures * 10)
+      - Math.min(30, visualWarnings * 5)
+      - Math.min(20, Math.floor(bboxOverflows * 1.5))
+      + Math.min(15, visualFixes * 1)
+    ));
+    const visualCritical = wcagFailures > 3;
+
+    // --- Checkpoint 4: FILE INTEGRITY (weight 15%) ---
+    // Measures: total slides sanity, retry exhaustion
+    const slideSanity = allSlides.length >= 3 && allSlides.length <= 200;
+    const retriesExhausted = qualityReport.stage4_retries_used >= MAX_QC_RETRIES && qualityReport.stage4_final_warnings > 0;
+    const fileScore = Math.max(0, Math.min(100,
+      (slideSanity ? 100 : 40)
+      - (retriesExhausted ? 20 : 0)
+      - Math.min(30, qualityReport.stage4_final_warnings * 2)
+    ));
+    const fileCritical = !slideSanity;
+
+    // --- Weighted final score ---
+    const qualityScore = Math.max(0, Math.min(100,
+      contentScore * 0.35 + structureScore * 0.25 + visualScore * 0.25 + fileScore * 0.15
     ));
 
-    console.log("[PIPELINE] Pipeline complete: " + allSlides.length + " slides, quality=" + qualityScore.toFixed(1));
+    const hasCriticalFailure = contentCritical || visualCritical || fileCritical;
 
-    // ── EXPORT GATE: Block if quality < 85 ──
-    if (qualityScore < 85) {
-      console.error("[GATE] Export BLOCKED: quality_score=" + qualityScore.toFixed(1) + " < 85");
-      const reportSummary = {
-        quality_score: Number(qualityScore.toFixed(1)),
-        passed: false,
-        pipeline_version: "v3-tfidf-rag",
-        pre_tfidf_corpus: qualityReport.pre_tfidf_corpus_size + " docs, " + qualityReport.pre_tfidf_terms + " terms",
+    // Build checkpoint details
+    const checkpoints = {
+      content: {
+        score: Number(contentScore.toFixed(1)),
+        weight: 35,
+        critical: contentCritical,
+        issues: qualityReport.stage4_all_warnings.filter(
+          (w: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|QUEBRA|TEXTO COM QUEBRA/i.test(w)
+        ).slice(0, 10),
+        fixes: qualityReport.stage4_all_fixes.filter(
+          (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
+        ).slice(0, 10),
+      },
+      structure: {
+        score: Number(structureScore.toFixed(1)),
+        weight: 25,
+        critical: structureCritical,
+        issues: [
+          ...qualityReport.stage4_all_warnings.filter(
+            (w: string) => /REPETICAO|TITULO CURTO|TITULO GENERICO|MESCLADO|SIMBOLOS/i.test(w)
+          ).slice(0, 10),
+          ...qualityReport.stage2_coherence_warnings.slice(0, 5),
+        ],
+        fixes: qualityReport.stage4_all_fixes.filter(
+          (f: string) => /MESCLADO|NORMALIZADA/i.test(f)
+        ).slice(0, 10),
+      },
+      visual: {
+        score: Number(visualScore.toFixed(1)),
+        weight: 25,
+        critical: visualCritical,
+        issues: [
+          ...qualityReport.stage3_wcag_failures.slice(0, 5),
+          ...qualityReport.stage4_all_warnings.filter(
+            (w: string) => /WCAG|TABELA|BBOX|CELULA/i.test(w)
+          ).slice(0, 10),
+        ],
+        fixes: qualityReport.stage4_all_fixes.filter(
+          (f: string) => /BBOX|CELULA COMPRIMIDA/i.test(f)
+        ).slice(0, 10),
+      },
+      file: {
+        score: Number(fileScore.toFixed(1)),
+        weight: 15,
+        critical: fileCritical,
+        issues: [
+          ...(slideSanity ? [] : ["Slide count fora do intervalo esperado (3-200): " + allSlides.length]),
+          ...(retriesExhausted ? ["Retries esgotados com " + qualityReport.stage4_final_warnings + " avisos restantes"] : []),
+        ],
+        fixes: [] as string[],
+      },
+    };
+
+    console.log("[PIPELINE] Checkpoints: content=" + contentScore.toFixed(1) +
+      " structure=" + structureScore.toFixed(1) + " visual=" + visualScore.toFixed(1) +
+      " file=" + fileScore.toFixed(1) + " => final=" + qualityScore.toFixed(1));
+
+    // Determine block reason
+    const blocked = qualityScore < 85 || hasCriticalFailure;
+    const blockReason = hasCriticalFailure
+      ? "Falha crítica em checkpoint essencial: " +
+        [contentCritical && "conteúdo", visualCritical && "visual", fileCritical && "arquivo"].filter(Boolean).join(", ")
+      : qualityScore < 85
+        ? "Score final (" + qualityScore.toFixed(1) + ") abaixo do mínimo (85)"
+        : null;
+
+    // Problematic slides (slides that had warnings)
+    const problematicSlides: { index: number; title: string; issues: string[] }[] = [];
+    allSlides.forEach((s, idx) => {
+      const slideWarnings = qualityReport.stage4_all_warnings.filter((w: string) => w.startsWith("Slide " + (idx + 3)));
+      if (slideWarnings.length > 0) {
+        problematicSlides.push({ index: idx + 3, title: s.title || "(sem título)", issues: slideWarnings.slice(0, 5) });
+      }
+    });
+
+    // Build structured report
+    const buildReport = (passed: boolean) => ({
+      quality_score: Number(qualityScore.toFixed(1)),
+      passed,
+      blocked_reason: blockReason,
+      pipeline_version: "v4-checkpoints",
+      checkpoints,
+      problematic_slides: problematicSlides.slice(0, 15),
+      corrections_attempted: {
+        total_fixes: qualityReport.stage4_all_fixes.length,
+        total_warnings: qualityReport.stage4_all_warnings.length,
+        retries_used: qualityReport.stage4_retries_used,
+        overflow_splits: qualityReport.stage3_overflow_splits,
+        dedup_removed: qualityReport.stage2_dedup_removed,
+        relevance_dropped: qualityReport.stage2_relevance_dropped,
+        llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
+        llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
+      },
+      summary: {
+        total_slides: allSlides.length + 3,
         pre_parse_blocks: qualityReport.pre_parse_total_blocks,
-        pre_parse_tables: qualityReport.pre_parse_total_tables,
-        stage0_semantic_planner_modules: qualityReport.stage0_semantic_planner_modules,
-        stage0_regex_fallback_modules: qualityReport.stage0_regex_fallback_modules,
-        stage1_slides_generated: qualityReport.stage1_slides_generated,
-        stage1_nlp_summarized: qualityReport.stage1_nlp_summarized,
-        stage1_5_llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
-        stage1_5_llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
-        stage1_5_llm_nonsense_dropped: qualityReport.stage1_5_llm_nonsense_dropped,
-        stage1_5_llm_relevance_dropped: qualityReport.stage1_5_llm_relevance_dropped,
-        stage2_dedup_removed: qualityReport.stage2_dedup_removed,
-        stage2_relevance_dropped: qualityReport.stage2_relevance_dropped,
-        stage2_avg_density: qualityReport.stage2_avg_density,
-        stage2_coherence_warnings_sample: qualityReport.stage2_coherence_warnings.slice(0, 10),
-        stage3_bbox_overflows: qualityReport.stage3_bbox_overflows,
-        stage3_bbox_fixes: qualityReport.stage3_bbox_fixes,
-        stage3_overflow_splits: qualityReport.stage3_overflow_splits,
-        stage3_wcag_failures_count: qualityReport.stage3_wcag_failures.length,
-        stage3_wcag_failures_sample: qualityReport.stage3_wcag_failures.slice(0, 10),
-        stage4_final_warnings: qualityReport.stage4_final_warnings,
-        stage4_final_fixes: qualityReport.stage4_final_fixes,
-        stage4_all_warnings_count: qualityReport.stage4_all_warnings.length,
-        stage4_all_fixes_count: qualityReport.stage4_all_fixes.length,
-        stage4_sample_warnings: qualityReport.stage4_all_warnings.slice(0, 15),
-        stage4_sample_fixes: qualityReport.stage4_all_fixes.slice(0, 15),
-      };
+        avg_density: qualityReport.stage2_avg_density,
+        bbox_overflows: qualityReport.stage3_bbox_overflows,
+        bbox_fixes: qualityReport.stage3_bbox_fixes,
+      },
+    });
 
+    // ── EXPORT GATE ──
+    if (blocked) {
+      console.error("[GATE] Export BLOCKED: score=" + qualityScore.toFixed(1) + " critical=" + hasCriticalFailure + " reason=" + blockReason);
       return new Response(JSON.stringify({
-        error: "Exportação bloqueada: qualidade insuficiente (score=" + qualityScore.toFixed(1) + "/100).",
-        quality_report: reportSummary,
+        error: "Exportação bloqueada: " + (blockReason || "qualidade insuficiente") + ".",
+        quality_report: buildReport(false),
       }), {
         status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

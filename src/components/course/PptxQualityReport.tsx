@@ -1,0 +1,223 @@
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  CheckCircle2, XCircle, AlertTriangle, FileText, Layout, Eye, HardDrive,
+} from "lucide-react";
+
+export interface QualityCheckpoint {
+  score: number;
+  weight: number;
+  critical: boolean;
+  issues: string[];
+  fixes: string[];
+}
+
+export interface QualityReport {
+  quality_score: number;
+  passed: boolean;
+  blocked_reason: string | null;
+  pipeline_version: string;
+  checkpoints: {
+    content: QualityCheckpoint;
+    structure: QualityCheckpoint;
+    visual: QualityCheckpoint;
+    file: QualityCheckpoint;
+  };
+  problematic_slides: { index: number; title: string; issues: string[] }[];
+  corrections_attempted: {
+    total_fixes: number;
+    total_warnings: number;
+    retries_used: number;
+    overflow_splits: number;
+    dedup_removed: number;
+    relevance_dropped: number;
+    llm_grammar_fixes: number;
+    llm_truncation_fixes: number;
+  };
+  summary: {
+    total_slides: number;
+    pre_parse_blocks: number;
+    avg_density: number;
+    bbox_overflows: number;
+    bbox_fixes: number;
+  };
+}
+
+interface Props {
+  report: QualityReport | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+const CHECKPOINT_META: Record<string, { label: string; icon: React.ReactNode }> = {
+  content: { label: "Conteúdo", icon: <FileText className="h-4 w-4" /> },
+  structure: { label: "Estrutura", icon: <Layout className="h-4 w-4" /> },
+  visual: { label: "Visual", icon: <Eye className="h-4 w-4" /> },
+  file: { label: "Arquivo", icon: <HardDrive className="h-4 w-4" /> },
+};
+
+function scoreColor(score: number): string {
+  if (score >= 85) return "text-green-600";
+  if (score >= 60) return "text-yellow-600";
+  return "text-red-600";
+}
+
+function progressColor(score: number): string {
+  if (score >= 85) return "bg-green-500";
+  if (score >= 60) return "bg-yellow-500";
+  return "bg-red-500";
+}
+
+function CheckpointCard({ name, cp }: { name: string; cp: QualityCheckpoint }) {
+  const meta = CHECKPOINT_META[name];
+  return (
+    <div className="border rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {meta.icon}
+          <span className="font-medium text-sm">{meta.label}</span>
+          <Badge variant="outline" className="text-[10px]">peso {cp.weight}%</Badge>
+          {cp.critical && <Badge variant="destructive" className="text-[10px]">CRÍTICO</Badge>}
+        </div>
+        <span className={`font-bold text-lg ${scoreColor(cp.score)}`}>{cp.score}</span>
+      </div>
+      <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+        <div
+          className={`h-full transition-all ${progressColor(cp.score)}`}
+          style={{ width: `${cp.score}%` }}
+        />
+      </div>
+      {cp.issues.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Problemas ({cp.issues.length})</p>
+          {cp.issues.slice(0, 5).map((issue, i) => (
+            <div key={i} className="flex items-start gap-1.5 text-xs text-destructive">
+              <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+              <span className="break-all">{issue}</span>
+            </div>
+          ))}
+          {cp.issues.length > 5 && (
+            <p className="text-xs text-muted-foreground">+{cp.issues.length - 5} mais</p>
+          )}
+        </div>
+      )}
+      {cp.fixes.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Correções ({cp.fixes.length})</p>
+          {cp.fixes.slice(0, 3).map((fix, i) => (
+            <div key={i} className="flex items-start gap-1.5 text-xs text-green-600">
+              <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0" />
+              <span className="break-all">{fix}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function PptxQualityReport({ report, open, onOpenChange }: Props) {
+  if (!report) return null;
+
+  const { checkpoints, corrections_attempted: ca, summary, problematic_slides } = report;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {report.passed ? (
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+            ) : (
+              <XCircle className="h-5 w-5 text-red-600" />
+            )}
+            Relatório de Qualidade PPTX
+          </DialogTitle>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[60vh] pr-2">
+          {/* Overall score */}
+          <div className="text-center mb-4">
+            <span className={`text-4xl font-bold ${scoreColor(report.quality_score)}`}>
+              {report.quality_score}
+            </span>
+            <span className="text-lg text-muted-foreground">/100</span>
+            <Badge variant={report.passed ? "default" : "destructive"} className="ml-3">
+              {report.passed ? "Aprovado" : "Bloqueado"}
+            </Badge>
+            {report.blocked_reason && (
+              <p className="text-sm text-destructive mt-2">{report.blocked_reason}</p>
+            )}
+          </div>
+
+          <Tabs defaultValue="checkpoints" className="w-full">
+            <TabsList className="w-full">
+              <TabsTrigger value="checkpoints" className="flex-1 text-xs">Checkpoints</TabsTrigger>
+              <TabsTrigger value="slides" className="flex-1 text-xs">Slides</TabsTrigger>
+              <TabsTrigger value="stats" className="flex-1 text-xs">Estatísticas</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="checkpoints" className="space-y-3 mt-3">
+              {Object.entries(checkpoints).map(([name, cp]) => (
+                <CheckpointCard key={name} name={name} cp={cp} />
+              ))}
+            </TabsContent>
+
+            <TabsContent value="slides" className="mt-3">
+              {problematic_slides.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Nenhum slide problemático encontrado.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {problematic_slides.slice(0, 10).map((ps, i) => (
+                    <div key={i} className="border rounded-lg p-3">
+                      <p className="text-sm font-medium">
+                        Slide {ps.index}: {ps.title}
+                      </p>
+                      {ps.issues.map((issue, j) => (
+                        <p key={j} className="text-xs text-destructive mt-1">• {issue}</p>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="stats" className="mt-3">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: "Total de slides", value: summary.total_slides },
+                  { label: "Blocos parseados", value: summary.pre_parse_blocks },
+                  { label: "Densidade média", value: summary.avg_density },
+                  { label: "Overflows detectados", value: summary.bbox_overflows },
+                  { label: "Overflows corrigidos", value: summary.bbox_fixes },
+                  { label: "Retries usados", value: ca.retries_used },
+                  { label: "Total de correções", value: ca.total_fixes },
+                  { label: "Total de avisos", value: ca.total_warnings },
+                  { label: "Splits de overflow", value: ca.overflow_splits },
+                  { label: "Dedup removidos", value: ca.dedup_removed },
+                  { label: "Correções gramática (LLM)", value: ca.llm_grammar_fixes },
+                  { label: "Correções truncamento (LLM)", value: ca.llm_truncation_fixes },
+                ].map((stat, i) => (
+                  <div key={i} className="border rounded-lg p-2.5 text-center">
+                    <p className="text-lg font-bold">{stat.value}</p>
+                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </ScrollArea>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
