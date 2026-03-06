@@ -127,9 +127,35 @@ function refreshColors() { C = getC(); }
 const CARD_ACCENT_COLORS_FN = () => [C.ACCENT_BLUE, C.ACCENT_GREEN, C.ACCENT_PURPLE, C.SECONDARY, C.ACCENT_RED, C.PRIMARY];
 const MODULE_NUMBER_COLORS_FN = () => activePalette.slice(0, 5);
 
+// ── SLIDE TEMPLATES ──
+interface SlideTemplate {
+  fonts: { title: string; body: string };
+  colors: { primary: string; secondary: string; accent: string };
+}
+const SLIDE_TEMPLATES: Record<string, SlideTemplate> = {
+  default: {
+    fonts: { title: "Montserrat", body: "Open Sans" },
+    colors: { primary: "2C3E50", secondary: "9B59B6", accent: "E67E22" },
+  },
+  academic: {
+    fonts: { title: "Times New Roman", body: "Arial" },
+    colors: { primary: "003366", secondary: "6699CC", accent: "FF6600" },
+  },
+  corporate: {
+    fonts: { title: "Montserrat", body: "Open Sans" },
+    colors: { primary: "1A1A1A", secondary: "4A4A4A", accent: "007BFF" },
+  },
+  creative: {
+    fonts: { title: "Playfair Display", body: "Lato" },
+    colors: { primary: "2C3E50", secondary: "E74C3C", accent: "F39C12" },
+  },
+};
+
+let activeTemplate: SlideTemplate = SLIDE_TEMPLATES.default;
+
 // ── TYPOGRAPHY v2 — Market-grade minimum sizes ──
-const FONT_TITLE = "Montserrat";
-const FONT_BODY = "Open Sans";
+let FONT_TITLE = "Montserrat";
+let FONT_BODY = "Open Sans";
 
 const TYPO = {
   MODULE_NUMBER: 72,     // Montserrat Bold
@@ -4018,20 +4044,37 @@ Deno.serve(async (req: Request) => {
     const userId = claimsData.user.id;
 
     const body = await req.json();
-    const { course_id, palette, density, theme, includeImages } = body;
+    const { course_id, palette, density, theme, includeImages, template } = body;
     if (!course_id) {
       return new Response(JSON.stringify({ error: "course_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Apply user customization
+    // Apply template first (fonts + base colors)
+    activeTemplate = SLIDE_TEMPLATES[template || "default"] || SLIDE_TEMPLATES.default;
+    FONT_TITLE = activeTemplate.fonts.title;
+    FONT_BODY = activeTemplate.fonts.body;
+
+    // Apply user customization (theme, palette, density override template colors when set)
     activeThemeKey = theme === "dark" ? "dark" : "light";
     currentTheme = THEME[activeThemeKey];
     activePalette = PALETTES[palette || "default"] || PALETTES.default;
     activeDensity = DENSITY_MODES[density || "standard"] || DENSITY_MODES.standard;
+
+    // If template != default AND palette == default, apply template accent colors into the palette
+    if ((template || "default") !== "default" && (palette || "default") === "default") {
+      activePalette = [
+        activeTemplate.colors.secondary,
+        activeTemplate.colors.accent,
+        activeTemplate.colors.primary,
+        activeTemplate.colors.accent,
+        activeTemplate.colors.secondary,
+      ];
+    }
+
     refreshColors();
-    console.log("[CONFIG] Theme:" + activeThemeKey + " Palette:" + (palette || "default") + " Density:" + (density || "standard"));
+    console.log("[CONFIG] Template:" + (template || "default") + " Theme:" + activeThemeKey + " Palette:" + (palette || "default") + " Density:" + (density || "standard"));
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
