@@ -2236,7 +2236,9 @@ function makeBoldLabelText(
 }
 
 /* ═══════════════════════════════════════════════════════
-   CONTENT PARSING
+   CONTENT PARSING — Semantic Block Parser v2
+   Replaces line-by-line splitting with structured markdown
+   tokenization → section grouping → pedagogical mapping.
    ═══════════════════════════════════════════════════════ */
 
 interface ParsedBlock {
@@ -2248,94 +2250,395 @@ interface ParsedBlock {
   blockType?: "example" | "reflection" | "conclusion" | "warning" | "summary" | "normal";
 }
 
-function classifyBlockType(heading: string, items: string[]): "example" | "reflection" | "conclusion" | "warning" | "summary" | "normal" {
-  const h = heading.toLowerCase();
-  if (/exemplo|case|cen[aá]rio|pr[aá]tic|aplica[cç][aã]o\s+real|estudo\s+de\s+caso|\[ideia\]/i.test(h)) return "example";
-  if (/reflex[aã]o|pare\s+um\s+momento|pense|reflita|checkpoint/i.test(h)) return "reflection";
-  if (/desafio|cuidado|risco|limita[cç]/i.test(h)) return "warning";
-  if (/conclus[aã]o|encerramento|fechamento|consider|final|key\s*takeaway|takeaway/i.test(h)) return "conclusion";
-  // Check items content too
-  const allText = items.join(" ").toLowerCase();
-  if (/exemplo\s+pr[aá]tico|na\s+pr[aá]tica|caso\s+real/i.test(allText) && items.length <= 4) return "example";
-  return "normal";
+// ── Markdown Token Types ──
+type MdTokenType = "heading" | "bullet" | "numbered" | "table_row" | "table_sep" | "blockquote" | "separator" | "paragraph";
+
+interface MdToken {
+  type: MdTokenType;
+  raw: string;
+  content: string;         // cleaned content
+  headingLevel?: number;   // 1-6 for headings
+  indent?: number;         // nesting depth for lists
 }
 
-function parseModuleContent(content: string): ParsedBlock[] {
-  const lines = content.split("\n");
-  const blocks: ParsedBlock[] = [];
-  let curHeading = "";
-  let curBullets: string[] = [];
-  let inTable = false;
-  let tHeaders: string[] = [];
-  let tRows: string[][] = [];
+// ── Pedagogical Section Mapping ──
+const PEDAGOGICAL_EMOJI_MAP: Record<string, { blockType: ParsedBlock["blockType"]; label: string }> = {
+  "🎯": { blockType: "normal",     label: "Objetivo do Módulo" },
+  "🧠": { blockType: "normal",     label: "Fundamentos" },
+  "⚙️": { blockType: "normal",     label: "Como funciona" },
+  "🧩": { blockType: "normal",     label: "Modelos / Tipos" },
+  "🛠️": { blockType: "normal",     label: "Aplicações reais" },
+  "💡": { blockType: "example",    label: "Exemplo prático" },
+  "⚠️": { blockType: "warning",    label: "Desafios e cuidados" },
+  "💭": { blockType: "reflection", label: "Reflexão" },
+  "🧾": { blockType: "summary",    label: "Resumo do Módulo" },
+  "📌": { blockType: "conclusion", label: "Key Takeaways" },
+};
 
-  const flushBullets = () => {
-    if (curBullets.length > 0) {
-      const blockType = classifyBlockType(curHeading, curBullets);
-      blocks.push({ heading: curHeading, items: [...curBullets], isTable: false, blockType });
-      curBullets = [];
-    }
-  };
-  const flushTable = () => {
-    if (tRows.length > 0) {
-      blocks.push({ heading: curHeading, items: [], isTable: true, headers: [...tHeaders], rows: [...tRows], blockType: "normal" });
-      tHeaders = []; tRows = [];
-    }
-    inTable = false;
-  };
+/**
+ * PASS 1: Tokenize markdown into typed tokens.
+ * Each line becomes a token with its structural role identified.
+ */
+function tokenizeMarkdown(content: string): MdToken[] {
+  const lines = content.split("\n");
+  const tokens: MdToken[] = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
+
+    // Empty lines → skip
     if (!trimmed) continue;
+
+    // Separators (---)
+    if (/^-{3,}\s*$/.test(trimmed) || /^\*{3,}\s*$/.test(trimmed)) {
+      tokens.push({ type: "separator", raw: line, content: "" });
+      continue;
+    }
+
+    // Headings (# to ######)
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      tokens.push({
+        type: "heading",
+        raw: line,
+        content: headingMatch[2].trim(),
+        headingLevel: headingMatch[1].length,
+      });
+      continue;
+    }
+
+    // Table rows (|...|)
     if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
-      if (!inTable) {
-        flushBullets();
-        inTable = true;
-        const rawCells = trimmed.split("|").filter(Boolean).map(c => c.trim());
-        // Validate: skip if all cells are empty or it looks malformed
-        if (rawCells.length >= 2 && rawCells.some(c => c.length > 0)) {
-          tHeaders = rawCells.map(c => sanitize(c));
-        } else {
-          inTable = false; // Not a real table
-          const clean = sanitize(trimmed.replace(/\|/g, " "));
-          if (clean.length > 8) curBullets.push(clean);
-        }
-      } else if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
-        // separator — validate it matches header count
-        const sepCells = trimmed.split("|").filter(Boolean);
-        if (tHeaders.length > 0 && sepCells.length !== tHeaders.length) {
-          // Mismatched separator — this isn't a real table
-          flushTable();
-          const clean = sanitize(trimmed.replace(/\|/g, " "));
-          if (clean.length > 8) curBullets.push(clean);
-        }
-      } else {
-        const rowCells = trimmed.split("|").filter(Boolean).map(c => sanitize(c.trim()));
-        // Normalize column count to match headers
-        while (rowCells.length < tHeaders.length) rowCells.push("");
-        if (rowCells.length > tHeaders.length) rowCells.length = tHeaders.length;
-        tRows.push(rowCells);
+      // Table separator row
+      if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
+        tokens.push({ type: "table_sep", raw: line, content: trimmed });
+        continue;
       }
+      tokens.push({ type: "table_row", raw: line, content: trimmed });
       continue;
     }
-    if (inTable) flushTable();
-    if (/^#{1,6}\s/.test(trimmed)) {
-      flushBullets();
-      curHeading = sanitize(trimmed.replace(/^#{1,6}\s*/, ""));
+
+    // Blockquotes (> ...)
+    if (/^>\s+/.test(trimmed)) {
+      tokens.push({ type: "blockquote", raw: line, content: trimmed.replace(/^>\s+/, "").trim() });
       continue;
     }
-    if (/^[-*]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed)) {
-      const raw = trimmed.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "");
-      const clean = sanitize(raw);
-      if (clean.length > 3) curBullets.push(clean);
+
+    // Bullet lists (- or * or •)
+    if (/^[-*•]\s+/.test(trimmed)) {
+      const indent = (line.match(/^(\s*)/) || ["", ""])[1].length;
+      tokens.push({
+        type: "bullet",
+        raw: line,
+        content: trimmed.replace(/^[-*•]\s+/, "").trim(),
+        indent: Math.floor(indent / 2),
+      });
       continue;
     }
-    const clean = sanitize(trimmed);
-    if (clean.length > 8) curBullets.push(clean);
+
+    // Numbered lists (1. or 1))
+    if (/^\d+[.)]\s+/.test(trimmed)) {
+      const indent = (line.match(/^(\s*)/) || ["", ""])[1].length;
+      tokens.push({
+        type: "numbered",
+        raw: line,
+        content: trimmed.replace(/^\d+[.)]\s+/, "").trim(),
+        indent: Math.floor(indent / 2),
+      });
+      continue;
+    }
+
+    // Everything else → paragraph
+    tokens.push({ type: "paragraph", raw: line, content: trimmed });
   }
-  if (inTable) flushTable();
-  flushBullets();
+
+  return tokens;
+}
+
+/**
+ * PASS 2: Group tokens into sections under their parent heading.
+ * Each section is a heading + all tokens until the next heading of same or higher level.
+ */
+interface MarkdownSection {
+  heading: string;
+  headingLevel: number;
+  tokens: MdToken[];
+  pedagogicalEmoji: string | null;
+}
+
+function detectPedagogicalEmoji(heading: string): string | null {
+  for (const emoji of Object.keys(PEDAGOGICAL_EMOJI_MAP)) {
+    if (heading.includes(emoji)) return emoji;
+  }
+  return null;
+}
+
+function groupTokensIntoSections(tokens: MdToken[]): MarkdownSection[] {
+  const sections: MarkdownSection[] = [];
+  let currentSection: MarkdownSection = {
+    heading: "",
+    headingLevel: 0,
+    tokens: [],
+    pedagogicalEmoji: null,
+  };
+
+  for (const token of tokens) {
+    if (token.type === "heading") {
+      // Flush current section if it has content
+      if (currentSection.tokens.length > 0 || currentSection.heading) {
+        sections.push(currentSection);
+      }
+      const emoji = detectPedagogicalEmoji(token.content);
+      currentSection = {
+        heading: token.content,
+        headingLevel: token.headingLevel || 3,
+        tokens: [],
+        pedagogicalEmoji: emoji,
+      };
+      continue;
+    }
+
+    // Skip separators between sections (they're structural, not content)
+    if (token.type === "separator") continue;
+
+    currentSection.tokens.push(token);
+  }
+
+  // Flush last section
+  if (currentSection.tokens.length > 0 || currentSection.heading) {
+    sections.push(currentSection);
+  }
+
+  return sections;
+}
+
+/**
+ * PASS 3: Convert each section into a ParsedBlock.
+ * - Table tokens → table block
+ * - List tokens → item block
+ * - Paragraph tokens → item block (each paragraph becomes an item)
+ * - Blockquotes → item block with reflection detection
+ * - Mixed content → split into sub-blocks to avoid mixing topics
+ */
+function sectionToParsedBlocks(section: MarkdownSection): ParsedBlock[] {
+  const blocks: ParsedBlock[] = [];
+  const heading = sanitize(section.heading);
+
+  // Determine block type from pedagogical emoji or heading content
+  let blockType: ParsedBlock["blockType"] = "normal";
+  if (section.pedagogicalEmoji && PEDAGOGICAL_EMOJI_MAP[section.pedagogicalEmoji]) {
+    blockType = PEDAGOGICAL_EMOJI_MAP[section.pedagogicalEmoji].blockType;
+  } else {
+    blockType = classifyBlockType(heading, []);
+  }
+
+  // Separate tokens by type for structured processing
+  const tableTokens: MdToken[] = [];
+  const contentTokens: MdToken[] = [];
+  let inTableSequence = false;
+
+  for (const token of section.tokens) {
+    if (token.type === "table_row" || token.type === "table_sep") {
+      // If we have accumulated non-table content before this table, flush it
+      if (!inTableSequence && contentTokens.length > 0) {
+        const items = extractItemsFromTokens(contentTokens);
+        if (items.length > 0) {
+          blocks.push({ heading, items, isTable: false, blockType });
+        }
+        contentTokens.length = 0;
+      }
+      inTableSequence = true;
+      tableTokens.push(token);
+    } else {
+      // If we were in a table sequence, flush the table first
+      if (inTableSequence && tableTokens.length > 0) {
+        const tableBlock = parseTableTokens(tableTokens, heading);
+        if (tableBlock) blocks.push(tableBlock);
+        tableTokens.length = 0;
+        inTableSequence = false;
+      }
+      contentTokens.push(token);
+    }
+  }
+
+  // Flush remaining table
+  if (tableTokens.length > 0) {
+    const tableBlock = parseTableTokens(tableTokens, heading);
+    if (tableBlock) blocks.push(tableBlock);
+  }
+
+  // Flush remaining content
+  if (contentTokens.length > 0) {
+    const items = extractItemsFromTokens(contentTokens);
+    if (items.length > 0) {
+      blocks.push({ heading, items, isTable: false, blockType });
+    }
+  }
+
+  // If section had a heading but produced no blocks, create an empty one
+  // so the heading doesn't get lost
+  if (blocks.length === 0 && heading) {
+    // Don't create empty blocks for separators or headings with no content
+  }
+
   return blocks;
+}
+
+/**
+ * Extract clean items from a sequence of non-table tokens.
+ * Paragraphs are merged into items only if they're short enough.
+ * Lists stay as individual items.
+ * Blockquotes become items.
+ */
+function extractItemsFromTokens(tokens: MdToken[]): string[] {
+  const items: string[] = [];
+  let paragraphBuffer = "";
+
+  const flushParagraph = () => {
+    if (paragraphBuffer.trim()) {
+      const clean = sanitize(paragraphBuffer.trim());
+      if (clean.length > 3) items.push(clean);
+      paragraphBuffer = "";
+    }
+  };
+
+  for (const token of tokens) {
+    switch (token.type) {
+      case "bullet":
+      case "numbered": {
+        flushParagraph();
+        const clean = sanitize(token.content);
+        if (clean.length > 3) items.push(clean);
+        break;
+      }
+      case "blockquote": {
+        flushParagraph();
+        const clean = sanitize(token.content);
+        if (clean.length > 3) items.push(clean);
+        break;
+      }
+      case "paragraph": {
+        // Short paragraphs (< 300 chars) become items
+        // Long paragraphs get split at sentence boundaries
+        const clean = sanitize(token.content);
+        if (clean.length <= 3) break;
+
+        if (clean.length <= 300) {
+          flushParagraph();
+          items.push(clean);
+        } else {
+          // Split long paragraph into sentences, group into ~150-char chunks
+          flushParagraph();
+          const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
+          let chunk = "";
+          for (const sentence of sentences) {
+            const s = sentence.trim();
+            if (chunk.length + s.length > 250 && chunk.length > 0) {
+              items.push(chunk.trim());
+              chunk = s;
+            } else {
+              chunk = chunk ? chunk + " " + s : s;
+            }
+          }
+          if (chunk.trim().length > 3) items.push(chunk.trim());
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  flushParagraph();
+  return items;
+}
+
+/**
+ * Parse a sequence of table tokens into a table ParsedBlock.
+ * Validates header/separator/row structure.
+ */
+function parseTableTokens(tokens: MdToken[], heading: string): ParsedBlock | null {
+  const dataRows: MdToken[] = [];
+  const sepRows: MdToken[] = [];
+
+  for (const t of tokens) {
+    if (t.type === "table_sep") sepRows.push(t);
+    else dataRows.push(t);
+  }
+
+  if (dataRows.length < 2) return null; // Need at least header + 1 data row
+
+  // First data row = headers
+  const headerRow = dataRows[0];
+  const headers = headerRow.content.split("|").filter(Boolean).map(c => sanitize(c.trim()));
+
+  if (headers.length < 2 || !headers.some(h => h.length > 0)) return null;
+
+  // Validate separator matches header count (if present)
+  if (sepRows.length > 0) {
+    const sepCells = sepRows[0].content.split("|").filter(Boolean);
+    if (sepCells.length !== headers.length) {
+      // Mismatched — not a real table, treat as text
+      return null;
+    }
+  }
+
+  // Remaining data rows
+  const rows: string[][] = [];
+  for (let i = 1; i < dataRows.length; i++) {
+    const cells = dataRows[i].content.split("|").filter(Boolean).map(c => sanitize(c.trim()));
+    // Normalize column count
+    while (cells.length < headers.length) cells.push("");
+    if (cells.length > headers.length) cells.length = headers.length;
+    rows.push(cells);
+  }
+
+  if (rows.length === 0) return null;
+
+  return {
+    heading: sanitize(heading),
+    items: [],
+    isTable: true,
+    headers,
+    rows,
+    blockType: "normal",
+  };
+}
+
+/**
+ * Main entry point: Semantic Markdown Parser v2.
+ * Replaces the old line-by-line parseModuleContent.
+ *
+ * Pipeline: tokenize → group by heading → convert to ParsedBlocks
+ * with pedagogical section awareness and proper content separation.
+ */
+function parseModuleContent(content: string): ParsedBlock[] {
+  // PASS 1: Tokenize
+  const tokens = tokenizeMarkdown(content);
+  console.log("[SEMANTIC-PARSER] Tokenized: " + tokens.length + " tokens (" +
+    tokens.filter(t => t.type === "heading").length + " headings, " +
+    tokens.filter(t => t.type === "bullet" || t.type === "numbered").length + " list items, " +
+    tokens.filter(t => t.type === "table_row").length + " table rows)");
+
+  // PASS 2: Group into sections
+  const sections = groupTokensIntoSections(tokens);
+  console.log("[SEMANTIC-PARSER] Grouped into " + sections.length + " sections" +
+    (sections.filter(s => s.pedagogicalEmoji).length > 0
+      ? " (" + sections.filter(s => s.pedagogicalEmoji).length + " pedagogical)"
+      : ""));
+
+  // PASS 3: Convert to ParsedBlocks
+  const allBlocks: ParsedBlock[] = [];
+  for (const section of sections) {
+    const blocks = sectionToParsedBlocks(section);
+    allBlocks.push(...blocks);
+  }
+
+  console.log("[SEMANTIC-PARSER] Output: " + allBlocks.length + " blocks (" +
+    allBlocks.filter(b => b.isTable).length + " tables, " +
+    allBlocks.filter(b => b.blockType !== "normal").length + " typed)");
+
+  return allBlocks;
 }
 
 /* ═══════════════════════════════════════════════════════
