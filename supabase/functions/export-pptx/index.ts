@@ -221,14 +221,16 @@ interface AjusteTextoResult {
  */
 function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinhas = 2): AjusteTextoResult {
   if (!texto) return { texto: "", linhas: 0, truncado: false };
+  const original = texto;
   const t = texto.trim();
-  
+
   if (t.length <= maxCaracteresPorLinha) {
+    forensicTrace("renderer", "ajustarTextoAoBox", "fit_adjustment", original, t, "text_fits_single_line", false);
     return { texto: t, linhas: 1, truncado: false };
   }
-  
+
   const totalCapacity = maxCaracteresPorLinha * maxLinhas;
-  
+
   // If text fits within total capacity, just wrap it
   if (t.length <= totalCapacity) {
     const palavras = t.split(' ');
@@ -245,9 +247,11 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
       }
     }
     if (linhaAtual) linhas.push(linhaAtual);
-    return { texto: linhas.join('\n'), linhas: linhas.length, truncado: false };
+    const wrapped = linhas.join('\n');
+    forensicTrace("renderer", "ajustarTextoAoBox", "fit_adjustment", original, wrapped, "wrapped_without_truncation", false);
+    return { texto: wrapped, linhas: linhas.length, truncado: false };
   }
-  
+
   // Text exceeds total capacity — cut at sentence boundary (NO ellipsis)
   const sub = t.substring(0, totalCapacity);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
@@ -259,7 +263,7 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
     cutText = smartTruncate(t, totalCapacity, false);
     if (!/[.!?]$/.test(cutText)) cutText += ".";
   }
-  
+
   // Re-wrap the cut text
   const palavras = cutText.split(' ');
   const linhas: string[] = [];
@@ -276,12 +280,23 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
     }
   }
   if (linhaAtual && linhas.length < maxLinhas) linhas.push(linhaAtual);
-  
+
   const resultado = linhas.join('\n');
-  return { 
-    texto: resultado, 
-    linhas: linhas.length, 
-    truncado: cutText.length < t.length
+  const truncado = cutText.length < t.length;
+  forensicTrace(
+    "renderer",
+    "ajustarTextoAoBox",
+    truncado ? "compression_used" : "fit_adjustment",
+    original,
+    resultado,
+    truncado ? "text_exceeded_box_capacity" : "wrapped_within_capacity",
+    truncado,
+  );
+
+  return {
+    texto: resultado,
+    linhas: linhas.length,
+    truncado,
   };
 }
 
