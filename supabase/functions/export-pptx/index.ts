@@ -6155,6 +6155,18 @@ Deno.serve(async (req: Request) => {
           const slides = semanticPlanToSlides(plan, globalIdx);
           allSlides.push(...slides);
           semanticPlannerUsed++;
+          const slideBase = allSlides.length - slides.length;
+          slides.forEach((slide, localIdx) => {
+            const slideNum = slideBase + localIdx + 3;
+            forensicTraceField(slideNum, slide.layout, "title", "0", "semanticPlanToSlides", "regeneration_applied", "", slide.title || "", "stage0_slide_created", false);
+            forensicTraceField(slideNum, slide.layout, "description", "0", "semanticPlanToSlides", "regeneration_applied", "", slide.description || "", "stage0_slide_created", false);
+            (slide.objectives || []).forEach((obj, oi) => {
+              forensicTraceField(slideNum, slide.layout, `objective[${oi}]`, "0", "semanticPlanToSlides", "regeneration_applied", "", obj || "", "stage0_slide_created", false);
+            });
+            (slide.items || []).forEach((item, ii) => {
+              forensicTraceField(slideNum, slide.layout, `item[${ii}]`, "0", "semanticPlanToSlides", "regeneration_applied", "", item || "", "stage0_slide_created", false);
+            });
+          });
           console.log("[STAGE-0] Module " + (globalIdx + 1) + ": LLM plan from pre-parsed input (" + slides.length + " slides)");
         } else {
           // Fallback: build slides directly from pre-parsed blocks (reuse, no re-parsing)
@@ -6163,12 +6175,36 @@ Deno.serve(async (req: Request) => {
             const slides = buildModuleSlidesFromBlocks(preParsed.blocks, mod, globalIdx, modules.length);
             allSlides.push(...slides);
             regexFallbackUsed++;
+            const slideBase = allSlides.length - slides.length;
+            slides.forEach((slide, localIdx) => {
+              const slideNum = slideBase + localIdx + 3;
+              forensicTraceField(slideNum, slide.layout, "title", "0", "buildModuleSlidesFromBlocks", "fallback_used", "", slide.title || "", "stage0_regex_fallback", false);
+              forensicTraceField(slideNum, slide.layout, "description", "0", "buildModuleSlidesFromBlocks", "fallback_used", "", slide.description || "", "stage0_regex_fallback", false);
+              (slide.objectives || []).forEach((obj, oi) => {
+                forensicTraceField(slideNum, slide.layout, `objective[${oi}]`, "0", "buildModuleSlidesFromBlocks", "fallback_used", "", obj || "", "stage0_regex_fallback", false);
+              });
+              (slide.items || []).forEach((item, ii) => {
+                forensicTraceField(slideNum, slide.layout, `item[${ii}]`, "0", "buildModuleSlidesFromBlocks", "fallback_used", "", item || "", "stage0_regex_fallback", false);
+              });
+            });
             console.log("[STAGE-0] Module " + (globalIdx + 1) + ": fallback from pre-parsed blocks (" + slides.length + " slides)");
           } else {
             // Last resort: full parse + build (shouldn't happen since pre-parse ran)
             const slides = buildModuleSlides(mod, globalIdx, modules.length);
             allSlides.push(...slides);
             regexFallbackUsed++;
+            const slideBase = allSlides.length - slides.length;
+            slides.forEach((slide, localIdx) => {
+              const slideNum = slideBase + localIdx + 3;
+              forensicTraceField(slideNum, slide.layout, "title", "0", "buildModuleSlides", "fallback_used", "", slide.title || "", "stage0_full_fallback", false);
+              forensicTraceField(slideNum, slide.layout, "description", "0", "buildModuleSlides", "fallback_used", "", slide.description || "", "stage0_full_fallback", false);
+              (slide.objectives || []).forEach((obj, oi) => {
+                forensicTraceField(slideNum, slide.layout, `objective[${oi}]`, "0", "buildModuleSlides", "fallback_used", "", obj || "", "stage0_full_fallback", false);
+              });
+              (slide.items || []).forEach((item, ii) => {
+                forensicTraceField(slideNum, slide.layout, `item[${ii}]`, "0", "buildModuleSlides", "fallback_used", "", item || "", "stage0_full_fallback", false);
+              });
+            });
             console.log("[STAGE-0] Module " + (globalIdx + 1) + ": full fallback (" + slides.length + " slides)");
           }
         }
