@@ -6643,7 +6643,7 @@ Idioma: pt-BR`
       quality_score: Number(qualityScore.toFixed(1)),
       passed,
       blocked_reason: blockReason,
-      pipeline_version: "v10-focused-structural-fixes",
+      pipeline_version: "v11-real-flow-consistency",
       checkpoints,
       problematic_slides: problematicSlides.slice(0, 15),
       corrections_attempted: {
