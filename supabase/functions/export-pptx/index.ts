@@ -5147,11 +5147,15 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
   });
 
   if (rendered < items.length) {
+    if (rendered === 0) {
+      console.warn("[FLOW] EXAMPLE | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
+      return;
+    }
     const remaining = items.slice(rendered);
     flowLog("EXAMPLE", "renderExampleHighlight -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
     renderExampleHighlight(pptx, {
       ...data,
-      title: getContinuationTitle(data.title || "Exemplo Prático", 2),
+      title: getNextContinuationTitle(data.title || "Exemplo Prático", "Exemplo Prático"),
       items: remaining,
     });
   }
@@ -5392,11 +5396,15 @@ function renderWarningCallout(pptx: any, data: SlideData) {
   });
 
   if (rendered < items.length) {
+    if (rendered === 0) {
+      console.warn("[FLOW] WARNING | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
+      return;
+    }
     const remaining = items.slice(rendered);
     flowLog("WARNING", "renderWarningCallout -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
     renderWarningCallout(pptx, {
       ...data,
-      title: getContinuationTitle(data.title || "Desafios e Cuidados", 2),
+      title: getNextContinuationTitle(data.title || "Desafios e Cuidados", "Desafios e Cuidados"),
       items: remaining,
     });
   }
@@ -5469,11 +5477,15 @@ function renderSummarySlide(pptx: any, data: SlideData) {
   });
 
   if (rendered < items.length) {
+    if (rendered === 0) {
+      console.warn("[FLOW] SUMMARY | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
+      return;
+    }
     const remaining = items.slice(rendered);
     flowLog("SUMMARY", "renderSummarySlide -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
     renderSummarySlide(pptx, {
       ...data,
-      title: getContinuationTitle(data.title || "Resumo do Módulo", 2),
+      title: getNextContinuationTitle(data.title || "Resumo do Módulo", "Resumo do Módulo"),
       items: remaining,
     });
   }
