@@ -5959,6 +5959,7 @@ Deno.serve(async (req: Request) => {
     // Stage 1.5: LLM NLP → Stage 2: Structure → Stage 3: Visual → Stage 4: Final QC
     // ═══════════════════════════════════════════════════════
     console.log("[PIPELINE] Starting multi-stage validation pipeline v3...");
+    forensicReset();
 
     // ── PRE-STAGE A: Build TF-IDF corpus from all module content for semantic operations ──
     const corpusDocs = modules.map((m: any) => sanitize(m.content || "")).filter((c: string) => c.length > 20);
@@ -7094,22 +7095,33 @@ Idioma: pt-BR`
     renderTOC(pptx, { layout: "module_cover", title: "O que voce vai aprender", modules: modulesSummary });
 
     // 3. All module slides
-    for (const sd of allSlides) {
+    for (let _si = 0; _si < allSlides.length; _si++) {
+      const sd = allSlides[_si];
       const titlePreview = (sd.title || "").substring(0, 52);
+      const slideNum = _si + 3; // offset for cover+TOC
+      // Set forensic context for all addTextSafe/fitTextForBox calls within this renderer
+      forensicSetContext(slideNum, sd.layout, "slide");
+      // Set field-level context per item before each renderer
+      if (sd.items) {
+        sd.items.forEach((item, ii) => {
+          forensicSetContext(slideNum, sd.layout, "item[" + ii + "]");
+        });
+      }
+      forensicSetContext(slideNum, sd.layout, "title");
       switch (sd.layout) {
-        case "module_cover":                 flowLog("MODULE_COVER", "renderModuleCover -> title='" + titlePreview + "'"); renderModuleCover(pptx, sd); break;
-        case "definition_card_with_pillars": flowLog("DEFINITION", "renderDefinitionWithPillars -> title='" + titlePreview + "'"); renderDefinitionWithPillars(pptx, sd); break;
-        case "comparison_table":             flowLog("TABLE", "renderComparisonTable -> title='" + titlePreview + "'"); renderComparisonTable(pptx, sd); break;
-        case "grid_cards":                   flowLog("BULLETS_NARRATIVE", "renderGridCards -> title='" + titlePreview + "'"); renderGridCards(pptx, sd); break;
-        case "four_quadrants":               flowLog("BULLETS_NARRATIVE", "renderFourQuadrants -> title='" + titlePreview + "'"); renderFourQuadrants(pptx, sd); break;
-        case "process_timeline":             flowLog("TIMELINE_PROCESS", "renderProcessTimeline -> title='" + titlePreview + "'"); renderProcessTimeline(pptx, sd); break;
-        case "numbered_takeaways":           flowLog("TAKEAWAYS", "renderNumberedTakeaways -> title='" + titlePreview + "'"); renderNumberedTakeaways(pptx, sd); break;
-        case "example_highlight":            flowLog("EXAMPLE", "renderExampleHighlight -> title='" + titlePreview + "'"); renderExampleHighlight(pptx, sd); break;
-        case "reflection_callout":           flowLog("REFLECTION", "renderReflectionCallout -> title='" + titlePreview + "'"); renderReflectionCallout(pptx, sd); break;
-        case "warning_callout":              flowLog("WARNING", "renderWarningCallout -> title='" + titlePreview + "'"); renderWarningCallout(pptx, sd); break;
-        case "summary_slide":                flowLog("SUMMARY", "renderSummarySlide -> title='" + titlePreview + "'"); renderSummarySlide(pptx, sd); break;
-        case "bullets":                      flowLog("BULLETS", "renderBullets -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
-        default:                               flowLog("BULLETS", "renderBullets(default) -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
+        case "module_cover":                 forensicTraceRenderer(slideNum, sd.layout, "renderModuleCover"); flowLog("MODULE_COVER", "renderModuleCover -> title='" + titlePreview + "'"); renderModuleCover(pptx, sd); break;
+        case "definition_card_with_pillars": forensicTraceRenderer(slideNum, sd.layout, "renderDefinitionWithPillars"); flowLog("DEFINITION", "renderDefinitionWithPillars -> title='" + titlePreview + "'"); renderDefinitionWithPillars(pptx, sd); break;
+        case "comparison_table":             forensicTraceRenderer(slideNum, sd.layout, "renderComparisonTable"); flowLog("TABLE", "renderComparisonTable -> title='" + titlePreview + "'"); renderComparisonTable(pptx, sd); break;
+        case "grid_cards":                   forensicTraceRenderer(slideNum, sd.layout, "renderGridCards"); flowLog("BULLETS_NARRATIVE", "renderGridCards -> title='" + titlePreview + "'"); renderGridCards(pptx, sd); break;
+        case "four_quadrants":               forensicTraceRenderer(slideNum, sd.layout, "renderFourQuadrants"); flowLog("BULLETS_NARRATIVE", "renderFourQuadrants -> title='" + titlePreview + "'"); renderFourQuadrants(pptx, sd); break;
+        case "process_timeline":             forensicTraceRenderer(slideNum, sd.layout, "renderProcessTimeline"); flowLog("TIMELINE_PROCESS", "renderProcessTimeline -> title='" + titlePreview + "'"); renderProcessTimeline(pptx, sd); break;
+        case "numbered_takeaways":           forensicTraceRenderer(slideNum, sd.layout, "renderNumberedTakeaways"); flowLog("TAKEAWAYS", "renderNumberedTakeaways -> title='" + titlePreview + "'"); renderNumberedTakeaways(pptx, sd); break;
+        case "example_highlight":            forensicTraceRenderer(slideNum, sd.layout, "renderExampleHighlight"); flowLog("EXAMPLE", "renderExampleHighlight -> title='" + titlePreview + "'"); renderExampleHighlight(pptx, sd); break;
+        case "reflection_callout":           forensicTraceRenderer(slideNum, sd.layout, "renderReflectionCallout"); flowLog("REFLECTION", "renderReflectionCallout -> title='" + titlePreview + "'"); renderReflectionCallout(pptx, sd); break;
+        case "warning_callout":              forensicTraceRenderer(slideNum, sd.layout, "renderWarningCallout"); flowLog("WARNING", "renderWarningCallout -> title='" + titlePreview + "'"); renderWarningCallout(pptx, sd); break;
+        case "summary_slide":                forensicTraceRenderer(slideNum, sd.layout, "renderSummarySlide"); flowLog("SUMMARY", "renderSummarySlide -> title='" + titlePreview + "'"); renderSummarySlide(pptx, sd); break;
+        case "bullets":                      forensicTraceRenderer(slideNum, sd.layout, "renderBullets"); flowLog("BULLETS", "renderBullets -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
+        default:                               forensicTraceRenderer(slideNum, sd.layout, "renderBullets"); flowLog("BULLETS", "renderBullets(default) -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
       }
     }
 
