@@ -4086,8 +4086,9 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
    SLIDE RENDERERS v2 — Market-grade typography
    ═══════════════════════════════════════════════════════ */
 
-// ── COVER SLIDE v2 — Expanded capacity: 3 lines for title, larger description box ──
-function renderCapa(pptx: any, data: SlideData) {
+// ── COVER SLIDE v3 — Structural redistribution: if title+description overflow,
+// generates a continuation slide instead of compressing ──
+function renderCapa(pptx: any, data: SlideData, extraSlides?: SlideData[]) {
   const slide = pptx.addSlide();
   resetSlideIcons();
   slide.background = { color: C.BG_WHITE };
@@ -4113,17 +4114,48 @@ function renderCapa(pptx: any, data: SlideData) {
     x: (SLIDE_W - 1.5) / 2, y: sepY, w: 1.5, h: 0.05, fill: { color: C.SECONDARY },
   });
 
+  // v9: Structural redistribution — check if description fits on cover
+  let descriptionRenderedOnCover = false;
   if (data.description) {
-    const descRaw = smartSubtitle(sanitize(data.description));
-    // v6: Increased description box height for longer descriptions
+    const descRaw = sanitize(data.description);
     const descBoxH = 1.8;
-    const descFit = fitTextForBox(descRaw, SLIDE_W - 3, descBoxH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
-    const descH = Math.min(descBoxH, Math.max(0.60, estimateTextLines(descFit.text, SLIDE_W - 3, descFit.fontSize) * (descFit.fontSize * 1.4 / 72) + 0.10));
+    const descW = SLIDE_W - 3;
+    const descFit = fitTextForBox(descRaw, descW, descBoxH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
 
-    addTextSafe(slide, descFit.text, {
-      x: 1.5, y: sepY + 0.30, w: SLIDE_W - 3, h: descH,
-      fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
-    });
+    // If description fits (not adjusted/truncated), render on cover
+    if (!descFit.adjusted || descRaw.length <= 180) {
+      const descH = Math.min(descBoxH, Math.max(0.60, estimateTextLines(descFit.text, descW, descFit.fontSize) * (descFit.fontSize * 1.4 / 72) + 0.10));
+      addTextSafe(slide, descFit.text, {
+        x: 1.5, y: sepY + 0.30, w: descW, h: descH,
+        fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+      });
+      descriptionRenderedOnCover = true;
+    } else {
+      // STRUCTURAL REDISTRIBUTION: render only first sentence on cover,
+      // push full description to a continuation slide
+      const sentences = descRaw.match(/[^.!?]+[.!?]+/g) || [descRaw];
+      const coverDesc = sentences[0].trim();
+      const coverFit = fitTextForBox(coverDesc, descW, 0.8, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+      addTextSafe(slide, coverFit.text, {
+        x: 1.5, y: sepY + 0.30, w: descW, h: 0.8,
+        fontSize: coverFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+      });
+      descriptionRenderedOnCover = true;
+
+      // Create continuation slide with full description
+      if (extraSlides) {
+        extraSlides.push({
+          layout: "bullets",
+          title: "Sobre o Curso",
+          sectionLabel: "APRESENTAÇÃO",
+          items: sanitizeBullets(sentences.slice(1).map(s => {
+            const t = s.trim();
+            return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
+          }).filter(s => s.length > 5)),
+          blockType: "normal",
+        });
+      }
+    }
   }
 
   const d = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
