@@ -6404,10 +6404,10 @@ Idioma: pt-BR`
               continue;
             }
 
-            if (protectedNoCompression) {
-              // For summary/objectives/overview: never compress here, keep full sentence and force continuation later
+            if (protectedNoCompression || !!labelParsed) {
+              // For summary/objectives/overview/label+explicação: never compress here, keep full sentence and force continuation later
               newItems.push(ensureSentenceEnd(trimmed));
-              flowLog("FALLBACK", "stage2.5 -> compression skipped (protected layout), layout=" + s.layout + ", title='" + (s.title || "").substring(0, 46) + "'");
+              flowLog("FALLBACK", "stage2.5 -> compression skipped (protected path), layout=" + s.layout + ", title='" + (s.title || "").substring(0, 46) + "'");
               continue;
             }
 
