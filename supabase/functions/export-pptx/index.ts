@@ -3730,20 +3730,30 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
     }
   }
 
-  // Summary slide (Resumo do Módulo)
+  // Summary slide (Resumo do Módulo) — structural continuation (no slice truncation)
   if (summaryItems.length > 0) {
-    slides.push({
-      layout: "summary_slide",
-      title: "Resumo - " + smartTitle(shortTitle),
-      sectionLabel: "RESUMO DO MÓDULO",
-      items: sanitizeBullets(summaryItems.slice(0, 5).map(s => {
-        const t = sanitize(s).trim();
-        if (t.length > 0 && !/[.!?…]$/.test(t)) return t + ".";
-        return t;
-      })),
-      moduleIndex: modIndex,
-      blockType: "summary",
-    });
+    const normalizedSummary = sanitizeBullets(summaryItems.map(s => {
+      const t = sanitize(s).trim();
+      if (!t) return "";
+      const parts = splitNarrativeItemForStructure(t, Math.max(56, activeDensity.maxCharsPerBullet));
+      return parts.length > 1 ? parts.map(ensureSentenceEnd).join("\n") : ensureSentenceEnd(t);
+    }).flatMap(s => s.split("\n").map(p => p.trim()).filter(Boolean)));
+
+    const SUMMARY_PER_SLIDE = 4;
+    for (let i = 0; i < normalizedSummary.length; i += SUMMARY_PER_SLIDE) {
+      const chunk = normalizedSummary.slice(i, i + SUMMARY_PER_SLIDE);
+      const part = Math.floor(i / SUMMARY_PER_SLIDE) + 1;
+      slides.push({
+        layout: "summary_slide",
+        title: normalizedSummary.length > SUMMARY_PER_SLIDE
+          ? getContinuationTitle("Resumo - " + smartTitle(shortTitle), part)
+          : "Resumo - " + smartTitle(shortTitle),
+        sectionLabel: "RESUMO DO MÓDULO",
+        items: chunk,
+        moduleIndex: modIndex,
+        blockType: "summary",
+      });
+    }
   }
 
   // Always end with takeaways (Key Takeaways)
@@ -4184,8 +4194,33 @@ function resolveSlideOverflow(s: SlideData, slideIndex: number): { slides: Slide
     return { slides: [first, second], resolution: { strategy: "continuation", slidesProduced: 2 } };
   }
 
+  const protectedLayout = s.layout === "module_cover"
+    || s.layout === "summary_slide"
+    || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
+
+  if (protectedLayout && s.items && s.items.length > 0) {
+    const expanded = s.items.flatMap(item => splitNarrativeItemForStructure(item, Math.max(56, activeDensity.maxCharsPerBullet)).map(ensureSentenceEnd));
+    if (expanded.length > s.items.length) {
+      const chunkSize = Math.max(2, activeDensity.maxBulletsPerSlide);
+      const firstChunk = expanded.slice(0, chunkSize);
+      const secondChunk = expanded.slice(chunkSize);
+      if (secondChunk.length > 0) {
+        const first: SlideData = { ...s, items: firstChunk };
+        const second: SlideData = {
+          ...s,
+          title: getNextContinuationTitle(s.title || "Continuação", "Continuação"),
+          items: secondChunk,
+          structuredItems: undefined,
+        };
+        console.log(label + " RESOLVED by protected continuation (no summarize/truncate)");
+        return { slides: [first, second], resolution: { strategy: "continuation", slidesProduced: 2 } };
+      }
+      return { slides: [{ ...s, items: firstChunk }], resolution: { strategy: "redistribute", slidesProduced: 1 } };
+    }
+  }
+
   // ── LEVEL 5: Summarize (reduce item count) ──
-  if (s.items && s.items.length > 0) {
+  if (s.items && s.items.length > 0 && !protectedLayout) {
     const targetCount = Math.max(2, activeDensity.maxBulletsPerSlide - 1);
     const summarized = { ...s, items: summarizeItemsForOverflow(s.items, targetCount) };
     const recheck = detectSlideOverflow(summarized);
@@ -4196,14 +4231,19 @@ function resolveSlideOverflow(s: SlideData, slideIndex: number): { slides: Slide
   }
 
   // ── LEVEL 6: Truncate (last resort) ──
-  console.warn(label + " LAST RESORT: truncation applied");
-  if (s.items) {
-    s.items = s.items.map(item => {
-      const fit = fitTextForBox(item, SAFE_W - 0.50, 0.60, TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
-      return fit.text;
-    });
+  if (!protectedLayout) {
+    console.warn(label + " LAST RESORT: truncation applied");
+    if (s.items) {
+      s.items = s.items.map(item => {
+        const fit = fitTextForBox(item, SAFE_W - 0.50, 0.60, TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
+        return fit.text;
+      });
+    }
+    return { slides: [s], resolution: { strategy: "truncate", slidesProduced: 1 } };
   }
-  return { slides: [s], resolution: { strategy: "truncate", slidesProduced: 1 } };
+
+  console.warn(label + " PROTECTED LAYOUT unresolved without truncation; keeping full text for renderer continuation");
+  return { slides: [s], resolution: { strategy: "none", slidesProduced: 1 } };
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -4219,10 +4259,17 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
     });
     y += 0.38;
   }
-  const cleanTitle = smartTruncate(titleText, 80);
-  const fontSize = cleanTitle.length > 60 ? 26 : cleanTitle.length > 40 ? 28 : TYPO.SECTION_TITLE;
-  const titleH = getTitleHeight(cleanTitle, SAFE_W, fontSize);
-  addTextSafe(slide, cleanTitle, {
+
+  const safeTitle = (titleText || "").trim();
+  const titleFit = fitTextForBox(safeTitle, SAFE_W, 1.25, TYPO.SECTION_TITLE, FONT_TITLE, 22);
+  const renderedTitle = titleFit.text;
+  if (safeTitle && renderedTitle.length < safeTitle.length) {
+    flowLog("FALLBACK", "renderContentHeader -> title adjusted, original=" + safeTitle.length + " chars, rendered=" + renderedTitle.length + " chars");
+  }
+
+  const fontSize = titleFit.fontSize;
+  const titleH = getTitleHeight(renderedTitle, SAFE_W, fontSize);
+  addTextSafe(slide, renderedTitle, {
     x: MARGIN, y, w: SAFE_W, h: titleH,
     fontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
@@ -4426,10 +4473,22 @@ function renderModuleCover(pptx: any, data: SlideData) {
 
   // Calculate description height dynamically to avoid overlap with objectives
   let descEndY = sepY + 0.20;
+  let deferredOverviewItems: string[] = [];
   if (data.description) {
     const descW = SAFE_W * 0.65;
     const descCapH = titleSub ? 0.85 : 1.0;
-    const descFit = fitTextForBox(data.description, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
+    let descText = ensureSentenceEnd(data.description);
+    const descFitCheck = measureBoundingBox(descText, TYPO.SUBTITLE, FONT_BODY, descW, descCapH);
+    if (!descFitCheck.fits) {
+      const descParts = splitLongSegments(descText, 140);
+      if (descParts.length > 1) {
+        descText = descParts[0];
+        deferredOverviewItems = descParts.slice(1).map(ensureSentenceEnd);
+        flowLog("MODULE_COVER_DESCRIPTION", "renderModuleCover -> split description before render, title='" + (data.title || "").substring(0, 52) + "', deferred=" + deferredOverviewItems.length);
+      }
+    }
+
+    const descFit = fitTextForBox(descText, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
     const descLines = estimateTextLines(descFit.text, descW, descFit.fontSize);
     const descH = Math.max(0.45, descLines * (descFit.fontSize * 1.35 / 72) + 0.10);
     addTextSafe(slide, descFit.text, {
@@ -4439,16 +4498,50 @@ function renderModuleCover(pptx: any, data: SlideData) {
     descEndY += descH + 0.20;
   }
 
-  const objectives = data.objectives || [];
+  const objectives = (data.objectives || []).map(ensureSentenceEnd).filter(Boolean);
+  const deferredObjectiveItems: string[] = [];
   if (objectives.length > 0) {
     const objStartY = Math.max(descEndY, sepY + 0.75);
     const objW = SAFE_W * 0.60;
-    // v6: Use fitTextForBox per objective instead of hard smartTruncate(90)
-    // This allows font size reduction before cutting, avoiding "..." entirely
-    objectives.slice(0, 3).forEach((obj, idx) => {
+    const maxCoverObjectives = 3;
+
+    for (let idx = 0; idx < objectives.length; idx++) {
+      const obj = objectives[idx];
+      if (idx >= maxCoverObjectives) {
+        deferredObjectiveItems.push(obj);
+        continue;
+      }
+
       const objY = objStartY + idx * 0.50;
-      if (objY + 0.44 > SLIDE_H - 0.40) return;
+      if (objY + 0.44 > SLIDE_H - 0.40) {
+        deferredObjectiveItems.push(obj);
+        continue;
+      }
+
       const dotSize = 0.12;
+      const objFitCheck = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW - 0.30, 0.44);
+      if (!objFitCheck.fits) {
+        const parts = splitObjectiveForStructure(obj, Math.max(48, activeDensity.maxCharsPerBullet - 10));
+        if (parts.length > 1) {
+          const first = parts.shift() || obj;
+          deferredObjectiveItems.push(...parts.map(ensureSentenceEnd));
+          const objFit = fitTextForBox(first, objW - 0.30, 0.44, TYPO.SUPPORT, FONT_BODY, 12);
+          const objLineH = (objFit.fontSize * 1.35) / 72;
+          slide.addShape(pptx.ShapeType.ellipse, {
+            x: MARGIN + 0.05, y: objY + (objLineH - dotSize) / 2 + 0.04, w: dotSize, h: dotSize,
+            fill: { color: moduleColor },
+          });
+          addTextSafe(slide, objFit.text, {
+            x: MARGIN + 0.30, y: objY, w: objW, h: 0.44,
+            fontSize: objFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
+          });
+          flowLog("OBJECTIVES", "renderModuleCover -> objective split before render, title='" + (data.title || "").substring(0, 52) + "'");
+          continue;
+        }
+        deferredObjectiveItems.push(obj);
+        continue;
+      }
+
       const objFit = fitTextForBox(obj, objW - 0.30, 0.44, TYPO.SUPPORT, FONT_BODY, 12);
       const objLineH = (objFit.fontSize * 1.35) / 72;
       slide.addShape(pptx.ShapeType.ellipse, {
@@ -4459,6 +4552,30 @@ function renderModuleCover(pptx: any, data: SlideData) {
         x: MARGIN + 0.30, y: objY, w: objW, h: 0.44,
         fontSize: objFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
       });
+    }
+  }
+
+  if (deferredOverviewItems.length > 0) {
+    flowLog("MODULE_COVER_DESCRIPTION", "renderModuleCover -> continuation created, title='" + (data.title || "").substring(0, 52) + "', remaining=" + deferredOverviewItems.length);
+    renderBullets(pptx, {
+      layout: "bullets",
+      title: getNextContinuationTitle("Visão Geral do Módulo", "Visão Geral do Módulo"),
+      sectionLabel: "VISÃO GERAL",
+      items: deferredOverviewItems,
+      moduleIndex: data.moduleIndex,
+      blockType: "normal",
+    });
+  }
+
+  if (deferredObjectiveItems.length > 0) {
+    flowLog("OBJECTIVES", "renderModuleCover -> continuation created, title='" + (data.title || "").substring(0, 52) + "', remaining=" + deferredObjectiveItems.length);
+    renderBullets(pptx, {
+      layout: "bullets",
+      title: getNextContinuationTitle("Objetivos do Módulo", "Objetivos do Módulo"),
+      sectionLabel: "OBJETIVOS DO MÓDULO",
+      items: deferredObjectiveItems,
+      moduleIndex: data.moduleIndex,
+      blockType: "normal",
     });
   }
 
@@ -4952,25 +5069,48 @@ function renderBullets(pptx: any, data: SlideData) {
     isSubItem: boolean;
     accentIdx: number;
   }
-  const entries: RenderEntry[] = [];
+
+  const rawEntries: RenderEntry[] = [];
   let parentIdx = 0;
 
   if (hasHierarchy && structured) {
     for (const si of structured) {
-      entries.push({ text: smartBullet(si.text), isSubItem: false, accentIdx: parentIdx });
+      rawEntries.push({ text: ensureSentenceEnd(si.text), isSubItem: false, accentIdx: parentIdx });
       for (const sub of si.subItems) {
-        entries.push({ text: smartBullet(sub), isSubItem: true, accentIdx: parentIdx });
+        rawEntries.push({ text: ensureSentenceEnd(sub), isSubItem: true, accentIdx: parentIdx });
       }
       parentIdx++;
     }
   } else {
     for (let i = 0; i < items.length; i++) {
-      entries.push({ text: smartBullet(items[i]), isSubItem: false, accentIdx: i });
+      rawEntries.push({ text: ensureSentenceEnd(items[i]), isSubItem: false, accentIdx: i });
     }
+  }
+
+  // Structural split pre-render for long bullets (especially "Label: explicação")
+  const maxChars = activeDensity.maxCharsPerBullet;
+  const entries: RenderEntry[] = [];
+  let splitCount = 0;
+
+  for (const entry of rawEntries) {
+    const parts = splitNarrativeItemForStructure(entry.text, maxChars);
+    if (parts.length > 1) {
+      splitCount += parts.length - 1;
+      for (const part of parts) {
+        entries.push({ ...entry, text: ensureSentenceEnd(part) });
+      }
+    } else {
+      entries.push({ ...entry, text: ensureSentenceEnd(entry.text) });
+    }
+  }
+
+  if (splitCount > 0) {
+    flowLog("BULLETS", "renderBullets -> structural split before render, title='" + (data.title || "").substring(0, 46) + "', splits=" + splitCount);
   }
 
   const maxEntries = Math.min(entries.length, activeDensity.maxBulletsPerSlide + 3); // allow extra for sub-items
   const selected = entries.slice(0, maxEntries);
+  const remainingEntries = entries.slice(maxEntries);
 
   const textX = MARGIN + 0.40;
   const subTextX = MARGIN + 0.70; // indented for sub-items
@@ -4983,7 +5123,7 @@ function renderBullets(pptx: any, data: SlideData) {
   const subFontSize = Math.max(TYPO.SUPPORT, parentFontSize - 2);
 
   let uniformFontSize = parentFontSize;
-  const maxRowH = Math.max(0.40, availH / selected.length - 0.04);
+  const maxRowH = Math.max(0.40, availH / Math.max(selected.length, 1) - 0.04);
   for (const entry of selected) {
     const w = entry.isSubItem ? subTextW : textW;
     const fit = fitTextForBox(entry.text, w, Math.max(maxRowH, 0.20), entry.isSubItem ? subFontSize : parentFontSize, FONT_BODY, TYPO.SUPPORT);
@@ -5029,7 +5169,6 @@ function renderBullets(pptx: any, data: SlideData) {
     const lineHeightIn = (fs * 1.35) / 72;
 
     if (entry.isSubItem) {
-      // Sub-item: smaller triangle marker instead of dot
       const triSize = 0.09;
       const triY = textY + Math.max(0, (lineHeightIn - triSize) / 2);
       slide.addShape(pptx.ShapeType.rect, {
@@ -5041,7 +5180,6 @@ function renderBullets(pptx: any, data: SlideData) {
         rectRadius: 0.02,
       });
     } else {
-      // Parent item: circle dot
       const dotSize = 0.14;
       const dotY = textY + Math.max(0, (lineHeightIn - dotSize) / 2);
       slide.addShape(pptx.ShapeType.ellipse, {
@@ -5065,7 +5203,6 @@ function renderBullets(pptx: any, data: SlideData) {
       inset: 0,
     });
 
-    // Separator line between parent items (not after sub-items unless next is parent)
     const nextEntry = idx < selected.length - 1 ? selected[idx + 1] : null;
     if (nextEntry && !entry.isSubItem && !nextEntry.isSubItem) {
       slide.addShape(pptx.ShapeType.rect, {
@@ -5079,6 +5216,17 @@ function renderBullets(pptx: any, data: SlideData) {
 
     cursorY += rowH + GAP_BETWEEN_BULLETS;
   });
+
+  if (remainingEntries.length > 0) {
+    const remainingItems = remainingEntries.map(e => e.text);
+    flowLog("BULLETS", "renderBullets -> continuation created, title='" + (data.title || "").substring(0, 46) + "', remaining=" + remainingItems.length);
+    renderBullets(pptx, {
+      ...data,
+      title: getNextContinuationTitle(data.title || "Conteúdo", "Conteúdo"),
+      items: remainingItems,
+      structuredItems: undefined,
+    });
+  }
 }
 
 // ── EXAMPLE HIGHLIGHT — NEW template for examples/case studies ──
@@ -5412,8 +5560,28 @@ function renderWarningCallout(pptx: any, data: SlideData) {
 
 // ── SUMMARY SLIDE — Resumo do Módulo ──
 function renderSummarySlide(pptx: any, data: SlideData) {
-  const items = data.items || [];
-  if (items.length === 0) return;
+  const sourceItems = data.items || [];
+  if (sourceItems.length === 0) return;
+
+  // Structural normalization before rendering (no compression-first for summary)
+  const expandedItems: string[] = [];
+  for (const item of sourceItems) {
+    const normalized = ensureSentenceEnd(item || "");
+    const parts = splitNarrativeItemForStructure(normalized, Math.max(56, activeDensity.maxCharsPerBullet));
+    if (parts.length > 1) {
+      expandedItems.push(...parts.map(ensureSentenceEnd));
+    } else {
+      expandedItems.push(normalized);
+    }
+  }
+
+  const SUMMARY_CAP = 4;
+  const visibleItems = expandedItems.slice(0, SUMMARY_CAP);
+  const overflowItems = expandedItems.slice(SUMMARY_CAP);
+
+  if (overflowItems.length > 0) {
+    flowLog("SUMMARY", "renderSummarySlide -> pre-render structural continuation, title='" + (data.title || "").substring(0, 46) + "', remaining=" + overflowItems.length);
+  }
 
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -5449,22 +5617,20 @@ function renderSummarySlide(pptx: any, data: SlideData) {
     fontSize: 18,
   });
 
-  // Summary text items — use UNIFORM font size across all items
   let textY = contentY + 0.85;
   const textX = MARGIN + 0.70;
   const textW = SAFE_W - 1.40;
-  const itemH = Math.min(0.70, (boxH - 1.0) / Math.max(items.length, 1));
+  const itemH = Math.min(0.70, (boxH - 1.0) / Math.max(visibleItems.length, 1));
   const SUMMARY_GAP = 0.12;
 
-  // Find smallest font that fits ALL items (uniform sizing)
   let summaryFontSize = TYPO.BODY;
-  for (const item of items) {
+  for (const item of visibleItems) {
     const fit = fitTextForBox(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
     if (fit.fontSize < summaryFontSize) summaryFontSize = fit.fontSize;
   }
 
   let rendered = 0;
-  items.forEach((item, idx) => {
+  visibleItems.forEach((item) => {
     if (textY + itemH > contentY + boxH - 0.15) return;
     const textFit = fitTextForBox(item, textW, itemH, summaryFontSize, FONT_BODY, summaryFontSize);
     addTextSafe(slide, textFit.text, {
@@ -5476,12 +5642,12 @@ function renderSummarySlide(pptx: any, data: SlideData) {
     rendered++;
   });
 
-  if (rendered < items.length) {
+  const remaining = [...visibleItems.slice(rendered), ...overflowItems];
+  if (remaining.length > 0) {
     if (rendered === 0) {
       console.warn("[FLOW] SUMMARY | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
       return;
     }
-    const remaining = items.slice(rendered);
     flowLog("SUMMARY", "renderSummarySlide -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
     renderSummarySlide(pptx, {
       ...data,
@@ -6126,8 +6292,10 @@ Idioma: pt-BR`
           }
           normalizedObjectives.push(...structuralParts);
 
-          const bbox = measureBoundingBox(trimmed, TYPO.SUPPORT, FONT_BODY, objW, objH);
-          if (!bbox.fits && trimmed.length > 55) anyObjOverflow = true;
+          for (const part of structuralParts) {
+            const partBox = measureBoundingBox(part, TYPO.SUPPORT, FONT_BODY, objW, objH);
+            if (!partBox.fits && part.length > 44) anyObjOverflow = true;
+          }
         }
 
         const totalCoverContent = (s.description || "").length + normalizedObjectives.reduce((sum, o) => sum + o.length, 0);
@@ -6165,7 +6333,8 @@ Idioma: pt-BR`
             "REDISTRIBUIÇÃO OBJETIVOS: '" + (s.title || "").substring(0, 30) + "' → " + objChunks.length + " slide(s)"
           );
         } else {
-          s.objectives = normalizedObjectives.slice(0, 3);
+          s.objectives = normalizedObjectives.map(ensureSentenceEnd);
+          flowLog("OBJECTIVES", "stage2.5 -> objectives kept on module cover without compression, title='" + (s.title || "").substring(0, 52) + "', count=" + s.objectives.length);
         }
       }
 
@@ -6208,6 +6377,8 @@ Idioma: pt-BR`
         const maxChars = activeDensity.maxCharsPerBullet;
         const newItems: string[] = [];
         let didRedistribute = false;
+        const protectedNoCompression = s.layout === "summary_slide"
+          || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
 
         for (const item of s.items) {
           const trimmed = (item || "").trim();
@@ -6218,7 +6389,7 @@ Idioma: pt-BR`
           if (labelParsed && (trimmed.length > Math.floor(maxChars * 0.85) || enumLike)) {
             const splitLabel = splitNarrativeItemForStructure(trimmed, maxChars);
             if (splitLabel.length > 1) {
-              newItems.push(...splitLabel);
+              newItems.push(...splitLabel.map(ensureSentenceEnd));
               didRedistribute = true;
               labelExplanationSplits++;
               continue;
@@ -6228,12 +6399,19 @@ Idioma: pt-BR`
           if (trimmed.length > maxChars) {
             const pieces = splitNarrativeItemForStructure(trimmed, maxChars);
             if (pieces.length > 1) {
-              newItems.push(...pieces);
+              newItems.push(...pieces.map(ensureSentenceEnd));
               didRedistribute = true;
               continue;
             }
 
-            // LAST RESORT: compress and LOG semantic loss
+            if (protectedNoCompression || !!labelParsed) {
+              // For summary/objectives/overview/label+explicação: never compress here, keep full sentence and force continuation later
+              newItems.push(ensureSentenceEnd(trimmed));
+              flowLog("FALLBACK", "stage2.5 -> compression skipped (protected path), layout=" + s.layout + ", title='" + (s.title || "").substring(0, 46) + "'");
+              continue;
+            }
+
+            // LAST RESORT: compress and LOG semantic loss (non-protected layouts only)
             const originalLen = trimmed.length;
             const compressed = smartBullet(trimmed);
             const lossRatio = 1 - (compressed.length / originalLen);
@@ -6246,13 +6424,18 @@ Idioma: pt-BR`
             }
             newItems.push(compressed);
             if (compressed !== trimmed) didRedistribute = true;
+            flowLog("FALLBACK", "stage2.5 -> compression used, layout=" + s.layout + ", title='" + (s.title || "").substring(0, 46) + "'");
             continue;
           }
 
           newItems.push(ensureSentenceEnd(trimmed));
         }
 
-        if (didRedistribute) {
+        const changedItems = newItems.length === s.items.length
+          ? newItems.some((v, idx) => v !== s.items![idx])
+          : true;
+
+        if (didRedistribute || changedItems) {
           s.items = newItems;
           preRenderRedistributions++;
           flowLog("BULLETS", "stage2.5 -> redistributed bullet structure, layout=" + s.layout + ", title=" + (s.title || "").substring(0, 46));
