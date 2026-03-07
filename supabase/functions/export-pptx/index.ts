@@ -4086,8 +4086,9 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
    SLIDE RENDERERS v2 — Market-grade typography
    ═══════════════════════════════════════════════════════ */
 
-// ── COVER SLIDE v2 — Expanded capacity: 3 lines for title, larger description box ──
-function renderCapa(pptx: any, data: SlideData) {
+// ── COVER SLIDE v3 — Structural redistribution: if title+description overflow,
+// generates a continuation slide instead of compressing ──
+function renderCapa(pptx: any, data: SlideData, extraSlides?: SlideData[]) {
   const slide = pptx.addSlide();
   resetSlideIcons();
   slide.background = { color: C.BG_WHITE };
@@ -4113,17 +4114,48 @@ function renderCapa(pptx: any, data: SlideData) {
     x: (SLIDE_W - 1.5) / 2, y: sepY, w: 1.5, h: 0.05, fill: { color: C.SECONDARY },
   });
 
+  // v9: Structural redistribution — check if description fits on cover
+  let descriptionRenderedOnCover = false;
   if (data.description) {
-    const descRaw = smartSubtitle(sanitize(data.description));
-    // v6: Increased description box height for longer descriptions
+    const descRaw = sanitize(data.description);
     const descBoxH = 1.8;
-    const descFit = fitTextForBox(descRaw, SLIDE_W - 3, descBoxH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
-    const descH = Math.min(descBoxH, Math.max(0.60, estimateTextLines(descFit.text, SLIDE_W - 3, descFit.fontSize) * (descFit.fontSize * 1.4 / 72) + 0.10));
+    const descW = SLIDE_W - 3;
+    const descFit = fitTextForBox(descRaw, descW, descBoxH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
 
-    addTextSafe(slide, descFit.text, {
-      x: 1.5, y: sepY + 0.30, w: SLIDE_W - 3, h: descH,
-      fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
-    });
+    // If description fits (not adjusted/truncated), render on cover
+    if (!descFit.adjusted || descRaw.length <= 180) {
+      const descH = Math.min(descBoxH, Math.max(0.60, estimateTextLines(descFit.text, descW, descFit.fontSize) * (descFit.fontSize * 1.4 / 72) + 0.10));
+      addTextSafe(slide, descFit.text, {
+        x: 1.5, y: sepY + 0.30, w: descW, h: descH,
+        fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+      });
+      descriptionRenderedOnCover = true;
+    } else {
+      // STRUCTURAL REDISTRIBUTION: render only first sentence on cover,
+      // push full description to a continuation slide
+      const sentences = descRaw.match(/[^.!?]+[.!?]+/g) || [descRaw];
+      const coverDesc = sentences[0].trim();
+      const coverFit = fitTextForBox(coverDesc, descW, 0.8, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+      addTextSafe(slide, coverFit.text, {
+        x: 1.5, y: sepY + 0.30, w: descW, h: 0.8,
+        fontSize: coverFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, align: "center",
+      });
+      descriptionRenderedOnCover = true;
+
+      // Create continuation slide with full description
+      if (extraSlides) {
+        extraSlides.push({
+          layout: "bullets",
+          title: "Sobre o Curso",
+          sectionLabel: "APRESENTAÇÃO",
+          items: sanitizeBullets(sentences.slice(1).map(s => {
+            const t = s.trim();
+            return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
+          }).filter(s => s.length > 5)),
+          blockType: "normal",
+        });
+      }
+    }
   }
 
   const d = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
@@ -5824,22 +5856,38 @@ Idioma: pt-BR`
           // REDISTRIBUTE: move objectives to a new dedicated slide instead of compressing
           const movedObjectives = [...s.objectives];
           s.objectives = []; // clear from cover
-          slidesToInsert.push({
-            afterIndex: si,
-            slides: [{
-              layout: "bullets",
-              title: "Objetivos - " + smartTitle(s.title),
-              sectionLabel: "OBJETIVOS DO MÓDULO",
-              items: sanitizeBullets(movedObjectives.map(o => {
-                const t = o.trim();
-                return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
-              })),
-              moduleIndex: s.moduleIndex,
-              blockType: "normal",
-            }],
-          });
+
+          // v9: Split objectives into chunks of 4 for multiple continuation slides if needed
+          const OBJ_PER_SLIDE = 4;
+          const objChunks: string[][] = [];
+          for (let oi = 0; oi < movedObjectives.length; oi += OBJ_PER_SLIDE) {
+            objChunks.push(movedObjectives.slice(oi, oi + OBJ_PER_SLIDE));
+          }
+
+          for (let ci = 0; ci < objChunks.length; ci++) {
+            const chunkTitle = objChunks.length > 1
+              ? "Objetivos do Módulo (Parte " + (ci + 1) + ")"
+              : "Objetivos do Módulo";
+            slidesToInsert.push({
+              afterIndex: si,
+              slides: [{
+                layout: "bullets",
+                title: chunkTitle,
+                sectionLabel: "OBJETIVOS DO MÓDULO",
+                items: sanitizeBullets(objChunks[ci].map(o => {
+                  const t = o.trim();
+                  return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
+                })),
+                moduleIndex: s.moduleIndex,
+                blockType: "normal",
+              }],
+            });
+          }
           preRenderRedistributions++;
-          console.log("[STAGE-2.5] REDISTRIBUTED: Module cover objectives → dedicated slide (" + s.title + ")");
+          qualityReport.stage4_all_fixes.push(
+            "REDISTRIBUIÇÃO OBJETIVOS: '" + (s.title || "").substring(0, 30) + "' → " + objChunks.length + " slide(s) dedicado(s)"
+          );
+          console.log("[STAGE-2.5] REDISTRIBUTED: Module cover objectives → " + objChunks.length + " dedicated slide(s) (" + s.title + ")");
         }
       }
 
@@ -5860,7 +5908,7 @@ Idioma: pt-BR`
                 afterIndex: si,
                 slides: [{
                   layout: "bullets",
-                  title: smartTitle(s.title),
+                  title: "Visão Geral do Módulo",
                   sectionLabel: "VISÃO GERAL",
                   items: sanitizeBullets([restDesc]),
                   moduleIndex: s.moduleIndex,
@@ -5875,10 +5923,15 @@ Idioma: pt-BR`
       }
 
       // C. Long bullets: REDISTRIBUTE by splitting into multiple items instead of compressing
+      // v9: Added dedicated handling for narrative bullets (Cenário, Resultado, Impacto, Exemplo)
       if (s.items && s.items.length > 0 && s.layout !== "module_cover") {
         const maxChars = activeDensity.maxCharsPerBullet;
         const newItems: string[] = [];
         let didRedistribute = false;
+        let narrativeSplits = 0;
+
+        // v9: NARRATIVE BULLET PATTERNS — structural split before generic handling
+        const NARRATIVE_LABELS = /^(Cenário|Resultado|Impacto|Exemplo|Aplicação|Benefício|Desafio|Solução|Contexto|Problema)\s*[-–:]/i;
 
         for (const item of s.items) {
           if (!item || item.length <= maxChars) {
@@ -5886,7 +5939,50 @@ Idioma: pt-BR`
             continue;
           }
 
-          // Try structural split for "Label: long explanation"
+          // v9: NARRATIVE BULLET SPLIT — detect "Label - long narrative" or "Label: long narrative"
+          const narrativeMatch = item.match(NARRATIVE_LABELS);
+          if (narrativeMatch) {
+            const sepIdx = item.indexOf("-", narrativeMatch[0].length - 2);
+            const colonSepIdx = item.indexOf(":", narrativeMatch[0].length - 2);
+            const actualSep = sepIdx > 0 && sepIdx < 30 ? sepIdx : colonSepIdx > 0 && colonSepIdx < 30 ? colonSepIdx : -1;
+
+            if (actualSep > 0) {
+              const label = item.substring(0, actualSep).trim();
+              const narrative = item.substring(actualSep + 1).trim();
+              const sentences = narrative.match(/[^.!?]+[.!?]+/g);
+
+              if (sentences && sentences.length >= 2) {
+                // Split into multiple labeled sub-items
+                for (let si2 = 0; si2 < sentences.length; si2++) {
+                  let part = sentences[si2].trim();
+                  if (si2 === 0) {
+                    part = label + ": " + part;
+                  }
+                  if (!/[.!?]$/.test(part)) part += ".";
+                  newItems.push(part);
+                }
+                didRedistribute = true;
+                narrativeSplits++;
+                continue;
+              } else if (narrative.length > maxChars) {
+                // Single long sentence — split at comma or midpoint
+                const commaIdx = narrative.indexOf(",", Math.floor(narrative.length * 0.3));
+                if (commaIdx > 20 && commaIdx < narrative.length - 20) {
+                  let p1 = label + ": " + narrative.substring(0, commaIdx + 1).trim();
+                  let p2 = narrative.substring(commaIdx + 1).trim();
+                  if (!/[.!?]$/.test(p1)) p1 += ".";
+                  if (!/[.!?]$/.test(p2)) p2 += ".";
+                  newItems.push(p1);
+                  newItems.push(p2);
+                  didRedistribute = true;
+                  narrativeSplits++;
+                  continue;
+                }
+              }
+            }
+          }
+
+          // Try structural split for "Label: long explanation" (generic)
           const colonIdx = item.indexOf(":");
           if (colonIdx > 2 && colonIdx < 55) {
             const label = item.substring(0, colonIdx).trim();
@@ -5937,7 +6033,12 @@ Idioma: pt-BR`
         if (didRedistribute) {
           s.items = newItems;
           preRenderRedistributions++;
-          console.log("[STAGE-2.5] REDISTRIBUTED: Bullet items for '" + s.title + "' (" + s.items.length + " items after split)");
+          if (narrativeSplits > 0) {
+            qualityReport.stage4_all_fixes.push(
+              "QUEBRA NARRATIVA: '" + (s.title || "").substring(0, 30) + "' → " + narrativeSplits + " bullet(s) narrativo(s) redistribuído(s)"
+            );
+          }
+          console.log("[STAGE-2.5] REDISTRIBUTED: Bullet items for '" + s.title + "' (" + s.items.length + " items, " + narrativeSplits + " narrative splits)");
 
           // If splitting created too many items, let overflow resolution handle it in Stage 3
           // (which will create continuation slides instead of compressing)
@@ -6299,7 +6400,7 @@ Idioma: pt-BR`
       quality_score: Number(qualityScore.toFixed(1)),
       passed,
       blocked_reason: blockReason,
-      pipeline_version: "v8-selective-regeneration",
+      pipeline_version: "v9-structural-redistribution",
       checkpoints,
       problematic_slides: problematicSlides.slice(0, 15),
       corrections_attempted: {
@@ -6366,11 +6467,20 @@ Idioma: pt-BR`
       return _origAddSlide(...args);
     };
 
-    // 1. Cover
+    // 1. Cover (with structural redistribution for overflowing descriptions)
+    const coverExtraSlides: SlideData[] = [];
     renderCapa(pptx, {
       layout: "module_cover", title: course.title,
       description: course.description || "", moduleCount: modules.length,
-    });
+    }, coverExtraSlides);
+
+    // Render any continuation slides generated by cover redistribution
+    if (coverExtraSlides.length > 0) {
+      qualityReport.stage4_all_fixes.push("REDISTRIBUIÇÃO CAPA: descrição redistribuída em slide de continuação");
+      for (const sd of coverExtraSlides) {
+        renderBullets(pptx, sd);
+      }
+    }
 
     // 2. TOC
     const modulesSummary = modules.map((m: any) => {
