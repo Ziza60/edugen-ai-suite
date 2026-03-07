@@ -492,6 +492,35 @@ function splitModuleCoverTitle(title: string): { primary: string; secondary: str
   return { primary, secondary, changed: true };
 }
 
+function getContinuationTitle(title: string, part: number): string {
+  const base = (title || "").replace(/\s*\(Parte\s*\d+\)\s*$/i, "").trim();
+  return smartTitle(base + " (Parte " + part + ")");
+}
+
+function getNextContinuationTitle(title: string, fallbackBase: string): string {
+  const source = (title || fallbackBase || "Continuação").trim();
+  const match = source.match(/\(Parte\s*(\d+)\)\s*$/i);
+  const nextPart = match ? Number(match[1]) + 1 : 2;
+  const base = source.replace(/\s*\(Parte\s*\d+\)\s*$/i, "").trim() || fallbackBase || "Continuação";
+  return getContinuationTitle(base, nextPart);
+}
+
+function flowLog(tag: string, details: string) {
+  console.log("[FLOW] " + tag + " | " + details);
+}
+
+function splitNarrativeItemForStructure(text: string, maxChars: number): string[] {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return [];
+
+  const splitLabel = splitLabelExplanationBullet(trimmed, maxChars);
+  if (splitLabel && splitLabel.length > 1) {
+    return splitLabel.map(ensureSentenceEnd);
+  }
+
+  return splitLongSegments(trimmed, maxChars).map(ensureSentenceEnd);
+}
+
 /**
  * SMART SUBTITLE v2 — Increased capacity for cover descriptions.
  * Allows up to 280 chars (3+ lines at 18pt on wide slides).
@@ -1800,60 +1829,64 @@ ${truncatedContent}`;
 function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): SlideData[] {
   const slides: SlideData[] = [];
 
-  // ── STRUCTURAL REDISTRIBUTION for module cover (v7) ──
-  // Instead of compressing long titles/descriptions/objectives, we redistribute:
-  // 1. If title + description + objectives all fit → single cover slide
-  // 2. If objectives overflow → move objectives to a dedicated continuation slide
-  // 3. If title itself overflows → allow 3 lines, and move description to continuation
-  const coverTitle = plan.moduleTitle;
-  const coverDesc = plan.moduleDescription;
-  const coverObjectives = plan.objectives.slice(0, 4); // allow up to 4 for redistribution
+  // ── STRUCTURAL REDISTRIBUTION for module cover (real active path) ──
+  const coverTitleRaw = plan.moduleTitle;
+  const splitCoverTitle = splitModuleCoverTitle(coverTitleRaw);
+  const coverTitle = splitCoverTitle.primary || coverTitleRaw;
+  const coverTitleSubtitle = splitCoverTitle.secondary || undefined;
+  const coverDesc = ensureSentenceEnd((plan.moduleDescription || "").trim());
+  const rawObjectives = plan.objectives.map(o => ensureSentenceEnd((o || "").trim())).filter(Boolean);
+  const coverObjectives = rawObjectives.flatMap((o) => splitObjectiveForStructure(o, Math.max(54, activeDensity.maxCharsPerBullet - 8)));
 
   // Measure: will objectives fit on the cover?
   const objW = SAFE_W * 0.60 - 0.30;
   const objH = 0.44;
-  const titleBbox = measureBoundingBox(coverTitle, TYPO.MODULE_TITLE, FONT_TITLE, SAFE_W * 0.70, 1.50);
   let objectivesOverflow = false;
   for (const obj of coverObjectives) {
     const bbox = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW, objH);
-    if (!bbox.fits && obj.length > 60) { objectivesOverflow = true; break; }
+    if (!bbox.fits && obj.length > 52) { objectivesOverflow = true; break; }
   }
   // Also check if we have too many objectives + long description
   const totalCoverContent = coverDesc.length + coverObjectives.reduce((s, o) => s + o.length, 0);
-  if (totalCoverContent > 350 || coverObjectives.length > 3) objectivesOverflow = true;
+  if (totalCoverContent > 320 || coverObjectives.length > 3) objectivesOverflow = true;
 
   if (objectivesOverflow) {
-    // Split: cover gets title + description, objectives go to dedicated slide
+    // Split: cover gets title + description, objectives go to dedicated continuation slide
     slides.push({
       layout: "module_cover",
-      title: coverTitle, // full title, renderer handles wrapping
+      title: coverTitle,
+      coverTitleSubtitle,
       subtitle: "MODULO " + String(moduleIndex + 1).padStart(2, "0"),
       description: coverDesc,
       moduleIndex,
-      objectives: [], // no objectives on cover — they go to next slide
+      objectives: [],
     });
-    // Dedicated objectives slide
-    slides.push({
-      layout: "bullets",
-      title: "Objetivos do Módulo",
-      sectionLabel: "OBJETIVOS DO MÓDULO",
-      items: sanitizeBullets(coverObjectives.map(o => {
-        const t = o.trim();
-        return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
-      })),
-      moduleIndex,
-      blockType: "normal",
-    });
-    console.log("[REDISTRIB] Module " + (moduleIndex + 1) + ": objectives moved to dedicated slide (" + coverObjectives.length + " objectives)");
+
+    const OBJ_PER_SLIDE = 4;
+    for (let oi = 0; oi < coverObjectives.length; oi += OBJ_PER_SLIDE) {
+      const chunk = coverObjectives.slice(oi, oi + OBJ_PER_SLIDE);
+      const part = Math.floor(oi / OBJ_PER_SLIDE) + 1;
+      slides.push({
+        layout: "bullets",
+        title: coverObjectives.length > OBJ_PER_SLIDE ? getContinuationTitle("Objetivos do Módulo", part) : "Objetivos do Módulo",
+        sectionLabel: "OBJETIVOS DO MÓDULO",
+        items: sanitizeBullets(chunk),
+        moduleIndex,
+        blockType: "normal",
+      });
+    }
+    flowLog("OBJECTIVES", "semanticPlanToSlides -> dedicated objective slide(s), module=" + (moduleIndex + 1) + ", count=" + coverObjectives.length);
   } else {
     slides.push({
       layout: "module_cover",
       title: coverTitle,
+      coverTitleSubtitle,
       subtitle: "MODULO " + String(moduleIndex + 1).padStart(2, "0"),
       description: coverDesc,
       moduleIndex,
-      objectives: coverObjectives.slice(0, 3),
+      objectives: coverObjectives,
     });
+    flowLog("MODULE_COVER", "semanticPlanToSlides -> renderModuleCover, module=" + (moduleIndex + 1));
   }
 
   const LAYOUT_MAP: Record<string, LayoutType> = {
@@ -3528,55 +3561,65 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
 
   const slides: SlideData[] = [];
 
-  const safeTitle = shortTitle; // v7: pass full title — renderer handles wrapping
-  const moduleDesc = objItems.length > 0
-    ? smartModuleDesc(objItems[0])
-    : smartModuleDesc(sanitize((mod.content || "").split(/[.!?]\s/)[0] || ""));
+  const splitFallbackTitle = splitModuleCoverTitle(shortTitle);
+  const safeTitle = splitFallbackTitle.primary || shortTitle;
+  const moduleDescSource = objItems.length > 0
+    ? sanitize(objItems[0])
+    : sanitize((mod.content || "").split(/[.!?]\s/)[0] || "");
+  const moduleDesc = ensureSentenceEnd(moduleDescSource);
 
-  const objectives = objItems.slice(0, 4).map(o => sanitize(o));
+  const objectives = objItems
+    .map(o => ensureSentenceEnd(sanitize(o)))
+    .filter(Boolean)
+    .flatMap(o => splitObjectiveForStructure(o, Math.max(54, activeDensity.maxCharsPerBullet - 8)));
 
-  // ── STRUCTURAL REDISTRIBUTION for fallback path (v7) ──
-  // Same logic as semanticPlanToSlides: if objectives overflow, move them to dedicated slide
+  // ── STRUCTURAL REDISTRIBUTION for fallback path (real active fallback) ──
   const objW = SAFE_W * 0.60 - 0.30;
   const objH = 0.44;
   let objectivesOverflow = false;
   for (const obj of objectives) {
     const bbox = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW, objH);
-    if (!bbox.fits && obj.length > 60) { objectivesOverflow = true; break; }
+    if (!bbox.fits && obj.length > 52) { objectivesOverflow = true; break; }
   }
   const totalCoverContent = moduleDesc.length + objectives.reduce((s, o) => s + o.length, 0);
-  if (totalCoverContent > 350 || objectives.length > 3) objectivesOverflow = true;
+  if (totalCoverContent > 320 || objectives.length > 3) objectivesOverflow = true;
 
   if (objectivesOverflow && objectives.length > 0) {
     slides.push({
       layout: "module_cover",
       title: safeTitle,
+      coverTitleSubtitle: splitFallbackTitle.secondary || undefined,
       subtitle: "MODULO " + String(modIndex + 1).padStart(2, "0"),
       description: moduleDesc,
       moduleIndex: modIndex,
       objectives: [],
     });
-    slides.push({
-      layout: "bullets",
-      title: "Objetivos do Módulo",
-      sectionLabel: "OBJETIVOS DO MÓDULO",
-      items: sanitizeBullets(objectives.map(o => {
-        const t = o.trim();
-        return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
-      })),
-      moduleIndex: modIndex,
-      blockType: "normal",
-    });
-    console.log("[REDISTRIB-FALLBACK] Module " + (modIndex + 1) + ": objectives moved to dedicated slide");
+
+    const OBJ_PER_SLIDE = 4;
+    for (let oi = 0; oi < objectives.length; oi += OBJ_PER_SLIDE) {
+      const chunk = objectives.slice(oi, oi + OBJ_PER_SLIDE);
+      const part = Math.floor(oi / OBJ_PER_SLIDE) + 1;
+      slides.push({
+        layout: "bullets",
+        title: objectives.length > OBJ_PER_SLIDE ? getContinuationTitle("Objetivos do Módulo", part) : "Objetivos do Módulo",
+        sectionLabel: "OBJETIVOS DO MÓDULO",
+        items: sanitizeBullets(chunk),
+        moduleIndex: modIndex,
+        blockType: "normal",
+      });
+    }
+    flowLog("OBJECTIVES", "buildModuleSlidesFromBlocks -> dedicated objective slide(s), module=" + (modIndex + 1) + ", count=" + objectives.length);
   } else {
     slides.push({
       layout: "module_cover",
       title: safeTitle,
+      coverTitleSubtitle: splitFallbackTitle.secondary || undefined,
       subtitle: "MODULO " + String(modIndex + 1).padStart(2, "0"),
       description: moduleDesc,
       moduleIndex: modIndex,
-      objectives: objectives.slice(0, 3).map(o => smartBullet(o)),
+      objectives: objectives,
     });
+    flowLog("MODULE_COVER", "buildModuleSlidesFromBlocks -> renderModuleCover, module=" + (modIndex + 1));
   }
 
   let prevLayout: LayoutType | null = "module_cover";
@@ -4798,17 +4841,19 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
   }
 }
 
-// ── PROCESS TIMELINE v2 ──
+// ── PROCESS TIMELINE v3 — no silent clipping, continuation slides for overflow ──
 function renderProcessTimeline(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
+
+  const steps = items.slice(0, 4);
+  const remaining = items.slice(4);
 
   const slide = pptx.addSlide();
   resetSlideIcons();
   slide.background = { color: C.BG_WHITE };
   let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
-  const steps = items.slice(0, 4);
   const stepCount = steps.length;
   const totalW = SAFE_W;
   const stepW = totalW / stepCount;
@@ -4842,9 +4887,8 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     let stepDesc: string;
     if (colonIdx > 2 && colonIdx < 60) {
       stepTitle = smartTruncate(step.substring(0, colonIdx).trim(), 55);
-      stepDesc = step.substring(colonIdx + 1).trim(); // NO truncation — let fitTextForBox handle it
+      stepDesc = step.substring(colonIdx + 1).trim();
     } else {
-      // Find a natural break point — prefer sentence boundary or comma
       const commaIdx = step.indexOf(",");
       const dashIdx = step.indexOf(" – ");
       const breakIdx = commaIdx > 8 && commaIdx < 55 ? commaIdx
@@ -4879,11 +4923,12 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     }
   });
 
-  if (items.length > 4) {
-    const supportText = smartTruncate(items[4], 80);
-    addTextSafe(slide, supportText, {
-      x: MARGIN, y: SLIDE_H - 0.80, w: SAFE_W, h: 0.45,
-      fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.SECONDARY, italic: true, align: "center",
+  if (remaining.length > 0) {
+    flowLog("PROCESS_TIMELINE", "renderProcessTimeline -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    renderProcessTimeline(pptx, {
+      ...data,
+      title: getNextContinuationTitle(data.title || "Processo", "Processo"),
+      items: remaining,
     });
   }
 }
@@ -5089,6 +5134,7 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
     if (fit.fontSize < exampleFontSize) exampleFontSize = fit.fontSize;
   }
 
+  let rendered = 0;
   items.forEach((item, idx) => {
     if (textY + 0.50 > contentY + boxH - 0.15) return;
     const richText = makeBoldLabelText(item, C.TEXT_DARK, C.TEXT_BODY, exampleFontSize);
@@ -5097,7 +5143,22 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
       valign: "middle", lineSpacingMultiple: 1.35,
     });
     textY += exItemH + EXAMPLE_GAP;
+    rendered++;
   });
+
+  if (rendered < items.length) {
+    if (rendered === 0) {
+      console.warn("[FLOW] EXAMPLE | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
+      return;
+    }
+    const remaining = items.slice(rendered);
+    flowLog("EXAMPLE", "renderExampleHighlight -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    renderExampleHighlight(pptx, {
+      ...data,
+      title: getNextContinuationTitle(data.title || "Exemplo Prático", "Exemplo Prático"),
+      items: remaining,
+    });
+  }
 }
 
 // ── REFLECTION CALLOUT — NEW template for reflection/checkpoint ──
@@ -5314,6 +5375,7 @@ function renderWarningCallout(pptx: any, data: SlideData) {
     if (fit.fontSize < warningFontSize) warningFontSize = fit.fontSize;
   }
 
+  let rendered = 0;
   items.forEach((item, idx) => {
     if (textY + itemH > contentY + boxH - 0.10) return;
 
@@ -5330,7 +5392,22 @@ function renderWarningCallout(pptx: any, data: SlideData) {
       valign: "top", lineSpacingMultiple: 1.35,
     });
     textY += itemH + WARNING_GAP;
+    rendered++;
   });
+
+  if (rendered < items.length) {
+    if (rendered === 0) {
+      console.warn("[FLOW] WARNING | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
+      return;
+    }
+    const remaining = items.slice(rendered);
+    flowLog("WARNING", "renderWarningCallout -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    renderWarningCallout(pptx, {
+      ...data,
+      title: getNextContinuationTitle(data.title || "Desafios e Cuidados", "Desafios e Cuidados"),
+      items: remaining,
+    });
+  }
 }
 
 // ── SUMMARY SLIDE — Resumo do Módulo ──
@@ -5386,6 +5463,7 @@ function renderSummarySlide(pptx: any, data: SlideData) {
     if (fit.fontSize < summaryFontSize) summaryFontSize = fit.fontSize;
   }
 
+  let rendered = 0;
   items.forEach((item, idx) => {
     if (textY + itemH > contentY + boxH - 0.15) return;
     const textFit = fitTextForBox(item, textW, itemH, summaryFontSize, FONT_BODY, summaryFontSize);
@@ -5395,7 +5473,22 @@ function renderSummarySlide(pptx: any, data: SlideData) {
       valign: "top", lineSpacingMultiple: 1.4,
     });
     textY += itemH + SUMMARY_GAP;
+    rendered++;
   });
+
+  if (rendered < items.length) {
+    if (rendered === 0) {
+      console.warn("[FLOW] SUMMARY | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
+      return;
+    }
+    const remaining = items.slice(rendered);
+    flowLog("SUMMARY", "renderSummarySlide -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    renderSummarySlide(pptx, {
+      ...data,
+      title: getNextContinuationTitle(data.title || "Resumo do Módulo", "Resumo do Módulo"),
+      items: remaining,
+    });
+  }
 
   // Bottom accent
   slide.addShape(pptx.ShapeType.rect, {
@@ -5971,6 +6064,7 @@ Idioma: pt-BR`
           s.coverTitleSubtitle = splitTitle.secondary || undefined;
           moduleCoverTitleRedistributions++;
           preRenderRedistributions++;
+          flowLog("MODULE_COVER_TITLE", "stage2.5 -> split title/subtitle, title='" + (s.title || "").substring(0, 52) + "'");
           qualityReport.stage4_all_fixes.push(
             "REDISTRIBUIÇÃO TÍTULO MODULE COVER: '" + (splitTitle.primary || "").substring(0, 36) + "...'"
           );
@@ -6005,6 +6099,7 @@ Idioma: pt-BR`
             }
             moduleCoverTitleRedistributions++;
             preRenderRedistributions++;
+            flowLog("MODULE_COVER_TITLE", "stage2.5 -> continuation slide for title overflow, title='" + (s.title || "").substring(0, 52) + "'");
             qualityReport.stage4_all_fixes.push(
               "REDISTRIBUIÇÃO TÍTULO MODULE COVER: continuação criada para '" + (s.title || "").substring(0, 30) + "'"
             );
@@ -6065,6 +6160,7 @@ Idioma: pt-BR`
 
           preRenderRedistributions++;
           objectiveRedistributions += normalizedObjectives.length;
+          flowLog("OBJECTIVES", "stage2.5 -> moved objectives to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + objChunks.length);
           qualityReport.stage4_all_fixes.push(
             "REDISTRIBUIÇÃO OBJETIVOS: '" + (s.title || "").substring(0, 30) + "' → " + objChunks.length + " slide(s)"
           );
@@ -6099,6 +6195,7 @@ Idioma: pt-BR`
               });
             }
             preRenderRedistributions++;
+            flowLog("MODULE_COVER_DESCRIPTION", "stage2.5 -> moved description to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + chunks.length);
             qualityReport.stage4_all_fixes.push(
               "REDISTRIBUIÇÃO ABERTURA: descrição movida para " + chunks.length + " slide(s) em '" + (s.title || "").substring(0, 26) + "'"
             );
@@ -6119,9 +6216,9 @@ Idioma: pt-BR`
           const labelParsed = extractLabelExplanation(trimmed);
           const enumLike = /;|\|/.test(trimmed) || /,\s+[^,]{8,},\s+[^,]{8,}/.test(trimmed);
           if (labelParsed && (trimmed.length > Math.floor(maxChars * 0.85) || enumLike)) {
-            const splitLabel = splitLabelExplanationBullet(trimmed, maxChars);
-            if (splitLabel && splitLabel.length > 1) {
-              newItems.push(...splitLabel.map(ensureSentenceEnd));
+            const splitLabel = splitNarrativeItemForStructure(trimmed, maxChars);
+            if (splitLabel.length > 1) {
+              newItems.push(...splitLabel);
               didRedistribute = true;
               labelExplanationSplits++;
               continue;
@@ -6129,9 +6226,9 @@ Idioma: pt-BR`
           }
 
           if (trimmed.length > maxChars) {
-            const pieces = splitLongSegments(trimmed, maxChars);
+            const pieces = splitNarrativeItemForStructure(trimmed, maxChars);
             if (pieces.length > 1) {
-              newItems.push(...pieces.map(ensureSentenceEnd));
+              newItems.push(...pieces);
               didRedistribute = true;
               continue;
             }
@@ -6158,7 +6255,46 @@ Idioma: pt-BR`
         if (didRedistribute) {
           s.items = newItems;
           preRenderRedistributions++;
-          console.log("[STAGE-2.5] REDISTRIBUTED bullets for '" + s.title + "' (" + s.items.length + " items)");
+          flowLog("BULLETS", "stage2.5 -> redistributed bullet structure, layout=" + s.layout + ", title=" + (s.title || "").substring(0, 46));
+        }
+      }
+
+      // E. Specialized layouts: prevent renderer-side clipping by pre-splitting into continuation slides
+      if (s.items && s.items.length > 0) {
+        const layoutCapacity: Partial<Record<LayoutType, number>> = {
+          example_highlight: 4,
+          warning_callout: 4,
+          summary_slide: 4,
+          process_timeline: 4,
+          numbered_takeaways: 6,
+        };
+
+        const cap = layoutCapacity[s.layout];
+        if (cap && s.items.length > cap) {
+          const chunks: string[][] = [];
+          for (let i = 0; i < s.items.length; i += cap) {
+            chunks.push(s.items.slice(i, i + cap));
+          }
+
+          s.items = chunks[0];
+          const continuationSlides: SlideData[] = [];
+          for (let ci = 1; ci < chunks.length; ci++) {
+            continuationSlides.push({
+              ...s,
+              title: getContinuationTitle(s.title || "Continuação", ci + 1),
+              items: chunks[ci],
+              structuredItems: undefined,
+            });
+          }
+
+          if (continuationSlides.length > 0) {
+            slidesToInsert.push({ afterIndex: si, slides: continuationSlides });
+            preRenderRedistributions++;
+            qualityReport.stage4_all_fixes.push(
+              "REDISTRIBUIÇÃO " + s.layout + ": continuação estrutural criada para '" + (s.title || "").substring(0, 28) + "'"
+            );
+            flowLog("SPECIAL_LAYOUT", "stage2.5 -> " + s.layout + " split into " + chunks.length + " parts, title=" + (s.title || "").substring(0, 46));
+          }
         }
       }
     }
@@ -6527,7 +6663,7 @@ Idioma: pt-BR`
       quality_score: Number(qualityScore.toFixed(1)),
       passed,
       blocked_reason: blockReason,
-      pipeline_version: "v10-focused-structural-fixes",
+      pipeline_version: "v11-real-flow-consistency",
       checkpoints,
       problematic_slides: problematicSlides.slice(0, 15),
       corrections_attempted: {
@@ -6599,6 +6735,7 @@ Idioma: pt-BR`
 
     // 1. Cover (with structural redistribution for overflowing descriptions)
     const coverExtraSlides: SlideData[] = [];
+    flowLog("COVER", "renderCapa -> curso='" + (course.title || "").substring(0, 52) + "'");
     renderCapa(pptx, {
       layout: "module_cover", title: course.title,
       description: course.description || "", moduleCount: modules.length,
@@ -6608,6 +6745,7 @@ Idioma: pt-BR`
     if (coverExtraSlides.length > 0) {
       qualityReport.stage4_all_fixes.push("REDISTRIBUIÇÃO CAPA: descrição redistribuída em slide de continuação");
       for (const sd of coverExtraSlides) {
+        flowLog("COVER_CONTINUATION", "renderBullets -> title='" + (sd.title || "").substring(0, 52) + "'");
         renderBullets(pptx, sd);
       }
     }
@@ -6619,24 +6757,26 @@ Idioma: pt-BR`
       const firstSentence = smartModuleDesc(sanitize((m.content || "").split(/[.!?]\s/)[0] || ""));
       return { title: shortTitle, description: firstSentence };
     });
+    flowLog("TOC", "renderTOC -> módulos=" + modulesSummary.length);
     renderTOC(pptx, { layout: "module_cover", title: "O que voce vai aprender", modules: modulesSummary });
 
     // 3. All module slides
     for (const sd of allSlides) {
+      const titlePreview = (sd.title || "").substring(0, 52);
       switch (sd.layout) {
-        case "module_cover":                renderModuleCover(pptx, sd); break;
-        case "definition_card_with_pillars": renderDefinitionWithPillars(pptx, sd); break;
-        case "comparison_table":            renderComparisonTable(pptx, sd); break;
-        case "grid_cards":                  renderGridCards(pptx, sd); break;
-        case "four_quadrants":              renderFourQuadrants(pptx, sd); break;
-        case "process_timeline":            renderProcessTimeline(pptx, sd); break;
-        case "numbered_takeaways":          renderNumberedTakeaways(pptx, sd); break;
-        case "example_highlight":           renderExampleHighlight(pptx, sd); break;
-        case "reflection_callout":          renderReflectionCallout(pptx, sd); break;
-        case "warning_callout":             renderWarningCallout(pptx, sd); break;
-        case "summary_slide":              renderSummarySlide(pptx, sd); break;
-        case "bullets":                     renderBullets(pptx, sd); break;
-        default:                            renderBullets(pptx, sd); break;
+        case "module_cover":                 flowLog("MODULE_COVER", "renderModuleCover -> title='" + titlePreview + "'"); renderModuleCover(pptx, sd); break;
+        case "definition_card_with_pillars": flowLog("DEFINITION", "renderDefinitionWithPillars -> title='" + titlePreview + "'"); renderDefinitionWithPillars(pptx, sd); break;
+        case "comparison_table":             flowLog("TABLE", "renderComparisonTable -> title='" + titlePreview + "'"); renderComparisonTable(pptx, sd); break;
+        case "grid_cards":                   flowLog("BULLETS_NARRATIVE", "renderGridCards -> title='" + titlePreview + "'"); renderGridCards(pptx, sd); break;
+        case "four_quadrants":               flowLog("BULLETS_NARRATIVE", "renderFourQuadrants -> title='" + titlePreview + "'"); renderFourQuadrants(pptx, sd); break;
+        case "process_timeline":             flowLog("TIMELINE_PROCESS", "renderProcessTimeline -> title='" + titlePreview + "'"); renderProcessTimeline(pptx, sd); break;
+        case "numbered_takeaways":           flowLog("TAKEAWAYS", "renderNumberedTakeaways -> title='" + titlePreview + "'"); renderNumberedTakeaways(pptx, sd); break;
+        case "example_highlight":            flowLog("EXAMPLE", "renderExampleHighlight -> title='" + titlePreview + "'"); renderExampleHighlight(pptx, sd); break;
+        case "reflection_callout":           flowLog("REFLECTION", "renderReflectionCallout -> title='" + titlePreview + "'"); renderReflectionCallout(pptx, sd); break;
+        case "warning_callout":              flowLog("WARNING", "renderWarningCallout -> title='" + titlePreview + "'"); renderWarningCallout(pptx, sd); break;
+        case "summary_slide":                flowLog("SUMMARY", "renderSummarySlide -> title='" + titlePreview + "'"); renderSummarySlide(pptx, sd); break;
+        case "bullets":                      flowLog("BULLETS", "renderBullets -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
+        default:                               flowLog("BULLETS", "renderBullets(default) -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
       }
     }
 
