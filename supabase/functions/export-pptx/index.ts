@@ -4833,17 +4833,19 @@ function renderFourQuadrants(pptx: any, data: SlideData) {
   }
 }
 
-// ── PROCESS TIMELINE v2 ──
+// ── PROCESS TIMELINE v3 — no silent clipping, continuation slides for overflow ──
 function renderProcessTimeline(pptx: any, data: SlideData) {
   const items = data.items || [];
   if (items.length === 0) return;
+
+  const steps = items.slice(0, 4);
+  const remaining = items.slice(4);
 
   const slide = pptx.addSlide();
   resetSlideIcons();
   slide.background = { color: C.BG_WHITE };
   let contentY = renderContentHeader(slide, data.sectionLabel || "", data.title);
 
-  const steps = items.slice(0, 4);
   const stepCount = steps.length;
   const totalW = SAFE_W;
   const stepW = totalW / stepCount;
@@ -4877,9 +4879,8 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     let stepDesc: string;
     if (colonIdx > 2 && colonIdx < 60) {
       stepTitle = smartTruncate(step.substring(0, colonIdx).trim(), 55);
-      stepDesc = step.substring(colonIdx + 1).trim(); // NO truncation — let fitTextForBox handle it
+      stepDesc = step.substring(colonIdx + 1).trim();
     } else {
-      // Find a natural break point — prefer sentence boundary or comma
       const commaIdx = step.indexOf(",");
       const dashIdx = step.indexOf(" – ");
       const breakIdx = commaIdx > 8 && commaIdx < 55 ? commaIdx
@@ -4914,11 +4915,12 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     }
   });
 
-  if (items.length > 4) {
-    const supportText = smartTruncate(items[4], 80);
-    addTextSafe(slide, supportText, {
-      x: MARGIN, y: SLIDE_H - 0.80, w: SAFE_W, h: 0.45,
-      fontSize: TYPO.SUPPORT, fontFace: FONT_BODY, color: C.SECONDARY, italic: true, align: "center",
+  if (remaining.length > 0) {
+    flowLog("PROCESS_TIMELINE", "renderProcessTimeline -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    renderProcessTimeline(pptx, {
+      ...data,
+      title: getContinuationTitle(data.title || "Processo", 2),
+      items: remaining,
     });
   }
 }
