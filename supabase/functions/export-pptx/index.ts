@@ -6928,8 +6928,23 @@ Idioma: pt-BR`
           const parts = splitLongSegments(s.description, 140);
           if (parts.length >= 2) {
             const beforeDescription = s.description || "";
-            s.description = parts[0];
-            const rest = parts.slice(1);
+            let firstChunk = parts[0];
+            let rest = parts.slice(1);
+
+            const firstChunkFits = () => measureBoundingBox(firstChunk, TYPO.SUBTITLE, FONT_BODY, descW, descH).fits;
+            while (firstChunk && !firstChunkFits()) {
+              const splitAgain = splitLongSegments(firstChunk, 100);
+              if (splitAgain.length <= 1) break;
+              firstChunk = splitAgain[0];
+              rest = [...splitAgain.slice(1), ...rest];
+            }
+
+            if (!firstChunk || !firstChunkFits()) {
+              rest = [firstChunk, ...rest].filter(Boolean);
+              firstChunk = "";
+            }
+
+            s.description = firstChunk;
             const chunks: string[][] = [];
             for (let i = 0; i < rest.length; i += 3) chunks.push(rest.slice(i, i + 3));
             for (let ci = 0; ci < chunks.length; ci++) {
