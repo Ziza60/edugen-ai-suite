@@ -1200,19 +1200,12 @@ function detectSemanticTruncation(text: string): boolean {
   // "..., como." — dangling comparative
   if (/,\s*como\s*$/i.test(stripped)) return true;
 
-  // Sentence ending in preposition + noun — only truncation for SHORT fragments (6-9 words).
-  // Sentences with >= 10 words ending in "prep + noun" are natural Portuguese conclusions
-  // (e.g., "...aprendizado adaptativo do cérebro." is a complete sentence).
-  // v5 fix: raised upper threshold from unbounded to 9 words based on forensic_trace
-  // evidence from record 038f68b0 showing 25/25 false positives in 10+ word sentences.
-  if (wordCount >= 6 && wordCount <= 9) {
-    const words = stripped.split(/\s+/);
-    const last = words[words.length - 1];
-    const secondLast = words[words.length - 2] || "";
-    if (/^(de|da|do|das|dos|em|na|no|nas|nos|a|à)$/i.test(secondLast) && last.length >= 4) {
-      return true;
-    }
-  }
+  // v6 REMOVED: preposition+noun heuristic entirely.
+  // Forensic evidence from records 038f68b0 (25/25 false positives) and 44b19d3c (20+/25 false positives)
+  // proves this check flags valid Portuguese titles/phrases like "Gestão de E-mails",
+  // "Escrita de Conteúdo", "Gestão de Comunicação" as truncated.
+  // The dangling connector check in detectTruncation (line 1129) already catches REAL cases
+  // where the last word IS a preposition (e.g., "A IA é usada para gestão de").
 
   return false;
 }
