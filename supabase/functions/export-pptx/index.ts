@@ -376,6 +376,122 @@ function smartTitle(text: string): string {
   return smartTruncate(text, 100, false); // v6: Increased from 80 — titles wrapped by renderer
 }
 
+function ensureSentenceEnd(text: string): string {
+  const t = (text || "").trim();
+  if (!t) return "";
+  return /[.!?]$/.test(t) ? t : t + ".";
+}
+
+function splitLongSegments(text: string, maxChars: number): string[] {
+  const t = (text || "").trim();
+  if (!t) return [];
+  if (t.length <= maxChars) return [ensureSentenceEnd(t)];
+
+  const segments: string[] = [];
+  const sentences = t.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map(s => s.trim()).filter(Boolean) || [t];
+
+  for (const sentence of sentences) {
+    if (sentence.length <= maxChars) {
+      segments.push(ensureSentenceEnd(sentence));
+      continue;
+    }
+
+    const enumParts = sentence.split(/\s*;\s*|\s*\|\s*|\s*,\s*(?=(?:\d+[\)\.]|[a-zà-öø-ÿ]{3,}\s+[a-zà-öø-ÿ]{3,}))/i)
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    if (enumParts.length >= 2) {
+      let bucket = "";
+      for (const p of enumParts) {
+        const candidate = bucket ? `${bucket}; ${p}` : p;
+        if (candidate.length <= maxChars || !bucket) {
+          bucket = candidate;
+        } else {
+          segments.push(ensureSentenceEnd(bucket));
+          bucket = p;
+        }
+      }
+      if (bucket) segments.push(ensureSentenceEnd(bucket));
+      continue;
+    }
+
+    // fallback: split by words into chunks (structural, no ellipsis)
+    const words = sentence.split(/\s+/).filter(Boolean);
+    let chunk = "";
+    for (const w of words) {
+      const candidate = chunk ? `${chunk} ${w}` : w;
+      if (candidate.length <= maxChars || !chunk) {
+        chunk = candidate;
+      } else {
+        segments.push(ensureSentenceEnd(chunk));
+        chunk = w;
+      }
+    }
+    if (chunk) segments.push(ensureSentenceEnd(chunk));
+  }
+
+  return segments.filter(Boolean);
+}
+
+function extractLabelExplanation(text: string): { label: string; explanation: string } | null {
+  const t = (text || "").trim();
+  if (!t) return null;
+  const match = t.match(/^([A-Za-zÀ-ÖØ-öø-ÿ0-9\s]{3,48}?)\s*([:–—-])\s*(.+)$/);
+  if (!match) return null;
+  const label = match[1].trim();
+  const explanation = match[3].trim();
+  if (!label || !explanation) return null;
+  if (label.split(/\s+/).length > 7) return null;
+  return { label, explanation };
+}
+
+function splitLabelExplanationBullet(text: string, maxChars: number): string[] | null {
+  const parsed = extractLabelExplanation(text);
+  if (!parsed) return null;
+  const budget = Math.max(36, maxChars - parsed.label.length - 4);
+  const parts = splitLongSegments(parsed.explanation, budget);
+  if (parts.length <= 1) return null;
+  return parts.map((part, idx) => idx === 0
+    ? `${parsed.label}: ${part}`
+    : `${parsed.label} (continuação): ${part}`);
+}
+
+function splitObjectiveForStructure(text: string, maxChars: number): string[] {
+  const t = (text || "").trim();
+  if (!t) return [];
+  const direct = splitLongSegments(t, Math.max(48, maxChars));
+  if (direct.length > 0) return direct;
+  return [ensureSentenceEnd(t)];
+}
+
+function splitModuleCoverTitle(title: string): { primary: string; secondary: string | null; changed: boolean } {
+  const t = (title || "").replace(/\s+/g, " ").trim();
+  if (!t) return { primary: "", secondary: null, changed: false };
+
+  const titleFits = measureBoundingBox(t, TYPO.MODULE_TITLE, FONT_TITLE, SAFE_W * 0.70, 1.50).fits;
+  if (titleFits && t.length <= 120) {
+    return { primary: t, secondary: null, changed: false };
+  }
+
+  const sepMatch = t.match(/^(.{18,90}?)\s*[:–—-]\s*(.{18,})$/);
+  if (sepMatch) {
+    return {
+      primary: sepMatch[1].trim(),
+      secondary: sepMatch[2].trim(),
+      changed: true,
+    };
+  }
+
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length < 4) return { primary: t, secondary: null, changed: false };
+  const mid = Math.ceil(words.length * 0.55);
+  const primary = words.slice(0, mid).join(" ").trim();
+  const secondary = words.slice(mid).join(" ").trim();
+
+  if (!secondary) return { primary: t, secondary: null, changed: false };
+  return { primary, secondary, changed: true };
+}
+
 /**
  * SMART SUBTITLE v2 — Increased capacity for cover descriptions.
  * Allows up to 280 chars (3+ lines at 18pt on wide slides).
@@ -405,40 +521,28 @@ function smartBullet(text: string): string {
   if (!text) return "";
   const maxChars = activeDensity.maxCharsPerBullet;
   const t = text.trim();
-  
+
   // If text fits within limit, return as-is (preserve full sentences)
   if (t.length <= maxChars) {
-    if (!/[.!?]$/.test(t)) return t + ".";
-    return t;
+    return ensureSentenceEnd(t);
   }
-  
-  // STRUCTURAL PRE-PROCESSING for "Label: long explanation" patterns
-  // e.g., "Deep Learning: Subcampo do Machine Learning que utiliza Redes Neurais..."
-  const colonIdx = t.indexOf(":");
-  if (colonIdx > 2 && colonIdx < 55) {
-    const label = t.substring(0, colonIdx).trim();
-    const explanation = t.substring(colonIdx + 1).trim();
-    const remainingBudget = maxChars - label.length - 2; // ": " takes 2 chars
-    
-    if (remainingBudget > 30 && explanation.length > remainingBudget) {
-      // Compress only the explanation part, preserving the label
-      const compressedExplanation = smartTruncate(explanation, remainingBudget, false);
-      const result = label + ": " + enforceSentenceIntegrity(compressedExplanation);
-      return result;
-    }
+
+  // Prefer structural split-aware compression for label:explanation inputs
+  const structural = splitLabelExplanationBullet(t, maxChars);
+  if (structural && structural.length > 0) {
+    return structural[0];
   }
-  
+
   // Try to cut at a sentence boundary first (preserve complete sentences)
   const sub = t.substring(0, maxChars);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
   if (sentenceEnd > maxChars * 0.4) {
-    return t.substring(0, sentenceEnd + 1).trim();
+    return ensureSentenceEnd(t.substring(0, sentenceEnd + 1).trim());
   }
-  
+
   // Fall back to smartTruncate (never with ellipsis)
   const result = smartTruncate(t, maxChars, false);
-  if (result && !/[.!?]$/.test(result)) return result + ".";
-  return result;
+  return ensureSentenceEnd(result);
 }
 
 function smartCell(text: string): string {
