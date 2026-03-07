@@ -16,6 +16,17 @@ export interface QualityCheckpoint {
   fixes: string[];
 }
 
+export interface ForensicTraceData {
+  truncation_root_causes?: { slide: number; field: string; layout: string; last_stage: string; last_fn: string; compression_before: boolean; fallback_before: boolean; continuation_created: boolean }[];
+  compression_events?: { slide: number; field: string; layout: string; stage: string; function: string; chars_before: number; chars_after: number; reduction_pct: number; before: string; after: string }[];
+  fallback_events?: { slide: number; field: string; layout: string; stage: string; function: string; before: string; after: string }[];
+  renderer_trace?: { slide: number; layout: string; renderer: string }[];
+  field_history_summary?: { slide_field: string; mutations: string[]; final_chars: number }[];
+  total_trace_events?: number;
+  total_compressions?: number;
+  total_fallbacks?: number;
+}
+
 export interface QualityReport {
   quality_score: number;
   passed: boolean;
@@ -53,6 +64,7 @@ export interface QualityReport {
     bbox_overflows: number;
     bbox_fixes: number;
   };
+  forensic_trace?: ForensicTraceData;
 }
 
 interface Props {
