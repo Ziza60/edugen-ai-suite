@@ -5644,6 +5644,10 @@ function renderSummarySlide(pptx: any, data: SlideData) {
 
   const remaining = [...visibleItems.slice(rendered), ...overflowItems];
   if (remaining.length > 0) {
+    if (rendered === 0) {
+      console.warn("[FLOW] SUMMARY | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
+      return;
+    }
     flowLog("SUMMARY", "renderSummarySlide -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
     renderSummarySlide(pptx, {
       ...data,
