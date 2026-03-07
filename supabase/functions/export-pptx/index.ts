@@ -1708,6 +1708,34 @@ function fitTextForBox(text: string, boxW: number, boxH: number, fontSize: numbe
   return { text: currentText, fontSize: Math.max(currentFont, minFont), adjusted: true };
 }
 
+function fitTextForBoxWithoutCompression(
+  text: string,
+  boxW: number,
+  boxH: number,
+  fontSize: number,
+  fontFace: string,
+  minFont = 12,
+): { text: string; fontSize: number; adjusted: boolean; fits: boolean } {
+  const clean = enforceSentenceIntegrity(sanitize(text));
+  let currentFont = fontSize;
+
+  for (let i = 0; i < 8; i++) {
+    const bbox = measureBoundingBox(clean, currentFont, fontFace, boxW, boxH);
+    if (bbox.fits) {
+      if (currentFont !== fontSize) {
+        forensicTrace("renderer", "fitTextForBoxWithoutCompression", "fit_adjustment", clean, clean, "font_reduced_no_text_change", false);
+      }
+      return { text: clean, fontSize: currentFont, adjusted: currentFont !== fontSize, fits: true };
+    }
+
+    if (currentFont <= minFont) break;
+    currentFont = Math.max(minFont, currentFont - 1);
+  }
+
+  forensicTrace("renderer", "fitTextForBoxWithoutCompression", "fallback_used", clean, clean, "font_floor_reached_no_text_compression", false);
+  return { text: clean, fontSize: currentFont, adjusted: currentFont !== fontSize, fits: false };
+}
+
 // ── CONTENT COHERENCE CHECK ──
 function checkNarrativeCoherence(slides: SlideData[]): string[] {
   const warnings: string[] = [];
