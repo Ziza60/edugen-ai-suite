@@ -6172,6 +6172,16 @@ Idioma: pt-BR`
     // Wire Stage 2.5 results into quality report
     qualityReport.stage2_5_redistributions = preRenderRedistributions;
     qualityReport.stage2_5_semantic_losses = semanticLossEvents;
+    qualityReport.stage2_5_module_cover_title_redistributions = moduleCoverTitleRedistributions;
+    qualityReport.stage2_5_objective_redistributions = objectiveRedistributions;
+    qualityReport.stage2_5_label_explanation_splits = labelExplanationSplits;
+
+    if (labelExplanationSplits > 0) {
+      qualityReport.stage4_all_fixes.push(
+        "QUEBRA ESTRUTURAL LABEL+EXPLICAÇÃO: " + labelExplanationSplits + " bullet(s) reestruturado(s)"
+      );
+    }
+
     // Add semantic loss events as warnings so they appear in the quality report
     for (const loss of semanticLossEvents) {
       qualityReport.stage4_all_warnings.push("COMPRESSÃO SEMÂNTICA: " + loss);
