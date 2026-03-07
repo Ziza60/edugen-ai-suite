@@ -3391,6 +3391,7 @@ interface SlideData {
   layout: LayoutType;
   title: string;
   subtitle?: string;
+  coverTitleSubtitle?: string;
   sectionLabel?: string;
   items?: string[];
   structuredItems?: StructuredItem[];
