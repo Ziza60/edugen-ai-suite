@@ -1200,9 +1200,12 @@ function detectSemanticTruncation(text: string): boolean {
   // "..., como." — dangling comparative
   if (/,\s*como\s*$/i.test(stripped)) return true;
 
-  // Sentence ending in preposition + noun is ONLY truncation if the sentence is long enough
-  // to indicate a complex clause was cut. Short phrases like "Atas de reunião" are valid bullets.
-  if (wordCount >= 6) {
+  // Sentence ending in preposition + noun — only truncation for SHORT fragments (6-9 words).
+  // Sentences with >= 10 words ending in "prep + noun" are natural Portuguese conclusions
+  // (e.g., "...aprendizado adaptativo do cérebro." is a complete sentence).
+  // v5 fix: raised upper threshold from unbounded to 9 words based on forensic_trace
+  // evidence from record 038f68b0 showing 25/25 false positives in 10+ word sentences.
+  if (wordCount >= 6 && wordCount <= 9) {
     const words = stripped.split(/\s+/);
     const last = words[words.length - 1];
     const secondLast = words[words.length - 2] || "";
