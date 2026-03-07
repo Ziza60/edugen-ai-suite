@@ -6605,9 +6605,13 @@ Idioma: pt-BR`
         if (titleStillOverflow) {
           const titleParts = splitLongSegments(s.title, 78);
           if (titleParts.length >= 2) {
+            const beforeTitle = s.title || "";
+            const beforeSubtitle = s.coverTitleSubtitle || "";
             s.title = titleParts[0];
             s.coverTitleSubtitle = titleParts[1];
             const remainder = titleParts.slice(2);
+            forensicTraceField(si + 3, s.layout, "title", "2.5", "splitLongSegments", "split_structural", beforeTitle, s.title || "", "module_cover_title_overflow_primary");
+            forensicTraceField(si + 3, s.layout, "coverTitleSubtitle", "2.5", "splitLongSegments", "split_structural", beforeSubtitle, s.coverTitleSubtitle || "", "module_cover_title_overflow_subtitle", true);
             if (remainder.length > 0) {
               slidesToInsert.push({
                 afterIndex: si,
@@ -6620,6 +6624,7 @@ Idioma: pt-BR`
                   blockType: "normal",
                 }],
               });
+              forensicTraceField(si + 3, s.layout, "title", "2.5", "splitLongSegments", "continuation_created", beforeTitle, remainder.join(" | "), "module_cover_title_remainder_created", true);
             }
             moduleCoverTitleRedistributions++;
             preRenderRedistributions++;
