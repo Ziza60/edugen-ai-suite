@@ -7267,24 +7267,52 @@ Idioma: pt-BR`
     const buildReport = (passed: boolean) => {
       const forensicData = forensicGetReport();
       // Build truncation_root_causes from forensic events
-      const truncationRootCauses: { slide: number; field: string; layout: string; last_stage: string; last_fn: string; compression_before: boolean; fallback_before: boolean; continuation_created: boolean }[] = [];
-      const postRenderSlides = new Set<number>();
+      const truncationRootCauses: {
+        slide: number;
+        field: string;
+        layout: string;
+        last_stage: string;
+        last_fn: string;
+        compression_before: boolean;
+        fallback_before: boolean;
+        continuation_created: boolean;
+        first_mutation_stage: string;
+        first_mutation_fn: string;
+        first_mutation_event_type: string;
+        first_mutation_reason: string;
+      }[] = [];
+      const postRenderFields: { slide: number; field: string }[] = [];
       for (const w of postRenderTruncationWarnings) {
         const slideMatch = w.match(/Slide\s+(\d+)/);
-        if (slideMatch) postRenderSlides.add(Number(slideMatch[1]));
+        const fieldMatch = w.match(/\[(.*?)\]/);
+        if (slideMatch) {
+          postRenderFields.push({
+            slide: Number(slideMatch[1]),
+            field: fieldMatch?.[1] || "unknown",
+          });
+        }
       }
-      for (const slideNum of postRenderSlides) {
-        const slideEvents = _forensicEvents.filter(e => e.slide === slideNum);
-        const lastEvent = slideEvents.length > 0 ? slideEvents[slideEvents.length - 1] : null;
+
+      for (const target of postRenderFields) {
+        const fieldEvents = _forensicEvents.filter(e => e.slide === target.slide && e.field === target.field);
+        const fallbackSlideEvents = _forensicEvents.filter(e => e.slide === target.slide);
+        const events = fieldEvents.length > 0 ? fieldEvents : fallbackSlideEvents;
+        const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+        const firstMutation = events.find(e => e.mutated && e.chars_after < e.chars_before);
+
         truncationRootCauses.push({
-          slide: slideNum,
-          field: lastEvent?.field || "unknown",
+          slide: target.slide,
+          field: target.field,
           layout: lastEvent?.layout || "unknown",
           last_stage: lastEvent?.stage || "unknown",
           last_fn: lastEvent?.fn || "unknown",
-          compression_before: slideEvents.some(e => e.action === "compression_used"),
-          fallback_before: slideEvents.some(e => e.action === "fallback_used"),
-          continuation_created: slideEvents.some(e => e.action === "split_structural" || e.action === "continuation_created"),
+          compression_before: events.some(e => e.action === "compression_used"),
+          fallback_before: events.some(e => e.action === "fallback_used"),
+          continuation_created: events.some(e => e.action === "split_structural" || e.action === "continuation_created"),
+          first_mutation_stage: firstMutation?.stage || "none",
+          first_mutation_fn: firstMutation?.fn || "none",
+          first_mutation_event_type: firstMutation?.action || "none",
+          first_mutation_reason: firstMutation?.reason || "none",
         });
       }
 
