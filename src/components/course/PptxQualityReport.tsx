@@ -40,6 +40,11 @@ export interface QualityReport {
     redistributions?: number;
     semantic_losses?: number;
     semantic_loss_details?: string[];
+    regeneration_flagged?: number;
+    regeneration_attempted?: number;
+    regeneration_resolved?: number;
+    regeneration_unresolved?: number;
+    regeneration_details?: string[];
   };
   summary: {
     total_slides: number;
@@ -206,6 +211,9 @@ export function PptxQualityReport({ report, open, onOpenChange }: Props) {
                   { label: "Dedup removidos", value: ca.dedup_removed },
                   { label: "Correções gramática (LLM)", value: ca.llm_grammar_fixes },
                   { label: "Correções truncamento (LLM)", value: ca.llm_truncation_fixes },
+                  { label: "Regenerações (flagged)", value: ca.regeneration_flagged ?? 0 },
+                  { label: "Regenerações (resolvidas)", value: ca.regeneration_resolved ?? 0 },
+                  { label: "Regenerações (não resolvidas)", value: ca.regeneration_unresolved ?? 0 },
                 ].map((stat, i) => (
                   <div key={i} className="border rounded-lg p-2.5 text-center">
                     <p className="text-lg font-bold">{stat.value}</p>
