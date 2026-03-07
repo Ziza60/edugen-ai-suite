@@ -3730,20 +3730,30 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
     }
   }
 
-  // Summary slide (Resumo do Módulo)
+  // Summary slide (Resumo do Módulo) — structural continuation (no slice truncation)
   if (summaryItems.length > 0) {
-    slides.push({
-      layout: "summary_slide",
-      title: "Resumo - " + smartTitle(shortTitle),
-      sectionLabel: "RESUMO DO MÓDULO",
-      items: sanitizeBullets(summaryItems.slice(0, 5).map(s => {
-        const t = sanitize(s).trim();
-        if (t.length > 0 && !/[.!?…]$/.test(t)) return t + ".";
-        return t;
-      })),
-      moduleIndex: modIndex,
-      blockType: "summary",
-    });
+    const normalizedSummary = sanitizeBullets(summaryItems.map(s => {
+      const t = sanitize(s).trim();
+      if (!t) return "";
+      const parts = splitNarrativeItemForStructure(t, Math.max(56, activeDensity.maxCharsPerBullet));
+      return parts.length > 1 ? parts.map(ensureSentenceEnd).join("\n") : ensureSentenceEnd(t);
+    }).flatMap(s => s.split("\n").map(p => p.trim()).filter(Boolean)));
+
+    const SUMMARY_PER_SLIDE = 4;
+    for (let i = 0; i < normalizedSummary.length; i += SUMMARY_PER_SLIDE) {
+      const chunk = normalizedSummary.slice(i, i + SUMMARY_PER_SLIDE);
+      const part = Math.floor(i / SUMMARY_PER_SLIDE) + 1;
+      slides.push({
+        layout: "summary_slide",
+        title: normalizedSummary.length > SUMMARY_PER_SLIDE
+          ? getContinuationTitle("Resumo - " + smartTitle(shortTitle), part)
+          : "Resumo - " + smartTitle(shortTitle),
+        sectionLabel: "RESUMO DO MÓDULO",
+        items: chunk,
+        moduleIndex: modIndex,
+        blockType: "summary",
+      });
+    }
   }
 
   // Always end with takeaways (Key Takeaways)
