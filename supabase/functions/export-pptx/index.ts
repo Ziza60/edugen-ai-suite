@@ -2836,7 +2836,7 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     }
   }
 
-  // ✓ 2. Title quality — reject generic titles
+  // ✓ 2. Title quality — reject generic/fragmented titles
   if (sd.title) {
     if (sd.title.length < 3 && sd.layout !== "module_cover") {
       warnings.push(label + " TITULO CURTO: \"" + sd.title + "\"");
@@ -2844,6 +2844,9 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     const genericTitles = /^(cont\.|continuacao|parte|introdu[cç][aã]o|conceitos?|vis[aã]o geral|overview|detalhes|t[oó]picos?|aspectos?)$/i;
     if (genericTitles.test(sd.title.trim())) {
       warnings.push(label + " TITULO GENERICO: \"" + sd.title + "\"");
+    }
+    if ((sd.layout === "module_cover" || sd.layout === "summary_slide" || sd.layout === "example_highlight") && isWeakTitleFragment(sd.title)) {
+      warnings.push(label + " TÍTULO FRAGMENTADO: \"" + sd.title.substring(0, 70) + "\"");
     }
   }
 
@@ -2882,6 +2885,23 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
       if (t.length > 20 && /\s/.test(t) && !/[.!?…;:)\]"']$/.test(t.trim())) {
         sd.items[i] = t.trim() + ".";
         fixes.push(label + " PONTUACAO ADICIONADA");
+      }
+    }
+  }
+
+  // Semantic fragment guard for approved-sensitive layouts
+  if (sd.layout === "module_cover") {
+    if (sd.description && isWeakSemanticFragment(sd.description)) {
+      warnings.push(label + " FRAGMENTO SEMÂNTICO [description]: \"" + sd.description.substring(0, 70) + "\"");
+    }
+  }
+
+  if (sd.items && ["bullets", "summary_slide", "numbered_takeaways", "example_highlight"].includes(sd.layout)) {
+    for (let i = 0; i < sd.items.length; i++) {
+      const item = (sd.items[i] || "").trim();
+      if (!item) continue;
+      if (isWeakSemanticFragment(item)) {
+        warnings.push(label + " FRAGMENTO SEMÂNTICO [item[" + i + "]]: \"" + item.substring(0, 70) + "\"");
       }
     }
   }
@@ -7433,7 +7453,7 @@ Idioma: pt-BR`
     // Real truncations (semantic or structural) remain hard blockers.
     const dedupedWarnings = dedupeWarnings(qualityReport.stage4_all_warnings);
     const contentWarningCandidates = dedupedWarnings.filter(
-      (w: string) => /TRUNCAMENTO|FRAGMENTO|POST-RENDER|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA/i.test(w)
+      (w: string) => /TRUNCAMENTO|FRAGMENTO|FRAGMENTO SEMÂNTICO|TÍTULO FRAGMENTADO|POST-RENDER|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA/i.test(w)
     );
     const contentHardWarnings = contentWarningCandidates.filter(
       (w: string) => !isFalsePositiveTruncationWarning(w)
@@ -7441,6 +7461,10 @@ Idioma: pt-BR`
     const contentSoftWarnings = dedupedWarnings.filter(
       (w: string) => /PONTUACAO|GRAMATICA/i.test(w)
     );
+
+    const semanticFragmentWarnings = contentHardWarnings.filter(
+      (w: string) => /FRAGMENTO SEMÂNTICO|TÍTULO FRAGMENTADO/i.test(w)
+    ).length;
 
     const contentTruncationWarnings = contentHardWarnings.length;
     const contentFixes = qualityReport.stage4_all_fixes.filter(
@@ -7455,7 +7479,7 @@ Idioma: pt-BR`
       + Math.min(10, contentFixes * 0.3)
       + regenBonus
     ));
-    const contentCritical = contentTruncationWarnings > 4;
+    const contentCritical = contentTruncationWarnings > 4 || semanticFragmentWarnings > 0;
 
     // --- Checkpoint 2: STRUCTURE (weight 25%) ---
     // Measures: repetition, empty slides, density, coherence
