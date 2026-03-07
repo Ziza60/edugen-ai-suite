@@ -6580,8 +6580,12 @@ Idioma: pt-BR`
       if (s.layout === "module_cover" && s.title) {
         const splitTitle = splitModuleCoverTitle(s.title);
         if (splitTitle.changed) {
+          const beforeTitle = s.title || "";
+          const beforeSubtitle = s.coverTitleSubtitle || "";
           s.title = splitTitle.primary;
           s.coverTitleSubtitle = splitTitle.secondary || undefined;
+          forensicTraceField(si + 3, s.layout, "title", "2.5", "splitModuleCoverTitle", "title_adjusted", beforeTitle, s.title || "", "module_cover_title_split");
+          forensicTraceField(si + 3, s.layout, "coverTitleSubtitle", "2.5", "splitModuleCoverTitle", "split_structural", beforeSubtitle, s.coverTitleSubtitle || "", "module_cover_subtitle_created", true);
           moduleCoverTitleRedistributions++;
           preRenderRedistributions++;
           flowLog("MODULE_COVER_TITLE", "stage2.5 -> split title/subtitle, title='" + (s.title || "").substring(0, 52) + "'");
