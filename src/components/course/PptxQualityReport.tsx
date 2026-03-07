@@ -17,9 +17,15 @@ export interface QualityCheckpoint {
 }
 
 export interface ForensicTraceData {
-  truncation_root_causes?: { slide: number; field: string; layout: string; last_stage: string; last_fn: string; compression_before: boolean; fallback_before: boolean; continuation_created: boolean }[];
-  compression_events?: { slide: number; field: string; layout: string; stage: string; function: string; chars_before: number; chars_after: number; reduction_pct: number; before: string; after: string }[];
-  fallback_events?: { slide: number; field: string; layout: string; stage: string; function: string; before: string; after: string }[];
+  truncation_root_causes?: { slide: number; field: string; layout: string; last_stage: string; last_fn: string; compression_before: boolean; fallback_before: boolean; continuation_created: boolean; first_mutation_stage?: string; first_mutation_fn?: string; first_mutation_event_type?: string; first_mutation_reason?: string }[];
+  compression_events?: { slide: number; field: string; layout: string; stage: string; function: string; event_type?: string; reason?: string; mutated?: boolean; chars_before: number; chars_after: number; reduction_pct: number; before: string; after: string }[];
+  fallback_events?: { slide: number; field: string; layout: string; stage: string; function: string; event_type?: string; reason?: string; mutated?: boolean; before: string; after: string }[];
+  stage0_events?: { slide: number; field: string; layout: string; stage: string; function: string; event_type: string; reason?: string; mutated: boolean; chars_before: number; chars_after: number; reduction_pct: number; before: string; after: string }[];
+  stage0_5_events?: { slide: number; field: string; layout: string; stage: string; function: string; event_type: string; reason?: string; mutated: boolean; chars_before: number; chars_after: number; reduction_pct: number; before: string; after: string }[];
+  stage1_5_events?: { slide: number; field: string; layout: string; stage: string; function: string; event_type: string; reason?: string; mutated: boolean; chars_before: number; chars_after: number; reduction_pct: number; before: string; after: string }[];
+  stage2_5_events?: { slide: number; field: string; layout: string; stage: string; function: string; event_type: string; reason?: string; mutated: boolean; chars_before: number; chars_after: number; reduction_pct: number; before: string; after: string }[];
+  silent_truncation_events?: { slide: number; field: string; layout: string; stage: string; function: string; event_type: string; reason?: string; mutated: boolean; chars_before: number; chars_after: number; reduction_pct: number; before: string; after: string }[];
+  first_mutation_per_field?: { slide_field: string; slide: number; layout: string; field: string; first_stage: string; first_function: string; event_type: string; reason?: string; chars_before: number; chars_after: number; reduction_pct: number; before: string; after: string }[];
   renderer_trace?: { slide: number; layout: string; renderer: string }[];
   field_history_summary?: { slide_field: string; mutations: string[]; final_chars: number }[];
   total_trace_events?: number;

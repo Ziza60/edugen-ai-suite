@@ -221,14 +221,16 @@ interface AjusteTextoResult {
  */
 function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinhas = 2): AjusteTextoResult {
   if (!texto) return { texto: "", linhas: 0, truncado: false };
+  const original = texto;
   const t = texto.trim();
-  
+
   if (t.length <= maxCaracteresPorLinha) {
+    forensicTrace("renderer", "ajustarTextoAoBox", "fit_adjustment", original, t, "text_fits_single_line", false);
     return { texto: t, linhas: 1, truncado: false };
   }
-  
+
   const totalCapacity = maxCaracteresPorLinha * maxLinhas;
-  
+
   // If text fits within total capacity, just wrap it
   if (t.length <= totalCapacity) {
     const palavras = t.split(' ');
@@ -245,9 +247,11 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
       }
     }
     if (linhaAtual) linhas.push(linhaAtual);
-    return { texto: linhas.join('\n'), linhas: linhas.length, truncado: false };
+    const wrapped = linhas.join('\n');
+    forensicTrace("renderer", "ajustarTextoAoBox", "fit_adjustment", original, wrapped, "wrapped_without_truncation", false);
+    return { texto: wrapped, linhas: linhas.length, truncado: false };
   }
-  
+
   // Text exceeds total capacity — cut at sentence boundary (NO ellipsis)
   const sub = t.substring(0, totalCapacity);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
@@ -259,7 +263,7 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
     cutText = smartTruncate(t, totalCapacity, false);
     if (!/[.!?]$/.test(cutText)) cutText += ".";
   }
-  
+
   // Re-wrap the cut text
   const palavras = cutText.split(' ');
   const linhas: string[] = [];
@@ -276,12 +280,23 @@ function ajustarTextoAoBox(texto: string, maxCaracteresPorLinha: number, maxLinh
     }
   }
   if (linhaAtual && linhas.length < maxLinhas) linhas.push(linhaAtual);
-  
+
   const resultado = linhas.join('\n');
-  return { 
-    texto: resultado, 
-    linhas: linhas.length, 
-    truncado: cutText.length < t.length
+  const truncado = cutText.length < t.length;
+  forensicTrace(
+    "renderer",
+    "ajustarTextoAoBox",
+    truncado ? "compression_used" : "fit_adjustment",
+    original,
+    resultado,
+    truncado ? "text_exceeded_box_capacity" : "wrapped_within_capacity",
+    truncado,
+  );
+
+  return {
+    texto: resultado,
+    linhas: linhas.length,
+    truncado,
   };
 }
 
@@ -528,6 +543,8 @@ interface ForensicEvent {
   stage: string;
   fn: string;
   action: string;
+  reason: string;
+  mutated: boolean;
   before: string;
   after: string;
   chars_before: number;
@@ -553,10 +570,22 @@ function forensicSetContext(slideIndex: number, layout: string, field: string) {
   _forensicSlideField = field;
 }
 
-function forensicTrace(stage: string, fn: string, action: string, before: string, after: string) {
-  const charsBefore = (before || "").length;
-  const charsAfter = (after || "").length;
+function forensicTrace(
+  stage: string,
+  fn: string,
+  action: string,
+  before: string,
+  after: string,
+  reason = "",
+  forcedMutated?: boolean,
+) {
+  const safeBefore = (before || "").toString();
+  const safeAfter = (after || "").toString();
+  const charsBefore = safeBefore.length;
+  const charsAfter = safeAfter.length;
   const reductionPct = charsBefore > 0 ? Number(((1 - charsAfter / charsBefore) * 100).toFixed(1)) : 0;
+  const mutated = typeof forcedMutated === "boolean" ? forcedMutated : safeBefore !== safeAfter;
+
   const event: ForensicEvent = {
     slide: _forensicSlideIndex,
     layout: _forensicSlideLayout,
@@ -564,8 +593,10 @@ function forensicTrace(stage: string, fn: string, action: string, before: string
     stage,
     fn,
     action,
-    before: before.substring(0, 80),
-    after: after.substring(0, 80),
+    reason,
+    mutated,
+    before: safeBefore.substring(0, 300),
+    after: safeAfter.substring(0, 300),
     chars_before: charsBefore,
     chars_after: charsAfter,
     reduction_pct: reductionPct,
@@ -573,16 +604,36 @@ function forensicTrace(stage: string, fn: string, action: string, before: string
   _forensicEvents.push(event);
 
   const fieldLabel = "slide=" + _forensicSlideIndex + " layout=" + _forensicSlideLayout + " field=" + _forensicSlideField;
-  if (reductionPct > 0) {
-    console.log("[TRACE] " + fieldLabel + " stage=" + stage + " action=" + action + " fn=" + fn +
-      " chars_before=" + charsBefore + " chars_after=" + charsAfter + " reduction=" + reductionPct + "%");
-  } else {
-    console.log("[TRACE] " + fieldLabel + " stage=" + stage + " action=" + action + " fn=" + fn);
-  }
-  if (action === "compression_used" || action === "fallback_used" || action === "fit_adjustment") {
-    console.log("[TRACE] " + fieldLabel + " before=\"" + before.substring(0, 60) + "\"");
-    console.log("[TRACE] " + fieldLabel + " after=\"" + after.substring(0, 60) + "\"");
-  }
+  console.log(
+    "[TRACE] " + fieldLabel +
+    " stage=" + stage +
+    " action=" + action +
+    " fn=" + fn +
+    " mutated=" + mutated +
+    " chars_before=" + charsBefore +
+    " chars_after=" + charsAfter +
+    " reduction=" + reductionPct + "%" +
+    (reason ? " reason=" + reason : ""),
+  );
+
+  console.log("[TRACE] " + fieldLabel + " before=\"" + safeBefore.substring(0, 120) + "\"");
+  console.log("[TRACE] " + fieldLabel + " after=\"" + safeAfter.substring(0, 120) + "\"");
+}
+
+function forensicTraceField(
+  slideIndex: number,
+  layout: string,
+  field: string,
+  stage: string,
+  fn: string,
+  action: string,
+  before: string,
+  after: string,
+  reason = "",
+  forcedMutated?: boolean,
+) {
+  forensicSetContext(slideIndex, layout, field);
+  forensicTrace(stage, fn, action, before, after, reason, forcedMutated);
 }
 
 function forensicTraceRenderer(slideIndex: number, layout: string, renderer: string) {
@@ -601,32 +652,77 @@ function forensicReset() {
 function forensicGetReport() {
   const compressionEvents = _forensicEvents.filter(e => e.action === "compression_used");
   const fallbackEvents = _forensicEvents.filter(e => e.action === "fallback_used");
+  const stage0Events = _forensicEvents.filter(e => e.stage === "0");
+  const stage0_5Events = _forensicEvents.filter(e => e.stage === "0.5");
+  const stage1_5Events = _forensicEvents.filter(e => e.stage === "1.5");
+  const stage2_5Events = _forensicEvents.filter(e => e.stage === "2.5");
+  const silentTruncationEvents = _forensicEvents.filter(e => e.action === "silent_truncation_detected");
+
   const fieldHistoryMap = new Map<string, ForensicEvent[]>();
   for (const e of _forensicEvents) {
     const key = e.slide + "|" + e.field;
     if (!fieldHistoryMap.has(key)) fieldHistoryMap.set(key, []);
     fieldHistoryMap.get(key)!.push(e);
   }
+
   const fieldHistorySummary = Array.from(fieldHistoryMap.entries())
-    .filter(([, events]) => events.length > 1 || events.some(e => e.reduction_pct > 0))
-    .slice(0, 30)
+    .filter(([, events]) => events.length > 1 || events.some(e => e.mutated))
+    .slice(0, 80)
     .map(([key, events]) => ({
       slide_field: key,
       mutations: events.map(e => e.stage + "/" + e.fn + ":" + e.action + (e.reduction_pct > 0 ? "(-" + e.reduction_pct + "%)" : "")),
       final_chars: events[events.length - 1].chars_after,
     }));
 
+  const firstMutationPerField = Array.from(fieldHistoryMap.entries())
+    .map(([key, events]) => {
+      const firstMutation = events.find(e => e.mutated && e.chars_after < e.chars_before);
+      if (!firstMutation) return null;
+      return {
+        slide_field: key,
+        slide: firstMutation.slide,
+        layout: firstMutation.layout,
+        field: firstMutation.field,
+        first_stage: firstMutation.stage,
+        first_function: firstMutation.fn,
+        event_type: firstMutation.action,
+        reason: firstMutation.reason,
+        chars_before: firstMutation.chars_before,
+        chars_after: firstMutation.chars_after,
+        reduction_pct: firstMutation.reduction_pct,
+        before: firstMutation.before,
+        after: firstMutation.after,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 100);
+
+  const mapEvent = (e: ForensicEvent) => ({
+    slide: e.slide,
+    field: e.field,
+    layout: e.layout,
+    stage: e.stage,
+    function: e.fn,
+    event_type: e.action,
+    reason: e.reason,
+    mutated: e.mutated,
+    chars_before: e.chars_before,
+    chars_after: e.chars_after,
+    reduction_pct: e.reduction_pct,
+    before: e.before,
+    after: e.after,
+  });
+
   return {
-    compression_events: compressionEvents.slice(0, 30).map(e => ({
-      slide: e.slide, field: e.field, layout: e.layout, stage: e.stage,
-      function: e.fn, chars_before: e.chars_before, chars_after: e.chars_after,
-      reduction_pct: e.reduction_pct, before: e.before, after: e.after,
-    })),
-    fallback_events: fallbackEvents.slice(0, 20).map(e => ({
-      slide: e.slide, field: e.field, layout: e.layout, stage: e.stage,
-      function: e.fn, before: e.before, after: e.after,
-    })),
-    renderer_trace: _rendererTrace.slice(0, 50),
+    stage0_events: stage0Events.slice(0, 200).map(mapEvent),
+    stage0_5_events: stage0_5Events.slice(0, 200).map(mapEvent),
+    stage1_5_events: stage1_5Events.slice(0, 200).map(mapEvent),
+    stage2_5_events: stage2_5Events.slice(0, 300).map(mapEvent),
+    silent_truncation_events: silentTruncationEvents.slice(0, 120).map(mapEvent),
+    first_mutation_per_field: firstMutationPerField,
+    compression_events: compressionEvents.slice(0, 80).map(mapEvent),
+    fallback_events: fallbackEvents.slice(0, 80).map(mapEvent),
+    renderer_trace: _rendererTrace.slice(0, 200),
     field_history_summary: fieldHistorySummary,
     total_trace_events: _forensicEvents.length,
     total_compressions: compressionEvents.length,
@@ -704,11 +800,17 @@ function smartBullet(text: string): string {
 }
 
 function smartCell(text: string): string {
-  return smartTruncate(text, 120); // Wider cells need more space for complete sentences
+  const before = (text || "").trim();
+  const after = smartTruncate(text, 120); // Wider cells need more space for complete sentences
+  forensicTrace("renderer", "smartCell", before.length !== after.length ? "compression_used" : "fit_adjustment", before, after, "table_cell_fit", before.length !== after.length);
+  return after;
 }
 
 function smartModuleDesc(text: string): string {
-  return smartTruncate(text, 100); // Module descriptions need complete sentences
+  const before = (text || "").trim();
+  const after = smartTruncate(text, 100); // Module descriptions need complete sentences
+  forensicTrace("renderer", "smartModuleDesc", before.length !== after.length ? "compression_used" : "fit_adjustment", before, after, "module_description_fit", before.length !== after.length);
+  return after;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2328,24 +2430,31 @@ REGRAS CRÍTICAS:
         };
 
         const newItems: string[] = [];
+        const oldItemsSnapshot = [...slide.items];
+
         for (const corrected of (slideResult.correctedItems || [])) {
           const itemId = corrected.id;
           const originalText = slide.items[itemId] || "";
           const status = corrected.status || "ok";
           const fixedText = (corrected.text || "").trim();
+          const fieldLabel = `item[${itemId}]`;
+          const slideNum = slideIdx + 3;
 
           if (status === "nonsense") {
+            forensicTraceField(slideNum, slide.layout, fieldLabel, "1.5", "llmValidateSlideContent", "fit_adjustment", originalText, "", "llm_marked_nonsense", true);
             validation.nonsenseDetected.push(originalText.substring(0, 50));
             validation.droppedItems.push(originalText.substring(0, 50));
             totalND++;
             continue;
           }
           if (status === "irrelevant") {
+            forensicTraceField(slideNum, slide.layout, fieldLabel, "1.5", "llmValidateSlideContent", "fit_adjustment", originalText, "", "llm_marked_irrelevant", true);
             validation.droppedItems.push(originalText.substring(0, 50));
             totalRD++;
             continue;
           }
           if (!fixedText || fixedText.length < 3) {
+            forensicTraceField(slideNum, slide.layout, fieldLabel, "1.5", "llmValidateSlideContent", "fit_adjustment", originalText, "", "llm_empty_output", true);
             validation.droppedItems.push(originalText.substring(0, 50));
             continue;
           }
@@ -2361,6 +2470,17 @@ REGRAS CRÍTICAS:
 
           let final = fixedText;
           if (final.length > 0 && !/[.!?…]$/.test(final)) final += ".";
+          forensicTraceField(
+            slideNum,
+            slide.layout,
+            fieldLabel,
+            "1.5",
+            "llmValidateSlideContent",
+            status === "truncation_fixed" ? "compression_used" : "fit_adjustment",
+            originalText,
+            final,
+            "llm_status:" + status,
+          );
           newItems.push(final);
         }
 
@@ -2369,6 +2489,18 @@ REGRAS CRÍTICAS:
           validation.fixedItems = newItems;
         } else {
           console.warn("[LLM-NLP] Slide " + slideIdx + ": Too many items dropped (" + newItems.length + "/" + slide.items.length + "), keeping originals");
+          forensicTraceField(
+            slideIdx + 3,
+            slide.layout,
+            "items",
+            "1.5",
+            "llmValidateSlideContent",
+            "fallback_used",
+            JSON.stringify(oldItemsSnapshot),
+            JSON.stringify(slide.items),
+            "drop_ratio_too_high_kept_original",
+            false,
+          );
           validation.fixedItems = [...slide.items];
         }
 
@@ -6053,6 +6185,18 @@ Deno.serve(async (req: Request) => {
           const slides = semanticPlanToSlides(plan, globalIdx);
           allSlides.push(...slides);
           semanticPlannerUsed++;
+          const slideBase = allSlides.length - slides.length;
+          slides.forEach((slide, localIdx) => {
+            const slideNum = slideBase + localIdx + 3;
+            forensicTraceField(slideNum, slide.layout, "title", "0", "semanticPlanToSlides", "regeneration_applied", "", slide.title || "", "stage0_slide_created", false);
+            forensicTraceField(slideNum, slide.layout, "description", "0", "semanticPlanToSlides", "regeneration_applied", "", slide.description || "", "stage0_slide_created", false);
+            (slide.objectives || []).forEach((obj, oi) => {
+              forensicTraceField(slideNum, slide.layout, `objective[${oi}]`, "0", "semanticPlanToSlides", "regeneration_applied", "", obj || "", "stage0_slide_created", false);
+            });
+            (slide.items || []).forEach((item, ii) => {
+              forensicTraceField(slideNum, slide.layout, `item[${ii}]`, "0", "semanticPlanToSlides", "regeneration_applied", "", item || "", "stage0_slide_created", false);
+            });
+          });
           console.log("[STAGE-0] Module " + (globalIdx + 1) + ": LLM plan from pre-parsed input (" + slides.length + " slides)");
         } else {
           // Fallback: build slides directly from pre-parsed blocks (reuse, no re-parsing)
@@ -6061,12 +6205,36 @@ Deno.serve(async (req: Request) => {
             const slides = buildModuleSlidesFromBlocks(preParsed.blocks, mod, globalIdx, modules.length);
             allSlides.push(...slides);
             regexFallbackUsed++;
+            const slideBase = allSlides.length - slides.length;
+            slides.forEach((slide, localIdx) => {
+              const slideNum = slideBase + localIdx + 3;
+              forensicTraceField(slideNum, slide.layout, "title", "0", "buildModuleSlidesFromBlocks", "fallback_used", "", slide.title || "", "stage0_regex_fallback", false);
+              forensicTraceField(slideNum, slide.layout, "description", "0", "buildModuleSlidesFromBlocks", "fallback_used", "", slide.description || "", "stage0_regex_fallback", false);
+              (slide.objectives || []).forEach((obj, oi) => {
+                forensicTraceField(slideNum, slide.layout, `objective[${oi}]`, "0", "buildModuleSlidesFromBlocks", "fallback_used", "", obj || "", "stage0_regex_fallback", false);
+              });
+              (slide.items || []).forEach((item, ii) => {
+                forensicTraceField(slideNum, slide.layout, `item[${ii}]`, "0", "buildModuleSlidesFromBlocks", "fallback_used", "", item || "", "stage0_regex_fallback", false);
+              });
+            });
             console.log("[STAGE-0] Module " + (globalIdx + 1) + ": fallback from pre-parsed blocks (" + slides.length + " slides)");
           } else {
             // Last resort: full parse + build (shouldn't happen since pre-parse ran)
             const slides = buildModuleSlides(mod, globalIdx, modules.length);
             allSlides.push(...slides);
             regexFallbackUsed++;
+            const slideBase = allSlides.length - slides.length;
+            slides.forEach((slide, localIdx) => {
+              const slideNum = slideBase + localIdx + 3;
+              forensicTraceField(slideNum, slide.layout, "title", "0", "buildModuleSlides", "fallback_used", "", slide.title || "", "stage0_full_fallback", false);
+              forensicTraceField(slideNum, slide.layout, "description", "0", "buildModuleSlides", "fallback_used", "", slide.description || "", "stage0_full_fallback", false);
+              (slide.objectives || []).forEach((obj, oi) => {
+                forensicTraceField(slideNum, slide.layout, `objective[${oi}]`, "0", "buildModuleSlides", "fallback_used", "", obj || "", "stage0_full_fallback", false);
+              });
+              (slide.items || []).forEach((item, ii) => {
+                forensicTraceField(slideNum, slide.layout, `item[${ii}]`, "0", "buildModuleSlides", "fallback_used", "", item || "", "stage0_full_fallback", false);
+              });
+            });
             console.log("[STAGE-0] Module " + (globalIdx + 1) + ": full fallback (" + slides.length + " slides)");
           }
         }
@@ -6259,7 +6427,23 @@ Idioma: pt-BR`
 
                       qualityReport.stage0_5_items_regenerated++;
 
+                      const currentSlide = allSlides[def.slideIdx];
+                      const slideNum = def.slideIdx + 3;
+                      const fieldLabel = def.itemIdx >= 0 ? `${def.field}[${def.itemIdx}]` : def.field;
+
                       if (stillTruncated || tooLong) {
+                        forensicTraceField(
+                          slideNum,
+                          currentSlide?.layout || "unknown",
+                          fieldLabel,
+                          "0.5",
+                          "selective_regeneration",
+                          "regeneration_applied",
+                          def.original,
+                          newText,
+                          "regen_unresolved:" + def.reason,
+                          false,
+                        );
                         // Regeneration didn't fix the issue
                         qualityReport.stage0_5_items_unresolved++;
                         qualityReport.stage0_5_details.push(
@@ -6269,15 +6453,34 @@ Idioma: pt-BR`
                       } else {
                         // Apply the rewrite
                         const slide = allSlides[def.slideIdx];
+                        let beforeValue = "";
+                        let afterValue = newText;
                         if (def.field === "title") {
+                          beforeValue = slide.title || "";
                           slide.title = newText;
                         } else if (def.field === "description") {
+                          beforeValue = slide.description || "";
                           slide.description = newText;
                         } else if (def.field === "objective" && slide.objectives && def.itemIdx >= 0) {
+                          beforeValue = slide.objectives[def.itemIdx] || "";
                           slide.objectives[def.itemIdx] = newText;
                         } else if (def.field === "item" && slide.items && def.itemIdx >= 0) {
+                          beforeValue = slide.items[def.itemIdx] || "";
                           slide.items[def.itemIdx] = newText;
                         }
+
+                        forensicTraceField(
+                          slideNum,
+                          slide.layout,
+                          fieldLabel,
+                          "0.5",
+                          "selective_regeneration",
+                          "regeneration_applied",
+                          beforeValue,
+                          afterValue,
+                          "regen_resolved:" + def.reason,
+                        );
+
                         qualityReport.stage0_5_items_resolved++;
                         qualityReport.stage0_5_details.push(
                           "RESOLVIDO [" + def.field + "] slide '" + (slide.title || "").substring(0, 25) + "': '" + def.original.substring(0, 35) + "...' → '" + newText.substring(0, 35) + "...'"
@@ -6377,8 +6580,12 @@ Idioma: pt-BR`
       if (s.layout === "module_cover" && s.title) {
         const splitTitle = splitModuleCoverTitle(s.title);
         if (splitTitle.changed) {
+          const beforeTitle = s.title || "";
+          const beforeSubtitle = s.coverTitleSubtitle || "";
           s.title = splitTitle.primary;
           s.coverTitleSubtitle = splitTitle.secondary || undefined;
+          forensicTraceField(si + 3, s.layout, "title", "2.5", "splitModuleCoverTitle", "title_adjusted", beforeTitle, s.title || "", "module_cover_title_split");
+          forensicTraceField(si + 3, s.layout, "coverTitleSubtitle", "2.5", "splitModuleCoverTitle", "split_structural", beforeSubtitle, s.coverTitleSubtitle || "", "module_cover_subtitle_created", true);
           moduleCoverTitleRedistributions++;
           preRenderRedistributions++;
           flowLog("MODULE_COVER_TITLE", "stage2.5 -> split title/subtitle, title='" + (s.title || "").substring(0, 52) + "'");
@@ -6398,9 +6605,13 @@ Idioma: pt-BR`
         if (titleStillOverflow) {
           const titleParts = splitLongSegments(s.title, 78);
           if (titleParts.length >= 2) {
+            const beforeTitle = s.title || "";
+            const beforeSubtitle = s.coverTitleSubtitle || "";
             s.title = titleParts[0];
             s.coverTitleSubtitle = titleParts[1];
             const remainder = titleParts.slice(2);
+            forensicTraceField(si + 3, s.layout, "title", "2.5", "splitLongSegments", "split_structural", beforeTitle, s.title || "", "module_cover_title_overflow_primary");
+            forensicTraceField(si + 3, s.layout, "coverTitleSubtitle", "2.5", "splitLongSegments", "split_structural", beforeSubtitle, s.coverTitleSubtitle || "", "module_cover_title_overflow_subtitle", true);
             if (remainder.length > 0) {
               slidesToInsert.push({
                 afterIndex: si,
@@ -6413,6 +6624,7 @@ Idioma: pt-BR`
                   blockType: "normal",
                 }],
               });
+              forensicTraceField(si + 3, s.layout, "title", "2.5", "splitLongSegments", "continuation_created", beforeTitle, remainder.join(" | "), "module_cover_title_remainder_created", true);
             }
             moduleCoverTitleRedistributions++;
             preRenderRedistributions++;
@@ -6453,6 +6665,7 @@ Idioma: pt-BR`
         if (totalCoverContent > 320 || normalizedObjectives.length > 3) anyObjOverflow = true;
 
         if (anyObjOverflow) {
+          const beforeObjectives = JSON.stringify(s.objectives || []);
           s.objectives = [];
           const OBJ_PER_SLIDE = 4;
           const objChunks: string[][] = [];
@@ -6477,6 +6690,18 @@ Idioma: pt-BR`
             });
           }
 
+          forensicTraceField(
+            si + 3,
+            s.layout,
+            "objectives",
+            "2.5",
+            "splitObjectiveForStructure",
+            "objective_redistributed",
+            beforeObjectives,
+            JSON.stringify(objChunks),
+            "module_cover_objectives_moved_to_continuation",
+          );
+
           preRenderRedistributions++;
           objectiveRedistributions += normalizedObjectives.length;
           flowLog("OBJECTIVES", "stage2.5 -> moved objectives to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + objChunks.length);
@@ -6484,7 +6709,20 @@ Idioma: pt-BR`
             "REDISTRIBUIÇÃO OBJETIVOS: '" + (s.title || "").substring(0, 30) + "' → " + objChunks.length + " slide(s)"
           );
         } else {
+          const beforeObjectives = JSON.stringify(s.objectives || []);
           s.objectives = normalizedObjectives.map(ensureSentenceEnd);
+          forensicTraceField(
+            si + 3,
+            s.layout,
+            "objectives",
+            "2.5",
+            "splitObjectiveForStructure",
+            "objective_redistributed",
+            beforeObjectives,
+            JSON.stringify(s.objectives),
+            "module_cover_objectives_normalized",
+            beforeObjectives !== JSON.stringify(s.objectives),
+          );
           flowLog("OBJECTIVES", "stage2.5 -> objectives kept on module cover without compression, title='" + (s.title || "").substring(0, 52) + "', count=" + s.objectives.length);
         }
       }
@@ -6497,6 +6735,7 @@ Idioma: pt-BR`
         if (!bbox.fits) {
           const parts = splitLongSegments(s.description, 140);
           if (parts.length >= 2) {
+            const beforeDescription = s.description || "";
             s.description = parts[0];
             const rest = parts.slice(1);
             const chunks: string[][] = [];
@@ -6514,6 +6753,17 @@ Idioma: pt-BR`
                 }],
               });
             }
+            forensicTraceField(
+              si + 3,
+              s.layout,
+              "description",
+              "2.5",
+              "splitLongSegments",
+              "continuation_created",
+              beforeDescription,
+              s.description || "",
+              "module_cover_description_split",
+            );
             preRenderRedistributions++;
             flowLog("MODULE_COVER_DESCRIPTION", "stage2.5 -> moved description to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + chunks.length);
             qualityReport.stage4_all_fixes.push(
@@ -6531,9 +6781,11 @@ Idioma: pt-BR`
         const protectedNoCompression = s.layout === "summary_slide"
           || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
 
-        for (const item of s.items) {
+        for (let itemIdx = 0; itemIdx < s.items.length; itemIdx++) {
+          const item = s.items[itemIdx];
           const trimmed = (item || "").trim();
           if (!trimmed) continue;
+          const fieldLabel = `item[${itemIdx}]`;
 
           const labelParsed = extractLabelExplanation(trimmed);
           const enumLike = /;|\|/.test(trimmed) || /,\s+[^,]{8,},\s+[^,]{8,}/.test(trimmed);
@@ -6541,6 +6793,7 @@ Idioma: pt-BR`
             const splitLabel = splitNarrativeItemForStructure(trimmed, maxChars);
             if (splitLabel.length > 1) {
               newItems.push(...splitLabel.map(ensureSentenceEnd));
+              forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "splitNarrativeItemForStructure", "label_explanation_split", trimmed, splitLabel.join(" | "), "label_explanation_split");
               didRedistribute = true;
               labelExplanationSplits++;
               continue;
@@ -6551,13 +6804,16 @@ Idioma: pt-BR`
             const pieces = splitNarrativeItemForStructure(trimmed, maxChars);
             if (pieces.length > 1) {
               newItems.push(...pieces.map(ensureSentenceEnd));
+              forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "splitNarrativeItemForStructure", "split_structural", trimmed, pieces.join(" | "), "long_item_structural_split");
               didRedistribute = true;
               continue;
             }
 
             if (protectedNoCompression || !!labelParsed) {
               // For summary/objectives/overview/label+explicação: never compress here, keep full sentence and force continuation later
-              newItems.push(ensureSentenceEnd(trimmed));
+              const kept = ensureSentenceEnd(trimmed);
+              newItems.push(kept);
+              forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "stage2_5_guard", "fit_adjustment", trimmed, kept, "compression_skipped_protected_path", false);
               flowLog("FALLBACK", "stage2.5 -> compression skipped (protected path), layout=" + s.layout + ", title='" + (s.title || "").substring(0, 46) + "'");
               continue;
             }
@@ -6565,6 +6821,7 @@ Idioma: pt-BR`
             // LAST RESORT: compress and LOG semantic loss (non-protected layouts only)
             const originalLen = trimmed.length;
             const compressed = smartBullet(trimmed);
+            forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "smartBullet", "compression_used", trimmed, compressed, "stage2_5_last_resort_compression");
             const lossRatio = 1 - (compressed.length / originalLen);
             if (lossRatio > 0.25) {
               semanticLossEvents.push(
@@ -6579,7 +6836,9 @@ Idioma: pt-BR`
             continue;
           }
 
-          newItems.push(ensureSentenceEnd(trimmed));
+          const normalized = ensureSentenceEnd(trimmed);
+          newItems.push(normalized);
+          forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "ensureSentenceEnd", "fit_adjustment", trimmed, normalized, "sentence_normalization", trimmed !== normalized);
         }
 
         const changedItems = newItems.length === s.items.length
@@ -6587,7 +6846,9 @@ Idioma: pt-BR`
           : true;
 
         if (didRedistribute || changedItems) {
+          const beforeItems = JSON.stringify(s.items || []);
           s.items = newItems;
+          forensicTraceField(si + 3, s.layout, "items", "2.5", "stage2_5_apply_items", "objective_redistributed", beforeItems, JSON.stringify(s.items), "stage2_5_items_applied", beforeItems !== JSON.stringify(s.items));
           preRenderRedistributions++;
           flowLog("BULLETS", "stage2.5 -> redistributed bullet structure, layout=" + s.layout + ", title=" + (s.title || "").substring(0, 46));
         }
@@ -6797,8 +7058,16 @@ Idioma: pt-BR`
     const seenTruncationPatterns = new Set<string>(); // Deduplication
 
     allSlides.forEach((s, idx) => {
-      const textsToCheck = [s.title, s.description, ...(s.items || []), ...(s.objectives || [])].filter(Boolean);
-      for (const txt of textsToCheck) {
+      const slideNumber = idx + 3;
+      const fieldsToCheck: { field: string; text: string }[] = [
+        { field: "title", text: s.title || "" },
+        { field: "description", text: s.description || "" },
+        ...(s.items || []).map((text, i) => ({ field: `item[${i}]`, text: text || "" })),
+        ...(s.objectives || []).map((text, i) => ({ field: `objective[${i}]`, text: text || "" })),
+      ].filter(entry => !!entry.text);
+
+      for (const entry of fieldsToCheck) {
+        const txt = entry.text;
         // Use semantic detection which now respects bullet/enumeration exemptions
         if (detectSemanticTruncation(txt)) {
           // Deduplicate: normalize text to first 40 chars to avoid counting same pattern twice
@@ -6807,9 +7076,10 @@ Idioma: pt-BR`
           seenTruncationPatterns.add(dedupKey);
 
           postRenderTruncations++;
-          const msg = `Slide ${idx + 3} POST-RENDER TRUNCAMENTO: "${txt.substring(0, 60)}..."`;
+          const msg = `Slide ${slideNumber} POST-RENDER TRUNCAMENTO [${entry.field}]: "${txt.substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
           qualityReport.stage4_all_warnings.push(msg);
+          forensicTraceField(slideNumber, s.layout, entry.field, "post-render", "detectSemanticTruncation", "silent_truncation_detected", txt, txt, "post_render_semantic_truncation", false);
         }
         // Detect artificial splits with "..." mid-sentence (kept — these are always real issues)
         if (/\.\.\.\s/.test(txt || "") && (txt || "").split(/\s+/).length >= 4) {
@@ -6818,9 +7088,10 @@ Idioma: pt-BR`
           seenTruncationPatterns.add(dedupKey);
 
           postRenderTruncations++;
-          const msg = `Slide ${idx + 3} SPLIT ARTIFICIAL: "${(txt || "").substring(0, 60)}..."`;
+          const msg = `Slide ${slideNumber} SPLIT ARTIFICIAL [${entry.field}]: "${(txt || "").substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
           qualityReport.stage4_all_warnings.push(msg);
+          forensicTraceField(slideNumber, s.layout, entry.field, "post-render", "detectSemanticTruncation", "silent_truncation_detected", txt, txt, "post_render_artificial_split", false);
         }
       }
     });
@@ -6996,24 +7267,52 @@ Idioma: pt-BR`
     const buildReport = (passed: boolean) => {
       const forensicData = forensicGetReport();
       // Build truncation_root_causes from forensic events
-      const truncationRootCauses: { slide: number; field: string; layout: string; last_stage: string; last_fn: string; compression_before: boolean; fallback_before: boolean; continuation_created: boolean }[] = [];
-      const postRenderSlides = new Set<number>();
+      const truncationRootCauses: {
+        slide: number;
+        field: string;
+        layout: string;
+        last_stage: string;
+        last_fn: string;
+        compression_before: boolean;
+        fallback_before: boolean;
+        continuation_created: boolean;
+        first_mutation_stage: string;
+        first_mutation_fn: string;
+        first_mutation_event_type: string;
+        first_mutation_reason: string;
+      }[] = [];
+      const postRenderFields: { slide: number; field: string }[] = [];
       for (const w of postRenderTruncationWarnings) {
         const slideMatch = w.match(/Slide\s+(\d+)/);
-        if (slideMatch) postRenderSlides.add(Number(slideMatch[1]));
+        const fieldMatch = w.match(/\[(.*?)\]/);
+        if (slideMatch) {
+          postRenderFields.push({
+            slide: Number(slideMatch[1]),
+            field: fieldMatch?.[1] || "unknown",
+          });
+        }
       }
-      for (const slideNum of postRenderSlides) {
-        const slideEvents = _forensicEvents.filter(e => e.slide === slideNum);
-        const lastEvent = slideEvents.length > 0 ? slideEvents[slideEvents.length - 1] : null;
+
+      for (const target of postRenderFields) {
+        const fieldEvents = _forensicEvents.filter(e => e.slide === target.slide && e.field === target.field);
+        const fallbackSlideEvents = _forensicEvents.filter(e => e.slide === target.slide);
+        const events = fieldEvents.length > 0 ? fieldEvents : fallbackSlideEvents;
+        const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+        const firstMutation = events.find(e => e.mutated && e.chars_after < e.chars_before);
+
         truncationRootCauses.push({
-          slide: slideNum,
-          field: lastEvent?.field || "unknown",
+          slide: target.slide,
+          field: target.field,
           layout: lastEvent?.layout || "unknown",
           last_stage: lastEvent?.stage || "unknown",
           last_fn: lastEvent?.fn || "unknown",
-          compression_before: slideEvents.some(e => e.action === "compression_used"),
-          fallback_before: slideEvents.some(e => e.action === "fallback_used"),
-          continuation_created: slideEvents.some(e => e.action === "split_structural" || e.action === "continuation_created"),
+          compression_before: events.some(e => e.action === "compression_used"),
+          fallback_before: events.some(e => e.action === "fallback_used"),
+          continuation_created: events.some(e => e.action === "split_structural" || e.action === "continuation_created"),
+          first_mutation_stage: firstMutation?.stage || "none",
+          first_mutation_fn: firstMutation?.fn || "none",
+          first_mutation_event_type: firstMutation?.action || "none",
+          first_mutation_reason: firstMutation?.reason || "none",
         });
       }
 
@@ -7053,7 +7352,13 @@ Idioma: pt-BR`
           bbox_fixes: qualityReport.stage3_bbox_fixes,
         },
         forensic_trace: {
-          truncation_root_causes: truncationRootCauses.slice(0, 20),
+          truncation_root_causes: truncationRootCauses.slice(0, 80),
+          stage0_events: forensicData.stage0_events,
+          stage0_5_events: forensicData.stage0_5_events,
+          stage1_5_events: forensicData.stage1_5_events,
+          stage2_5_events: forensicData.stage2_5_events,
+          silent_truncation_events: forensicData.silent_truncation_events,
+          first_mutation_per_field: forensicData.first_mutation_per_field,
           compression_events: forensicData.compression_events,
           fallback_events: forensicData.fallback_events,
           renderer_trace: forensicData.renderer_trace,
