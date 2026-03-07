@@ -4355,16 +4355,28 @@ function renderModuleCover(pptx: any, data: SlideData) {
     fontSize: TYPO.MODULE_NUMBER, fontFace: FONT_TITLE, color: moduleColor, bold: true,
   });
 
-  // v6: Allow 3 lines with 42 chars/line (126 chars total) for long module titles
-  const tituloAjustado = ajustarTextoAoBox(data.title, 42, 3);
-  const titleFontSize = tituloAjustado.linhas === 1 ? TYPO.MODULE_TITLE : tituloAjustado.linhas === 2 ? 28 : 24;
-  const titleH = tituloAjustado.linhas === 1 ? 0.85 : tituloAjustado.linhas === 2 ? 1.20 : 1.50;
-  addTextSafe(slide, tituloAjustado.texto, {
+  const titleMain = (data.title || "").trim();
+  const titleSub = (data.coverTitleSubtitle || "").trim();
+  const titleFit = fitTextForBox(titleMain, SAFE_W * 0.70, titleSub ? 1.10 : 1.35, TYPO.MODULE_TITLE, FONT_TITLE, 22);
+  const titleLines = estimateTextLines(titleFit.text, SAFE_W * 0.70, titleFit.fontSize);
+  const titleH = Math.max(0.85, titleLines * (titleFit.fontSize * 1.2 / 72) + 0.10);
+  addTextSafe(slide, titleFit.text, {
     x: MARGIN, y: 2.8, w: SAFE_W * 0.70, h: titleH,
-    fontSize: titleFontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
+    fontSize: titleFit.fontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
 
-  const sepY = 2.8 + titleH + 0.05;
+  let sepY = 2.8 + titleH + 0.05;
+  if (titleSub) {
+    const subFit = fitTextForBox(titleSub, SAFE_W * 0.70, 0.55, TYPO.SUPPORT, FONT_BODY, 14);
+    const subLines = estimateTextLines(subFit.text, SAFE_W * 0.70, subFit.fontSize);
+    const subH = Math.max(0.28, subLines * (subFit.fontSize * 1.2 / 72) + 0.08);
+    addTextSafe(slide, subFit.text, {
+      x: MARGIN, y: sepY, w: SAFE_W * 0.70, h: subH,
+      fontSize: subFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
+    });
+    sepY += subH + 0.06;
+  }
+
   slide.addShape(pptx.ShapeType.rect, {
     x: MARGIN, y: sepY, w: 1.2, h: 0.05, fill: { color: C.SECONDARY },
   });
@@ -4373,8 +4385,8 @@ function renderModuleCover(pptx: any, data: SlideData) {
   let descEndY = sepY + 0.20;
   if (data.description) {
     const descW = SAFE_W * 0.65;
-    // v6: Use fitTextForBox for description instead of fixed subtitle truncation
-    const descFit = fitTextForBox(data.description, descW, 1.0, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
+    const descCapH = titleSub ? 0.85 : 1.0;
+    const descFit = fitTextForBox(data.description, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
     const descLines = estimateTextLines(descFit.text, descW, descFit.fontSize);
     const descH = Math.max(0.45, descLines * (descFit.fontSize * 1.35 / 72) + 0.10);
     addTextSafe(slide, descFit.text, {
