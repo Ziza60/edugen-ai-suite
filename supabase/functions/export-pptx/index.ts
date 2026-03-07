@@ -5480,7 +5480,7 @@ function renderBullets(pptx: any, data: SlideData) {
   const subTextW = SAFE_W - 0.80;
   const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
 
-  // Calculate uniform font sizes
+  // Calculate uniform font sizes without text compression
   const parentFontSize = TYPO.BULLET_TEXT;
   const subFontSize = Math.max(TYPO.SUPPORT, parentFontSize - 2);
 
@@ -5488,7 +5488,7 @@ function renderBullets(pptx: any, data: SlideData) {
   const maxRowH = Math.max(0.40, availH / Math.max(selected.length, 1) - 0.04);
   for (const entry of selected) {
     const w = entry.isSubItem ? subTextW : textW;
-    const fit = fitTextForBox(entry.text, w, Math.max(maxRowH, 0.20), entry.isSubItem ? subFontSize : parentFontSize, FONT_BODY, TYPO.SUPPORT);
+    const fit = fitTextForBoxWithoutCompression(entry.text, w, Math.max(maxRowH, 0.20), entry.isSubItem ? subFontSize : parentFontSize, FONT_BODY, TYPO.SUPPORT);
     if (!entry.isSubItem && fit.fontSize < uniformFontSize) uniformFontSize = fit.fontSize;
   }
   const uniformSubFontSize = Math.max(TYPO.SUPPORT, uniformFontSize - 2);
@@ -5516,19 +5516,46 @@ function renderBullets(pptx: any, data: SlideData) {
     });
   }
 
+  let carryOverEntries: RenderEntry[] = [...remainingEntries];
   let cursorY = contentY;
-  selected.forEach((entry, idx) => {
+  let rendered = 0;
+
+  for (let idx = 0; idx < selected.length; idx++) {
+    const entry = selected[idx];
     const rowH = heights[idx];
-    if (cursorY + rowH > SLIDE_H - BOTTOM_MARGIN + 0.01) return;
+    if (cursorY + rowH > SLIDE_H - BOTTOM_MARGIN + 0.01) {
+      carryOverEntries.push(...selected.slice(idx));
+      break;
+    }
 
     const accentColor = CARD_ACCENT_COLORS_FN()[entry.accentIdx % CARD_ACCENT_COLORS_FN().length];
     const fs = entry.isSubItem ? uniformSubFontSize : uniformFontSize;
     const x = entry.isSubItem ? subTextX : textX;
     const w = entry.isSubItem ? subTextW : textW;
 
-    const textFit = fitTextForBox(entry.text, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, fs);
+    const noCompressionFit = fitTextForBoxWithoutCompression(entry.text, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, Math.max(TYPO.SUPPORT, fs - 2));
+    if (!noCompressionFit.fits) {
+      const structuralPieces = splitNarrativeItemForStructure(entry.text, Math.max(56, activeDensity.maxCharsPerBullet - 8));
+      if (structuralPieces.length > 1) {
+        carryOverEntries = [
+          ...structuralPieces.slice(1).map(text => ({ ...entry, text: ensureSentenceEnd(text) })),
+          ...selected.slice(idx + 1),
+          ...carryOverEntries,
+        ];
+        const firstPiece = ensureSentenceEnd(structuralPieces[0]);
+        const firstFit = fitTextForBoxWithoutCompression(firstPiece, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, Math.max(TYPO.SUPPORT, fs - 2));
+        if (!firstFit.fits) {
+          carryOverEntries = [{ ...entry, text: firstPiece }, ...selected.slice(idx + 1), ...carryOverEntries];
+          break;
+        }
+      } else {
+        carryOverEntries.push(...selected.slice(idx));
+        break;
+      }
+    }
+
     const textY = cursorY + 0.01;
-    const lineHeightIn = (fs * 1.35) / 72;
+    const lineHeightIn = (noCompressionFit.fontSize * 1.35) / 72;
 
     if (entry.isSubItem) {
       const triSize = 0.09;
@@ -5554,7 +5581,7 @@ function renderBullets(pptx: any, data: SlideData) {
     }
 
     const textColor = entry.isSubItem ? C.TEXT_BODY : C.TEXT_DARK;
-    const richText = makeBoldLabelText(textFit.text, textColor, C.TEXT_BODY, fs);
+    const richText = makeBoldLabelText(entry.text, textColor, C.TEXT_BODY, noCompressionFit.fontSize);
     addTextSafe(slide, richText, {
       x: x,
       y: textY,
@@ -5576,18 +5603,39 @@ function renderBullets(pptx: any, data: SlideData) {
       });
     }
 
+    rendered++;
     cursorY += rowH + GAP_BETWEEN_BULLETS;
-  });
+  }
 
-  if (remainingEntries.length > 0) {
-    const remainingItems = remainingEntries.map(e => e.text);
-    flowLog("BULLETS", "renderBullets -> continuation created, title='" + (data.title || "").substring(0, 46) + "', remaining=" + remainingItems.length);
-    renderBullets(pptx, {
-      ...data,
-      title: getNextContinuationTitle(data.title || "Conteúdo", "Conteúdo"),
-      items: remainingItems,
-      structuredItems: undefined,
-    });
+  if (carryOverEntries.length > 0) {
+    const remainingItems = carryOverEntries.map(e => e.text);
+    if (rendered === 0 && remainingItems.length === (selected.length + remainingEntries.length)) {
+      // Last safety guard: avoid recursion loop; keep first item and continue rest
+      const first = remainingItems[0];
+      const fallbackFit = fitTextForBox(first, textW, Math.max(availH, 0.5), uniformFontSize, FONT_BODY, TYPO.SUPPORT);
+      addTextSafe(slide, makeBoldLabelText(fallbackFit.text, C.TEXT_DARK, C.TEXT_BODY, fallbackFit.fontSize), {
+        x: textX,
+        y: contentY + 0.01,
+        w: textW,
+        h: Math.max(availH - 0.02, 0.3),
+        valign: "top",
+        lineSpacingMultiple: 1.3,
+        inset: 0,
+      });
+      carryOverEntries = remainingItems.slice(1).map((text, idx) => ({ text, isSubItem: false, accentIdx: idx }));
+      flowLog("BULLETS", "renderBullets -> hard fallback used for first item to prevent loop, title='" + (data.title || "").substring(0, 46) + "'");
+    }
+
+    const continuationItems = carryOverEntries.map(e => e.text);
+    if (continuationItems.length > 0) {
+      flowLog("BULLETS", "renderBullets -> continuation created, title='" + (data.title || "").substring(0, 46) + "', remaining=" + continuationItems.length);
+      renderBullets(pptx, {
+        ...data,
+        title: getNextContinuationTitle(data.title || "Conteúdo", "Conteúdo"),
+        items: continuationItems,
+        structuredItems: undefined,
+      });
+    }
   }
 }
 
