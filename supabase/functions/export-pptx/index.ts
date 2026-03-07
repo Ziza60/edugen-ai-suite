@@ -6157,8 +6157,10 @@ Idioma: pt-BR`
           }
           normalizedObjectives.push(...structuralParts);
 
-          const bbox = measureBoundingBox(trimmed, TYPO.SUPPORT, FONT_BODY, objW, objH);
-          if (!bbox.fits && trimmed.length > 55) anyObjOverflow = true;
+          for (const part of structuralParts) {
+            const partBox = measureBoundingBox(part, TYPO.SUPPORT, FONT_BODY, objW, objH);
+            if (!partBox.fits && part.length > 44) anyObjOverflow = true;
+          }
         }
 
         const totalCoverContent = (s.description || "").length + normalizedObjectives.reduce((sum, o) => sum + o.length, 0);
@@ -6196,7 +6198,8 @@ Idioma: pt-BR`
             "REDISTRIBUIÇÃO OBJETIVOS: '" + (s.title || "").substring(0, 30) + "' → " + objChunks.length + " slide(s)"
           );
         } else {
-          s.objectives = normalizedObjectives.slice(0, 3);
+          s.objectives = normalizedObjectives.map(ensureSentenceEnd);
+          flowLog("OBJECTIVES", "stage2.5 -> objectives kept on module cover without compression, title='" + (s.title || "").substring(0, 52) + "', count=" + s.objectives.length);
         }
       }
 
