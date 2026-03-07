@@ -2430,24 +2430,31 @@ REGRAS CRÍTICAS:
         };
 
         const newItems: string[] = [];
+        const oldItemsSnapshot = [...slide.items];
+
         for (const corrected of (slideResult.correctedItems || [])) {
           const itemId = corrected.id;
           const originalText = slide.items[itemId] || "";
           const status = corrected.status || "ok";
           const fixedText = (corrected.text || "").trim();
+          const fieldLabel = `item[${itemId}]`;
+          const slideNum = slideIdx + 3;
 
           if (status === "nonsense") {
+            forensicTraceField(slideNum, slide.layout, fieldLabel, "1.5", "llmValidateSlideContent", "fit_adjustment", originalText, "", "llm_marked_nonsense", true);
             validation.nonsenseDetected.push(originalText.substring(0, 50));
             validation.droppedItems.push(originalText.substring(0, 50));
             totalND++;
             continue;
           }
           if (status === "irrelevant") {
+            forensicTraceField(slideNum, slide.layout, fieldLabel, "1.5", "llmValidateSlideContent", "fit_adjustment", originalText, "", "llm_marked_irrelevant", true);
             validation.droppedItems.push(originalText.substring(0, 50));
             totalRD++;
             continue;
           }
           if (!fixedText || fixedText.length < 3) {
+            forensicTraceField(slideNum, slide.layout, fieldLabel, "1.5", "llmValidateSlideContent", "fit_adjustment", originalText, "", "llm_empty_output", true);
             validation.droppedItems.push(originalText.substring(0, 50));
             continue;
           }
@@ -2463,6 +2470,17 @@ REGRAS CRÍTICAS:
 
           let final = fixedText;
           if (final.length > 0 && !/[.!?…]$/.test(final)) final += ".";
+          forensicTraceField(
+            slideNum,
+            slide.layout,
+            fieldLabel,
+            "1.5",
+            "llmValidateSlideContent",
+            status === "truncation_fixed" ? "compression_used" : "fit_adjustment",
+            originalText,
+            final,
+            "llm_status:" + status,
+          );
           newItems.push(final);
         }
 
@@ -2471,6 +2489,18 @@ REGRAS CRÍTICAS:
           validation.fixedItems = newItems;
         } else {
           console.warn("[LLM-NLP] Slide " + slideIdx + ": Too many items dropped (" + newItems.length + "/" + slide.items.length + "), keeping originals");
+          forensicTraceField(
+            slideIdx + 3,
+            slide.layout,
+            "items",
+            "1.5",
+            "llmValidateSlideContent",
+            "fallback_used",
+            JSON.stringify(oldItemsSnapshot),
+            JSON.stringify(slide.items),
+            "drop_ratio_too_high_kept_original",
+            false,
+          );
           validation.fixedItems = [...slide.items];
         }
 
