@@ -1731,7 +1731,7 @@ function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): Sl
     // Dedicated objectives slide
     slides.push({
       layout: "bullets",
-      title: "Objetivos - " + smartTitle(coverTitle),
+      title: "Objetivos do Módulo",
       sectionLabel: "OBJETIVOS DO MÓDULO",
       items: sanitizeBullets(coverObjectives.map(o => {
         const t = o.trim();
@@ -3453,7 +3453,7 @@ function buildModuleSlidesFromBlocks(blocks: ParsedBlock[], mod: any, modIndex: 
     });
     slides.push({
       layout: "bullets",
-      title: "Objetivos - " + smartTitle(shortTitle),
+      title: "Objetivos do Módulo",
       sectionLabel: "OBJETIVOS DO MÓDULO",
       items: sanitizeBullets(objectives.map(o => {
         const t = o.trim();
