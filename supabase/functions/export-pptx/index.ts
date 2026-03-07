@@ -1936,7 +1936,7 @@ ${truncatedContent}`;
               type: "object",
               properties: {
                 moduleTitle: { type: "string", description: "Clean module title (without 'Módulo N:' prefix)" },
-                moduleDescription: { type: "string", description: "One sentence describing the module objective (max 60 chars)" },
+                moduleDescription: { type: "string", description: "One or two complete sentences describing the module objective (max 160 chars). MUST be a grammatically complete sentence ending with a period." },
                 objectives: {
                   type: "array",
                   items: { type: "string" },
@@ -2319,7 +2319,7 @@ Para cada item, você DEVE:
 3. **Sem sentido**: Se o texto é incompreensível, sem sentido, ou contém palavras aleatórias/sem conexão lógica, marque como "nonsense".
 4. **Relevância**: Se o item não tem relação com o título do slide, marque como "irrelevant".
 5. **Pontuação**: Toda frase deve terminar com ponto, exclamação ou interrogação.
-6. **Máximo**: Cada item corrigido deve ter no máximo 120 caracteres. Se ultrapassar, resuma mantendo o significado essencial.
+6. **Máximo**: Cada item corrigido deve ter no máximo 180 caracteres. Se ultrapassar, resuma mantendo o significado essencial. NUNCA corte uma frase no meio — sempre termine com sentença completa.
 
 REGRAS CRÍTICAS:
 - NÃO invente informação nova — apenas corrija/complete o que existe.
@@ -2617,12 +2617,21 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
     }
 
     if (detectTruncation(text)) {
+      const beforeIntegrity = text;
       text = enforceSentenceIntegrity(text);
+      // Only apply further truncation if enforceSentenceIntegrity didn't fix it
+      // AND the result wouldn't be semantically worse than the original
       if (detectTruncation(text)) {
-        const beforeFallback = text;
-        text = smartTruncate(text, Math.max(24, Math.floor(check.maxChars * 0.9)), false);
-        text = enforceSentenceIntegrity(text);
-        forensicTrace("addTextSafe", "smartTruncate", "fallback_used", beforeFallback, text);
+        const candidate = smartTruncate(text, Math.max(24, Math.floor(check.maxChars * 0.9)), false);
+        const candidateClean = enforceSentenceIntegrity(candidate);
+        // Accept the candidate ONLY if it doesn't create a NEW semantic truncation
+        if (!detectSemanticTruncation(candidateClean) || candidateClean.length >= text.length * 0.85) {
+          forensicTrace("addTextSafe", "smartTruncate", "fallback_used", beforeIntegrity, candidateClean);
+          text = candidateClean;
+        } else {
+          // Keep the original text as-is rather than making it worse
+          forensicTrace("addTextSafe", "smartTruncate", "fallback_skipped", beforeIntegrity, text, "candidate_would_worsen_truncation", false);
+        }
       }
     }
 
