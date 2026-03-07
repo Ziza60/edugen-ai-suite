@@ -496,13 +496,24 @@ function splitModuleCoverTitle(title: string): { primary: string; secondary: str
     return { primary: t, secondary: null, changed: false };
   }
 
+  const isSafeTitlePair = (primary: string, secondary: string) => {
+    if (!primary || !secondary) return false;
+    if (isWeakTitleFragment(primary) || isWeakTitleFragment(secondary)) return false;
+    if (primary.length < 12 || secondary.length < 12) return false;
+    return true;
+  };
+
   const sepMatch = t.match(/^(.{18,90}?)\s*[:–—-]\s*(.{18,})$/);
   if (sepMatch) {
-    return {
-      primary: sepMatch[1].trim(),
-      secondary: sepMatch[2].trim(),
-      changed: true,
-    };
+    const p = sepMatch[1].trim();
+    const s = sepMatch[2].trim();
+    if (isSafeTitlePair(p, s)) {
+      return {
+        primary: p,
+        secondary: s,
+        changed: true,
+      };
+    }
   }
 
   const words = t.split(/\s+/).filter(Boolean);
@@ -511,7 +522,10 @@ function splitModuleCoverTitle(title: string): { primary: string; secondary: str
   const primary = words.slice(0, mid).join(" ").trim();
   const secondary = words.slice(mid).join(" ").trim();
 
-  if (!secondary) return { primary: t, secondary: null, changed: false };
+  if (!secondary || !isSafeTitlePair(primary, secondary)) {
+    return { primary: t, secondary: null, changed: false };
+  }
+
   return { primary, secondary, changed: true };
 }
 
