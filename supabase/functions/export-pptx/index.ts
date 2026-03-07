@@ -4259,10 +4259,17 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
     });
     y += 0.38;
   }
-  const cleanTitle = smartTruncate(titleText, 80);
-  const fontSize = cleanTitle.length > 60 ? 26 : cleanTitle.length > 40 ? 28 : TYPO.SECTION_TITLE;
-  const titleH = getTitleHeight(cleanTitle, SAFE_W, fontSize);
-  addTextSafe(slide, cleanTitle, {
+
+  const safeTitle = (titleText || "").trim();
+  const titleFit = fitTextForBox(safeTitle, SAFE_W, 1.25, TYPO.SECTION_TITLE, FONT_TITLE, 22);
+  const renderedTitle = titleFit.text;
+  if (safeTitle && renderedTitle.length < safeTitle.length) {
+    flowLog("FALLBACK", "renderContentHeader -> title adjusted, original=" + safeTitle.length + " chars, rendered=" + renderedTitle.length + " chars");
+  }
+
+  const fontSize = titleFit.fontSize;
+  const titleH = getTitleHeight(renderedTitle, SAFE_W, fontSize);
+  addTextSafe(slide, renderedTitle, {
     x: MARGIN, y, w: SAFE_W, h: titleH,
     fontSize, fontFace: FONT_TITLE, color: C.TEXT_DARK, bold: true,
   });
