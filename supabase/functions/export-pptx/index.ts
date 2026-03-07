@@ -5887,9 +5887,11 @@ function renderNumberedTakeaways(pptx: any, data: SlideData) {
     }
     if (cardBody) {
       const bodyH = cardH - (textY - y) - 0.10;
-      addTextSafe(slide, cardBody, {
+      // v7: Use fitTextForBoxWithoutCompression to prevent visual overflow (slide 78 fix)
+      const bodyFit = fitTextForBoxWithoutCompression(cardBody, textW, Math.max(bodyH, 0.15), TYPO.TAKEAWAY_BODY, FONT_BODY, 11);
+      addTextSafe(slide, bodyFit.text, {
         x: textX, y: textY, w: textW, h: Math.max(bodyH, 0.15),
-        fontSize: TYPO.TAKEAWAY_BODY, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.2,
+        fontSize: bodyFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top", lineSpacingMultiple: 1.2,
       });
     }
   });
