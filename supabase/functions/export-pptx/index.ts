@@ -6711,6 +6711,7 @@ Idioma: pt-BR`
 
     // 1. Cover (with structural redistribution for overflowing descriptions)
     const coverExtraSlides: SlideData[] = [];
+    flowLog("COVER", "renderCapa -> curso='" + (course.title || "").substring(0, 52) + "'");
     renderCapa(pptx, {
       layout: "module_cover", title: course.title,
       description: course.description || "", moduleCount: modules.length,
@@ -6720,6 +6721,7 @@ Idioma: pt-BR`
     if (coverExtraSlides.length > 0) {
       qualityReport.stage4_all_fixes.push("REDISTRIBUIÇÃO CAPA: descrição redistribuída em slide de continuação");
       for (const sd of coverExtraSlides) {
+        flowLog("COVER_CONTINUATION", "renderBullets -> title='" + (sd.title || "").substring(0, 52) + "'");
         renderBullets(pptx, sd);
       }
     }
@@ -6731,24 +6733,26 @@ Idioma: pt-BR`
       const firstSentence = smartModuleDesc(sanitize((m.content || "").split(/[.!?]\s/)[0] || ""));
       return { title: shortTitle, description: firstSentence };
     });
+    flowLog("TOC", "renderTOC -> módulos=" + modulesSummary.length);
     renderTOC(pptx, { layout: "module_cover", title: "O que voce vai aprender", modules: modulesSummary });
 
     // 3. All module slides
     for (const sd of allSlides) {
+      const titlePreview = (sd.title || "").substring(0, 52);
       switch (sd.layout) {
-        case "module_cover":                renderModuleCover(pptx, sd); break;
-        case "definition_card_with_pillars": renderDefinitionWithPillars(pptx, sd); break;
-        case "comparison_table":            renderComparisonTable(pptx, sd); break;
-        case "grid_cards":                  renderGridCards(pptx, sd); break;
-        case "four_quadrants":              renderFourQuadrants(pptx, sd); break;
-        case "process_timeline":            renderProcessTimeline(pptx, sd); break;
-        case "numbered_takeaways":          renderNumberedTakeaways(pptx, sd); break;
-        case "example_highlight":           renderExampleHighlight(pptx, sd); break;
-        case "reflection_callout":          renderReflectionCallout(pptx, sd); break;
-        case "warning_callout":             renderWarningCallout(pptx, sd); break;
-        case "summary_slide":              renderSummarySlide(pptx, sd); break;
-        case "bullets":                     renderBullets(pptx, sd); break;
-        default:                            renderBullets(pptx, sd); break;
+        case "module_cover":                 flowLog("MODULE_COVER", "renderModuleCover -> title='" + titlePreview + "'"); renderModuleCover(pptx, sd); break;
+        case "definition_card_with_pillars": flowLog("DEFINITION", "renderDefinitionWithPillars -> title='" + titlePreview + "'"); renderDefinitionWithPillars(pptx, sd); break;
+        case "comparison_table":             flowLog("TABLE", "renderComparisonTable -> title='" + titlePreview + "'"); renderComparisonTable(pptx, sd); break;
+        case "grid_cards":                   flowLog("BULLETS_NARRATIVE", "renderGridCards -> title='" + titlePreview + "'"); renderGridCards(pptx, sd); break;
+        case "four_quadrants":               flowLog("BULLETS_NARRATIVE", "renderFourQuadrants -> title='" + titlePreview + "'"); renderFourQuadrants(pptx, sd); break;
+        case "process_timeline":             flowLog("TIMELINE_PROCESS", "renderProcessTimeline -> title='" + titlePreview + "'"); renderProcessTimeline(pptx, sd); break;
+        case "numbered_takeaways":           flowLog("TAKEAWAYS", "renderNumberedTakeaways -> title='" + titlePreview + "'"); renderNumberedTakeaways(pptx, sd); break;
+        case "example_highlight":            flowLog("EXAMPLE", "renderExampleHighlight -> title='" + titlePreview + "'"); renderExampleHighlight(pptx, sd); break;
+        case "reflection_callout":           flowLog("REFLECTION", "renderReflectionCallout -> title='" + titlePreview + "'"); renderReflectionCallout(pptx, sd); break;
+        case "warning_callout":              flowLog("WARNING", "renderWarningCallout -> title='" + titlePreview + "'"); renderWarningCallout(pptx, sd); break;
+        case "summary_slide":                flowLog("SUMMARY", "renderSummarySlide -> title='" + titlePreview + "'"); renderSummarySlide(pptx, sd); break;
+        case "bullets":                      flowLog("BULLETS", "renderBullets -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
+        default:                               flowLog("BULLETS", "renderBullets(default) -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
       }
     }
 
