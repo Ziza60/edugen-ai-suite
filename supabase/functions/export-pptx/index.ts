@@ -6781,9 +6781,11 @@ Idioma: pt-BR`
         const protectedNoCompression = s.layout === "summary_slide"
           || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
 
-        for (const item of s.items) {
+        for (let itemIdx = 0; itemIdx < s.items.length; itemIdx++) {
+          const item = s.items[itemIdx];
           const trimmed = (item || "").trim();
           if (!trimmed) continue;
+          const fieldLabel = `item[${itemIdx}]`;
 
           const labelParsed = extractLabelExplanation(trimmed);
           const enumLike = /;|\|/.test(trimmed) || /,\s+[^,]{8,},\s+[^,]{8,}/.test(trimmed);
@@ -6791,6 +6793,7 @@ Idioma: pt-BR`
             const splitLabel = splitNarrativeItemForStructure(trimmed, maxChars);
             if (splitLabel.length > 1) {
               newItems.push(...splitLabel.map(ensureSentenceEnd));
+              forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "splitNarrativeItemForStructure", "label_explanation_split", trimmed, splitLabel.join(" | "), "label_explanation_split");
               didRedistribute = true;
               labelExplanationSplits++;
               continue;
@@ -6801,13 +6804,16 @@ Idioma: pt-BR`
             const pieces = splitNarrativeItemForStructure(trimmed, maxChars);
             if (pieces.length > 1) {
               newItems.push(...pieces.map(ensureSentenceEnd));
+              forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "splitNarrativeItemForStructure", "split_structural", trimmed, pieces.join(" | "), "long_item_structural_split");
               didRedistribute = true;
               continue;
             }
 
             if (protectedNoCompression || !!labelParsed) {
               // For summary/objectives/overview/label+explicação: never compress here, keep full sentence and force continuation later
-              newItems.push(ensureSentenceEnd(trimmed));
+              const kept = ensureSentenceEnd(trimmed);
+              newItems.push(kept);
+              forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "stage2_5_guard", "fit_adjustment", trimmed, kept, "compression_skipped_protected_path", false);
               flowLog("FALLBACK", "stage2.5 -> compression skipped (protected path), layout=" + s.layout + ", title='" + (s.title || "").substring(0, 46) + "'");
               continue;
             }
@@ -6815,6 +6821,7 @@ Idioma: pt-BR`
             // LAST RESORT: compress and LOG semantic loss (non-protected layouts only)
             const originalLen = trimmed.length;
             const compressed = smartBullet(trimmed);
+            forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "smartBullet", "compression_used", trimmed, compressed, "stage2_5_last_resort_compression");
             const lossRatio = 1 - (compressed.length / originalLen);
             if (lossRatio > 0.25) {
               semanticLossEvents.push(
@@ -6829,7 +6836,9 @@ Idioma: pt-BR`
             continue;
           }
 
-          newItems.push(ensureSentenceEnd(trimmed));
+          const normalized = ensureSentenceEnd(trimmed);
+          newItems.push(normalized);
+          forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "ensureSentenceEnd", "fit_adjustment", trimmed, normalized, "sentence_normalization", trimmed !== normalized);
         }
 
         const changedItems = newItems.length === s.items.length
