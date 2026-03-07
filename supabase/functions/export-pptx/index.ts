@@ -1708,6 +1708,34 @@ function fitTextForBox(text: string, boxW: number, boxH: number, fontSize: numbe
   return { text: currentText, fontSize: Math.max(currentFont, minFont), adjusted: true };
 }
 
+function fitTextForBoxWithoutCompression(
+  text: string,
+  boxW: number,
+  boxH: number,
+  fontSize: number,
+  fontFace: string,
+  minFont = 12,
+): { text: string; fontSize: number; adjusted: boolean; fits: boolean } {
+  const clean = enforceSentenceIntegrity(sanitize(text));
+  let currentFont = fontSize;
+
+  for (let i = 0; i < 8; i++) {
+    const bbox = measureBoundingBox(clean, currentFont, fontFace, boxW, boxH);
+    if (bbox.fits) {
+      if (currentFont !== fontSize) {
+        forensicTrace("renderer", "fitTextForBoxWithoutCompression", "fit_adjustment", clean, clean, "font_reduced_no_text_change", false);
+      }
+      return { text: clean, fontSize: currentFont, adjusted: currentFont !== fontSize, fits: true };
+    }
+
+    if (currentFont <= minFont) break;
+    currentFont = Math.max(minFont, currentFont - 1);
+  }
+
+  forensicTrace("renderer", "fitTextForBoxWithoutCompression", "fallback_used", clean, clean, "font_floor_reached_no_text_compression", false);
+  return { text: clean, fontSize: currentFont, adjusted: currentFont !== fontSize, fits: false };
+}
+
 // ── CONTENT COHERENCE CHECK ──
 function checkNarrativeCoherence(slides: SlideData[]): string[] {
   const warnings: string[] = [];
@@ -2476,13 +2504,35 @@ REGRAS CRÍTICAS:
 
           let final = fixedText;
           if (final.length > 0 && !/[.!?…]$/.test(final)) final += ".";
+
+          const protectedNoCompressionLayout =
+            slide.layout === "bullets" ||
+            slide.layout === "example_highlight" ||
+            slide.layout === "summary_slide";
+
+          if (status === "truncation_fixed" && protectedNoCompressionLayout && final.length < originalText.length) {
+            forensicTraceField(
+              slideNum,
+              slide.layout,
+              fieldLabel,
+              "1.5",
+              "llmValidateSlideContent",
+              "fallback_used",
+              originalText,
+              originalText,
+              "protected_layout_kept_original_instead_of_compression",
+              false,
+            );
+            final = ensureSentenceEnd(originalText);
+          }
+
           forensicTraceField(
             slideNum,
             slide.layout,
             fieldLabel,
             "1.5",
             "llmValidateSlideContent",
-            status === "truncation_fixed" ? "compression_used" : "fit_adjustment",
+            status === "truncation_fixed" && final.length < originalText.length ? "compression_used" : "fit_adjustment",
             originalText,
             final,
             "llm_status:" + status,
@@ -4775,6 +4825,7 @@ function renderModuleCover(pptx: any, data: SlideData) {
     const descW = SAFE_W * 0.65;
     const descCapH = titleSub ? 0.85 : 1.0;
     let descText = ensureSentenceEnd(data.description);
+
     const descFitCheck = measureBoundingBox(descText, TYPO.SUBTITLE, FONT_BODY, descW, descCapH);
     if (!descFitCheck.fits) {
       const descParts = splitLongSegments(descText, 140);
@@ -4785,14 +4836,28 @@ function renderModuleCover(pptx: any, data: SlideData) {
       }
     }
 
-    const descFit = fitTextForBox(descText, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
-    const descLines = estimateTextLines(descFit.text, descW, descFit.fontSize);
-    const descH = Math.max(0.45, descLines * (descFit.fontSize * 1.35 / 72) + 0.10);
-    addTextSafe(slide, descFit.text, {
-      x: MARGIN, y: descEndY, w: descW, h: descH,
-      fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
-    });
-    descEndY += descH + 0.20;
+    let descFit = fitTextForBoxWithoutCompression(descText, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
+    if (!descFit.fits) {
+      const overflowParts = splitLongSegments(descText, 110);
+      if (overflowParts.length > 1) {
+        descText = overflowParts[0];
+        deferredOverviewItems = [...overflowParts.slice(1).map(ensureSentenceEnd), ...deferredOverviewItems];
+        descFit = fitTextForBoxWithoutCompression(descText, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
+      }
+    }
+
+    if (descText && descFit.fits) {
+      const descLines = estimateTextLines(descFit.text, descW, descFit.fontSize);
+      const descH = Math.max(0.45, descLines * (descFit.fontSize * 1.35 / 72) + 0.10);
+      addTextSafe(slide, descFit.text, {
+        x: MARGIN, y: descEndY, w: descW, h: descH,
+        fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
+      });
+      descEndY += descH + 0.20;
+    } else if (descText) {
+      deferredOverviewItems = [descText, ...deferredOverviewItems].map(ensureSentenceEnd);
+      flowLog("MODULE_COVER_DESCRIPTION", "renderModuleCover -> description moved fully to continuation (no compression), title='" + (data.title || "").substring(0, 52) + "'");
+    }
   }
 
   const objectives = (data.objectives || []).map(ensureSentenceEnd).filter(Boolean);
@@ -5415,7 +5480,7 @@ function renderBullets(pptx: any, data: SlideData) {
   const subTextW = SAFE_W - 0.80;
   const availH = SLIDE_H - contentY - BOTTOM_MARGIN;
 
-  // Calculate uniform font sizes
+  // Calculate uniform font sizes without text compression
   const parentFontSize = TYPO.BULLET_TEXT;
   const subFontSize = Math.max(TYPO.SUPPORT, parentFontSize - 2);
 
@@ -5423,7 +5488,7 @@ function renderBullets(pptx: any, data: SlideData) {
   const maxRowH = Math.max(0.40, availH / Math.max(selected.length, 1) - 0.04);
   for (const entry of selected) {
     const w = entry.isSubItem ? subTextW : textW;
-    const fit = fitTextForBox(entry.text, w, Math.max(maxRowH, 0.20), entry.isSubItem ? subFontSize : parentFontSize, FONT_BODY, TYPO.SUPPORT);
+    const fit = fitTextForBoxWithoutCompression(entry.text, w, Math.max(maxRowH, 0.20), entry.isSubItem ? subFontSize : parentFontSize, FONT_BODY, TYPO.SUPPORT);
     if (!entry.isSubItem && fit.fontSize < uniformFontSize) uniformFontSize = fit.fontSize;
   }
   const uniformSubFontSize = Math.max(TYPO.SUPPORT, uniformFontSize - 2);
@@ -5451,19 +5516,52 @@ function renderBullets(pptx: any, data: SlideData) {
     });
   }
 
+  let carryOverEntries: RenderEntry[] = [...remainingEntries];
   let cursorY = contentY;
-  selected.forEach((entry, idx) => {
+  let rendered = 0;
+
+  for (let idx = 0; idx < selected.length; idx++) {
+    const entry = selected[idx];
     const rowH = heights[idx];
-    if (cursorY + rowH > SLIDE_H - BOTTOM_MARGIN + 0.01) return;
+    if (cursorY + rowH > SLIDE_H - BOTTOM_MARGIN + 0.01) {
+      carryOverEntries.push(...selected.slice(idx));
+      break;
+    }
 
     const accentColor = CARD_ACCENT_COLORS_FN()[entry.accentIdx % CARD_ACCENT_COLORS_FN().length];
     const fs = entry.isSubItem ? uniformSubFontSize : uniformFontSize;
     const x = entry.isSubItem ? subTextX : textX;
     const w = entry.isSubItem ? subTextW : textW;
 
-    const textFit = fitTextForBox(entry.text, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, fs);
+    let noCompressionFit = fitTextForBoxWithoutCompression(entry.text, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, Math.max(TYPO.SUPPORT, fs - 2));
+    let textToRender = entry.text;
+    let fontToRender = noCompressionFit.fontSize;
+
+    if (!noCompressionFit.fits) {
+      const structuralPieces = splitNarrativeItemForStructure(entry.text, Math.max(56, activeDensity.maxCharsPerBullet - 8));
+      if (structuralPieces.length > 1) {
+        carryOverEntries = [
+          ...structuralPieces.slice(1).map(text => ({ ...entry, text: ensureSentenceEnd(text) })),
+          ...selected.slice(idx + 1),
+          ...carryOverEntries,
+        ];
+        const firstPiece = ensureSentenceEnd(structuralPieces[0]);
+        const firstFit = fitTextForBoxWithoutCompression(firstPiece, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, Math.max(TYPO.SUPPORT, fs - 2));
+        if (!firstFit.fits) {
+          carryOverEntries = [{ ...entry, text: firstPiece }, ...selected.slice(idx + 1), ...carryOverEntries];
+          break;
+        }
+        textToRender = firstPiece;
+        fontToRender = firstFit.fontSize;
+        noCompressionFit = firstFit;
+      } else {
+        carryOverEntries.push(...selected.slice(idx));
+        break;
+      }
+    }
+
     const textY = cursorY + 0.01;
-    const lineHeightIn = (fs * 1.35) / 72;
+    const lineHeightIn = (fontToRender * 1.35) / 72;
 
     if (entry.isSubItem) {
       const triSize = 0.09;
@@ -5489,7 +5587,7 @@ function renderBullets(pptx: any, data: SlideData) {
     }
 
     const textColor = entry.isSubItem ? C.TEXT_BODY : C.TEXT_DARK;
-    const richText = makeBoldLabelText(textFit.text, textColor, C.TEXT_BODY, fs);
+    const richText = makeBoldLabelText(textToRender, textColor, C.TEXT_BODY, fontToRender);
     addTextSafe(slide, richText, {
       x: x,
       y: textY,
@@ -5511,18 +5609,39 @@ function renderBullets(pptx: any, data: SlideData) {
       });
     }
 
+    rendered++;
     cursorY += rowH + GAP_BETWEEN_BULLETS;
-  });
+  }
 
-  if (remainingEntries.length > 0) {
-    const remainingItems = remainingEntries.map(e => e.text);
-    flowLog("BULLETS", "renderBullets -> continuation created, title='" + (data.title || "").substring(0, 46) + "', remaining=" + remainingItems.length);
-    renderBullets(pptx, {
-      ...data,
-      title: getNextContinuationTitle(data.title || "Conteúdo", "Conteúdo"),
-      items: remainingItems,
-      structuredItems: undefined,
-    });
+  if (carryOverEntries.length > 0) {
+    const remainingItems = carryOverEntries.map(e => e.text);
+    if (rendered === 0 && remainingItems.length === (selected.length + remainingEntries.length)) {
+      // Last safety guard: avoid recursion loop; keep first item and continue rest
+      const first = remainingItems[0];
+      const fallbackFit = fitTextForBox(first, textW, Math.max(availH, 0.5), uniformFontSize, FONT_BODY, TYPO.SUPPORT);
+      addTextSafe(slide, makeBoldLabelText(fallbackFit.text, C.TEXT_DARK, C.TEXT_BODY, fallbackFit.fontSize), {
+        x: textX,
+        y: contentY + 0.01,
+        w: textW,
+        h: Math.max(availH - 0.02, 0.3),
+        valign: "top",
+        lineSpacingMultiple: 1.3,
+        inset: 0,
+      });
+      carryOverEntries = remainingItems.slice(1).map((text, idx) => ({ text, isSubItem: false, accentIdx: idx }));
+      flowLog("BULLETS", "renderBullets -> hard fallback used for first item to prevent loop, title='" + (data.title || "").substring(0, 46) + "'");
+    }
+
+    const continuationItems = carryOverEntries.map(e => e.text);
+    if (continuationItems.length > 0) {
+      flowLog("BULLETS", "renderBullets -> continuation created, title='" + (data.title || "").substring(0, 46) + "', remaining=" + continuationItems.length);
+      renderBullets(pptx, {
+        ...data,
+        title: getNextContinuationTitle(data.title || "Conteúdo", "Conteúdo"),
+        items: continuationItems,
+        structuredItems: undefined,
+      });
+    }
   }
 }
 
@@ -5565,43 +5684,74 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
     fontSize: 20,
   });
 
-  // Example content — UNIFORM font size + proper spacing
+  // Example content — no text compression, continuation-first
   let textY = contentY + 0.25;
   const textX = MARGIN + 0.90;
   const textW = SAFE_W - 1.10;
-  const exItemH = Math.min(0.70, (boxH - 0.30) / items.length);
+  const exItemH = Math.min(0.70, (boxH - 0.30) / Math.max(items.length, 1));
   const EXAMPLE_GAP = 0.12;
 
-  // Calculate uniform font size for all example items
+  // Calculate uniform font size for all example items without changing text
   let exampleFontSize = TYPO.BODY;
   for (const item of items) {
-    const fit = fitTextForBox(item, textW, exItemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    const fit = fitTextForBoxWithoutCompression(item, textW, exItemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
     if (fit.fontSize < exampleFontSize) exampleFontSize = fit.fontSize;
   }
 
   let rendered = 0;
-  items.forEach((item, idx) => {
-    if (textY + 0.50 > contentY + boxH - 0.15) return;
-    const richText = makeBoldLabelText(item, C.TEXT_DARK, C.TEXT_BODY, exampleFontSize);
+  let continuationItems: string[] = [];
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    if (textY + 0.50 > contentY + boxH - 0.15) {
+      continuationItems = [...items.slice(idx)];
+      break;
+    }
+
+    const fit = fitTextForBoxWithoutCompression(item, textW, exItemH, exampleFontSize, FONT_BODY, TYPO.SUPPORT);
+    if (!fit.fits) {
+      const pieces = splitNarrativeItemForStructure(item, Math.max(56, activeDensity.maxCharsPerBullet - 8));
+      if (pieces.length > 1) {
+        const first = ensureSentenceEnd(pieces[0]);
+        const firstFit = fitTextForBoxWithoutCompression(first, textW, exItemH, exampleFontSize, FONT_BODY, TYPO.SUPPORT);
+        if (!firstFit.fits) {
+          continuationItems = [item, ...items.slice(idx + 1)];
+          break;
+        }
+        const richText = makeBoldLabelText(first, C.TEXT_DARK, C.TEXT_BODY, firstFit.fontSize);
+        addTextSafe(slide, richText, {
+          x: textX, y: textY, w: textW, h: exItemH,
+          valign: "middle", lineSpacingMultiple: 1.35,
+        });
+        textY += exItemH + EXAMPLE_GAP;
+        rendered++;
+        continuationItems = [...pieces.slice(1).map(ensureSentenceEnd), ...items.slice(idx + 1)];
+        break;
+      }
+
+      continuationItems = [item, ...items.slice(idx + 1)];
+      break;
+    }
+
+    const richText = makeBoldLabelText(item, C.TEXT_DARK, C.TEXT_BODY, fit.fontSize);
     addTextSafe(slide, richText, {
       x: textX, y: textY, w: textW, h: exItemH,
       valign: "middle", lineSpacingMultiple: 1.35,
     });
     textY += exItemH + EXAMPLE_GAP;
     rendered++;
-  });
+  }
 
-  if (rendered < items.length) {
+  if (continuationItems.length > 0) {
     if (rendered === 0) {
       console.warn("[FLOW] EXAMPLE | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
       return;
     }
-    const remaining = items.slice(rendered);
-    flowLog("EXAMPLE", "renderExampleHighlight -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    flowLog("EXAMPLE", "renderExampleHighlight -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + continuationItems.length);
     renderExampleHighlight(pptx, {
       ...data,
       title: getNextContinuationTitle(data.title || "Exemplo Prático", "Exemplo Prático"),
-      items: remaining,
+      items: continuationItems,
     });
   }
 }
@@ -5922,24 +6072,57 @@ function renderSummarySlide(pptx: any, data: SlideData) {
 
   let summaryFontSize = TYPO.BODY;
   for (const item of visibleItems) {
-    const fit = fitTextForBox(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    const fit = fitTextForBoxWithoutCompression(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
     if (fit.fontSize < summaryFontSize) summaryFontSize = fit.fontSize;
   }
 
   let rendered = 0;
-  visibleItems.forEach((item) => {
-    if (textY + itemH > contentY + boxH - 0.15) return;
-    const textFit = fitTextForBox(item, textW, itemH, summaryFontSize, FONT_BODY, summaryFontSize);
-    addTextSafe(slide, textFit.text, {
+  let continuationItems: string[] = [];
+  for (let idx = 0; idx < visibleItems.length; idx++) {
+    const item = visibleItems[idx];
+    if (textY + itemH > contentY + boxH - 0.15) {
+      continuationItems = [...visibleItems.slice(idx), ...overflowItems];
+      break;
+    }
+
+    const fit = fitTextForBoxWithoutCompression(item, textW, itemH, summaryFontSize, FONT_BODY, TYPO.SUPPORT);
+    if (!fit.fits) {
+      const pieces = splitNarrativeItemForStructure(item, Math.max(56, activeDensity.maxCharsPerBullet - 8));
+      if (pieces.length > 1) {
+        const first = ensureSentenceEnd(pieces[0]);
+        const firstFit = fitTextForBoxWithoutCompression(first, textW, itemH, summaryFontSize, FONT_BODY, TYPO.SUPPORT);
+        if (!firstFit.fits) {
+          continuationItems = [item, ...visibleItems.slice(idx + 1), ...overflowItems];
+          break;
+        }
+        addTextSafe(slide, first, {
+          x: textX, y: textY, w: textW, h: itemH,
+          fontSize: firstFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
+          valign: "top", lineSpacingMultiple: 1.4,
+        });
+        textY += itemH + SUMMARY_GAP;
+        rendered++;
+        continuationItems = [...pieces.slice(1).map(ensureSentenceEnd), ...visibleItems.slice(idx + 1), ...overflowItems];
+        break;
+      }
+
+      continuationItems = [item, ...visibleItems.slice(idx + 1), ...overflowItems];
+      break;
+    }
+
+    addTextSafe(slide, item, {
       x: textX, y: textY, w: textW, h: itemH,
-      fontSize: summaryFontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
+      fontSize: fit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
       valign: "top", lineSpacingMultiple: 1.4,
     });
     textY += itemH + SUMMARY_GAP;
     rendered++;
-  });
+  }
 
-  const remaining = [...visibleItems.slice(rendered), ...overflowItems];
+  const remaining = continuationItems.length > 0
+    ? continuationItems
+    : [...visibleItems.slice(rendered), ...overflowItems];
+
   if (remaining.length > 0) {
     if (rendered === 0) {
       console.warn("[FLOW] SUMMARY | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
@@ -6751,8 +6934,23 @@ Idioma: pt-BR`
           const parts = splitLongSegments(s.description, 140);
           if (parts.length >= 2) {
             const beforeDescription = s.description || "";
-            s.description = parts[0];
-            const rest = parts.slice(1);
+            let firstChunk = parts[0];
+            let rest = parts.slice(1);
+
+            const firstChunkFits = () => measureBoundingBox(firstChunk, TYPO.SUBTITLE, FONT_BODY, descW, descH).fits;
+            while (firstChunk && !firstChunkFits()) {
+              const splitAgain = splitLongSegments(firstChunk, 100);
+              if (splitAgain.length <= 1) break;
+              firstChunk = splitAgain[0];
+              rest = [...splitAgain.slice(1), ...rest];
+            }
+
+            if (!firstChunk || !firstChunkFits()) {
+              rest = [firstChunk, ...rest].filter(Boolean);
+              firstChunk = "";
+            }
+
+            s.description = firstChunk;
             const chunks: string[][] = [];
             for (let i = 0; i < rest.length; i += 3) chunks.push(rest.slice(i, i + 3));
             for (let ci = 0; ci < chunks.length; ci++) {
@@ -6794,6 +6992,8 @@ Idioma: pt-BR`
         const newItems: string[] = [];
         let didRedistribute = false;
         const protectedNoCompression = s.layout === "summary_slide"
+          || s.layout === "example_highlight"
+          || s.layout === "bullets"
           || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
 
         for (let itemIdx = 0; itemIdx < s.items.length; itemIdx++) {
