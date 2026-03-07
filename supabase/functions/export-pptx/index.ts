@@ -496,13 +496,24 @@ function splitModuleCoverTitle(title: string): { primary: string; secondary: str
     return { primary: t, secondary: null, changed: false };
   }
 
+  const isSafeTitlePair = (primary: string, secondary: string) => {
+    if (!primary || !secondary) return false;
+    if (isWeakTitleFragment(primary) || isWeakTitleFragment(secondary)) return false;
+    if (primary.length < 12 || secondary.length < 12) return false;
+    return true;
+  };
+
   const sepMatch = t.match(/^(.{18,90}?)\s*[:–—-]\s*(.{18,})$/);
   if (sepMatch) {
-    return {
-      primary: sepMatch[1].trim(),
-      secondary: sepMatch[2].trim(),
-      changed: true,
-    };
+    const p = sepMatch[1].trim();
+    const s = sepMatch[2].trim();
+    if (isSafeTitlePair(p, s)) {
+      return {
+        primary: p,
+        secondary: s,
+        changed: true,
+      };
+    }
   }
 
   const words = t.split(/\s+/).filter(Boolean);
@@ -511,7 +522,10 @@ function splitModuleCoverTitle(title: string): { primary: string; secondary: str
   const primary = words.slice(0, mid).join(" ").trim();
   const secondary = words.slice(mid).join(" ").trim();
 
-  if (!secondary) return { primary: t, secondary: null, changed: false };
+  if (!secondary || !isSafeTitlePair(primary, secondary)) {
+    return { primary: t, secondary: null, changed: false };
+  }
+
   return { primary, secondary, changed: true };
 }
 
@@ -1057,13 +1071,50 @@ function isValidBullet(text: string): boolean {
   return false;
 }
 
+function isWeakSemanticFragment(text: string): boolean {
+  const t = (text || "").trim().replace(/\s+/g, " ").replace(/\.+$/, "").trim();
+  if (!t) return false;
+
+  // Canonical bad fragments seen in approved-but-poor exports
+  if (/^(por exemplo|ferramentas\s+de\s+ia|o processo envolve|a ia analisa dados)$/i.test(t)) return true;
+
+  const wc = t.split(/\s+/).length;
+
+  // Very short discourse markers without payload
+  if (/^(por exemplo|em resumo|na prática|no geral|como resultado)$/i.test(t)) return true;
+
+  // Generic noun phrases that look complete but are semantically empty for slide content
+  if (/^(ferramentas|modelos|tipos|aplicações|processo|resultado|contexto|exemplo)(\s+de\s+[\wÀ-ÖØ-öø-ÿ-]+){0,2}$/i.test(t) && wc <= 5) return true;
+
+  // Subject + transitive verb with no object/complement
+  if (/^(a\s+ia|o\s+processo|o\s+sistema|a\s+ferramenta|as\s+ferramentas|este\s+processo|essa\s+abordagem)\s+(envolve|analisa|usa|utiliza|aplica|gera|permite|inclui|oferece)$/i.test(t)) {
+    return true;
+  }
+
+  return false;
+}
+
+function isWeakTitleFragment(text: string): boolean {
+  const t = (text || "").trim().replace(/\s+/g, " ").replace(/\.+$/, "").trim();
+  if (!t) return false;
+
+  if (/\(Parte\s*\d+\)\s*$/i.test(t)) return false;
+
+  const wc = t.split(/\s+/).length;
+  if (wc <= 2 && t.length < 18) return true;
+  if (/^(introdu[cç][aã]o|vis[aã]o geral|detalhes|continua[cç][aã]o|parte)$/i.test(t)) return true;
+  if (isWeakSemanticFragment(t)) return true;
+
+  return false;
+}
+
 function extractWarningQuotedText(warning: string): string {
   const quoted = warning.match(/"([^"]+)"/);
   return (quoted?.[1] || "").trim();
 }
 
 function warningDedupKey(warning: string): string {
-  const type = (warning.match(/TRUNCAMENTO|FRAGMENTO|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA|GRAMATICA|PONTUACAO|REPETICAO|TITULO CURTO|TITULO GENERICO|WCAG|BBOX|CELULA|MESCLADO|SIMBOLOS/i)?.[0] || "WARN").toUpperCase();
+  const type = (warning.match(/TRUNCAMENTO|FRAGMENTO|FRAGMENTO SEMÂNTICO|TÍTULO FRAGMENTADO|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA|GRAMATICA|PONTUACAO|REPETICAO|TITULO CURTO|TITULO GENERICO|WCAG|BBOX|CELULA|MESCLADO|SIMBOLOS/i)?.[0] || "WARN").toUpperCase();
   const quoted = extractWarningQuotedText(warning)
     .toLowerCase()
     .replace(/\s+/g, " ")
@@ -1100,6 +1151,9 @@ function isFalsePositiveTruncationWarning(warning: string): boolean {
 
   const snippet = extractWarningQuotedText(warning);
   if (!snippet) return false;
+
+  // Never suppress semantic-fragment warnings
+  if (isWeakSemanticFragment(snippet) || isWeakTitleFragment(snippet)) return false;
 
   // Only suppress when snippet looks like valid slide bullet AND has no semantic truncation
   const normalizedSnippet = snippet.replace(/\.+$/, "").trim();
@@ -1177,6 +1231,8 @@ function detectTruncation(text: string): boolean {
  */
 function detectSemanticTruncation(text: string): boolean {
   if (!text || text.length < 10) return false;
+
+  if (isWeakSemanticFragment(text)) return true;
   
   // v4: Exempt valid bullets/enumerations FIRST — before any heuristic
   if (isValidBullet(text.trim().replace(/\.+$/, "").trim())) return false;
@@ -2780,7 +2836,7 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     }
   }
 
-  // ✓ 2. Title quality — reject generic titles
+  // ✓ 2. Title quality — reject generic/fragmented titles
   if (sd.title) {
     if (sd.title.length < 3 && sd.layout !== "module_cover") {
       warnings.push(label + " TITULO CURTO: \"" + sd.title + "\"");
@@ -2788,6 +2844,9 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
     const genericTitles = /^(cont\.|continuacao|parte|introdu[cç][aã]o|conceitos?|vis[aã]o geral|overview|detalhes|t[oó]picos?|aspectos?)$/i;
     if (genericTitles.test(sd.title.trim())) {
       warnings.push(label + " TITULO GENERICO: \"" + sd.title + "\"");
+    }
+    if ((sd.layout === "module_cover" || sd.layout === "summary_slide" || sd.layout === "example_highlight") && isWeakTitleFragment(sd.title)) {
+      warnings.push(label + " TÍTULO FRAGMENTADO: \"" + sd.title.substring(0, 70) + "\"");
     }
   }
 
@@ -2826,6 +2885,23 @@ function runSlideQualityChecklist(sd: SlideData, slideIndex: number, allSlides?:
       if (t.length > 20 && /\s/.test(t) && !/[.!?…;:)\]"']$/.test(t.trim())) {
         sd.items[i] = t.trim() + ".";
         fixes.push(label + " PONTUACAO ADICIONADA");
+      }
+    }
+  }
+
+  // Semantic fragment guard for approved-sensitive layouts
+  if (sd.layout === "module_cover") {
+    if (sd.description && isWeakSemanticFragment(sd.description)) {
+      warnings.push(label + " FRAGMENTO SEMÂNTICO [description]: \"" + sd.description.substring(0, 70) + "\"");
+    }
+  }
+
+  if (sd.items && ["bullets", "summary_slide", "numbered_takeaways", "example_highlight"].includes(sd.layout)) {
+    for (let i = 0; i < sd.items.length; i++) {
+      const item = (sd.items[i] || "").trim();
+      if (!item) continue;
+      if (isWeakSemanticFragment(item)) {
+        warnings.push(label + " FRAGMENTO SEMÂNTICO [item[" + i + "]]: \"" + item.substring(0, 70) + "\"");
       }
     }
   }
@@ -6933,16 +7009,19 @@ Idioma: pt-BR`
       // C. Module cover DESCRIPTION: structural split without char-length gate
       if (s.layout === "module_cover" && s.description) {
         const descW = SAFE_W * 0.65;
-        const descH = s.coverTitleSubtitle ? 0.85 : 1.0;
-        const bbox = measureBoundingBox(s.description, TYPO.SUBTITLE, FONT_BODY, descW, descH);
-        if (!bbox.fits) {
-          const parts = splitLongSegments(s.description, 140);
-          if (parts.length >= 2) {
-            const beforeDescription = s.description || "";
-            let firstChunk = parts[0];
-            let rest = parts.slice(1);
+        const descH = s.coverTitleSubtitle ? 1.10 : 1.30;
+        const normalizedDescription = ensureSentenceEnd(s.description || "");
+        const bbox = measureBoundingBox(normalizedDescription, TYPO.SUBTITLE, FONT_BODY, descW, descH);
+        const weakDescription = isWeakSemanticFragment(normalizedDescription);
 
-            const firstChunkFits = () => measureBoundingBox(firstChunk, TYPO.SUBTITLE, FONT_BODY, descW, descH).fits;
+        if (!bbox.fits || weakDescription) {
+          const parts = splitLongSegments(normalizedDescription, 140);
+          if (parts.length >= 1) {
+            const beforeDescription = s.description || "";
+            let firstChunk = weakDescription ? "" : parts[0];
+            let rest = weakDescription ? parts : parts.slice(1);
+
+            const firstChunkFits = () => !!firstChunk && measureBoundingBox(firstChunk, TYPO.SUBTITLE, FONT_BODY, descW, descH).fits;
             while (firstChunk && !firstChunkFits()) {
               const splitAgain = splitLongSegments(firstChunk, 100);
               if (splitAgain.length <= 1) break;
@@ -6950,7 +7029,7 @@ Idioma: pt-BR`
               rest = [...splitAgain.slice(1), ...rest];
             }
 
-            if (!firstChunk || !firstChunkFits()) {
+            if (!firstChunk || !firstChunkFits() || isWeakSemanticFragment(firstChunk)) {
               rest = [firstChunk, ...rest].filter(Boolean);
               firstChunk = "";
             }
@@ -6980,7 +7059,7 @@ Idioma: pt-BR`
               "continuation_created",
               beforeDescription,
               s.description || "",
-              "module_cover_description_split",
+              weakDescription ? "module_cover_description_semantic_fragment" : "module_cover_description_split",
             );
             preRenderRedistributions++;
             flowLog("MODULE_COVER_DESCRIPTION", "stage2.5 -> moved description to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + chunks.length);
@@ -7029,6 +7108,28 @@ Idioma: pt-BR`
           const trimmed = (item || "").trim();
           if (!trimmed) continue;
           const fieldLabel = `item[${itemIdx}]`;
+
+          const semanticGuardLayouts = new Set(["bullets", "summary_slide", "numbered_takeaways", "example_highlight"]);
+          if (semanticGuardLayouts.has(s.layout) && isWeakSemanticFragment(trimmed)) {
+            const next = (s.items[itemIdx + 1] || "").trim();
+            if (next) {
+              const merged = ensureSentenceEnd(trimmed.replace(/\.\s*$/, "") + " " + next);
+              if (!isWeakSemanticFragment(merged)) {
+                newItems.push(merged);
+                forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "semanticFragmentMerge", "fragment_merged_with_next", trimmed, merged, "semantic_fragment_merged_forward");
+                didRedistribute = true;
+                preRenderRedistributions++;
+                itemIdx += 1; // consume next item
+                continue;
+              }
+            }
+
+            const normalizedWeak = ensureSentenceEnd(trimmed);
+            newItems.push(normalizedWeak);
+            qualityReport.stage4_all_warnings.push(`Slide ${si + 3} FRAGMENTO SEMÂNTICO [${fieldLabel}]: "${normalizedWeak.substring(0, 70)}"`);
+            forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "semanticFragmentGuard", "fallback_used", trimmed, normalizedWeak, "semantic_fragment_unresolved", false);
+            continue;
+          }
 
           const labelParsed = extractLabelExplanation(trimmed);
           const enumLike = /;|\|/.test(trimmed) || /,\s+[^,]{8,},\s+[^,]{8,}/.test(trimmed);
@@ -7352,7 +7453,7 @@ Idioma: pt-BR`
     // Real truncations (semantic or structural) remain hard blockers.
     const dedupedWarnings = dedupeWarnings(qualityReport.stage4_all_warnings);
     const contentWarningCandidates = dedupedWarnings.filter(
-      (w: string) => /TRUNCAMENTO|FRAGMENTO|POST-RENDER|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA/i.test(w)
+      (w: string) => /TRUNCAMENTO|FRAGMENTO|FRAGMENTO SEMÂNTICO|TÍTULO FRAGMENTADO|POST-RENDER|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA/i.test(w)
     );
     const contentHardWarnings = contentWarningCandidates.filter(
       (w: string) => !isFalsePositiveTruncationWarning(w)
@@ -7360,6 +7461,10 @@ Idioma: pt-BR`
     const contentSoftWarnings = dedupedWarnings.filter(
       (w: string) => /PONTUACAO|GRAMATICA/i.test(w)
     );
+
+    const semanticFragmentWarnings = contentHardWarnings.filter(
+      (w: string) => /FRAGMENTO SEMÂNTICO|TÍTULO FRAGMENTADO/i.test(w)
+    ).length;
 
     const contentTruncationWarnings = contentHardWarnings.length;
     const contentFixes = qualityReport.stage4_all_fixes.filter(
@@ -7374,7 +7479,7 @@ Idioma: pt-BR`
       + Math.min(10, contentFixes * 0.3)
       + regenBonus
     ));
-    const contentCritical = contentTruncationWarnings > 4;
+    const contentCritical = contentTruncationWarnings > 4 || semanticFragmentWarnings > 0;
 
     // --- Checkpoint 2: STRUCTURE (weight 25%) ---
     // Measures: repetition, empty slides, density, coherence
