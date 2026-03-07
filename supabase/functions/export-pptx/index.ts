@@ -6844,6 +6844,8 @@ Idioma: pt-BR`
         const newItems: string[] = [];
         let didRedistribute = false;
         const protectedNoCompression = s.layout === "summary_slide"
+          || s.layout === "example_highlight"
+          || s.layout === "bullets"
           || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
 
         for (let itemIdx = 0; itemIdx < s.items.length; itemIdx++) {
