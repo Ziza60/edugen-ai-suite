@@ -4826,7 +4826,7 @@ function renderModuleCover(pptx: any, data: SlideData) {
   let deferredOverviewItems: string[] = [];
   if (data.description) {
     const descW = SAFE_W * 0.65;
-    const descCapH = titleSub ? 0.85 : 1.0;
+    const descCapH = titleSub ? 1.10 : 1.30;
     let descText = ensureSentenceEnd(data.description);
 
     const descFitCheck = measureBoundingBox(descText, TYPO.SUBTITLE, FONT_BODY, descW, descCapH);
