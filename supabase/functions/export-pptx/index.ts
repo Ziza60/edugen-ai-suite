@@ -528,6 +528,8 @@ interface ForensicEvent {
   stage: string;
   fn: string;
   action: string;
+  reason: string;
+  mutated: boolean;
   before: string;
   after: string;
   chars_before: number;
@@ -553,10 +555,22 @@ function forensicSetContext(slideIndex: number, layout: string, field: string) {
   _forensicSlideField = field;
 }
 
-function forensicTrace(stage: string, fn: string, action: string, before: string, after: string) {
-  const charsBefore = (before || "").length;
-  const charsAfter = (after || "").length;
+function forensicTrace(
+  stage: string,
+  fn: string,
+  action: string,
+  before: string,
+  after: string,
+  reason = "",
+  forcedMutated?: boolean,
+) {
+  const safeBefore = (before || "").toString();
+  const safeAfter = (after || "").toString();
+  const charsBefore = safeBefore.length;
+  const charsAfter = safeAfter.length;
   const reductionPct = charsBefore > 0 ? Number(((1 - charsAfter / charsBefore) * 100).toFixed(1)) : 0;
+  const mutated = typeof forcedMutated === "boolean" ? forcedMutated : safeBefore !== safeAfter;
+
   const event: ForensicEvent = {
     slide: _forensicSlideIndex,
     layout: _forensicSlideLayout,
@@ -564,8 +578,10 @@ function forensicTrace(stage: string, fn: string, action: string, before: string
     stage,
     fn,
     action,
-    before: before.substring(0, 80),
-    after: after.substring(0, 80),
+    reason,
+    mutated,
+    before: safeBefore.substring(0, 300),
+    after: safeAfter.substring(0, 300),
     chars_before: charsBefore,
     chars_after: charsAfter,
     reduction_pct: reductionPct,
@@ -573,16 +589,36 @@ function forensicTrace(stage: string, fn: string, action: string, before: string
   _forensicEvents.push(event);
 
   const fieldLabel = "slide=" + _forensicSlideIndex + " layout=" + _forensicSlideLayout + " field=" + _forensicSlideField;
-  if (reductionPct > 0) {
-    console.log("[TRACE] " + fieldLabel + " stage=" + stage + " action=" + action + " fn=" + fn +
-      " chars_before=" + charsBefore + " chars_after=" + charsAfter + " reduction=" + reductionPct + "%");
-  } else {
-    console.log("[TRACE] " + fieldLabel + " stage=" + stage + " action=" + action + " fn=" + fn);
-  }
-  if (action === "compression_used" || action === "fallback_used" || action === "fit_adjustment") {
-    console.log("[TRACE] " + fieldLabel + " before=\"" + before.substring(0, 60) + "\"");
-    console.log("[TRACE] " + fieldLabel + " after=\"" + after.substring(0, 60) + "\"");
-  }
+  console.log(
+    "[TRACE] " + fieldLabel +
+    " stage=" + stage +
+    " action=" + action +
+    " fn=" + fn +
+    " mutated=" + mutated +
+    " chars_before=" + charsBefore +
+    " chars_after=" + charsAfter +
+    " reduction=" + reductionPct + "%" +
+    (reason ? " reason=" + reason : ""),
+  );
+
+  console.log("[TRACE] " + fieldLabel + " before=\"" + safeBefore.substring(0, 120) + "\"");
+  console.log("[TRACE] " + fieldLabel + " after=\"" + safeAfter.substring(0, 120) + "\"");
+}
+
+function forensicTraceField(
+  slideIndex: number,
+  layout: string,
+  field: string,
+  stage: string,
+  fn: string,
+  action: string,
+  before: string,
+  after: string,
+  reason = "",
+  forcedMutated?: boolean,
+) {
+  forensicSetContext(slideIndex, layout, field);
+  forensicTrace(stage, fn, action, before, after, reason, forcedMutated);
 }
 
 function forensicTraceRenderer(slideIndex: number, layout: string, renderer: string) {
@@ -601,32 +637,77 @@ function forensicReset() {
 function forensicGetReport() {
   const compressionEvents = _forensicEvents.filter(e => e.action === "compression_used");
   const fallbackEvents = _forensicEvents.filter(e => e.action === "fallback_used");
+  const stage0Events = _forensicEvents.filter(e => e.stage === "0");
+  const stage0_5Events = _forensicEvents.filter(e => e.stage === "0.5");
+  const stage1_5Events = _forensicEvents.filter(e => e.stage === "1.5");
+  const stage2_5Events = _forensicEvents.filter(e => e.stage === "2.5");
+  const silentTruncationEvents = _forensicEvents.filter(e => e.action === "silent_truncation_detected");
+
   const fieldHistoryMap = new Map<string, ForensicEvent[]>();
   for (const e of _forensicEvents) {
     const key = e.slide + "|" + e.field;
     if (!fieldHistoryMap.has(key)) fieldHistoryMap.set(key, []);
     fieldHistoryMap.get(key)!.push(e);
   }
+
   const fieldHistorySummary = Array.from(fieldHistoryMap.entries())
-    .filter(([, events]) => events.length > 1 || events.some(e => e.reduction_pct > 0))
-    .slice(0, 30)
+    .filter(([, events]) => events.length > 1 || events.some(e => e.mutated))
+    .slice(0, 80)
     .map(([key, events]) => ({
       slide_field: key,
       mutations: events.map(e => e.stage + "/" + e.fn + ":" + e.action + (e.reduction_pct > 0 ? "(-" + e.reduction_pct + "%)" : "")),
       final_chars: events[events.length - 1].chars_after,
     }));
 
+  const firstMutationPerField = Array.from(fieldHistoryMap.entries())
+    .map(([key, events]) => {
+      const firstMutation = events.find(e => e.mutated && e.chars_after < e.chars_before);
+      if (!firstMutation) return null;
+      return {
+        slide_field: key,
+        slide: firstMutation.slide,
+        layout: firstMutation.layout,
+        field: firstMutation.field,
+        first_stage: firstMutation.stage,
+        first_function: firstMutation.fn,
+        event_type: firstMutation.action,
+        reason: firstMutation.reason,
+        chars_before: firstMutation.chars_before,
+        chars_after: firstMutation.chars_after,
+        reduction_pct: firstMutation.reduction_pct,
+        before: firstMutation.before,
+        after: firstMutation.after,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 100);
+
+  const mapEvent = (e: ForensicEvent) => ({
+    slide: e.slide,
+    field: e.field,
+    layout: e.layout,
+    stage: e.stage,
+    function: e.fn,
+    event_type: e.action,
+    reason: e.reason,
+    mutated: e.mutated,
+    chars_before: e.chars_before,
+    chars_after: e.chars_after,
+    reduction_pct: e.reduction_pct,
+    before: e.before,
+    after: e.after,
+  });
+
   return {
-    compression_events: compressionEvents.slice(0, 30).map(e => ({
-      slide: e.slide, field: e.field, layout: e.layout, stage: e.stage,
-      function: e.fn, chars_before: e.chars_before, chars_after: e.chars_after,
-      reduction_pct: e.reduction_pct, before: e.before, after: e.after,
-    })),
-    fallback_events: fallbackEvents.slice(0, 20).map(e => ({
-      slide: e.slide, field: e.field, layout: e.layout, stage: e.stage,
-      function: e.fn, before: e.before, after: e.after,
-    })),
-    renderer_trace: _rendererTrace.slice(0, 50),
+    stage0_events: stage0Events.slice(0, 200).map(mapEvent),
+    stage0_5_events: stage0_5Events.slice(0, 200).map(mapEvent),
+    stage1_5_events: stage1_5Events.slice(0, 200).map(mapEvent),
+    stage2_5_events: stage2_5Events.slice(0, 300).map(mapEvent),
+    silent_truncation_events: silentTruncationEvents.slice(0, 120).map(mapEvent),
+    first_mutation_per_field: firstMutationPerField,
+    compression_events: compressionEvents.slice(0, 80).map(mapEvent),
+    fallback_events: fallbackEvents.slice(0, 80).map(mapEvent),
+    renderer_trace: _rendererTrace.slice(0, 200),
     field_history_summary: fieldHistorySummary,
     total_trace_events: _forensicEvents.length,
     total_compressions: compressionEvents.length,
