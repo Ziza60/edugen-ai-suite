@@ -6151,14 +6151,16 @@ Idioma: pt-BR`
 
     const contentTruncationWarnings = contentHardWarnings.length;
     const contentFixes = qualityReport.stage4_all_fixes.filter(
-      (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA/i.test(f)
+      (f: string) => /TRUNCAMENTO|FRAGMENTO|PONTUACAO|GRAMATICA|DOIS-PONTOS|SOFT HYPHEN|CHAR|TERMINOLOGIA|REGENERAÇÃO/i.test(f)
     ).length;
+    const regenBonus = Math.min(15, qualityReport.stage0_5_items_resolved * 3); // reward successful regenerations
     const contentScore = Math.max(0, Math.min(100,
       100
-      - Math.min(70, contentTruncationWarnings * 10) // mantém rigor para truncamento real
+      - Math.min(70, contentTruncationWarnings * 10)
       - Math.min(15, contentSoftWarnings.length * 2)
       - Math.min(20, (qualityReport.stage1_5_llm_nonsense_dropped || 0) * 5)
       + Math.min(10, contentFixes * 0.3)
+      + regenBonus
     ));
     const contentCritical = contentTruncationWarnings > 4;
 
