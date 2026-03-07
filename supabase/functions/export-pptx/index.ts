@@ -1578,7 +1578,12 @@ function fitTextForBox(text: string, boxW: number, boxH: number, fontSize: numbe
 
   for (let i = 0; i < 4; i++) {
     const bbox = measureBoundingBox(currentText, currentFont, fontFace, boxW, boxH);
-    if (bbox.fits) return { text: currentText, fontSize: currentFont, adjusted: i > 0 };
+    if (bbox.fits) {
+      if (i > 0) {
+        forensicTrace("renderer", "fitTextForBox", "fit_adjustment", clean, currentText);
+      }
+      return { text: currentText, fontSize: currentFont, adjusted: i > 0 };
+    }
 
     if (bbox.recommendedFontSize < currentFont && bbox.recommendedFontSize >= minFont) {
       currentFont = bbox.recommendedFontSize;
@@ -1589,6 +1594,9 @@ function fitTextForBox(text: string, boxW: number, boxH: number, fontSize: numbe
     currentText = compressText(currentText, targetChars);
   }
 
+  if (currentText.length < clean.length) {
+    forensicTrace("renderer", "fitTextForBox", "compression_used", clean, currentText);
+  }
   return { text: currentText, fontSize: Math.max(currentFont, minFont), adjusted: true };
 }
 
@@ -2461,6 +2469,7 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
 
   // Density validation for plain text
   if (typeof text === "string" && text.length > 0) {
+    const originalText = text;
     const fontSize = Number(options.fontSize || TYPO.BODY);
     text = enforceSentenceIntegrity(text);
 
@@ -2470,6 +2479,7 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
       text = enforceSentenceIntegrity(adjusted.text);
       options = { ...options, fontSize: adjusted.fontSize };
       if (adjusted.truncated) {
+        forensicTrace("addTextSafe", "autoAdjustText", "compression_used", originalText, text);
         console.log("[DENSITY] auto-adjust Slide " + _auditSlideCounter + ": " + String(adjusted.fontSize) + "pt");
       }
     }
@@ -2477,9 +2487,16 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
     if (detectTruncation(text)) {
       text = enforceSentenceIntegrity(text);
       if (detectTruncation(text)) {
+        const beforeFallback = text;
         text = smartTruncate(text, Math.max(24, Math.floor(check.maxChars * 0.9)), false);
         text = enforceSentenceIntegrity(text);
+        forensicTrace("addTextSafe", "smartTruncate", "fallback_used", beforeFallback, text);
       }
+    }
+
+    // Log post-render state
+    if (typeof text === "string" && text.length < originalText.length && originalText.length > 20) {
+      forensicTrace("addTextSafe", "addTextSafe", "post_render_truncation", originalText, text);
     }
   }
 
