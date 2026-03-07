@@ -6527,7 +6527,7 @@ Idioma: pt-BR`
       quality_score: Number(qualityScore.toFixed(1)),
       passed,
       blocked_reason: blockReason,
-      pipeline_version: "v9-structural-redistribution",
+      pipeline_version: "v10-focused-structural-fixes",
       checkpoints,
       problematic_slides: problematicSlides.slice(0, 15),
       corrections_attempted: {
@@ -6540,6 +6540,9 @@ Idioma: pt-BR`
         llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
         llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
         redistributions: qualityReport.stage2_5_redistributions,
+        module_cover_title_redistributions: qualityReport.stage2_5_module_cover_title_redistributions,
+        objective_redistributions: qualityReport.stage2_5_objective_redistributions,
+        label_explanation_splits: qualityReport.stage2_5_label_explanation_splits,
         semantic_losses: qualityReport.stage2_5_semantic_losses.length,
         semantic_loss_details: qualityReport.stage2_5_semantic_losses.slice(0, 10),
         regeneration_flagged: qualityReport.stage0_5_items_flagged,
