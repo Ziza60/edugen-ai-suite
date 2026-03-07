@@ -1821,60 +1821,64 @@ ${truncatedContent}`;
 function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): SlideData[] {
   const slides: SlideData[] = [];
 
-  // ── STRUCTURAL REDISTRIBUTION for module cover (v7) ──
-  // Instead of compressing long titles/descriptions/objectives, we redistribute:
-  // 1. If title + description + objectives all fit → single cover slide
-  // 2. If objectives overflow → move objectives to a dedicated continuation slide
-  // 3. If title itself overflows → allow 3 lines, and move description to continuation
-  const coverTitle = plan.moduleTitle;
-  const coverDesc = plan.moduleDescription;
-  const coverObjectives = plan.objectives.slice(0, 4); // allow up to 4 for redistribution
+  // ── STRUCTURAL REDISTRIBUTION for module cover (real active path) ──
+  const coverTitleRaw = plan.moduleTitle;
+  const splitCoverTitle = splitModuleCoverTitle(coverTitleRaw);
+  const coverTitle = splitCoverTitle.primary || coverTitleRaw;
+  const coverTitleSubtitle = splitCoverTitle.secondary || undefined;
+  const coverDesc = ensureSentenceEnd((plan.moduleDescription || "").trim());
+  const rawObjectives = plan.objectives.map(o => ensureSentenceEnd((o || "").trim())).filter(Boolean);
+  const coverObjectives = rawObjectives.flatMap((o) => splitObjectiveForStructure(o, Math.max(54, activeDensity.maxCharsPerBullet - 8)));
 
   // Measure: will objectives fit on the cover?
   const objW = SAFE_W * 0.60 - 0.30;
   const objH = 0.44;
-  const titleBbox = measureBoundingBox(coverTitle, TYPO.MODULE_TITLE, FONT_TITLE, SAFE_W * 0.70, 1.50);
   let objectivesOverflow = false;
   for (const obj of coverObjectives) {
     const bbox = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW, objH);
-    if (!bbox.fits && obj.length > 60) { objectivesOverflow = true; break; }
+    if (!bbox.fits && obj.length > 52) { objectivesOverflow = true; break; }
   }
   // Also check if we have too many objectives + long description
   const totalCoverContent = coverDesc.length + coverObjectives.reduce((s, o) => s + o.length, 0);
-  if (totalCoverContent > 350 || coverObjectives.length > 3) objectivesOverflow = true;
+  if (totalCoverContent > 320 || coverObjectives.length > 3) objectivesOverflow = true;
 
   if (objectivesOverflow) {
-    // Split: cover gets title + description, objectives go to dedicated slide
+    // Split: cover gets title + description, objectives go to dedicated continuation slide
     slides.push({
       layout: "module_cover",
-      title: coverTitle, // full title, renderer handles wrapping
+      title: coverTitle,
+      coverTitleSubtitle,
       subtitle: "MODULO " + String(moduleIndex + 1).padStart(2, "0"),
       description: coverDesc,
       moduleIndex,
-      objectives: [], // no objectives on cover — they go to next slide
+      objectives: [],
     });
-    // Dedicated objectives slide
-    slides.push({
-      layout: "bullets",
-      title: "Objetivos do Módulo",
-      sectionLabel: "OBJETIVOS DO MÓDULO",
-      items: sanitizeBullets(coverObjectives.map(o => {
-        const t = o.trim();
-        return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
-      })),
-      moduleIndex,
-      blockType: "normal",
-    });
-    console.log("[REDISTRIB] Module " + (moduleIndex + 1) + ": objectives moved to dedicated slide (" + coverObjectives.length + " objectives)");
+
+    const OBJ_PER_SLIDE = 4;
+    for (let oi = 0; oi < coverObjectives.length; oi += OBJ_PER_SLIDE) {
+      const chunk = coverObjectives.slice(oi, oi + OBJ_PER_SLIDE);
+      const part = Math.floor(oi / OBJ_PER_SLIDE) + 1;
+      slides.push({
+        layout: "bullets",
+        title: coverObjectives.length > OBJ_PER_SLIDE ? getContinuationTitle("Objetivos do Módulo", part) : "Objetivos do Módulo",
+        sectionLabel: "OBJETIVOS DO MÓDULO",
+        items: sanitizeBullets(chunk),
+        moduleIndex,
+        blockType: "normal",
+      });
+    }
+    flowLog("OBJECTIVES", "semanticPlanToSlides -> dedicated objective slide(s), module=" + (moduleIndex + 1) + ", count=" + coverObjectives.length);
   } else {
     slides.push({
       layout: "module_cover",
       title: coverTitle,
+      coverTitleSubtitle,
       subtitle: "MODULO " + String(moduleIndex + 1).padStart(2, "0"),
       description: coverDesc,
       moduleIndex,
-      objectives: coverObjectives.slice(0, 3),
+      objectives: coverObjectives,
     });
+    flowLog("MODULE_COVER", "semanticPlanToSlides -> renderModuleCover, module=" + (moduleIndex + 1));
   }
 
   const LAYOUT_MAP: Record<string, LayoutType> = {
