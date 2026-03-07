@@ -800,11 +800,17 @@ function smartBullet(text: string): string {
 }
 
 function smartCell(text: string): string {
-  return smartTruncate(text, 120); // Wider cells need more space for complete sentences
+  const before = (text || "").trim();
+  const after = smartTruncate(text, 120); // Wider cells need more space for complete sentences
+  forensicTrace("renderer", "smartCell", before.length !== after.length ? "compression_used" : "fit_adjustment", before, after, "table_cell_fit", before.length !== after.length);
+  return after;
 }
 
 function smartModuleDesc(text: string): string {
-  return smartTruncate(text, 100); // Module descriptions need complete sentences
+  const before = (text || "").trim();
+  const after = smartTruncate(text, 100); // Module descriptions need complete sentences
+  forensicTrace("renderer", "smartModuleDesc", before.length !== after.length ? "compression_used" : "fit_adjustment", before, after, "module_description_fit", before.length !== after.length);
+  return after;
 }
 
 /* ═══════════════════════════════════════════════════════
