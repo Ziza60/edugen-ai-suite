@@ -4606,7 +4606,12 @@ function renderContentHeader(slide: any, sectionLabel: string, titleText: string
   }
 
   const safeTitle = (titleText || "").trim();
-  const titleFit = fitTextForBox(safeTitle, SAFE_W, 1.25, TYPO.SECTION_TITLE, FONT_TITLE, 22);
+  // v7: Dynamic title box — long continuation titles (e.g. "Otimização de Projetos... (Parte 2)")
+  // need more vertical space. Increase h and lower min font for titles > 55 chars.
+  const isLongTitle = safeTitle.length > 55;
+  const titleBoxH = isLongTitle ? 1.55 : 1.25;
+  const titleMinFont = isLongTitle ? 18 : 22;
+  const titleFit = fitTextForBox(safeTitle, SAFE_W, titleBoxH, TYPO.SECTION_TITLE, FONT_TITLE, titleMinFont);
   const renderedTitle = titleFit.text;
   if (safeTitle && renderedTitle.length < safeTitle.length) {
     flowLog("FALLBACK", "renderContentHeader -> title adjusted, original=" + safeTitle.length + " chars, rendered=" + renderedTitle.length + " chars");
