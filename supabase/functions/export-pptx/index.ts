@@ -4927,7 +4927,7 @@ function renderProcessTimeline(pptx: any, data: SlideData) {
     flowLog("PROCESS_TIMELINE", "renderProcessTimeline -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
     renderProcessTimeline(pptx, {
       ...data,
-      title: getContinuationTitle(data.title || "Processo", 2),
+      title: getNextContinuationTitle(data.title || "Processo", "Processo"),
       items: remaining,
     });
   }
