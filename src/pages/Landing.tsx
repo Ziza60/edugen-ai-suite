@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, BookOpen, Zap, Award, ArrowRight, FileUp, CheckCircle, Crown } from "lucide-react";
+import { Sparkles, BookOpen, Zap, Award, ArrowRight, FileUp, CheckCircle, Crown, Moon, Sun } from "lucide-react";
 import { motion } from "framer-motion";
+import { useTheme } from "@/hooks/useTheme";
 
 export default function Landing() {
   const features = [
@@ -11,6 +12,8 @@ export default function Landing() {
     { icon: Zap, title: "Quizzes & Flashcards", desc: "Material de avaliação e revisão criados automaticamente." },
     { icon: Award, title: "Certificados", desc: "Emita certificados verificáveis para seus alunos." },
   ];
+
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <div className="min-h-screen bg-background">
@@ -23,7 +26,10 @@ export default function Landing() {
             </div>
             <span className="font-display text-xl font-bold">EduGen AI</span>
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={toggleTheme}>
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
             <Button variant="ghost" asChild>
               <Link to="/auth">Entrar</Link>
             </Button>
