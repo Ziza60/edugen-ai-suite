@@ -5678,43 +5678,74 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
     fontSize: 20,
   });
 
-  // Example content — UNIFORM font size + proper spacing
+  // Example content — no text compression, continuation-first
   let textY = contentY + 0.25;
   const textX = MARGIN + 0.90;
   const textW = SAFE_W - 1.10;
-  const exItemH = Math.min(0.70, (boxH - 0.30) / items.length);
+  const exItemH = Math.min(0.70, (boxH - 0.30) / Math.max(items.length, 1));
   const EXAMPLE_GAP = 0.12;
 
-  // Calculate uniform font size for all example items
+  // Calculate uniform font size for all example items without changing text
   let exampleFontSize = TYPO.BODY;
   for (const item of items) {
-    const fit = fitTextForBox(item, textW, exItemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    const fit = fitTextForBoxWithoutCompression(item, textW, exItemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
     if (fit.fontSize < exampleFontSize) exampleFontSize = fit.fontSize;
   }
 
   let rendered = 0;
-  items.forEach((item, idx) => {
-    if (textY + 0.50 > contentY + boxH - 0.15) return;
-    const richText = makeBoldLabelText(item, C.TEXT_DARK, C.TEXT_BODY, exampleFontSize);
+  let continuationItems: string[] = [];
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    if (textY + 0.50 > contentY + boxH - 0.15) {
+      continuationItems = [...items.slice(idx)];
+      break;
+    }
+
+    const fit = fitTextForBoxWithoutCompression(item, textW, exItemH, exampleFontSize, FONT_BODY, TYPO.SUPPORT);
+    if (!fit.fits) {
+      const pieces = splitNarrativeItemForStructure(item, Math.max(56, activeDensity.maxCharsPerBullet - 8));
+      if (pieces.length > 1) {
+        const first = ensureSentenceEnd(pieces[0]);
+        const firstFit = fitTextForBoxWithoutCompression(first, textW, exItemH, exampleFontSize, FONT_BODY, TYPO.SUPPORT);
+        if (!firstFit.fits) {
+          continuationItems = [item, ...items.slice(idx + 1)];
+          break;
+        }
+        const richText = makeBoldLabelText(first, C.TEXT_DARK, C.TEXT_BODY, firstFit.fontSize);
+        addTextSafe(slide, richText, {
+          x: textX, y: textY, w: textW, h: exItemH,
+          valign: "middle", lineSpacingMultiple: 1.35,
+        });
+        textY += exItemH + EXAMPLE_GAP;
+        rendered++;
+        continuationItems = [...pieces.slice(1).map(ensureSentenceEnd), ...items.slice(idx + 1)];
+        break;
+      }
+
+      continuationItems = [item, ...items.slice(idx + 1)];
+      break;
+    }
+
+    const richText = makeBoldLabelText(item, C.TEXT_DARK, C.TEXT_BODY, fit.fontSize);
     addTextSafe(slide, richText, {
       x: textX, y: textY, w: textW, h: exItemH,
       valign: "middle", lineSpacingMultiple: 1.35,
     });
     textY += exItemH + EXAMPLE_GAP;
     rendered++;
-  });
+  }
 
-  if (rendered < items.length) {
+  if (continuationItems.length > 0) {
     if (rendered === 0) {
       console.warn("[FLOW] EXAMPLE | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
       return;
     }
-    const remaining = items.slice(rendered);
-    flowLog("EXAMPLE", "renderExampleHighlight -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    flowLog("EXAMPLE", "renderExampleHighlight -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + continuationItems.length);
     renderExampleHighlight(pptx, {
       ...data,
       title: getNextContinuationTitle(data.title || "Exemplo Prático", "Exemplo Prático"),
-      items: remaining,
+      items: continuationItems,
     });
   }
 }
