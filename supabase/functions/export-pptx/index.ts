@@ -5523,8 +5523,28 @@ function renderWarningCallout(pptx: any, data: SlideData) {
 
 // ── SUMMARY SLIDE — Resumo do Módulo ──
 function renderSummarySlide(pptx: any, data: SlideData) {
-  const items = data.items || [];
-  if (items.length === 0) return;
+  const sourceItems = data.items || [];
+  if (sourceItems.length === 0) return;
+
+  // Structural normalization before rendering (no compression-first for summary)
+  const expandedItems: string[] = [];
+  for (const item of sourceItems) {
+    const normalized = ensureSentenceEnd(item || "");
+    const parts = splitNarrativeItemForStructure(normalized, Math.max(56, activeDensity.maxCharsPerBullet));
+    if (parts.length > 1) {
+      expandedItems.push(...parts.map(ensureSentenceEnd));
+    } else {
+      expandedItems.push(normalized);
+    }
+  }
+
+  const SUMMARY_CAP = 4;
+  const visibleItems = expandedItems.slice(0, SUMMARY_CAP);
+  const overflowItems = expandedItems.slice(SUMMARY_CAP);
+
+  if (overflowItems.length > 0) {
+    flowLog("SUMMARY", "renderSummarySlide -> pre-render structural continuation, title='" + (data.title || "").substring(0, 46) + "', remaining=" + overflowItems.length);
+  }
 
   const slide = pptx.addSlide();
   resetSlideIcons();
@@ -5560,22 +5580,20 @@ function renderSummarySlide(pptx: any, data: SlideData) {
     fontSize: 18,
   });
 
-  // Summary text items — use UNIFORM font size across all items
   let textY = contentY + 0.85;
   const textX = MARGIN + 0.70;
   const textW = SAFE_W - 1.40;
-  const itemH = Math.min(0.70, (boxH - 1.0) / Math.max(items.length, 1));
+  const itemH = Math.min(0.70, (boxH - 1.0) / Math.max(visibleItems.length, 1));
   const SUMMARY_GAP = 0.12;
 
-  // Find smallest font that fits ALL items (uniform sizing)
   let summaryFontSize = TYPO.BODY;
-  for (const item of items) {
+  for (const item of visibleItems) {
     const fit = fitTextForBox(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
     if (fit.fontSize < summaryFontSize) summaryFontSize = fit.fontSize;
   }
 
   let rendered = 0;
-  items.forEach((item, idx) => {
+  visibleItems.forEach((item) => {
     if (textY + itemH > contentY + boxH - 0.15) return;
     const textFit = fitTextForBox(item, textW, itemH, summaryFontSize, FONT_BODY, summaryFontSize);
     addTextSafe(slide, textFit.text, {
@@ -5587,12 +5605,8 @@ function renderSummarySlide(pptx: any, data: SlideData) {
     rendered++;
   });
 
-  if (rendered < items.length) {
-    if (rendered === 0) {
-      console.warn("[FLOW] SUMMARY | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
-      return;
-    }
-    const remaining = items.slice(rendered);
+  const remaining = [...visibleItems.slice(rendered), ...overflowItems];
+  if (remaining.length > 0) {
     flowLog("SUMMARY", "renderSummarySlide -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
     renderSummarySlide(pptx, {
       ...data,
