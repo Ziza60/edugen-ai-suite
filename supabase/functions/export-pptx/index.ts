@@ -4194,8 +4194,33 @@ function resolveSlideOverflow(s: SlideData, slideIndex: number): { slides: Slide
     return { slides: [first, second], resolution: { strategy: "continuation", slidesProduced: 2 } };
   }
 
+  const protectedLayout = s.layout === "module_cover"
+    || s.layout === "summary_slide"
+    || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
+
+  if (protectedLayout && s.items && s.items.length > 0) {
+    const expanded = s.items.flatMap(item => splitNarrativeItemForStructure(item, Math.max(56, activeDensity.maxCharsPerBullet)).map(ensureSentenceEnd));
+    if (expanded.length > s.items.length) {
+      const chunkSize = Math.max(2, activeDensity.maxBulletsPerSlide);
+      const firstChunk = expanded.slice(0, chunkSize);
+      const secondChunk = expanded.slice(chunkSize);
+      if (secondChunk.length > 0) {
+        const first: SlideData = { ...s, items: firstChunk };
+        const second: SlideData = {
+          ...s,
+          title: getNextContinuationTitle(s.title || "Continuação", "Continuação"),
+          items: secondChunk,
+          structuredItems: undefined,
+        };
+        console.log(label + " RESOLVED by protected continuation (no summarize/truncate)");
+        return { slides: [first, second], resolution: { strategy: "continuation", slidesProduced: 2 } };
+      }
+      return { slides: [{ ...s, items: firstChunk }], resolution: { strategy: "redistribute", slidesProduced: 1 } };
+    }
+  }
+
   // ── LEVEL 5: Summarize (reduce item count) ──
-  if (s.items && s.items.length > 0) {
+  if (s.items && s.items.length > 0 && !protectedLayout) {
     const targetCount = Math.max(2, activeDensity.maxBulletsPerSlide - 1);
     const summarized = { ...s, items: summarizeItemsForOverflow(s.items, targetCount) };
     const recheck = detectSlideOverflow(summarized);
@@ -4206,14 +4231,19 @@ function resolveSlideOverflow(s: SlideData, slideIndex: number): { slides: Slide
   }
 
   // ── LEVEL 6: Truncate (last resort) ──
-  console.warn(label + " LAST RESORT: truncation applied");
-  if (s.items) {
-    s.items = s.items.map(item => {
-      const fit = fitTextForBox(item, SAFE_W - 0.50, 0.60, TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
-      return fit.text;
-    });
+  if (!protectedLayout) {
+    console.warn(label + " LAST RESORT: truncation applied");
+    if (s.items) {
+      s.items = s.items.map(item => {
+        const fit = fitTextForBox(item, SAFE_W - 0.50, 0.60, TYPO.BULLET_TEXT, FONT_BODY, TYPO.SUPPORT);
+        return fit.text;
+      });
+    }
+    return { slides: [s], resolution: { strategy: "truncate", slidesProduced: 1 } };
   }
-  return { slides: [s], resolution: { strategy: "truncate", slidesProduced: 1 } };
+
+  console.warn(label + " PROTECTED LAYOUT unresolved without truncation; keeping full text for renderer continuation");
+  return { slides: [s], resolution: { strategy: "none", slidesProduced: 1 } };
 }
 
 /* ═══════════════════════════════════════════════════════
