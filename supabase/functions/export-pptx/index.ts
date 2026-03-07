@@ -7058,8 +7058,16 @@ Idioma: pt-BR`
     const seenTruncationPatterns = new Set<string>(); // Deduplication
 
     allSlides.forEach((s, idx) => {
-      const textsToCheck = [s.title, s.description, ...(s.items || []), ...(s.objectives || [])].filter(Boolean);
-      for (const txt of textsToCheck) {
+      const slideNumber = idx + 3;
+      const fieldsToCheck: { field: string; text: string }[] = [
+        { field: "title", text: s.title || "" },
+        { field: "description", text: s.description || "" },
+        ...(s.items || []).map((text, i) => ({ field: `item[${i}]`, text: text || "" })),
+        ...(s.objectives || []).map((text, i) => ({ field: `objective[${i}]`, text: text || "" })),
+      ].filter(entry => !!entry.text);
+
+      for (const entry of fieldsToCheck) {
+        const txt = entry.text;
         // Use semantic detection which now respects bullet/enumeration exemptions
         if (detectSemanticTruncation(txt)) {
           // Deduplicate: normalize text to first 40 chars to avoid counting same pattern twice
@@ -7068,9 +7076,10 @@ Idioma: pt-BR`
           seenTruncationPatterns.add(dedupKey);
 
           postRenderTruncations++;
-          const msg = `Slide ${idx + 3} POST-RENDER TRUNCAMENTO: "${txt.substring(0, 60)}..."`;
+          const msg = `Slide ${slideNumber} POST-RENDER TRUNCAMENTO [${entry.field}]: "${txt.substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
           qualityReport.stage4_all_warnings.push(msg);
+          forensicTraceField(slideNumber, s.layout, entry.field, "post-render", "detectSemanticTruncation", "silent_truncation_detected", txt, txt, "post_render_semantic_truncation", false);
         }
         // Detect artificial splits with "..." mid-sentence (kept — these are always real issues)
         if (/\.\.\.\s/.test(txt || "") && (txt || "").split(/\s+/).length >= 4) {
@@ -7079,9 +7088,10 @@ Idioma: pt-BR`
           seenTruncationPatterns.add(dedupKey);
 
           postRenderTruncations++;
-          const msg = `Slide ${idx + 3} SPLIT ARTIFICIAL: "${(txt || "").substring(0, 60)}..."`;
+          const msg = `Slide ${slideNumber} SPLIT ARTIFICIAL [${entry.field}]: "${(txt || "").substring(0, 60)}..."`;
           postRenderTruncationWarnings.push(msg);
           qualityReport.stage4_all_warnings.push(msg);
+          forensicTraceField(slideNumber, s.layout, entry.field, "post-render", "detectSemanticTruncation", "silent_truncation_detected", txt, txt, "post_render_artificial_split", false);
         }
       }
     });
