@@ -497,6 +497,14 @@ function getContinuationTitle(title: string, part: number): string {
   return smartTitle(base + " (Parte " + part + ")");
 }
 
+function getNextContinuationTitle(title: string, fallbackBase: string): string {
+  const source = (title || fallbackBase || "Continuação").trim();
+  const match = source.match(/\(Parte\s*(\d+)\)\s*$/i);
+  const nextPart = match ? Number(match[1]) + 1 : 2;
+  const base = source.replace(/\s*\(Parte\s*\d+\)\s*$/i, "").trim() || fallbackBase || "Continuação";
+  return getContinuationTitle(base, nextPart);
+}
+
 function flowLog(tag: string, details: string) {
   console.log("[FLOW] " + tag + " | " + details);
 }
