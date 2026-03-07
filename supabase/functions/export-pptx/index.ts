@@ -7089,6 +7089,28 @@ Idioma: pt-BR`
           if (!trimmed) continue;
           const fieldLabel = `item[${itemIdx}]`;
 
+          const semanticGuardLayouts = new Set(["bullets", "summary_slide", "numbered_takeaways", "example_highlight"]);
+          if (semanticGuardLayouts.has(s.layout) && isWeakSemanticFragment(trimmed)) {
+            const next = (s.items[itemIdx + 1] || "").trim();
+            if (next) {
+              const merged = ensureSentenceEnd(trimmed.replace(/\.\s*$/, "") + " " + next);
+              if (!isWeakSemanticFragment(merged)) {
+                newItems.push(merged);
+                forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "semanticFragmentMerge", "fragment_merged_with_next", trimmed, merged, "semantic_fragment_merged_forward");
+                didRedistribute = true;
+                preRenderRedistributions++;
+                itemIdx += 1; // consume next item
+                continue;
+              }
+            }
+
+            const normalizedWeak = ensureSentenceEnd(trimmed);
+            newItems.push(normalizedWeak);
+            qualityReport.stage4_all_warnings.push(`Slide ${si + 3} FRAGMENTO SEMÂNTICO [${fieldLabel}]: "${normalizedWeak.substring(0, 70)}"`);
+            forensicTraceField(si + 3, s.layout, fieldLabel, "2.5", "semanticFragmentGuard", "fallback_used", trimmed, normalizedWeak, "semantic_fragment_unresolved", false);
+            continue;
+          }
+
           const labelParsed = extractLabelExplanation(trimmed);
           const enumLike = /;|\|/.test(trimmed) || /,\s+[^,]{8,},\s+[^,]{8,}/.test(trimmed);
           if (labelParsed && (trimmed.length > Math.floor(maxChars * 0.85) || enumLike)) {
