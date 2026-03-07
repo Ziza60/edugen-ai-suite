@@ -7592,7 +7592,7 @@ Idioma: pt-BR`
 
       // ── PERSIST BLOCKED REPORT FOR FORENSIC RECOVERY ──
       try {
-        await serviceClient.from("pptx_export_reports").insert({
+        const { error: persistError } = await serviceClient.from("pptx_export_reports").insert({
           course_id: course_id,
           user_id: userId,
           passed: false,
@@ -7605,9 +7605,13 @@ Idioma: pt-BR`
           summary: blockedReport.summary,
           forensic_trace: blockedReport.forensic_trace,
         });
-        console.log("[PERSIST] Blocked report saved to pptx_export_reports for course=" + course_id);
-      } catch (persistErr) {
-        console.error("[PERSIST] Failed to save blocked report:", persistErr);
+        if (persistError) {
+          console.error("[PERSIST] Failed to save blocked report:", JSON.stringify(persistError));
+        } else {
+          console.log("[PERSIST] Blocked report saved to pptx_export_reports for course=" + course_id);
+        }
+      } catch (persistErr: any) {
+        console.error("[PERSIST] Exception saving blocked report:", persistErr?.message || persistErr);
       }
 
       return new Response(JSON.stringify({
