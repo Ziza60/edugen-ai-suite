@@ -6044,6 +6044,7 @@ Idioma: pt-BR`
           s.coverTitleSubtitle = splitTitle.secondary || undefined;
           moduleCoverTitleRedistributions++;
           preRenderRedistributions++;
+          flowLog("MODULE_COVER_TITLE", "stage2.5 -> split title/subtitle, title='" + (s.title || "").substring(0, 52) + "'");
           qualityReport.stage4_all_fixes.push(
             "REDISTRIBUIÇÃO TÍTULO MODULE COVER: '" + (splitTitle.primary || "").substring(0, 36) + "...'"
           );
@@ -6078,6 +6079,7 @@ Idioma: pt-BR`
             }
             moduleCoverTitleRedistributions++;
             preRenderRedistributions++;
+            flowLog("MODULE_COVER_TITLE", "stage2.5 -> continuation slide for title overflow, title='" + (s.title || "").substring(0, 52) + "'");
             qualityReport.stage4_all_fixes.push(
               "REDISTRIBUIÇÃO TÍTULO MODULE COVER: continuação criada para '" + (s.title || "").substring(0, 30) + "'"
             );
@@ -6138,6 +6140,7 @@ Idioma: pt-BR`
 
           preRenderRedistributions++;
           objectiveRedistributions += normalizedObjectives.length;
+          flowLog("OBJECTIVES", "stage2.5 -> moved objectives to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + objChunks.length);
           qualityReport.stage4_all_fixes.push(
             "REDISTRIBUIÇÃO OBJETIVOS: '" + (s.title || "").substring(0, 30) + "' → " + objChunks.length + " slide(s)"
           );
@@ -6172,6 +6175,7 @@ Idioma: pt-BR`
               });
             }
             preRenderRedistributions++;
+            flowLog("MODULE_COVER_DESCRIPTION", "stage2.5 -> moved description to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + chunks.length);
             qualityReport.stage4_all_fixes.push(
               "REDISTRIBUIÇÃO ABERTURA: descrição movida para " + chunks.length + " slide(s) em '" + (s.title || "").substring(0, 26) + "'"
             );
