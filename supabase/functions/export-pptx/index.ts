@@ -5533,7 +5533,10 @@ function renderBullets(pptx: any, data: SlideData) {
     const x = entry.isSubItem ? subTextX : textX;
     const w = entry.isSubItem ? subTextW : textW;
 
-    const noCompressionFit = fitTextForBoxWithoutCompression(entry.text, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, Math.max(TYPO.SUPPORT, fs - 2));
+    let noCompressionFit = fitTextForBoxWithoutCompression(entry.text, w, Math.max(rowH - 0.03, 0.20), fs, FONT_BODY, Math.max(TYPO.SUPPORT, fs - 2));
+    let textToRender = entry.text;
+    let fontToRender = noCompressionFit.fontSize;
+
     if (!noCompressionFit.fits) {
       const structuralPieces = splitNarrativeItemForStructure(entry.text, Math.max(56, activeDensity.maxCharsPerBullet - 8));
       if (structuralPieces.length > 1) {
@@ -5548,6 +5551,9 @@ function renderBullets(pptx: any, data: SlideData) {
           carryOverEntries = [{ ...entry, text: firstPiece }, ...selected.slice(idx + 1), ...carryOverEntries];
           break;
         }
+        textToRender = firstPiece;
+        fontToRender = firstFit.fontSize;
+        noCompressionFit = firstFit;
       } else {
         carryOverEntries.push(...selected.slice(idx));
         break;
@@ -5555,7 +5561,7 @@ function renderBullets(pptx: any, data: SlideData) {
     }
 
     const textY = cursorY + 0.01;
-    const lineHeightIn = (noCompressionFit.fontSize * 1.35) / 72;
+    const lineHeightIn = (fontToRender * 1.35) / 72;
 
     if (entry.isSubItem) {
       const triSize = 0.09;
@@ -5581,7 +5587,7 @@ function renderBullets(pptx: any, data: SlideData) {
     }
 
     const textColor = entry.isSubItem ? C.TEXT_BODY : C.TEXT_DARK;
-    const richText = makeBoldLabelText(entry.text, textColor, C.TEXT_BODY, noCompressionFit.fontSize);
+    const richText = makeBoldLabelText(textToRender, textColor, C.TEXT_BODY, fontToRender);
     addTextSafe(slide, richText, {
       x: x,
       y: textY,
