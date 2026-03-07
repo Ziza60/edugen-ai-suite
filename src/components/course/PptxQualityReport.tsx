@@ -179,6 +179,7 @@ export function PptxQualityReport({ report, open, onOpenChange }: Props) {
               <TabsTrigger value="checkpoints" className="flex-1 text-xs">Checkpoints</TabsTrigger>
               <TabsTrigger value="slides" className="flex-1 text-xs">Slides</TabsTrigger>
               <TabsTrigger value="stats" className="flex-1 text-xs">Estatísticas</TabsTrigger>
+              {report.forensic_trace && <TabsTrigger value="forensic" className="flex-1 text-xs">Forense</TabsTrigger>}
             </TabsList>
 
             <TabsContent value="checkpoints" className="space-y-3 mt-3">
@@ -234,6 +235,67 @@ export function PptxQualityReport({ report, open, onOpenChange }: Props) {
                 ))}
               </div>
             </TabsContent>
+
+            {report.forensic_trace && (
+              <TabsContent value="forensic" className="mt-3 space-y-4">
+                {/* Summary counts */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="border rounded-lg p-2 text-center">
+                    <p className="text-lg font-bold">{report.forensic_trace.total_trace_events ?? 0}</p>
+                    <p className="text-[10px] text-muted-foreground">Eventos rastreados</p>
+                  </div>
+                  <div className="border rounded-lg p-2 text-center">
+                    <p className="text-lg font-bold">{report.forensic_trace.total_compressions ?? 0}</p>
+                    <p className="text-[10px] text-muted-foreground">Compressões</p>
+                  </div>
+                  <div className="border rounded-lg p-2 text-center">
+                    <p className="text-lg font-bold">{report.forensic_trace.total_fallbacks ?? 0}</p>
+                    <p className="text-[10px] text-muted-foreground">Fallbacks</p>
+                  </div>
+                </div>
+
+                {/* Truncation root causes */}
+                {(report.forensic_trace.truncation_root_causes?.length ?? 0) > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-destructive">Causas raiz de truncamento</p>
+                    {report.forensic_trace.truncation_root_causes!.map((rc, i) => (
+                      <div key={i} className="border rounded p-2 text-[10px] space-y-0.5">
+                        <p className="font-medium">Slide {rc.slide} | {rc.layout} | {rc.field}</p>
+                        <p>Último stage: <span className="font-mono">{rc.last_stage}</span> → <span className="font-mono">{rc.last_fn}</span></p>
+                        <p>Compressão antes: {rc.compression_before ? "✅ sim" : "❌ não"} | Fallback: {rc.fallback_before ? "✅ sim" : "❌ não"} | Continuação: {rc.continuation_created ? "✅ sim" : "❌ não"}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Compression events */}
+                {(report.forensic_trace.compression_events?.length ?? 0) > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Eventos de compressão ({report.forensic_trace.compression_events!.length})</p>
+                    {report.forensic_trace.compression_events!.slice(0, 8).map((ce, i) => (
+                      <div key={i} className="border rounded p-2 text-[10px]">
+                        <p className="font-medium">Slide {ce.slide} | {ce.layout} | {ce.field} | {ce.stage}/{ce.function}</p>
+                        <p>Antes ({ce.chars_before}): "{ce.before}"</p>
+                        <p>Depois ({ce.chars_after}): "{ce.after}" <span className="text-destructive">(-{ce.reduction_pct}%)</span></p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Field mutation history */}
+                {(report.forensic_trace.field_history_summary?.length ?? 0) > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Histórico de mutações por campo</p>
+                    {report.forensic_trace.field_history_summary!.slice(0, 10).map((fh, i) => (
+                      <div key={i} className="border rounded p-2 text-[10px]">
+                        <p className="font-medium font-mono">{fh.slide_field} → {fh.final_chars} chars</p>
+                        <p className="break-all">{fh.mutations.join(" → ")}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+            )}
           </Tabs>
         </ScrollArea>
 
