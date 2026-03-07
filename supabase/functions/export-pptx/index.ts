@@ -6066,24 +6066,57 @@ function renderSummarySlide(pptx: any, data: SlideData) {
 
   let summaryFontSize = TYPO.BODY;
   for (const item of visibleItems) {
-    const fit = fitTextForBox(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
+    const fit = fitTextForBoxWithoutCompression(item, textW, itemH, TYPO.BODY, FONT_BODY, TYPO.SUPPORT);
     if (fit.fontSize < summaryFontSize) summaryFontSize = fit.fontSize;
   }
 
   let rendered = 0;
-  visibleItems.forEach((item) => {
-    if (textY + itemH > contentY + boxH - 0.15) return;
-    const textFit = fitTextForBox(item, textW, itemH, summaryFontSize, FONT_BODY, summaryFontSize);
-    addTextSafe(slide, textFit.text, {
+  let continuationItems: string[] = [];
+  for (let idx = 0; idx < visibleItems.length; idx++) {
+    const item = visibleItems[idx];
+    if (textY + itemH > contentY + boxH - 0.15) {
+      continuationItems = [...visibleItems.slice(idx), ...overflowItems];
+      break;
+    }
+
+    const fit = fitTextForBoxWithoutCompression(item, textW, itemH, summaryFontSize, FONT_BODY, TYPO.SUPPORT);
+    if (!fit.fits) {
+      const pieces = splitNarrativeItemForStructure(item, Math.max(56, activeDensity.maxCharsPerBullet - 8));
+      if (pieces.length > 1) {
+        const first = ensureSentenceEnd(pieces[0]);
+        const firstFit = fitTextForBoxWithoutCompression(first, textW, itemH, summaryFontSize, FONT_BODY, TYPO.SUPPORT);
+        if (!firstFit.fits) {
+          continuationItems = [item, ...visibleItems.slice(idx + 1), ...overflowItems];
+          break;
+        }
+        addTextSafe(slide, first, {
+          x: textX, y: textY, w: textW, h: itemH,
+          fontSize: firstFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
+          valign: "top", lineSpacingMultiple: 1.4,
+        });
+        textY += itemH + SUMMARY_GAP;
+        rendered++;
+        continuationItems = [...pieces.slice(1).map(ensureSentenceEnd), ...visibleItems.slice(idx + 1), ...overflowItems];
+        break;
+      }
+
+      continuationItems = [item, ...visibleItems.slice(idx + 1), ...overflowItems];
+      break;
+    }
+
+    addTextSafe(slide, item, {
       x: textX, y: textY, w: textW, h: itemH,
-      fontSize: summaryFontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
+      fontSize: fit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY,
       valign: "top", lineSpacingMultiple: 1.4,
     });
     textY += itemH + SUMMARY_GAP;
     rendered++;
-  });
+  }
 
-  const remaining = [...visibleItems.slice(rendered), ...overflowItems];
+  const remaining = continuationItems.length > 0
+    ? continuationItems
+    : [...visibleItems.slice(rendered), ...overflowItems];
+
   if (remaining.length > 0) {
     if (rendered === 0) {
       console.warn("[FLOW] SUMMARY | continuation blocked to avoid loop, title='" + (data.title || "").substring(0, 46) + "'");
