@@ -6846,7 +6846,9 @@ Idioma: pt-BR`
           : true;
 
         if (didRedistribute || changedItems) {
+          const beforeItems = JSON.stringify(s.items || []);
           s.items = newItems;
+          forensicTraceField(si + 3, s.layout, "items", "2.5", "stage2_5_apply_items", "objective_redistributed", beforeItems, JSON.stringify(s.items), "stage2_5_items_applied", beforeItems !== JSON.stringify(s.items));
           preRenderRedistributions++;
           flowLog("BULLETS", "stage2.5 -> redistributed bullet structure, layout=" + s.layout + ", title=" + (s.title || "").substring(0, 46));
         }
