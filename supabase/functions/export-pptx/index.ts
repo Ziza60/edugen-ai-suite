@@ -4952,25 +4952,48 @@ function renderBullets(pptx: any, data: SlideData) {
     isSubItem: boolean;
     accentIdx: number;
   }
-  const entries: RenderEntry[] = [];
+
+  const rawEntries: RenderEntry[] = [];
   let parentIdx = 0;
 
   if (hasHierarchy && structured) {
     for (const si of structured) {
-      entries.push({ text: smartBullet(si.text), isSubItem: false, accentIdx: parentIdx });
+      rawEntries.push({ text: ensureSentenceEnd(si.text), isSubItem: false, accentIdx: parentIdx });
       for (const sub of si.subItems) {
-        entries.push({ text: smartBullet(sub), isSubItem: true, accentIdx: parentIdx });
+        rawEntries.push({ text: ensureSentenceEnd(sub), isSubItem: true, accentIdx: parentIdx });
       }
       parentIdx++;
     }
   } else {
     for (let i = 0; i < items.length; i++) {
-      entries.push({ text: smartBullet(items[i]), isSubItem: false, accentIdx: i });
+      rawEntries.push({ text: ensureSentenceEnd(items[i]), isSubItem: false, accentIdx: i });
     }
+  }
+
+  // Structural split pre-render for long bullets (especially "Label: explicação")
+  const maxChars = activeDensity.maxCharsPerBullet;
+  const entries: RenderEntry[] = [];
+  let splitCount = 0;
+
+  for (const entry of rawEntries) {
+    const parts = splitNarrativeItemForStructure(entry.text, maxChars);
+    if (parts.length > 1) {
+      splitCount += parts.length - 1;
+      for (const part of parts) {
+        entries.push({ ...entry, text: ensureSentenceEnd(part) });
+      }
+    } else {
+      entries.push({ ...entry, text: ensureSentenceEnd(entry.text) });
+    }
+  }
+
+  if (splitCount > 0) {
+    flowLog("BULLETS", "renderBullets -> structural split before render, title='" + (data.title || "").substring(0, 46) + "', splits=" + splitCount);
   }
 
   const maxEntries = Math.min(entries.length, activeDensity.maxBulletsPerSlide + 3); // allow extra for sub-items
   const selected = entries.slice(0, maxEntries);
+  const remainingEntries = entries.slice(maxEntries);
 
   const textX = MARGIN + 0.40;
   const subTextX = MARGIN + 0.70; // indented for sub-items
@@ -4983,7 +5006,7 @@ function renderBullets(pptx: any, data: SlideData) {
   const subFontSize = Math.max(TYPO.SUPPORT, parentFontSize - 2);
 
   let uniformFontSize = parentFontSize;
-  const maxRowH = Math.max(0.40, availH / selected.length - 0.04);
+  const maxRowH = Math.max(0.40, availH / Math.max(selected.length, 1) - 0.04);
   for (const entry of selected) {
     const w = entry.isSubItem ? subTextW : textW;
     const fit = fitTextForBox(entry.text, w, Math.max(maxRowH, 0.20), entry.isSubItem ? subFontSize : parentFontSize, FONT_BODY, TYPO.SUPPORT);
@@ -5029,7 +5052,6 @@ function renderBullets(pptx: any, data: SlideData) {
     const lineHeightIn = (fs * 1.35) / 72;
 
     if (entry.isSubItem) {
-      // Sub-item: smaller triangle marker instead of dot
       const triSize = 0.09;
       const triY = textY + Math.max(0, (lineHeightIn - triSize) / 2);
       slide.addShape(pptx.ShapeType.rect, {
@@ -5041,7 +5063,6 @@ function renderBullets(pptx: any, data: SlideData) {
         rectRadius: 0.02,
       });
     } else {
-      // Parent item: circle dot
       const dotSize = 0.14;
       const dotY = textY + Math.max(0, (lineHeightIn - dotSize) / 2);
       slide.addShape(pptx.ShapeType.ellipse, {
@@ -5065,7 +5086,6 @@ function renderBullets(pptx: any, data: SlideData) {
       inset: 0,
     });
 
-    // Separator line between parent items (not after sub-items unless next is parent)
     const nextEntry = idx < selected.length - 1 ? selected[idx + 1] : null;
     if (nextEntry && !entry.isSubItem && !nextEntry.isSubItem) {
       slide.addShape(pptx.ShapeType.rect, {
@@ -5079,6 +5099,17 @@ function renderBullets(pptx: any, data: SlideData) {
 
     cursorY += rowH + GAP_BETWEEN_BULLETS;
   });
+
+  if (remainingEntries.length > 0) {
+    const remainingItems = remainingEntries.map(e => e.text);
+    flowLog("BULLETS", "renderBullets -> continuation created, title='" + (data.title || "").substring(0, 46) + "', remaining=" + remainingItems.length);
+    renderBullets(pptx, {
+      ...data,
+      title: getNextContinuationTitle(data.title || "Conteúdo", "Conteúdo"),
+      items: remainingItems,
+      structuredItems: undefined,
+    });
+  }
 }
 
 // ── EXAMPLE HIGHLIGHT — NEW template for examples/case studies ──
