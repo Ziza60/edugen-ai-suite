@@ -4825,6 +4825,7 @@ function renderModuleCover(pptx: any, data: SlideData) {
     const descW = SAFE_W * 0.65;
     const descCapH = titleSub ? 0.85 : 1.0;
     let descText = ensureSentenceEnd(data.description);
+
     const descFitCheck = measureBoundingBox(descText, TYPO.SUBTITLE, FONT_BODY, descW, descCapH);
     if (!descFitCheck.fits) {
       const descParts = splitLongSegments(descText, 140);
@@ -4835,14 +4836,28 @@ function renderModuleCover(pptx: any, data: SlideData) {
       }
     }
 
-    const descFit = fitTextForBox(descText, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
-    const descLines = estimateTextLines(descFit.text, descW, descFit.fontSize);
-    const descH = Math.max(0.45, descLines * (descFit.fontSize * 1.35 / 72) + 0.10);
-    addTextSafe(slide, descFit.text, {
-      x: MARGIN, y: descEndY, w: descW, h: descH,
-      fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
-    });
-    descEndY += descH + 0.20;
+    let descFit = fitTextForBoxWithoutCompression(descText, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
+    if (!descFit.fits) {
+      const overflowParts = splitLongSegments(descText, 110);
+      if (overflowParts.length > 1) {
+        descText = overflowParts[0];
+        deferredOverviewItems = [...overflowParts.slice(1).map(ensureSentenceEnd), ...deferredOverviewItems];
+        descFit = fitTextForBoxWithoutCompression(descText, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
+      }
+    }
+
+    if (descText && descFit.fits) {
+      const descLines = estimateTextLines(descFit.text, descW, descFit.fontSize);
+      const descH = Math.max(0.45, descLines * (descFit.fontSize * 1.35 / 72) + 0.10);
+      addTextSafe(slide, descFit.text, {
+        x: MARGIN, y: descEndY, w: descW, h: descH,
+        fontSize: descFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_LIGHT, valign: "top",
+      });
+      descEndY += descH + 0.20;
+    } else if (descText) {
+      deferredOverviewItems = [descText, ...deferredOverviewItems].map(ensureSentenceEnd);
+      flowLog("MODULE_COVER_DESCRIPTION", "renderModuleCover -> description moved fully to continuation (no compression), title='" + (data.title || "").substring(0, 52) + "'");
+    }
   }
 
   const objectives = (data.objectives || []).map(ensureSentenceEnd).filter(Boolean);
