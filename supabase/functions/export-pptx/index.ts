@@ -6312,6 +6312,11 @@ Idioma: pt-BR`
         redistributions: qualityReport.stage2_5_redistributions,
         semantic_losses: qualityReport.stage2_5_semantic_losses.length,
         semantic_loss_details: qualityReport.stage2_5_semantic_losses.slice(0, 10),
+        regeneration_flagged: qualityReport.stage0_5_items_flagged,
+        regeneration_attempted: qualityReport.stage0_5_items_regenerated,
+        regeneration_resolved: qualityReport.stage0_5_items_resolved,
+        regeneration_unresolved: qualityReport.stage0_5_items_unresolved,
+        regeneration_details: qualityReport.stage0_5_details.slice(0, 15),
       },
       summary: {
         total_slides: allSlides.length + 3,
