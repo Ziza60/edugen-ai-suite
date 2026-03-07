@@ -2504,13 +2504,35 @@ REGRAS CRÍTICAS:
 
           let final = fixedText;
           if (final.length > 0 && !/[.!?…]$/.test(final)) final += ".";
+
+          const protectedNoCompressionLayout =
+            slide.layout === "bullets" ||
+            slide.layout === "example_highlight" ||
+            slide.layout === "summary_slide";
+
+          if (status === "truncation_fixed" && protectedNoCompressionLayout && final.length < originalText.length) {
+            forensicTraceField(
+              slideNum,
+              slide.layout,
+              fieldLabel,
+              "1.5",
+              "llmValidateSlideContent",
+              "fallback_used",
+              originalText,
+              originalText,
+              "protected_layout_kept_original_instead_of_compression",
+              false,
+            );
+            final = ensureSentenceEnd(originalText);
+          }
+
           forensicTraceField(
             slideNum,
             slide.layout,
             fieldLabel,
             "1.5",
             "llmValidateSlideContent",
-            status === "truncation_fixed" ? "compression_used" : "fit_adjustment",
+            status === "truncation_fixed" && final.length < originalText.length ? "compression_used" : "fit_adjustment",
             originalText,
             final,
             "llm_status:" + status,
