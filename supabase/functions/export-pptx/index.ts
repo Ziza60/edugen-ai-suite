@@ -1057,13 +1057,50 @@ function isValidBullet(text: string): boolean {
   return false;
 }
 
+function isWeakSemanticFragment(text: string): boolean {
+  const t = (text || "").trim().replace(/\s+/g, " ").replace(/\.+$/, "").trim();
+  if (!t) return false;
+
+  // Canonical bad fragments seen in approved-but-poor exports
+  if (/^(por exemplo|ferramentas\s+de\s+ia|o processo envolve|a ia analisa dados)$/i.test(t)) return true;
+
+  const wc = t.split(/\s+/).length;
+
+  // Very short discourse markers without payload
+  if (/^(por exemplo|em resumo|na prática|no geral|como resultado)$/i.test(t)) return true;
+
+  // Generic noun phrases that look complete but are semantically empty for slide content
+  if (/^(ferramentas|modelos|tipos|aplicações|processo|resultado|contexto|exemplo)(\s+de\s+[\wÀ-ÖØ-öø-ÿ-]+){0,2}$/i.test(t) && wc <= 5) return true;
+
+  // Subject + transitive verb with no object/complement
+  if (/^(a\s+ia|o\s+processo|o\s+sistema|a\s+ferramenta|as\s+ferramentas|este\s+processo|essa\s+abordagem)\s+(envolve|analisa|usa|utiliza|aplica|gera|permite|inclui|oferece)$/i.test(t)) {
+    return true;
+  }
+
+  return false;
+}
+
+function isWeakTitleFragment(text: string): boolean {
+  const t = (text || "").trim().replace(/\s+/g, " ").replace(/\.+$/, "").trim();
+  if (!t) return false;
+
+  if (/\(Parte\s*\d+\)\s*$/i.test(t)) return false;
+
+  const wc = t.split(/\s+/).length;
+  if (wc <= 2 && t.length < 18) return true;
+  if (/^(introdu[cç][aã]o|vis[aã]o geral|detalhes|continua[cç][aã]o|parte)$/i.test(t)) return true;
+  if (isWeakSemanticFragment(t)) return true;
+
+  return false;
+}
+
 function extractWarningQuotedText(warning: string): string {
   const quoted = warning.match(/"([^"]+)"/);
   return (quoted?.[1] || "").trim();
 }
 
 function warningDedupKey(warning: string): string {
-  const type = (warning.match(/TRUNCAMENTO|FRAGMENTO|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA|GRAMATICA|PONTUACAO|REPETICAO|TITULO CURTO|TITULO GENERICO|WCAG|BBOX|CELULA|MESCLADO|SIMBOLOS/i)?.[0] || "WARN").toUpperCase();
+  const type = (warning.match(/TRUNCAMENTO|FRAGMENTO|FRAGMENTO SEMÂNTICO|TÍTULO FRAGMENTADO|SPLIT ARTIFICIAL|TEXTO COM QUEBRA INVÁLIDA|GRAMATICA|PONTUACAO|REPETICAO|TITULO CURTO|TITULO GENERICO|WCAG|BBOX|CELULA|MESCLADO|SIMBOLOS/i)?.[0] || "WARN").toUpperCase();
   const quoted = extractWarningQuotedText(warning)
     .toLowerCase()
     .replace(/\s+/g, " ")
@@ -1100,6 +1137,9 @@ function isFalsePositiveTruncationWarning(warning: string): boolean {
 
   const snippet = extractWarningQuotedText(warning);
   if (!snippet) return false;
+
+  // Never suppress semantic-fragment warnings
+  if (isWeakSemanticFragment(snippet) || isWeakTitleFragment(snippet)) return false;
 
   // Only suppress when snippet looks like valid slide bullet AND has no semantic truncation
   const normalizedSnippet = snippet.replace(/\.+$/, "").trim();
@@ -1177,6 +1217,8 @@ function detectTruncation(text: string): boolean {
  */
 function detectSemanticTruncation(text: string): boolean {
   if (!text || text.length < 10) return false;
+
+  if (isWeakSemanticFragment(text)) return true;
   
   // v4: Exempt valid bullets/enumerations FIRST — before any heuristic
   if (isValidBullet(text.trim().replace(/\.+$/, "").trim())) return false;
