@@ -6154,9 +6154,9 @@ Idioma: pt-BR`
           const labelParsed = extractLabelExplanation(trimmed);
           const enumLike = /;|\|/.test(trimmed) || /,\s+[^,]{8,},\s+[^,]{8,}/.test(trimmed);
           if (labelParsed && (trimmed.length > Math.floor(maxChars * 0.85) || enumLike)) {
-            const splitLabel = splitLabelExplanationBullet(trimmed, maxChars);
-            if (splitLabel && splitLabel.length > 1) {
-              newItems.push(...splitLabel.map(ensureSentenceEnd));
+            const splitLabel = splitNarrativeItemForStructure(trimmed, maxChars);
+            if (splitLabel.length > 1) {
+              newItems.push(...splitLabel);
               didRedistribute = true;
               labelExplanationSplits++;
               continue;
@@ -6164,9 +6164,9 @@ Idioma: pt-BR`
           }
 
           if (trimmed.length > maxChars) {
-            const pieces = splitLongSegments(trimmed, maxChars);
+            const pieces = splitNarrativeItemForStructure(trimmed, maxChars);
             if (pieces.length > 1) {
-              newItems.push(...pieces.map(ensureSentenceEnd));
+              newItems.push(...pieces);
               didRedistribute = true;
               continue;
             }
@@ -6193,7 +6193,46 @@ Idioma: pt-BR`
         if (didRedistribute) {
           s.items = newItems;
           preRenderRedistributions++;
-          console.log("[STAGE-2.5] REDISTRIBUTED bullets for '" + s.title + "' (" + s.items.length + " items)");
+          flowLog("BULLETS", "stage2.5 -> redistributed bullet structure, layout=" + s.layout + ", title=" + (s.title || "").substring(0, 46));
+        }
+      }
+
+      // E. Specialized layouts: prevent renderer-side clipping by pre-splitting into continuation slides
+      if (s.items && s.items.length > 0) {
+        const layoutCapacity: Partial<Record<LayoutType, number>> = {
+          example_highlight: 4,
+          warning_callout: 4,
+          summary_slide: 4,
+          process_timeline: 4,
+          numbered_takeaways: 6,
+        };
+
+        const cap = layoutCapacity[s.layout];
+        if (cap && s.items.length > cap) {
+          const chunks: string[][] = [];
+          for (let i = 0; i < s.items.length; i += cap) {
+            chunks.push(s.items.slice(i, i + cap));
+          }
+
+          s.items = chunks[0];
+          const continuationSlides: SlideData[] = [];
+          for (let ci = 1; ci < chunks.length; ci++) {
+            continuationSlides.push({
+              ...s,
+              title: getContinuationTitle(s.title || "Continuação", ci + 1),
+              items: chunks[ci],
+              structuredItems: undefined,
+            });
+          }
+
+          if (continuationSlides.length > 0) {
+            slidesToInsert.push({ afterIndex: si, slides: continuationSlides });
+            preRenderRedistributions++;
+            qualityReport.stage4_all_fixes.push(
+              "REDISTRIBUIÇÃO " + s.layout + ": continuação estrutural criada para '" + (s.title || "").substring(0, 28) + "'"
+            );
+            flowLog("SPECIAL_LAYOUT", "stage2.5 -> " + s.layout + " split into " + chunks.length + " parts, title=" + (s.title || "").substring(0, 46));
+          }
         }
       }
     }
