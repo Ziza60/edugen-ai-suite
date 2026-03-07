@@ -5944,41 +5944,103 @@ Idioma: pt-BR`
     qualityReport.stage2_avg_density = Number(avgDensity.toFixed(1));
     console.log("[STAGE-2] Structure optimized: Avg density=" + avgDensity.toFixed(1) + " Slides=" + allSlides.length);
 
-    // ── STAGE 2.5: PRE-RENDER STRUCTURAL REDISTRIBUTION (v7) ──
-    // Instead of compressing text to fit, this stage REDISTRIBUTES content structurally:
-    // - Module covers with overflowing objectives → move objectives to dedicated slide
-    // - Module covers with overflowing descriptions → move description to dedicated slide
-    // - Long "Label: explanation" bullets → split into multiple items
-    // - Any remaining long bullets → split at sentence boundary into multiple items
-    // Key principle: NO COMPRESSION here. Only redistribution into more slides/items.
-    console.log("[STAGE-2.5] Running pre-render STRUCTURAL REDISTRIBUTION (v7)...");
+    // ── STAGE 2.5: PRE-RENDER STRUCTURAL REDISTRIBUTION (v10 focused) ──
+    // Targeted only at residual real-world blockers:
+    // - module cover title/description
+    // - long objectives
+    // - label+explanation bullets
+    console.log("[STAGE-2.5] Running focused structural redistribution (v10)...");
     let preRenderRedistributions = 0;
     let semanticLossEvents: string[] = []; // Track compression losses for quality report
+    let moduleCoverTitleRedistributions = 0;
+    let objectiveRedistributions = 0;
+    let labelExplanationSplits = 0;
     const slidesToInsert: { afterIndex: number; slides: SlideData[] }[] = [];
 
     for (let si = 0; si < allSlides.length; si++) {
       const s = allSlides[si];
 
-      // A. Module cover: if objectives overflow, move to dedicated continuation slide
+      // A. Module cover TITLE: structural split (title + subtitle) or continuation
+      if (s.layout === "module_cover" && s.title) {
+        const splitTitle = splitModuleCoverTitle(s.title);
+        if (splitTitle.changed) {
+          s.title = splitTitle.primary;
+          s.coverTitleSubtitle = splitTitle.secondary || undefined;
+          moduleCoverTitleRedistributions++;
+          preRenderRedistributions++;
+          qualityReport.stage4_all_fixes.push(
+            "REDISTRIBUIÇÃO TÍTULO MODULE COVER: '" + (splitTitle.primary || "").substring(0, 36) + "...'"
+          );
+        }
+
+        const titleStillOverflow = !measureBoundingBox(
+          s.title,
+          TYPO.MODULE_TITLE,
+          FONT_TITLE,
+          SAFE_W * 0.70,
+          s.coverTitleSubtitle ? 1.10 : 1.35
+        ).fits;
+
+        if (titleStillOverflow) {
+          const titleParts = splitLongSegments(s.title, 78);
+          if (titleParts.length >= 2) {
+            s.title = titleParts[0];
+            s.coverTitleSubtitle = titleParts[1];
+            const remainder = titleParts.slice(2);
+            if (remainder.length > 0) {
+              slidesToInsert.push({
+                afterIndex: si,
+                slides: [{
+                  layout: "bullets",
+                  title: "Continuação da Abertura",
+                  sectionLabel: "ABERTURA DO MÓDULO",
+                  items: sanitizeBullets(remainder),
+                  moduleIndex: s.moduleIndex,
+                  blockType: "normal",
+                }],
+              });
+            }
+            moduleCoverTitleRedistributions++;
+            preRenderRedistributions++;
+            qualityReport.stage4_all_fixes.push(
+              "REDISTRIBUIÇÃO TÍTULO MODULE COVER: continuação criada para '" + (s.title || "").substring(0, 30) + "'"
+            );
+          }
+        }
+      }
+
+      // B. Module cover OBJECTIVES: structural split of long objective + continuation slides
       if (s.layout === "module_cover" && s.objectives && s.objectives.length > 0) {
         const objW = SAFE_W * 0.60 - 0.30;
         const objH = 0.44;
         let anyObjOverflow = false;
-        for (const obj of s.objectives) {
-          if (!obj || obj.length < 10) continue;
-          const bbox = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW, objH);
-          if (!bbox.fits && obj.length > 55) { anyObjOverflow = true; break; }
-        }
-        if (anyObjOverflow) {
-          // REDISTRIBUTE: move objectives to a new dedicated slide instead of compressing
-          const movedObjectives = [...s.objectives];
-          s.objectives = []; // clear from cover
+        const normalizedObjectives: string[] = [];
 
-          // v9: Split objectives into chunks of 4 for multiple continuation slides if needed
+        for (const obj of s.objectives) {
+          if (!obj) continue;
+          const trimmed = obj.trim();
+          if (!trimmed) continue;
+
+          const structuralParts = splitObjectiveForStructure(trimmed, Math.max(54, activeDensity.maxCharsPerBullet - 8));
+          if (structuralParts.length > 1) {
+            objectiveRedistributions += structuralParts.length - 1;
+            preRenderRedistributions++;
+          }
+          normalizedObjectives.push(...structuralParts);
+
+          const bbox = measureBoundingBox(trimmed, TYPO.SUPPORT, FONT_BODY, objW, objH);
+          if (!bbox.fits && trimmed.length > 55) anyObjOverflow = true;
+        }
+
+        const totalCoverContent = (s.description || "").length + normalizedObjectives.reduce((sum, o) => sum + o.length, 0);
+        if (totalCoverContent > 320 || normalizedObjectives.length > 3) anyObjOverflow = true;
+
+        if (anyObjOverflow) {
+          s.objectives = [];
           const OBJ_PER_SLIDE = 4;
           const objChunks: string[][] = [];
-          for (let oi = 0; oi < movedObjectives.length; oi += OBJ_PER_SLIDE) {
-            objChunks.push(movedObjectives.slice(oi, oi + OBJ_PER_SLIDE));
+          for (let oi = 0; oi < normalizedObjectives.length; oi += OBJ_PER_SLIDE) {
+            objChunks.push(normalizedObjectives.slice(oi, oi + OBJ_PER_SLIDE));
           }
 
           for (let ci = 0; ci < objChunks.length; ci++) {
@@ -5991,174 +6053,109 @@ Idioma: pt-BR`
                 layout: "bullets",
                 title: chunkTitle,
                 sectionLabel: "OBJETIVOS DO MÓDULO",
-                items: sanitizeBullets(objChunks[ci].map(o => {
-                  const t = o.trim();
-                  return t.length > 0 && !/[.!?]$/.test(t) ? t + "." : t;
-                })),
+                items: sanitizeBullets(objChunks[ci].map(ensureSentenceEnd)),
                 moduleIndex: s.moduleIndex,
                 blockType: "normal",
               }],
             });
           }
+
           preRenderRedistributions++;
+          objectiveRedistributions += normalizedObjectives.length;
           qualityReport.stage4_all_fixes.push(
-            "REDISTRIBUIÇÃO OBJETIVOS: '" + (s.title || "").substring(0, 30) + "' → " + objChunks.length + " slide(s) dedicado(s)"
+            "REDISTRIBUIÇÃO OBJETIVOS: '" + (s.title || "").substring(0, 30) + "' → " + objChunks.length + " slide(s)"
           );
-          console.log("[STAGE-2.5] REDISTRIBUTED: Module cover objectives → " + objChunks.length + " dedicated slide(s) (" + s.title + ")");
+        } else {
+          s.objectives = normalizedObjectives.slice(0, 3);
         }
       }
 
-      // B. Module cover description: if it overflows, split into cover + description slide
-      if (s.layout === "module_cover" && s.description && s.description.length > 200) {
+      // C. Module cover DESCRIPTION: structural split without char-length gate
+      if (s.layout === "module_cover" && s.description) {
         const descW = SAFE_W * 0.65;
-        const descH = 1.0;
+        const descH = s.coverTitleSubtitle ? 0.85 : 1.0;
         const bbox = measureBoundingBox(s.description, TYPO.SUBTITLE, FONT_BODY, descW, descH);
         if (!bbox.fits) {
-          // REDISTRIBUTE: keep first sentence on cover, rest goes to a detail slide
-          const sentences = s.description.match(/[^.!?]+[.!?]+/g) || [s.description];
-          if (sentences.length >= 2) {
-            const coverDesc = sentences[0].trim();
-            const restDesc = sentences.slice(1).join(" ").trim();
-            if (restDesc.length > 20) {
-              s.description = coverDesc;
+          const parts = splitLongSegments(s.description, 140);
+          if (parts.length >= 2) {
+            s.description = parts[0];
+            const rest = parts.slice(1);
+            const chunks: string[][] = [];
+            for (let i = 0; i < rest.length; i += 3) chunks.push(rest.slice(i, i + 3));
+            for (let ci = 0; ci < chunks.length; ci++) {
               slidesToInsert.push({
                 afterIndex: si,
                 slides: [{
                   layout: "bullets",
-                  title: "Visão Geral do Módulo",
+                  title: chunks.length > 1 ? `Visão Geral do Módulo (Parte ${ci + 1})` : "Visão Geral do Módulo",
                   sectionLabel: "VISÃO GERAL",
-                  items: sanitizeBullets([restDesc]),
+                  items: sanitizeBullets(chunks[ci]),
                   moduleIndex: s.moduleIndex,
                   blockType: "normal",
                 }],
               });
-              preRenderRedistributions++;
-              console.log("[STAGE-2.5] REDISTRIBUTED: Module cover description → detail slide (" + s.title + ")");
             }
+            preRenderRedistributions++;
+            qualityReport.stage4_all_fixes.push(
+              "REDISTRIBUIÇÃO ABERTURA: descrição movida para " + chunks.length + " slide(s) em '" + (s.title || "").substring(0, 26) + "'"
+            );
           }
         }
       }
 
-      // C. Long bullets: REDISTRIBUTE by splitting into multiple items instead of compressing
-      // v9: Added dedicated handling for narrative bullets (Cenário, Resultado, Impacto, Exemplo)
+      // D. Bullets: structural split for Label: explicação / Label - explicação / enumeração
       if (s.items && s.items.length > 0 && s.layout !== "module_cover") {
         const maxChars = activeDensity.maxCharsPerBullet;
         const newItems: string[] = [];
         let didRedistribute = false;
-        let narrativeSplits = 0;
-
-        // v9: NARRATIVE BULLET PATTERNS — structural split before generic handling
-        const NARRATIVE_LABELS = /^(Cenário|Resultado|Impacto|Exemplo|Aplicação|Benefício|Desafio|Solução|Contexto|Problema)\s*[-–:]/i;
 
         for (const item of s.items) {
-          if (!item || item.length <= maxChars) {
-            newItems.push(item);
+          const trimmed = (item || "").trim();
+          if (!trimmed) continue;
+
+          const labelParsed = extractLabelExplanation(trimmed);
+          const enumLike = /;|\|/.test(trimmed) || /,\s+[^,]{8,},\s+[^,]{8,}/.test(trimmed);
+          if (labelParsed && (trimmed.length > Math.floor(maxChars * 0.85) || enumLike)) {
+            const splitLabel = splitLabelExplanationBullet(trimmed, maxChars);
+            if (splitLabel && splitLabel.length > 1) {
+              newItems.push(...splitLabel.map(ensureSentenceEnd));
+              didRedistribute = true;
+              labelExplanationSplits++;
+              continue;
+            }
+          }
+
+          if (trimmed.length > maxChars) {
+            const pieces = splitLongSegments(trimmed, maxChars);
+            if (pieces.length > 1) {
+              newItems.push(...pieces.map(ensureSentenceEnd));
+              didRedistribute = true;
+              continue;
+            }
+
+            // LAST RESORT: compress and LOG semantic loss
+            const originalLen = trimmed.length;
+            const compressed = smartBullet(trimmed);
+            const lossRatio = 1 - (compressed.length / originalLen);
+            if (lossRatio > 0.25) {
+              semanticLossEvents.push(
+                "Slide '" + (s.title || "").substring(0, 30) + "': compressão com " +
+                Math.round(lossRatio * 100) + "% de perda (" + originalLen + " → " + compressed.length + " chars)"
+              );
+              console.warn("[STAGE-2.5] SEMANTIC LOSS: " + semanticLossEvents[semanticLossEvents.length - 1]);
+            }
+            newItems.push(compressed);
+            if (compressed !== trimmed) didRedistribute = true;
             continue;
           }
 
-          // v9: NARRATIVE BULLET SPLIT — detect "Label - long narrative" or "Label: long narrative"
-          const narrativeMatch = item.match(NARRATIVE_LABELS);
-          if (narrativeMatch) {
-            const sepIdx = item.indexOf("-", narrativeMatch[0].length - 2);
-            const colonSepIdx = item.indexOf(":", narrativeMatch[0].length - 2);
-            const actualSep = sepIdx > 0 && sepIdx < 30 ? sepIdx : colonSepIdx > 0 && colonSepIdx < 30 ? colonSepIdx : -1;
-
-            if (actualSep > 0) {
-              const label = item.substring(0, actualSep).trim();
-              const narrative = item.substring(actualSep + 1).trim();
-              const sentences = narrative.match(/[^.!?]+[.!?]+/g);
-
-              if (sentences && sentences.length >= 2) {
-                // Split into multiple labeled sub-items
-                for (let si2 = 0; si2 < sentences.length; si2++) {
-                  let part = sentences[si2].trim();
-                  if (si2 === 0) {
-                    part = label + ": " + part;
-                  }
-                  if (!/[.!?]$/.test(part)) part += ".";
-                  newItems.push(part);
-                }
-                didRedistribute = true;
-                narrativeSplits++;
-                continue;
-              } else if (narrative.length > maxChars) {
-                // Single long sentence — split at comma or midpoint
-                const commaIdx = narrative.indexOf(",", Math.floor(narrative.length * 0.3));
-                if (commaIdx > 20 && commaIdx < narrative.length - 20) {
-                  let p1 = label + ": " + narrative.substring(0, commaIdx + 1).trim();
-                  let p2 = narrative.substring(commaIdx + 1).trim();
-                  if (!/[.!?]$/.test(p1)) p1 += ".";
-                  if (!/[.!?]$/.test(p2)) p2 += ".";
-                  newItems.push(p1);
-                  newItems.push(p2);
-                  didRedistribute = true;
-                  narrativeSplits++;
-                  continue;
-                }
-              }
-            }
-          }
-
-          // Try structural split for "Label: long explanation" (generic)
-          const colonIdx = item.indexOf(":");
-          if (colonIdx > 2 && colonIdx < 55) {
-            const label = item.substring(0, colonIdx).trim();
-            const explanation = item.substring(colonIdx + 1).trim();
-            const sentences = explanation.match(/[^.!?]+[.!?]+/g);
-            if (sentences && sentences.length >= 2) {
-              // Split into label + first sentence, then remaining sentences
-              let first = label + ": " + sentences[0].trim();
-              newItems.push(first.length > 0 && !/[.!?]$/.test(first) ? first + "." : first);
-              const remaining = sentences.slice(1).join(" ").trim();
-              if (remaining.length > 3) {
-                newItems.push(remaining.length > 0 && !/[.!?]$/.test(remaining) ? remaining + "." : remaining);
-              }
-              didRedistribute = true;
-              continue;
-            }
-          }
-
-          // Try splitting at sentence boundary
-          const sentences = item.match(/[^.!?]+[.!?]+/g);
-          if (sentences && sentences.length >= 2) {
-            const mid = Math.ceil(sentences.length / 2);
-            const part1 = sentences.slice(0, mid).join(" ").trim();
-            const part2 = sentences.slice(mid).join(" ").trim();
-            if (part1.length > 10 && part2.length > 10) {
-              newItems.push(part1);
-              newItems.push(part2);
-              didRedistribute = true;
-              continue;
-            }
-          }
-
-          // LAST RESORT: compress and LOG semantic loss
-          const originalLen = item.length;
-          const compressed = smartBullet(item);
-          const lossRatio = 1 - (compressed.length / originalLen);
-          if (lossRatio > 0.25) {
-            semanticLossEvents.push(
-              "Slide '" + (s.title || "").substring(0, 30) + "': compressão com " +
-              Math.round(lossRatio * 100) + "% de perda (" + originalLen + " → " + compressed.length + " chars)"
-            );
-            console.warn("[STAGE-2.5] SEMANTIC LOSS: " + semanticLossEvents[semanticLossEvents.length - 1]);
-          }
-          newItems.push(compressed);
-          if (compressed !== item) didRedistribute = true;
+          newItems.push(ensureSentenceEnd(trimmed));
         }
 
         if (didRedistribute) {
           s.items = newItems;
           preRenderRedistributions++;
-          if (narrativeSplits > 0) {
-            qualityReport.stage4_all_fixes.push(
-              "QUEBRA NARRATIVA: '" + (s.title || "").substring(0, 30) + "' → " + narrativeSplits + " bullet(s) narrativo(s) redistribuído(s)"
-            );
-          }
-          console.log("[STAGE-2.5] REDISTRIBUTED: Bullet items for '" + s.title + "' (" + s.items.length + " items, " + narrativeSplits + " narrative splits)");
-
-          // If splitting created too many items, let overflow resolution handle it in Stage 3
-          // (which will create continuation slides instead of compressing)
+          console.log("[STAGE-2.5] REDISTRIBUTED bullets for '" + s.title + "' (" + s.items.length + " items)");
         }
       }
     }
