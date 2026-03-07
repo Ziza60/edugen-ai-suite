@@ -6989,16 +6989,19 @@ Idioma: pt-BR`
       // C. Module cover DESCRIPTION: structural split without char-length gate
       if (s.layout === "module_cover" && s.description) {
         const descW = SAFE_W * 0.65;
-        const descH = s.coverTitleSubtitle ? 0.85 : 1.0;
-        const bbox = measureBoundingBox(s.description, TYPO.SUBTITLE, FONT_BODY, descW, descH);
-        if (!bbox.fits) {
-          const parts = splitLongSegments(s.description, 140);
-          if (parts.length >= 2) {
-            const beforeDescription = s.description || "";
-            let firstChunk = parts[0];
-            let rest = parts.slice(1);
+        const descH = s.coverTitleSubtitle ? 1.10 : 1.30;
+        const normalizedDescription = ensureSentenceEnd(s.description || "");
+        const bbox = measureBoundingBox(normalizedDescription, TYPO.SUBTITLE, FONT_BODY, descW, descH);
+        const weakDescription = isWeakSemanticFragment(normalizedDescription);
 
-            const firstChunkFits = () => measureBoundingBox(firstChunk, TYPO.SUBTITLE, FONT_BODY, descW, descH).fits;
+        if (!bbox.fits || weakDescription) {
+          const parts = splitLongSegments(normalizedDescription, 140);
+          if (parts.length >= 1) {
+            const beforeDescription = s.description || "";
+            let firstChunk = weakDescription ? "" : parts[0];
+            let rest = weakDescription ? parts : parts.slice(1);
+
+            const firstChunkFits = () => !!firstChunk && measureBoundingBox(firstChunk, TYPO.SUBTITLE, FONT_BODY, descW, descH).fits;
             while (firstChunk && !firstChunkFits()) {
               const splitAgain = splitLongSegments(firstChunk, 100);
               if (splitAgain.length <= 1) break;
@@ -7006,7 +7009,7 @@ Idioma: pt-BR`
               rest = [...splitAgain.slice(1), ...rest];
             }
 
-            if (!firstChunk || !firstChunkFits()) {
+            if (!firstChunk || !firstChunkFits() || isWeakSemanticFragment(firstChunk)) {
               rest = [firstChunk, ...rest].filter(Boolean);
               firstChunk = "";
             }
@@ -7036,7 +7039,7 @@ Idioma: pt-BR`
               "continuation_created",
               beforeDescription,
               s.description || "",
-              "module_cover_description_split",
+              weakDescription ? "module_cover_description_semantic_fragment" : "module_cover_description_split",
             );
             preRenderRedistributions++;
             flowLog("MODULE_COVER_DESCRIPTION", "stage2.5 -> moved description to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + chunks.length);
