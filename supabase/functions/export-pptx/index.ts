@@ -7588,9 +7588,31 @@ Idioma: pt-BR`
     // ── EXPORT GATE ──
     if (blocked) {
       console.error("[GATE] Export BLOCKED: score=" + qualityScore.toFixed(1) + " critical=" + hasCriticalFailure + " reason=" + blockReason);
+      const blockedReport = buildReport(false);
+
+      // ── PERSIST BLOCKED REPORT FOR FORENSIC RECOVERY ──
+      try {
+        await serviceClient.from("pptx_export_reports").insert({
+          course_id: course_id,
+          user_id: userId,
+          passed: false,
+          quality_score: blockedReport.quality_score,
+          blocked_reason: blockedReport.blocked_reason,
+          pipeline_version: blockedReport.pipeline_version,
+          checkpoints: blockedReport.checkpoints,
+          problematic_slides: blockedReport.problematic_slides,
+          corrections_attempted: blockedReport.corrections_attempted,
+          summary: blockedReport.summary,
+          forensic_trace: blockedReport.forensic_trace,
+        });
+        console.log("[PERSIST] Blocked report saved to pptx_export_reports for course=" + course_id);
+      } catch (persistErr) {
+        console.error("[PERSIST] Failed to save blocked report:", persistErr);
+      }
+
       return new Response(JSON.stringify({
         error: "Exportação bloqueada: " + (blockReason || "qualidade insuficiente") + ".",
-        quality_report: buildReport(false),
+        quality_report: blockedReport,
       }), {
         status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
