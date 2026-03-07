@@ -5447,6 +5447,7 @@ function renderSummarySlide(pptx: any, data: SlideData) {
     if (fit.fontSize < summaryFontSize) summaryFontSize = fit.fontSize;
   }
 
+  let rendered = 0;
   items.forEach((item, idx) => {
     if (textY + itemH > contentY + boxH - 0.15) return;
     const textFit = fitTextForBox(item, textW, itemH, summaryFontSize, FONT_BODY, summaryFontSize);
@@ -5456,7 +5457,18 @@ function renderSummarySlide(pptx: any, data: SlideData) {
       valign: "top", lineSpacingMultiple: 1.4,
     });
     textY += itemH + SUMMARY_GAP;
+    rendered++;
   });
+
+  if (rendered < items.length) {
+    const remaining = items.slice(rendered);
+    flowLog("SUMMARY", "renderSummarySlide -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    renderSummarySlide(pptx, {
+      ...data,
+      title: getContinuationTitle(data.title || "Resumo do Módulo", 2),
+      items: remaining,
+    });
+  }
 
   // Bottom accent
   slide.addShape(pptx.ShapeType.rect, {
