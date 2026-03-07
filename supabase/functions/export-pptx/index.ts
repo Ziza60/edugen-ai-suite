@@ -6665,6 +6665,7 @@ Idioma: pt-BR`
         if (totalCoverContent > 320 || normalizedObjectives.length > 3) anyObjOverflow = true;
 
         if (anyObjOverflow) {
+          const beforeObjectives = JSON.stringify(s.objectives || []);
           s.objectives = [];
           const OBJ_PER_SLIDE = 4;
           const objChunks: string[][] = [];
@@ -6689,6 +6690,18 @@ Idioma: pt-BR`
             });
           }
 
+          forensicTraceField(
+            si + 3,
+            s.layout,
+            "objectives",
+            "2.5",
+            "splitObjectiveForStructure",
+            "objective_redistributed",
+            beforeObjectives,
+            JSON.stringify(objChunks),
+            "module_cover_objectives_moved_to_continuation",
+          );
+
           preRenderRedistributions++;
           objectiveRedistributions += normalizedObjectives.length;
           flowLog("OBJECTIVES", "stage2.5 -> moved objectives to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + objChunks.length);
@@ -6696,7 +6709,20 @@ Idioma: pt-BR`
             "REDISTRIBUIÇÃO OBJETIVOS: '" + (s.title || "").substring(0, 30) + "' → " + objChunks.length + " slide(s)"
           );
         } else {
+          const beforeObjectives = JSON.stringify(s.objectives || []);
           s.objectives = normalizedObjectives.map(ensureSentenceEnd);
+          forensicTraceField(
+            si + 3,
+            s.layout,
+            "objectives",
+            "2.5",
+            "splitObjectiveForStructure",
+            "objective_redistributed",
+            beforeObjectives,
+            JSON.stringify(s.objectives),
+            "module_cover_objectives_normalized",
+            beforeObjectives !== JSON.stringify(s.objectives),
+          );
           flowLog("OBJECTIVES", "stage2.5 -> objectives kept on module cover without compression, title='" + (s.title || "").substring(0, 52) + "', count=" + s.objectives.length);
         }
       }
