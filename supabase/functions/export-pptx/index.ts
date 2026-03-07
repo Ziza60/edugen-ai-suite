@@ -684,6 +684,7 @@ function smartBullet(text: string): string {
   // Prefer structural split-aware compression for label:explanation inputs
   const structural = splitLabelExplanationBullet(t, maxChars);
   if (structural && structural.length > 0) {
+    forensicTrace("text-util", "smartBullet", "compression_used", t, structural[0]);
     return structural[0];
   }
 
@@ -691,11 +692,14 @@ function smartBullet(text: string): string {
   const sub = t.substring(0, maxChars);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
   if (sentenceEnd > maxChars * 0.4) {
-    return ensureSentenceEnd(t.substring(0, sentenceEnd + 1).trim());
+    const result = ensureSentenceEnd(t.substring(0, sentenceEnd + 1).trim());
+    forensicTrace("text-util", "smartBullet", "compression_used", t, result);
+    return result;
   }
 
   // Fall back to smartTruncate (never with ellipsis)
   const result = smartTruncate(t, maxChars, false);
+  forensicTrace("text-util", "smartBullet", "fallback_used", t, ensureSentenceEnd(result));
   return ensureSentenceEnd(result);
 }
 
@@ -1130,6 +1134,7 @@ function enforceSentenceIntegrity(text: string): string {
 
 function compressText(text: string, maxChars: number = 160): string {
   if (!text || text.length <= maxChars) return text;
+  const original = text;
   let t = text;
   // Conservative compression only (avoid semantic corruption)
   t = t.replace(/\bpor\s+exemplo\b/gi, "exemplo");
@@ -1153,6 +1158,9 @@ function compressText(text: string, maxChars: number = 160): string {
       const expandedClean = enforceSentenceIntegrity(expanded);
       if (!detectSemanticTruncation(expandedClean)) t = expandedClean;
     }
+  }
+  if (t.length < original.length) {
+    forensicTrace("text-util", "compressText", "compression_used", original, t);
   }
   return t;
 }
