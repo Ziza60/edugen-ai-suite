@@ -5923,10 +5923,15 @@ Idioma: pt-BR`
       }
 
       // C. Long bullets: REDISTRIBUTE by splitting into multiple items instead of compressing
+      // v9: Added dedicated handling for narrative bullets (Cenário, Resultado, Impacto, Exemplo)
       if (s.items && s.items.length > 0 && s.layout !== "module_cover") {
         const maxChars = activeDensity.maxCharsPerBullet;
         const newItems: string[] = [];
         let didRedistribute = false;
+        let narrativeSplits = 0;
+
+        // v9: NARRATIVE BULLET PATTERNS — structural split before generic handling
+        const NARRATIVE_LABELS = /^(Cenário|Resultado|Impacto|Exemplo|Aplicação|Benefício|Desafio|Solução|Contexto|Problema)\s*[-–:]/i;
 
         for (const item of s.items) {
           if (!item || item.length <= maxChars) {
@@ -5934,7 +5939,50 @@ Idioma: pt-BR`
             continue;
           }
 
-          // Try structural split for "Label: long explanation"
+          // v9: NARRATIVE BULLET SPLIT — detect "Label - long narrative" or "Label: long narrative"
+          const narrativeMatch = item.match(NARRATIVE_LABELS);
+          if (narrativeMatch) {
+            const sepIdx = item.indexOf("-", narrativeMatch[0].length - 2);
+            const colonSepIdx = item.indexOf(":", narrativeMatch[0].length - 2);
+            const actualSep = sepIdx > 0 && sepIdx < 30 ? sepIdx : colonSepIdx > 0 && colonSepIdx < 30 ? colonSepIdx : -1;
+
+            if (actualSep > 0) {
+              const label = item.substring(0, actualSep).trim();
+              const narrative = item.substring(actualSep + 1).trim();
+              const sentences = narrative.match(/[^.!?]+[.!?]+/g);
+
+              if (sentences && sentences.length >= 2) {
+                // Split into multiple labeled sub-items
+                for (let si2 = 0; si2 < sentences.length; si2++) {
+                  let part = sentences[si2].trim();
+                  if (si2 === 0) {
+                    part = label + ": " + part;
+                  }
+                  if (!/[.!?]$/.test(part)) part += ".";
+                  newItems.push(part);
+                }
+                didRedistribute = true;
+                narrativeSplits++;
+                continue;
+              } else if (narrative.length > maxChars) {
+                // Single long sentence — split at comma or midpoint
+                const commaIdx = narrative.indexOf(",", Math.floor(narrative.length * 0.3));
+                if (commaIdx > 20 && commaIdx < narrative.length - 20) {
+                  let p1 = label + ": " + narrative.substring(0, commaIdx + 1).trim();
+                  let p2 = narrative.substring(commaIdx + 1).trim();
+                  if (!/[.!?]$/.test(p1)) p1 += ".";
+                  if (!/[.!?]$/.test(p2)) p2 += ".";
+                  newItems.push(p1);
+                  newItems.push(p2);
+                  didRedistribute = true;
+                  narrativeSplits++;
+                  continue;
+                }
+              }
+            }
+          }
+
+          // Try structural split for "Label: long explanation" (generic)
           const colonIdx = item.indexOf(":");
           if (colonIdx > 2 && colonIdx < 55) {
             const label = item.substring(0, colonIdx).trim();
@@ -5985,7 +6033,12 @@ Idioma: pt-BR`
         if (didRedistribute) {
           s.items = newItems;
           preRenderRedistributions++;
-          console.log("[STAGE-2.5] REDISTRIBUTED: Bullet items for '" + s.title + "' (" + s.items.length + " items after split)");
+          if (narrativeSplits > 0) {
+            qualityReport.stage4_all_fixes.push(
+              "QUEBRA NARRATIVA: '" + (s.title || "").substring(0, 30) + "' → " + narrativeSplits + " bullet(s) narrativo(s) redistribuído(s)"
+            );
+          }
+          console.log("[STAGE-2.5] REDISTRIBUTED: Bullet items for '" + s.title + "' (" + s.items.length + " items, " + narrativeSplits + " narrative splits)");
 
           // If splitting created too many items, let overflow resolution handle it in Stage 3
           // (which will create continuation slides instead of compressing)
