@@ -5126,6 +5126,7 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
     if (fit.fontSize < exampleFontSize) exampleFontSize = fit.fontSize;
   }
 
+  let rendered = 0;
   items.forEach((item, idx) => {
     if (textY + 0.50 > contentY + boxH - 0.15) return;
     const richText = makeBoldLabelText(item, C.TEXT_DARK, C.TEXT_BODY, exampleFontSize);
@@ -5134,7 +5135,18 @@ function renderExampleHighlight(pptx: any, data: SlideData) {
       valign: "middle", lineSpacingMultiple: 1.35,
     });
     textY += exItemH + EXAMPLE_GAP;
+    rendered++;
   });
+
+  if (rendered < items.length) {
+    const remaining = items.slice(rendered);
+    flowLog("EXAMPLE", "renderExampleHighlight -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    renderExampleHighlight(pptx, {
+      ...data,
+      title: getContinuationTitle(data.title || "Exemplo Prático", 2),
+      items: remaining,
+    });
+  }
 }
 
 // ── REFLECTION CALLOUT — NEW template for reflection/checkpoint ──
