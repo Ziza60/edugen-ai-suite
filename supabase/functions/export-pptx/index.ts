@@ -6431,7 +6431,11 @@ Idioma: pt-BR`
           newItems.push(ensureSentenceEnd(trimmed));
         }
 
-        if (didRedistribute) {
+        const changedItems = newItems.length === s.items.length
+          ? newItems.some((v, idx) => v !== s.items![idx])
+          : true;
+
+        if (didRedistribute || changedItems) {
           s.items = newItems;
           preRenderRedistributions++;
           flowLog("BULLETS", "stage2.5 -> redistributed bullet structure, layout=" + s.layout + ", title=" + (s.title || "").substring(0, 46));
