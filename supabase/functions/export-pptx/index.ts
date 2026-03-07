@@ -6397,7 +6397,23 @@ Idioma: pt-BR`
 
                       qualityReport.stage0_5_items_regenerated++;
 
+                      const currentSlide = allSlides[def.slideIdx];
+                      const slideNum = def.slideIdx + 3;
+                      const fieldLabel = def.itemIdx >= 0 ? `${def.field}[${def.itemIdx}]` : def.field;
+
                       if (stillTruncated || tooLong) {
+                        forensicTraceField(
+                          slideNum,
+                          currentSlide?.layout || "unknown",
+                          fieldLabel,
+                          "0.5",
+                          "selective_regeneration",
+                          "regeneration_applied",
+                          def.original,
+                          newText,
+                          "regen_unresolved:" + def.reason,
+                          false,
+                        );
                         // Regeneration didn't fix the issue
                         qualityReport.stage0_5_items_unresolved++;
                         qualityReport.stage0_5_details.push(
@@ -6407,15 +6423,34 @@ Idioma: pt-BR`
                       } else {
                         // Apply the rewrite
                         const slide = allSlides[def.slideIdx];
+                        let beforeValue = "";
+                        let afterValue = newText;
                         if (def.field === "title") {
+                          beforeValue = slide.title || "";
                           slide.title = newText;
                         } else if (def.field === "description") {
+                          beforeValue = slide.description || "";
                           slide.description = newText;
                         } else if (def.field === "objective" && slide.objectives && def.itemIdx >= 0) {
+                          beforeValue = slide.objectives[def.itemIdx] || "";
                           slide.objectives[def.itemIdx] = newText;
                         } else if (def.field === "item" && slide.items && def.itemIdx >= 0) {
+                          beforeValue = slide.items[def.itemIdx] || "";
                           slide.items[def.itemIdx] = newText;
                         }
+
+                        forensicTraceField(
+                          slideNum,
+                          slide.layout,
+                          fieldLabel,
+                          "0.5",
+                          "selective_regeneration",
+                          "regeneration_applied",
+                          beforeValue,
+                          afterValue,
+                          "regen_resolved:" + def.reason,
+                        );
+
                         qualityReport.stage0_5_items_resolved++;
                         qualityReport.stage0_5_details.push(
                           "RESOLVIDO [" + def.field + "] slide '" + (slide.title || "").substring(0, 25) + "': '" + def.original.substring(0, 35) + "...' → '" + newText.substring(0, 35) + "...'"
