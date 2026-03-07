@@ -6991,6 +6991,29 @@ Idioma: pt-BR`
         }
       }
 
+      // D0. Pre-merge fragments: items starting with lowercase connectors ("e ", "ou ") 
+      // that detectSemanticTruncation would flag — merge with previous item (slide 17 fix)
+      if (s.items && s.items.length > 1 && s.layout !== "module_cover") {
+        const mergedItems: string[] = [];
+        for (let ii = 0; ii < s.items.length; ii++) {
+          const item = (s.items[ii] || "").trim();
+          if (!item) continue;
+          // Fragment starting with lowercase connector AND flagged as truncated → merge with prev
+          if (mergedItems.length > 0 && /^(e|ou|mas|nem|pois)\s/i.test(item) && item[0] === item[0].toLowerCase() && detectSemanticTruncation(item)) {
+            const prev = mergedItems[mergedItems.length - 1].replace(/\.\s*$/, "");
+            mergedItems[mergedItems.length - 1] = ensureSentenceEnd(prev + " " + item);
+            forensicTraceField(si + 3, s.layout, `item[${ii}]`, "2.5", "fragmentMerge", "fragment_merged_with_previous", item, mergedItems[mergedItems.length - 1], "connector_fragment_merged");
+            preRenderRedistributions++;
+            continue;
+          }
+          mergedItems.push(item);
+        }
+        if (mergedItems.length < s.items.length) {
+          s.items = mergedItems;
+          flowLog("BULLETS", "stage2.5 -> merged connector fragments, layout=" + s.layout + ", title=" + (s.title || "").substring(0, 46));
+        }
+      }
+
       // D. Bullets: structural split for Label: explicação / Label - explicação / enumeração
       if (s.items && s.items.length > 0 && s.layout !== "module_cover") {
         const maxChars = activeDensity.maxCharsPerBullet;
