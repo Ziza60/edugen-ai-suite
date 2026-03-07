@@ -5363,6 +5363,7 @@ function renderWarningCallout(pptx: any, data: SlideData) {
     if (fit.fontSize < warningFontSize) warningFontSize = fit.fontSize;
   }
 
+  let rendered = 0;
   items.forEach((item, idx) => {
     if (textY + itemH > contentY + boxH - 0.10) return;
 
@@ -5379,7 +5380,18 @@ function renderWarningCallout(pptx: any, data: SlideData) {
       valign: "top", lineSpacingMultiple: 1.35,
     });
     textY += itemH + WARNING_GAP;
+    rendered++;
   });
+
+  if (rendered < items.length) {
+    const remaining = items.slice(rendered);
+    flowLog("WARNING", "renderWarningCallout -> continuation created, title=" + (data.title || "").substring(0, 46) + ", remaining=" + remaining.length);
+    renderWarningCallout(pptx, {
+      ...data,
+      title: getContinuationTitle(data.title || "Desafios e Cuidados", 2),
+      items: remaining,
+    });
+  }
 }
 
 // ── SUMMARY SLIDE — Resumo do Módulo ──
