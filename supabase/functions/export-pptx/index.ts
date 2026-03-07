@@ -330,7 +330,11 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
   const sub = t.substring(0, maxChars);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
   if (sentenceEnd > maxChars * 0.5) {
-    return t.substring(0, sentenceEnd + 1).trim();
+    const result = t.substring(0, sentenceEnd + 1).trim();
+    if (result.length < t.length) {
+      forensicTrace("text-util", "smartTruncate", "compression_used", t, result);
+    }
+    return result;
   }
 
   const truncated = t.substring(0, maxChars);
@@ -367,6 +371,10 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
 
   if (addEllipsis && result.length < t.length && !/[.!?]$/.test(result)) {
     result += "...";
+  }
+
+  if (result.length < t.length) {
+    forensicTrace("text-util", "smartTruncate", "compression_used", t, result);
   }
 
   return result;
@@ -509,6 +517,123 @@ function flowLog(tag: string, details: string) {
   console.log("[FLOW] " + tag + " | " + details);
 }
 
+/* ═══════════════════════════════════════════════════════
+   FORENSIC TRACER — field-level mutation tracking
+   ═══════════════════════════════════════════════════════ */
+
+interface ForensicEvent {
+  slide: number;
+  layout: string;
+  field: string;
+  stage: string;
+  fn: string;
+  action: string;
+  before: string;
+  after: string;
+  chars_before: number;
+  chars_after: number;
+  reduction_pct: number;
+}
+
+interface RendererTraceEvent {
+  slide: number;
+  layout: string;
+  renderer: string;
+}
+
+const _forensicEvents: ForensicEvent[] = [];
+const _rendererTrace: RendererTraceEvent[] = [];
+let _forensicSlideIndex = 0;
+let _forensicSlideLayout = "";
+let _forensicSlideField = "";
+
+function forensicSetContext(slideIndex: number, layout: string, field: string) {
+  _forensicSlideIndex = slideIndex;
+  _forensicSlideLayout = layout;
+  _forensicSlideField = field;
+}
+
+function forensicTrace(stage: string, fn: string, action: string, before: string, after: string) {
+  const charsBefore = (before || "").length;
+  const charsAfter = (after || "").length;
+  const reductionPct = charsBefore > 0 ? Number(((1 - charsAfter / charsBefore) * 100).toFixed(1)) : 0;
+  const event: ForensicEvent = {
+    slide: _forensicSlideIndex,
+    layout: _forensicSlideLayout,
+    field: _forensicSlideField,
+    stage,
+    fn,
+    action,
+    before: before.substring(0, 80),
+    after: after.substring(0, 80),
+    chars_before: charsBefore,
+    chars_after: charsAfter,
+    reduction_pct: reductionPct,
+  };
+  _forensicEvents.push(event);
+
+  const fieldLabel = "slide=" + _forensicSlideIndex + " layout=" + _forensicSlideLayout + " field=" + _forensicSlideField;
+  if (reductionPct > 0) {
+    console.log("[TRACE] " + fieldLabel + " stage=" + stage + " action=" + action + " fn=" + fn +
+      " chars_before=" + charsBefore + " chars_after=" + charsAfter + " reduction=" + reductionPct + "%");
+  } else {
+    console.log("[TRACE] " + fieldLabel + " stage=" + stage + " action=" + action + " fn=" + fn);
+  }
+  if (action === "compression_used" || action === "fallback_used" || action === "fit_adjustment") {
+    console.log("[TRACE] " + fieldLabel + " before=\"" + before.substring(0, 60) + "\"");
+    console.log("[TRACE] " + fieldLabel + " after=\"" + after.substring(0, 60) + "\"");
+  }
+}
+
+function forensicTraceRenderer(slideIndex: number, layout: string, renderer: string) {
+  _rendererTrace.push({ slide: slideIndex, layout, renderer });
+  console.log("[TRACE] slide=" + slideIndex + " layout=" + layout + " renderer=" + renderer);
+}
+
+function forensicReset() {
+  _forensicEvents.length = 0;
+  _rendererTrace.length = 0;
+  _forensicSlideIndex = 0;
+  _forensicSlideLayout = "";
+  _forensicSlideField = "";
+}
+
+function forensicGetReport() {
+  const compressionEvents = _forensicEvents.filter(e => e.action === "compression_used");
+  const fallbackEvents = _forensicEvents.filter(e => e.action === "fallback_used");
+  const fieldHistoryMap = new Map<string, ForensicEvent[]>();
+  for (const e of _forensicEvents) {
+    const key = e.slide + "|" + e.field;
+    if (!fieldHistoryMap.has(key)) fieldHistoryMap.set(key, []);
+    fieldHistoryMap.get(key)!.push(e);
+  }
+  const fieldHistorySummary = Array.from(fieldHistoryMap.entries())
+    .filter(([, events]) => events.length > 1 || events.some(e => e.reduction_pct > 0))
+    .slice(0, 30)
+    .map(([key, events]) => ({
+      slide_field: key,
+      mutations: events.map(e => e.stage + "/" + e.fn + ":" + e.action + (e.reduction_pct > 0 ? "(-" + e.reduction_pct + "%)" : "")),
+      final_chars: events[events.length - 1].chars_after,
+    }));
+
+  return {
+    compression_events: compressionEvents.slice(0, 30).map(e => ({
+      slide: e.slide, field: e.field, layout: e.layout, stage: e.stage,
+      function: e.fn, chars_before: e.chars_before, chars_after: e.chars_after,
+      reduction_pct: e.reduction_pct, before: e.before, after: e.after,
+    })),
+    fallback_events: fallbackEvents.slice(0, 20).map(e => ({
+      slide: e.slide, field: e.field, layout: e.layout, stage: e.stage,
+      function: e.fn, before: e.before, after: e.after,
+    })),
+    renderer_trace: _rendererTrace.slice(0, 50),
+    field_history_summary: fieldHistorySummary,
+    total_trace_events: _forensicEvents.length,
+    total_compressions: compressionEvents.length,
+    total_fallbacks: fallbackEvents.length,
+  };
+}
+
 function splitNarrativeItemForStructure(text: string, maxChars: number): string[] {
   const trimmed = (text || "").trim();
   if (!trimmed) return [];
@@ -559,6 +684,7 @@ function smartBullet(text: string): string {
   // Prefer structural split-aware compression for label:explanation inputs
   const structural = splitLabelExplanationBullet(t, maxChars);
   if (structural && structural.length > 0) {
+    forensicTrace("text-util", "smartBullet", "compression_used", t, structural[0]);
     return structural[0];
   }
 
@@ -566,11 +692,14 @@ function smartBullet(text: string): string {
   const sub = t.substring(0, maxChars);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
   if (sentenceEnd > maxChars * 0.4) {
-    return ensureSentenceEnd(t.substring(0, sentenceEnd + 1).trim());
+    const result = ensureSentenceEnd(t.substring(0, sentenceEnd + 1).trim());
+    forensicTrace("text-util", "smartBullet", "compression_used", t, result);
+    return result;
   }
 
   // Fall back to smartTruncate (never with ellipsis)
   const result = smartTruncate(t, maxChars, false);
+  forensicTrace("text-util", "smartBullet", "fallback_used", t, ensureSentenceEnd(result));
   return ensureSentenceEnd(result);
 }
 
@@ -1005,6 +1134,7 @@ function enforceSentenceIntegrity(text: string): string {
 
 function compressText(text: string, maxChars: number = 160): string {
   if (!text || text.length <= maxChars) return text;
+  const original = text;
   let t = text;
   // Conservative compression only (avoid semantic corruption)
   t = t.replace(/\bpor\s+exemplo\b/gi, "exemplo");
@@ -1028,6 +1158,9 @@ function compressText(text: string, maxChars: number = 160): string {
       const expandedClean = enforceSentenceIntegrity(expanded);
       if (!detectSemanticTruncation(expandedClean)) t = expandedClean;
     }
+  }
+  if (t.length < original.length) {
+    forensicTrace("text-util", "compressText", "compression_used", original, t);
   }
   return t;
 }
@@ -1445,7 +1578,12 @@ function fitTextForBox(text: string, boxW: number, boxH: number, fontSize: numbe
 
   for (let i = 0; i < 4; i++) {
     const bbox = measureBoundingBox(currentText, currentFont, fontFace, boxW, boxH);
-    if (bbox.fits) return { text: currentText, fontSize: currentFont, adjusted: i > 0 };
+    if (bbox.fits) {
+      if (i > 0) {
+        forensicTrace("renderer", "fitTextForBox", "fit_adjustment", clean, currentText);
+      }
+      return { text: currentText, fontSize: currentFont, adjusted: i > 0 };
+    }
 
     if (bbox.recommendedFontSize < currentFont && bbox.recommendedFontSize >= minFont) {
       currentFont = bbox.recommendedFontSize;
@@ -1456,6 +1594,9 @@ function fitTextForBox(text: string, boxW: number, boxH: number, fontSize: numbe
     currentText = compressText(currentText, targetChars);
   }
 
+  if (currentText.length < clean.length) {
+    forensicTrace("renderer", "fitTextForBox", "compression_used", clean, currentText);
+  }
   return { text: currentText, fontSize: Math.max(currentFont, minFont), adjusted: true };
 }
 
@@ -2328,6 +2469,7 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
 
   // Density validation for plain text
   if (typeof text === "string" && text.length > 0) {
+    const originalText = text;
     const fontSize = Number(options.fontSize || TYPO.BODY);
     text = enforceSentenceIntegrity(text);
 
@@ -2337,6 +2479,7 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
       text = enforceSentenceIntegrity(adjusted.text);
       options = { ...options, fontSize: adjusted.fontSize };
       if (adjusted.truncated) {
+        forensicTrace("addTextSafe", "autoAdjustText", "compression_used", originalText, text);
         console.log("[DENSITY] auto-adjust Slide " + _auditSlideCounter + ": " + String(adjusted.fontSize) + "pt");
       }
     }
@@ -2344,9 +2487,16 @@ function addTextSafe(slide: any, text: any, options: Record<string, unknown>) {
     if (detectTruncation(text)) {
       text = enforceSentenceIntegrity(text);
       if (detectTruncation(text)) {
+        const beforeFallback = text;
         text = smartTruncate(text, Math.max(24, Math.floor(check.maxChars * 0.9)), false);
         text = enforceSentenceIntegrity(text);
+        forensicTrace("addTextSafe", "smartTruncate", "fallback_used", beforeFallback, text);
       }
+    }
+
+    // Log post-render state
+    if (typeof text === "string" && text.length < originalText.length && originalText.length > 20) {
+      forensicTrace("addTextSafe", "addTextSafe", "post_render_truncation", originalText, text);
     }
   }
 
@@ -5809,6 +5959,7 @@ Deno.serve(async (req: Request) => {
     // Stage 1.5: LLM NLP → Stage 2: Structure → Stage 3: Visual → Stage 4: Final QC
     // ═══════════════════════════════════════════════════════
     console.log("[PIPELINE] Starting multi-stage validation pipeline v3...");
+    forensicReset();
 
     // ── PRE-STAGE A: Build TF-IDF corpus from all module content for semantic operations ──
     const corpusDocs = modules.map((m: any) => sanitize(m.content || "")).filter((c: string) => c.length > 20);
@@ -6842,42 +6993,77 @@ Idioma: pt-BR`
     });
 
     // Build structured report
-    const buildReport = (passed: boolean) => ({
-      quality_score: Number(qualityScore.toFixed(1)),
-      passed,
-      blocked_reason: blockReason,
-      pipeline_version: "v11-real-flow-consistency",
-      checkpoints,
-      problematic_slides: problematicSlides.slice(0, 15),
-      corrections_attempted: {
-        total_fixes: qualityReport.stage4_all_fixes.length,
-        total_warnings: dedupedWarnings.length,
-        retries_used: qualityReport.stage4_retries_used,
-        overflow_splits: qualityReport.stage3_overflow_splits,
-        dedup_removed: qualityReport.stage2_dedup_removed,
-        relevance_dropped: qualityReport.stage2_relevance_dropped,
-        llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
-        llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
-        redistributions: qualityReport.stage2_5_redistributions,
-        module_cover_title_redistributions: qualityReport.stage2_5_module_cover_title_redistributions,
-        objective_redistributions: qualityReport.stage2_5_objective_redistributions,
-        label_explanation_splits: qualityReport.stage2_5_label_explanation_splits,
-        semantic_losses: qualityReport.stage2_5_semantic_losses.length,
-        semantic_loss_details: qualityReport.stage2_5_semantic_losses.slice(0, 10),
-        regeneration_flagged: qualityReport.stage0_5_items_flagged,
-        regeneration_attempted: qualityReport.stage0_5_items_regenerated,
-        regeneration_resolved: qualityReport.stage0_5_items_resolved,
-        regeneration_unresolved: qualityReport.stage0_5_items_unresolved,
-        regeneration_details: qualityReport.stage0_5_details.slice(0, 15),
-      },
-      summary: {
-        total_slides: allSlides.length + 3,
-        pre_parse_blocks: qualityReport.pre_parse_total_blocks,
-        avg_density: qualityReport.stage2_avg_density,
-        bbox_overflows: qualityReport.stage3_bbox_overflows,
-        bbox_fixes: qualityReport.stage3_bbox_fixes,
-      },
-    });
+    const buildReport = (passed: boolean) => {
+      const forensicData = forensicGetReport();
+      // Build truncation_root_causes from forensic events
+      const truncationRootCauses: { slide: number; field: string; layout: string; last_stage: string; last_fn: string; compression_before: boolean; fallback_before: boolean; continuation_created: boolean }[] = [];
+      const postRenderSlides = new Set<number>();
+      for (const w of postRenderTruncationWarnings) {
+        const slideMatch = w.match(/Slide\s+(\d+)/);
+        if (slideMatch) postRenderSlides.add(Number(slideMatch[1]));
+      }
+      for (const slideNum of postRenderSlides) {
+        const slideEvents = _forensicEvents.filter(e => e.slide === slideNum);
+        const lastEvent = slideEvents.length > 0 ? slideEvents[slideEvents.length - 1] : null;
+        truncationRootCauses.push({
+          slide: slideNum,
+          field: lastEvent?.field || "unknown",
+          layout: lastEvent?.layout || "unknown",
+          last_stage: lastEvent?.stage || "unknown",
+          last_fn: lastEvent?.fn || "unknown",
+          compression_before: slideEvents.some(e => e.action === "compression_used"),
+          fallback_before: slideEvents.some(e => e.action === "fallback_used"),
+          continuation_created: slideEvents.some(e => e.action === "split_structural" || e.action === "continuation_created"),
+        });
+      }
+
+      return {
+        quality_score: Number(qualityScore.toFixed(1)),
+        passed,
+        blocked_reason: blockReason,
+        pipeline_version: "v11.2-forensic-tracing",
+        checkpoints,
+        problematic_slides: problematicSlides.slice(0, 15),
+        corrections_attempted: {
+          total_fixes: qualityReport.stage4_all_fixes.length,
+          total_warnings: dedupedWarnings.length,
+          retries_used: qualityReport.stage4_retries_used,
+          overflow_splits: qualityReport.stage3_overflow_splits,
+          dedup_removed: qualityReport.stage2_dedup_removed,
+          relevance_dropped: qualityReport.stage2_relevance_dropped,
+          llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
+          llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
+          redistributions: qualityReport.stage2_5_redistributions,
+          module_cover_title_redistributions: qualityReport.stage2_5_module_cover_title_redistributions,
+          objective_redistributions: qualityReport.stage2_5_objective_redistributions,
+          label_explanation_splits: qualityReport.stage2_5_label_explanation_splits,
+          semantic_losses: qualityReport.stage2_5_semantic_losses.length,
+          semantic_loss_details: qualityReport.stage2_5_semantic_losses.slice(0, 10),
+          regeneration_flagged: qualityReport.stage0_5_items_flagged,
+          regeneration_attempted: qualityReport.stage0_5_items_regenerated,
+          regeneration_resolved: qualityReport.stage0_5_items_resolved,
+          regeneration_unresolved: qualityReport.stage0_5_items_unresolved,
+          regeneration_details: qualityReport.stage0_5_details.slice(0, 15),
+        },
+        summary: {
+          total_slides: allSlides.length + 3,
+          pre_parse_blocks: qualityReport.pre_parse_total_blocks,
+          avg_density: qualityReport.stage2_avg_density,
+          bbox_overflows: qualityReport.stage3_bbox_overflows,
+          bbox_fixes: qualityReport.stage3_bbox_fixes,
+        },
+        forensic_trace: {
+          truncation_root_causes: truncationRootCauses.slice(0, 20),
+          compression_events: forensicData.compression_events,
+          fallback_events: forensicData.fallback_events,
+          renderer_trace: forensicData.renderer_trace,
+          field_history_summary: forensicData.field_history_summary,
+          total_trace_events: forensicData.total_trace_events,
+          total_compressions: forensicData.total_compressions,
+          total_fallbacks: forensicData.total_fallbacks,
+        },
+      };
+    };
 
     // ── EXPORT GATE ──
     if (blocked) {
@@ -6944,22 +7130,33 @@ Idioma: pt-BR`
     renderTOC(pptx, { layout: "module_cover", title: "O que voce vai aprender", modules: modulesSummary });
 
     // 3. All module slides
-    for (const sd of allSlides) {
+    for (let _si = 0; _si < allSlides.length; _si++) {
+      const sd = allSlides[_si];
       const titlePreview = (sd.title || "").substring(0, 52);
+      const slideNum = _si + 3; // offset for cover+TOC
+      // Set forensic context for all addTextSafe/fitTextForBox calls within this renderer
+      forensicSetContext(slideNum, sd.layout, "slide");
+      // Set field-level context per item before each renderer
+      if (sd.items) {
+        sd.items.forEach((item, ii) => {
+          forensicSetContext(slideNum, sd.layout, "item[" + ii + "]");
+        });
+      }
+      forensicSetContext(slideNum, sd.layout, "title");
       switch (sd.layout) {
-        case "module_cover":                 flowLog("MODULE_COVER", "renderModuleCover -> title='" + titlePreview + "'"); renderModuleCover(pptx, sd); break;
-        case "definition_card_with_pillars": flowLog("DEFINITION", "renderDefinitionWithPillars -> title='" + titlePreview + "'"); renderDefinitionWithPillars(pptx, sd); break;
-        case "comparison_table":             flowLog("TABLE", "renderComparisonTable -> title='" + titlePreview + "'"); renderComparisonTable(pptx, sd); break;
-        case "grid_cards":                   flowLog("BULLETS_NARRATIVE", "renderGridCards -> title='" + titlePreview + "'"); renderGridCards(pptx, sd); break;
-        case "four_quadrants":               flowLog("BULLETS_NARRATIVE", "renderFourQuadrants -> title='" + titlePreview + "'"); renderFourQuadrants(pptx, sd); break;
-        case "process_timeline":             flowLog("TIMELINE_PROCESS", "renderProcessTimeline -> title='" + titlePreview + "'"); renderProcessTimeline(pptx, sd); break;
-        case "numbered_takeaways":           flowLog("TAKEAWAYS", "renderNumberedTakeaways -> title='" + titlePreview + "'"); renderNumberedTakeaways(pptx, sd); break;
-        case "example_highlight":            flowLog("EXAMPLE", "renderExampleHighlight -> title='" + titlePreview + "'"); renderExampleHighlight(pptx, sd); break;
-        case "reflection_callout":           flowLog("REFLECTION", "renderReflectionCallout -> title='" + titlePreview + "'"); renderReflectionCallout(pptx, sd); break;
-        case "warning_callout":              flowLog("WARNING", "renderWarningCallout -> title='" + titlePreview + "'"); renderWarningCallout(pptx, sd); break;
-        case "summary_slide":                flowLog("SUMMARY", "renderSummarySlide -> title='" + titlePreview + "'"); renderSummarySlide(pptx, sd); break;
-        case "bullets":                      flowLog("BULLETS", "renderBullets -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
-        default:                               flowLog("BULLETS", "renderBullets(default) -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
+        case "module_cover":                 forensicTraceRenderer(slideNum, sd.layout, "renderModuleCover"); flowLog("MODULE_COVER", "renderModuleCover -> title='" + titlePreview + "'"); renderModuleCover(pptx, sd); break;
+        case "definition_card_with_pillars": forensicTraceRenderer(slideNum, sd.layout, "renderDefinitionWithPillars"); flowLog("DEFINITION", "renderDefinitionWithPillars -> title='" + titlePreview + "'"); renderDefinitionWithPillars(pptx, sd); break;
+        case "comparison_table":             forensicTraceRenderer(slideNum, sd.layout, "renderComparisonTable"); flowLog("TABLE", "renderComparisonTable -> title='" + titlePreview + "'"); renderComparisonTable(pptx, sd); break;
+        case "grid_cards":                   forensicTraceRenderer(slideNum, sd.layout, "renderGridCards"); flowLog("BULLETS_NARRATIVE", "renderGridCards -> title='" + titlePreview + "'"); renderGridCards(pptx, sd); break;
+        case "four_quadrants":               forensicTraceRenderer(slideNum, sd.layout, "renderFourQuadrants"); flowLog("BULLETS_NARRATIVE", "renderFourQuadrants -> title='" + titlePreview + "'"); renderFourQuadrants(pptx, sd); break;
+        case "process_timeline":             forensicTraceRenderer(slideNum, sd.layout, "renderProcessTimeline"); flowLog("TIMELINE_PROCESS", "renderProcessTimeline -> title='" + titlePreview + "'"); renderProcessTimeline(pptx, sd); break;
+        case "numbered_takeaways":           forensicTraceRenderer(slideNum, sd.layout, "renderNumberedTakeaways"); flowLog("TAKEAWAYS", "renderNumberedTakeaways -> title='" + titlePreview + "'"); renderNumberedTakeaways(pptx, sd); break;
+        case "example_highlight":            forensicTraceRenderer(slideNum, sd.layout, "renderExampleHighlight"); flowLog("EXAMPLE", "renderExampleHighlight -> title='" + titlePreview + "'"); renderExampleHighlight(pptx, sd); break;
+        case "reflection_callout":           forensicTraceRenderer(slideNum, sd.layout, "renderReflectionCallout"); flowLog("REFLECTION", "renderReflectionCallout -> title='" + titlePreview + "'"); renderReflectionCallout(pptx, sd); break;
+        case "warning_callout":              forensicTraceRenderer(slideNum, sd.layout, "renderWarningCallout"); flowLog("WARNING", "renderWarningCallout -> title='" + titlePreview + "'"); renderWarningCallout(pptx, sd); break;
+        case "summary_slide":                forensicTraceRenderer(slideNum, sd.layout, "renderSummarySlide"); flowLog("SUMMARY", "renderSummarySlide -> title='" + titlePreview + "'"); renderSummarySlide(pptx, sd); break;
+        case "bullets":                      forensicTraceRenderer(slideNum, sd.layout, "renderBullets"); flowLog("BULLETS", "renderBullets -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
+        default:                               forensicTraceRenderer(slideNum, sd.layout, "renderBullets"); flowLog("BULLETS", "renderBullets(default) -> title='" + titlePreview + "'"); renderBullets(pptx, sd); break;
       }
     }
 
