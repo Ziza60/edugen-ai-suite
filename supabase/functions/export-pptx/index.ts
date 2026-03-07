@@ -6297,7 +6297,7 @@ Idioma: pt-BR`
       quality_score: Number(qualityScore.toFixed(1)),
       passed,
       blocked_reason: blockReason,
-      pipeline_version: "v7-structural-redistribution",
+      pipeline_version: "v8-selective-regeneration",
       checkpoints,
       problematic_slides: problematicSlides.slice(0, 15),
       corrections_attempted: {
