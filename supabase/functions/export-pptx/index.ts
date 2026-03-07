@@ -5908,7 +5908,7 @@ Idioma: pt-BR`
                 afterIndex: si,
                 slides: [{
                   layout: "bullets",
-                  title: smartTitle(s.title),
+                  title: "Visão Geral do Módulo",
                   sectionLabel: "VISÃO GERAL",
                   items: sanitizeBullets([restDesc]),
                   moduleIndex: s.moduleIndex,
