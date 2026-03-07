@@ -1692,8 +1692,14 @@ function fitTextForBox(text: string, boxW: number, boxH: number, fontSize: numbe
       continue;
     }
 
-    const targetChars = Math.max(24, currentText.length - Math.max(8, bbox.overflowChars + 4));
-    currentText = compressText(currentText, targetChars);
+      const targetChars = Math.max(24, currentText.length - Math.max(8, bbox.overflowChars + 4));
+      const compressed = compressText(currentText, targetChars);
+      // If compression produces semantic truncation, prefer font reduction only
+      if (detectSemanticTruncation(compressed) && currentFont > minFont) {
+        currentFont = Math.max(minFont, currentFont - 2);
+        continue;
+      }
+      currentText = compressed;
   }
 
   if (currentText.length < clean.length) {
