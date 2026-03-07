@@ -293,6 +293,62 @@ export type Database = {
         }
         Relationships: []
       }
+      pptx_export_reports: {
+        Row: {
+          blocked_reason: string | null
+          checkpoints: Json
+          corrections_attempted: Json
+          course_id: string
+          created_at: string
+          forensic_trace: Json
+          id: string
+          passed: boolean
+          pipeline_version: string | null
+          problematic_slides: Json
+          quality_score: number
+          summary: Json
+          user_id: string
+        }
+        Insert: {
+          blocked_reason?: string | null
+          checkpoints?: Json
+          corrections_attempted?: Json
+          course_id: string
+          created_at?: string
+          forensic_trace?: Json
+          id?: string
+          passed?: boolean
+          pipeline_version?: string | null
+          problematic_slides?: Json
+          quality_score?: number
+          summary?: Json
+          user_id: string
+        }
+        Update: {
+          blocked_reason?: string | null
+          checkpoints?: Json
+          corrections_attempted?: Json
+          course_id?: string
+          created_at?: string
+          forensic_trace?: Json
+          id?: string
+          passed?: boolean
+          pipeline_version?: string | null
+          problematic_slides?: Json
+          quality_score?: number
+          summary?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pptx_export_reports_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
