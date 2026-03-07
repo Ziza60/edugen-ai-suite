@@ -4436,10 +4436,22 @@ function renderModuleCover(pptx: any, data: SlideData) {
 
   // Calculate description height dynamically to avoid overlap with objectives
   let descEndY = sepY + 0.20;
+  let deferredOverviewItems: string[] = [];
   if (data.description) {
     const descW = SAFE_W * 0.65;
     const descCapH = titleSub ? 0.85 : 1.0;
-    const descFit = fitTextForBox(data.description, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
+    let descText = ensureSentenceEnd(data.description);
+    const descFitCheck = measureBoundingBox(descText, TYPO.SUBTITLE, FONT_BODY, descW, descCapH);
+    if (!descFitCheck.fits) {
+      const descParts = splitLongSegments(descText, 140);
+      if (descParts.length > 1) {
+        descText = descParts[0];
+        deferredOverviewItems = descParts.slice(1).map(ensureSentenceEnd);
+        flowLog("MODULE_COVER_DESCRIPTION", "renderModuleCover -> split description before render, title='" + (data.title || "").substring(0, 52) + "', deferred=" + deferredOverviewItems.length);
+      }
+    }
+
+    const descFit = fitTextForBox(descText, descW, descCapH, TYPO.SUBTITLE, FONT_BODY, TYPO.SUPPORT);
     const descLines = estimateTextLines(descFit.text, descW, descFit.fontSize);
     const descH = Math.max(0.45, descLines * (descFit.fontSize * 1.35 / 72) + 0.10);
     addTextSafe(slide, descFit.text, {
@@ -4449,16 +4461,50 @@ function renderModuleCover(pptx: any, data: SlideData) {
     descEndY += descH + 0.20;
   }
 
-  const objectives = data.objectives || [];
+  const objectives = (data.objectives || []).map(ensureSentenceEnd).filter(Boolean);
+  const deferredObjectiveItems: string[] = [];
   if (objectives.length > 0) {
     const objStartY = Math.max(descEndY, sepY + 0.75);
     const objW = SAFE_W * 0.60;
-    // v6: Use fitTextForBox per objective instead of hard smartTruncate(90)
-    // This allows font size reduction before cutting, avoiding "..." entirely
-    objectives.slice(0, 3).forEach((obj, idx) => {
+    const maxCoverObjectives = 3;
+
+    for (let idx = 0; idx < objectives.length; idx++) {
+      const obj = objectives[idx];
+      if (idx >= maxCoverObjectives) {
+        deferredObjectiveItems.push(obj);
+        continue;
+      }
+
       const objY = objStartY + idx * 0.50;
-      if (objY + 0.44 > SLIDE_H - 0.40) return;
+      if (objY + 0.44 > SLIDE_H - 0.40) {
+        deferredObjectiveItems.push(obj);
+        continue;
+      }
+
       const dotSize = 0.12;
+      const objFitCheck = measureBoundingBox(obj, TYPO.SUPPORT, FONT_BODY, objW - 0.30, 0.44);
+      if (!objFitCheck.fits) {
+        const parts = splitObjectiveForStructure(obj, Math.max(48, activeDensity.maxCharsPerBullet - 10));
+        if (parts.length > 1) {
+          const first = parts.shift() || obj;
+          deferredObjectiveItems.push(...parts.map(ensureSentenceEnd));
+          const objFit = fitTextForBox(first, objW - 0.30, 0.44, TYPO.SUPPORT, FONT_BODY, 12);
+          const objLineH = (objFit.fontSize * 1.35) / 72;
+          slide.addShape(pptx.ShapeType.ellipse, {
+            x: MARGIN + 0.05, y: objY + (objLineH - dotSize) / 2 + 0.04, w: dotSize, h: dotSize,
+            fill: { color: moduleColor },
+          });
+          addTextSafe(slide, objFit.text, {
+            x: MARGIN + 0.30, y: objY, w: objW, h: 0.44,
+            fontSize: objFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
+          });
+          flowLog("OBJECTIVES", "renderModuleCover -> objective split before render, title='" + (data.title || "").substring(0, 52) + "'");
+          continue;
+        }
+        deferredObjectiveItems.push(obj);
+        continue;
+      }
+
       const objFit = fitTextForBox(obj, objW - 0.30, 0.44, TYPO.SUPPORT, FONT_BODY, 12);
       const objLineH = (objFit.fontSize * 1.35) / 72;
       slide.addShape(pptx.ShapeType.ellipse, {
@@ -4469,6 +4515,30 @@ function renderModuleCover(pptx: any, data: SlideData) {
         x: MARGIN + 0.30, y: objY, w: objW, h: 0.44,
         fontSize: objFit.fontSize, fontFace: FONT_BODY, color: C.TEXT_BODY, valign: "top",
       });
+    }
+  }
+
+  if (deferredOverviewItems.length > 0) {
+    flowLog("MODULE_COVER_DESCRIPTION", "renderModuleCover -> continuation created, title='" + (data.title || "").substring(0, 52) + "', remaining=" + deferredOverviewItems.length);
+    renderBullets(pptx, {
+      layout: "bullets",
+      title: getNextContinuationTitle("Visão Geral do Módulo", "Visão Geral do Módulo"),
+      sectionLabel: "VISÃO GERAL",
+      items: deferredOverviewItems,
+      moduleIndex: data.moduleIndex,
+      blockType: "normal",
+    });
+  }
+
+  if (deferredObjectiveItems.length > 0) {
+    flowLog("OBJECTIVES", "renderModuleCover -> continuation created, title='" + (data.title || "").substring(0, 52) + "', remaining=" + deferredObjectiveItems.length);
+    renderBullets(pptx, {
+      layout: "bullets",
+      title: getNextContinuationTitle("Objetivos do Módulo", "Objetivos do Módulo"),
+      sectionLabel: "OBJETIVOS DO MÓDULO",
+      items: deferredObjectiveItems,
+      moduleIndex: data.moduleIndex,
+      blockType: "normal",
     });
   }
 
