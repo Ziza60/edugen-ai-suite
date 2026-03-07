@@ -6242,6 +6242,8 @@ Idioma: pt-BR`
         const maxChars = activeDensity.maxCharsPerBullet;
         const newItems: string[] = [];
         let didRedistribute = false;
+        const protectedNoCompression = s.layout === "summary_slide"
+          || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
 
         for (const item of s.items) {
           const trimmed = (item || "").trim();
@@ -6252,7 +6254,7 @@ Idioma: pt-BR`
           if (labelParsed && (trimmed.length > Math.floor(maxChars * 0.85) || enumLike)) {
             const splitLabel = splitNarrativeItemForStructure(trimmed, maxChars);
             if (splitLabel.length > 1) {
-              newItems.push(...splitLabel);
+              newItems.push(...splitLabel.map(ensureSentenceEnd));
               didRedistribute = true;
               labelExplanationSplits++;
               continue;
@@ -6262,12 +6264,19 @@ Idioma: pt-BR`
           if (trimmed.length > maxChars) {
             const pieces = splitNarrativeItemForStructure(trimmed, maxChars);
             if (pieces.length > 1) {
-              newItems.push(...pieces);
+              newItems.push(...pieces.map(ensureSentenceEnd));
               didRedistribute = true;
               continue;
             }
 
-            // LAST RESORT: compress and LOG semantic loss
+            if (protectedNoCompression) {
+              // For summary/objectives/overview: never compress here, keep full sentence and force continuation later
+              newItems.push(ensureSentenceEnd(trimmed));
+              flowLog("FALLBACK", "stage2.5 -> compression skipped (protected layout), layout=" + s.layout + ", title='" + (s.title || "").substring(0, 46) + "'");
+              continue;
+            }
+
+            // LAST RESORT: compress and LOG semantic loss (non-protected layouts only)
             const originalLen = trimmed.length;
             const compressed = smartBullet(trimmed);
             const lossRatio = 1 - (compressed.length / originalLen);
@@ -6280,6 +6289,7 @@ Idioma: pt-BR`
             }
             newItems.push(compressed);
             if (compressed !== trimmed) didRedistribute = true;
+            flowLog("FALLBACK", "stage2.5 -> compression used, layout=" + s.layout + ", title='" + (s.title || "").substring(0, 46) + "'");
             continue;
           }
 
