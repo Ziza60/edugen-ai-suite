@@ -330,7 +330,11 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
   const sub = t.substring(0, maxChars);
   const sentenceEnd = Math.max(sub.lastIndexOf(". "), sub.lastIndexOf("! "), sub.lastIndexOf("? "));
   if (sentenceEnd > maxChars * 0.5) {
-    return t.substring(0, sentenceEnd + 1).trim();
+    const result = t.substring(0, sentenceEnd + 1).trim();
+    if (result.length < t.length) {
+      forensicTrace("text-util", "smartTruncate", "compression_used", t, result);
+    }
+    return result;
   }
 
   const truncated = t.substring(0, maxChars);
@@ -367,6 +371,10 @@ function smartTruncate(text: string, maxChars: number, addEllipsis = false): str
 
   if (addEllipsis && result.length < t.length && !/[.!?]$/.test(result)) {
     result += "...";
+  }
+
+  if (result.length < t.length) {
+    forensicTrace("text-util", "smartTruncate", "compression_used", t, result);
   }
 
   return result;
@@ -507,6 +515,123 @@ function getNextContinuationTitle(title: string, fallbackBase: string): string {
 
 function flowLog(tag: string, details: string) {
   console.log("[FLOW] " + tag + " | " + details);
+}
+
+/* ═══════════════════════════════════════════════════════
+   FORENSIC TRACER — field-level mutation tracking
+   ═══════════════════════════════════════════════════════ */
+
+interface ForensicEvent {
+  slide: number;
+  layout: string;
+  field: string;
+  stage: string;
+  fn: string;
+  action: string;
+  before: string;
+  after: string;
+  chars_before: number;
+  chars_after: number;
+  reduction_pct: number;
+}
+
+interface RendererTraceEvent {
+  slide: number;
+  layout: string;
+  renderer: string;
+}
+
+const _forensicEvents: ForensicEvent[] = [];
+const _rendererTrace: RendererTraceEvent[] = [];
+let _forensicSlideIndex = 0;
+let _forensicSlideLayout = "";
+let _forensicSlideField = "";
+
+function forensicSetContext(slideIndex: number, layout: string, field: string) {
+  _forensicSlideIndex = slideIndex;
+  _forensicSlideLayout = layout;
+  _forensicSlideField = field;
+}
+
+function forensicTrace(stage: string, fn: string, action: string, before: string, after: string) {
+  const charsBefore = (before || "").length;
+  const charsAfter = (after || "").length;
+  const reductionPct = charsBefore > 0 ? Number(((1 - charsAfter / charsBefore) * 100).toFixed(1)) : 0;
+  const event: ForensicEvent = {
+    slide: _forensicSlideIndex,
+    layout: _forensicSlideLayout,
+    field: _forensicSlideField,
+    stage,
+    fn,
+    action,
+    before: before.substring(0, 80),
+    after: after.substring(0, 80),
+    chars_before: charsBefore,
+    chars_after: charsAfter,
+    reduction_pct: reductionPct,
+  };
+  _forensicEvents.push(event);
+
+  const fieldLabel = "slide=" + _forensicSlideIndex + " layout=" + _forensicSlideLayout + " field=" + _forensicSlideField;
+  if (reductionPct > 0) {
+    console.log("[TRACE] " + fieldLabel + " stage=" + stage + " action=" + action + " fn=" + fn +
+      " chars_before=" + charsBefore + " chars_after=" + charsAfter + " reduction=" + reductionPct + "%");
+  } else {
+    console.log("[TRACE] " + fieldLabel + " stage=" + stage + " action=" + action + " fn=" + fn);
+  }
+  if (action === "compression_used" || action === "fallback_used" || action === "fit_adjustment") {
+    console.log("[TRACE] " + fieldLabel + " before=\"" + before.substring(0, 60) + "\"");
+    console.log("[TRACE] " + fieldLabel + " after=\"" + after.substring(0, 60) + "\"");
+  }
+}
+
+function forensicTraceRenderer(slideIndex: number, layout: string, renderer: string) {
+  _rendererTrace.push({ slide: slideIndex, layout, renderer });
+  console.log("[TRACE] slide=" + slideIndex + " layout=" + layout + " renderer=" + renderer);
+}
+
+function forensicReset() {
+  _forensicEvents.length = 0;
+  _rendererTrace.length = 0;
+  _forensicSlideIndex = 0;
+  _forensicSlideLayout = "";
+  _forensicSlideField = "";
+}
+
+function forensicGetReport() {
+  const compressionEvents = _forensicEvents.filter(e => e.action === "compression_used");
+  const fallbackEvents = _forensicEvents.filter(e => e.action === "fallback_used");
+  const fieldHistoryMap = new Map<string, ForensicEvent[]>();
+  for (const e of _forensicEvents) {
+    const key = e.slide + "|" + e.field;
+    if (!fieldHistoryMap.has(key)) fieldHistoryMap.set(key, []);
+    fieldHistoryMap.get(key)!.push(e);
+  }
+  const fieldHistorySummary = Array.from(fieldHistoryMap.entries())
+    .filter(([, events]) => events.length > 1 || events.some(e => e.reduction_pct > 0))
+    .slice(0, 30)
+    .map(([key, events]) => ({
+      slide_field: key,
+      mutations: events.map(e => e.stage + "/" + e.fn + ":" + e.action + (e.reduction_pct > 0 ? "(-" + e.reduction_pct + "%)" : "")),
+      final_chars: events[events.length - 1].chars_after,
+    }));
+
+  return {
+    compression_events: compressionEvents.slice(0, 30).map(e => ({
+      slide: e.slide, field: e.field, layout: e.layout, stage: e.stage,
+      function: e.fn, chars_before: e.chars_before, chars_after: e.chars_after,
+      reduction_pct: e.reduction_pct, before: e.before, after: e.after,
+    })),
+    fallback_events: fallbackEvents.slice(0, 20).map(e => ({
+      slide: e.slide, field: e.field, layout: e.layout, stage: e.stage,
+      function: e.fn, before: e.before, after: e.after,
+    })),
+    renderer_trace: _rendererTrace.slice(0, 50),
+    field_history_summary: fieldHistorySummary,
+    total_trace_events: _forensicEvents.length,
+    total_compressions: compressionEvents.length,
+    total_fallbacks: fallbackEvents.length,
+  };
 }
 
 function splitNarrativeItemForStructure(text: string, maxChars: number): string[] {
