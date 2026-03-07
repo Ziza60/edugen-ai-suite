@@ -6993,42 +6993,77 @@ Idioma: pt-BR`
     });
 
     // Build structured report
-    const buildReport = (passed: boolean) => ({
-      quality_score: Number(qualityScore.toFixed(1)),
-      passed,
-      blocked_reason: blockReason,
-      pipeline_version: "v11-real-flow-consistency",
-      checkpoints,
-      problematic_slides: problematicSlides.slice(0, 15),
-      corrections_attempted: {
-        total_fixes: qualityReport.stage4_all_fixes.length,
-        total_warnings: dedupedWarnings.length,
-        retries_used: qualityReport.stage4_retries_used,
-        overflow_splits: qualityReport.stage3_overflow_splits,
-        dedup_removed: qualityReport.stage2_dedup_removed,
-        relevance_dropped: qualityReport.stage2_relevance_dropped,
-        llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
-        llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
-        redistributions: qualityReport.stage2_5_redistributions,
-        module_cover_title_redistributions: qualityReport.stage2_5_module_cover_title_redistributions,
-        objective_redistributions: qualityReport.stage2_5_objective_redistributions,
-        label_explanation_splits: qualityReport.stage2_5_label_explanation_splits,
-        semantic_losses: qualityReport.stage2_5_semantic_losses.length,
-        semantic_loss_details: qualityReport.stage2_5_semantic_losses.slice(0, 10),
-        regeneration_flagged: qualityReport.stage0_5_items_flagged,
-        regeneration_attempted: qualityReport.stage0_5_items_regenerated,
-        regeneration_resolved: qualityReport.stage0_5_items_resolved,
-        regeneration_unresolved: qualityReport.stage0_5_items_unresolved,
-        regeneration_details: qualityReport.stage0_5_details.slice(0, 15),
-      },
-      summary: {
-        total_slides: allSlides.length + 3,
-        pre_parse_blocks: qualityReport.pre_parse_total_blocks,
-        avg_density: qualityReport.stage2_avg_density,
-        bbox_overflows: qualityReport.stage3_bbox_overflows,
-        bbox_fixes: qualityReport.stage3_bbox_fixes,
-      },
-    });
+    const buildReport = (passed: boolean) => {
+      const forensicData = forensicGetReport();
+      // Build truncation_root_causes from forensic events
+      const truncationRootCauses: { slide: number; field: string; layout: string; last_stage: string; last_fn: string; compression_before: boolean; fallback_before: boolean; continuation_created: boolean }[] = [];
+      const postRenderSlides = new Set<number>();
+      for (const w of postRenderTruncationWarnings) {
+        const slideMatch = w.match(/Slide\s+(\d+)/);
+        if (slideMatch) postRenderSlides.add(Number(slideMatch[1]));
+      }
+      for (const slideNum of postRenderSlides) {
+        const slideEvents = _forensicEvents.filter(e => e.slide === slideNum);
+        const lastEvent = slideEvents.length > 0 ? slideEvents[slideEvents.length - 1] : null;
+        truncationRootCauses.push({
+          slide: slideNum,
+          field: lastEvent?.field || "unknown",
+          layout: lastEvent?.layout || "unknown",
+          last_stage: lastEvent?.stage || "unknown",
+          last_fn: lastEvent?.fn || "unknown",
+          compression_before: slideEvents.some(e => e.action === "compression_used"),
+          fallback_before: slideEvents.some(e => e.action === "fallback_used"),
+          continuation_created: slideEvents.some(e => e.action === "split_structural" || e.action === "continuation_created"),
+        });
+      }
+
+      return {
+        quality_score: Number(qualityScore.toFixed(1)),
+        passed,
+        blocked_reason: blockReason,
+        pipeline_version: "v11.2-forensic-tracing",
+        checkpoints,
+        problematic_slides: problematicSlides.slice(0, 15),
+        corrections_attempted: {
+          total_fixes: qualityReport.stage4_all_fixes.length,
+          total_warnings: dedupedWarnings.length,
+          retries_used: qualityReport.stage4_retries_used,
+          overflow_splits: qualityReport.stage3_overflow_splits,
+          dedup_removed: qualityReport.stage2_dedup_removed,
+          relevance_dropped: qualityReport.stage2_relevance_dropped,
+          llm_grammar_fixes: qualityReport.stage1_5_llm_grammar_fixes,
+          llm_truncation_fixes: qualityReport.stage1_5_llm_truncation_fixes,
+          redistributions: qualityReport.stage2_5_redistributions,
+          module_cover_title_redistributions: qualityReport.stage2_5_module_cover_title_redistributions,
+          objective_redistributions: qualityReport.stage2_5_objective_redistributions,
+          label_explanation_splits: qualityReport.stage2_5_label_explanation_splits,
+          semantic_losses: qualityReport.stage2_5_semantic_losses.length,
+          semantic_loss_details: qualityReport.stage2_5_semantic_losses.slice(0, 10),
+          regeneration_flagged: qualityReport.stage0_5_items_flagged,
+          regeneration_attempted: qualityReport.stage0_5_items_regenerated,
+          regeneration_resolved: qualityReport.stage0_5_items_resolved,
+          regeneration_unresolved: qualityReport.stage0_5_items_unresolved,
+          regeneration_details: qualityReport.stage0_5_details.slice(0, 15),
+        },
+        summary: {
+          total_slides: allSlides.length + 3,
+          pre_parse_blocks: qualityReport.pre_parse_total_blocks,
+          avg_density: qualityReport.stage2_avg_density,
+          bbox_overflows: qualityReport.stage3_bbox_overflows,
+          bbox_fixes: qualityReport.stage3_bbox_fixes,
+        },
+        forensic_trace: {
+          truncation_root_causes: truncationRootCauses.slice(0, 20),
+          compression_events: forensicData.compression_events,
+          fallback_events: forensicData.fallback_events,
+          renderer_trace: forensicData.renderer_trace,
+          field_history_summary: forensicData.field_history_summary,
+          total_trace_events: forensicData.total_trace_events,
+          total_compressions: forensicData.total_compressions,
+          total_fallbacks: forensicData.total_fallbacks,
+        },
+      };
+    };
 
     // ── EXPORT GATE ──
     if (blocked) {
