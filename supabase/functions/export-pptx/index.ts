@@ -6735,6 +6735,7 @@ Idioma: pt-BR`
         if (!bbox.fits) {
           const parts = splitLongSegments(s.description, 140);
           if (parts.length >= 2) {
+            const beforeDescription = s.description || "";
             s.description = parts[0];
             const rest = parts.slice(1);
             const chunks: string[][] = [];
@@ -6752,6 +6753,17 @@ Idioma: pt-BR`
                 }],
               });
             }
+            forensicTraceField(
+              si + 3,
+              s.layout,
+              "description",
+              "2.5",
+              "splitLongSegments",
+              "continuation_created",
+              beforeDescription,
+              s.description || "",
+              "module_cover_description_split",
+            );
             preRenderRedistributions++;
             flowLog("MODULE_COVER_DESCRIPTION", "stage2.5 -> moved description to continuation, title='" + (s.title || "").substring(0, 52) + "', chunks=" + chunks.length);
             qualityReport.stage4_all_fixes.push(
