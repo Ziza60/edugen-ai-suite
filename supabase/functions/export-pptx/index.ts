@@ -492,6 +492,27 @@ function splitModuleCoverTitle(title: string): { primary: string; secondary: str
   return { primary, secondary, changed: true };
 }
 
+function getContinuationTitle(title: string, part: number): string {
+  const base = (title || "").replace(/\s*\(Parte\s*\d+\)\s*$/i, "").trim();
+  return smartTitle(base + " (Parte " + part + ")");
+}
+
+function flowLog(tag: string, details: string) {
+  console.log("[FLOW] " + tag + " | " + details);
+}
+
+function splitNarrativeItemForStructure(text: string, maxChars: number): string[] {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return [];
+
+  const splitLabel = splitLabelExplanationBullet(trimmed, maxChars);
+  if (splitLabel && splitLabel.length > 1) {
+    return splitLabel.map(ensureSentenceEnd);
+  }
+
+  return splitLongSegments(trimmed, maxChars).map(ensureSentenceEnd);
+}
+
 /**
  * SMART SUBTITLE v2 — Increased capacity for cover descriptions.
  * Allows up to 280 chars (3+ lines at 18pt on wide slides).
