@@ -5428,6 +5428,11 @@ Deno.serve(async (req: Request) => {
       pre_parse_total_tables: totalPreParsedTables,
       stage0_semantic_planner_modules: 0,
       stage0_regex_fallback_modules: 0,
+      stage0_5_items_flagged: 0,
+      stage0_5_items_regenerated: 0,
+      stage0_5_items_resolved: 0,
+      stage0_5_items_unresolved: 0,
+      stage0_5_details: [] as string[],
       stage1_slides_generated: 0,
       stage1_nlp_summarized: 0,
       stage1_5_llm_grammar_fixes: 0,
@@ -5511,6 +5516,244 @@ Deno.serve(async (req: Request) => {
     qualityReport.stage0_regex_fallback_modules = regexFallbackUsed;
     qualityReport.stage1_slides_generated = allSlides.length;
     console.log("[STAGE-1] Content generated: " + allSlides.length + " slides");
+
+    // ── STAGE 0.5: SELECTIVE REGENERATION OF DEFECTIVE PLANNER OUTPUT ──
+    // Scans every item/title/objective from Stage 0. Any text that shows signs
+    // of truncation, incomplete semantics, or excessive length is sent to the
+    // LLM for a targeted rewrite. Only the defective fragment is regenerated —
+    // the rest of the slide plan is preserved intact.
+    console.log("[STAGE-0.5] Starting selective regeneration scan...");
+    {
+      // 1. Collect all defective text fragments across all slides
+      interface DefectiveItem {
+        slideIdx: number;
+        field: "title" | "item" | "objective" | "description";
+        itemIdx: number; // -1 for title/description
+        original: string;
+        reason: string;
+      }
+      const defectives: DefectiveItem[] = [];
+
+      for (let si = 0; si < allSlides.length; si++) {
+        const s = allSlides[si];
+
+        // Check title
+        if (s.title && s.title.length > 80 && detectTruncation(s.title)) {
+          defectives.push({ slideIdx: si, field: "title", itemIdx: -1, original: s.title, reason: "título truncado (" + s.title.length + " chars)" });
+        }
+        if (s.title && s.title.length > 100) {
+          defectives.push({ slideIdx: si, field: "title", itemIdx: -1, original: s.title, reason: "título excessivamente longo (" + s.title.length + " chars)" });
+        }
+
+        // Check description (module covers)
+        if (s.description && detectSemanticTruncation(s.description)) {
+          defectives.push({ slideIdx: si, field: "description", itemIdx: -1, original: s.description, reason: "descrição truncada" });
+        }
+
+        // Check objectives
+        if (s.objectives) {
+          for (let oi = 0; oi < s.objectives.length; oi++) {
+            const obj = s.objectives[oi];
+            if (!obj || obj.length < 5) continue;
+            if (detectSemanticTruncation(obj)) {
+              defectives.push({ slideIdx: si, field: "objective", itemIdx: oi, original: obj, reason: "objetivo truncado" });
+            }
+            if (obj.length > 80 && !obj.includes(". ")) {
+              defectives.push({ slideIdx: si, field: "objective", itemIdx: oi, original: obj, reason: "objetivo excessivamente longo sem sentenças completas" });
+            }
+          }
+        }
+
+        // Check bullet items
+        if (s.items) {
+          for (let ii = 0; ii < s.items.length; ii++) {
+            const item = s.items[ii];
+            if (!item || item.length < 8) continue;
+            if (detectSemanticTruncation(item)) {
+              defectives.push({ slideIdx: si, field: "item", itemIdx: ii, original: item, reason: "bullet truncado" });
+            }
+            // Extremely long single-sentence bullets that will definitely overflow
+            if (item.length > 250 && !(item.match(/[.!?]/g)?.length >= 2)) {
+              defectives.push({ slideIdx: si, field: "item", itemIdx: ii, original: item, reason: "bullet excessivamente longo sem quebra de sentença" });
+            }
+          }
+        }
+      }
+
+      // Deduplicate by slideIdx + field + itemIdx
+      const deduped = new Map<string, DefectiveItem>();
+      for (const d of defectives) {
+        const key = d.slideIdx + ":" + d.field + ":" + d.itemIdx;
+        if (!deduped.has(key)) deduped.set(key, d);
+      }
+      const uniqueDefectives = Array.from(deduped.values());
+      qualityReport.stage0_5_items_flagged = uniqueDefectives.length;
+
+      if (uniqueDefectives.length > 0) {
+        console.log("[STAGE-0.5] Found " + uniqueDefectives.length + " defective items, attempting selective regeneration...");
+
+        // 2. Batch defective items and send to LLM for rewrite
+        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+        if (LOVABLE_API_KEY) {
+          const REGEN_BATCH_SIZE = 15;
+          const batches: DefectiveItem[][] = [];
+          for (let i = 0; i < uniqueDefectives.length; i += REGEN_BATCH_SIZE) {
+            batches.push(uniqueDefectives.slice(i, i + REGEN_BATCH_SIZE));
+          }
+
+          for (const batch of batches) {
+            const itemsForPrompt = batch.map((d, idx) => {
+              const slideTitle = allSlides[d.slideIdx]?.title || "(sem título)";
+              return `[${idx}] Tipo: ${d.field} | Slide: "${slideTitle.substring(0, 40)}" | Motivo: ${d.reason}\nTexto original: "${d.original}"`;
+            }).join("\n\n");
+
+            try {
+              const regenResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash-lite",
+                  messages: [
+                    {
+                      role: "system",
+                      content: `Você é um editor especialista em apresentações PowerPoint educacionais.
+Sua tarefa: reescrever trechos defeituosos para que fiquem adequados para slides.
+
+REGRAS OBRIGATÓRIAS:
+1. Cada reescrita deve ser uma FRASE COMPLETA, semanticamente clara.
+2. NUNCA use reticências ("...") ou deixe frases incompletas.
+3. Para TÍTULOS: máximo 80 caracteres. Descritivo e conciso.
+4. Para OBJETIVOS: máximo 70 caracteres. Começa com verbo no infinitivo.
+5. Para BULLETS: máximo 160 caracteres. Frase completa terminada com ponto.
+6. Para DESCRIÇÕES: máximo 120 caracteres. Frase completa terminada com ponto.
+7. Preserve o significado original. Não invente informação nova.
+8. Se o texto original é bom mas longo, RESUMA mantendo a essência.
+9. Se o texto está truncado, COMPLETE a ideia de forma coerente.
+10. Cada reescrita DEVE terminar com ponto final.
+
+Idioma: pt-BR`
+                    },
+                    {
+                      role: "user",
+                      content: `Reescreva os seguintes ${batch.length} trechos defeituosos:\n\n${itemsForPrompt}`
+                    }
+                  ],
+                  tools: [{
+                    type: "function",
+                    function: {
+                      name: "submit_rewrites",
+                      description: "Submit rewritten texts for defective items",
+                      parameters: {
+                        type: "object",
+                        properties: {
+                          rewrites: {
+                            type: "array",
+                            items: {
+                              type: "object",
+                              properties: {
+                                index: { type: "number", description: "Index of the item being rewritten (from [N] in the input)" },
+                                rewritten: { type: "string", description: "The rewritten text, complete and slide-ready" },
+                              },
+                              required: ["index", "rewritten"],
+                              additionalProperties: false,
+                            },
+                          },
+                        },
+                        required: ["rewrites"],
+                        additionalProperties: false,
+                      },
+                    },
+                  }],
+                  tool_choice: { type: "function", function: { name: "submit_rewrites" } },
+                }),
+                signal: AbortSignal.timeout(LLM_REQUEST_TIMEOUT_MS),
+              });
+
+              if (regenResponse.ok) {
+                const regenData = await regenResponse.json();
+                const toolCall = regenData.choices?.[0]?.message?.tool_calls?.[0];
+                if (toolCall?.function?.arguments) {
+                  try {
+                    const parsed = JSON.parse(toolCall.function.arguments);
+                    const rewrites: { index: number; rewritten: string }[] = parsed.rewrites || [];
+
+                    for (const rw of rewrites) {
+                      if (rw.index < 0 || rw.index >= batch.length) continue;
+                      const def = batch[rw.index];
+                      let newText = (rw.rewritten || "").trim();
+                      if (!newText || newText.length < 5) continue;
+
+                      // Ensure sentence integrity
+                      if (!/[.!?]$/.test(newText)) newText += ".";
+
+                      // Validate the rewrite is actually better
+                      const stillTruncated = detectSemanticTruncation(newText);
+                      const tooLong = (def.field === "title" && newText.length > 100)
+                        || (def.field === "objective" && newText.length > 90)
+                        || (def.field === "item" && newText.length > 250);
+
+                      qualityReport.stage0_5_items_regenerated++;
+
+                      if (stillTruncated || tooLong) {
+                        // Regeneration didn't fix the issue
+                        qualityReport.stage0_5_items_unresolved++;
+                        qualityReport.stage0_5_details.push(
+                          "NÃO RESOLVIDO [" + def.field + "] slide '" + (allSlides[def.slideIdx]?.title || "").substring(0, 25) + "': " + def.reason
+                        );
+                        console.warn("[STAGE-0.5] Regeneration UNRESOLVED: " + def.field + " in slide " + def.slideIdx + " (" + def.reason + ")");
+                      } else {
+                        // Apply the rewrite
+                        const slide = allSlides[def.slideIdx];
+                        if (def.field === "title") {
+                          slide.title = newText;
+                        } else if (def.field === "description") {
+                          slide.description = newText;
+                        } else if (def.field === "objective" && slide.objectives && def.itemIdx >= 0) {
+                          slide.objectives[def.itemIdx] = newText;
+                        } else if (def.field === "item" && slide.items && def.itemIdx >= 0) {
+                          slide.items[def.itemIdx] = newText;
+                        }
+                        qualityReport.stage0_5_items_resolved++;
+                        qualityReport.stage0_5_details.push(
+                          "RESOLVIDO [" + def.field + "] slide '" + (slide.title || "").substring(0, 25) + "': '" + def.original.substring(0, 35) + "...' → '" + newText.substring(0, 35) + "...'"
+                        );
+                        qualityReport.stage4_all_fixes.push(
+                          "REGENERAÇÃO STAGE-0.5 [" + def.field + "]: '" + def.original.substring(0, 40) + "' → reescrito"
+                        );
+                        console.log("[STAGE-0.5] REGENERATED: " + def.field + " in slide " + def.slideIdx + ": '" + def.original.substring(0, 30) + "...' → '" + newText.substring(0, 30) + "...'");
+                      }
+                    }
+                  } catch (parseErr) {
+                    console.error("[STAGE-0.5] Failed to parse regeneration response: " + parseErr);
+                  }
+                }
+              } else {
+                console.warn("[STAGE-0.5] Regeneration LLM call failed: HTTP " + regenResponse.status);
+              }
+            } catch (regenErr: any) {
+              console.warn("[STAGE-0.5] Regeneration error: " + (regenErr.message || regenErr));
+            }
+          }
+        } else {
+          console.warn("[STAGE-0.5] LOVABLE_API_KEY not available, skipping LLM regeneration");
+        }
+
+        // 3. For unresolved items, add warnings to quality report
+        if (qualityReport.stage0_5_items_unresolved > 0) {
+          for (const detail of qualityReport.stage0_5_details.filter(d => d.startsWith("NÃO RESOLVIDO"))) {
+            qualityReport.stage4_all_warnings.push("REGENERAÇÃO FALHOU: " + detail);
+          }
+        }
+      }
+
+      console.log("[STAGE-0.5] Complete: " + qualityReport.stage0_5_items_flagged + " flagged, " +
+        qualityReport.stage0_5_items_regenerated + " regenerated, " +
+        qualityReport.stage0_5_items_resolved + " resolved, " +
+        qualityReport.stage0_5_items_unresolved + " unresolved");
+    }
 
     // ── STAGE 1.5: LLM-POWERED NLP VALIDATION ──
     console.log("[STAGE-1.5] Running LLM-powered NLP validation...");
