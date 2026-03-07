@@ -1,7 +1,8 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useTheme } from "@/hooks/useTheme";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
-import { LayoutDashboard, BookOpen, Award, LogOut, Sparkles, Menu, X, Star, CreditCard } from "lucide-react";
+import { LayoutDashboard, BookOpen, Award, LogOut, Sparkles, Menu, X, Star, CreditCard, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -11,6 +12,7 @@ export function AppLayout() {
   const { user, signOut } = useAuth();
   const { plan } = useSubscription();
   const { usage } = useMonthlyUsage();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -79,15 +81,25 @@ export function AppLayout() {
             </button>
           )}
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground"
-            onClick={signOut}
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Sair
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-sidebar-foreground/70 hover:text-sidebar-foreground"
+              onClick={toggleTheme}
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex-1 justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground"
+              onClick={signOut}
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sair
+            </Button>
+          </div>
         </div>
       </aside>
 
