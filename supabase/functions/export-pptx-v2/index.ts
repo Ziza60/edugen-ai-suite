@@ -395,6 +395,10 @@ function normalizeResidualText(text: string): string {
     .replace(/\bapproach\b/gi, "abordagem")
     .replace(/\bkey\b/gi, "chave")
     .replace(/\btools?\b/gi, "ferramentas")
+    // "soft skills" / "soft habilidades" MUST come before generic "skills"
+    .replace(/\bsoft\s+skills?\b/gi, "habilidades interpessoais")
+    .replace(/\bsoft\s+habilidades?\b/gi, "habilidades interpessoais")
+    .replace(/\bhard\s+skills?\b/gi, "habilidades técnicas")
     .replace(/\bskills?\b/gi, "habilidades")
     .replace(/\bperformance\b/gi, "desempenho")
     .replace(/\befficiency\b/gi, "eficiência")
