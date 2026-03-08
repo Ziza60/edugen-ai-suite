@@ -572,52 +572,41 @@ const PEDAGOGICAL_LAYOUT_MAP: Record<string, SlideLayoutV2> = {
 
 function splitLongItem(text: string, maxLen: number): string[] {
   if (text.length <= maxLen) return [text];
-  const danglingRe =
-    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i;
+
+  const sentences = (text.match(/[^.!?;]+[.!?;]?/g) || [])
+    .map((s) => sanitize(s).trim())
+    .filter(Boolean)
+    .map((s) => ensureSentenceEnd(repairSentence(s)));
+
+  // If there is no safe sentence boundary, keep item intact to avoid semantic amputation.
+  if (sentences.length <= 1) {
+    return [ensureSentenceEnd(repairSentence(text))];
+  }
+
   const parts: string[] = [];
-  let remaining = text;
-  while (remaining.length > maxLen) {
-    const cutZone = remaining.substring(0, maxLen);
-    const splitAt = Math.max(
-      cutZone.lastIndexOf(". "),
-      cutZone.lastIndexOf("! "),
-      cutZone.lastIndexOf("? "),
-      cutZone.lastIndexOf("; "),
-      cutZone.lastIndexOf(", "),
-    );
-    if (splitAt > maxLen * 0.4) {
-      let part = remaining.substring(0, splitAt + 1).trim();
-      if (danglingRe.test(part)) {
-        const backUp = part.lastIndexOf(" ", part.length - 4);
-        if (backUp > maxLen * 0.3) {
-          part = remaining.substring(0, backUp).trim() + ".";
-          remaining = remaining.substring(backUp).trim();
-          parts.push(part);
-          continue;
-        }
-      }
-      parts.push(part);
-      remaining = remaining.substring(splitAt + 1).trim();
+  let current = "";
+
+  for (const sentence of sentences) {
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (candidate.length <= maxLen) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) {
+      parts.push(current);
+      current = "";
+    }
+
+    // Keep oversized single sentence intact rather than splitting mid-idea.
+    if (sentence.length > maxLen) {
+      parts.push(sentence);
     } else {
-      let wordBreak = cutZone.lastIndexOf(" ");
-      if (wordBreak > maxLen * 0.5) {
-        let candidate = remaining.substring(0, wordBreak).trim();
-        if (danglingRe.test(candidate)) {
-          const earlier = candidate.lastIndexOf(" ", candidate.length - 4);
-          if (earlier > maxLen * 0.4) {
-            candidate = remaining.substring(0, earlier).trim();
-            wordBreak = earlier;
-          }
-        }
-        parts.push(candidate + ".");
-        remaining = remaining.substring(wordBreak).trim();
-      } else {
-        parts.push(remaining.substring(0, maxLen - 3).trim() + "...");
-        remaining = remaining.substring(maxLen - 3).trim();
-      }
+      current = sentence;
     }
   }
-  if (remaining.length > 3) parts.push(remaining);
+
+  if (current) parts.push(current);
   return parts;
 }
 
