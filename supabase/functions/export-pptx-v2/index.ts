@@ -3069,41 +3069,77 @@ function renderCoverSlide(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
+  addSlideBackground(slide, colors.coverBg);
 
+  // Accent colored side strip
   slide.addShape("rect" as any, {
     x: 0,
     y: 0,
-    w: SLIDE_W,
-    h: 0.12,
+    w: 0.40,
+    h: SLIDE_H,
     fill: { color: colors.accent },
   });
 
+  // Secondary accent stripe
+  slide.addShape("rect" as any, {
+    x: 0.40,
+    y: 0,
+    w: 0.08,
+    h: SLIDE_H,
+    fill: { color: design.palette[1] },
+  });
+
+  // Decorative bottom accent bar
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: SLIDE_H - 0.10,
+    w: SLIDE_W,
+    h: 0.10,
+    fill: { color: colors.accent },
+  });
+
+  // Course title
   slide.addText(courseTitle, {
-    x: MARGIN,
-    y: 2.00,
-    w: SAFE_W,
-    h: 2.00,
-    fontSize: 40,
+    x: 1.20,
+    y: 1.80,
+    w: SLIDE_W - 2.00,
+    h: 2.40,
+    fontSize: TYPO.COVER_TITLE,
     fontFace: design.fonts.title,
     bold: true,
-    color: colors.text,
-    align: "center",
+    color: colors.coverText,
     valign: "middle",
   });
 
-  slide.addText("Gerado por EduGenAI", {
-    x: MARGIN,
-    y: 4.50,
-    w: SAFE_W,
-    h: 0.60,
-    fontSize: TYPO.SUBTITLE,
-    fontFace: design.fonts.body,
-    color: colors.textSecondary,
-    align: "center",
+  // Subtitle line
+  slide.addShape("rect" as any, {
+    x: 1.20,
+    y: 4.40,
+    w: 2.00,
+    h: 0.04,
+    fill: { color: colors.accent },
   });
 
-  addFooter(slide, colors, design.fonts.body);
+  slide.addText("Gerado por EduGenAI", {
+    x: 1.20,
+    y: 4.60,
+    w: SLIDE_W - 2.00,
+    h: 0.50,
+    fontSize: TYPO.SUBTITLE,
+    fontFace: design.fonts.body,
+    color: colors.coverSubtext,
+  });
+
+  // Decorative palette dots in bottom right
+  for (let i = 0; i < design.palette.length; i++) {
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - MARGIN - (design.palette.length - i) * 0.40,
+      y: SLIDE_H - 0.60,
+      w: 0.28,
+      h: 0.28,
+      fill: { color: design.palette[i] },
+    });
+  }
 }
 
 function renderClosingSlide(
