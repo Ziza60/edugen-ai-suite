@@ -697,6 +697,16 @@ function redistributeOverflow(
   for (let i = 0; i < working.length; i += maxPerSlide) {
     chunks.push(working.slice(i, i + maxPerSlide));
   }
+  // Merge last chunk back if it's too short (≤2 items) to avoid weak continuation slides
+  const MIN_CONTINUATION_ITEMS = 3;
+  if (chunks.length >= 2) {
+    const lastChunk = chunks[chunks.length - 1];
+    if (lastChunk.length < MIN_CONTINUATION_ITEMS) {
+      const prevChunk = chunks[chunks.length - 2];
+      chunks[chunks.length - 2] = [...prevChunk, ...lastChunk];
+      chunks.pop();
+    }
+  }
   return chunks;
 }
 
