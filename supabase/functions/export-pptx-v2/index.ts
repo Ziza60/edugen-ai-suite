@@ -1835,6 +1835,15 @@ function renderExampleHighlight(
 
   const items = plan.items || [];
 
+  // Repair all items semantically
+  const repairedItems = items.map((item) => {
+    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+    return ensureSentenceEnd(repaired);
+  });
+
+  // If >3 items, group them into a structured vertical list instead of cramming
+  const cappedItems = repairedItems.slice(0, 5);
+
   slide.addShape("roundRect" as any, {
     x: MARGIN,
     y: 1.70,
@@ -1845,17 +1854,16 @@ function renderExampleHighlight(
     line: { color: colors.accent, width: 1.5 },
   });
 
-  const sectionLabels = ["Cenário", "Solução", "Resultado"];
-  const sectionColors = [design.palette[1], design.palette[2], design.palette[3]];
+  const sectionLabels = ["Cenário", "Solução", "Resultado", "Impacto", "Conclusão"];
+  const sectionColors = [design.palette[1], design.palette[2], design.palette[3], design.palette[0], design.palette[4]];
 
-  const cappedItems = items.slice(0, 3).map((item) => {
-    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
-    return ensureSentenceEnd(repaired);
-  });
-  const sectionH = (SLIDE_H - 1.90 - 0.60) / Math.max(cappedItems.length, 1);
+  const contentStartY = 1.90;
+  const contentEndY = SLIDE_H - 0.70;
+  const availableH = contentEndY - contentStartY;
+  const sectionH = availableH / Math.max(cappedItems.length, 1);
 
   for (let i = 0; i < cappedItems.length; i++) {
-    const y = 1.90 + i * sectionH;
+    const y = contentStartY + i * sectionH;
     const color = sectionColors[i % sectionColors.length];
 
     const colonIdx = cappedItems[i].indexOf(":");
@@ -1866,21 +1874,31 @@ function renderExampleHighlight(
     const desc =
       colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
 
+    // Draw a small colored accent bar for each section
+    slide.addShape("rect" as any, {
+      x: MARGIN + 0.15,
+      y: y + 0.02,
+      w: 0.06,
+      h: Math.min(sectionH - 0.10, 0.50),
+      fill: { color },
+      rectRadius: 0.02,
+    });
+
     slide.addText(label, {
-      x: MARGIN + 0.30,
+      x: MARGIN + 0.35,
       y,
       w: 2.00,
-      h: 0.35,
+      h: 0.32,
       fontSize: TYPO.CARD_TITLE,
       fontFace: design.fonts.title,
       bold: true,
       color,
     });
     slide.addText(desc, {
-      x: MARGIN + 0.30,
-      y: y + 0.38,
-      w: SAFE_W - 0.60,
-      h: sectionH - 0.48,
+      x: MARGIN + 0.35,
+      y: y + 0.34,
+      w: SAFE_W - 0.70,
+      h: sectionH - 0.44,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
