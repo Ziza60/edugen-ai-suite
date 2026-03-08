@@ -1512,6 +1512,21 @@ function enforceVisualRenderingGuards(
         continue;
       }
 
+      // Process slides: compact before splitting to avoid 1-item continuation chains.
+      if (
+        current.layout === "bullets" &&
+        /COMO\s+FUNCIONA/i.test(current.sectionLabel || "") &&
+        currentItems.length > 3
+      ) {
+        const compacted = mergeAdjacentShortest(currentItems, 3);
+        if (compacted.length < currentItems.length) {
+          report.redistributions++;
+          report.warnings.push(`[VISUAL] Compacted process bullets before split: "${baseTitle}"`);
+          queue.unshift({ ...current, items: compacted });
+          continue;
+        }
+      }
+
       if (currentItems.length > 1) {
         const mid = Math.ceil(currentItems.length / 2);
         report.redistributions++;
