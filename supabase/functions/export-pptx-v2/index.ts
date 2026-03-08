@@ -1956,7 +1956,7 @@ function runPipeline(
     allModuleSlidePlans.push(slidePlans);
   }
 
-  const tocModules = modules.map((m, i) => {
+  const tocModules = modules.map((m) => {
     const rawTitle = sanitize(m.title || "");
     const cleanTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
     const strippedContent = (m.content || "")
