@@ -1049,7 +1049,9 @@ function distributeModuleToSlides(
       }
 
       validItems = compacted;
-      layout = validItems.length <= 3 ? "process_timeline" : "bullets";
+      // Only use process_timeline for ≤3 items where ALL are short enough to fit horizontally
+      const allFitTimeline = validItems.length <= 3 && validItems.every((item) => item.length <= 85);
+      layout = allFitTimeline ? "process_timeline" : "bullets";
     }
 
     // Additional merge for summary/applications — only merge truly tiny fragments
@@ -1247,10 +1249,10 @@ function addFooter(
 }
 
 const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
-  bullets: 6,
+  bullets: 5,
   definition: 4,
   grid_cards: 6,
-  process_timeline: 4,
+  process_timeline: 3,
   example_highlight: 5,
   warning_callout: 5,
   reflection_callout: 4,
@@ -1259,15 +1261,15 @@ const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
 };
 
 const LAYOUT_VISUAL_MAX_CHARS: Partial<Record<SlideLayoutV2, number>> = {
-  bullets: 150,
-  definition: 120,
-  grid_cards: 110,
-  process_timeline: 90,
-  example_highlight: 140,
-  warning_callout: 130,
-  reflection_callout: 110,
+  bullets: 180,
+  definition: 140,
+  grid_cards: 120,
+  process_timeline: 100,
+  example_highlight: 160,
+  warning_callout: 150,
+  reflection_callout: 120,
   summary_slide: 420,
-  numbered_takeaways: 110,
+  numbered_takeaways: 120,
 };
 
 function estimateTextHeightInches(
@@ -1314,8 +1316,9 @@ function visuallyFitsPlan(plan: SlidePlan): boolean {
   switch (plan.layout) {
     case "bullets": {
       const contentY = 1.70;
-      const contentH = SLIDE_H - contentY - 0.60;
-      const itemH = Math.min(0.60, contentH / Math.max(items.length, 1));
+      const contentH = SLIDE_H - contentY - 0.45;
+      // Allow up to 0.85" per item to accommodate 2-3 lines at 18pt
+      const itemH = Math.min(0.85, contentH / Math.max(items.length, 1));
       return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, SAFE_W - 0.30, itemH - 0.05, 1.2));
     }
 
