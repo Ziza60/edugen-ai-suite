@@ -1052,17 +1052,13 @@ function distributeModuleToSlides(
       layout = validItems.length <= 3 ? "process_timeline" : "bullets";
     }
 
-    // Additional merge for summary/applications with residual short fragments
+    // Additional merge for summary/applications — only merge truly tiny fragments
     if ((section.pedagogicalType === "summary" || section.pedagogicalType === "applications") && validItems.length > 1) {
       const merged: string[] = [];
       let i = 0;
       while (i < validItems.length) {
-        if (i + 1 < validItems.length && validItems[i].length < 95 && validItems[i + 1].length < 95) {
-          merged.push(
-            ensureSentenceEnd(
-              `${validItems[i].replace(/\.\s*$/, "")}, além disso, ${validItems[i + 1].charAt(0).toLowerCase()}${validItems[i + 1].slice(1).replace(/\.\s*$/, "")}`,
-            ),
-          );
+        if (i + 1 < validItems.length && validItems[i].length < 55 && validItems[i + 1].length < 55) {
+          merged.push(ensureSentenceEnd(`${validItems[i].replace(/\.\s*$/, "")}. ${validItems[i + 1]}`));
           i += 2;
         } else {
           merged.push(validItems[i]);
