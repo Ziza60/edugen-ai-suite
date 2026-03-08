@@ -1943,14 +1943,27 @@ function renderExampleHighlight(
 
   const items = plan.items || [];
 
+  const normalizedItems = items
+    .map((item) => normalizeResidualText(item))
+    .filter(Boolean)
+    .map((item) => {
+      const slashMatch = item.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i);
+      if (slashMatch) {
+        const label = slashMatch[1];
+        const desc = slashMatch[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
+        return ensureSentenceEnd(`${label}: ${desc}`);
+      }
+      return item;
+    });
+
   // Repair all items semantically
-  const repairedItems = items.map((item) => {
+  const repairedItems = normalizedItems.map((item) => {
     const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
     return ensureSentenceEnd(repaired);
   });
 
-  // If >3 items, group them into a structured vertical list instead of cramming
-  const cappedItems = repairedItems.slice(0, 5);
+  // Keep up to 4 coherent blocks to avoid fragmentation in practical examples
+  const cappedItems = repairedItems.slice(0, 4);
 
   slide.addShape("roundRect" as any, {
     x: MARGIN,
