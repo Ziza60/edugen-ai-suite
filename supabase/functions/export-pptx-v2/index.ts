@@ -3371,6 +3371,27 @@ function runPipeline(
     allModuleSlidePlans[i] = enforceVisualRenderingGuards(allModuleSlidePlans[i], design, report);
   }
 
+  // ── STAGE 3.8: Anti-repetition sweep — diversify sequential layouts ──
+  console.log(`[V2-STAGE-3.8] Anti-repetition: diversifying sequential layouts...`);
+  const LAYOUT_ALTERNATIVES: Partial<Record<SlideLayoutV2, SlideLayoutV2>> = {
+    bullets: "two_column_bullets",
+    two_column_bullets: "bullets",
+    definition: "grid_cards",
+    grid_cards: "two_column_bullets",
+  };
+  for (const modulePlans of allModuleSlidePlans) {
+    for (let i = 1; i < modulePlans.length; i++) {
+      const prev = modulePlans[i - 1];
+      const curr = modulePlans[i];
+      if (curr.layout !== "module_cover" && curr.layout !== "comparison_table" &&
+          curr.layout === prev.layout && LAYOUT_ALTERNATIVES[curr.layout]) {
+        const alt = LAYOUT_ALTERNATIVES[curr.layout]!;
+        report.warnings.push(`[ANTI-REP] Swapped "${curr.layout}" → "${alt}" for "${curr.title}"`);
+        curr.layout = alt;
+      }
+    }
+  }
+
   console.log(`[V2-STAGE-4] Rendering slides...`);
   for (const modulePlans of allModuleSlidePlans) {
     for (const plan of modulePlans) {
