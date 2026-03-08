@@ -1261,15 +1261,15 @@ const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
 };
 
 const LAYOUT_VISUAL_MAX_CHARS: Partial<Record<SlideLayoutV2, number>> = {
-  bullets: 150,
-  definition: 120,
-  grid_cards: 110,
-  process_timeline: 90,
-  example_highlight: 140,
-  warning_callout: 130,
-  reflection_callout: 110,
+  bullets: 180,
+  definition: 140,
+  grid_cards: 120,
+  process_timeline: 100,
+  example_highlight: 160,
+  warning_callout: 150,
+  reflection_callout: 120,
   summary_slide: 420,
-  numbered_takeaways: 110,
+  numbered_takeaways: 120,
 };
 
 function estimateTextHeightInches(
