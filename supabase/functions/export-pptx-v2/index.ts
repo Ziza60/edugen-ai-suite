@@ -1146,26 +1146,58 @@ function distributeModuleToSlides(
       validItems = merged;
     }
 
-    // Example sections: normalize structured labels, keep each as a standalone item
+    // Example sections: consolidate and structure practical example blocks
     if (section.pedagogicalType === "example" && validItems.length > 0) {
-      const slashPattern = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o|Relev[aâ]ncia|Facilidade|Custo|Ferramenta)\s*\/\s*(.+)$/i;
+      const CORE_LABEL = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*[:\/]\s*/i;
+      const CRITERION_LABEL = /^(Relev[aâ]ncia|Facilidade|Custo|Ferramenta|Crit[eé]rios?\s+Aplicados?)\s*[:\/]\s*/i;
 
-      // Normalize all items: slash → colon, repair sentences
-      const normalizedExamples = validItems.map((item) => {
-        let normalized = normalizeResidualText(item);
-        const sm = normalized.match(slashPattern);
-        if (sm) {
-          const label = sm[1].replace(/\s+/g, " ").trim();
-          // Join multi-slash content with semicolons
-          const desc = sm[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-          normalized = ensureSentenceEnd(`${label}: ${desc}`);
+      // Step 1: Normalize all items through residual text cleanup
+      let normalizedExamples = validItems
+        .map((item) => normalizeResidualText(item))
+        .filter(Boolean);
+
+      // Step 2: Separate core example items from criterion/table items
+      const coreItems: string[] = [];
+      const criterionItems: string[] = [];
+      const unlabeledItems: string[] = [];
+
+      for (const item of normalizedExamples) {
+        if (CORE_LABEL.test(item)) {
+          coreItems.push(item);
+        } else if (CRITERION_LABEL.test(item)) {
+          criterionItems.push(item);
+        } else {
+          unlabeledItems.push(item);
         }
-        return normalized;
-      }).filter(Boolean);
+      }
 
-      // DO NOT merge labeled items — each "Cenário:", "Resultado:", etc. should stay 
-      // as its own bullet for visual clarity. Only cap at 5 items max.
-      validItems = normalizedExamples.slice(0, 5);
+      // Step 3: Consolidate criterion items into a single "Critérios Aplicados" block
+      // to prevent fragmentation (e.g., separate Relevância, Custo, Ferramenta slides)
+      if (criterionItems.length >= 2) {
+        const consolidated = criterionItems
+          .map((ci) => ci.replace(/\.\s*$/, "").trim())
+          .join("; ");
+        coreItems.push(ensureSentenceEnd(`Critérios Aplicados: ${consolidated}`));
+      } else if (criterionItems.length === 1) {
+        coreItems.push(criterionItems[0]);
+      }
+
+      // Step 4: Absorb short unlabeled items into the nearest labeled item
+      // These are typically orphan fragments from broken markdown parsing
+      for (const unlabeled of unlabeledItems) {
+        const bare = unlabeled.replace(/[.\s]+$/, "").trim();
+        if (bare.length < 60 && coreItems.length > 0) {
+          // Append to last core item as supplementary detail
+          const lastIdx = coreItems.length - 1;
+          const prev = coreItems[lastIdx].replace(/[.\s]+$/, "").trim();
+          coreItems[lastIdx] = ensureSentenceEnd(`${prev}. ${unlabeled}`);
+        } else {
+          coreItems.push(unlabeled);
+        }
+      }
+
+      // Step 5: Cap at 5 items for visual fit on example_highlight layout
+      validItems = coreItems.slice(0, 5);
     }
 
     if (validItems.length === 0) {
