@@ -881,14 +881,13 @@ function distributeModuleToSlides(
     let validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
 
     // ── Process/Timeline anti-fragmentation ──
-    // Merge "Isso..." pattern items with their predecessor for narrative flow
+    // Step A: Merge "Isso..." pattern items with their predecessor for narrative flow
     if (section.pedagogicalType === "process" && validItems.length > 1) {
       const issoPattern = /^Isso\s+(acelera|reduz|gera|oferece|é\s+útil|permite|facilita|melhora|garante|aumenta|possibilita|elimina|otimiza|promove|cria|traz|ajuda|evita|contribui|simplifica|amplia|fortalece|assegura|viabiliza|impacta|transforma)\b/i;
       const consolidated: string[] = [];
       for (let idx = 0; idx < validItems.length; idx++) {
         const item = validItems[idx];
         if (issoPattern.test(item.trim()) && consolidated.length > 0) {
-          // Merge "Isso..." sentence into previous item for narrative density
           const prev = consolidated[consolidated.length - 1].replace(/\.\s*$/, "");
           const issoText = item.trim().charAt(0).toLowerCase() + item.trim().slice(1);
           consolidated[consolidated.length - 1] = ensureSentenceEnd(`${prev}, o que ${issoText.replace(/^isso\s+/i, "")}`);
@@ -899,16 +898,20 @@ function distributeModuleToSlides(
       validItems = consolidated;
     }
 
+    // Step B: Aggressive merge of short consecutive items for process sections
     if (section.pedagogicalType === "process" && validItems.length > 0) {
       const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      // If items are very short (avg < 70 chars), merge consecutive pairs into richer descriptions
-      if (avgLen < 70 && validItems.length >= 3) {
+      // Merge pairs when items are short — target richer, denser descriptions
+      if (avgLen < 90 && validItems.length >= 3) {
         const merged: string[] = [];
         let i = 0;
         while (i < validItems.length) {
-          if (i + 1 < validItems.length && validItems[i].length < 80 && validItems[i + 1].length < 80) {
-            const combined = validItems[i].replace(/\.\s*$/, "") + " — " + validItems[i + 1];
-            merged.push(ensureSentenceEnd(combined));
+          if (i + 1 < validItems.length && validItems[i].length < 100 && validItems[i + 1].length < 100) {
+            const a = validItems[i].replace(/\.\s*$/, "");
+            const b = validItems[i + 1];
+            // Use semantic connector instead of dash for better flow
+            const bLower = b.charAt(0).toLowerCase() + b.slice(1);
+            merged.push(ensureSentenceEnd(`${a}, além disso, ${bLower}`));
             i += 2;
           } else {
             merged.push(validItems[i]);
@@ -917,9 +920,29 @@ function distributeModuleToSlides(
         }
         validItems = merged;
       }
-      // If too many items for a horizontal timeline (>4), switch to bullets for readability
+      // If still too many items for a horizontal timeline (>4), switch to bullets
       if (validItems.length > 4) {
         layout = "bullets";
+      }
+    }
+
+    // Step C: Additional merge for non-process sections with short fragmented items
+    if ((section.pedagogicalType === "example" || section.pedagogicalType === "summary" || section.pedagogicalType === "applications") && validItems.length > 1) {
+      const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
+      if (avgLen < 60 && validItems.length >= 3) {
+        const merged: string[] = [];
+        let i = 0;
+        while (i < validItems.length) {
+          if (i + 1 < validItems.length && validItems[i].length < 70 && validItems[i + 1].length < 70) {
+            const a = validItems[i].replace(/\.\s*$/, "");
+            merged.push(ensureSentenceEnd(`${a} — ${validItems[i + 1]}`));
+            i += 2;
+          } else {
+            merged.push(validItems[i]);
+            i++;
+          }
+        }
+        validItems = merged;
       }
     }
 
