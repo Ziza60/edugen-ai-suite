@@ -2283,6 +2283,7 @@ function renderProcessTimeline(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
+  addTopAccentBar(slide, design.palette[2] || colors.accent);
 
   if (plan.sectionLabel) {
     addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
@@ -2290,82 +2291,180 @@ function renderProcessTimeline(
   addSlideTitle(slide, plan.title, colors, design.fonts.title);
 
   const items = plan.items || [];
-  const stepW = SAFE_W / Math.max(items.length, 1);
-  const stepY = 2.20;
 
-  for (let i = 0; i < items.length; i++) {
-    const x = MARGIN + i * stepW;
-    const accentColor = design.palette[i % design.palette.length];
+  if (items.length <= 3) {
+    // Horizontal card layout for ≤3 steps
+    const gap = 0.30;
+    const cardW = (SAFE_W - gap * (items.length - 1)) / items.length;
+    const cardY = 2.00;
+    const cardH = SLIDE_H - cardY - 0.55;
 
-    slide.addShape("ellipse" as any, {
-      x: x + stepW / 2 - 0.25,
-      y: stepY,
-      w: 0.50,
-      h: 0.50,
-      fill: { color: accentColor },
-    });
-    slide.addText(String(i + 1), {
-      x: x + stepW / 2 - 0.25,
-      y: stepY,
-      w: 0.50,
-      h: 0.50,
-      fontSize: TYPO.BODY,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: "FFFFFF",
-      align: "center",
-      valign: "middle",
-    });
+    for (let i = 0; i < items.length; i++) {
+      const x = MARGIN + i * (cardW + gap);
+      const accentColor = design.palette[i % design.palette.length];
 
-    if (i < items.length - 1) {
+      // Card background
+      slide.addShape("roundRect" as any, {
+        x,
+        y: cardY,
+        w: cardW,
+        h: cardH,
+        fill: { color: colors.cardBgAlt },
+        rectRadius: 0.08,
+        line: { color: colors.borders, width: 0.5 },
+      });
+
+      // Colored top bar on card
       slide.addShape("rect" as any, {
-        x: x + stepW / 2 + 0.28,
-        y: stepY + 0.22,
-        w: stepW - 0.56,
+        x: x + 0.01,
+        y: cardY + 0.01,
+        w: cardW - 0.02,
         h: 0.06,
-        fill: { color: colors.borders },
+        fill: { color: accentColor },
+      });
+
+      // Numbered circle
+      slide.addShape("ellipse" as any, {
+        x: x + cardW / 2 - 0.28,
+        y: cardY + 0.25,
+        w: 0.56,
+        h: 0.56,
+        fill: { color: accentColor },
+      });
+      slide.addText(String(i + 1), {
+        x: x + cardW / 2 - 0.28,
+        y: cardY + 0.25,
+        w: 0.56,
+        h: 0.56,
+        fontSize: TYPO.SUBTITLE,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        align: "center",
+        valign: "middle",
+      });
+
+      // Connector arrow between cards
+      if (i < items.length - 1) {
+        const arrowX = x + cardW + gap * 0.1;
+        const arrowW = gap * 0.8;
+        slide.addShape("rect" as any, {
+          x: arrowX,
+          y: cardY + 0.50,
+          w: arrowW,
+          h: 0.04,
+          fill: { color: colors.borders },
+        });
+      }
+
+      const colonIdx = items[i].indexOf(":");
+      let label: string;
+      let desc: string;
+      if (colonIdx > 0 && colonIdx < 40) {
+        label = items[i].substring(0, colonIdx).trim();
+        desc = items[i].substring(colonIdx + 1).trim();
+      } else if (items[i].length <= 50) {
+        label = items[i];
+        desc = "";
+      } else {
+        const words = items[i].split(/\s+/);
+        label = words.slice(0, 4).join(" ");
+        desc = words.slice(4).join(" ");
+      }
+
+      slide.addText(label, {
+        x: x + 0.12,
+        y: cardY + 0.95,
+        w: cardW - 0.24,
+        h: 0.40,
+        fontSize: TYPO.CARD_TITLE,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: accentColor,
+        align: "center",
+      });
+      if (desc) {
+        slide.addText(desc, {
+          x: x + 0.12,
+          y: cardY + 1.35,
+          w: cardW - 0.24,
+          h: cardH - 1.55,
+          fontSize: TYPO.CARD_BODY,
+          fontFace: design.fonts.body,
+          color: colors.text,
+          align: "center",
+          valign: "top",
+        });
+      }
+    }
+  } else {
+    // Vertical numbered steps for >3 items
+    const contentY = 1.65;
+    const stepGap = 0.08;
+    const contentH = SLIDE_H - contentY - 0.50;
+    const stepH = Math.min(1.00, (contentH - stepGap * (items.length - 1)) / items.length);
+    const circleSize = 0.40;
+    const circleX = MARGIN + 0.05;
+
+    for (let i = 0; i < items.length; i++) {
+      const y = contentY + i * (stepH + stepGap);
+      const accentColor = design.palette[i % design.palette.length];
+
+      // Vertical connector line
+      if (i < items.length - 1) {
+        slide.addShape("rect" as any, {
+          x: circleX + circleSize / 2 - 0.015,
+          y: y + circleSize + 0.02,
+          w: 0.03,
+          h: stepGap + stepH - circleSize - 0.02,
+          fill: { color: colors.divider },
+        });
+      }
+
+      // Number circle
+      slide.addShape("ellipse" as any, {
+        x: circleX,
+        y,
+        w: circleSize,
+        h: circleSize,
+        fill: { color: accentColor },
+      });
+      slide.addText(String(i + 1), {
+        x: circleX,
+        y,
+        w: circleSize,
+        h: circleSize,
+        fontSize: TYPO.SUPPORT,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        align: "center",
+        valign: "middle",
+      });
+
+      // Content card
+      const cardX = MARGIN + 0.65;
+      const cardW = SAFE_W - 0.70;
+      slide.addShape("roundRect" as any, {
+        x: cardX,
+        y,
+        w: cardW,
+        h: stepH - 0.02,
+        fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
+        rectRadius: 0.06,
+      });
+
+      slide.addText(items[i], {
+        x: cardX + 0.15,
+        y,
+        w: cardW - 0.30,
+        h: stepH - 0.02,
+        fontSize: TYPO.BULLET_TEXT,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "middle",
       });
     }
-
-    const colonIdx = items[i].indexOf(":");
-    let label: string;
-    let desc: string;
-    if (colonIdx > 0 && colonIdx < 40) {
-      label = items[i].substring(0, colonIdx).trim();
-      desc = items[i].substring(colonIdx + 1).trim();
-    } else if (items[i].length <= 50) {
-      // Short items: use the text itself as label, no separate description
-      label = items[i];
-      desc = "";
-    } else {
-      // Long items without colon: extract first ~4 words as label
-      const words = items[i].split(/\s+/);
-      label = words.slice(0, 4).join(" ");
-      desc = words.slice(4).join(" ");
-    }
-
-    slide.addText(label, {
-      x: x + 0.05,
-      y: stepY + 0.65,
-      w: stepW - 0.10,
-      h: 0.35,
-      fontSize: TYPO.CARD_TITLE,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: accentColor,
-      align: "center",
-    });
-    slide.addText(desc, {
-      x: x + 0.05,
-      y: stepY + 1.00,
-      w: stepW - 0.10,
-      h: 1.80,
-      fontSize: TYPO.CARD_BODY,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      align: "center",
-      valign: "top",
-    });
   }
 
   addFooter(slide, colors, design.fonts.body);
