@@ -2356,7 +2356,7 @@ function runPipeline(
       .replace(/^[-*]\s+/gm, "")
       .trim();
 
-    const desc = extractFirstCompleteSentence(strippedContent, 80);
+    const desc = extractFirstCompleteSentence(strippedContent, 110);
     if (!desc) {
       return {
         title: cleanMarkdown(cleanTitle),
