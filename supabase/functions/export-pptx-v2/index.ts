@@ -846,7 +846,7 @@ function distributeModuleToSlides(
 
     if (layout === "comparison_table") {
       const table = extractTableFromSection(section);
-      if (table) {
+      if (table && table.rows.length > 0) {
         slides.push({
           layout: "comparison_table",
           title: section.title,
@@ -857,6 +857,7 @@ function distributeModuleToSlides(
         });
         continue;
       }
+      // If no valid table found, fall through to items-based rendering
     }
 
     let rawItems = collectSectionItems(section);
@@ -894,31 +895,29 @@ function distributeModuleToSlides(
         })
         .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
 
-      // Continuation must contain real content; otherwise fold back to previous slide.
-      if (isContination && !hasMeaningfulContent(finalItems)) {
-        const prev = slides[slides.length - 1];
-        const sameSection =
-          !!prev &&
-          (!!prev.continuationOf || prev.title === section.title || prev.title.startsWith(`${section.title} (Parte`));
-
-        if (prev && sameSection) {
-          prev.items = [...(prev.items || []), ...finalItems].filter(
-            (item) => item.replace(/[.\s]+$/, "").trim().length >= 8,
-          );
-          report.warnings.push(`Merged weak continuation into previous slide: "${section.title}"`);
-          continue;
-        }
-      }
-
-      // Skip continuation slides that ended up with no real content
-      if (isContination && finalItems.length === 0) {
-        report.warnings.push(`Dropped empty continuation slide for: "${section.title}"`);
-        continue;
-      }
-      // Skip any slide (including first) with no items
+      // Skip any slide (including first) with no meaningful items
       if (finalItems.length === 0) {
         report.warnings.push(`Dropped slide with no valid items: "${section.title}"`);
         continue;
+      }
+
+      // A slide must have meaningful content — not just a title with 1 weak bullet
+      if (!hasMeaningfulContent(finalItems)) {
+        // Try to fold into previous slide
+        const prev = slides[slides.length - 1];
+        if (prev && prev.items) {
+          prev.items = [...prev.items, ...finalItems].filter(
+            (item) => item.replace(/[.\s]+$/, "").trim().length >= 8,
+          );
+          report.warnings.push(`Merged weak slide into previous: "${section.title}" (${isContination ? "continuation" : "first"})`);
+          continue;
+        }
+        // If no previous slide to merge into and content is truly empty, drop
+        if (finalItems.length === 0) {
+          report.warnings.push(`Dropped empty slide: "${section.title}"`);
+          continue;
+        }
+        // Otherwise let it through — it's the very first slide and has some content
       }
 
       const slideTitle = isContination
@@ -1978,6 +1977,46 @@ function runPipeline(
     };
   });
   renderTOC(pptx, tocModules, design);
+
+  // ── POST-PROCESSING: Final sweep to eliminate empty/weak slides ──
+  console.log(`[V2-STAGE-3.5] Post-processing: eliminating empty/weak slides...`);
+  for (const modulePlans of allModuleSlidePlans) {
+    for (let i = modulePlans.length - 1; i >= 0; i--) {
+      const plan = modulePlans[i];
+      if (plan.layout === "module_cover") continue; // Always keep module covers
+      if (plan.layout === "comparison_table") {
+        // Table slides need actual rows
+        if (!plan.tableRows || plan.tableRows.length === 0) {
+          report.warnings.push(`[POST] Removed empty table slide: "${plan.title}"`);
+          modulePlans.splice(i, 1);
+          continue;
+        }
+        continue;
+      }
+      // For all other layouts: must have meaningful items
+      const items = plan.items || [];
+      if (items.length === 0) {
+        report.warnings.push(`[POST] Removed slide with no items: "${plan.title}"`);
+        // Try to fold items into previous slide
+        if (i > 0 && modulePlans[i - 1].items) {
+          // nothing to fold, just remove
+        }
+        modulePlans.splice(i, 1);
+        continue;
+      }
+      if (!hasMeaningfulContent(items)) {
+        // Fold into previous slide if possible
+        if (i > 0 && modulePlans[i - 1].items) {
+          modulePlans[i - 1].items = [...(modulePlans[i - 1].items || []), ...items];
+          report.warnings.push(`[POST] Merged weak slide "${plan.title}" into "${modulePlans[i - 1].title}"`);
+        } else {
+          report.warnings.push(`[POST] Removed weak slide: "${plan.title}" (${items.length} items, none meaningful)`);
+        }
+        modulePlans.splice(i, 1);
+        continue;
+      }
+    }
+  }
 
   console.log(`[V2-STAGE-4] Rendering slides...`);
   for (const modulePlans of allModuleSlidePlans) {
