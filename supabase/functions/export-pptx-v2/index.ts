@@ -2795,6 +2795,7 @@ function renderSummarySlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
+  addTopAccentBar(slide, design.palette[0]);
 
   if (plan.sectionLabel) {
     addSectionLabel(slide, plan.sectionLabel, design.palette[0], design.fonts.body);
@@ -2805,29 +2806,48 @@ function renderSummarySlide(
     const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
     return ensureSentenceEnd(repaired);
   }).filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10);
-  const bodyText = items.join("\n\n");
+
+  // Render as numbered key points in a card
+  const contentY = 1.65;
+  const contentH = SLIDE_H - contentY - 0.50;
 
   slide.addShape("roundRect" as any, {
     x: MARGIN,
-    y: 1.70,
+    y: contentY,
     w: SAFE_W,
-    h: SLIDE_H - 1.70 - 0.60,
+    h: contentH,
     fill: { color: colors.bgAlt },
     rectRadius: 0.10,
   });
 
-  slide.addText(bodyText, {
-    x: MARGIN + 0.30,
-    y: 1.90,
-    w: SAFE_W - 0.60,
-    h: SLIDE_H - 1.90 - 0.80,
-    fontSize: TYPO.BODY,
-    fontFace: design.fonts.body,
-    color: colors.text,
-    valign: "top",
-    lineSpacingMultiple: 1.35,
-    paraSpaceAfter: 8,
-  });
+  const itemGap = 0.06;
+  const itemH = Math.min(0.80, (contentH - 0.30 - itemGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
+
+  for (let i = 0; i < items.length; i++) {
+    const y = contentY + 0.15 + i * (itemH + itemGap);
+    const accentColor = design.palette[i % design.palette.length];
+
+    // Bullet accent dot
+    slide.addShape("ellipse" as any, {
+      x: MARGIN + 0.25,
+      y: y + itemH / 2 - 0.07,
+      w: 0.14,
+      h: 0.14,
+      fill: { color: accentColor },
+    });
+
+    slide.addText(items[i], {
+      x: MARGIN + 0.55,
+      y,
+      w: SAFE_W - 0.80,
+      h: itemH - 0.02,
+      fontSize: TYPO.BODY,
+      fontFace: design.fonts.body,
+      color: colors.text,
+      valign: "middle",
+      lineSpacingMultiple: 1.25,
+    });
+  }
 
   addFooter(slide, colors, design.fonts.body);
 }
