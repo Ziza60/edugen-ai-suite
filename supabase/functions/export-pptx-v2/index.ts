@@ -906,10 +906,6 @@ function distributeModuleToSlides(
       }
     }
 
-    let rawItems = collectSectionItems(section);
-    const repairedItems = validateAndRepairItems(rawItems, report);
-    const validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
-
     if (validItems.length === 0) {
       // Skip empty sections entirely — don't create slides with only the title as content
       report.warnings.push(`Skipped empty section: "${section.title}"`);
