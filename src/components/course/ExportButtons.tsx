@@ -120,8 +120,9 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               if (!session?.access_token) {
                 throw new Error("Sessão expirada. Faça login novamente.");
               }
-              const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx`;
-              console.log("[PPTX] Starting export to:", url);
+              const functionName = options.useV2 ? "export-pptx-v2" : "export-pptx";
+              const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
+              console.log(`[PPTX] Starting export to: ${url} (engine: ${options.useV2 ? "v2" : "v1"})`);
               const EXPORT_TIMEOUT_MS = 480000;
               const controller = new AbortController();
               const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
@@ -134,7 +135,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                     "Authorization": `Bearer ${session.access_token}`,
                     "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
                   },
-                  body: JSON.stringify({ course_id: courseId, ...options }),
+                  body: JSON.stringify({ course_id: courseId, palette: options.palette, density: options.density, includeImages: options.includeImages, theme: options.theme, template: options.template }),
                   signal: controller.signal,
                 });
               } finally {
