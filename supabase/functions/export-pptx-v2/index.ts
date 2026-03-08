@@ -1569,6 +1569,7 @@ const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
 
 const LAYOUT_VISUAL_MAX_CHARS: Partial<Record<SlideLayoutV2, number>> = {
   bullets: 180,
+  two_column_bullets: 160,
   definition: 140,
   grid_cards: 120,
   process_timeline: 100,
