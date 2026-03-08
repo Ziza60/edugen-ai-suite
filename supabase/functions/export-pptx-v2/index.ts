@@ -1501,11 +1501,20 @@ function addSlideTitle(
   colors: ReturnType<typeof getColors>,
   fontTitle: string,
 ) {
+  // Decorative line under title
+  slide.addShape("rect" as any, {
+    x: MARGIN,
+    y: 1.42,
+    w: 1.6,
+    h: 0.04,
+    fill: { color: colors.accent },
+    rectRadius: 0.02,
+  });
   slide.addText(title, {
     x: MARGIN,
-    y: 0.85,
+    y: 0.82,
     w: SAFE_W,
-    h: 0.65,
+    h: 0.60,
     fontSize: TYPO.SECTION_TITLE,
     fontFace: fontTitle,
     bold: true,
