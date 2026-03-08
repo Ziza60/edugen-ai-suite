@@ -356,6 +356,18 @@ function extractFirstCompleteSentence(text: string, maxLen: number): string {
   return "";
 }
 
+function isWeakProcessFragment(text: string): boolean {
+  const t = text.trim();
+  if (t.length > 110) return false;
+  // Known weak openers that produce pedagogically empty micro-slides
+  if (/^(Isso|Esse processo|O objetivo [eé]|Com base ness|A IA (na|no|em)|A escolha d|Integrar a IA|Essa abordagem|Esse m[eé]todo|Esse tipo|Essa ferramenta|Essa t[eé]cnica|Essa estrat[eé]gia|Essa pr[aá]tica|Esse recurso)\b/i.test(t)) return true;
+  // Generic filler sentences
+  if (/^(Ele|Ela|Eles|Elas)\s+(permite|oferece|garante|facilita|possibilita|ajuda|promove)\b/i.test(t)) return true;
+  // Very short declarative sentences (< 70 chars) that aren't self-sufficient
+  if (t.length < 70 && /^[A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]/.test(t) && !/[:;]/.test(t)) return true;
+  return false;
+}
+
 function normalizeResidualText(text: string): string {
   let t = sanitize(cleanMarkdown(text || ""));
   if (!t) return "";
@@ -363,19 +375,32 @@ function normalizeResidualText(text: string): string {
   t = t
     .replace(/\bwidely used\b/gi, "amplamente utilizado")
     .replace(/\bgest[aã]o\s+documentos\b/gi, "gestão de documentos")
+    .replace(/\bgest[aã]o\s+projetos\b/gi, "gestão de projetos")
+    .replace(/\bgest[aã]o\s+dados\b/gi, "gestão de dados")
+    .replace(/\bgest[aã]o\s+tarefas\b/gi, "gestão de tarefas")
+    .replace(/\bgest[aã]o\s+equipes?\b/gi, "gestão de equipes")
+    .replace(/\bgest[aã]o\s+processos?\b/gi, "gestão de processos")
+    .replace(/\bgest[aã]o\s+conte[uú]dos?\b/gi, "gestão de conteúdos")
+    .replace(/\bgest[aã]o\s+riscos?\b/gi, "gestão de riscos")
+    .replace(/\bmachine learning\b/gi, "aprendizado de máquina")
+    .replace(/\bdeep learning\b/gi, "aprendizado profundo")
     .replace(/\.{2,}/g, ".")
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
     .replace(/\s+([,.;!?])/g, "$1")
     .replace(/([.!?])\s*"\s*\./g, '$1"')
     .replace(/\"\s*\"/g, '"')
+    .replace(/"\s*\.\s*$/g, '".')
     .replace(/,\s*(al[eé]m disso|e tamb[eé]m),?\s*\d+\.?$/i, ".")
     .replace(/^\s*\d+[.)]\s*/g, "")
+    // Fix broken prompt quotation: ensure closing quote before period
+    .replace(/"([^"]{5,})\.\s*$/g, '"$1."')
     .trim();
 
   if (/^\d+[.)-]?$/.test(t)) return "";
 
-  const slashStructured = t.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i);
+  // Normalize "Label / Content" → "Label: Content" for structured examples
+  const slashStructured = t.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o|Relev[aâ]ncia|Facilidade|Custo|Ferramenta)\s*\/\s*(.+)$/i);
   if (slashStructured) {
     const label = slashStructured[1];
     const desc = slashStructured[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
