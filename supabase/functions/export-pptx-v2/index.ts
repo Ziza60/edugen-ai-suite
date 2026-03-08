@@ -258,13 +258,25 @@ function isSentenceComplete(text: string): boolean {
 function repairSentence(text: string): string {
   if (!text) return "";
   let t = text.trim();
+  // Strip dangling prepositions/articles
   t = t
     .replace(
-      /\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas)\s*$/i,
+      /\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i,
+      "",
+    )
+    .trim();
+  // Strip dangling transitive verbs (the sentence is incomplete without an object)
+  t = t
+    .replace(
+      /\s+(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra|exigem|exige|requer|requerem|transforma|cria|define|produz|realiza|proporciona|determina|estabelece|identifica|desenvolve|implementa|combina|conecta|automatiza)\s*$/i,
       "",
     )
     .trim();
   t = t.replace(/[,:;\-–]+$/, "").trim();
+  // After stripping, re-check for new dangling prepositions (recursive once)
+  if (/\s(de|da|do|das|dos|na|no|e|ou|que|para|por|com)\s*$/i.test(t)) {
+    t = t.replace(/\s+(de|da|do|das|dos|na|no|e|ou|que|para|por|com)\s*$/i, "").trim();
+  }
   return ensureSentenceEnd(t);
 }
 
