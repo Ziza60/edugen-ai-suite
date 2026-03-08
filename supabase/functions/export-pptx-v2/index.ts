@@ -2941,8 +2941,7 @@ function renderTOC(
   design: DesignConfig,
 ) {
   const colors = getColors(design);
-  // Split TOC aggressively to keep slide 2 light and editorially clean
-  const MAX_TOC_PER_SLIDE = 4;
+  const MAX_TOC_PER_SLIDE = 6;
   const tocPages: { title: string; description?: string }[][] = [];
   for (let i = 0; i < modules.length; i += MAX_TOC_PER_SLIDE) {
     tocPages.push(modules.slice(i, i + MAX_TOC_PER_SLIDE));
@@ -2952,6 +2951,7 @@ function renderTOC(
     const pageModules = tocPages[page];
     const slide = pptx.addSlide();
     addSlideBackground(slide, colors.bg);
+    addTopAccentBar(slide, colors.accent);
 
     const tocTitle = tocPages.length > 1
       ? `O que você vai aprender (${page + 1}/${tocPages.length})`
@@ -2959,59 +2959,101 @@ function renderTOC(
 
     slide.addText(tocTitle, {
       x: MARGIN,
-      y: 0.50,
+      y: 0.40,
       w: SAFE_W,
-      h: 0.80,
+      h: 0.70,
       fontSize: TYPO.MODULE_TITLE,
       fontFace: design.fonts.title,
       bold: true,
       color: colors.text,
     });
 
-    const startY = 1.60;
-    const gap = 0.24;
-    const availableH = SLIDE_H - startY - 0.60;
-    const itemH = Math.min(1.05, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
+    // Decorative line under title
+    slide.addShape("rect" as any, {
+      x: MARGIN,
+      y: 1.10,
+      w: 2.0,
+      h: 0.04,
+      fill: { color: colors.accent },
+      rectRadius: 0.02,
+    });
+
     const globalOffset = page * MAX_TOC_PER_SLIDE;
 
+    // 2-column card grid
+    const cols = pageModules.length <= 3 ? pageModules.length : pageModules.length <= 4 ? 2 : (pageModules.length <= 6 ? 3 : 3);
+    const rows = Math.ceil(pageModules.length / cols);
+    const gap = 0.22;
+    const cardW = (SAFE_W - gap * (cols - 1)) / cols;
+    const startY = 1.35;
+    const contentH = SLIDE_H - startY - 0.50;
+    const cardH = Math.min(2.40, (contentH - gap * (rows - 1)) / rows);
+
     for (let i = 0; i < pageModules.length; i++) {
-      const y = startY + i * (itemH + gap);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = MARGIN + col * (cardW + gap);
+      const y = startY + row * (cardH + gap);
       const accentColor = design.palette[(globalOffset + i) % design.palette.length];
 
-      slide.addText(String(globalOffset + i + 1).padStart(2, "0"), {
-        x: MARGIN,
+      // Card
+      slide.addShape("roundRect" as any, {
+        x,
         y,
+        w: cardW,
+        h: cardH,
+        fill: { color: colors.cardBgAlt },
+        rectRadius: 0.10,
+        line: { color: colors.borders, width: 0.5 },
+      });
+
+      // Colored top accent
+      slide.addShape("rect" as any, {
+        x: x + 0.01,
+        y: y + 0.01,
+        w: cardW - 0.02,
+        h: 0.06,
+        fill: { color: accentColor },
+      });
+
+      // Module number
+      slide.addText(String(globalOffset + i + 1).padStart(2, "0"), {
+        x: x + 0.18,
+        y: y + 0.20,
         w: 0.60,
-        h: itemH - 0.05,
-        fontSize: TYPO.SUBTITLE,
+        h: 0.50,
+        fontSize: TYPO.TOC_NUMBER,
         fontFace: design.fonts.title,
         bold: true,
         color: accentColor,
-        valign: "middle",
+        valign: "top",
       });
 
+      // Module title
       slide.addText(pageModules[i].title, {
-        x: MARGIN + 0.70,
-        y,
-        w: SAFE_W * 0.40,
-        h: itemH - 0.05,
-        fontSize: TYPO.BODY,
+        x: x + 0.18,
+        y: y + 0.72,
+        w: cardW - 0.36,
+        h: 0.55,
+        fontSize: TYPO.TOC_TITLE,
         fontFace: design.fonts.title,
         bold: true,
         color: colors.text,
-        valign: "middle",
+        valign: "top",
       });
 
+      // Description
       if (pageModules[i].description) {
         slide.addText(pageModules[i].description!, {
-          x: SAFE_W * 0.45 + MARGIN,
-          y,
-          w: SAFE_W * 0.52,
-          h: itemH - 0.05,
-          fontSize: TYPO.SUPPORT,
+          x: x + 0.18,
+          y: y + 1.30,
+          w: cardW - 0.36,
+          h: cardH - 1.50,
+          fontSize: TYPO.TOC_DESC,
           fontFace: design.fonts.body,
           color: colors.textSecondary,
-          valign: "middle",
+          valign: "top",
+          lineSpacingMultiple: 1.2,
         });
       }
     }
