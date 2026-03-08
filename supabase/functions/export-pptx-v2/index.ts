@@ -358,13 +358,12 @@ function extractFirstCompleteSentence(text: string, maxLen: number): string {
 
 function isWeakProcessFragment(text: string): boolean {
   const t = text.trim();
-  if (t.length > 110) return false;
-  // Known weak openers that produce pedagogically empty micro-slides
-  if (/^(Isso|Esse processo|O objetivo [eé]|Com base ness|A IA (na|no|em)|A escolha d|Integrar a IA|Essa abordagem|Esse m[eé]todo|Esse tipo|Essa ferramenta|Essa t[eé]cnica|Essa estrat[eé]gia|Essa pr[aá]tica|Esse recurso)\b/i.test(t)) return true;
-  // Generic filler sentences
+  if (t.length > 120) return false;
+  // Known weak openers — anaphoric references that lack standalone meaning
+  if (/^(Isso|Esse processo|Essa abordagem|Esse m[eé]todo|Esse tipo|Essa ferramenta|Essa t[eé]cnica|Essa estrat[eé]gia|Essa pr[aá]tica|Esse recurso)\s+(oferece|garante|facilita|possibilita|ajuda|promove|permite|gera|reduz|melhora|acelera|aumenta|é|envolve|produz)\b/i.test(t)) return true;
+  // "Ele/Ela + verb" filler
   if (/^(Ele|Ela|Eles|Elas)\s+(permite|oferece|garante|facilita|possibilita|ajuda|promove)\b/i.test(t)) return true;
-  // Very short declarative sentences (< 70 chars) that aren't self-sufficient
-  if (t.length < 70 && /^[A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]/.test(t) && !/[:;]/.test(t)) return true;
+  // REMOVED: the overly aggressive <70 chars rule that was catching legitimate content
   return false;
 }
 
@@ -373,17 +372,20 @@ function normalizeResidualText(text: string): string {
   if (!t) return "";
 
   t = t
+    // English terms → Portuguese
     .replace(/\bwidely used\b/gi, "amplamente utilizado")
-    .replace(/\bgest[aã]o\s+documentos\b/gi, "gestão de documentos")
-    .replace(/\bgest[aã]o\s+projetos\b/gi, "gestão de projetos")
-    .replace(/\bgest[aã]o\s+dados\b/gi, "gestão de dados")
-    .replace(/\bgest[aã]o\s+tarefas\b/gi, "gestão de tarefas")
-    .replace(/\bgest[aã]o\s+equipes?\b/gi, "gestão de equipes")
-    .replace(/\bgest[aã]o\s+processos?\b/gi, "gestão de processos")
-    .replace(/\bgest[aã]o\s+conte[uú]dos?\b/gi, "gestão de conteúdos")
-    .replace(/\bgest[aã]o\s+riscos?\b/gi, "gestão de riscos")
     .replace(/\bmachine learning\b/gi, "aprendizado de máquina")
     .replace(/\bdeep learning\b/gi, "aprendizado profundo")
+    .replace(/\bnatural language processing\b/gi, "processamento de linguagem natural")
+    .replace(/\bbest practices?\b/gi, "boas práticas")
+    .replace(/\buse cases?\b/gi, "casos de uso")
+    .replace(/\breal[- ]?time\b/gi, "tempo real")
+    .replace(/\bfeedback\b/gi, "retorno")
+    // Missing preposition "de" in "gestão X" patterns
+    .replace(/\bgest[aã]o\s+(documentos|projetos|dados|tarefas|equipes?|processos?|conte[uú]dos?|riscos?|tempo|conhecimento|recursos?|clientes?|pessoas|custos?|qualidade|mudan[cç]as?|contratos?)\b/gi, (_, noun) => `gestão de ${noun.toLowerCase()}`)
+    // Missing preposition in "análise X" patterns
+    .replace(/\ban[aá]lise\s+(dados|sentimentos?|riscos?|resultados?|desempenho|mercado)\b/gi, (_, noun) => `análise de ${noun.toLowerCase()}`)
+    // Punctuation cleanup
     .replace(/\.{2,}/g, ".")
     .replace(/[""]/g, '"')
     .replace(/['']/g, "'")
@@ -395,6 +397,11 @@ function normalizeResidualText(text: string): string {
     .replace(/^\s*\d+[.)]\s*/g, "")
     // Fix broken prompt quotation: ensure closing quote before period
     .replace(/"([^"]{5,})\.\s*$/g, '"$1."')
+    // Fix doubled periods after quotes
+    .replace(/\."\./g, '."')
+    .replace(/\."\.$/g, '."')
+    // Fix trailing period inside and outside quotes
+    .replace(/([.!?])"\s*\.\s*$/g, '$1"')
     .trim();
 
   if (/^\d+[.)-]?$/.test(t)) return "";
@@ -985,32 +992,34 @@ function distributeModuleToSlides(
         .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10)
         .filter((item) => !/^\d+[.)-]?$/.test(item.trim()));
 
-      // PHASE 1: Aggressive merge of weak/micro fragments into neighbors
+      // PHASE 1: Only absorb truly anaphoric weak fragments into their predecessor
       const phase1: string[] = [];
       for (const item of normalizedProcessItems) {
         const bare = item.replace(/[.\s]+$/, "").trim();
         if (phase1.length > 0 && isWeakProcessFragment(bare)) {
-          // Merge into previous item
           const prev = phase1[phase1.length - 1].replace(/[.\s]+$/, "").trim();
-          const normalizedFragment = bare.replace(/^(Isso|Esse processo|Essa abordagem)\s+/i, "").trim();
-          const fragmentLower = normalizedFragment.charAt(0).toLowerCase() + normalizedFragment.slice(1);
-          const connector = /^(Isso)\b/i.test(bare) ? ", o que " : "; ";
-          phase1[phase1.length - 1] = ensureSentenceEnd(`${prev}${connector}${fragmentLower}`);
+          // Extract the meaningful verb+complement from the anaphoric fragment
+          const stripped = bare
+            .replace(/^(Isso|Esse processo|Essa abordagem|Esse m[eé]todo|Essa ferramenta|Essa t[eé]cnica|Essa estrat[eé]gia|Essa pr[aá]tica|Esse recurso|Esse tipo|Ele|Ela)\s+/i, "")
+            .trim();
+          const fragmentLower = stripped.charAt(0).toLowerCase() + stripped.slice(1);
+          phase1[phase1.length - 1] = ensureSentenceEnd(`${prev}, o que ${fragmentLower}`);
         } else {
           phase1.push(item);
         }
       }
 
-      // PHASE 2: Merge remaining short adjacent items (< 100 chars each)
+      // PHASE 2: Only merge items that are BOTH very short (<65 chars) — 
+      // these are typically step labels without enough pedagogical substance alone
       const phase2: string[] = [];
       let i = 0;
       while (i < phase1.length) {
         const current = phase1[i].replace(/[.\s]+$/, "").trim();
         if (i + 1 < phase1.length) {
           const next = phase1[i + 1].replace(/[.\s]+$/, "").trim();
-          if (current.length < 100 && next.length < 100 && (current.length + next.length) < 220) {
-            const nextLower = next.charAt(0).toLowerCase() + next.slice(1);
-            phase2.push(ensureSentenceEnd(`${current}, além disso, ${nextLower}`));
+          // Only merge two genuinely tiny items that can't stand alone as bullets
+          if (current.length < 65 && next.length < 65) {
+            phase2.push(ensureSentenceEnd(`${current}. ${next}`));
             i += 2;
             continue;
           }
@@ -1019,30 +1028,37 @@ function distributeModuleToSlides(
         i++;
       }
 
-      // PHASE 3: Force max 4 items by merging first pair if needed
+      // PHASE 3: Cap at 6 items max (NOT 4 — allow pedagogically rich sections to breathe)
+      // Only merge if truly exceeding visual capacity
+      const MAX_PROCESS_ITEMS = 6;
       const compacted = [...phase2];
-      while (compacted.length > 4 && compacted.length >= 2) {
-        const first = compacted.shift()!.replace(/\.\s*$/, "");
-        const second = compacted.shift()!;
-        const secondLower = second.charAt(0).toLowerCase() + second.slice(1);
-        compacted.unshift(ensureSentenceEnd(`${first}; ${secondLower}`));
+      while (compacted.length > MAX_PROCESS_ITEMS && compacted.length >= 2) {
+        // Find the two shortest adjacent items to merge
+        let bestIdx = 0;
+        let bestLen = Infinity;
+        for (let j = 0; j < compacted.length - 1; j++) {
+          const combined = compacted[j].length + compacted[j + 1].length;
+          if (combined < bestLen) {
+            bestLen = combined;
+            bestIdx = j;
+          }
+        }
+        const a = compacted[bestIdx].replace(/\.\s*$/, "").trim();
+        const b = compacted[bestIdx + 1];
+        compacted.splice(bestIdx, 2, ensureSentenceEnd(`${a}. ${b}`));
       }
 
       validItems = compacted;
       layout = validItems.length <= 3 ? "process_timeline" : "bullets";
     }
 
-    // Additional merge for summary/applications with residual short fragments
+    // Additional merge for summary/applications — only merge truly tiny fragments
     if ((section.pedagogicalType === "summary" || section.pedagogicalType === "applications") && validItems.length > 1) {
       const merged: string[] = [];
       let i = 0;
       while (i < validItems.length) {
-        if (i + 1 < validItems.length && validItems[i].length < 95 && validItems[i + 1].length < 95) {
-          merged.push(
-            ensureSentenceEnd(
-              `${validItems[i].replace(/\.\s*$/, "")}, além disso, ${validItems[i + 1].charAt(0).toLowerCase()}${validItems[i + 1].slice(1).replace(/\.\s*$/, "")}`,
-            ),
-          );
+        if (i + 1 < validItems.length && validItems[i].length < 55 && validItems[i + 1].length < 55) {
+          merged.push(ensureSentenceEnd(`${validItems[i].replace(/\.\s*$/, "")}. ${validItems[i + 1]}`));
           i += 2;
         } else {
           merged.push(validItems[i]);
@@ -1052,76 +1068,26 @@ function distributeModuleToSlides(
       validItems = merged;
     }
 
-    // Example sections: normalize structured labels and keep coherent grouped blocks
+    // Example sections: normalize structured labels, keep each as a standalone item
     if (section.pedagogicalType === "example" && validItems.length > 0) {
-      const labelPattern = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o|Relev[aâ]ncia|Facilidade|Custo|Ferramenta)\s*[:/–\-]\s*(.+)$/i;
       const slashPattern = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o|Relev[aâ]ncia|Facilidade|Custo|Ferramenta)\s*\/\s*(.+)$/i;
 
-      // First: normalize all items (slash → colon, repair sentences)
+      // Normalize all items: slash → colon, repair sentences
       const normalizedExamples = validItems.map((item) => {
         let normalized = normalizeResidualText(item);
-        // Extra slash normalization for items that normalizeResidualText might miss
         const sm = normalized.match(slashPattern);
         if (sm) {
           const label = sm[1].replace(/\s+/g, " ").trim();
+          // Join multi-slash content with semicolons
           const desc = sm[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
           normalized = ensureSentenceEnd(`${label}: ${desc}`);
         }
         return normalized;
       }).filter(Boolean);
 
-      // Count labeled items to decide grouping strategy
-      const labeled = normalizedExamples.filter((it) => labelPattern.test(it));
-      const unlabeled = normalizedExamples.filter((it) => !labelPattern.test(it));
-
-      if (labeled.length >= 3) {
-        // Strategy: group related labels into composite blocks (max 3 blocks)
-        // Pair labels like Cenário+Solução, Resultado+Impacto, etc.
-        const pairMap: Record<string, string[]> = {};
-        for (const item of labeled) {
-          const m = item.match(labelPattern);
-          if (m) {
-            const label = m[1].trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            // Group by semantic pair
-            let groupKey: string;
-            if (/^(cenario|contexto|desafio)$/.test(label)) groupKey = "context";
-            else if (/^(solucao|acao|ferramenta)$/.test(label)) groupKey = "action";
-            else if (/^(resultado|impacto|beneficio)$/.test(label)) groupKey = "result";
-            else groupKey = "other";
-            if (!pairMap[groupKey]) pairMap[groupKey] = [];
-            pairMap[groupKey].push(item);
-          }
-        }
-
-        const grouped: string[] = [];
-        for (const [, items] of Object.entries(pairMap)) {
-          if (items.length <= 1) {
-            grouped.push(items[0]);
-          } else {
-            // Merge items in same group into one composite block
-            const merged = items.map((it) => it.replace(/\.\s*$/, "")).join(". ");
-            grouped.push(ensureSentenceEnd(merged));
-          }
-        }
-        // Add unlabeled items at end
-        grouped.push(...unlabeled);
-        validItems = grouped.slice(0, 4);
-      } else {
-        // Few labeled items — just use normalized items, merge short ones
-        const merged: string[] = [];
-        let idx = 0;
-        while (idx < normalizedExamples.length) {
-          const current = normalizedExamples[idx];
-          if (idx + 1 < normalizedExamples.length && current.length < 80 && normalizedExamples[idx + 1].length < 80) {
-            merged.push(ensureSentenceEnd(`${current.replace(/\.\s*$/, "")}; ${normalizedExamples[idx + 1].replace(/\.\s*$/, "")}`));
-            idx += 2;
-          } else {
-            merged.push(current);
-            idx++;
-          }
-        }
-        validItems = merged.slice(0, 4);
-      }
+      // DO NOT merge labeled items — each "Cenário:", "Resultado:", etc. should stay 
+      // as its own bullet for visual clarity. Only cap at 5 items max.
+      validItems = normalizedExamples.slice(0, 5);
     }
 
     if (validItems.length === 0) {
