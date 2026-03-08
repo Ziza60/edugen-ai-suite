@@ -1,0 +1,125 @@
+Quero usar este projeto como base, mas sem repetir o caos que aconteceu no ambiente anterior.
+
+NÃO quero reconstruir o app inteiro.
+NÃO quero mexer no frontend principal nesta rodada.
+NÃO quero refatoração ampla.
+NÃO quero várias correções ao mesmo tempo.
+
+Quero uma abordagem controlada:
+
+OBJETIVO
+
+Criar um novo exportador PPTX paralelo, usando o app atual como base, sem substituir imediatamente o exportador antigo.
+
+A ideia é:
+
+preservar o app atual;
+
+preservar o fluxo principal atual;
+
+criar um pipeline novo e separado para exportação PPTX;
+
+provar que o novo exportador funciona melhor;
+
+só depois decidir se vale substituir o exportador antigo.
+
+REGRAS
+
+não alterar o frontend principal do app nesta rodada;
+
+não quebrar o exportador antigo;
+
+não substituir nada em produção ainda;
+
+não mexer em áreas não relacionadas ao PPTX;
+
+não fazer auditoria ampla do projeto inteiro;
+
+trabalhar somente no necessário para criar um exportador alternativo testável.
+
+O QUE EU QUERO NESTA PRIMEIRA RODADA
+
+localizar o pipeline atual de exportação PPTX;
+
+identificar o arquivo central e as dependências mínimas;
+
+criar a estrutura inicial de um novo exportador paralelo;
+
+deixar claro como ele será chamado sem interferir no exportador antigo;
+
+implementar uma versão mínima funcional desse novo exportador;
+
+manter o exportador atual intacto.
+
+ARQUITETURA ESPERADA
+
+Quero algo neste espírito:
+
+exportador antigo continua existindo;
+
+novo exportador fica em arquivo(s) separado(s);
+
+o app atual serve como base;
+
+comparação entre antigo e novo fica possível depois.
+
+Exemplo de intenção arquitetural:
+
+manter supabase/functions/export-pptx/index.ts intacto, se possível;
+
+criar algo como:
+
+supabase/functions/export-pptx-v2/index.ts
+ou
+
+um novo módulo/serviço paralelo claramente separado;
+
+o novo pipeline deve priorizar:
+
+sentenças completas;
+
+zero fragmentação semântica;
+
+divisão estrutural antes de compressão;
+
+output pedagógico legível.
+
+NESTA RODADA, NÃO FAÇA
+
+não tente resolver todos os bugs antigos de uma vez;
+
+não mexa no score global / quality gate antigo;
+
+não mexa em frontend/UX principal;
+
+não troque automaticamente o exportador antigo pelo novo;
+
+não faça promessas de solução completa.
+
+RESPOSTA OBRIGATÓRIA
+
+Responda SOMENTE com:
+
+A. arquivo(s) realmente criado(s) ou alterado(s)
+
+B. como o novo exportador paralelo foi estruturado
+
+C. qual parte do app antigo foi preservada sem mudança
+
+D. como será possível testar o exportador novo sem quebrar o antigo
+
+E. qual é a versão mínima funcional entregue nesta rodada
+
+F. o que NÃO foi feito ainda
+
+IMPORTANTE
+
+Quero disciplina de engenharia:
+
+uma coisa por vez;
+
+isolamento do novo pipeline;
+
+preservação do que já existe;
+
+prova antes de substituição.
