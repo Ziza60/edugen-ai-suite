@@ -418,6 +418,20 @@ function parseModuleContent(content: string): ParsedBlock[] {
       continue;
     }
 
+    const blockquoteMatch = trimmed.match(/^>\s*(.+)$/);
+    if (blockquoteMatch) {
+      flushBullets();
+      const bqContent = sanitize(cleanMarkdown(blockquoteMatch[1]));
+      if (bqContent.length > 10) {
+        blocks.push({
+          type: "paragraph",
+          content: bqContent,
+          sectionHint: "reflection",
+        });
+      }
+      continue;
+    }
+
     const labelMatch = trimmed.match(/^(\*\*[^*]+\*\*)\s*[:–-]\s*(.+)$/);
     if (labelMatch) {
       flushBullets();
@@ -480,10 +494,14 @@ function segmentBlocks(blocks: ParsedBlock[]): SemanticSection[] {
         pushCurrentSection();
         sectionCounter++;
         const pedType = (block.sectionHint || "generic") as SemanticSection["pedagogicalType"];
+        const headingText = (block.heading || block.content || "").toUpperCase();
+        const sectionLabel = pedType !== "generic"
+          ? (SECTION_LABEL_MAP[pedType] || headingText || "CONTEÚDO")
+          : (headingText.length >= 5 ? headingText : "CONTEÚDO");
         currentSection = {
           id: `section-${sectionCounter}`,
           title: block.heading || block.content,
-          sectionLabel: SECTION_LABEL_MAP[pedType] || "CONTEÚDO",
+          sectionLabel,
           pedagogicalType: pedType,
           blocks: [],
         };
@@ -528,6 +546,57 @@ const PEDAGOGICAL_LAYOUT_MAP: Record<string, SlideLayoutV2> = {
   takeaways: "numbered_takeaways",
   generic: "bullets",
 };
+
+function splitLongItem(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text];
+  const danglingRe =
+    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i;
+  const parts: string[] = [];
+  let remaining = text;
+  while (remaining.length > maxLen) {
+    const cutZone = remaining.substring(0, maxLen);
+    const splitAt = Math.max(
+      cutZone.lastIndexOf(". "),
+      cutZone.lastIndexOf("! "),
+      cutZone.lastIndexOf("? "),
+      cutZone.lastIndexOf("; "),
+      cutZone.lastIndexOf(", "),
+    );
+    if (splitAt > maxLen * 0.4) {
+      let part = remaining.substring(0, splitAt + 1).trim();
+      if (danglingRe.test(part)) {
+        const backUp = part.lastIndexOf(" ", part.length - 4);
+        if (backUp > maxLen * 0.3) {
+          part = remaining.substring(0, backUp).trim() + ".";
+          remaining = remaining.substring(backUp).trim();
+          parts.push(part);
+          continue;
+        }
+      }
+      parts.push(part);
+      remaining = remaining.substring(splitAt + 1).trim();
+    } else {
+      let wordBreak = cutZone.lastIndexOf(" ");
+      if (wordBreak > maxLen * 0.5) {
+        let candidate = remaining.substring(0, wordBreak).trim();
+        if (danglingRe.test(candidate)) {
+          const earlier = candidate.lastIndexOf(" ", candidate.length - 4);
+          if (earlier > maxLen * 0.4) {
+            candidate = remaining.substring(0, earlier).trim();
+            wordBreak = earlier;
+          }
+        }
+        parts.push(candidate + ".");
+        remaining = remaining.substring(wordBreak).trim();
+      } else {
+        parts.push(remaining.substring(0, maxLen - 3).trim() + "...");
+        remaining = remaining.substring(maxLen - 3).trim();
+      }
+    }
+  }
+  if (remaining.length > 3) parts.push(remaining);
+  return parts;
+}
 
 function collectSectionItems(section: SemanticSection): string[] {
   const items: string[] = [];
@@ -677,7 +746,8 @@ function distributeModuleToSlides(
     }
 
     let rawItems = collectSectionItems(section);
-    const validItems = validateAndRepairItems(rawItems, report);
+    const repairedItems = validateAndRepairItems(rawItems, report);
+    const validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
 
     if (validItems.length === 0) {
       slides.push({
