@@ -193,7 +193,7 @@ export function PptxQualityReport({ report, open, onOpenChange }: Props) {
 
             <TabsContent value="checkpoints" className="space-y-3 mt-3">
               {Object.entries(checkpoints).map(([name, cp]) => (
-                <CheckpointCard key={name} name={name} cp={cp} />
+                <CheckpointCard key={name} name={name} cp={cp as QualityCheckpoint} />
               ))}
             </TabsContent>
 
