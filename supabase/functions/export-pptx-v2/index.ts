@@ -901,15 +901,22 @@ function distributeModuleToSlides(
     // Step B: Aggressive merge of short consecutive items for process sections
     if (section.pedagogicalType === "process" && validItems.length > 0) {
       const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      // Merge pairs when items are short — target richer, denser descriptions
-      if (avgLen < 90 && validItems.length >= 3) {
+      // Merge groups of 2–3 when items are short — target richer, denser descriptions
+      if (avgLen < 120 && validItems.length >= 3) {
         const merged: string[] = [];
         let i = 0;
         while (i < validItems.length) {
-          if (i + 1 < validItems.length && validItems[i].length < 100 && validItems[i + 1].length < 100) {
+          // Try to merge triplets first for maximum density
+          if (i + 2 < validItems.length && validItems[i].length < 110 && validItems[i + 1].length < 110 && validItems[i + 2].length < 80) {
+            const a = validItems[i].replace(/\.\s*$/, "");
+            const bLower = validItems[i + 1].charAt(0).toLowerCase() + validItems[i + 1].slice(1);
+            const bClean = bLower.replace(/\.\s*$/, "");
+            const cLower = validItems[i + 2].charAt(0).toLowerCase() + validItems[i + 2].slice(1);
+            merged.push(ensureSentenceEnd(`${a}, além disso, ${bClean}, e também ${cLower}`));
+            i += 3;
+          } else if (i + 1 < validItems.length && validItems[i].length < 120 && validItems[i + 1].length < 120) {
             const a = validItems[i].replace(/\.\s*$/, "");
             const b = validItems[i + 1];
-            // Use semantic connector instead of dash for better flow
             const bLower = b.charAt(0).toLowerCase() + b.slice(1);
             merged.push(ensureSentenceEnd(`${a}, além disso, ${bLower}`));
             i += 2;
@@ -920,8 +927,8 @@ function distributeModuleToSlides(
         }
         validItems = merged;
       }
-      // If still too many items for a horizontal timeline (>4), switch to bullets
-      if (validItems.length > 4) {
+      // If still too many items for a horizontal timeline (>3), switch to bullets for readability
+      if (validItems.length > 3) {
         layout = "bullets";
       }
     }
@@ -929,11 +936,11 @@ function distributeModuleToSlides(
     // Step C: Additional merge for non-process sections with short fragmented items
     if ((section.pedagogicalType === "example" || section.pedagogicalType === "summary" || section.pedagogicalType === "applications") && validItems.length > 1) {
       const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      if (avgLen < 60 && validItems.length >= 3) {
+      if (avgLen < 80 && validItems.length >= 3) {
         const merged: string[] = [];
         let i = 0;
         while (i < validItems.length) {
-          if (i + 1 < validItems.length && validItems[i].length < 70 && validItems[i + 1].length < 70) {
+          if (i + 1 < validItems.length && validItems[i].length < 90 && validItems[i + 1].length < 90) {
             const a = validItems[i].replace(/\.\s*$/, "");
             merged.push(ensureSentenceEnd(`${a} — ${validItems[i + 1]}`));
             i += 2;
@@ -943,6 +950,27 @@ function distributeModuleToSlides(
           }
         }
         validItems = merged;
+      }
+    }
+
+    // Step D: For example sections, detect and regroup structured patterns (Cenário/Solução/Resultado/Impacto)
+    if (section.pedagogicalType === "example" && validItems.length > 5) {
+      const structuredLabels = /^(Cenário|Solução|Resultado|Impacto|Critérios?\s+Aplicados?|Benefício|Contexto|Desafio|Ação)\s*[:/–\-]/i;
+      const labeledCount = validItems.filter(it => structuredLabels.test(it.trim())).length;
+      // If most items are labeled structured parts, group them into max 3 composite items
+      if (labeledCount >= 3) {
+        const grouped: string[] = [];
+        let current = "";
+        for (const item of validItems) {
+          if (structuredLabels.test(item.trim()) && current) {
+            grouped.push(ensureSentenceEnd(current.trim()));
+            current = item;
+          } else {
+            current = current ? `${current.replace(/\.\s*$/, "")} — ${item}` : item;
+          }
+        }
+        if (current) grouped.push(ensureSentenceEnd(current.trim()));
+        validItems = grouped;
       }
     }
 
@@ -1858,28 +1886,32 @@ function renderExampleHighlight(
   const sectionColors = [design.palette[1], design.palette[2], design.palette[3], design.palette[0], design.palette[4]];
 
   const contentStartY = 1.90;
-  const contentEndY = SLIDE_H - 0.70;
+  const contentEndY = SLIDE_H - 0.75;
   const availableH = contentEndY - contentStartY;
-  const sectionH = availableH / Math.max(cappedItems.length, 1);
+  const itemGap = 0.12;
+  const sectionH = (availableH - itemGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1);
 
   for (let i = 0; i < cappedItems.length; i++) {
-    const y = contentStartY + i * sectionH;
+    const y = contentStartY + i * (sectionH + itemGap);
     const color = sectionColors[i % sectionColors.length];
 
     const colonIdx = cappedItems[i].indexOf(":");
+    const dashIdx = cappedItems[i].indexOf(" — ");
+    const sepIdx = colonIdx > 0 && colonIdx < 30 ? colonIdx : (dashIdx > 0 && dashIdx < 35 ? dashIdx : -1);
+    const sepLen = sepIdx === dashIdx && dashIdx > 0 ? 3 : 1;
     const label =
-      colonIdx > 0 && colonIdx < 30
-        ? cappedItems[i].substring(0, colonIdx).trim()
+      sepIdx > 0
+        ? cappedItems[i].substring(0, sepIdx).trim()
         : sectionLabels[i] || `Item ${i + 1}`;
     const desc =
-      colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
+      sepIdx > 0 ? cappedItems[i].substring(sepIdx + sepLen).trim() : cappedItems[i];
 
     // Draw a small colored accent bar for each section
     slide.addShape("rect" as any, {
       x: MARGIN + 0.15,
       y: y + 0.02,
       w: 0.06,
-      h: Math.min(sectionH - 0.10, 0.50),
+      h: Math.min(sectionH - 0.10, 0.45),
       fill: { color },
       rectRadius: 0.02,
     });
@@ -1887,8 +1919,8 @@ function renderExampleHighlight(
     slide.addText(label, {
       x: MARGIN + 0.35,
       y,
-      w: 2.00,
-      h: 0.32,
+      w: 2.20,
+      h: 0.30,
       fontSize: TYPO.CARD_TITLE,
       fontFace: design.fonts.title,
       bold: true,
@@ -1896,14 +1928,14 @@ function renderExampleHighlight(
     });
     slide.addText(desc, {
       x: MARGIN + 0.35,
-      y: y + 0.34,
+      y: y + 0.32,
       w: SAFE_W - 0.70,
-      h: sectionH - 0.44,
+      h: sectionH - 0.42,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "top",
-      lineSpacingMultiple: 1.2,
+      lineSpacingMultiple: 1.25,
     });
   }
 
@@ -2100,8 +2132,8 @@ function renderTOC(
   design: DesignConfig,
 ) {
   const colors = getColors(design);
-  // Split TOC across multiple slides if >7 modules to avoid cramming
-  const MAX_TOC_PER_SLIDE = 7;
+  // Split TOC across multiple slides if >5 modules to avoid cramming
+  const MAX_TOC_PER_SLIDE = 5;
   const tocPages: { title: string; description?: string }[][] = [];
   for (let i = 0; i < modules.length; i += MAX_TOC_PER_SLIDE) {
     tocPages.push(modules.slice(i, i + MAX_TOC_PER_SLIDE));
@@ -2128,9 +2160,9 @@ function renderTOC(
     });
 
     const startY = 1.60;
-    const gap = 0.10;
+    const gap = 0.18;
     const availableH = SLIDE_H - startY - 0.60;
-    const itemH = Math.min(0.80, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
+    const itemH = Math.min(0.90, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
     const globalOffset = page * MAX_TOC_PER_SLIDE;
 
     for (let i = 0; i < pageModules.length; i++) {
@@ -2356,7 +2388,7 @@ function runPipeline(
       .replace(/^[-*]\s+/gm, "")
       .trim();
 
-    const desc = extractFirstCompleteSentence(strippedContent, 110);
+    const desc = extractFirstCompleteSentence(strippedContent, 90);
     if (!desc) {
       return {
         title: cleanMarkdown(cleanTitle),
