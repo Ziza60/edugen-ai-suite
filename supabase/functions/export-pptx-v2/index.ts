@@ -372,7 +372,7 @@ function normalizeResidualText(text: string): string {
   if (!t) return "";
 
   t = t
-    // English terms → Portuguese
+    // English terms → Portuguese (expanded)
     .replace(/\bwidely used\b/gi, "amplamente utilizado")
     .replace(/\bmachine learning\b/gi, "aprendizado de máquina")
     .replace(/\bdeep learning\b/gi, "aprendizado profundo")
@@ -381,10 +381,26 @@ function normalizeResidualText(text: string): string {
     .replace(/\buse cases?\b/gi, "casos de uso")
     .replace(/\breal[- ]?time\b/gi, "tempo real")
     .replace(/\bfeedback\b/gi, "retorno")
+    .replace(/\bframework\b/gi, "estrutura")
+    .replace(/\binput\b/gi, "entrada")
+    .replace(/\boutput\b/gi, "saída")
+    .replace(/\bdata[- ]?driven\b/gi, "orientado por dados")
+    .replace(/\bstakeholders?\b/gi, "partes interessadas")
+    .replace(/\binsights?\b/gi, "percepções")
+    .replace(/\bbenchmark(ing)?\b/gi, "referência")
+    .replace(/\bscalability\b/gi, "escalabilidade")
+    .replace(/\bworkflow\b/gi, "fluxo de trabalho")
+    .replace(/\bcloud[- ]?based\b/gi, "baseado em nuvem")
     // Missing preposition "de" in "gestão X" patterns
     .replace(/\bgest[aã]o\s+(documentos|projetos|dados|tarefas|equipes?|processos?|conte[uú]dos?|riscos?|tempo|conhecimento|recursos?|clientes?|pessoas|custos?|qualidade|mudan[cç]as?|contratos?)\b/gi, (_, noun) => `gestão de ${noun.toLowerCase()}`)
     // Missing preposition in "análise X" patterns
     .replace(/\ban[aá]lise\s+(dados|sentimentos?|riscos?|resultados?|desempenho|mercado)\b/gi, (_, noun) => `análise de ${noun.toLowerCase()}`)
+    // Missing preposition in "segurança X" patterns
+    .replace(/\bseguran[cç]a\s+(dados|informa[cç][oõ]es|sistemas?|redes?)\b/gi, (_, noun) => `segurança de ${noun.toLowerCase()}`)
+    // Missing preposition in "automação X", "integração X", "otimização X"
+    .replace(/\bautoma[cç][aã]o\s+(processos?|tarefas?|sistemas?)\b/gi, (_, noun) => `automação de ${noun.toLowerCase()}`)
+    .replace(/\bintegra[cç][aã]o\s+(dados|sistemas?|ferramentas?|plataformas?)\b/gi, (_, noun) => `integração de ${noun.toLowerCase()}`)
+    .replace(/\botimiza[cç][aã]o\s+(processos?|recursos?|custos?|resultados?|tempo)\b/gi, (_, noun) => `otimização de ${noun.toLowerCase()}`)
     // Punctuation cleanup
     .replace(/\.{2,}/g, ".")
     .replace(/[""]/g, '"')
@@ -402,15 +418,38 @@ function normalizeResidualText(text: string): string {
     .replace(/\."\.$/g, '."')
     // Fix trailing period inside and outside quotes
     .replace(/([.!?])"\s*\.\s*$/g, '$1"')
+    // Fix orphan punctuation at start
+    .replace(/^[.,;:!?\s]+/, "")
+    // Fix double spaces left by replacements
+    .replace(/\s{2,}/g, " ")
     .trim();
 
   if (/^\d+[.)-]?$/.test(t)) return "";
 
-  // Normalize "Label / Content" → "Label: Content" for structured examples
-  const slashStructured = t.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o|Relev[aâ]ncia|Facilidade|Custo|Ferramenta)\s*\/\s*(.+)$/i);
+  // Normalize "Label / Content" → "Label: Content" ONLY for core example labels.
+  // Restricted to Cenário/Solução/Resultado/Impacto/Contexto/Desafio/Ação to avoid
+  // false positives with table-like data (Relevância, Ferramenta, Custo, etc.)
+  const CORE_EXAMPLE_LABELS = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*\/\s*(.+)$/i;
+  const slashStructured = t.match(CORE_EXAMPLE_LABELS);
   if (slashStructured) {
-    const label = slashStructured[1];
+    const label = slashStructured[1].replace(/\s+/g, " ").trim();
     const desc = slashStructured[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
+    // Validate: the description should not start with an imperative verb (instruction, not a result)
+    const startsImperative = /^(Sugira|Faça|Crie|Envie|Escreva|Defina|Liste|Descreva|Elabore|Prepare|Inclua|Adicione|Monte|Organize|Aplique|Utilize|Analise|Avalie|Verifique|Escolha|Selecione|Determine|Implemente|Estabeleça|Desenvolva)\b/i.test(desc);
+    if (!startsImperative) {
+      t = `${label}: ${desc}`;
+    }
+    // If imperative, keep as-is (it's an instruction, not a structured example field)
+  }
+
+  // Also catch extended labels (Relevância, Ferramenta, Custo, etc.) used as 
+  // table/criterion data — convert slash to colon but WITHOUT treating as example structure.
+  // These stay as plain descriptive items.
+  const EXTENDED_LABELS = /^(Relev[aâ]ncia|Facilidade|Custo|Ferramenta|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i;
+  const extMatch = t.match(EXTENDED_LABELS);
+  if (extMatch) {
+    const label = extMatch[1].replace(/\s+/g, " ").trim();
+    const desc = extMatch[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
     t = `${label}: ${desc}`;
   }
 
