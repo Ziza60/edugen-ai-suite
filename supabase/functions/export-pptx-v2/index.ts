@@ -1453,6 +1453,19 @@ function addSlideBackground(
   slide.background = { fill: color };
 }
 
+function addTopAccentBar(
+  slide: ReturnType<PptxGenJS["addSlide"]>,
+  accentColor: string,
+) {
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: 0,
+    w: SLIDE_W,
+    h: 0.08,
+    fill: { color: accentColor },
+  });
+}
+
 function addSectionLabel(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   label: string,
@@ -1461,23 +1474,24 @@ function addSectionLabel(
 ) {
   slide.addShape("rect" as any, {
     x: MARGIN,
-    y: 0.45,
-    w: 1.8,
-    h: 0.30,
+    y: 0.40,
+    w: 2.0,
+    h: 0.32,
     fill: { color: accentColor },
-    rectRadius: 0.05,
+    rectRadius: 0.06,
   });
   slide.addText(label.toUpperCase(), {
     x: MARGIN,
-    y: 0.45,
-    w: 1.8,
-    h: 0.30,
+    y: 0.40,
+    w: 2.0,
+    h: 0.32,
     fontSize: TYPO.LABEL,
     fontFace: fontBody,
     bold: true,
     color: "FFFFFF",
     align: "center",
     valign: "middle",
+    letterSpacing: 1.5,
   });
 }
 
