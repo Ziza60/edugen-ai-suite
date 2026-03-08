@@ -2860,6 +2860,7 @@ function renderNumberedTakeaways(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
+  addTopAccentBar(slide, design.palette[4] || colors.accent);
 
   if (plan.sectionLabel) {
     addSectionLabel(slide, plan.sectionLabel, design.palette[4] || colors.accent, design.fonts.body);
@@ -2867,42 +2868,67 @@ function renderNumberedTakeaways(
   addSlideTitle(slide, plan.title, colors, design.fonts.title);
 
   const items = plan.items || [];
-  const contentY = 1.70;
-  const contentH = SLIDE_H - contentY - 0.60;
-  const itemH = Math.min(0.65, contentH / Math.max(items.length, 1));
+
+  // 2-column grid of cards
+  const cols = items.length <= 2 ? items.length : 2;
+  const rows = Math.ceil(items.length / cols);
+  const gap = 0.20;
+  const cardW = (SAFE_W - gap * (cols - 1)) / cols;
+  const contentY = 1.65;
+  const contentH = SLIDE_H - contentY - 0.50;
+  const cardH = Math.min(1.40, (contentH - gap * (rows - 1)) / rows);
+  const circleSize = 0.44;
 
   for (let i = 0; i < items.length; i++) {
-    const y = contentY + i * itemH;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = MARGIN + col * (cardW + gap);
+    const y = contentY + row * (cardH + gap);
     const accentColor = design.palette[i % design.palette.length];
 
+    // Card background
+    slide.addShape("roundRect" as any, {
+      x,
+      y,
+      w: cardW,
+      h: cardH,
+      fill: { color: colors.cardBgAlt },
+      rectRadius: 0.08,
+      line: { color: colors.borders, width: 0.5 },
+    });
+
+    // Numbered circle
     slide.addShape("ellipse" as any, {
-      x: MARGIN,
-      y: y + 0.05,
-      w: 0.40,
-      h: 0.40,
+      x: x + 0.18,
+      y: y + 0.18,
+      w: circleSize,
+      h: circleSize,
       fill: { color: accentColor },
     });
     slide.addText(String(i + 1), {
-      x: MARGIN,
-      y: y + 0.05,
-      w: 0.40,
-      h: 0.40,
-      fontSize: TYPO.TAKEAWAY_BODY,
+      x: x + 0.18,
+      y: y + 0.18,
+      w: circleSize,
+      h: circleSize,
+      fontSize: TYPO.TAKEAWAY_BODY + 3,
       fontFace: design.fonts.title,
       bold: true,
       color: "FFFFFF",
       align: "center",
       valign: "middle",
     });
+
+    // Takeaway text
     slide.addText(items[i], {
-      x: MARGIN + 0.55,
-      y: y + 0.02,
-      w: SAFE_W - 0.60,
-      h: itemH - 0.05,
+      x: x + 0.18 + circleSize + 0.15,
+      y: y + 0.12,
+      w: cardW - circleSize - 0.65,
+      h: cardH - 0.24,
       fontSize: TYPO.TAKEAWAY_BODY,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "middle",
+      lineSpacingMultiple: 1.2,
     });
   }
 
