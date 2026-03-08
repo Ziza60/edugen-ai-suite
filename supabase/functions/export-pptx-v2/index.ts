@@ -1978,6 +1978,46 @@ function runPipeline(
   });
   renderTOC(pptx, tocModules, design);
 
+  // ── POST-PROCESSING: Final sweep to eliminate empty/weak slides ──
+  console.log(`[V2-STAGE-3.5] Post-processing: eliminating empty/weak slides...`);
+  for (const modulePlans of allModuleSlidePlans) {
+    for (let i = modulePlans.length - 1; i >= 0; i--) {
+      const plan = modulePlans[i];
+      if (plan.layout === "module_cover") continue; // Always keep module covers
+      if (plan.layout === "comparison_table") {
+        // Table slides need actual rows
+        if (!plan.tableRows || plan.tableRows.length === 0) {
+          report.warnings.push(`[POST] Removed empty table slide: "${plan.title}"`);
+          modulePlans.splice(i, 1);
+          continue;
+        }
+        continue;
+      }
+      // For all other layouts: must have meaningful items
+      const items = plan.items || [];
+      if (items.length === 0) {
+        report.warnings.push(`[POST] Removed slide with no items: "${plan.title}"`);
+        // Try to fold items into previous slide
+        if (i > 0 && modulePlans[i - 1].items) {
+          // nothing to fold, just remove
+        }
+        modulePlans.splice(i, 1);
+        continue;
+      }
+      if (!hasMeaningfulContent(items)) {
+        // Fold into previous slide if possible
+        if (i > 0 && modulePlans[i - 1].items) {
+          modulePlans[i - 1].items = [...(modulePlans[i - 1].items || []), ...items];
+          report.warnings.push(`[POST] Merged weak slide "${plan.title}" into "${modulePlans[i - 1].title}"`);
+        } else {
+          report.warnings.push(`[POST] Removed weak slide: "${plan.title}" (${items.length} items, none meaningful)`);
+        }
+        modulePlans.splice(i, 1);
+        continue;
+      }
+    }
+  }
+
   console.log(`[V2-STAGE-4] Rendering slides...`);
   for (const modulePlans of allModuleSlidePlans) {
     for (const plan of modulePlans) {
