@@ -1530,17 +1530,24 @@ function addFooter(
 ) {
   slide.addShape("rect" as any, {
     x: 0,
-    y: SLIDE_H - 0.40,
+    y: SLIDE_H - 0.35,
     w: SLIDE_W,
-    h: 0.40,
+    h: 0.35,
     fill: { color: colors.bgAlt },
+  });
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: SLIDE_H - 0.35,
+    w: SLIDE_W,
+    h: 0.025,
+    fill: { color: colors.divider },
   });
   slide.addText("EduGenAI", {
     x: MARGIN,
-    y: SLIDE_H - 0.38,
+    y: SLIDE_H - 0.33,
     w: 3,
-    h: 0.35,
-    fontSize: TYPO.FOOTER - 2,
+    h: 0.30,
+    fontSize: TYPO.FOOTER - 3,
     fontFace: fontBody,
     color: colors.textSecondary,
     valign: "middle",
