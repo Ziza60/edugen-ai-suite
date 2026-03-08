@@ -2128,9 +2128,9 @@ function renderTOC(
     });
 
     const startY = 1.60;
-    const gap = 0.10;
+    const gap = 0.18;
     const availableH = SLIDE_H - startY - 0.60;
-    const itemH = Math.min(0.80, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
+    const itemH = Math.min(0.90, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
     const globalOffset = page * MAX_TOC_PER_SLIDE;
 
     for (let i = 0; i < pageModules.length; i++) {
