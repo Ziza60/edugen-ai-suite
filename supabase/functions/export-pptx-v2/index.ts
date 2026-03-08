@@ -407,8 +407,18 @@ function normalizeResidualText(text: string): string {
     .replace(/\bdataset\b/gi, "conjunto de dados")
     .replace(/\bpipeline\b/gi, "fluxo de processamento")
     .replace(/\bdeployment\b/gi, "implantação")
+    // Additional English leaks
+    .replace(/\bhowever\b/gi, "entretanto")
+    .replace(/\btherefore\b/gi, "portanto")
+    .replace(/\bmoreover\b/gi, "além disso")
+    .replace(/\bfurthermore\b/gi, "além disso")
+    .replace(/\bin\s+order\s+to\b/gi, "para")
+    .replace(/\bas\s+well\s+as\b/gi, "assim como")
+    .replace(/\bon\s+the\s+other\s+hand\b/gi, "por outro lado")
+    .replace(/\bbased\s+on\b/gi, "com base em")
+    .replace(/\bthrough\b/gi, "por meio de")
+    .replace(/\baccording\s+to\b/gi, "de acordo com")
 
-    // ── Gender agreement fixes (Portuguese) ──
     // "percepções valiosos" → "percepções valiosas" (fem. plural)
     .replace(/\bpercep[cç][oõ]es\s+(valiosos|baseados|obtidos|gerados|coletados|produzidos|fornecidos|relevantes)\b/gi, 
       (_, adj) => {
