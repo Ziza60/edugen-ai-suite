@@ -1859,45 +1859,71 @@ function renderModuleCover(
   addSlideBackground(slide, colors.bg);
 
   const accentColor = design.palette[((plan.moduleIndex || 0) % design.palette.length)];
+  const secondaryAccent = design.palette[((plan.moduleIndex || 0) + 1) % design.palette.length];
 
+  // Top accent band
   slide.addShape("rect" as any, {
     x: 0,
     y: 0,
-    w: 0.25,
-    h: SLIDE_H,
+    w: SLIDE_W,
+    h: 2.80,
     fill: { color: accentColor },
   });
 
+  // Decorative secondary stripe
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: 2.80,
+    w: SLIDE_W,
+    h: 0.06,
+    fill: { color: secondaryAccent },
+  });
+
+  // Module number (large, white, on accent band)
+  slide.addText(String(plan.moduleIndex !== undefined ? plan.moduleIndex + 1 : "").padStart(2, "0"), {
+    x: MARGIN,
+    y: 0.40,
+    w: 2.0,
+    h: 1.00,
+    fontSize: TYPO.MODULE_NUMBER,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+    valign: "top",
+  });
+
+  // Module subtitle label (on accent band)
   slide.addText(plan.subtitle || "MÓDULO", {
-    x: 0.60,
-    y: 0.80,
+    x: MARGIN,
+    y: 1.30,
     w: 4,
-    h: 0.50,
+    h: 0.40,
     fontSize: TYPO.LABEL,
     fontFace: design.fonts.body,
     bold: true,
-    color: accentColor,
+    color: "FFFFFF",
     letterSpacing: 3,
   });
 
+  // Module title (on accent band)
   slide.addText(plan.title, {
-    x: 0.60,
-    y: 1.40,
-    w: SAFE_W * 0.65,
-    h: 1.20,
+    x: MARGIN,
+    y: 1.70,
+    w: SAFE_W * 0.70,
+    h: 1.00,
     fontSize: TYPO.MODULE_TITLE,
     fontFace: design.fonts.title,
     bold: true,
-    color: colors.text,
+    color: "FFFFFF",
     valign: "top",
   });
 
   if (plan.description) {
     slide.addText(plan.description, {
-      x: 0.60,
-      y: 2.80,
+      x: MARGIN,
+      y: 3.10,
       w: SAFE_W * 0.65,
-      h: 0.80,
+      h: 0.70,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.textSecondary,
@@ -1905,8 +1931,34 @@ function renderModuleCover(
     });
   }
 
+  // Objectives in a subtle card on the right
   if (plan.objectives && plan.objectives.length > 0) {
-    const startY = plan.description ? 3.80 : 2.80;
+    const objStartY = 3.20;
+    const objCardW = SAFE_W * 0.38;
+    const objCardX = SLIDE_W - MARGIN - objCardW;
+
+    slide.addShape("roundRect" as any, {
+      x: objCardX,
+      y: objStartY,
+      w: objCardW,
+      h: 3.40,
+      fill: { color: colors.bgAlt },
+      rectRadius: 0.10,
+      line: { color: colors.borders, width: 0.5 },
+    });
+
+    slide.addText("OBJETIVOS", {
+      x: objCardX + 0.20,
+      y: objStartY + 0.15,
+      w: objCardW - 0.40,
+      h: 0.30,
+      fontSize: TYPO.LABEL,
+      fontFace: design.fonts.body,
+      bold: true,
+      color: accentColor,
+      letterSpacing: 2,
+    });
+
     const objTexts = plan.objectives.map(
       (obj, i) =>
         ({
@@ -1917,15 +1969,15 @@ function renderModuleCover(
             color: colors.text,
             bullet: false,
             breakLine: true,
-            paraSpaceAfter: 6,
+            paraSpaceAfter: 8,
           },
         }) as any,
     );
     slide.addText(objTexts, {
-      x: SAFE_W * 0.65 + 1.20,
-      y: startY,
-      w: SAFE_W * 0.30,
-      h: 2.50,
+      x: objCardX + 0.20,
+      y: objStartY + 0.50,
+      w: objCardW - 0.40,
+      h: 2.70,
       valign: "top",
     });
   }
