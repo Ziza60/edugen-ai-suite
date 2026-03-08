@@ -803,16 +803,38 @@ function distributeModuleToSlides(
 
     for (let ci = 0; ci < chunks.length; ci++) {
       const isContination = ci > 0;
-      const slideTitle = isContination
-        ? `${section.title} (Parte ${ci + 1})`
-        : section.title;
 
-      const finalItems = chunks[ci].map((item) => {
+      let finalItems = chunks[ci].map((item) => {
         if (item.length > maxChars) {
           return smartTruncate(item, maxChars);
         }
         return item;
       });
+
+      // Final sentence integrity pass on every item before rendering
+      finalItems = finalItems
+        .map((item) => {
+          if (!isSentenceComplete(item.replace(/\.\s*$/, ""))) {
+            return repairSentence(item);
+          }
+          return item;
+        })
+        .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
+
+      // Skip continuation slides that ended up with no real content
+      if (isContination && finalItems.length === 0) {
+        report.warnings.push(`Dropped empty continuation slide for: "${section.title}"`);
+        continue;
+      }
+      // Skip any slide (including first) with no items
+      if (finalItems.length === 0) {
+        report.warnings.push(`Dropped slide with no valid items: "${section.title}"`);
+        continue;
+      }
+
+      const slideTitle = isContination
+        ? `${section.title} (Parte ${ci + 1})`
+        : section.title;
 
       slides.push({
         layout,
