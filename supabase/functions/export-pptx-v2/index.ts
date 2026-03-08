@@ -1443,15 +1443,17 @@ function renderBullets(
 
   const items = plan.items || [];
   const contentY = 1.70;
+  const bulletGap = 0.06;
   const contentH = SLIDE_H - contentY - 0.60;
-  const itemH = Math.min(0.60, contentH / Math.max(items.length, 1));
+  const itemH = Math.min(0.58, (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
 
   for (let i = 0; i < items.length; i++) {
     const accentColor = design.palette[i % design.palette.length];
+    const yPos = contentY + i * (itemH + bulletGap);
 
     slide.addShape("rect" as any, {
       x: MARGIN,
-      y: contentY + i * itemH,
+      y: yPos,
       w: 0.08,
       h: itemH - 0.08,
       fill: { color: accentColor },
@@ -1460,7 +1462,7 @@ function renderBullets(
 
     slide.addText(items[i], {
       x: MARGIN + 0.25,
-      y: contentY + i * itemH,
+      y: yPos,
       w: SAFE_W - 0.30,
       h: itemH - 0.05,
       fontSize: TYPO.BULLET_TEXT,
