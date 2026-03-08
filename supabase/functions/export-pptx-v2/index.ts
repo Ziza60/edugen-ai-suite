@@ -3149,33 +3149,71 @@ function renderClosingSlide(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
+  addSlideBackground(slide, colors.coverBg);
+
+  // Match cover style
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: 0,
+    w: 0.40,
+    h: SLIDE_H,
+    fill: { color: colors.accent },
+  });
+  slide.addShape("rect" as any, {
+    x: 0.40,
+    y: 0,
+    w: 0.08,
+    h: SLIDE_H,
+    fill: { color: design.palette[1] },
+  });
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: SLIDE_H - 0.10,
+    w: SLIDE_W,
+    h: 0.10,
+    fill: { color: colors.accent },
+  });
 
   slide.addText("Obrigado!", {
-    x: MARGIN,
-    y: 2.20,
-    w: SAFE_W,
-    h: 1.20,
-    fontSize: 44,
+    x: 1.20,
+    y: 1.80,
+    w: SLIDE_W - 2.00,
+    h: 1.40,
+    fontSize: 52,
     fontFace: design.fonts.title,
     bold: true,
-    color: colors.text,
-    align: "center",
+    color: colors.coverText,
     valign: "middle",
   });
 
+  slide.addShape("rect" as any, {
+    x: 1.20,
+    y: 3.40,
+    w: 2.00,
+    h: 0.04,
+    fill: { color: colors.accent },
+  });
+
   slide.addText(courseTitle, {
-    x: MARGIN,
+    x: 1.20,
     y: 3.60,
-    w: SAFE_W,
+    w: SLIDE_W - 2.00,
     h: 0.60,
     fontSize: TYPO.SUBTITLE,
     fontFace: design.fonts.body,
-    color: colors.textSecondary,
-    align: "center",
+    color: colors.coverSubtext,
   });
 
-  addFooter(slide, colors, design.fonts.body);
+  // Decorative palette dots
+  for (let i = 0; i < design.palette.length; i++) {
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - MARGIN - (design.palette.length - i) * 0.40,
+      y: SLIDE_H - 0.60,
+      w: 0.28,
+      h: 0.28,
+      fill: { color: design.palette[i] },
+    });
+  }
 }
 
 function renderSlide(
