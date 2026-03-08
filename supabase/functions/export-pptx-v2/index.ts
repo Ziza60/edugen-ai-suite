@@ -1049,7 +1049,9 @@ function distributeModuleToSlides(
       }
 
       validItems = compacted;
-      layout = validItems.length <= 3 ? "process_timeline" : "bullets";
+      // Only use process_timeline for ≤3 items where ALL are short enough to fit horizontally
+      const allFitTimeline = validItems.length <= 3 && validItems.every((item) => item.length <= 85);
+      layout = allFitTimeline ? "process_timeline" : "bullets";
     }
 
     // Additional merge for summary/applications — only merge truly tiny fragments
