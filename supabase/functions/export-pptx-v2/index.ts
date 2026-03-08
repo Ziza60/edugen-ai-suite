@@ -936,11 +936,11 @@ function distributeModuleToSlides(
     // Step C: Additional merge for non-process sections with short fragmented items
     if ((section.pedagogicalType === "example" || section.pedagogicalType === "summary" || section.pedagogicalType === "applications") && validItems.length > 1) {
       const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      if (avgLen < 60 && validItems.length >= 3) {
+      if (avgLen < 80 && validItems.length >= 3) {
         const merged: string[] = [];
         let i = 0;
         while (i < validItems.length) {
-          if (i + 1 < validItems.length && validItems[i].length < 70 && validItems[i + 1].length < 70) {
+          if (i + 1 < validItems.length && validItems[i].length < 90 && validItems[i + 1].length < 90) {
             const a = validItems[i].replace(/\.\s*$/, "");
             merged.push(ensureSentenceEnd(`${a} — ${validItems[i + 1]}`));
             i += 2;
@@ -950,6 +950,27 @@ function distributeModuleToSlides(
           }
         }
         validItems = merged;
+      }
+    }
+
+    // Step D: For example sections, detect and regroup structured patterns (Cenário/Solução/Resultado/Impacto)
+    if (section.pedagogicalType === "example" && validItems.length > 5) {
+      const structuredLabels = /^(Cenário|Solução|Resultado|Impacto|Critérios?\s+Aplicados?|Benefício|Contexto|Desafio|Ação)\s*[:/–\-]/i;
+      const labeledCount = validItems.filter(it => structuredLabels.test(it.trim())).length;
+      // If most items are labeled structured parts, group them into max 3 composite items
+      if (labeledCount >= 3) {
+        const grouped: string[] = [];
+        let current = "";
+        for (const item of validItems) {
+          if (structuredLabels.test(item.trim()) && current) {
+            grouped.push(ensureSentenceEnd(current.trim()));
+            current = item;
+          } else {
+            current = current ? `${current.replace(/\.\s*$/, "")} — ${item}` : item;
+          }
+        }
+        if (current) grouped.push(ensureSentenceEnd(current.trim()));
+        validItems = grouped;
       }
     }
 
