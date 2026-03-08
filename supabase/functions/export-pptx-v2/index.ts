@@ -358,13 +358,12 @@ function extractFirstCompleteSentence(text: string, maxLen: number): string {
 
 function isWeakProcessFragment(text: string): boolean {
   const t = text.trim();
-  if (t.length > 110) return false;
-  // Known weak openers that produce pedagogically empty micro-slides
-  if (/^(Isso|Esse processo|O objetivo [eé]|Com base ness|A IA (na|no|em)|A escolha d|Integrar a IA|Essa abordagem|Esse m[eé]todo|Esse tipo|Essa ferramenta|Essa t[eé]cnica|Essa estrat[eé]gia|Essa pr[aá]tica|Esse recurso)\b/i.test(t)) return true;
-  // Generic filler sentences
+  if (t.length > 120) return false;
+  // Known weak openers — anaphoric references that lack standalone meaning
+  if (/^(Isso|Esse processo|Essa abordagem|Esse m[eé]todo|Esse tipo|Essa ferramenta|Essa t[eé]cnica|Essa estrat[eé]gia|Essa pr[aá]tica|Esse recurso)\s+(oferece|garante|facilita|possibilita|ajuda|promove|permite|gera|reduz|melhora|acelera|aumenta|é|envolve|produz)\b/i.test(t)) return true;
+  // "Ele/Ela + verb" filler
   if (/^(Ele|Ela|Eles|Elas)\s+(permite|oferece|garante|facilita|possibilita|ajuda|promove)\b/i.test(t)) return true;
-  // Very short declarative sentences (< 70 chars) that aren't self-sufficient
-  if (t.length < 70 && /^[A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]/.test(t) && !/[:;]/.test(t)) return true;
+  // REMOVED: the overly aggressive <70 chars rule that was catching legitimate content
   return false;
 }
 
