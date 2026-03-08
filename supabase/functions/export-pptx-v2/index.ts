@@ -881,14 +881,13 @@ function distributeModuleToSlides(
     let validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
 
     // ── Process/Timeline anti-fragmentation ──
-    // Merge "Isso..." pattern items with their predecessor for narrative flow
+    // Step A: Merge "Isso..." pattern items with their predecessor for narrative flow
     if (section.pedagogicalType === "process" && validItems.length > 1) {
       const issoPattern = /^Isso\s+(acelera|reduz|gera|oferece|é\s+útil|permite|facilita|melhora|garante|aumenta|possibilita|elimina|otimiza|promove|cria|traz|ajuda|evita|contribui|simplifica|amplia|fortalece|assegura|viabiliza|impacta|transforma)\b/i;
       const consolidated: string[] = [];
       for (let idx = 0; idx < validItems.length; idx++) {
         const item = validItems[idx];
         if (issoPattern.test(item.trim()) && consolidated.length > 0) {
-          // Merge "Isso..." sentence into previous item for narrative density
           const prev = consolidated[consolidated.length - 1].replace(/\.\s*$/, "");
           const issoText = item.trim().charAt(0).toLowerCase() + item.trim().slice(1);
           consolidated[consolidated.length - 1] = ensureSentenceEnd(`${prev}, o que ${issoText.replace(/^isso\s+/i, "")}`);
@@ -899,16 +898,20 @@ function distributeModuleToSlides(
       validItems = consolidated;
     }
 
+    // Step B: Aggressive merge of short consecutive items for process sections
     if (section.pedagogicalType === "process" && validItems.length > 0) {
       const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      // If items are very short (avg < 70 chars), merge consecutive pairs into richer descriptions
-      if (avgLen < 70 && validItems.length >= 3) {
+      // Merge pairs when items are short — target richer, denser descriptions
+      if (avgLen < 90 && validItems.length >= 3) {
         const merged: string[] = [];
         let i = 0;
         while (i < validItems.length) {
-          if (i + 1 < validItems.length && validItems[i].length < 80 && validItems[i + 1].length < 80) {
-            const combined = validItems[i].replace(/\.\s*$/, "") + " — " + validItems[i + 1];
-            merged.push(ensureSentenceEnd(combined));
+          if (i + 1 < validItems.length && validItems[i].length < 100 && validItems[i + 1].length < 100) {
+            const a = validItems[i].replace(/\.\s*$/, "");
+            const b = validItems[i + 1];
+            // Use semantic connector instead of dash for better flow
+            const bLower = b.charAt(0).toLowerCase() + b.slice(1);
+            merged.push(ensureSentenceEnd(`${a}, além disso, ${bLower}`));
             i += 2;
           } else {
             merged.push(validItems[i]);
@@ -917,9 +920,29 @@ function distributeModuleToSlides(
         }
         validItems = merged;
       }
-      // If too many items for a horizontal timeline (>4), switch to bullets for readability
+      // If still too many items for a horizontal timeline (>4), switch to bullets
       if (validItems.length > 4) {
         layout = "bullets";
+      }
+    }
+
+    // Step C: Additional merge for non-process sections with short fragmented items
+    if ((section.pedagogicalType === "example" || section.pedagogicalType === "summary" || section.pedagogicalType === "applications") && validItems.length > 1) {
+      const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
+      if (avgLen < 60 && validItems.length >= 3) {
+        const merged: string[] = [];
+        let i = 0;
+        while (i < validItems.length) {
+          if (i + 1 < validItems.length && validItems[i].length < 70 && validItems[i + 1].length < 70) {
+            const a = validItems[i].replace(/\.\s*$/, "");
+            merged.push(ensureSentenceEnd(`${a} — ${validItems[i + 1]}`));
+            i += 2;
+          } else {
+            merged.push(validItems[i]);
+            i++;
+          }
+        }
+        validItems = merged;
       }
     }
 
@@ -1084,7 +1107,7 @@ const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
   definition: 4,
   grid_cards: 6,
   process_timeline: 4,
-  example_highlight: 3,
+  example_highlight: 5,
   warning_callout: 5,
   reflection_callout: 4,
   summary_slide: 5,
@@ -1812,6 +1835,15 @@ function renderExampleHighlight(
 
   const items = plan.items || [];
 
+  // Repair all items semantically
+  const repairedItems = items.map((item) => {
+    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+    return ensureSentenceEnd(repaired);
+  });
+
+  // If >3 items, group them into a structured vertical list instead of cramming
+  const cappedItems = repairedItems.slice(0, 5);
+
   slide.addShape("roundRect" as any, {
     x: MARGIN,
     y: 1.70,
@@ -1822,17 +1854,16 @@ function renderExampleHighlight(
     line: { color: colors.accent, width: 1.5 },
   });
 
-  const sectionLabels = ["Cenário", "Solução", "Resultado"];
-  const sectionColors = [design.palette[1], design.palette[2], design.palette[3]];
+  const sectionLabels = ["Cenário", "Solução", "Resultado", "Impacto", "Conclusão"];
+  const sectionColors = [design.palette[1], design.palette[2], design.palette[3], design.palette[0], design.palette[4]];
 
-  const cappedItems = items.slice(0, 3).map((item) => {
-    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
-    return ensureSentenceEnd(repaired);
-  });
-  const sectionH = (SLIDE_H - 1.90 - 0.60) / Math.max(cappedItems.length, 1);
+  const contentStartY = 1.90;
+  const contentEndY = SLIDE_H - 0.70;
+  const availableH = contentEndY - contentStartY;
+  const sectionH = availableH / Math.max(cappedItems.length, 1);
 
   for (let i = 0; i < cappedItems.length; i++) {
-    const y = 1.90 + i * sectionH;
+    const y = contentStartY + i * sectionH;
     const color = sectionColors[i % sectionColors.length];
 
     const colonIdx = cappedItems[i].indexOf(":");
@@ -1843,21 +1874,31 @@ function renderExampleHighlight(
     const desc =
       colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
 
+    // Draw a small colored accent bar for each section
+    slide.addShape("rect" as any, {
+      x: MARGIN + 0.15,
+      y: y + 0.02,
+      w: 0.06,
+      h: Math.min(sectionH - 0.10, 0.50),
+      fill: { color },
+      rectRadius: 0.02,
+    });
+
     slide.addText(label, {
-      x: MARGIN + 0.30,
+      x: MARGIN + 0.35,
       y,
       w: 2.00,
-      h: 0.35,
+      h: 0.32,
       fontSize: TYPO.CARD_TITLE,
       fontFace: design.fonts.title,
       bold: true,
       color,
     });
     slide.addText(desc, {
-      x: MARGIN + 0.30,
-      y: y + 0.38,
-      w: SAFE_W - 0.60,
-      h: sectionH - 0.48,
+      x: MARGIN + 0.35,
+      y: y + 0.34,
+      w: SAFE_W - 0.70,
+      h: sectionH - 0.44,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
@@ -2059,67 +2100,83 @@ function renderTOC(
   design: DesignConfig,
 ) {
   const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
+  // Split TOC across multiple slides if >7 modules to avoid cramming
+  const MAX_TOC_PER_SLIDE = 7;
+  const tocPages: { title: string; description?: string }[][] = [];
+  for (let i = 0; i < modules.length; i += MAX_TOC_PER_SLIDE) {
+    tocPages.push(modules.slice(i, i + MAX_TOC_PER_SLIDE));
+  }
 
-  slide.addText("O que você vai aprender", {
-    x: MARGIN,
-    y: 0.50,
-    w: SAFE_W,
-    h: 0.80,
-    fontSize: TYPO.MODULE_TITLE,
-    fontFace: design.fonts.title,
-    bold: true,
-    color: colors.text,
-  });
+  for (let page = 0; page < tocPages.length; page++) {
+    const pageModules = tocPages[page];
+    const slide = pptx.addSlide();
+    addSlideBackground(slide, colors.bg);
 
-  const startY = 1.60;
-  const gap = 0.08;
-  const itemH = Math.min(0.80, (SLIDE_H - startY - 0.60 - gap * Math.max(modules.length - 1, 0)) / Math.max(modules.length, 1));
+    const tocTitle = tocPages.length > 1
+      ? `O que você vai aprender (${page + 1}/${tocPages.length})`
+      : "O que você vai aprender";
 
-  for (let i = 0; i < modules.length; i++) {
-    const y = startY + i * (itemH + gap);
-    const accentColor = design.palette[i % design.palette.length];
-
-    slide.addText(String(i + 1).padStart(2, "0"), {
+    slide.addText(tocTitle, {
       x: MARGIN,
-      y,
-      w: 0.60,
-      h: itemH - 0.05,
-      fontSize: TYPO.SUBTITLE,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: accentColor,
-      valign: "middle",
-    });
-
-    slide.addText(modules[i].title, {
-      x: MARGIN + 0.70,
-      y,
-      w: SAFE_W * 0.40,
-      h: itemH - 0.05,
-      fontSize: TYPO.BODY,
+      y: 0.50,
+      w: SAFE_W,
+      h: 0.80,
+      fontSize: TYPO.MODULE_TITLE,
       fontFace: design.fonts.title,
       bold: true,
       color: colors.text,
-      valign: "middle",
     });
 
-    if (modules[i].description) {
-      slide.addText(modules[i].description!, {
-        x: SAFE_W * 0.45 + MARGIN,
+    const startY = 1.60;
+    const gap = 0.10;
+    const availableH = SLIDE_H - startY - 0.60;
+    const itemH = Math.min(0.80, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
+    const globalOffset = page * MAX_TOC_PER_SLIDE;
+
+    for (let i = 0; i < pageModules.length; i++) {
+      const y = startY + i * (itemH + gap);
+      const accentColor = design.palette[(globalOffset + i) % design.palette.length];
+
+      slide.addText(String(globalOffset + i + 1).padStart(2, "0"), {
+        x: MARGIN,
         y,
-        w: SAFE_W * 0.52,
+        w: 0.60,
         h: itemH - 0.05,
-        fontSize: TYPO.SUPPORT,
-        fontFace: design.fonts.body,
-        color: colors.textSecondary,
+        fontSize: TYPO.SUBTITLE,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: accentColor,
         valign: "middle",
       });
-    }
-  }
 
-  addFooter(slide, colors, design.fonts.body);
+      slide.addText(pageModules[i].title, {
+        x: MARGIN + 0.70,
+        y,
+        w: SAFE_W * 0.40,
+        h: itemH - 0.05,
+        fontSize: TYPO.BODY,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: colors.text,
+        valign: "middle",
+      });
+
+      if (pageModules[i].description) {
+        slide.addText(pageModules[i].description!, {
+          x: SAFE_W * 0.45 + MARGIN,
+          y,
+          w: SAFE_W * 0.52,
+          h: itemH - 0.05,
+          fontSize: TYPO.SUPPORT,
+          fontFace: design.fonts.body,
+          color: colors.textSecondary,
+          valign: "middle",
+        });
+      }
+    }
+
+    addFooter(slide, colors, design.fonts.body);
+  }
 }
 
 function renderCoverSlide(
@@ -2299,7 +2356,7 @@ function runPipeline(
       .replace(/^[-*]\s+/gm, "")
       .trim();
 
-    const desc = extractFirstCompleteSentence(strippedContent, 80);
+    const desc = extractFirstCompleteSentence(strippedContent, 110);
     if (!desc) {
       return {
         title: cleanMarkdown(cleanTitle),
