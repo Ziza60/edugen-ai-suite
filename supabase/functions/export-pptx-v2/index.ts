@@ -1656,10 +1656,7 @@ function renderBullets(
   addSlideTitle(slide, plan.title, colors, design.fonts.title);
 
   const items = plan.items || [];
-  const contentY = 1.70;
-  const bulletGap = 0.06;
-  const contentH = SLIDE_H - contentY - 0.60;
-  const itemH = Math.min(0.58, (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
+  const { contentY, bulletGap, itemH } = getBulletLayoutMetrics(items.length);
 
   for (let i = 0; i < items.length; i++) {
     const accentColor = design.palette[i % design.palette.length];
