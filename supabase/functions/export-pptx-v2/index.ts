@@ -1526,6 +1526,7 @@ function addFooter(
 
 const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
   bullets: 5,
+  two_column_bullets: 8,
   definition: 4,
   grid_cards: 6,
   process_timeline: 3,
