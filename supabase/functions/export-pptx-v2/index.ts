@@ -353,9 +353,9 @@ function parseModuleContent(content: string): ParsedBlock[] {
       const cleanTitle = sanitize(
         cleanMarkdown(
           rawTitle.replace(
-            /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
+            /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}]/gu,
             "",
-          ),
+          ).replace(/[⚙️🛠️⚠️]/g, ""),
         ),
       );
       blocks.push({
@@ -469,18 +469,21 @@ function segmentBlocks(blocks: ParsedBlock[]): SemanticSection[] {
   }
 
   for (const block of blocks) {
-    if (block.type === "heading" && block.headingLevel && block.headingLevel <= 3) {
-      pushCurrentSection();
-      sectionCounter++;
-      const pedType = (block.sectionHint || "generic") as SemanticSection["pedagogicalType"];
-      currentSection = {
-        id: `section-${sectionCounter}`,
-        title: block.heading || block.content,
-        sectionLabel: SECTION_LABEL_MAP[pedType] || "CONTEÚDO",
-        pedagogicalType: pedType,
-        blocks: [],
-      };
-      continue;
+    if (block.type === "heading" && block.headingLevel && block.headingLevel <= 4) {
+      if (block.headingLevel <= 3 || block.sectionHint) {
+        pushCurrentSection();
+        sectionCounter++;
+        const pedType = (block.sectionHint || "generic") as SemanticSection["pedagogicalType"];
+        currentSection = {
+          id: `section-${sectionCounter}`,
+          title: block.heading || block.content,
+          sectionLabel: SECTION_LABEL_MAP[pedType] || "CONTEÚDO",
+          pedagogicalType: pedType,
+          blocks: [],
+        };
+        continue;
+      }
+      if (currentSection) { currentSection.blocks.push(block); continue; }
     }
 
     if (!currentSection) {
