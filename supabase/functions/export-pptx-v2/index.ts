@@ -356,6 +356,78 @@ function extractFirstCompleteSentence(text: string, maxLen: number): string {
   return "";
 }
 
+function normalizeResidualText(text: string): string {
+  let t = sanitize(cleanMarkdown(text || ""));
+  if (!t) return "";
+
+  t = t
+    .replace(/\bwidely used\b/gi, "amplamente utilizado")
+    .replace(/\bgest[aã]o\s+documentos\b/gi, "gestão de documentos")
+    .replace(/\.{2,}/g, ".")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .replace(/([.!?])\s*"\s*\./g, '$1"')
+    .replace(/\"\s*\"/g, '"')
+    .replace(/,\s*(al[eé]m disso|e tamb[eé]m),?\s*\d+\.?$/i, ".")
+    .replace(/^\s*\d+[.)]\s*/g, "")
+    .trim();
+
+  if (/^\d+[.)-]?$/.test(t)) return "";
+
+  const slashStructured = t.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i);
+  if (slashStructured) {
+    const label = slashStructured[1];
+    const desc = slashStructured[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
+    t = `${label}: ${desc}`;
+  }
+
+  return ensureSentenceEnd(repairSentence(t));
+}
+
+function isEditoriallyStrongSentence(text: string): boolean {
+  const bare = sanitize(text).replace(/[.\s]+$/, "").trim();
+  if (bare.length < 36) return false;
+  if (bare.split(/\s+/).length < 7) return false;
+  if (/\b(and|with|for|the|widely used)\b/i.test(bare) && /\b(com|de|para|que|dos|das)\b/i.test(bare)) return false;
+  if (/\b(grandes|intelig[eê]ncia|processo|dados)\s*$/i.test(bare)) return false;
+  return isSentenceComplete(bare);
+}
+
+function extractTocDescription(content: string, maxLen: number): string {
+  const stripped = (content || "")
+    .replace(/^#{1,6}\s+.*$/gm, "")
+    .replace(/^[-*]\s+/gm, "")
+    .replace(/^\d+[.)]\s+/gm, "")
+    .trim();
+
+  const normalized = sanitize(cleanMarkdown(stripped));
+  if (!normalized) return "";
+
+  const candidates = (normalized.match(/[^.!?]+[.!?]?/g) || [])
+    .map((s) => normalizeResidualText(s))
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (isEditoriallyStrongSentence(candidate)) {
+      return smartTruncate(candidate, maxLen);
+    }
+  }
+
+  const objectiveLines = stripped
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 20)
+    .map((line) => normalizeResidualText(line))
+    .filter((line) => isEditoriallyStrongSentence(line));
+
+  if (objectiveLines.length > 0) {
+    return smartTruncate(objectiveLines[0], maxLen);
+  }
+
+  return "";
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 4: STAGE 1 — PARSE (Markdown → ParsedBlocks)
 // ═══════════════════════════════════════════════════════════════════
@@ -692,6 +764,8 @@ function extractTableFromSection(section: SemanticSection): {
 
 function validateAndRepairItems(items: string[], report: PipelineReport): string[] {
   return items
+    .map((item) => normalizeResidualText(item))
+    .filter(Boolean)
     .map((item) => {
       report.sentenceIntegrityChecks++;
       let result = item;
@@ -702,7 +776,6 @@ function validateAndRepairItems(items: string[], report: PipelineReport): string
         result = repairSentence(result);
       }
       result = ensureSentenceEnd(result);
-      // Final guard: if after repair the item is too short to be meaningful, drop it
       const bare = result.replace(/[.\s]+$/, "").trim();
       if (bare.length < 8) {
         report.warnings.push(`Dropped too-short item after repair: "${bare}"`);
@@ -880,97 +953,104 @@ function distributeModuleToSlides(
     const repairedItems = validateAndRepairItems(rawItems, report);
     let validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
 
-    // ── Process/Timeline anti-fragmentation ──
-    // Step A: Merge "Isso..." pattern items with their predecessor for narrative flow
+    // ── Process/Timeline anti-fragmentation (final pass) ──
     if (section.pedagogicalType === "process" && validItems.length > 1) {
-      const issoPattern = /^Isso\s+(acelera|reduz|gera|oferece|é\s+útil|permite|facilita|melhora|garante|aumenta|possibilita|elimina|otimiza|promove|cria|traz|ajuda|evita|contribui|simplifica|amplia|fortalece|assegura|viabiliza|impacta|transforma)\b/i;
-      const consolidated: string[] = [];
-      for (let idx = 0; idx < validItems.length; idx++) {
-        const item = validItems[idx];
-        if (issoPattern.test(item.trim()) && consolidated.length > 0) {
-          const prev = consolidated[consolidated.length - 1].replace(/\.\s*$/, "");
-          const issoText = item.trim().charAt(0).toLowerCase() + item.trim().slice(1);
-          consolidated[consolidated.length - 1] = ensureSentenceEnd(`${prev}, o que ${issoText.replace(/^isso\s+/i, "")}`);
+      const normalizedProcessItems = validItems
+        .map((item) => normalizeResidualText(item))
+        .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10)
+        .filter((item) => !/^\d+[.)-]?$/.test(item.trim()));
+
+      const compacted: string[] = [];
+      let buffer = "";
+      for (const item of normalizedProcessItems) {
+        const clean = item.trim();
+        if (!buffer) {
+          buffer = clean;
+          continue;
+        }
+
+        const currentBare = buffer.replace(/[.\s]+$/, "").trim();
+        const nextBare = clean.replace(/[.\s]+$/, "").trim();
+        const isMicro = nextBare.length < 95 || /^Isso\b/i.test(nextBare);
+        const isSequential = /^(Em seguida|Depois|Na sequência|Por fim|Então|Além disso)\b/i.test(nextBare);
+        const canMerge = currentBare.length < 150 || isMicro || isSequential;
+
+        if (canMerge && (currentBare.length + nextBare.length + 24) <= Math.floor(maxChars * 1.35)) {
+          const normalizedNext = nextBare.replace(/^Isso\s+/i, "");
+          const connector = /^Isso\b/i.test(nextBare) ? ", o que " : ", além disso, ";
+          const nextLower = normalizedNext.charAt(0).toLowerCase() + normalizedNext.slice(1);
+          buffer = ensureSentenceEnd(`${currentBare}${connector}${nextLower}`);
         } else {
-          consolidated.push(item);
+          compacted.push(ensureSentenceEnd(currentBare));
+          buffer = clean;
         }
       }
-      validItems = consolidated;
+      if (buffer) compacted.push(ensureSentenceEnd(buffer.replace(/[.\s]+$/, "")));
+
+      while (compacted.length > 4) {
+        const first = compacted.shift()!;
+        const second = compacted.shift()!;
+        const merged = ensureSentenceEnd(`${first.replace(/\.\s*$/, "")}, além disso, ${second.charAt(0).toLowerCase()}${second.slice(1).replace(/\.\s*$/, "")}`);
+        compacted.unshift(merged);
+      }
+
+      validItems = compacted;
+      layout = validItems.length <= 3 ? "process_timeline" : "bullets";
     }
 
-    // Step B: Aggressive merge of short consecutive items for process sections
-    if (section.pedagogicalType === "process" && validItems.length > 0) {
-      const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      // Merge groups of 2–3 when items are short — target richer, denser descriptions
-      if (avgLen < 120 && validItems.length >= 3) {
-        const merged: string[] = [];
-        let i = 0;
-        while (i < validItems.length) {
-          // Try to merge triplets first for maximum density
-          if (i + 2 < validItems.length && validItems[i].length < 110 && validItems[i + 1].length < 110 && validItems[i + 2].length < 80) {
-            const a = validItems[i].replace(/\.\s*$/, "");
-            const bLower = validItems[i + 1].charAt(0).toLowerCase() + validItems[i + 1].slice(1);
-            const bClean = bLower.replace(/\.\s*$/, "");
-            const cLower = validItems[i + 2].charAt(0).toLowerCase() + validItems[i + 2].slice(1);
-            merged.push(ensureSentenceEnd(`${a}, além disso, ${bClean}, e também ${cLower}`));
-            i += 3;
-          } else if (i + 1 < validItems.length && validItems[i].length < 120 && validItems[i + 1].length < 120) {
-            const a = validItems[i].replace(/\.\s*$/, "");
-            const b = validItems[i + 1];
-            const bLower = b.charAt(0).toLowerCase() + b.slice(1);
-            merged.push(ensureSentenceEnd(`${a}, além disso, ${bLower}`));
-            i += 2;
-          } else {
-            merged.push(validItems[i]);
-            i++;
-          }
+    // Additional merge for summary/applications with residual short fragments
+    if ((section.pedagogicalType === "summary" || section.pedagogicalType === "applications") && validItems.length > 1) {
+      const merged: string[] = [];
+      let i = 0;
+      while (i < validItems.length) {
+        if (i + 1 < validItems.length && validItems[i].length < 95 && validItems[i + 1].length < 95) {
+          merged.push(
+            ensureSentenceEnd(
+              `${validItems[i].replace(/\.\s*$/, "")}, além disso, ${validItems[i + 1].charAt(0).toLowerCase()}${validItems[i + 1].slice(1).replace(/\.\s*$/, "")}`,
+            ),
+          );
+          i += 2;
+        } else {
+          merged.push(validItems[i]);
+          i++;
         }
-        validItems = merged;
       }
-      // If still too many items for a horizontal timeline (>3), switch to bullets for readability
-      if (validItems.length > 3) {
-        layout = "bullets";
-      }
+      validItems = merged;
     }
 
-    // Step C: Additional merge for non-process sections with short fragmented items
-    if ((section.pedagogicalType === "example" || section.pedagogicalType === "summary" || section.pedagogicalType === "applications") && validItems.length > 1) {
-      const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      if (avgLen < 80 && validItems.length >= 3) {
-        const merged: string[] = [];
-        let i = 0;
-        while (i < validItems.length) {
-          if (i + 1 < validItems.length && validItems[i].length < 90 && validItems[i + 1].length < 90) {
-            const a = validItems[i].replace(/\.\s*$/, "");
-            merged.push(ensureSentenceEnd(`${a} — ${validItems[i + 1]}`));
-            i += 2;
-          } else {
-            merged.push(validItems[i]);
-            i++;
-          }
+    // Example sections: normalize structured labels and keep coherent grouped blocks
+    if (section.pedagogicalType === "example" && validItems.length > 0) {
+      const labelPattern = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o)\s*[:/–\-]\s*(.+)$/i;
+      const normalizedExamples = validItems.map((item) => {
+        const normalized = normalizeResidualText(item);
+        const m = normalized.match(labelPattern);
+        if (m) {
+          const label = m[1].replace(/\s+/g, " ").trim();
+          const desc = m[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
+          return ensureSentenceEnd(`${label}: ${desc}`);
         }
-        validItems = merged;
-      }
-    }
+        return normalized;
+      });
 
-    // Step D: For example sections, detect and regroup structured patterns (Cenário/Solução/Resultado/Impacto)
-    if (section.pedagogicalType === "example" && validItems.length > 5) {
-      const structuredLabels = /^(Cenário|Solução|Resultado|Impacto|Critérios?\s+Aplicados?|Benefício|Contexto|Desafio|Ação)\s*[:/–\-]/i;
-      const labeledCount = validItems.filter(it => structuredLabels.test(it.trim())).length;
-      // If most items are labeled structured parts, group them into max 3 composite items
-      if (labeledCount >= 3) {
+      const labeled = normalizedExamples.filter((it) => labelPattern.test(it)).length;
+      if (labeled >= 3) {
         const grouped: string[] = [];
-        let current = "";
-        for (const item of validItems) {
-          if (structuredLabels.test(item.trim()) && current) {
-            grouped.push(ensureSentenceEnd(current.trim()));
-            current = item;
+        for (let i = 0; i < normalizedExamples.length; i += 2) {
+          const first = normalizedExamples[i];
+          const second = normalizedExamples[i + 1];
+          if (second) {
+            grouped.push(
+              ensureSentenceEnd(
+                `${first.replace(/\.\s*$/, "")} ${second}`,
+              ),
+            );
           } else {
-            current = current ? `${current.replace(/\.\s*$/, "")} — ${item}` : item;
+            grouped.push(first);
           }
         }
-        if (current) grouped.push(ensureSentenceEnd(current.trim()));
-        validItems = grouped;
+        validItems = grouped.slice(0, 4);
+      } else {
+        validItems = normalizedExamples.slice(0, 5);
       }
     }
 
@@ -1863,14 +1943,27 @@ function renderExampleHighlight(
 
   const items = plan.items || [];
 
+  const normalizedItems = items
+    .map((item) => normalizeResidualText(item))
+    .filter(Boolean)
+    .map((item) => {
+      const slashMatch = item.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i);
+      if (slashMatch) {
+        const label = slashMatch[1];
+        const desc = slashMatch[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
+        return ensureSentenceEnd(`${label}: ${desc}`);
+      }
+      return item;
+    });
+
   // Repair all items semantically
-  const repairedItems = items.map((item) => {
+  const repairedItems = normalizedItems.map((item) => {
     const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
     return ensureSentenceEnd(repaired);
   });
 
-  // If >3 items, group them into a structured vertical list instead of cramming
-  const cappedItems = repairedItems.slice(0, 5);
+  // Keep up to 4 coherent blocks to avoid fragmentation in practical examples
+  const cappedItems = repairedItems.slice(0, 4);
 
   slide.addShape("roundRect" as any, {
     x: MARGIN,
@@ -2132,8 +2225,8 @@ function renderTOC(
   design: DesignConfig,
 ) {
   const colors = getColors(design);
-  // Split TOC across multiple slides if >5 modules to avoid cramming
-  const MAX_TOC_PER_SLIDE = 5;
+  // Split TOC aggressively to keep slide 2 light and editorially clean
+  const MAX_TOC_PER_SLIDE = 4;
   const tocPages: { title: string; description?: string }[][] = [];
   for (let i = 0; i < modules.length; i += MAX_TOC_PER_SLIDE) {
     tocPages.push(modules.slice(i, i + MAX_TOC_PER_SLIDE));
@@ -2160,9 +2253,9 @@ function renderTOC(
     });
 
     const startY = 1.60;
-    const gap = 0.18;
+    const gap = 0.24;
     const availableH = SLIDE_H - startY - 0.60;
-    const itemH = Math.min(0.90, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
+    const itemH = Math.min(1.05, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
     const globalOffset = page * MAX_TOC_PER_SLIDE;
 
     for (let i = 0; i < pageModules.length; i++) {
@@ -2383,12 +2476,7 @@ function runPipeline(
   const tocModules = modules.map((m) => {
     const rawTitle = sanitize(m.title || "");
     const cleanTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
-    const strippedContent = (m.content || "")
-      .replace(/^#{1,6}\s+.*$/gm, "")
-      .replace(/^[-*]\s+/gm, "")
-      .trim();
-
-    const desc = extractFirstCompleteSentence(strippedContent, 90);
+    const desc = extractTocDescription(m.content || "", 105);
     if (!desc) {
       return {
         title: cleanMarkdown(cleanTitle),
@@ -2398,7 +2486,7 @@ function runPipeline(
 
     return {
       title: cleanMarkdown(cleanTitle),
-      description: ensureSentenceEnd(desc),
+      description: ensureSentenceEnd(normalizeResidualText(desc)),
     };
   });
   renderTOC(pptx, tocModules, design);
