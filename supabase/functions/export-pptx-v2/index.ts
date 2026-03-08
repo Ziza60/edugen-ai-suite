@@ -867,6 +867,33 @@ function mergeShortItems(
   return merged;
 }
 
+function mergeAdjacentShortest(
+  items: string[],
+  targetCount: number,
+): string[] {
+  if (items.length <= targetCount) return items;
+
+  const compacted = [...items];
+  while (compacted.length > targetCount && compacted.length >= 2) {
+    let bestIdx = 0;
+    let bestLen = Infinity;
+
+    for (let i = 0; i < compacted.length - 1; i++) {
+      const combinedLen = compacted[i].length + compacted[i + 1].length;
+      if (combinedLen < bestLen) {
+        bestLen = combinedLen;
+        bestIdx = i;
+      }
+    }
+
+    const a = compacted[bestIdx].replace(/\.\s*$/, "").trim();
+    const b = compacted[bestIdx + 1].trim();
+    compacted.splice(bestIdx, 2, ensureSentenceEnd(`${a}. ${b}`));
+  }
+
+  return compacted;
+}
+
 function redistributeOverflow(
   items: string[],
   maxPerSlide: number,
@@ -1052,25 +1079,11 @@ function distributeModuleToSlides(
         i++;
       }
 
-      // PHASE 3: Cap at 6 items max (NOT 4 — allow pedagogically rich sections to breathe)
-      // Only merge if truly exceeding visual capacity
-      const MAX_PROCESS_ITEMS = 6;
-      const compacted = [...phase2];
-      while (compacted.length > MAX_PROCESS_ITEMS && compacted.length >= 2) {
-        // Find the two shortest adjacent items to merge
-        let bestIdx = 0;
-        let bestLen = Infinity;
-        for (let j = 0; j < compacted.length - 1; j++) {
-          const combined = compacted[j].length + compacted[j + 1].length;
-          if (combined < bestLen) {
-            bestLen = combined;
-            bestIdx = j;
-          }
-        }
-        const a = compacted[bestIdx].replace(/\.\s*$/, "").trim();
-        const b = compacted[bestIdx + 1];
-        compacted.splice(bestIdx, 2, ensureSentenceEnd(`${a}. ${b}`));
-      }
+      // PHASE 3: Cap process density based on source structure.
+      // If the section came from a single narrative paragraph, force stronger compaction
+      // to avoid 1-sentence-per-slide fragmentation during visual fit.
+      const maxProcessItems = rawItems.length === 1 ? 3 : 6;
+      const compacted = mergeAdjacentShortest(phase2, maxProcessItems);
 
       validItems = compacted;
       // Only use process_timeline for ≤3 items where ALL are short enough to fit horizontally
@@ -1333,16 +1346,22 @@ function stripPartSuffix(title: string): string {
   return sanitize(title).replace(/\s*\(Parte\s+\d+\)\s*$/i, "").trim();
 }
 
+function getBulletLayoutMetrics(itemCount: number) {
+  const contentY = 1.70;
+  const bulletGap = 0.06;
+  const contentH = SLIDE_H - contentY - 0.60;
+  const rawItemH = (contentH - bulletGap * Math.max(itemCount - 1, 0)) / Math.max(itemCount, 1);
+  const itemH = Math.min(0.92, rawItemH);
+  return { contentY, bulletGap, contentH, itemH };
+}
+
 function visuallyFitsPlan(plan: SlidePlan): boolean {
   const items = plan.items || [];
   if (items.length === 0) return false;
 
   switch (plan.layout) {
     case "bullets": {
-      const contentY = 1.70;
-      const contentH = SLIDE_H - contentY - 0.45;
-      // Allow up to 0.85" per item to accommodate 2-3 lines at 18pt
-      const itemH = Math.min(0.85, contentH / Math.max(items.length, 1));
+      const { itemH } = getBulletLayoutMetrics(items.length);
       return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, SAFE_W - 0.30, itemH - 0.05, 1.2));
     }
 
@@ -1636,10 +1655,7 @@ function renderBullets(
   addSlideTitle(slide, plan.title, colors, design.fonts.title);
 
   const items = plan.items || [];
-  const contentY = 1.70;
-  const bulletGap = 0.06;
-  const contentH = SLIDE_H - contentY - 0.60;
-  const itemH = Math.min(0.58, (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
+  const { contentY, bulletGap, itemH } = getBulletLayoutMetrics(items.length);
 
   for (let i = 0; i < items.length; i++) {
     const accentColor = design.palette[i % design.palette.length];
