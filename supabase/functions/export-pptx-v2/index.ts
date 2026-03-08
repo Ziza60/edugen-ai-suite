@@ -356,6 +356,78 @@ function extractFirstCompleteSentence(text: string, maxLen: number): string {
   return "";
 }
 
+function normalizeResidualText(text: string): string {
+  let t = sanitize(cleanMarkdown(text || ""));
+  if (!t) return "";
+
+  t = t
+    .replace(/\bwidely used\b/gi, "amplamente utilizado")
+    .replace(/\bgest[aã]o\s+documentos\b/gi, "gestão de documentos")
+    .replace(/\.{2,}/g, ".")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .replace(/([.!?])\s*"\s*\./g, '$1"')
+    .replace(/\"\s*\"/g, '"')
+    .replace(/,\s*(al[eé]m disso|e tamb[eé]m),?\s*\d+\.?$/i, ".")
+    .replace(/^\s*\d+[.)]\s*/g, "")
+    .trim();
+
+  if (/^\d+[.)-]?$/.test(t)) return "";
+
+  const slashStructured = t.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i);
+  if (slashStructured) {
+    const label = slashStructured[1];
+    const desc = slashStructured[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
+    t = `${label}: ${desc}`;
+  }
+
+  return ensureSentenceEnd(repairSentence(t));
+}
+
+function isEditoriallyStrongSentence(text: string): boolean {
+  const bare = sanitize(text).replace(/[.\s]+$/, "").trim();
+  if (bare.length < 36) return false;
+  if (bare.split(/\s+/).length < 7) return false;
+  if (/\b(and|with|for|the|widely used)\b/i.test(bare) && /\b(com|de|para|que|dos|das)\b/i.test(bare)) return false;
+  if (/\b(grandes|intelig[eê]ncia|processo|dados)\s*$/i.test(bare)) return false;
+  return isSentenceComplete(bare);
+}
+
+function extractTocDescription(content: string, maxLen: number): string {
+  const stripped = (content || "")
+    .replace(/^#{1,6}\s+.*$/gm, "")
+    .replace(/^[-*]\s+/gm, "")
+    .replace(/^\d+[.)]\s+/gm, "")
+    .trim();
+
+  const normalized = sanitize(cleanMarkdown(stripped));
+  if (!normalized) return "";
+
+  const candidates = (normalized.match(/[^.!?]+[.!?]?/g) || [])
+    .map((s) => normalizeResidualText(s))
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (isEditoriallyStrongSentence(candidate)) {
+      return smartTruncate(candidate, maxLen);
+    }
+  }
+
+  const objectiveLines = stripped
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 20)
+    .map((line) => normalizeResidualText(line))
+    .filter((line) => isEditoriallyStrongSentence(line));
+
+  if (objectiveLines.length > 0) {
+    return smartTruncate(objectiveLines[0], maxLen);
+  }
+
+  return "";
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 4: STAGE 1 — PARSE (Markdown → ParsedBlocks)
 // ═══════════════════════════════════════════════════════════════════
