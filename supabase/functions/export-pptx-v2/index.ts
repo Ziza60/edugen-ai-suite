@@ -1823,17 +1823,23 @@ function renderExampleHighlight(
   const sectionLabels = ["Cenário", "Solução", "Resultado"];
   const sectionColors = [design.palette[1], design.palette[2], design.palette[3]];
 
-  for (let i = 0; i < Math.min(items.length, 3); i++) {
-    const y = 1.90 + i * 1.40;
+  const cappedItems = items.slice(0, 3).map((item) => {
+    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+    return ensureSentenceEnd(repaired);
+  });
+  const sectionH = (SLIDE_H - 1.90 - 0.60) / Math.max(cappedItems.length, 1);
+
+  for (let i = 0; i < cappedItems.length; i++) {
+    const y = 1.90 + i * sectionH;
     const color = sectionColors[i % sectionColors.length];
 
-    const colonIdx = items[i].indexOf(":");
+    const colonIdx = cappedItems[i].indexOf(":");
     const label =
       colonIdx > 0 && colonIdx < 30
-        ? items[i].substring(0, colonIdx).trim()
+        ? cappedItems[i].substring(0, colonIdx).trim()
         : sectionLabels[i] || `Item ${i + 1}`;
     const desc =
-      colonIdx > 0 ? items[i].substring(colonIdx + 1).trim() : items[i];
+      colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
 
     slide.addText(label, {
       x: MARGIN + 0.30,
@@ -1847,13 +1853,14 @@ function renderExampleHighlight(
     });
     slide.addText(desc, {
       x: MARGIN + 0.30,
-      y: y + 0.35,
+      y: y + 0.38,
       w: SAFE_W - 0.60,
-      h: 0.85,
+      h: sectionH - 0.48,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "top",
+      lineSpacingMultiple: 1.2,
     });
   }
 
