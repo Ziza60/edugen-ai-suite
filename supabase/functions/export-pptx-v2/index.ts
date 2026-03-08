@@ -1351,7 +1351,9 @@ function getBulletLayoutMetrics(itemCount: number) {
   const bulletGap = 0.06;
   const contentH = SLIDE_H - contentY - 0.60;
   const rawItemH = (contentH - bulletGap * Math.max(itemCount - 1, 0)) / Math.max(itemCount, 1);
-  const itemH = Math.min(0.92, rawItemH);
+  // Keep enough room for 2-3 text lines at 18pt, but allow extra vertical room
+  // when there are very few bullets (prevents unnecessary visual splitting).
+  const itemH = Math.max(0.72, Math.min(1.60, rawItemH));
   return { contentY, bulletGap, contentH, itemH };
 }
 
@@ -1508,6 +1510,21 @@ function enforceVisualRenderingGuards(
       if (visuallyFitsPlan(current)) {
         fitted.push(current);
         continue;
+      }
+
+      // Process slides: compact before splitting to avoid 1-item continuation chains.
+      if (
+        current.layout === "bullets" &&
+        /COMO\s+FUNCIONA/i.test(current.sectionLabel || "") &&
+        currentItems.length > 3
+      ) {
+        const compacted = mergeAdjacentShortest(currentItems, 3);
+        if (compacted.length < currentItems.length) {
+          report.redistributions++;
+          report.warnings.push(`[VISUAL] Compacted process bullets before split: "${baseTitle}"`);
+          queue.unshift({ ...current, items: compacted });
+          continue;
+        }
       }
 
       if (currentItems.length > 1) {
