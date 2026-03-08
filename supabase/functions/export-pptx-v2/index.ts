@@ -247,6 +247,10 @@ function isSentenceComplete(text: string): boolean {
   if (!text || text.trim().length < 5) return true;
   const t = text.trim().replace(/\.+$/, "").trim();
   if (/[,;:\-–]$/.test(t)) return false;
+  // Dangling compound prepositional phrases (e.g. "de forma", "de modo", "por meio")
+  const danglingCompound =
+    /\s(de\s+forma|de\s+modo|de\s+maneira|por\s+meio|em\s+termos|no\s+âmbito|ao\s+longo|a\s+partir|em\s+função|com\s+base|por\s+conta|no\s+sentido|de\s+acordo|em\s+relação|a\s+fim|de\s+cada|de\s+um|de\s+uma|a\s+cada)\s*$/i;
+  if (danglingCompound.test(t)) return false;
   const danglingEndings =
     /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i;
   if (danglingEndings.test(t)) return false;
