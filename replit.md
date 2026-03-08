@@ -39,7 +39,11 @@ supabase/functions/           # Supabase Edge Functions (Deno)
 - `VITE_SUPABASE_URL` — Supabase project URL
 - `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon/public key
 
-## PPTX Exporter v2 (In Development)
+## PPTX Exporter v2 (Controlled Integration)
 Parallel exporter at `supabase/functions/export-pptx-v2/index.ts`.
 Pipeline: Parse → Segment → Distribute → Render → Export.
-Does NOT replace v1. Accessed via separate Edge Function endpoint.
+Does NOT replace v1. Integrated via "Motor v2 Beta" toggle in PptxExportDialog.
+- Toggle OFF (default): calls `export-pptx` (v1, production)
+- Toggle ON: calls `export-pptx-v2` (v2, beta)
+- `useV2` flag is NOT sent to the edge function — only used for URL routing.
+- Rollback: remove `useV2` from PptxExportOptions, revert URL logic in ExportButtons.tsx.
