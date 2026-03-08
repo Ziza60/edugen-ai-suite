@@ -2059,67 +2059,83 @@ function renderTOC(
   design: DesignConfig,
 ) {
   const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
+  // Split TOC across multiple slides if >7 modules to avoid cramming
+  const MAX_TOC_PER_SLIDE = 7;
+  const tocPages: { title: string; description?: string }[][] = [];
+  for (let i = 0; i < modules.length; i += MAX_TOC_PER_SLIDE) {
+    tocPages.push(modules.slice(i, i + MAX_TOC_PER_SLIDE));
+  }
 
-  slide.addText("O que você vai aprender", {
-    x: MARGIN,
-    y: 0.50,
-    w: SAFE_W,
-    h: 0.80,
-    fontSize: TYPO.MODULE_TITLE,
-    fontFace: design.fonts.title,
-    bold: true,
-    color: colors.text,
-  });
+  for (let page = 0; page < tocPages.length; page++) {
+    const pageModules = tocPages[page];
+    const slide = pptx.addSlide();
+    addSlideBackground(slide, colors.bg);
 
-  const startY = 1.60;
-  const gap = 0.08;
-  const itemH = Math.min(0.80, (SLIDE_H - startY - 0.60 - gap * Math.max(modules.length - 1, 0)) / Math.max(modules.length, 1));
+    const tocTitle = tocPages.length > 1
+      ? `O que você vai aprender (${page + 1}/${tocPages.length})`
+      : "O que você vai aprender";
 
-  for (let i = 0; i < modules.length; i++) {
-    const y = startY + i * (itemH + gap);
-    const accentColor = design.palette[i % design.palette.length];
-
-    slide.addText(String(i + 1).padStart(2, "0"), {
+    slide.addText(tocTitle, {
       x: MARGIN,
-      y,
-      w: 0.60,
-      h: itemH - 0.05,
-      fontSize: TYPO.SUBTITLE,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: accentColor,
-      valign: "middle",
-    });
-
-    slide.addText(modules[i].title, {
-      x: MARGIN + 0.70,
-      y,
-      w: SAFE_W * 0.40,
-      h: itemH - 0.05,
-      fontSize: TYPO.BODY,
+      y: 0.50,
+      w: SAFE_W,
+      h: 0.80,
+      fontSize: TYPO.MODULE_TITLE,
       fontFace: design.fonts.title,
       bold: true,
       color: colors.text,
-      valign: "middle",
     });
 
-    if (modules[i].description) {
-      slide.addText(modules[i].description!, {
-        x: SAFE_W * 0.45 + MARGIN,
+    const startY = 1.60;
+    const gap = 0.10;
+    const availableH = SLIDE_H - startY - 0.60;
+    const itemH = Math.min(0.80, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
+    const globalOffset = page * MAX_TOC_PER_SLIDE;
+
+    for (let i = 0; i < pageModules.length; i++) {
+      const y = startY + i * (itemH + gap);
+      const accentColor = design.palette[(globalOffset + i) % design.palette.length];
+
+      slide.addText(String(globalOffset + i + 1).padStart(2, "0"), {
+        x: MARGIN,
         y,
-        w: SAFE_W * 0.52,
+        w: 0.60,
         h: itemH - 0.05,
-        fontSize: TYPO.SUPPORT,
-        fontFace: design.fonts.body,
-        color: colors.textSecondary,
+        fontSize: TYPO.SUBTITLE,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: accentColor,
         valign: "middle",
       });
-    }
-  }
 
-  addFooter(slide, colors, design.fonts.body);
+      slide.addText(pageModules[i].title, {
+        x: MARGIN + 0.70,
+        y,
+        w: SAFE_W * 0.40,
+        h: itemH - 0.05,
+        fontSize: TYPO.BODY,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: colors.text,
+        valign: "middle",
+      });
+
+      if (pageModules[i].description) {
+        slide.addText(pageModules[i].description!, {
+          x: SAFE_W * 0.45 + MARGIN,
+          y,
+          w: SAFE_W * 0.52,
+          h: itemH - 0.05,
+          fontSize: TYPO.SUPPORT,
+          fontFace: design.fonts.body,
+          color: colors.textSecondary,
+          valign: "middle",
+        });
+      }
+    }
+
+    addFooter(slide, colors, design.fonts.body);
+  }
 }
 
 function renderCoverSlide(
