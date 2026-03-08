@@ -895,31 +895,29 @@ function distributeModuleToSlides(
         })
         .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
 
-      // Continuation must contain real content; otherwise fold back to previous slide.
-      if (isContination && !hasMeaningfulContent(finalItems)) {
-        const prev = slides[slides.length - 1];
-        const sameSection =
-          !!prev &&
-          (!!prev.continuationOf || prev.title === section.title || prev.title.startsWith(`${section.title} (Parte`));
-
-        if (prev && sameSection) {
-          prev.items = [...(prev.items || []), ...finalItems].filter(
-            (item) => item.replace(/[.\s]+$/, "").trim().length >= 8,
-          );
-          report.warnings.push(`Merged weak continuation into previous slide: "${section.title}"`);
-          continue;
-        }
-      }
-
-      // Skip continuation slides that ended up with no real content
-      if (isContination && finalItems.length === 0) {
-        report.warnings.push(`Dropped empty continuation slide for: "${section.title}"`);
-        continue;
-      }
-      // Skip any slide (including first) with no items
+      // Skip any slide (including first) with no meaningful items
       if (finalItems.length === 0) {
         report.warnings.push(`Dropped slide with no valid items: "${section.title}"`);
         continue;
+      }
+
+      // A slide must have meaningful content — not just a title with 1 weak bullet
+      if (!hasMeaningfulContent(finalItems)) {
+        // Try to fold into previous slide
+        const prev = slides[slides.length - 1];
+        if (prev && prev.items) {
+          prev.items = [...prev.items, ...finalItems].filter(
+            (item) => item.replace(/[.\s]+$/, "").trim().length >= 8,
+          );
+          report.warnings.push(`Merged weak slide into previous: "${section.title}" (${isContination ? "continuation" : "first"})`);
+          continue;
+        }
+        // If no previous slide to merge into and content is truly empty, drop
+        if (finalItems.length === 0) {
+          report.warnings.push(`Dropped empty slide: "${section.title}"`);
+          continue;
+        }
+        // Otherwise let it through — it's the very first slide and has some content
       }
 
       const slideTitle = isContination
