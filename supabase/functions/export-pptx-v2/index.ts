@@ -1054,37 +1054,73 @@ function distributeModuleToSlides(
 
     // Example sections: normalize structured labels and keep coherent grouped blocks
     if (section.pedagogicalType === "example" && validItems.length > 0) {
-      const labelPattern = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o)\s*[:/–\-]\s*(.+)$/i;
+      const labelPattern = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o|Relev[aâ]ncia|Facilidade|Custo|Ferramenta)\s*[:/–\-]\s*(.+)$/i;
+      const slashPattern = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o|Relev[aâ]ncia|Facilidade|Custo|Ferramenta)\s*\/\s*(.+)$/i;
+
+      // First: normalize all items (slash → colon, repair sentences)
       const normalizedExamples = validItems.map((item) => {
-        const normalized = normalizeResidualText(item);
-        const m = normalized.match(labelPattern);
-        if (m) {
-          const label = m[1].replace(/\s+/g, " ").trim();
-          const desc = m[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-          return ensureSentenceEnd(`${label}: ${desc}`);
+        let normalized = normalizeResidualText(item);
+        // Extra slash normalization for items that normalizeResidualText might miss
+        const sm = normalized.match(slashPattern);
+        if (sm) {
+          const label = sm[1].replace(/\s+/g, " ").trim();
+          const desc = sm[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
+          normalized = ensureSentenceEnd(`${label}: ${desc}`);
         }
         return normalized;
-      });
+      }).filter(Boolean);
 
-      const labeled = normalizedExamples.filter((it) => labelPattern.test(it)).length;
-      if (labeled >= 3) {
-        const grouped: string[] = [];
-        for (let i = 0; i < normalizedExamples.length; i += 2) {
-          const first = normalizedExamples[i];
-          const second = normalizedExamples[i + 1];
-          if (second) {
-            grouped.push(
-              ensureSentenceEnd(
-                `${first.replace(/\.\s*$/, "")} ${second}`,
-              ),
-            );
-          } else {
-            grouped.push(first);
+      // Count labeled items to decide grouping strategy
+      const labeled = normalizedExamples.filter((it) => labelPattern.test(it));
+      const unlabeled = normalizedExamples.filter((it) => !labelPattern.test(it));
+
+      if (labeled.length >= 3) {
+        // Strategy: group related labels into composite blocks (max 3 blocks)
+        // Pair labels like Cenário+Solução, Resultado+Impacto, etc.
+        const pairMap: Record<string, string[]> = {};
+        for (const item of labeled) {
+          const m = item.match(labelPattern);
+          if (m) {
+            const label = m[1].trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            // Group by semantic pair
+            let groupKey: string;
+            if (/^(cenario|contexto|desafio)$/.test(label)) groupKey = "context";
+            else if (/^(solucao|acao|ferramenta)$/.test(label)) groupKey = "action";
+            else if (/^(resultado|impacto|beneficio)$/.test(label)) groupKey = "result";
+            else groupKey = "other";
+            if (!pairMap[groupKey]) pairMap[groupKey] = [];
+            pairMap[groupKey].push(item);
           }
         }
+
+        const grouped: string[] = [];
+        for (const [, items] of Object.entries(pairMap)) {
+          if (items.length <= 1) {
+            grouped.push(items[0]);
+          } else {
+            // Merge items in same group into one composite block
+            const merged = items.map((it) => it.replace(/\.\s*$/, "")).join(". ");
+            grouped.push(ensureSentenceEnd(merged));
+          }
+        }
+        // Add unlabeled items at end
+        grouped.push(...unlabeled);
         validItems = grouped.slice(0, 4);
       } else {
-        validItems = normalizedExamples.slice(0, 5);
+        // Few labeled items — just use normalized items, merge short ones
+        const merged: string[] = [];
+        let idx = 0;
+        while (idx < normalizedExamples.length) {
+          const current = normalizedExamples[idx];
+          if (idx + 1 < normalizedExamples.length && current.length < 80 && normalizedExamples[idx + 1].length < 80) {
+            merged.push(ensureSentenceEnd(`${current.replace(/\.\s*$/, "")}; ${normalizedExamples[idx + 1].replace(/\.\s*$/, "")}`));
+            idx += 2;
+          } else {
+            merged.push(current);
+            idx++;
+          }
+        }
+        validItems = merged.slice(0, 4);
       }
     }
 
