@@ -1316,8 +1316,9 @@ function visuallyFitsPlan(plan: SlidePlan): boolean {
   switch (plan.layout) {
     case "bullets": {
       const contentY = 1.70;
-      const contentH = SLIDE_H - contentY - 0.60;
-      const itemH = Math.min(0.60, contentH / Math.max(items.length, 1));
+      const contentH = SLIDE_H - contentY - 0.45;
+      // Allow up to 0.85" per item to accommodate 2-3 lines at 18pt
+      const itemH = Math.min(0.85, contentH / Math.max(items.length, 1));
       return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, SAFE_W - 0.30, itemH - 0.05, 1.2));
     }
 
