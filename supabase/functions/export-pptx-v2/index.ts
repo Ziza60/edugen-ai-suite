@@ -2100,8 +2100,8 @@ function renderTOC(
   design: DesignConfig,
 ) {
   const colors = getColors(design);
-  // Split TOC across multiple slides if >7 modules to avoid cramming
-  const MAX_TOC_PER_SLIDE = 7;
+  // Split TOC across multiple slides if >5 modules to avoid cramming
+  const MAX_TOC_PER_SLIDE = 5;
   const tocPages: { title: string; description?: string }[][] = [];
   for (let i = 0; i < modules.length; i += MAX_TOC_PER_SLIDE) {
     tocPages.push(modules.slice(i, i + MAX_TOC_PER_SLIDE));
