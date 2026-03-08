@@ -246,11 +246,12 @@ function ensureSentenceEnd(text: string): string {
 function isSentenceComplete(text: string): boolean {
   if (!text || text.trim().length < 5) return true;
   const t = text.trim().replace(/\.+$/, "").trim();
+  if (/[,;:\-–]$/.test(t)) return false;
   const danglingEndings =
-    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i;
+    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i;
   if (danglingEndings.test(t)) return false;
   const incompleteVerbs =
-    /\s(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra)\s*$/i;
+    /\s(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra|exige|exigem|requer|requerem|transforma|cria|define|produz|realiza|proporciona|determina|estabelece|identifica|desenvolve|implementa|combina|conecta|automatiza)\s*$/i;
   if (incompleteVerbs.test(t)) return false;
   return true;
 }
@@ -261,7 +262,7 @@ function repairSentence(text: string): string {
   // Strip dangling prepositions/articles
   t = t
     .replace(
-      /\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i,
+      /\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i,
       "",
     )
     .trim();
@@ -273,9 +274,9 @@ function repairSentence(text: string): string {
     )
     .trim();
   t = t.replace(/[,:;\-–]+$/, "").trim();
-  // After stripping, re-check for new dangling prepositions (recursive once)
-  if (/\s(de|da|do|das|dos|na|no|e|ou|que|para|por|com)\s*$/i.test(t)) {
-    t = t.replace(/\s+(de|da|do|das|dos|na|no|e|ou|que|para|por|com)\s*$/i, "").trim();
+  // After stripping, re-check for new dangling prepositions/articles (recursive once)
+  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i.test(t)) {
+    t = t.replace(/\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i, "").trim();
   }
   return ensureSentenceEnd(t);
 }
@@ -291,6 +292,11 @@ function cleanMarkdown(text: string): string {
     .trim();
 }
 
+function startsWithConnectorFragment(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return /^(e|ou|mas|porém|entretanto|além|como|com|sem|para|por|de|da|do|das|dos|em|na|no|nas|nos|que|quando|onde|enquanto)\b/.test(t);
+}
+
 function smartTruncate(text: string, maxLen: number): string {
   if (!text || text.length <= maxLen) return text;
   const sub = text.substring(0, maxLen);
@@ -298,6 +304,7 @@ function smartTruncate(text: string, maxLen: number): string {
     sub.lastIndexOf(". "),
     sub.lastIndexOf("! "),
     sub.lastIndexOf("? "),
+    sub.lastIndexOf("; "),
   );
   if (sentenceEnd > maxLen * 0.5) {
     return text.substring(0, sentenceEnd + 1).trim();
@@ -306,20 +313,12 @@ function smartTruncate(text: string, maxLen: number): string {
   if (lastSpace > maxLen * 0.6) {
     const cut = text.substring(0, lastSpace).trim();
     const repaired = repairSentence(cut);
-    // Final safety: if still incomplete after repair, cut further back to last sentence boundary
-    if (!isSentenceComplete(repaired.replace(/\.\s*$/, ""))) {
-      const deeperEnd = Math.max(
-        cut.lastIndexOf(". "),
-        cut.lastIndexOf("! "),
-        cut.lastIndexOf("? "),
-      );
-      if (deeperEnd > maxLen * 0.3) {
-        return text.substring(0, deeperEnd + 1).trim();
-      }
+    if (isSentenceComplete(repaired.replace(/\.\s*$/, ""))) {
+      return repaired;
     }
-    return repaired;
   }
-  return repairSentence(sub.trim());
+  // Do not force semantic amputation when there is no safe sentence boundary.
+  return ensureSentenceEnd(text.trim());
 }
 
 // ═══════════════════════════════════════════════════════════════════
