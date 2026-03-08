@@ -391,6 +391,60 @@ function normalizeResidualText(text: string): string {
     .replace(/\bscalability\b/gi, "escalabilidade")
     .replace(/\bworkflow\b/gi, "fluxo de trabalho")
     .replace(/\bcloud[- ]?based\b/gi, "baseado em nuvem")
+    .replace(/\boverall\b/gi, "no geral")
+    .replace(/\bapproach\b/gi, "abordagem")
+    .replace(/\bkey\b/gi, "chave")
+    .replace(/\btools?\b/gi, "ferramentas")
+    .replace(/\bskills?\b/gi, "habilidades")
+    .replace(/\bperformance\b/gi, "desempenho")
+    .replace(/\befficiency\b/gi, "eficiência")
+    .replace(/\baccuracy\b/gi, "precisão")
+    .replace(/\btraining\b/gi, "treinamento")
+    .replace(/\bdataset\b/gi, "conjunto de dados")
+    .replace(/\bpipeline\b/gi, "fluxo de processamento")
+    .replace(/\bdeployment\b/gi, "implantação")
+
+    // ── Gender agreement fixes (Portuguese) ──
+    // "percepções valiosos" → "percepções valiosas" (fem. plural)
+    .replace(/\bpercep[cç][oõ]es\s+(valiosos|baseados|obtidos|gerados|coletados|produzidos|fornecidos|relevantes)\b/gi, 
+      (_, adj) => {
+        const femMap: Record<string, string> = {
+          valiosos: "valiosas", baseados: "baseadas", obtidos: "obtidas",
+          gerados: "geradas", coletados: "coletadas", produzidos: "produzidas",
+          fornecidos: "fornecidas", relevantes: "relevantes",
+        };
+        return `percepções ${femMap[adj.toLowerCase()] || adj}`;
+      })
+    // "informações coletados" → "informações coletadas"
+    .replace(/\binforma[cç][oõ]es\s+(coletados|obtidos|gerados|baseados|fornecidos|relevantes)\b/gi,
+      (_, adj) => {
+        const femMap: Record<string, string> = {
+          coletados: "coletadas", obtidos: "obtidas", gerados: "geradas",
+          baseados: "baseadas", fornecidos: "fornecidas", relevantes: "relevantes",
+        };
+        return `informações ${femMap[adj.toLowerCase()] || adj}`;
+      })
+    // "decisões baseados" → "decisões baseadas"
+    .replace(/\bdecis[oõ]es\s+(baseados|informados|tomados)\b/gi,
+      (_, adj) => {
+        const femMap: Record<string, string> = {
+          baseados: "baseadas", informados: "informadas", tomados: "tomadas",
+        };
+        return `decisões ${femMap[adj.toLowerCase()] || adj}`;
+      })
+    // "soluções personalizados" → "soluções personalizadas"
+    .replace(/\bsolu[cç][oõ]es\s+(personalizados|automatizados|integrados|otimizados|implementados|desenvolvidos)\b/gi,
+      (_, adj) => `soluções ${adj.replace(/os$/, "as")}`)
+    // "ferramentas utilizados" → "ferramentas utilizadas"
+    .replace(/\bferramentas\s+(utilizados|usados|aplicados|desenvolvidos|integrados)\b/gi,
+      (_, adj) => `ferramentas ${adj.replace(/os$/, "as")}`)
+    // "estratégias utilizados" → "estratégias utilizadas"
+    .replace(/\bestrat[eé]gias\s+(utilizados|baseados|aplicados|desenvolvidos|implementados)\b/gi,
+      (_, adj) => `estratégias ${adj.replace(/os$/, "as")}`)
+    // "tecnologias avançados" → "tecnologias avançadas"
+    .replace(/\btecnologias\s+(avan[cç]ados|utilizados|baseados|integrados|modernos)\b/gi,
+      (_, adj) => `tecnologias ${adj.replace(/os$/, "as")}`)
+
     // Missing preposition "de" in "gestão X" patterns
     .replace(/\bgest[aã]o\s+(documentos|projetos|dados|tarefas|equipes?|processos?|conte[uú]dos?|riscos?|tempo|conhecimento|recursos?|clientes?|pessoas|custos?|qualidade|mudan[cç]as?|contratos?)\b/gi, (_, noun) => `gestão de ${noun.toLowerCase()}`)
     // Missing preposition in "análise X" patterns
@@ -401,6 +455,10 @@ function normalizeResidualText(text: string): string {
     .replace(/\bautoma[cç][aã]o\s+(processos?|tarefas?|sistemas?)\b/gi, (_, noun) => `automação de ${noun.toLowerCase()}`)
     .replace(/\bintegra[cç][aã]o\s+(dados|sistemas?|ferramentas?|plataformas?)\b/gi, (_, noun) => `integração de ${noun.toLowerCase()}`)
     .replace(/\botimiza[cç][aã]o\s+(processos?|recursos?|custos?|resultados?|tempo)\b/gi, (_, noun) => `otimização de ${noun.toLowerCase()}`)
+    // Missing preposition in "monitoramento X", "processamento X"
+    .replace(/\bmonitoramento\s+(dados|resultados?|desempenho|sistemas?)\b/gi, (_, noun) => `monitoramento de ${noun.toLowerCase()}`)
+    .replace(/\bprocessamento\s+(dados|linguagem|texto|imagens?)\b/gi, (_, noun) => `processamento de ${noun.toLowerCase()}`)
+
     // Punctuation cleanup
     .replace(/\.{2,}/g, ".")
     .replace(/[""]/g, '"')
@@ -426,25 +484,19 @@ function normalizeResidualText(text: string): string {
 
   if (/^\d+[.)-]?$/.test(t)) return "";
 
-  // Normalize "Label / Content" → "Label: Content" ONLY for core example labels.
-  // Restricted to Cenário/Solução/Resultado/Impacto/Contexto/Desafio/Ação to avoid
-  // false positives with table-like data (Relevância, Ferramenta, Custo, etc.)
+  // ── Handle "Label / Content" slash patterns ──
+  // Convert CORE example labels (Cenário, Solução, Resultado, etc.) to colon format.
+  // For imperative content (instructions), rewrite as "Label: [content]" anyway
+  // to maintain structural consistency — the original slash is always wrong.
   const CORE_EXAMPLE_LABELS = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*\/\s*(.+)$/i;
   const slashStructured = t.match(CORE_EXAMPLE_LABELS);
   if (slashStructured) {
     const label = slashStructured[1].replace(/\s+/g, " ").trim();
     const desc = slashStructured[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-    // Validate: the description should not start with an imperative verb (instruction, not a result)
-    const startsImperative = /^(Sugira|Faça|Crie|Envie|Escreva|Defina|Liste|Descreva|Elabore|Prepare|Inclua|Adicione|Monte|Organize|Aplique|Utilize|Analise|Avalie|Verifique|Escolha|Selecione|Determine|Implemente|Estabeleça|Desenvolva)\b/i.test(desc);
-    if (!startsImperative) {
-      t = `${label}: ${desc}`;
-    }
-    // If imperative, keep as-is (it's an instruction, not a structured example field)
+    t = `${label}: ${desc}`;
   }
 
-  // Also catch extended labels (Relevância, Ferramenta, Custo, etc.) used as 
-  // table/criterion data — convert slash to colon but WITHOUT treating as example structure.
-  // These stay as plain descriptive items.
+  // Also catch extended labels (Relevância, Ferramenta, Custo, etc.)
   const EXTENDED_LABELS = /^(Relev[aâ]ncia|Facilidade|Custo|Ferramenta|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i;
   const extMatch = t.match(EXTENDED_LABELS);
   if (extMatch) {
