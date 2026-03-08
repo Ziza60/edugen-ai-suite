@@ -185,7 +185,7 @@ function buildDesignConfig(
     theme,
     palette,
     fonts: { title: "Montserrat", body: "Open Sans" },
-    density: { maxItemsPerSlide: 5, maxCharsPerItem: 180 },
+    density: { maxItemsPerSlide: 7, maxCharsPerItem: 180 },
   };
 }
 
@@ -222,6 +222,12 @@ function getColors(design: DesignConfig) {
 function sanitize(text: string): string {
   if (!text) return "";
   return text
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)))
     .replace(/\u00AD/g, "")
     .replace(/\uFFFD/g, "")
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
@@ -581,16 +587,46 @@ function validateAndRepairItems(items: string[], report: PipelineReport): string
   });
 }
 
+function mergeShortItems(
+  items: string[],
+  maxChars: number,
+): string[] {
+  if (items.length <= 1) return items;
+  const merged: string[] = [];
+  let i = 0;
+  while (i < items.length) {
+    const current = items[i];
+    if (
+      i + 1 < items.length &&
+      current.length < 60 &&
+      items[i + 1].length < 60 &&
+      current.length + items[i + 1].length + 2 <= maxChars
+    ) {
+      merged.push(current + ". " + items[i + 1]);
+      i += 2;
+    } else {
+      merged.push(current);
+      i++;
+    }
+  }
+  return merged;
+}
+
 function redistributeOverflow(
   items: string[],
   maxPerSlide: number,
+  maxChars: number,
   report: PipelineReport,
 ): string[][] {
-  if (items.length <= maxPerSlide) return [items];
+  let working = items;
+  if (working.length > maxPerSlide) {
+    working = mergeShortItems(working, maxChars);
+  }
+  if (working.length <= maxPerSlide) return [working];
   report.redistributions++;
   const chunks: string[][] = [];
-  for (let i = 0; i < items.length; i += maxPerSlide) {
-    chunks.push(items.slice(i, i + maxPerSlide));
+  for (let i = 0; i < working.length; i += maxPerSlide) {
+    chunks.push(working.slice(i, i + maxPerSlide));
   }
   return chunks;
 }
@@ -654,7 +690,7 @@ function distributeModuleToSlides(
       continue;
     }
 
-    const chunks = redistributeOverflow(validItems, maxItems, report);
+    const chunks = redistributeOverflow(validItems, maxItems, maxChars, report);
 
     for (let ci = 0; ci < chunks.length; ci++) {
       const isContination = ci > 0;
