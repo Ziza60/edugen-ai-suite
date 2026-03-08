@@ -3225,6 +3225,9 @@ function renderSlide(
     case "module_cover":
       renderModuleCover(pptx, plan, design);
       break;
+    case "two_column_bullets":
+      renderTwoColumnBullets(pptx, plan, design);
+      break;
     case "definition":
       renderDefinition(pptx, plan, design);
       break;
