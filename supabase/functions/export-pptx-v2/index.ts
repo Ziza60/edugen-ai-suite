@@ -1959,27 +1959,22 @@ function runPipeline(
   const tocModules = modules.map((m, i) => {
     const rawTitle = sanitize(m.title || "");
     const cleanTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
-    // Strip markdown headings/formatting from content before extracting first line
-    const strippedContent = cleanMarkdown((m.content || "")
-      .replace(/^#{1,6}\s+.*$/gm, "") // remove heading lines entirely
-      .replace(/^[-*]\s+/gm, "")      // remove bullet prefixes
-      .trim());
-    let firstLine = sanitize(strippedContent.split(/[.!?]\s/)[0] || "");
-    // Validate the extracted description for sentence completeness
-    if (firstLine && firstLine.length > 10) {
-      let desc = smartTruncate(firstLine, 80);
-      if (!isSentenceComplete(desc.replace(/\.\s*$/, ""))) {
-        desc = repairSentence(desc);
-      }
-      // If after repair the description is too short, discard it
-      if (desc.replace(/[.\s]+$/, "").trim().length < 10) {
-        return { title: cleanMarkdown(cleanTitle), description: undefined };
-      }
-      return { title: cleanMarkdown(cleanTitle), description: ensureSentenceEnd(desc) };
+    const strippedContent = (m.content || "")
+      .replace(/^#{1,6}\s+.*$/gm, "")
+      .replace(/^[-*]\s+/gm, "")
+      .trim();
+
+    const desc = extractFirstCompleteSentence(strippedContent, 80);
+    if (!desc) {
+      return {
+        title: cleanMarkdown(cleanTitle),
+        description: undefined,
+      };
     }
+
     return {
       title: cleanMarkdown(cleanTitle),
-      description: undefined,
+      description: ensureSentenceEnd(desc),
     };
   });
   renderTOC(pptx, tocModules, design);
