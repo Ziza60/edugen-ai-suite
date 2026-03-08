@@ -732,6 +732,60 @@ function redistributeOverflow(
   return chunks;
 }
 
+function hasMeaningfulContent(items: string[]): boolean {
+  if (items.length === 0) return false;
+  const meaningful = items.filter((item) => {
+    const bare = item.replace(/[.\s]+$/, "").trim();
+    return bare.length >= 16 && isSentenceComplete(bare);
+  });
+  return meaningful.length >= 2 || meaningful.some((m) => m.length >= 40);
+}
+
+function rebalanceChunksForSemanticIntegrity(
+  chunks: string[][],
+  report: PipelineReport,
+): string[][] {
+  if (chunks.length <= 1) return chunks;
+
+  // 1) Prevent sentence/idea suspension across chunk boundary
+  for (let i = 0; i < chunks.length - 1; i++) {
+    const current = chunks[i];
+    const next = chunks[i + 1];
+    if (!current.length || !next.length) continue;
+
+    let tail = current[current.length - 1];
+    let head = next[0];
+
+    while (
+      next.length > 0 &&
+      (
+        !isSentenceComplete(tail.replace(/\.\s*$/, "")) ||
+        /[,;:\-–]$/.test(tail.trim()) ||
+        startsWithConnectorFragment(head)
+      )
+    ) {
+      current.push(next.shift()!);
+      tail = current[current.length - 1];
+      head = next[0] || "";
+      report.warnings.push("Adjusted chunk boundary to keep sentence/idea intact");
+    }
+  }
+
+  // 2) Remove weak continuation chunks by folding them back
+  const compact: string[][] = [chunks[0]];
+  for (let i = 1; i < chunks.length; i++) {
+    const chunk = chunks[i].filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
+    if (!hasMeaningfulContent(chunk)) {
+      compact[compact.length - 1].push(...chunk);
+      report.warnings.push("Merged weak continuation chunk back into previous slide");
+      continue;
+    }
+    compact.push(chunk);
+  }
+
+  return compact.filter((chunk) => chunk.length > 0);
+}
+
 function distributeModuleToSlides(
   moduleTitle: string,
   moduleIndex: number,
