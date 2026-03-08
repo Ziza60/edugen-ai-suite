@@ -305,7 +305,19 @@ function smartTruncate(text: string, maxLen: number): string {
   const lastSpace = sub.lastIndexOf(" ");
   if (lastSpace > maxLen * 0.6) {
     const cut = text.substring(0, lastSpace).trim();
-    return repairSentence(cut);
+    const repaired = repairSentence(cut);
+    // Final safety: if still incomplete after repair, cut further back to last sentence boundary
+    if (!isSentenceComplete(repaired.replace(/\.\s*$/, ""))) {
+      const deeperEnd = Math.max(
+        cut.lastIndexOf(". "),
+        cut.lastIndexOf("! "),
+        cut.lastIndexOf("? "),
+      );
+      if (deeperEnd > maxLen * 0.3) {
+        return text.substring(0, deeperEnd + 1).trim();
+      }
+    }
+    return repaired;
   }
   return repairSentence(sub.trim());
 }
