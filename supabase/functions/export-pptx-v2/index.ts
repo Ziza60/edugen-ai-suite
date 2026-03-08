@@ -458,7 +458,12 @@ function normalizeResidualText(text: string): string {
     // "tecnologias avançados" → "tecnologias avançadas"
     .replace(/\btecnologias\s+(avan[cç]ados|utilizados|baseados|integrados|modernos)\b/gi,
       (_, adj) => `tecnologias ${adj.replace(/os$/, "as")}`)
-
+    // "práticas recomendados" → "práticas recomendadas"
+    .replace(/\bpr[aá]ticas\s+(recomendados|aplicados|utilizados|baseados|desenvolvidos)\b/gi,
+      (_, adj) => `práticas ${adj.replace(/os$/, "as")}`)
+    // "métricas definidos" → "métricas definidas"
+    .replace(/\bm[eé]tricas\s+(definidos|coletados|obtidos|utilizados|aplicados)\b/gi,
+      (_, adj) => `métricas ${adj.replace(/os$/, "as")}`)
     // Missing preposition "de" in "gestão X" patterns
     .replace(/\bgest[aã]o\s+(documentos|projetos|dados|tarefas|equipes?|processos?|conte[uú]dos?|riscos?|tempo|conhecimento|recursos?|clientes?|pessoas|custos?|qualidade|mudan[cç]as?|contratos?)\b/gi, (_, noun) => `gestão de ${noun.toLowerCase()}`)
     // Missing preposition in "análise X" patterns
