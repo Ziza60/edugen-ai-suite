@@ -4622,6 +4622,9 @@ function renderSlide(
     case "two_column_bullets":
       renderTwoColumnBullets(pptx, plan, design);
       break;
+    case "two_column_bullets":
+      renderTwoColumnBullets(pptx, plan, design);
+      break;
     case "definition":
       renderDefinition(pptx, plan, design);
       break;
