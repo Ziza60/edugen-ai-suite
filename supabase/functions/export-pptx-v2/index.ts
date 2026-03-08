@@ -2281,6 +2281,11 @@ function runPipeline(
     }
   }
 
+  console.log(`[V2-STAGE-3.7] Visual fit pass: preventing overflow and overlap...`);
+  for (let i = 0; i < allModuleSlidePlans.length; i++) {
+    allModuleSlidePlans[i] = enforceVisualRenderingGuards(allModuleSlidePlans[i], design, report);
+  }
+
   console.log(`[V2-STAGE-4] Rendering slides...`);
   for (const modulePlans of allModuleSlidePlans) {
     for (const plan of modulePlans) {
