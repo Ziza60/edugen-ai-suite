@@ -2072,10 +2072,11 @@ function renderTOC(
   });
 
   const startY = 1.60;
-  const itemH = Math.min(0.80, (SLIDE_H - startY - 0.60) / Math.max(modules.length, 1));
+  const gap = 0.08;
+  const itemH = Math.min(0.80, (SLIDE_H - startY - 0.60 - gap * Math.max(modules.length - 1, 0)) / Math.max(modules.length, 1));
 
   for (let i = 0; i < modules.length; i++) {
-    const y = startY + i * itemH;
+    const y = startY + i * (itemH + gap);
     const accentColor = design.palette[i % design.palette.length];
 
     slide.addText(String(i + 1).padStart(2, "0"), {
