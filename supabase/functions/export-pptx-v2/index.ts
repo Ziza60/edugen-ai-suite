@@ -846,7 +846,7 @@ function distributeModuleToSlides(
 
     if (layout === "comparison_table") {
       const table = extractTableFromSection(section);
-      if (table) {
+      if (table && table.rows.length > 0) {
         slides.push({
           layout: "comparison_table",
           title: section.title,
@@ -857,6 +857,7 @@ function distributeModuleToSlides(
         });
         continue;
       }
+      // If no valid table found, fall through to items-based rendering
     }
 
     let rawItems = collectSectionItems(section);
