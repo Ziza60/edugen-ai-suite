@@ -1119,9 +1119,10 @@ function distributeModuleToSlides(
       }
 
       // PHASE 3: Cap process density based on source structure.
-      // If the section came from a single narrative paragraph, force stronger compaction
-      // to avoid 1-sentence-per-slide fragmentation during visual fit.
-      const maxProcessItems = rawItems.length === 1 ? 3 : 6;
+      // Single paragraph source → max 3 (strong compaction)
+      // Few original items (2-3) → max 4 (balanced)
+      // Many original items (4+) → max 5 (preserve detail but avoid overload)
+      const maxProcessItems = rawItems.length <= 1 ? 3 : rawItems.length <= 3 ? 4 : 5;
       const compacted = mergeAdjacentShortest(phase2, maxProcessItems);
 
       validItems = compacted;
