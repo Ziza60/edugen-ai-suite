@@ -372,7 +372,7 @@ function normalizeResidualText(text: string): string {
   if (!t) return "";
 
   t = t
-    // English terms → Portuguese
+    // English terms → Portuguese (expanded)
     .replace(/\bwidely used\b/gi, "amplamente utilizado")
     .replace(/\bmachine learning\b/gi, "aprendizado de máquina")
     .replace(/\bdeep learning\b/gi, "aprendizado profundo")
@@ -381,10 +381,26 @@ function normalizeResidualText(text: string): string {
     .replace(/\buse cases?\b/gi, "casos de uso")
     .replace(/\breal[- ]?time\b/gi, "tempo real")
     .replace(/\bfeedback\b/gi, "retorno")
+    .replace(/\bframework\b/gi, "estrutura")
+    .replace(/\binput\b/gi, "entrada")
+    .replace(/\boutput\b/gi, "saída")
+    .replace(/\bdata[- ]?driven\b/gi, "orientado por dados")
+    .replace(/\bstakeholders?\b/gi, "partes interessadas")
+    .replace(/\binsights?\b/gi, "percepções")
+    .replace(/\bbenchmark(ing)?\b/gi, "referência")
+    .replace(/\bscalability\b/gi, "escalabilidade")
+    .replace(/\bworkflow\b/gi, "fluxo de trabalho")
+    .replace(/\bcloud[- ]?based\b/gi, "baseado em nuvem")
     // Missing preposition "de" in "gestão X" patterns
     .replace(/\bgest[aã]o\s+(documentos|projetos|dados|tarefas|equipes?|processos?|conte[uú]dos?|riscos?|tempo|conhecimento|recursos?|clientes?|pessoas|custos?|qualidade|mudan[cç]as?|contratos?)\b/gi, (_, noun) => `gestão de ${noun.toLowerCase()}`)
     // Missing preposition in "análise X" patterns
     .replace(/\ban[aá]lise\s+(dados|sentimentos?|riscos?|resultados?|desempenho|mercado)\b/gi, (_, noun) => `análise de ${noun.toLowerCase()}`)
+    // Missing preposition in "segurança X" patterns
+    .replace(/\bseguran[cç]a\s+(dados|informa[cç][oõ]es|sistemas?|redes?)\b/gi, (_, noun) => `segurança de ${noun.toLowerCase()}`)
+    // Missing preposition in "automação X", "integração X", "otimização X"
+    .replace(/\bautoma[cç][aã]o\s+(processos?|tarefas?|sistemas?)\b/gi, (_, noun) => `automação de ${noun.toLowerCase()}`)
+    .replace(/\bintegra[cç][aã]o\s+(dados|sistemas?|ferramentas?|plataformas?)\b/gi, (_, noun) => `integração de ${noun.toLowerCase()}`)
+    .replace(/\botimiza[cç][aã]o\s+(processos?|recursos?|custos?|resultados?|tempo)\b/gi, (_, noun) => `otimização de ${noun.toLowerCase()}`)
     // Punctuation cleanup
     .replace(/\.{2,}/g, ".")
     .replace(/[""]/g, '"')
@@ -402,15 +418,38 @@ function normalizeResidualText(text: string): string {
     .replace(/\."\.$/g, '."')
     // Fix trailing period inside and outside quotes
     .replace(/([.!?])"\s*\.\s*$/g, '$1"')
+    // Fix orphan punctuation at start
+    .replace(/^[.,;:!?\s]+/, "")
+    // Fix double spaces left by replacements
+    .replace(/\s{2,}/g, " ")
     .trim();
 
   if (/^\d+[.)-]?$/.test(t)) return "";
 
-  // Normalize "Label / Content" → "Label: Content" for structured examples
-  const slashStructured = t.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o|Relev[aâ]ncia|Facilidade|Custo|Ferramenta)\s*\/\s*(.+)$/i);
+  // Normalize "Label / Content" → "Label: Content" ONLY for core example labels.
+  // Restricted to Cenário/Solução/Resultado/Impacto/Contexto/Desafio/Ação to avoid
+  // false positives with table-like data (Relevância, Ferramenta, Custo, etc.)
+  const CORE_EXAMPLE_LABELS = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*\/\s*(.+)$/i;
+  const slashStructured = t.match(CORE_EXAMPLE_LABELS);
   if (slashStructured) {
-    const label = slashStructured[1];
+    const label = slashStructured[1].replace(/\s+/g, " ").trim();
     const desc = slashStructured[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
+    // Validate: the description should not start with an imperative verb (instruction, not a result)
+    const startsImperative = /^(Sugira|Faça|Crie|Envie|Escreva|Defina|Liste|Descreva|Elabore|Prepare|Inclua|Adicione|Monte|Organize|Aplique|Utilize|Analise|Avalie|Verifique|Escolha|Selecione|Determine|Implemente|Estabeleça|Desenvolva)\b/i.test(desc);
+    if (!startsImperative) {
+      t = `${label}: ${desc}`;
+    }
+    // If imperative, keep as-is (it's an instruction, not a structured example field)
+  }
+
+  // Also catch extended labels (Relevância, Ferramenta, Custo, etc.) used as 
+  // table/criterion data — convert slash to colon but WITHOUT treating as example structure.
+  // These stay as plain descriptive items.
+  const EXTENDED_LABELS = /^(Relev[aâ]ncia|Facilidade|Custo|Ferramenta|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i;
+  const extMatch = t.match(EXTENDED_LABELS);
+  if (extMatch) {
+    const label = extMatch[1].replace(/\s+/g, " ").trim();
+    const desc = extMatch[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
     t = `${label}: ${desc}`;
   }
 
@@ -1080,9 +1119,10 @@ function distributeModuleToSlides(
       }
 
       // PHASE 3: Cap process density based on source structure.
-      // If the section came from a single narrative paragraph, force stronger compaction
-      // to avoid 1-sentence-per-slide fragmentation during visual fit.
-      const maxProcessItems = rawItems.length === 1 ? 3 : 6;
+      // Single paragraph source → max 3 (strong compaction)
+      // Few original items (2-3) → max 4 (balanced)
+      // Many original items (4+) → max 5 (preserve detail but avoid overload)
+      const maxProcessItems = rawItems.length <= 1 ? 3 : rawItems.length <= 3 ? 4 : 5;
       const compacted = mergeAdjacentShortest(phase2, maxProcessItems);
 
       validItems = compacted;
@@ -1107,26 +1147,58 @@ function distributeModuleToSlides(
       validItems = merged;
     }
 
-    // Example sections: normalize structured labels, keep each as a standalone item
+    // Example sections: consolidate and structure practical example blocks
     if (section.pedagogicalType === "example" && validItems.length > 0) {
-      const slashPattern = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?|Benef[ií]cio|Contexto|Desafio|A[cç][aã]o|Relev[aâ]ncia|Facilidade|Custo|Ferramenta)\s*\/\s*(.+)$/i;
+      const CORE_LABEL = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*[:\/]\s*/i;
+      const CRITERION_LABEL = /^(Relev[aâ]ncia|Facilidade|Custo|Ferramenta|Crit[eé]rios?\s+Aplicados?)\s*[:\/]\s*/i;
 
-      // Normalize all items: slash → colon, repair sentences
-      const normalizedExamples = validItems.map((item) => {
-        let normalized = normalizeResidualText(item);
-        const sm = normalized.match(slashPattern);
-        if (sm) {
-          const label = sm[1].replace(/\s+/g, " ").trim();
-          // Join multi-slash content with semicolons
-          const desc = sm[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-          normalized = ensureSentenceEnd(`${label}: ${desc}`);
+      // Step 1: Normalize all items through residual text cleanup
+      let normalizedExamples = validItems
+        .map((item) => normalizeResidualText(item))
+        .filter(Boolean);
+
+      // Step 2: Separate core example items from criterion/table items
+      const coreItems: string[] = [];
+      const criterionItems: string[] = [];
+      const unlabeledItems: string[] = [];
+
+      for (const item of normalizedExamples) {
+        if (CORE_LABEL.test(item)) {
+          coreItems.push(item);
+        } else if (CRITERION_LABEL.test(item)) {
+          criterionItems.push(item);
+        } else {
+          unlabeledItems.push(item);
         }
-        return normalized;
-      }).filter(Boolean);
+      }
 
-      // DO NOT merge labeled items — each "Cenário:", "Resultado:", etc. should stay 
-      // as its own bullet for visual clarity. Only cap at 5 items max.
-      validItems = normalizedExamples.slice(0, 5);
+      // Step 3: Consolidate criterion items into a single "Critérios Aplicados" block
+      // to prevent fragmentation (e.g., separate Relevância, Custo, Ferramenta slides)
+      if (criterionItems.length >= 2) {
+        const consolidated = criterionItems
+          .map((ci) => ci.replace(/\.\s*$/, "").trim())
+          .join("; ");
+        coreItems.push(ensureSentenceEnd(`Critérios Aplicados: ${consolidated}`));
+      } else if (criterionItems.length === 1) {
+        coreItems.push(criterionItems[0]);
+      }
+
+      // Step 4: Absorb short unlabeled items into the nearest labeled item
+      // These are typically orphan fragments from broken markdown parsing
+      for (const unlabeled of unlabeledItems) {
+        const bare = unlabeled.replace(/[.\s]+$/, "").trim();
+        if (bare.length < 60 && coreItems.length > 0) {
+          // Append to last core item as supplementary detail
+          const lastIdx = coreItems.length - 1;
+          const prev = coreItems[lastIdx].replace(/[.\s]+$/, "").trim();
+          coreItems[lastIdx] = ensureSentenceEnd(`${prev}. ${unlabeled}`);
+        } else {
+          coreItems.push(unlabeled);
+        }
+      }
+
+      // Step 5: Cap at 5 items for visual fit on example_highlight layout
+      validItems = coreItems.slice(0, 5);
     }
 
     if (validItems.length === 0) {
@@ -2043,11 +2115,16 @@ function renderExampleHighlight(
     .map((item) => normalizeResidualText(item))
     .filter(Boolean)
     .map((item) => {
-      const slashMatch = item.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i);
+      // Only convert core example labels (not criterion/table data)
+      const slashMatch = item.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*\/\s*(.+)$/i);
       if (slashMatch) {
         const label = slashMatch[1];
         const desc = slashMatch[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-        return ensureSentenceEnd(`${label}: ${desc}`);
+        // Reject if description starts with imperative verb
+        const startsImperative = /^(Sugira|Faça|Crie|Envie|Escreva|Defina|Liste|Descreva|Elabore|Prepare|Inclua|Adicione|Monte|Organize|Aplique|Utilize|Analise|Avalie|Verifique|Escolha|Selecione)\b/i.test(desc);
+        if (!startsImperative) {
+          return ensureSentenceEnd(`${label}: ${desc}`);
+        }
       }
       return item;
     });
