@@ -881,15 +881,32 @@ function distributeModuleToSlides(
     let validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
 
     // ── Process/Timeline anti-fragmentation ──
-    // If this is a "process" section, merge micro-items to avoid mechanical-looking timelines
+    // Merge "Isso..." pattern items with their predecessor for narrative flow
+    if (section.pedagogicalType === "process" && validItems.length > 1) {
+      const issoPattern = /^Isso\s+(acelera|reduz|gera|oferece|é\s+útil|permite|facilita|melhora|garante|aumenta|possibilita|elimina|otimiza|promove|cria|traz|ajuda|evita|contribui|simplifica|amplia|fortalece|assegura|viabiliza|impacta|transforma)\b/i;
+      const consolidated: string[] = [];
+      for (let idx = 0; idx < validItems.length; idx++) {
+        const item = validItems[idx];
+        if (issoPattern.test(item.trim()) && consolidated.length > 0) {
+          // Merge "Isso..." sentence into previous item for narrative density
+          const prev = consolidated[consolidated.length - 1].replace(/\.\s*$/, "");
+          const issoText = item.trim().charAt(0).toLowerCase() + item.trim().slice(1);
+          consolidated[consolidated.length - 1] = ensureSentenceEnd(`${prev}, o que ${issoText.replace(/^isso\s+/i, "")}`);
+        } else {
+          consolidated.push(item);
+        }
+      }
+      validItems = consolidated;
+    }
+
     if (section.pedagogicalType === "process" && validItems.length > 0) {
       const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      // If items are very short (avg < 50 chars), merge consecutive pairs into richer descriptions
-      if (avgLen < 50 && validItems.length >= 3) {
+      // If items are very short (avg < 70 chars), merge consecutive pairs into richer descriptions
+      if (avgLen < 70 && validItems.length >= 3) {
         const merged: string[] = [];
         let i = 0;
         while (i < validItems.length) {
-          if (i + 1 < validItems.length && validItems[i].length < 60 && validItems[i + 1].length < 60) {
+          if (i + 1 < validItems.length && validItems[i].length < 80 && validItems[i + 1].length < 80) {
             const combined = validItems[i].replace(/\.\s*$/, "") + " — " + validItems[i + 1];
             merged.push(ensureSentenceEnd(combined));
             i += 2;
@@ -900,8 +917,8 @@ function distributeModuleToSlides(
         }
         validItems = merged;
       }
-      // If too many items for a horizontal timeline (>5), switch to bullets for readability
-      if (validItems.length > 5) {
+      // If too many items for a horizontal timeline (>4), switch to bullets for readability
+      if (validItems.length > 4) {
         layout = "bullets";
       }
     }
