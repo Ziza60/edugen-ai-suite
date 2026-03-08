@@ -1945,7 +1945,7 @@ Deno.serve(async (req: Request) => {
 
     const design = buildDesignConfig(theme || "light", palette || "default");
 
-    const courseTitle = sanitize(course.title || "Curso EduGenAI");
+    const courseTitle = sanitize(cleanMarkdown(course.title || "Curso EduGenAI"));
     const moduleData = modules.map((m: any) => ({
       title: m.title || "",
       content: m.content || "",
