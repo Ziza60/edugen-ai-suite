@@ -149,7 +149,10 @@ function CheckpointCard({ name, cp }: { name: string; cp: QualityCheckpoint }) {
 export function PptxQualityReport({ report, open, onOpenChange }: Props) {
   if (!report) return null;
 
-  const { checkpoints, corrections_attempted: ca, summary, problematic_slides } = report;
+  const checkpoints = report.checkpoints || {};
+  const ca = report.corrections_attempted || {} as any;
+  const summary = report.summary || {} as any;
+  const problematic_slides = report.problematic_slides || [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
