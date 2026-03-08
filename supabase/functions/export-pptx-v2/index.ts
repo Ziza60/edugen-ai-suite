@@ -858,7 +858,7 @@ function distributeModuleToSlides(
 
   for (const section of sections) {
     if (section.pedagogicalType === "objectives") continue;
-    const layout = PEDAGOGICAL_LAYOUT_MAP[section.pedagogicalType] || "bullets";
+    let layout = PEDAGOGICAL_LAYOUT_MAP[section.pedagogicalType] || "bullets";
 
     if (layout === "comparison_table") {
       const table = extractTableFromSection(section);
@@ -874,6 +874,36 @@ function distributeModuleToSlides(
         continue;
       }
       // If no valid table found, fall through to items-based rendering
+    }
+
+    let rawItems = collectSectionItems(section);
+    const repairedItems = validateAndRepairItems(rawItems, report);
+    let validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
+
+    // ── Process/Timeline anti-fragmentation ──
+    // If this is a "process" section, merge micro-items to avoid mechanical-looking timelines
+    if (section.pedagogicalType === "process" && validItems.length > 0) {
+      const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
+      // If items are very short (avg < 50 chars), merge consecutive pairs into richer descriptions
+      if (avgLen < 50 && validItems.length >= 3) {
+        const merged: string[] = [];
+        let i = 0;
+        while (i < validItems.length) {
+          if (i + 1 < validItems.length && validItems[i].length < 60 && validItems[i + 1].length < 60) {
+            const combined = validItems[i].replace(/\.\s*$/, "") + " — " + validItems[i + 1];
+            merged.push(ensureSentenceEnd(combined));
+            i += 2;
+          } else {
+            merged.push(validItems[i]);
+            i++;
+          }
+        }
+        validItems = merged;
+      }
+      // If too many items for a horizontal timeline (>5), switch to bullets for readability
+      if (validItems.length > 5) {
+        layout = "bullets";
+      }
     }
 
     let rawItems = collectSectionItems(section);
