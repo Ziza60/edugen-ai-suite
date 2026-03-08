@@ -1993,6 +1993,7 @@ function renderBullets(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
+  addTopAccentBar(slide, colors.accent);
 
   if (plan.sectionLabel) {
     addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
@@ -2001,17 +2002,33 @@ function renderBullets(
   addSlideTitle(slide, plan.title, colors, design.fonts.title);
 
   const items = plan.items || [];
-  const { contentY, bulletGap, itemH } = getBulletLayoutMetrics(items.length);
+  const contentY = 1.65;
+  const bulletGap = 0.10;
+  const contentH = SLIDE_H - contentY - 0.50;
+  const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
+  const itemH = Math.max(0.65, Math.min(1.40, rawItemH));
 
   for (let i = 0; i < items.length; i++) {
     const accentColor = design.palette[i % design.palette.length];
     const yPos = contentY + i * (itemH + bulletGap);
+    const isEven = i % 2 === 0;
 
-    slide.addShape("rect" as any, {
+    // Subtle alternating card background
+    slide.addShape("roundRect" as any, {
       x: MARGIN,
       y: yPos,
-      w: 0.08,
-      h: itemH - 0.08,
+      w: SAFE_W,
+      h: itemH - 0.04,
+      fill: { color: isEven ? colors.cardBgAlt : colors.bg },
+      rectRadius: 0.06,
+    });
+
+    // Colored left accent bar
+    slide.addShape("rect" as any, {
+      x: MARGIN,
+      y: yPos + 0.06,
+      w: 0.07,
+      h: itemH - 0.16,
       fill: { color: accentColor },
       rectRadius: 0.02,
     });
@@ -2020,13 +2037,83 @@ function renderBullets(
       x: MARGIN + 0.25,
       y: yPos,
       w: SAFE_W - 0.30,
-      h: itemH - 0.05,
+      h: itemH - 0.04,
       fontSize: TYPO.BULLET_TEXT,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "middle",
     });
   }
+
+  addFooter(slide, colors, design.fonts.body);
+}
+
+function renderTwoColumnBullets(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  addSlideBackground(slide, colors.bg);
+  addTopAccentBar(slide, design.palette[1] || colors.accent);
+
+  if (plan.sectionLabel) {
+    addSectionLabel(slide, plan.sectionLabel, design.palette[1] || colors.accent, design.fonts.body);
+  }
+
+  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+
+  const items = plan.items || [];
+  const colGap = 0.40;
+  const colW = (SAFE_W - colGap) / 2;
+  const contentY = 1.65;
+  const mid = Math.ceil(items.length / 2);
+  const leftItems = items.slice(0, mid);
+  const rightItems = items.slice(mid);
+
+  for (let col = 0; col < 2; col++) {
+    const colItems = col === 0 ? leftItems : rightItems;
+    const colX = MARGIN + col * (colW + colGap);
+    const bulletGap = 0.08;
+    const contentH = SLIDE_H - contentY - 0.50;
+    const rawItemH = (contentH - bulletGap * Math.max(colItems.length - 1, 0)) / Math.max(colItems.length, 1);
+    const itemH = Math.max(0.55, Math.min(1.20, rawItemH));
+
+    for (let i = 0; i < colItems.length; i++) {
+      const accentColor = design.palette[(col * mid + i) % design.palette.length];
+      const yPos = contentY + i * (itemH + bulletGap);
+
+      // Colored dot
+      slide.addShape("ellipse" as any, {
+        x: colX,
+        y: yPos + itemH / 2 - 0.08,
+        w: 0.16,
+        h: 0.16,
+        fill: { color: accentColor },
+      });
+
+      slide.addText(colItems[i], {
+        x: colX + 0.28,
+        y: yPos,
+        w: colW - 0.35,
+        h: itemH - 0.04,
+        fontSize: TYPO.BULLET_TEXT,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "middle",
+      });
+    }
+  }
+
+  // Vertical divider between columns
+  slide.addShape("rect" as any, {
+    x: MARGIN + colW + colGap / 2 - 0.01,
+    y: contentY,
+    w: 0.02,
+    h: SLIDE_H - contentY - 0.55,
+    fill: { color: colors.divider },
+  });
 
   addFooter(slide, colors, design.fonts.body);
 }
