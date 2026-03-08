@@ -1,0 +1,73 @@
+Quero encerrar a fase de experimentação no Replit e preparar um handoff técnico objetivo do novo motor PPTX v2 para a Lovable.
+
+NÃO quero nova auditoria ampla.
+NÃO quero novas features.
+NÃO quero nova rodada de testes.
+NÃO quero refatoração extra.
+Quero apenas um pacote claro de entrega do que precisa ser levado para a Lovable.
+
+Objetivo
+
+Gerar um handoff técnico enxuto e preciso para migrar o export-pptx-v2 desenvolvido aqui para o projeto que roda na Lovable.
+
+O que eu quero nesta rodada
+
+identificar exatamente quais arquivos do v2 precisam ser levados;
+
+identificar quais alterações de frontend foram feitas para suportar o v2;
+
+indicar quais partes do v1 permanecem intactas;
+
+explicar o que precisa ser deployado no ambiente da Lovable;
+
+explicar como manter v1 e v2 coexistindo;
+
+explicar como fazer rollback simples se necessário.
+
+Importante
+
+Não quero teoria.
+Não quero plano genérico.
+Não quero reconstrução.
+Quero um handoff objetivo, orientado a arquivos e passos reais.
+
+Resposta obrigatória
+
+Responda SOMENTE com:
+
+A. Arquivos que precisam ser levados para a Lovable
+
+Liste exatamente os arquivos criados ou alterados que fazem parte do v2.
+
+B. Arquivos do frontend alterados
+
+Liste apenas os arquivos de frontend que foram modificados para permitir o uso controlado do v2.
+
+C. O que permaneceu intacto no v1
+
+Explique objetivamente o que NÃO foi alterado no exportador antigo.
+
+D. Dependências e requisitos do v2
+
+Liste apenas o que o ambiente da Lovable precisa ter para o v2 funcionar.
+
+E. O que precisa ser deployado na Lovable
+
+Explique exatamente o que precisa ser publicado/deployado no ambiente final.
+
+F. Como v1 e v2 coexistem
+
+Explique como manter os dois motores lado a lado sem substituir imediatamente o antigo.
+
+G. Como fazer rollback
+
+Explique o rollback mais simples possível caso o v2 precise ser desativado.
+
+H. O que ainda NÃO está validado no ambiente final da Lovable
+
+Liste apenas o que depende do backend/ambiente real da Lovable e ainda não pôde ser provado aqui.
+
+Regra final
+
+Não faça nova implementação nesta resposta.
+Quero apenas o pacote de handoff técnico final.
