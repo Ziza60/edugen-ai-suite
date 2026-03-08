@@ -901,15 +901,22 @@ function distributeModuleToSlides(
     // Step B: Aggressive merge of short consecutive items for process sections
     if (section.pedagogicalType === "process" && validItems.length > 0) {
       const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      // Merge pairs when items are short — target richer, denser descriptions
-      if (avgLen < 90 && validItems.length >= 3) {
+      // Merge groups of 2–3 when items are short — target richer, denser descriptions
+      if (avgLen < 120 && validItems.length >= 3) {
         const merged: string[] = [];
         let i = 0;
         while (i < validItems.length) {
-          if (i + 1 < validItems.length && validItems[i].length < 100 && validItems[i + 1].length < 100) {
+          // Try to merge triplets first for maximum density
+          if (i + 2 < validItems.length && validItems[i].length < 110 && validItems[i + 1].length < 110 && validItems[i + 2].length < 80) {
+            const a = validItems[i].replace(/\.\s*$/, "");
+            const bLower = validItems[i + 1].charAt(0).toLowerCase() + validItems[i + 1].slice(1);
+            const bClean = bLower.replace(/\.\s*$/, "");
+            const cLower = validItems[i + 2].charAt(0).toLowerCase() + validItems[i + 2].slice(1);
+            merged.push(ensureSentenceEnd(`${a}, além disso, ${bClean}, e também ${cLower}`));
+            i += 3;
+          } else if (i + 1 < validItems.length && validItems[i].length < 120 && validItems[i + 1].length < 120) {
             const a = validItems[i].replace(/\.\s*$/, "");
             const b = validItems[i + 1];
-            // Use semantic connector instead of dash for better flow
             const bLower = b.charAt(0).toLowerCase() + b.slice(1);
             merged.push(ensureSentenceEnd(`${a}, além disso, ${bLower}`));
             i += 2;
@@ -920,8 +927,8 @@ function distributeModuleToSlides(
         }
         validItems = merged;
       }
-      // If still too many items for a horizontal timeline (>4), switch to bullets
-      if (validItems.length > 4) {
+      // If still too many items for a horizontal timeline (>3), switch to bullets for readability
+      if (validItems.length > 3) {
         layout = "bullets";
       }
     }
