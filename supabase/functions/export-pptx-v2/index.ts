@@ -1201,7 +1201,8 @@ function distributeModuleToSlides(
 
     // Example sections: consolidate and structure practical example blocks
     if (section.pedagogicalType === "example" && validItems.length > 0) {
-      const CORE_LABEL = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*[:\/]\s*/i;
+      const CORE_LABEL = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*[:]\s*/i;
+      const CORE_LABEL_SLASH = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*[\/]\s*/i;
       const CRITERION_LABEL = /^(Relev[aâ]ncia|Facilidade|Custo|Ferramenta|Crit[eé]rios?\s+Aplicados?)\s*[:\/]\s*/i;
 
       // Step 1: Normalize all items through residual text cleanup
@@ -1209,23 +1210,53 @@ function distributeModuleToSlides(
         .map((item) => normalizeResidualText(item))
         .filter(Boolean);
 
-      // Step 2: Separate core example items from criterion/table items
-      const coreItems: string[] = [];
+      // Step 2: Deduplicate same-label items (e.g., multiple "Resultado:" entries)
+      // Merge them into one item per label to prevent structural repetition.
+      const labelBuckets = new Map<string, string[]>();
+      const nonLabeled: string[] = [];
       const criterionItems: string[] = [];
-      const unlabeledItems: string[] = [];
 
       for (const item of normalizedExamples) {
-        if (CORE_LABEL.test(item)) {
-          coreItems.push(item);
-        } else if (CRITERION_LABEL.test(item)) {
+        // Check for criterion labels first
+        if (CRITERION_LABEL.test(item)) {
           criterionItems.push(item);
+          continue;
+        }
+        // Check for core labels (colon or slash already converted by normalizeResidualText)
+        const coreMatch = item.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*:\s*(.+)$/i);
+        if (coreMatch) {
+          const label = coreMatch[1].charAt(0).toUpperCase() + coreMatch[1].slice(1).toLowerCase();
+          const content = coreMatch[2].replace(/\.\s*$/, "").trim();
+          if (!labelBuckets.has(label)) {
+            labelBuckets.set(label, []);
+          }
+          labelBuckets.get(label)!.push(content);
         } else {
-          unlabeledItems.push(item);
+          nonLabeled.push(item);
         }
       }
 
-      // Step 3: Consolidate criterion items into a single "Critérios Aplicados" block
-      // to prevent fragmentation (e.g., separate Relevância, Custo, Ferramenta slides)
+      // Step 3: Rebuild core items — one per label, merging duplicates
+      const coreItems: string[] = [];
+      const CANONICAL_ORDER = ["Cenário", "Contexto", "Desafio", "Ação", "Solução", "Resultado", "Impacto", "Benefício"];
+      
+      // Add items in canonical order first
+      for (const canonical of CANONICAL_ORDER) {
+        const bucket = labelBuckets.get(canonical);
+        if (bucket && bucket.length > 0) {
+          // Merge all entries for this label into one coherent description
+          const merged = bucket.join(". ").replace(/\.\s*\./g, ".").trim();
+          coreItems.push(ensureSentenceEnd(`${canonical}: ${merged}`));
+          labelBuckets.delete(canonical);
+        }
+      }
+      // Add any remaining labeled items not in canonical order
+      for (const [label, bucket] of labelBuckets) {
+        const merged = bucket.join(". ").replace(/\.\s*\./g, ".").trim();
+        coreItems.push(ensureSentenceEnd(`${label}: ${merged}`));
+      }
+
+      // Step 4: Consolidate criterion items into a single "Critérios Aplicados" block
       if (criterionItems.length >= 2) {
         const consolidated = criterionItems
           .map((ci) => ci.replace(/\.\s*$/, "").trim())
@@ -1235,22 +1266,23 @@ function distributeModuleToSlides(
         coreItems.push(criterionItems[0]);
       }
 
-      // Step 4: Absorb short unlabeled items into the nearest labeled item
-      // These are typically orphan fragments from broken markdown parsing
-      for (const unlabeled of unlabeledItems) {
+      // Step 5: Absorb short unlabeled items into the nearest labeled item
+      for (const unlabeled of nonLabeled) {
         const bare = unlabeled.replace(/[.\s]+$/, "").trim();
-        if (bare.length < 60 && coreItems.length > 0) {
-          // Append to last core item as supplementary detail
-          const lastIdx = coreItems.length - 1;
-          const prev = coreItems[lastIdx].replace(/[.\s]+$/, "").trim();
-          coreItems[lastIdx] = ensureSentenceEnd(`${prev}. ${unlabeled}`);
+        if (bare.length < 80 && coreItems.length > 0) {
+          // Find the best target: prefer "Resultado" or last item
+          const resultIdx = coreItems.findIndex((ci) => /^Resultado:/i.test(ci));
+          const targetIdx = resultIdx >= 0 ? resultIdx : coreItems.length - 1;
+          const prev = coreItems[targetIdx].replace(/[.\s]+$/, "").trim();
+          coreItems[targetIdx] = ensureSentenceEnd(`${prev}. ${unlabeled}`);
         } else {
           coreItems.push(unlabeled);
         }
       }
 
-      // Step 5: Cap at 5 items for visual fit on example_highlight layout
-      validItems = coreItems.slice(0, 5);
+      // Step 6: Cap at 4 items for visual fit on example_highlight layout
+      // (Cenário, Solução, Resultado, Impacto is the ideal structure)
+      validItems = coreItems.slice(0, 4);
     }
 
     if (validItems.length === 0) {
