@@ -1802,10 +1802,15 @@ function runPipeline(
   const tocModules = modules.map((m, i) => {
     const rawTitle = sanitize(m.title || "");
     const cleanTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
-    const firstLine = sanitize((m.content || "").split(/[.!?]\s/)[0] || "");
+    // Strip markdown headings/formatting from content before extracting first line
+    const strippedContent = cleanMarkdown((m.content || "")
+      .replace(/^#{1,6}\s+.*$/gm, "") // remove heading lines entirely
+      .replace(/^[-*]\s+/gm, "")      // remove bullet prefixes
+      .trim());
+    const firstLine = sanitize(strippedContent.split(/[.!?]\s/)[0] || "");
     return {
-      title: cleanTitle,
-      description: firstLine ? ensureSentenceEnd(smartTruncate(firstLine, 80)) : undefined,
+      title: cleanMarkdown(cleanTitle),
+      description: firstLine && firstLine.length > 10 ? ensureSentenceEnd(smartTruncate(firstLine, 80)) : undefined,
     };
   });
   renderTOC(pptx, tocModules, design);
