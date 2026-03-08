@@ -517,6 +517,30 @@ function parseModuleContent(content: string): ParsedBlock[] {
           break;
         }
       }
+      // TEXT-BASED FALLBACK: detect pedagogical type from heading keywords
+      // when no emoji is present — this is the root cause of slides like 32-35
+      // being classified as "generic" and bypassing anti-fragmentation logic
+      if (!sectionHint) {
+        const titleUpper = rawTitle.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const KEYWORD_SECTION_MAP: [RegExp, string][] = [
+          [/\b(COMO\s+FUNCIONA|FUNCIONAMENTO|PROCESSO|PASSO\s+A\s+PASSO|ETAPAS|FLUXO\s+DE\s+TRABALHO|WORKFLOW|MECANISMO|COMO\s+FAZER|COMO\s+USAR|COMO\s+APLICAR|COMO\s+UTILIZAR|NA\s+PRATICA)\b/, "process"],
+          [/\b(OBJETIVOS?|METAS?|O\s+QUE\s+VOCE\s+VAI\s+APRENDER)\b/, "objectives"],
+          [/\b(FUNDAMENTOS?|CONCEITOS?\s+(BASICOS?|ESSENCIAIS?|FUNDAMENTAIS?|CHAVE)|BASE\s+TEORICA|INTRODUCAO|O\s+QUE\s+[EÉ])\b/, "fundamentals"],
+          [/\b(MODELOS?|TIPOS?|CATEGORIAS?|CLASSIFICACAO|ABORDAGENS?|METODOLOGIAS?)\b/, "models"],
+          [/\b(APLICACOES?|USOS?\s+REAIS?|CASOS?\s+DE\s+USO|ONDE\s+APLICAR|APLICACOES?\s+PRATICAS?)\b/, "applications"],
+          [/\b(EXEMPLOS?\s+PRATICOS?|ESTUDO\s+DE\s+CASO|CASO\s+REAL|CENARIO|DEMONSTRACAO)\b/, "example"],
+          [/\b(DESAFIOS?|CUIDADOS?|RISCOS?|LIMITACOES?|ERROS?\s+COMUNS?|ARMADILHAS?|PROBLEMAS?)\b/, "challenges"],
+          [/\b(REFLEXAO|PENSE\s+SOBRE|PARA\s+PENSAR|REFLEXOES?)\b/, "reflection"],
+          [/\b(RESUMO|SINTESE|RECAPITULACAO|EM\s+RESUMO)\b/, "summary"],
+          [/\b(TAKEAWAYS?|PONTOS\s+CHAVE|PONTOS?\s+PRINCIPAIS?|CONCLUSOES?|DESTAQUES?)\b/, "takeaways"],
+        ];
+        for (const [pattern, hint] of KEYWORD_SECTION_MAP) {
+          if (pattern.test(titleUpper)) {
+            sectionHint = hint;
+            break;
+          }
+        }
+      }
       currentSectionHint = sectionHint;
       const cleanTitle = sanitize(
         cleanMarkdown(
