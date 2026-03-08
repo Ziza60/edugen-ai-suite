@@ -443,10 +443,10 @@ function splitLongSegments(text: string, maxChars: number): string[] {
     let chunk = "";
     for (const w of words) {
       const candidate = chunk ? `${chunk} ${w}` : w;
-      if (candidate.length <= maxChars || !chunk) {
+      if (candidate.length <= maxChars) {
         chunk = candidate;
       } else {
-        segments.push(ensureSentenceEnd(chunk));
+        if (chunk) segments.push(ensureSentenceEnd(chunk));
         chunk = w;
       }
     }
