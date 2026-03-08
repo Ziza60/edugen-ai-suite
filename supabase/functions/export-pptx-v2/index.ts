@@ -1347,6 +1347,15 @@ function stripPartSuffix(title: string): string {
   return sanitize(title).replace(/\s*\(Parte\s+\d+\)\s*$/i, "").trim();
 }
 
+function getBulletLayoutMetrics(itemCount: number) {
+  const contentY = 1.70;
+  const bulletGap = 0.06;
+  const contentH = SLIDE_H - contentY - 0.60;
+  const rawItemH = (contentH - bulletGap * Math.max(itemCount - 1, 0)) / Math.max(itemCount, 1);
+  const itemH = Math.min(0.92, rawItemH);
+  return { contentY, bulletGap, contentH, itemH };
+}
+
 function visuallyFitsPlan(plan: SlidePlan): boolean {
   const items = plan.items || [];
   if (items.length === 0) return false;
