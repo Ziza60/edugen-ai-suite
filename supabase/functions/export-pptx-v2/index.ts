@@ -2115,11 +2115,16 @@ function renderExampleHighlight(
     .map((item) => normalizeResidualText(item))
     .filter(Boolean)
     .map((item) => {
-      const slashMatch = item.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i);
+      // Only convert core example labels (not criterion/table data)
+      const slashMatch = item.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*\/\s*(.+)$/i);
       if (slashMatch) {
         const label = slashMatch[1];
         const desc = slashMatch[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-        return ensureSentenceEnd(`${label}: ${desc}`);
+        // Reject if description starts with imperative verb
+        const startsImperative = /^(Sugira|Faça|Crie|Envie|Escreva|Defina|Liste|Descreva|Elabore|Prepare|Inclua|Adicione|Monte|Organize|Aplique|Utilize|Analise|Avalie|Verifique|Escolha|Selecione)\b/i.test(desc);
+        if (!startsImperative) {
+          return ensureSentenceEnd(`${label}: ${desc}`);
+        }
       }
       return item;
     });
