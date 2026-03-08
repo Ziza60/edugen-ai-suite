@@ -246,11 +246,12 @@ function ensureSentenceEnd(text: string): string {
 function isSentenceComplete(text: string): boolean {
   if (!text || text.trim().length < 5) return true;
   const t = text.trim().replace(/\.+$/, "").trim();
+  if (/[,;:\-–]$/.test(t)) return false;
   const danglingEndings =
-    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i;
+    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i;
   if (danglingEndings.test(t)) return false;
   const incompleteVerbs =
-    /\s(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra)\s*$/i;
+    /\s(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra|exige|exigem|requer|requerem|transforma|cria|define|produz|realiza|proporciona|determina|estabelece|identifica|desenvolve|implementa|combina|conecta|automatiza)\s*$/i;
   if (incompleteVerbs.test(t)) return false;
   return true;
 }
@@ -261,7 +262,7 @@ function repairSentence(text: string): string {
   // Strip dangling prepositions/articles
   t = t
     .replace(
-      /\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i,
+      /\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i,
       "",
     )
     .trim();
@@ -273,9 +274,9 @@ function repairSentence(text: string): string {
     )
     .trim();
   t = t.replace(/[,:;\-–]+$/, "").trim();
-  // After stripping, re-check for new dangling prepositions (recursive once)
-  if (/\s(de|da|do|das|dos|na|no|e|ou|que|para|por|com)\s*$/i.test(t)) {
-    t = t.replace(/\s+(de|da|do|das|dos|na|no|e|ou|que|para|por|com)\s*$/i, "").trim();
+  // After stripping, re-check for new dangling prepositions/articles (recursive once)
+  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i.test(t)) {
+    t = t.replace(/\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i, "").trim();
   }
   return ensureSentenceEnd(t);
 }
@@ -291,6 +292,11 @@ function cleanMarkdown(text: string): string {
     .trim();
 }
 
+function startsWithConnectorFragment(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return /^(e|ou|mas|porém|entretanto|além|como|com|sem|para|por|de|da|do|das|dos|em|na|no|nas|nos|que|quando|onde|enquanto)\b/.test(t);
+}
+
 function smartTruncate(text: string, maxLen: number): string {
   if (!text || text.length <= maxLen) return text;
   const sub = text.substring(0, maxLen);
@@ -298,6 +304,7 @@ function smartTruncate(text: string, maxLen: number): string {
     sub.lastIndexOf(". "),
     sub.lastIndexOf("! "),
     sub.lastIndexOf("? "),
+    sub.lastIndexOf("; "),
   );
   if (sentenceEnd > maxLen * 0.5) {
     return text.substring(0, sentenceEnd + 1).trim();
@@ -306,20 +313,31 @@ function smartTruncate(text: string, maxLen: number): string {
   if (lastSpace > maxLen * 0.6) {
     const cut = text.substring(0, lastSpace).trim();
     const repaired = repairSentence(cut);
-    // Final safety: if still incomplete after repair, cut further back to last sentence boundary
-    if (!isSentenceComplete(repaired.replace(/\.\s*$/, ""))) {
-      const deeperEnd = Math.max(
-        cut.lastIndexOf(". "),
-        cut.lastIndexOf("! "),
-        cut.lastIndexOf("? "),
-      );
-      if (deeperEnd > maxLen * 0.3) {
-        return text.substring(0, deeperEnd + 1).trim();
-      }
+    if (isSentenceComplete(repaired.replace(/\.\s*$/, ""))) {
+      return repaired;
     }
-    return repaired;
   }
-  return repairSentence(sub.trim());
+  // Do not force semantic amputation when there is no safe sentence boundary.
+  return ensureSentenceEnd(text.trim());
+}
+
+function extractFirstCompleteSentence(text: string, maxLen: number): string {
+  const normalized = sanitize(cleanMarkdown(text)).replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+
+  const sentenceCandidates = (normalized.match(/[^.!?]+[.!?]?/g) || [])
+    .map((s) => sanitize(s).trim())
+    .filter(Boolean);
+
+  for (const candidate of sentenceCandidates) {
+    const repaired = repairSentence(candidate);
+    const bare = repaired.replace(/[.\s]+$/, "").trim();
+    if (bare.length >= 10 && isSentenceComplete(bare)) {
+      return smartTruncate(repaired, maxLen);
+    }
+  }
+
+  return "";
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -573,52 +591,41 @@ const PEDAGOGICAL_LAYOUT_MAP: Record<string, SlideLayoutV2> = {
 
 function splitLongItem(text: string, maxLen: number): string[] {
   if (text.length <= maxLen) return [text];
-  const danglingRe =
-    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i;
+
+  const sentences = (text.match(/[^.!?;]+[.!?;]?/g) || [])
+    .map((s) => sanitize(s).trim())
+    .filter(Boolean)
+    .map((s) => ensureSentenceEnd(repairSentence(s)));
+
+  // If there is no safe sentence boundary, keep item intact to avoid semantic amputation.
+  if (sentences.length <= 1) {
+    return [ensureSentenceEnd(repairSentence(text))];
+  }
+
   const parts: string[] = [];
-  let remaining = text;
-  while (remaining.length > maxLen) {
-    const cutZone = remaining.substring(0, maxLen);
-    const splitAt = Math.max(
-      cutZone.lastIndexOf(". "),
-      cutZone.lastIndexOf("! "),
-      cutZone.lastIndexOf("? "),
-      cutZone.lastIndexOf("; "),
-      cutZone.lastIndexOf(", "),
-    );
-    if (splitAt > maxLen * 0.4) {
-      let part = remaining.substring(0, splitAt + 1).trim();
-      if (danglingRe.test(part)) {
-        const backUp = part.lastIndexOf(" ", part.length - 4);
-        if (backUp > maxLen * 0.3) {
-          part = remaining.substring(0, backUp).trim() + ".";
-          remaining = remaining.substring(backUp).trim();
-          parts.push(part);
-          continue;
-        }
-      }
-      parts.push(part);
-      remaining = remaining.substring(splitAt + 1).trim();
+  let current = "";
+
+  for (const sentence of sentences) {
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (candidate.length <= maxLen) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) {
+      parts.push(current);
+      current = "";
+    }
+
+    // Keep oversized single sentence intact rather than splitting mid-idea.
+    if (sentence.length > maxLen) {
+      parts.push(sentence);
     } else {
-      let wordBreak = cutZone.lastIndexOf(" ");
-      if (wordBreak > maxLen * 0.5) {
-        let candidate = remaining.substring(0, wordBreak).trim();
-        if (danglingRe.test(candidate)) {
-          const earlier = candidate.lastIndexOf(" ", candidate.length - 4);
-          if (earlier > maxLen * 0.4) {
-            candidate = remaining.substring(0, earlier).trim();
-            wordBreak = earlier;
-          }
-        }
-        parts.push(candidate + ".");
-        remaining = remaining.substring(wordBreak).trim();
-      } else {
-        parts.push(remaining.substring(0, maxLen - 3).trim() + "...");
-        remaining = remaining.substring(maxLen - 3).trim();
-      }
+      current = sentence;
     }
   }
-  if (remaining.length > 3) parts.push(remaining);
+
+  if (current) parts.push(current);
   return parts;
 }
 
@@ -744,6 +751,60 @@ function redistributeOverflow(
   return chunks;
 }
 
+function hasMeaningfulContent(items: string[]): boolean {
+  if (items.length === 0) return false;
+  const meaningful = items.filter((item) => {
+    const bare = item.replace(/[.\s]+$/, "").trim();
+    return bare.length >= 16 && isSentenceComplete(bare);
+  });
+  return meaningful.length >= 2 || meaningful.some((m) => m.length >= 40);
+}
+
+function rebalanceChunksForSemanticIntegrity(
+  chunks: string[][],
+  report: PipelineReport,
+): string[][] {
+  if (chunks.length <= 1) return chunks;
+
+  // 1) Prevent sentence/idea suspension across chunk boundary
+  for (let i = 0; i < chunks.length - 1; i++) {
+    const current = chunks[i];
+    const next = chunks[i + 1];
+    if (!current.length || !next.length) continue;
+
+    let tail = current[current.length - 1];
+    let head = next[0];
+
+    while (
+      next.length > 0 &&
+      (
+        !isSentenceComplete(tail.replace(/\.\s*$/, "")) ||
+        /[,;:\-–]$/.test(tail.trim()) ||
+        startsWithConnectorFragment(head)
+      )
+    ) {
+      current.push(next.shift()!);
+      tail = current[current.length - 1];
+      head = next[0] || "";
+      report.warnings.push("Adjusted chunk boundary to keep sentence/idea intact");
+    }
+  }
+
+  // 2) Remove weak continuation chunks by folding them back
+  const compact: string[][] = [chunks[0]];
+  for (let i = 1; i < chunks.length; i++) {
+    const chunk = chunks[i].filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
+    if (!hasMeaningfulContent(chunk)) {
+      compact[compact.length - 1].push(...chunk);
+      report.warnings.push("Merged weak continuation chunk back into previous slide");
+      continue;
+    }
+    compact.push(chunk);
+  }
+
+  return compact.filter((chunk) => chunk.length > 0);
+}
+
 function distributeModuleToSlides(
   moduleTitle: string,
   moduleIndex: number,
@@ -808,7 +869,10 @@ function distributeModuleToSlides(
       continue;
     }
 
-    const chunks = redistributeOverflow(validItems, maxItems, maxChars, report);
+    const chunks = rebalanceChunksForSemanticIntegrity(
+      redistributeOverflow(validItems, maxItems, maxChars, report),
+      report,
+    );
 
     for (let ci = 0; ci < chunks.length; ci++) {
       const isContination = ci > 0;
@@ -829,6 +893,22 @@ function distributeModuleToSlides(
           return item;
         })
         .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
+
+      // Continuation must contain real content; otherwise fold back to previous slide.
+      if (isContination && !hasMeaningfulContent(finalItems)) {
+        const prev = slides[slides.length - 1];
+        const sameSection =
+          !!prev &&
+          (!!prev.continuationOf || prev.title === section.title || prev.title.startsWith(`${section.title} (Parte`));
+
+        if (prev && sameSection) {
+          prev.items = [...(prev.items || []), ...finalItems].filter(
+            (item) => item.replace(/[.\s]+$/, "").trim().length >= 8,
+          );
+          report.warnings.push(`Merged weak continuation into previous slide: "${section.title}"`);
+          continue;
+        }
+      }
 
       // Skip continuation slides that ended up with no real content
       if (isContination && finalItems.length === 0) {
@@ -1876,30 +1956,25 @@ function runPipeline(
     allModuleSlidePlans.push(slidePlans);
   }
 
-  const tocModules = modules.map((m, i) => {
+  const tocModules = modules.map((m) => {
     const rawTitle = sanitize(m.title || "");
     const cleanTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
-    // Strip markdown headings/formatting from content before extracting first line
-    const strippedContent = cleanMarkdown((m.content || "")
-      .replace(/^#{1,6}\s+.*$/gm, "") // remove heading lines entirely
-      .replace(/^[-*]\s+/gm, "")      // remove bullet prefixes
-      .trim());
-    let firstLine = sanitize(strippedContent.split(/[.!?]\s/)[0] || "");
-    // Validate the extracted description for sentence completeness
-    if (firstLine && firstLine.length > 10) {
-      let desc = smartTruncate(firstLine, 80);
-      if (!isSentenceComplete(desc.replace(/\.\s*$/, ""))) {
-        desc = repairSentence(desc);
-      }
-      // If after repair the description is too short, discard it
-      if (desc.replace(/[.\s]+$/, "").trim().length < 10) {
-        return { title: cleanMarkdown(cleanTitle), description: undefined };
-      }
-      return { title: cleanMarkdown(cleanTitle), description: ensureSentenceEnd(desc) };
+    const strippedContent = (m.content || "")
+      .replace(/^#{1,6}\s+.*$/gm, "")
+      .replace(/^[-*]\s+/gm, "")
+      .trim();
+
+    const desc = extractFirstCompleteSentence(strippedContent, 80);
+    if (!desc) {
+      return {
+        title: cleanMarkdown(cleanTitle),
+        description: undefined,
+      };
     }
+
     return {
       title: cleanMarkdown(cleanTitle),
-      description: undefined,
+      description: ensureSentenceEnd(desc),
     };
   });
   renderTOC(pptx, tocModules, design);
