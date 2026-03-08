@@ -1020,6 +1020,269 @@ function addFooter(
   });
 }
 
+const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
+  bullets: 6,
+  definition: 4,
+  grid_cards: 6,
+  process_timeline: 4,
+  example_highlight: 3,
+  warning_callout: 5,
+  reflection_callout: 4,
+  summary_slide: 5,
+  numbered_takeaways: 6,
+};
+
+const LAYOUT_VISUAL_MAX_CHARS: Partial<Record<SlideLayoutV2, number>> = {
+  bullets: 150,
+  definition: 120,
+  grid_cards: 110,
+  process_timeline: 90,
+  example_highlight: 140,
+  warning_callout: 130,
+  reflection_callout: 110,
+  summary_slide: 420,
+  numbered_takeaways: 110,
+};
+
+function estimateTextHeightInches(
+  text: string,
+  fontSize: number,
+  boxW: number,
+  lineSpacing = 1.25,
+): number {
+  const clean = sanitize(text || "");
+  if (!clean) return 0;
+
+  const boxWidthPt = Math.max(boxW * 72, 24);
+  const avgCharWidthPt = Math.max(fontSize * 0.52, 1);
+  const charsPerLine = Math.max(Math.floor(boxWidthPt / avgCharWidthPt), 8);
+
+  const lines = clean
+    .split(/\n+/)
+    .map((part) => Math.max(1, Math.ceil(part.trim().length / charsPerLine)))
+    .reduce((sum, v) => sum + v, 0);
+
+  return (lines * fontSize * lineSpacing) / 72;
+}
+
+function fitsTextBox(
+  text: string,
+  fontSize: number,
+  boxW: number,
+  boxH: number,
+  lineSpacing = 1.25,
+  padding = 0.03,
+): boolean {
+  const needed = estimateTextHeightInches(text, fontSize, boxW, lineSpacing);
+  return needed <= Math.max(0, boxH - padding);
+}
+
+function stripPartSuffix(title: string): string {
+  return sanitize(title).replace(/\s*\(Parte\s+\d+\)\s*$/i, "").trim();
+}
+
+function visuallyFitsPlan(plan: SlidePlan): boolean {
+  const items = plan.items || [];
+  if (items.length === 0) return false;
+
+  switch (plan.layout) {
+    case "bullets": {
+      const contentY = 1.70;
+      const contentH = SLIDE_H - contentY - 0.60;
+      const itemH = Math.min(0.60, contentH / Math.max(items.length, 1));
+      return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, SAFE_W - 0.30, itemH - 0.05, 1.2));
+    }
+
+    case "warning_callout": {
+      const contentY = 1.70;
+      const itemH = Math.min(0.80, (SLIDE_H - contentY - 0.60) / Math.max(items.length, 1));
+      return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, SAFE_W - 0.55, itemH - 0.05, 1.2));
+    }
+
+    case "reflection_callout": {
+      const contentY = 1.90;
+      const itemH = Math.min(1.00, (SLIDE_H - contentY - 0.60) / Math.max(items.length, 1));
+      return items.every((item) => fitsTextBox(item, TYPO.BODY_LARGE, SAFE_W - 0.60, itemH - 0.10, 1.2));
+    }
+
+    case "numbered_takeaways": {
+      const contentY = 1.70;
+      const contentH = SLIDE_H - contentY - 0.60;
+      const itemH = Math.min(0.65, contentH / Math.max(items.length, 1));
+      return items.every((item) => fitsTextBox(item, TYPO.TAKEAWAY_BODY, SAFE_W - 0.60, itemH - 0.05, 1.2));
+    }
+
+    case "summary_slide": {
+      const bodyText = items.join(" ");
+      return fitsTextBox(bodyText, TYPO.BODY, SAFE_W - 0.60, SLIDE_H - 1.90 - 0.80, 1.3);
+    }
+
+    case "definition": {
+      if (!fitsTextBox(items[0] || "", TYPO.BODY_LARGE, SAFE_W - 0.40, 0.80, 1.2)) return false;
+      const pillars = items.slice(1);
+      if (pillars.length === 0) return true;
+      const pillarW = (SAFE_W - 0.30 * (pillars.length - 1)) / pillars.length;
+      return pillars.every((item) => fitsTextBox(item, TYPO.CARD_BODY, pillarW, 1.20, 1.2));
+    }
+
+    case "grid_cards": {
+      const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
+      if (cols <= 0) return false;
+      const rows = Math.ceil(items.length / cols);
+      const gap = 0.20;
+      const cardW = (SAFE_W - gap * (cols - 1)) / cols;
+      const contentArea = SLIDE_H - 1.70 - 0.60;
+      const cardH = (contentArea - gap * (rows - 1)) / rows;
+
+      return items.every((item) => {
+        const colonIdx = item.indexOf(":");
+        if (colonIdx > 0 && colonIdx < 40) {
+          const label = item.substring(0, colonIdx).trim();
+          const desc = item.substring(colonIdx + 1).trim();
+          return (
+            fitsTextBox(label, TYPO.CARD_TITLE, cardW - 0.30, 0.35, 1.1) &&
+            fitsTextBox(desc, TYPO.CARD_BODY, cardW - 0.30, cardH - 0.65, 1.2)
+          );
+        }
+        return fitsTextBox(item, TYPO.CARD_BODY, cardW - 0.30, cardH - 0.30, 1.2);
+      });
+    }
+
+    case "process_timeline": {
+      const stepW = SAFE_W / Math.max(items.length, 1);
+      return items.every((item) => {
+        const colonIdx = item.indexOf(":");
+        let label: string;
+        let desc: string;
+        if (colonIdx > 0 && colonIdx < 40) {
+          label = item.substring(0, colonIdx).trim();
+          desc = item.substring(colonIdx + 1).trim();
+        } else if (item.length <= 50) {
+          label = item;
+          desc = "";
+        } else {
+          const words = item.split(/\s+/);
+          label = words.slice(0, 4).join(" ");
+          desc = words.slice(4).join(" ");
+        }
+
+        const labelOk = fitsTextBox(label, TYPO.CARD_TITLE, stepW - 0.10, 0.35, 1.1);
+        const descOk = !desc || fitsTextBox(desc, TYPO.CARD_BODY, stepW - 0.10, 1.80, 1.2);
+        return labelOk && descOk;
+      });
+    }
+
+    case "example_highlight": {
+      const capped = items.slice(0, 3);
+      return capped.every((item, i) => {
+        const colonIdx = item.indexOf(":");
+        const label = colonIdx > 0 && colonIdx < 30
+          ? item.substring(0, colonIdx).trim()
+          : ["Cenário", "Solução", "Resultado"][i] || `Item ${i + 1}`;
+        const desc = colonIdx > 0 ? item.substring(colonIdx + 1).trim() : item;
+        return (
+          fitsTextBox(label, TYPO.CARD_TITLE, 2.00, 0.35, 1.1) &&
+          fitsTextBox(desc, TYPO.BODY, SAFE_W - 0.60, 0.85, 1.2)
+        );
+      });
+    }
+
+    default:
+      return true;
+  }
+}
+
+function enforceVisualRenderingGuards(
+  modulePlans: SlidePlan[],
+  design: DesignConfig,
+  report: PipelineReport,
+): SlidePlan[] {
+  const adjusted: SlidePlan[] = [];
+
+  for (const plan of modulePlans) {
+    if (plan.layout === "module_cover" || plan.layout === "comparison_table" || !plan.items || plan.items.length === 0) {
+      adjusted.push(plan);
+      continue;
+    }
+
+    const baseTitle = stripPartSuffix(plan.continuationOf || plan.title);
+    const maxItems = LAYOUT_VISUAL_MAX_ITEMS[plan.layout] || design.density.maxItemsPerSlide;
+    const maxChars = LAYOUT_VISUAL_MAX_CHARS[plan.layout] || design.density.maxCharsPerItem;
+
+    const normalizedItems = plan.items
+      .flatMap((item) => splitLongItem(item, maxChars))
+      .map((item) => ensureSentenceEnd(repairSentence(item)))
+      .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
+
+    if (normalizedItems.length === 0) {
+      report.warnings.push(`[VISUAL] Dropped plan without renderable items: "${plan.title}"`);
+      continue;
+    }
+
+    const initialChunks = redistributeOverflow(normalizedItems, maxItems, maxChars, report)
+      .map((chunk) => chunk.filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8))
+      .filter((chunk) => chunk.length > 0);
+
+    const queue: SlidePlan[] = initialChunks.map((chunk) => ({ ...plan, items: chunk, title: baseTitle }));
+    const fitted: SlidePlan[] = [];
+    let guard = 0;
+
+    while (queue.length > 0 && guard < 100) {
+      guard++;
+      const current = queue.shift()!;
+      const currentItems = current.items || [];
+      if (currentItems.length === 0) continue;
+
+      if (visuallyFitsPlan(current)) {
+        fitted.push(current);
+        continue;
+      }
+
+      if (currentItems.length > 1) {
+        const mid = Math.ceil(currentItems.length / 2);
+        report.redistributions++;
+        report.warnings.push(`[VISUAL] Split by visual overflow: "${baseTitle}"`);
+        queue.unshift(
+          { ...current, items: currentItems.slice(mid) },
+          { ...current, items: currentItems.slice(0, mid) },
+        );
+        continue;
+      }
+
+      if (current.layout !== "bullets") {
+        const fallback = { ...current, layout: "bullets" as SlideLayoutV2 };
+        if (visuallyFitsPlan(fallback)) {
+          report.warnings.push(`[VISUAL] Fallback to bullets for fit: "${baseTitle}"`);
+          fitted.push(fallback);
+          continue;
+        }
+      }
+
+      const single = currentItems[0];
+      const forcedParts = splitLongItem(single, Math.max(48, Math.floor(maxChars * 0.7)));
+      if (forcedParts.length > 1) {
+        report.redistributions++;
+        report.warnings.push(`[VISUAL] Forced re-split long item: "${baseTitle}"`);
+        queue.unshift(...forcedParts.map((part) => ({ ...current, items: [part] })));
+        continue;
+      }
+
+      report.warnings.push(`[VISUAL] Dropped non-fitting item after safeguards: "${single.substring(0, 50)}..."`);
+    }
+
+    for (let i = 0; i < fitted.length; i++) {
+      const partTitle = i === 0 ? baseTitle : `${baseTitle} (Parte ${i + 1})`;
+      adjusted.push({
+        ...fitted[i],
+        title: partTitle,
+        continuationOf: i === 0 ? plan.continuationOf : baseTitle,
+      });
+    }
+  }
+
+  return adjusted;
+}
+
 function renderModuleCover(
   pptx: PptxGenJS,
   plan: SlidePlan,
