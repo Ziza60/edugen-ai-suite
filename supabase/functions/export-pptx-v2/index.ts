@@ -1886,28 +1886,32 @@ function renderExampleHighlight(
   const sectionColors = [design.palette[1], design.palette[2], design.palette[3], design.palette[0], design.palette[4]];
 
   const contentStartY = 1.90;
-  const contentEndY = SLIDE_H - 0.70;
+  const contentEndY = SLIDE_H - 0.75;
   const availableH = contentEndY - contentStartY;
-  const sectionH = availableH / Math.max(cappedItems.length, 1);
+  const itemGap = 0.12;
+  const sectionH = (availableH - itemGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1);
 
   for (let i = 0; i < cappedItems.length; i++) {
-    const y = contentStartY + i * sectionH;
+    const y = contentStartY + i * (sectionH + itemGap);
     const color = sectionColors[i % sectionColors.length];
 
     const colonIdx = cappedItems[i].indexOf(":");
+    const dashIdx = cappedItems[i].indexOf(" — ");
+    const sepIdx = colonIdx > 0 && colonIdx < 30 ? colonIdx : (dashIdx > 0 && dashIdx < 35 ? dashIdx : -1);
+    const sepLen = sepIdx === dashIdx && dashIdx > 0 ? 3 : 1;
     const label =
-      colonIdx > 0 && colonIdx < 30
-        ? cappedItems[i].substring(0, colonIdx).trim()
+      sepIdx > 0
+        ? cappedItems[i].substring(0, sepIdx).trim()
         : sectionLabels[i] || `Item ${i + 1}`;
     const desc =
-      colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
+      sepIdx > 0 ? cappedItems[i].substring(sepIdx + sepLen).trim() : cappedItems[i];
 
     // Draw a small colored accent bar for each section
     slide.addShape("rect" as any, {
       x: MARGIN + 0.15,
       y: y + 0.02,
       w: 0.06,
-      h: Math.min(sectionH - 0.10, 0.50),
+      h: Math.min(sectionH - 0.10, 0.45),
       fill: { color },
       rectRadius: 0.02,
     });
@@ -1915,8 +1919,8 @@ function renderExampleHighlight(
     slide.addText(label, {
       x: MARGIN + 0.35,
       y,
-      w: 2.00,
-      h: 0.32,
+      w: 2.20,
+      h: 0.30,
       fontSize: TYPO.CARD_TITLE,
       fontFace: design.fonts.title,
       bold: true,
@@ -1924,14 +1928,14 @@ function renderExampleHighlight(
     });
     slide.addText(desc, {
       x: MARGIN + 0.35,
-      y: y + 0.34,
+      y: y + 0.32,
       w: SAFE_W - 0.70,
-      h: sectionH - 0.44,
+      h: sectionH - 0.42,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "top",
-      lineSpacingMultiple: 1.2,
+      lineSpacingMultiple: 1.25,
     });
   }
 
