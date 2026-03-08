@@ -395,6 +395,10 @@ function normalizeResidualText(text: string): string {
     .replace(/\bapproach\b/gi, "abordagem")
     .replace(/\bkey\b/gi, "chave")
     .replace(/\btools?\b/gi, "ferramentas")
+    // "soft skills" / "soft habilidades" MUST come before generic "skills"
+    .replace(/\bsoft\s+skills?\b/gi, "habilidades interpessoais")
+    .replace(/\bsoft\s+habilidades?\b/gi, "habilidades interpessoais")
+    .replace(/\bhard\s+skills?\b/gi, "habilidades técnicas")
     .replace(/\bskills?\b/gi, "habilidades")
     .replace(/\bperformance\b/gi, "desempenho")
     .replace(/\befficiency\b/gi, "eficiência")
@@ -403,8 +407,18 @@ function normalizeResidualText(text: string): string {
     .replace(/\bdataset\b/gi, "conjunto de dados")
     .replace(/\bpipeline\b/gi, "fluxo de processamento")
     .replace(/\bdeployment\b/gi, "implantação")
+    // Additional English leaks
+    .replace(/\bhowever\b/gi, "entretanto")
+    .replace(/\btherefore\b/gi, "portanto")
+    .replace(/\bmoreover\b/gi, "além disso")
+    .replace(/\bfurthermore\b/gi, "além disso")
+    .replace(/\bin\s+order\s+to\b/gi, "para")
+    .replace(/\bas\s+well\s+as\b/gi, "assim como")
+    .replace(/\bon\s+the\s+other\s+hand\b/gi, "por outro lado")
+    .replace(/\bbased\s+on\b/gi, "com base em")
+    .replace(/\bthrough\b/gi, "por meio de")
+    .replace(/\baccording\s+to\b/gi, "de acordo com")
 
-    // ── Gender agreement fixes (Portuguese) ──
     // "percepções valiosos" → "percepções valiosas" (fem. plural)
     .replace(/\bpercep[cç][oõ]es\s+(valiosos|baseados|obtidos|gerados|coletados|produzidos|fornecidos|relevantes)\b/gi, 
       (_, adj) => {
@@ -444,7 +458,12 @@ function normalizeResidualText(text: string): string {
     // "tecnologias avançados" → "tecnologias avançadas"
     .replace(/\btecnologias\s+(avan[cç]ados|utilizados|baseados|integrados|modernos)\b/gi,
       (_, adj) => `tecnologias ${adj.replace(/os$/, "as")}`)
-
+    // "práticas recomendados" → "práticas recomendadas"
+    .replace(/\bpr[aá]ticas\s+(recomendados|aplicados|utilizados|baseados|desenvolvidos)\b/gi,
+      (_, adj) => `práticas ${adj.replace(/os$/, "as")}`)
+    // "métricas definidos" → "métricas definidas"
+    .replace(/\bm[eé]tricas\s+(definidos|coletados|obtidos|utilizados|aplicados)\b/gi,
+      (_, adj) => `métricas ${adj.replace(/os$/, "as")}`)
     // Missing preposition "de" in "gestão X" patterns
     .replace(/\bgest[aã]o\s+(documentos|projetos|dados|tarefas|equipes?|processos?|conte[uú]dos?|riscos?|tempo|conhecimento|recursos?|clientes?|pessoas|custos?|qualidade|mudan[cç]as?|contratos?)\b/gi, (_, noun) => `gestão de ${noun.toLowerCase()}`)
     // Missing preposition in "análise X" patterns
@@ -478,31 +497,27 @@ function normalizeResidualText(text: string): string {
     .replace(/([.!?])"\s*\.\s*$/g, '$1"')
     // Fix orphan punctuation at start
     .replace(/^[.,;:!?\s]+/, "")
+    // Fix period-space-period artifacts (e.g., "Dados. .")
+    .replace(/\.\s+\./g, ".")
     // Fix double spaces left by replacements
     .replace(/\s{2,}/g, " ")
     .trim();
 
   if (/^\d+[.)-]?$/.test(t)) return "";
 
-  // ── Handle "Label / Content" slash patterns ──
-  // Convert CORE example labels (Cenário, Solução, Resultado, etc.) to colon format.
-  // For imperative content (instructions), rewrite as "Label: [content]" anyway
-  // to maintain structural consistency — the original slash is always wrong.
-  const CORE_EXAMPLE_LABELS = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*\/\s*(.+)$/i;
-  const slashStructured = t.match(CORE_EXAMPLE_LABELS);
-  if (slashStructured) {
-    const label = slashStructured[1].replace(/\s+/g, " ").trim();
-    const desc = slashStructured[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-    t = `${label}: ${desc}`;
-  }
-
-  // Also catch extended labels (Relevância, Ferramenta, Custo, etc.)
-  const EXTENDED_LABELS = /^(Relev[aâ]ncia|Facilidade|Custo|Ferramenta|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i;
-  const extMatch = t.match(EXTENDED_LABELS);
-  if (extMatch) {
-    const label = extMatch[1].replace(/\s+/g, " ").trim();
-    const desc = extMatch[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-    t = `${label}: ${desc}`;
+  // ── UNIVERSAL "Label / Content" slash-to-colon conversion ──
+  // Catches ANY "CapitalizedWord(s) / content" pattern where label is 2-40 chars
+  // and doesn't contain sentence-ending punctuation (so it's a real label, not prose).
+  // This replaces the old separate CORE + EXTENDED regex approach that missed patterns
+  // like "Necessidade / ...", "Ferramenta Escolhida / ...", etc.
+  const UNIVERSAL_SLASH = /^([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][a-záàâãéêíóôõúüç]+(?:\s+[A-Za-záàâãéêíóôõúüç]+){0,2})\s*\/\s*(.+)$/;
+  const slashMatch = t.match(UNIVERSAL_SLASH);
+  if (slashMatch) {
+    const label = slashMatch[1].replace(/\s+/g, " ").trim();
+    const desc = slashMatch[2].trim();
+    if (label.length >= 2 && label.length <= 40 && !/[.!?]/.test(label)) {
+      t = `${label}: ${desc}`;
+    }
   }
 
   return ensureSentenceEnd(repairSentence(t));
@@ -1201,32 +1216,26 @@ function distributeModuleToSlides(
 
     // Example sections: consolidate and structure practical example blocks
     if (section.pedagogicalType === "example" && validItems.length > 0) {
-      const CORE_LABEL = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*[:]\s*/i;
-      const CORE_LABEL_SLASH = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*[\/]\s*/i;
-      const CRITERION_LABEL = /^(Relev[aâ]ncia|Facilidade|Custo|Ferramenta|Crit[eé]rios?\s+Aplicados?)\s*[:\/]\s*/i;
-
       // Step 1: Normalize all items through residual text cleanup
       let normalizedExamples = validItems
         .map((item) => normalizeResidualText(item))
         .filter(Boolean);
 
-      // Step 2: Deduplicate same-label items (e.g., multiple "Resultado:" entries)
-      // Merge them into one item per label to prevent structural repetition.
+      // Step 2: Universal label detection — ANY "Label: content" pattern
+      // This catches core labels (Cenário, Resultado), extended labels (Relevância, 
+      // Ferramenta Escolhida, Necessidade), and criterion labels uniformly.
+      const ANY_LABEL = /^([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][a-záàâãéêíóôõúüç]+(?:\s+[A-Za-záàâãéêíóôõúüç]+){0,2})\s*:\s*(.+)$/;
+      
       const labelBuckets = new Map<string, string[]>();
       const nonLabeled: string[] = [];
-      const criterionItems: string[] = [];
 
       for (const item of normalizedExamples) {
-        // Check for criterion labels first
-        if (CRITERION_LABEL.test(item)) {
-          criterionItems.push(item);
-          continue;
-        }
-        // Check for core labels (colon or slash already converted by normalizeResidualText)
-        const coreMatch = item.match(/^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*:\s*(.+)$/i);
-        if (coreMatch) {
-          const label = coreMatch[1].charAt(0).toUpperCase() + coreMatch[1].slice(1).toLowerCase();
-          const content = coreMatch[2].replace(/\.\s*$/, "").trim();
+        const labelMatch = item.match(ANY_LABEL);
+        if (labelMatch) {
+          const rawLabel = labelMatch[1].trim();
+          // Normalize label to title case for deduplication
+          const label = rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
+          const content = labelMatch[2].replace(/\.\s*$/, "").trim();
           if (!labelBuckets.has(label)) {
             labelBuckets.set(label, []);
           }
@@ -1236,41 +1245,41 @@ function distributeModuleToSlides(
         }
       }
 
-      // Step 3: Rebuild core items — one per label, merging duplicates
+      // Step 3: Rebuild items — one per label, merging duplicates.
+      // Core pedagogical labels come first in canonical order, then extended labels.
       const coreItems: string[] = [];
       const CANONICAL_ORDER = ["Cenário", "Contexto", "Desafio", "Ação", "Solução", "Resultado", "Impacto", "Benefício"];
       
-      // Add items in canonical order first
+      // Emit core labels in canonical order
       for (const canonical of CANONICAL_ORDER) {
         const bucket = labelBuckets.get(canonical);
         if (bucket && bucket.length > 0) {
-          // Merge all entries for this label into one coherent description
           const merged = bucket.join(". ").replace(/\.\s*\./g, ".").trim();
           coreItems.push(ensureSentenceEnd(`${canonical}: ${merged}`));
           labelBuckets.delete(canonical);
         }
       }
-      // Add any remaining labeled items not in canonical order
+
+      // Step 4: Consolidate ALL remaining labeled items (Relevância, Necessidade,
+      // Ferramenta Escolhida, Custo, Critérios Aplicados, etc.) into a single
+      // "Critérios Aplicados" block to avoid fragmented criterion-like slides.
+      const extendedEntries: string[] = [];
       for (const [label, bucket] of labelBuckets) {
         const merged = bucket.join(". ").replace(/\.\s*\./g, ".").trim();
-        coreItems.push(ensureSentenceEnd(`${label}: ${merged}`));
+        extendedEntries.push(`${label}: ${merged}`);
       }
-
-      // Step 4: Consolidate criterion items into a single "Critérios Aplicados" block
-      if (criterionItems.length >= 2) {
-        const consolidated = criterionItems
-          .map((ci) => ci.replace(/\.\s*$/, "").trim())
-          .join("; ");
+      if (extendedEntries.length >= 2) {
+        // Consolidate multiple criterion-like items into one block
+        const consolidated = extendedEntries.map((e) => e.replace(/\.\s*$/, "")).join("; ");
         coreItems.push(ensureSentenceEnd(`Critérios Aplicados: ${consolidated}`));
-      } else if (criterionItems.length === 1) {
-        coreItems.push(criterionItems[0]);
+      } else if (extendedEntries.length === 1) {
+        coreItems.push(ensureSentenceEnd(extendedEntries[0]));
       }
 
       // Step 5: Absorb short unlabeled items into the nearest labeled item
       for (const unlabeled of nonLabeled) {
         const bare = unlabeled.replace(/[.\s]+$/, "").trim();
         if (bare.length < 80 && coreItems.length > 0) {
-          // Find the best target: prefer "Resultado" or last item
           const resultIdx = coreItems.findIndex((ci) => /^Resultado:/i.test(ci));
           const targetIdx = resultIdx >= 0 ? resultIdx : coreItems.length - 1;
           const prev = coreItems[targetIdx].replace(/[.\s]+$/, "").trim();
@@ -1281,7 +1290,6 @@ function distributeModuleToSlides(
       }
 
       // Step 6: Cap at 4 items for visual fit on example_highlight layout
-      // (Cenário, Solução, Resultado, Impacto is the ideal structure)
       validItems = coreItems.slice(0, 4);
     }
 
