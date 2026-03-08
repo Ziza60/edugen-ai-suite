@@ -758,9 +758,18 @@ function distributeModuleToSlides(
   const objectivesSection = sections.find(
     (s) => s.pedagogicalType === "objectives",
   );
-  const objectiveItems = objectivesSection
+  let objectiveItems = objectivesSection
     ? validateAndRepairItems(collectSectionItems(objectivesSection), report)
     : [];
+  // Extra integrity pass on objectives shown on module cover
+  objectiveItems = objectiveItems
+    .map((obj) => {
+      if (!isSentenceComplete(obj.replace(/\.\s*$/, ""))) {
+        return repairSentence(obj);
+      }
+      return obj;
+    })
+    .filter((obj) => obj.replace(/[.\s]+$/, "").trim().length >= 10);
 
   slides.push({
     layout: "module_cover",
