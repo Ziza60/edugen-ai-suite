@@ -1079,26 +1079,13 @@ function distributeModuleToSlides(
         i++;
       }
 
-      // PHASE 3: Cap at 6 items max (NOT 4 — allow pedagogically rich sections to breathe)
-      // Only merge if truly exceeding visual capacity
-      const MAX_PROCESS_ITEMS = 6;
-      const compacted = [...phase2];
-      while (compacted.length > MAX_PROCESS_ITEMS && compacted.length >= 2) {
-        // Find the two shortest adjacent items to merge
-        let bestIdx = 0;
-        let bestLen = Infinity;
-        for (let j = 0; j < compacted.length - 1; j++) {
-          const combined = compacted[j].length + compacted[j + 1].length;
-          if (combined < bestLen) {
-            bestLen = combined;
-            bestIdx = j;
-          }
-        }
-        const a = compacted[bestIdx].replace(/\.\s*$/, "").trim();
-        const b = compacted[bestIdx + 1];
-        compacted.splice(bestIdx, 2, ensureSentenceEnd(`${a}. ${b}`));
-      }
+      // PHASE 3: Cap process density based on source structure.
+      // If the section came from a single narrative paragraph, force stronger compaction
+      // to avoid 1-sentence-per-slide fragmentation during visual fit.
+      const maxProcessItems = rawItems.length === 1 ? 3 : 6;
+      const compacted = mergeAdjacentShortest(phase2, maxProcessItems);
 
+      validItems = compacted;
       validItems = compacted;
       // Only use process_timeline for ≤3 items where ALL are short enough to fit horizontally
       const allFitTimeline = validItems.length <= 3 && validItems.every((item) => item.length <= 85);
