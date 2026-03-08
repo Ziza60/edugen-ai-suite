@@ -985,38 +985,47 @@ function distributeModuleToSlides(
         .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10)
         .filter((item) => !/^\d+[.)-]?$/.test(item.trim()));
 
-      const compacted: string[] = [];
-      let buffer = "";
+      // PHASE 1: Aggressive merge of weak/micro fragments into neighbors
+      const phase1: string[] = [];
       for (const item of normalizedProcessItems) {
-        const clean = item.trim();
-        if (!buffer) {
-          buffer = clean;
-          continue;
-        }
-
-        const currentBare = buffer.replace(/[.\s]+$/, "").trim();
-        const nextBare = clean.replace(/[.\s]+$/, "").trim();
-        const isMicro = nextBare.length < 95 || /^Isso\b/i.test(nextBare);
-        const isSequential = /^(Em seguida|Depois|Na sequência|Por fim|Então|Além disso)\b/i.test(nextBare);
-        const canMerge = currentBare.length < 150 || isMicro || isSequential;
-
-        if (canMerge && (currentBare.length + nextBare.length + 24) <= Math.floor(maxChars * 1.35)) {
-          const normalizedNext = nextBare.replace(/^Isso\s+/i, "");
-          const connector = /^Isso\b/i.test(nextBare) ? ", o que " : ", além disso, ";
-          const nextLower = normalizedNext.charAt(0).toLowerCase() + normalizedNext.slice(1);
-          buffer = ensureSentenceEnd(`${currentBare}${connector}${nextLower}`);
+        const bare = item.replace(/[.\s]+$/, "").trim();
+        if (phase1.length > 0 && isWeakProcessFragment(bare)) {
+          // Merge into previous item
+          const prev = phase1[phase1.length - 1].replace(/[.\s]+$/, "").trim();
+          const normalizedFragment = bare.replace(/^(Isso|Esse processo|Essa abordagem)\s+/i, "").trim();
+          const fragmentLower = normalizedFragment.charAt(0).toLowerCase() + normalizedFragment.slice(1);
+          const connector = /^(Isso)\b/i.test(bare) ? ", o que " : "; ";
+          phase1[phase1.length - 1] = ensureSentenceEnd(`${prev}${connector}${fragmentLower}`);
         } else {
-          compacted.push(ensureSentenceEnd(currentBare));
-          buffer = clean;
+          phase1.push(item);
         }
       }
-      if (buffer) compacted.push(ensureSentenceEnd(buffer.replace(/[.\s]+$/, "")));
 
-      while (compacted.length > 4) {
-        const first = compacted.shift()!;
+      // PHASE 2: Merge remaining short adjacent items (< 100 chars each)
+      const phase2: string[] = [];
+      let i = 0;
+      while (i < phase1.length) {
+        const current = phase1[i].replace(/[.\s]+$/, "").trim();
+        if (i + 1 < phase1.length) {
+          const next = phase1[i + 1].replace(/[.\s]+$/, "").trim();
+          if (current.length < 100 && next.length < 100 && (current.length + next.length) < 220) {
+            const nextLower = next.charAt(0).toLowerCase() + next.slice(1);
+            phase2.push(ensureSentenceEnd(`${current}, além disso, ${nextLower}`));
+            i += 2;
+            continue;
+          }
+        }
+        phase2.push(ensureSentenceEnd(current));
+        i++;
+      }
+
+      // PHASE 3: Force max 4 items by merging first pair if needed
+      const compacted = [...phase2];
+      while (compacted.length > 4 && compacted.length >= 2) {
+        const first = compacted.shift()!.replace(/\.\s*$/, "");
         const second = compacted.shift()!;
-        const merged = ensureSentenceEnd(`${first.replace(/\.\s*$/, "")}, além disso, ${second.charAt(0).toLowerCase()}${second.slice(1).replace(/\.\s*$/, "")}`);
-        compacted.unshift(merged);
+        const secondLower = second.charAt(0).toLowerCase() + second.slice(1);
+        compacted.unshift(ensureSentenceEnd(`${first}; ${secondLower}`));
       }
 
       validItems = compacted;
