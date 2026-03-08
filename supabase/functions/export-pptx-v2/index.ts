@@ -497,31 +497,27 @@ function normalizeResidualText(text: string): string {
     .replace(/([.!?])"\s*\.\s*$/g, '$1"')
     // Fix orphan punctuation at start
     .replace(/^[.,;:!?\s]+/, "")
+    // Fix period-space-period artifacts (e.g., "Dados. .")
+    .replace(/\.\s+\./g, ".")
     // Fix double spaces left by replacements
     .replace(/\s{2,}/g, " ")
     .trim();
 
   if (/^\d+[.)-]?$/.test(t)) return "";
 
-  // ── Handle "Label / Content" slash patterns ──
-  // Convert CORE example labels (Cenário, Solução, Resultado, etc.) to colon format.
-  // For imperative content (instructions), rewrite as "Label: [content]" anyway
-  // to maintain structural consistency — the original slash is always wrong.
-  const CORE_EXAMPLE_LABELS = /^(Cen[aá]rio|Solu[cç][aã]o|Resultado|Impacto|Contexto|Desafio|A[cç][aã]o|Benef[ií]cio)\s*\/\s*(.+)$/i;
-  const slashStructured = t.match(CORE_EXAMPLE_LABELS);
-  if (slashStructured) {
-    const label = slashStructured[1].replace(/\s+/g, " ").trim();
-    const desc = slashStructured[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-    t = `${label}: ${desc}`;
-  }
-
-  // Also catch extended labels (Relevância, Ferramenta, Custo, etc.)
-  const EXTENDED_LABELS = /^(Relev[aâ]ncia|Facilidade|Custo|Ferramenta|Crit[eé]rios?\s+Aplicados?)\s*\/\s*(.+)$/i;
-  const extMatch = t.match(EXTENDED_LABELS);
-  if (extMatch) {
-    const label = extMatch[1].replace(/\s+/g, " ").trim();
-    const desc = extMatch[2].split("/").map((p) => p.trim()).filter(Boolean).join("; ");
-    t = `${label}: ${desc}`;
+  // ── UNIVERSAL "Label / Content" slash-to-colon conversion ──
+  // Catches ANY "CapitalizedWord(s) / content" pattern where label is 2-40 chars
+  // and doesn't contain sentence-ending punctuation (so it's a real label, not prose).
+  // This replaces the old separate CORE + EXTENDED regex approach that missed patterns
+  // like "Necessidade / ...", "Ferramenta Escolhida / ...", etc.
+  const UNIVERSAL_SLASH = /^([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][a-záàâãéêíóôõúüç]+(?:\s+[A-Za-záàâãéêíóôõúüç]+){0,2})\s*\/\s*(.+)$/;
+  const slashMatch = t.match(UNIVERSAL_SLASH);
+  if (slashMatch) {
+    const label = slashMatch[1].replace(/\s+/g, " ").trim();
+    const desc = slashMatch[2].trim();
+    if (label.length >= 2 && label.length <= 40 && !/[.!?]/.test(label)) {
+      t = `${label}: ${desc}`;
+    }
   }
 
   return ensureSentenceEnd(repairSentence(t));
