@@ -1602,6 +1602,13 @@ function visuallyFitsPlan(plan: SlidePlan): boolean {
   if (items.length === 0) return false;
 
   switch (plan.layout) {
+    case "two_column_bullets": {
+      const colW = (SAFE_W - 0.40) / 2;
+      const halfCount = Math.ceil(items.length / 2);
+      const { itemH } = getBulletLayoutMetrics(halfCount);
+      return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, colW - 0.30, itemH - 0.05, 1.2));
+    }
+
     case "bullets": {
       const { itemH } = getBulletLayoutMetrics(items.length);
       return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, SAFE_W - 0.30, itemH - 0.05, 1.2));
