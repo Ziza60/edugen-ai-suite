@@ -1107,7 +1107,7 @@ const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
   definition: 4,
   grid_cards: 6,
   process_timeline: 4,
-  example_highlight: 3,
+  example_highlight: 5,
   warning_callout: 5,
   reflection_callout: 4,
   summary_slide: 5,
