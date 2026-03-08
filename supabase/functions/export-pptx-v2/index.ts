@@ -2546,6 +2546,7 @@ function renderExampleHighlight(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
+  addTopAccentBar(slide, design.palette[3] || colors.accent);
 
   if (plan.sectionLabel) {
     addSectionLabel(slide, plan.sectionLabel, design.palette[3] || colors.accent, design.fonts.body);
@@ -2553,85 +2554,152 @@ function renderExampleHighlight(
   addSlideTitle(slide, plan.title, colors, design.fonts.title);
 
   const items = plan.items || [];
-
   const normalizedItems = items
     .map((item) => normalizeResidualText(item))
-    .filter(Boolean);
-
-  // Repair all items semantically
-  const repairedItems = normalizedItems.map((item) => {
-    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
-    return ensureSentenceEnd(repaired);
-  });
-
-  // Keep up to 4 coherent blocks to avoid fragmentation in practical examples
-  const cappedItems = repairedItems.slice(0, 4);
-
-  slide.addShape("roundRect" as any, {
-    x: MARGIN,
-    y: 1.70,
-    w: SAFE_W,
-    h: SLIDE_H - 1.70 - 0.60,
-    fill: { color: colors.insightBg },
-    rectRadius: 0.10,
-    line: { color: colors.accent, width: 1.5 },
-  });
-
-  const sectionLabels = ["Cenário", "Solução", "Resultado", "Impacto", "Conclusão"];
-  const sectionColors = [design.palette[1], design.palette[2], design.palette[3], design.palette[0], design.palette[4]];
-
-  const contentStartY = 1.90;
-  const contentEndY = SLIDE_H - 0.75;
-  const availableH = contentEndY - contentStartY;
-  const itemGap = 0.12;
-  const sectionH = (availableH - itemGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1);
-
-  for (let i = 0; i < cappedItems.length; i++) {
-    const y = contentStartY + i * (sectionH + itemGap);
-    const color = sectionColors[i % sectionColors.length];
-
-    const colonIdx = cappedItems[i].indexOf(":");
-    const dashIdx = cappedItems[i].indexOf(" — ");
-    const sepIdx = colonIdx > 0 && colonIdx < 30 ? colonIdx : (dashIdx > 0 && dashIdx < 35 ? dashIdx : -1);
-    const sepLen = sepIdx === dashIdx && dashIdx > 0 ? 3 : 1;
-    const label =
-      sepIdx > 0
-        ? cappedItems[i].substring(0, sepIdx).trim()
-        : sectionLabels[i] || `Item ${i + 1}`;
-    const desc =
-      sepIdx > 0 ? cappedItems[i].substring(sepIdx + sepLen).trim() : cappedItems[i];
-
-    // Draw a small colored accent bar for each section
-    slide.addShape("rect" as any, {
-      x: MARGIN + 0.15,
-      y: y + 0.02,
-      w: 0.06,
-      h: Math.min(sectionH - 0.10, 0.45),
-      fill: { color },
-      rectRadius: 0.02,
+    .filter(Boolean)
+    .map((item) => {
+      const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+      return ensureSentenceEnd(repaired);
     });
 
-    slide.addText(label, {
-      x: MARGIN + 0.35,
-      y,
-      w: 2.20,
-      h: 0.30,
-      fontSize: TYPO.CARD_TITLE,
-      fontFace: design.fonts.title,
-      bold: true,
-      color,
-    });
-    slide.addText(desc, {
-      x: MARGIN + 0.35,
-      y: y + 0.32,
-      w: SAFE_W - 0.70,
-      h: sectionH - 0.42,
-      fontSize: TYPO.BODY,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "top",
-      lineSpacingMultiple: 1.25,
-    });
+  const cappedItems = normalizedItems.slice(0, 4);
+  const sectionColors = [design.palette[0], design.palette[1], design.palette[2], design.palette[3], design.palette[4]];
+
+  if (cappedItems.length <= 2) {
+    // Side-by-side large cards for 1-2 items
+    const gap = 0.30;
+    const cardW = cappedItems.length === 1 ? SAFE_W : (SAFE_W - gap) / 2;
+    const cardY = 1.70;
+    const cardH = SLIDE_H - cardY - 0.55;
+
+    for (let i = 0; i < cappedItems.length; i++) {
+      const x = MARGIN + i * (cardW + gap);
+      const color = sectionColors[i % sectionColors.length];
+
+      slide.addShape("roundRect" as any, {
+        x,
+        y: cardY,
+        w: cardW,
+        h: cardH,
+        fill: { color: colors.cardBgAlt },
+        rectRadius: 0.10,
+        line: { color: colors.borders, width: 0.5 },
+      });
+
+      // Colored header bar
+      slide.addShape("rect" as any, {
+        x: x + 0.01,
+        y: cardY + 0.01,
+        w: cardW - 0.02,
+        h: 0.50,
+        fill: { color },
+        rectRadius: 0.10,
+      });
+      // Fix bottom corners of header
+      slide.addShape("rect" as any, {
+        x: x + 0.01,
+        y: cardY + 0.30,
+        w: cardW - 0.02,
+        h: 0.21,
+        fill: { color },
+      });
+
+      const colonIdx = cappedItems[i].indexOf(":");
+      const label = colonIdx > 0 && colonIdx < 30
+        ? cappedItems[i].substring(0, colonIdx).trim()
+        : ["Cenário", "Resultado"][i] || `Item ${i + 1}`;
+      const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
+
+      slide.addText(label, {
+        x: x + 0.20,
+        y: cardY + 0.08,
+        w: cardW - 0.40,
+        h: 0.35,
+        fontSize: TYPO.CARD_TITLE + 2,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+      });
+
+      slide.addText(desc, {
+        x: x + 0.20,
+        y: cardY + 0.65,
+        w: cardW - 0.40,
+        h: cardH - 0.85,
+        fontSize: TYPO.BODY,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "top",
+        lineSpacingMultiple: 1.3,
+      });
+    }
+  } else {
+    // 2x2 grid of cards for 3-4 items
+    const cols = 2;
+    const rows = Math.ceil(cappedItems.length / cols);
+    const gap = 0.20;
+    const cardW = (SAFE_W - gap) / cols;
+    const cardY = 1.65;
+    const contentH = SLIDE_H - cardY - 0.50;
+    const cardH = (contentH - gap * (rows - 1)) / rows;
+
+    for (let i = 0; i < cappedItems.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = MARGIN + col * (cardW + gap);
+      const y = cardY + row * (cardH + gap);
+      const color = sectionColors[i % sectionColors.length];
+
+      slide.addShape("roundRect" as any, {
+        x,
+        y,
+        w: cardW,
+        h: cardH,
+        fill: { color: colors.cardBgAlt },
+        rectRadius: 0.08,
+        line: { color: colors.borders, width: 0.5 },
+      });
+
+      // Colored left bar
+      slide.addShape("rect" as any, {
+        x,
+        y: y + 0.08,
+        w: 0.06,
+        h: cardH - 0.16,
+        fill: { color },
+        rectRadius: 0.02,
+      });
+
+      const colonIdx = cappedItems[i].indexOf(":");
+      const defaultLabels = ["Cenário", "Ação", "Resultado", "Impacto"];
+      const label = colonIdx > 0 && colonIdx < 30
+        ? cappedItems[i].substring(0, colonIdx).trim()
+        : defaultLabels[i] || `Item ${i + 1}`;
+      const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
+
+      slide.addText(label, {
+        x: x + 0.18,
+        y: y + 0.10,
+        w: cardW - 0.36,
+        h: 0.30,
+        fontSize: TYPO.CARD_TITLE,
+        fontFace: design.fonts.title,
+        bold: true,
+        color,
+      });
+
+      slide.addText(desc, {
+        x: x + 0.18,
+        y: y + 0.42,
+        w: cardW - 0.36,
+        h: cardH - 0.58,
+        fontSize: TYPO.CARD_BODY,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "top",
+        lineSpacingMultiple: 1.25,
+      });
+    }
   }
 
   addFooter(slide, colors, design.fonts.body);
