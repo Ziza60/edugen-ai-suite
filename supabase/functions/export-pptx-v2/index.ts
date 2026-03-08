@@ -867,6 +867,33 @@ function mergeShortItems(
   return merged;
 }
 
+function mergeAdjacentShortest(
+  items: string[],
+  targetCount: number,
+): string[] {
+  if (items.length <= targetCount) return items;
+
+  const compacted = [...items];
+  while (compacted.length > targetCount && compacted.length >= 2) {
+    let bestIdx = 0;
+    let bestLen = Infinity;
+
+    for (let i = 0; i < compacted.length - 1; i++) {
+      const combinedLen = compacted[i].length + compacted[i + 1].length;
+      if (combinedLen < bestLen) {
+        bestLen = combinedLen;
+        bestIdx = i;
+      }
+    }
+
+    const a = compacted[bestIdx].replace(/\.\s*$/, "").trim();
+    const b = compacted[bestIdx + 1].trim();
+    compacted.splice(bestIdx, 2, ensureSentenceEnd(`${a}. ${b}`));
+  }
+
+  return compacted;
+}
+
 function redistributeOverflow(
   items: string[],
   maxPerSlide: number,
