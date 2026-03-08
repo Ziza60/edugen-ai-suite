@@ -1217,14 +1217,21 @@ function renderProcessTimeline(
     }
 
     const colonIdx = items[i].indexOf(":");
-    const label =
-      colonIdx > 0 && colonIdx < 30
-        ? items[i].substring(0, colonIdx).trim()
-        : `Etapa ${i + 1}`;
-    const desc =
-      colonIdx > 0 && colonIdx < 30
-        ? items[i].substring(colonIdx + 1).trim()
-        : items[i];
+    let label: string;
+    let desc: string;
+    if (colonIdx > 0 && colonIdx < 40) {
+      label = items[i].substring(0, colonIdx).trim();
+      desc = items[i].substring(colonIdx + 1).trim();
+    } else if (items[i].length <= 50) {
+      // Short items: use the text itself as label, no separate description
+      label = items[i];
+      desc = "";
+    } else {
+      // Long items without colon: extract first ~4 words as label
+      const words = items[i].split(/\s+/);
+      label = words.slice(0, 4).join(" ");
+      desc = words.slice(4).join(" ");
+    }
 
     slide.addText(label, {
       x: x + 0.05,
