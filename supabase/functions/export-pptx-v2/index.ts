@@ -247,6 +247,10 @@ function isSentenceComplete(text: string): boolean {
   if (!text || text.trim().length < 5) return true;
   const t = text.trim().replace(/\.+$/, "").trim();
   if (/[,;:\-–]$/.test(t)) return false;
+  // Dangling compound prepositional phrases (e.g. "de forma", "de modo", "por meio")
+  const danglingCompound =
+    /\s(de\s+forma|de\s+modo|de\s+maneira|por\s+meio|em\s+termos|no\s+âmbito|ao\s+longo|a\s+partir|em\s+função|com\s+base|por\s+conta|no\s+sentido|de\s+acordo|em\s+relação|a\s+fim|de\s+cada|de\s+um|de\s+uma|a\s+cada)\s*$/i;
+  if (danglingCompound.test(t)) return false;
   const danglingEndings =
     /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i;
   if (danglingEndings.test(t)) return false;
@@ -259,6 +263,13 @@ function isSentenceComplete(text: string): boolean {
 function repairSentence(text: string): string {
   if (!text) return "";
   let t = text.trim();
+  // Strip dangling compound prepositional phrases first (before single-word stripping)
+  t = t
+    .replace(
+      /\s+(de\s+forma|de\s+modo|de\s+maneira|por\s+meio|em\s+termos|no\s+âmbito|ao\s+longo|a\s+partir|em\s+função|com\s+base|por\s+conta|no\s+sentido|de\s+acordo|em\s+relação|a\s+fim|de\s+cada|de\s+um|de\s+uma|a\s+cada)\s*$/i,
+      "",
+    )
+    .trim();
   // Strip dangling prepositions/articles
   t = t
     .replace(
@@ -274,9 +285,14 @@ function repairSentence(text: string): string {
     )
     .trim();
   t = t.replace(/[,:;\-–]+$/, "").trim();
-  // After stripping, re-check for new dangling prepositions/articles (recursive once)
-  if (/\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i.test(t)) {
+  // After stripping, re-check recursively (up to 3 passes) for new dangling endings
+  for (let pass = 0; pass < 3; pass++) {
+    const before = t;
+    t = t.replace(/\s+(de\s+forma|de\s+modo|de\s+maneira|por\s+meio|em\s+termos|no\s+âmbito|ao\s+longo|a\s+partir|em\s+função|com\s+base|por\s+conta|no\s+sentido|de\s+acordo|em\s+relação|a\s+fim|de\s+cada|de\s+um|de\s+uma|a\s+cada)\s*$/i, "").trim();
     t = t.replace(/\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i, "").trim();
+    t = t.replace(/\s+(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra|exigem|exige|requer|requerem|transforma|cria|define|produz|realiza|proporciona|determina|estabelece|identifica|desenvolve|implementa|combina|conecta|automatiza)\s*$/i, "").trim();
+    t = t.replace(/[,:;\-–]+$/, "").trim();
+    if (t === before) break;
   }
   return ensureSentenceEnd(t);
 }
@@ -842,7 +858,7 @@ function distributeModuleToSlides(
 
   for (const section of sections) {
     if (section.pedagogicalType === "objectives") continue;
-    const layout = PEDAGOGICAL_LAYOUT_MAP[section.pedagogicalType] || "bullets";
+    let layout = PEDAGOGICAL_LAYOUT_MAP[section.pedagogicalType] || "bullets";
 
     if (layout === "comparison_table") {
       const table = extractTableFromSection(section);
@@ -858,6 +874,36 @@ function distributeModuleToSlides(
         continue;
       }
       // If no valid table found, fall through to items-based rendering
+    }
+
+    let rawItems = collectSectionItems(section);
+    const repairedItems = validateAndRepairItems(rawItems, report);
+    let validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
+
+    // ── Process/Timeline anti-fragmentation ──
+    // If this is a "process" section, merge micro-items to avoid mechanical-looking timelines
+    if (section.pedagogicalType === "process" && validItems.length > 0) {
+      const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
+      // If items are very short (avg < 50 chars), merge consecutive pairs into richer descriptions
+      if (avgLen < 50 && validItems.length >= 3) {
+        const merged: string[] = [];
+        let i = 0;
+        while (i < validItems.length) {
+          if (i + 1 < validItems.length && validItems[i].length < 60 && validItems[i + 1].length < 60) {
+            const combined = validItems[i].replace(/\.\s*$/, "") + " — " + validItems[i + 1];
+            merged.push(ensureSentenceEnd(combined));
+            i += 2;
+          } else {
+            merged.push(validItems[i]);
+            i++;
+          }
+        }
+        validItems = merged;
+      }
+      // If too many items for a horizontal timeline (>5), switch to bullets for readability
+      if (validItems.length > 5) {
+        layout = "bullets";
+      }
     }
 
     let rawItems = collectSectionItems(section);
