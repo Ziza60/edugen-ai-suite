@@ -1956,8 +1956,11 @@ function renderSummarySlide(
   }
   addSlideTitle(slide, plan.title, colors, design.fonts.title);
 
-  const items = plan.items || [];
-  const bodyText = items.join(" ");
+  const items = (plan.items || []).map((item) => {
+    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+    return ensureSentenceEnd(repaired);
+  }).filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10);
+  const bodyText = items.join("\n\n");
 
   slide.addShape("roundRect" as any, {
     x: MARGIN,
@@ -1977,7 +1980,8 @@ function renderSummarySlide(
     fontFace: design.fonts.body,
     color: colors.text,
     valign: "top",
-    lineSpacingMultiple: 1.3,
+    lineSpacingMultiple: 1.35,
+    paraSpaceAfter: 8,
   });
 
   addFooter(slide, colors, design.fonts.body);
