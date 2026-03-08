@@ -520,7 +520,11 @@ function normalizeResidualText(text: string): string {
     }
   }
 
-  return ensureSentenceEnd(repairSentence(t));
+  const finalized = ensureSentenceEnd(repairSentence(t))
+    .replace(/\.{2,}/g, ".")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .trim();
+  return finalized;
 }
 
 function isEditoriallyStrongSentence(text: string): boolean {
@@ -1221,36 +1225,87 @@ function distributeModuleToSlides(
         .map((item) => normalizeResidualText(item))
         .filter(Boolean);
 
+      const normalizeLabelKey = (label: string) =>
+        label
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const isImperativeAction = (content: string) => {
+        return /^(Sugira|Inclua|Defina|Liste|Escreva|Crie|Aplique|Use|Elabore|Estruture|Compare|Avalie|Gere|Selecione|Descreva|Proponha)\b/i.test(content.trim());
+      };
+
+      const toCanonicalLabel = (rawLabel: string, content: string, hasAction: boolean): string => {
+        const key = normalizeLabelKey(rawLabel);
+        if (["cenario", "contexto", "desafio", "acao", "solucao", "resultado", "impacto", "beneficio"].includes(key)) {
+          if (key === "resultado" && isImperativeAction(content)) {
+            return hasAction ? "Solução" : "Ação";
+          }
+          const map: Record<string, string> = {
+            cenario: "Cenário",
+            contexto: "Contexto",
+            desafio: "Desafio",
+            acao: "Ação",
+            solucao: "Solução",
+            resultado: "Resultado",
+            impacto: "Impacto",
+            beneficio: "Benefício",
+          };
+          return map[key] || rawLabel;
+        }
+        if (/^necessidade( do negocio)?$/.test(key)) return "Desafio";
+        if (/^ferramenta( escolhida)?$/.test(key)) return "Solução";
+        if (/^prompt( para ia)?$/.test(key)) return "Ação";
+        if (/^resultado esperado$/.test(key)) return "Resultado";
+        if (/^(relevancia|facilidade|custo|criterios aplicados?)$/.test(key)) return "__criteria__";
+        return rawLabel;
+      };
+
       // Step 2: Universal label detection — ANY "Label: content" pattern
-      // This catches core labels (Cenário, Resultado), extended labels (Relevância, 
-      // Ferramenta Escolhida, Necessidade), and criterion labels uniformly.
-      const ANY_LABEL = /^([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][a-záàâãéêíóôõúüç]+(?:\s+[A-Za-záàâãéêíóôõúüç]+){0,2})\s*:\s*(.+)$/;
-      
+      const ANY_LABEL = /^([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][a-záàâãéêíóôõúüç]+(?:\s+[A-Za-záàâãéêíóôõúüç]+){0,3})\s*:\s*(.+)$/;
+
       const labelBuckets = new Map<string, string[]>();
       const nonLabeled: string[] = [];
+      const criteriaEntries: string[] = [];
 
       for (const item of normalizedExamples) {
         const labelMatch = item.match(ANY_LABEL);
         if (labelMatch) {
           const rawLabel = labelMatch[1].trim();
-          // Normalize label to title case for deduplication
-          const label = rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
           const content = labelMatch[2].replace(/\.\s*$/, "").trim();
-          if (!labelBuckets.has(label)) {
-            labelBuckets.set(label, []);
+          const hasAction = labelBuckets.has("Ação");
+          const canonicalLabel = toCanonicalLabel(rawLabel, content, hasAction);
+
+          if (canonicalLabel === "__criteria__") {
+            criteriaEntries.push(`${rawLabel}: ${content}`);
+            continue;
           }
-          labelBuckets.get(label)!.push(content);
+
+          if (!labelBuckets.has(canonicalLabel)) {
+            labelBuckets.set(canonicalLabel, []);
+          }
+
+          // Strengthen prompt closure when label is prompt/action and content is too abrupt.
+          if (/^Ação$/i.test(canonicalLabel) && /^Prompt\s+para\s+IA\b/i.test(rawLabel)) {
+            const closed = /[.!?]$/.test(content)
+              ? content
+              : `${content}. Adapte o prompt ao contexto do caso`;
+            labelBuckets.get(canonicalLabel)!.push(closed);
+          } else {
+            labelBuckets.get(canonicalLabel)!.push(content);
+          }
         } else {
           nonLabeled.push(item);
         }
       }
 
       // Step 3: Rebuild items — one per label, merging duplicates.
-      // Core pedagogical labels come first in canonical order, then extended labels.
       const coreItems: string[] = [];
       const CANONICAL_ORDER = ["Cenário", "Contexto", "Desafio", "Ação", "Solução", "Resultado", "Impacto", "Benefício"];
-      
-      // Emit core labels in canonical order
+
       for (const canonical of CANONICAL_ORDER) {
         const bucket = labelBuckets.get(canonical);
         if (bucket && bucket.length > 0) {
@@ -1260,16 +1315,13 @@ function distributeModuleToSlides(
         }
       }
 
-      // Step 4: Consolidate ALL remaining labeled items (Relevância, Necessidade,
-      // Ferramenta Escolhida, Custo, Critérios Aplicados, etc.) into a single
-      // "Critérios Aplicados" block to avoid fragmented criterion-like slides.
-      const extendedEntries: string[] = [];
+      // Remaining labels (if any) still get consolidated in one criteria block when multiple
+      const extendedEntries: string[] = [...criteriaEntries];
       for (const [label, bucket] of labelBuckets) {
         const merged = bucket.join(". ").replace(/\.\s*\./g, ".").trim();
         extendedEntries.push(`${label}: ${merged}`);
       }
       if (extendedEntries.length >= 2) {
-        // Consolidate multiple criterion-like items into one block
         const consolidated = extendedEntries.map((e) => e.replace(/\.\s*$/, "")).join("; ");
         coreItems.push(ensureSentenceEnd(`Critérios Aplicados: ${consolidated}`));
       } else if (extendedEntries.length === 1) {
