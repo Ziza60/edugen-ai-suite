@@ -321,6 +321,25 @@ function smartTruncate(text: string, maxLen: number): string {
   return ensureSentenceEnd(text.trim());
 }
 
+function extractFirstCompleteSentence(text: string, maxLen: number): string {
+  const normalized = sanitize(cleanMarkdown(text)).replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+
+  const sentenceCandidates = (normalized.match(/[^.!?]+[.!?]?/g) || [])
+    .map((s) => sanitize(s).trim())
+    .filter(Boolean);
+
+  for (const candidate of sentenceCandidates) {
+    const repaired = repairSentence(candidate);
+    const bare = repaired.replace(/[.\s]+$/, "").trim();
+    if (bare.length >= 10 && isSentenceComplete(bare)) {
+      return smartTruncate(repaired, maxLen);
+    }
+  }
+
+  return "";
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 4: STAGE 1 — PARSE (Markdown → ParsedBlocks)
 // ═══════════════════════════════════════════════════════════════════
