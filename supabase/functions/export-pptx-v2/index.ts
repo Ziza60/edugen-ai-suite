@@ -875,6 +875,22 @@ function distributeModuleToSlides(
         })
         .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
 
+      // Continuation must contain real content; otherwise fold back to previous slide.
+      if (isContination && !hasMeaningfulContent(finalItems)) {
+        const prev = slides[slides.length - 1];
+        const sameSection =
+          !!prev &&
+          (!!prev.continuationOf || prev.title === section.title || prev.title.startsWith(`${section.title} (Parte`));
+
+        if (prev && sameSection) {
+          prev.items = [...(prev.items || []), ...finalItems].filter(
+            (item) => item.replace(/[.\s]+$/, "").trim().length >= 8,
+          );
+          report.warnings.push(`Merged weak continuation into previous slide: "${section.title}"`);
+          continue;
+        }
+      }
+
       // Skip continuation slides that ended up with no real content
       if (isContination && finalItems.length === 0) {
         report.warnings.push(`Dropped empty continuation slide for: "${section.title}"`);
