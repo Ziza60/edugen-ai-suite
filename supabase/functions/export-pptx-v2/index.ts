@@ -881,15 +881,32 @@ function distributeModuleToSlides(
     let validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
 
     // ── Process/Timeline anti-fragmentation ──
-    // If this is a "process" section, merge micro-items to avoid mechanical-looking timelines
+    // Merge "Isso..." pattern items with their predecessor for narrative flow
+    if (section.pedagogicalType === "process" && validItems.length > 1) {
+      const issoPattern = /^Isso\s+(acelera|reduz|gera|oferece|é\s+útil|permite|facilita|melhora|garante|aumenta|possibilita|elimina|otimiza|promove|cria|traz|ajuda|evita|contribui|simplifica|amplia|fortalece|assegura|viabiliza|impacta|transforma)\b/i;
+      const consolidated: string[] = [];
+      for (let idx = 0; idx < validItems.length; idx++) {
+        const item = validItems[idx];
+        if (issoPattern.test(item.trim()) && consolidated.length > 0) {
+          // Merge "Isso..." sentence into previous item for narrative density
+          const prev = consolidated[consolidated.length - 1].replace(/\.\s*$/, "");
+          const issoText = item.trim().charAt(0).toLowerCase() + item.trim().slice(1);
+          consolidated[consolidated.length - 1] = ensureSentenceEnd(`${prev}, o que ${issoText.replace(/^isso\s+/i, "")}`);
+        } else {
+          consolidated.push(item);
+        }
+      }
+      validItems = consolidated;
+    }
+
     if (section.pedagogicalType === "process" && validItems.length > 0) {
       const avgLen = validItems.reduce((s, it) => s + it.length, 0) / validItems.length;
-      // If items are very short (avg < 50 chars), merge consecutive pairs into richer descriptions
-      if (avgLen < 50 && validItems.length >= 3) {
+      // If items are very short (avg < 70 chars), merge consecutive pairs into richer descriptions
+      if (avgLen < 70 && validItems.length >= 3) {
         const merged: string[] = [];
         let i = 0;
         while (i < validItems.length) {
-          if (i + 1 < validItems.length && validItems[i].length < 60 && validItems[i + 1].length < 60) {
+          if (i + 1 < validItems.length && validItems[i].length < 80 && validItems[i + 1].length < 80) {
             const combined = validItems[i].replace(/\.\s*$/, "") + " — " + validItems[i + 1];
             merged.push(ensureSentenceEnd(combined));
             i += 2;
@@ -900,8 +917,8 @@ function distributeModuleToSlides(
         }
         validItems = merged;
       }
-      // If too many items for a horizontal timeline (>5), switch to bullets for readability
-      if (validItems.length > 5) {
+      // If too many items for a horizontal timeline (>4), switch to bullets for readability
+      if (validItems.length > 4) {
         layout = "bullets";
       }
     }
@@ -1426,15 +1443,17 @@ function renderBullets(
 
   const items = plan.items || [];
   const contentY = 1.70;
+  const bulletGap = 0.06;
   const contentH = SLIDE_H - contentY - 0.60;
-  const itemH = Math.min(0.60, contentH / Math.max(items.length, 1));
+  const itemH = Math.min(0.58, (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
 
   for (let i = 0; i < items.length; i++) {
     const accentColor = design.palette[i % design.palette.length];
+    const yPos = contentY + i * (itemH + bulletGap);
 
     slide.addShape("rect" as any, {
       x: MARGIN,
-      y: contentY + i * itemH,
+      y: yPos,
       w: 0.08,
       h: itemH - 0.08,
       fill: { color: accentColor },
@@ -1443,7 +1462,7 @@ function renderBullets(
 
     slide.addText(items[i], {
       x: MARGIN + 0.25,
-      y: contentY + i * itemH,
+      y: yPos,
       w: SAFE_W - 0.30,
       h: itemH - 0.05,
       fontSize: TYPO.BULLET_TEXT,
@@ -1806,17 +1825,23 @@ function renderExampleHighlight(
   const sectionLabels = ["Cenário", "Solução", "Resultado"];
   const sectionColors = [design.palette[1], design.palette[2], design.palette[3]];
 
-  for (let i = 0; i < Math.min(items.length, 3); i++) {
-    const y = 1.90 + i * 1.40;
+  const cappedItems = items.slice(0, 3).map((item) => {
+    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+    return ensureSentenceEnd(repaired);
+  });
+  const sectionH = (SLIDE_H - 1.90 - 0.60) / Math.max(cappedItems.length, 1);
+
+  for (let i = 0; i < cappedItems.length; i++) {
+    const y = 1.90 + i * sectionH;
     const color = sectionColors[i % sectionColors.length];
 
-    const colonIdx = items[i].indexOf(":");
+    const colonIdx = cappedItems[i].indexOf(":");
     const label =
       colonIdx > 0 && colonIdx < 30
-        ? items[i].substring(0, colonIdx).trim()
+        ? cappedItems[i].substring(0, colonIdx).trim()
         : sectionLabels[i] || `Item ${i + 1}`;
     const desc =
-      colonIdx > 0 ? items[i].substring(colonIdx + 1).trim() : items[i];
+      colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
 
     slide.addText(label, {
       x: MARGIN + 0.30,
@@ -1830,13 +1855,14 @@ function renderExampleHighlight(
     });
     slide.addText(desc, {
       x: MARGIN + 0.30,
-      y: y + 0.35,
+      y: y + 0.38,
       w: SAFE_W - 0.60,
-      h: 0.85,
+      h: sectionH - 0.48,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "top",
+      lineSpacingMultiple: 1.2,
     });
   }
 
@@ -1939,8 +1965,11 @@ function renderSummarySlide(
   }
   addSlideTitle(slide, plan.title, colors, design.fonts.title);
 
-  const items = plan.items || [];
-  const bodyText = items.join(" ");
+  const items = (plan.items || []).map((item) => {
+    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+    return ensureSentenceEnd(repaired);
+  }).filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10);
+  const bodyText = items.join("\n\n");
 
   slide.addShape("roundRect" as any, {
     x: MARGIN,
@@ -1960,7 +1989,8 @@ function renderSummarySlide(
     fontFace: design.fonts.body,
     color: colors.text,
     valign: "top",
-    lineSpacingMultiple: 1.3,
+    lineSpacingMultiple: 1.35,
+    paraSpaceAfter: 8,
   });
 
   addFooter(slide, colors, design.fonts.body);
@@ -2044,10 +2074,11 @@ function renderTOC(
   });
 
   const startY = 1.60;
-  const itemH = Math.min(0.80, (SLIDE_H - startY - 0.60) / Math.max(modules.length, 1));
+  const gap = 0.08;
+  const itemH = Math.min(0.80, (SLIDE_H - startY - 0.60 - gap * Math.max(modules.length - 1, 0)) / Math.max(modules.length, 1));
 
   for (let i = 0; i < modules.length; i++) {
-    const y = startY + i * itemH;
+    const y = startY + i * (itemH + gap);
     const accentColor = design.palette[i % design.palette.length];
 
     slide.addText(String(i + 1).padStart(2, "0"), {
