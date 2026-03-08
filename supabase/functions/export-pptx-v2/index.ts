@@ -697,6 +697,16 @@ function redistributeOverflow(
   for (let i = 0; i < working.length; i += maxPerSlide) {
     chunks.push(working.slice(i, i + maxPerSlide));
   }
+  // Merge last chunk back if it's too short (≤2 items) to avoid weak continuation slides
+  const MIN_CONTINUATION_ITEMS = 3;
+  if (chunks.length >= 2) {
+    const lastChunk = chunks[chunks.length - 1];
+    if (lastChunk.length < MIN_CONTINUATION_ITEMS) {
+      const prevChunk = chunks[chunks.length - 2];
+      chunks[chunks.length - 2] = [...prevChunk, ...lastChunk];
+      chunks.pop();
+    }
+  }
   return chunks;
 }
 
@@ -750,13 +760,8 @@ function distributeModuleToSlides(
     const validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
 
     if (validItems.length === 0) {
-      slides.push({
-        layout,
-        title: section.title,
-        sectionLabel: section.sectionLabel,
-        items: [ensureSentenceEnd(section.title)],
-        moduleIndex,
-      });
+      // Skip empty sections entirely — don't create slides with only the title as content
+      report.warnings.push(`Skipped empty section: "${section.title}"`);
       continue;
     }
 
@@ -1212,14 +1217,21 @@ function renderProcessTimeline(
     }
 
     const colonIdx = items[i].indexOf(":");
-    const label =
-      colonIdx > 0 && colonIdx < 30
-        ? items[i].substring(0, colonIdx).trim()
-        : `Etapa ${i + 1}`;
-    const desc =
-      colonIdx > 0 && colonIdx < 30
-        ? items[i].substring(colonIdx + 1).trim()
-        : items[i];
+    let label: string;
+    let desc: string;
+    if (colonIdx > 0 && colonIdx < 40) {
+      label = items[i].substring(0, colonIdx).trim();
+      desc = items[i].substring(colonIdx + 1).trim();
+    } else if (items[i].length <= 50) {
+      // Short items: use the text itself as label, no separate description
+      label = items[i];
+      desc = "";
+    } else {
+      // Long items without colon: extract first ~4 words as label
+      const words = items[i].split(/\s+/);
+      label = words.slice(0, 4).join(" ");
+      desc = words.slice(4).join(" ");
+    }
 
     slide.addText(label, {
       x: x + 0.05,
@@ -1802,10 +1814,15 @@ function runPipeline(
   const tocModules = modules.map((m, i) => {
     const rawTitle = sanitize(m.title || "");
     const cleanTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
-    const firstLine = sanitize((m.content || "").split(/[.!?]\s/)[0] || "");
+    // Strip markdown headings/formatting from content before extracting first line
+    const strippedContent = cleanMarkdown((m.content || "")
+      .replace(/^#{1,6}\s+.*$/gm, "") // remove heading lines entirely
+      .replace(/^[-*]\s+/gm, "")      // remove bullet prefixes
+      .trim());
+    const firstLine = sanitize(strippedContent.split(/[.!?]\s/)[0] || "");
     return {
-      title: cleanTitle,
-      description: firstLine ? ensureSentenceEnd(smartTruncate(firstLine, 80)) : undefined,
+      title: cleanMarkdown(cleanTitle),
+      description: firstLine && firstLine.length > 10 ? ensureSentenceEnd(smartTruncate(firstLine, 80)) : undefined,
     };
   });
   renderTOC(pptx, tocModules, design);
@@ -1928,7 +1945,7 @@ Deno.serve(async (req: Request) => {
 
     const design = buildDesignConfig(theme || "light", palette || "default");
 
-    const courseTitle = sanitize(course.title || "Curso EduGenAI");
+    const courseTitle = sanitize(cleanMarkdown(course.title || "Curso EduGenAI"));
     const moduleData = modules.map((m: any) => ({
       title: m.title || "",
       content: m.content || "",
