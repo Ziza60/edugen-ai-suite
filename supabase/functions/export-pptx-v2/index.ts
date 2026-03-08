@@ -372,17 +372,20 @@ function normalizeResidualText(text: string): string {
   if (!t) return "";
 
   t = t
+    // English terms → Portuguese
     .replace(/\bwidely used\b/gi, "amplamente utilizado")
-    .replace(/\bgest[aã]o\s+documentos\b/gi, "gestão de documentos")
-    .replace(/\bgest[aã]o\s+projetos\b/gi, "gestão de projetos")
-    .replace(/\bgest[aã]o\s+dados\b/gi, "gestão de dados")
-    .replace(/\bgest[aã]o\s+tarefas\b/gi, "gestão de tarefas")
-    .replace(/\bgest[aã]o\s+equipes?\b/gi, "gestão de equipes")
-    .replace(/\bgest[aã]o\s+processos?\b/gi, "gestão de processos")
-    .replace(/\bgest[aã]o\s+conte[uú]dos?\b/gi, "gestão de conteúdos")
-    .replace(/\bgest[aã]o\s+riscos?\b/gi, "gestão de riscos")
     .replace(/\bmachine learning\b/gi, "aprendizado de máquina")
     .replace(/\bdeep learning\b/gi, "aprendizado profundo")
+    .replace(/\bnatural language processing\b/gi, "processamento de linguagem natural")
+    .replace(/\bbest practices?\b/gi, "boas práticas")
+    .replace(/\buse cases?\b/gi, "casos de uso")
+    .replace(/\breal[- ]?time\b/gi, "tempo real")
+    .replace(/\bfeedback\b/gi, "retorno")
+    // Missing preposition "de" in "gestão X" patterns
+    .replace(/\bgest[aã]o\s+(documentos|projetos|dados|tarefas|equipes?|processos?|conte[uú]dos?|riscos?|tempo|conhecimento|recursos?|clientes?|pessoas|custos?|qualidade|mudan[cç]as?|contratos?)\b/gi, (_, noun) => `gestão de ${noun.toLowerCase()}`)
+    // Missing preposition in "análise X" patterns
+    .replace(/\ban[aá]lise\s+(dados|sentimentos?|riscos?|resultados?|desempenho|mercado)\b/gi, (_, noun) => `análise de ${noun.toLowerCase()}`)
+    // Punctuation cleanup
     .replace(/\.{2,}/g, ".")
     .replace(/[""]/g, '"')
     .replace(/['']/g, "'")
@@ -394,6 +397,11 @@ function normalizeResidualText(text: string): string {
     .replace(/^\s*\d+[.)]\s*/g, "")
     // Fix broken prompt quotation: ensure closing quote before period
     .replace(/"([^"]{5,})\.\s*$/g, '"$1."')
+    // Fix doubled periods after quotes
+    .replace(/\."\./g, '."')
+    .replace(/\."\.$/g, '."')
+    // Fix trailing period inside and outside quotes
+    .replace(/([.!?])"\s*\.\s*$/g, '$1"')
     .trim();
 
   if (/^\d+[.)-]?$/.test(t)) return "";
