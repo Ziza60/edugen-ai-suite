@@ -850,7 +850,10 @@ function distributeModuleToSlides(
       continue;
     }
 
-    const chunks = redistributeOverflow(validItems, maxItems, maxChars, report);
+    const chunks = rebalanceChunksForSemanticIntegrity(
+      redistributeOverflow(validItems, maxItems, maxChars, report),
+      report,
+    );
 
     for (let ci = 0; ci < chunks.length; ci++) {
       const isContination = ci > 0;
