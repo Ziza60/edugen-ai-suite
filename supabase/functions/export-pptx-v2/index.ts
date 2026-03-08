@@ -764,6 +764,8 @@ function extractTableFromSection(section: SemanticSection): {
 
 function validateAndRepairItems(items: string[], report: PipelineReport): string[] {
   return items
+    .map((item) => normalizeResidualText(item))
+    .filter(Boolean)
     .map((item) => {
       report.sentenceIntegrityChecks++;
       let result = item;
@@ -774,7 +776,6 @@ function validateAndRepairItems(items: string[], report: PipelineReport): string
         result = repairSentence(result);
       }
       result = ensureSentenceEnd(result);
-      // Final guard: if after repair the item is too short to be meaningful, drop it
       const bare = result.replace(/[.\s]+$/, "").trim();
       if (bare.length < 8) {
         report.warnings.push(`Dropped too-short item after repair: "${bare}"`);
