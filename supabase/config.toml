@@ -12,6 +12,9 @@ verify_jwt = false
 [functions.export-pptx]
 verify_jwt = false
 
+[functions.export-pptx-v2]
+verify_jwt = false
+
 [functions.export-notion]
 verify_jwt = false
 

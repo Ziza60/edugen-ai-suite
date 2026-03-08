@@ -13,6 +13,7 @@ export interface PptxExportOptions {
   includeImages: boolean;
   theme: "light" | "dark";
   template: "default" | "academic" | "corporate" | "creative";
+  useV2: boolean;
 }
 
 const PALETTES: Record<string, { label: string; colors: string[] }> = {
@@ -70,10 +71,11 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
   const [includeImages, setIncludeImages] = useState(false);
   const [theme, setTheme] = useState<PptxExportOptions["theme"]>("light");
   const [template, setTemplate] = useState<PptxExportOptions["template"]>("default");
+  const [useV2, setUseV2] = useState(false);
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme, template });
+    onExport({ palette, density, includeImages, theme, template, useV2 });
   };
 
   return (
@@ -176,6 +178,18 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
               <p className="text-xs text-muted-foreground">Ícones ilustrativos nos slides de capítulo</p>
             </div>
             <Switch checked={includeImages} onCheckedChange={setIncludeImages} />
+          </div>
+
+          {/* V2 Engine toggle */}
+          <div className="flex items-center justify-between border-t pt-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Label>Motor v2</Label>
+                <Badge variant="secondary" className="text-[10px] px-1.5">Beta</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Novo pipeline com melhor integridade de texto e menos slides de continuação</p>
+            </div>
+            <Switch checked={useV2} onCheckedChange={setUseV2} />
           </div>
         </div>
 
