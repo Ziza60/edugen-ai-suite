@@ -2212,8 +2212,8 @@ function renderTOC(
   design: DesignConfig,
 ) {
   const colors = getColors(design);
-  // Split TOC across multiple slides if >5 modules to avoid cramming
-  const MAX_TOC_PER_SLIDE = 5;
+  // Split TOC aggressively to keep slide 2 light and editorially clean
+  const MAX_TOC_PER_SLIDE = 4;
   const tocPages: { title: string; description?: string }[][] = [];
   for (let i = 0; i < modules.length; i += MAX_TOC_PER_SLIDE) {
     tocPages.push(modules.slice(i, i + MAX_TOC_PER_SLIDE));
@@ -2240,9 +2240,9 @@ function renderTOC(
     });
 
     const startY = 1.60;
-    const gap = 0.18;
+    const gap = 0.24;
     const availableH = SLIDE_H - startY - 0.60;
-    const itemH = Math.min(0.90, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
+    const itemH = Math.min(1.05, (availableH - gap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
     const globalOffset = page * MAX_TOC_PER_SLIDE;
 
     for (let i = 0; i < pageModules.length; i++) {
