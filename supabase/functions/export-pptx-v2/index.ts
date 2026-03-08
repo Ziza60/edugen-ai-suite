@@ -668,16 +668,26 @@ function extractTableFromSection(section: SemanticSection): {
 }
 
 function validateAndRepairItems(items: string[], report: PipelineReport): string[] {
-  return items.map((item) => {
-    report.sentenceIntegrityChecks++;
-    if (!isSentenceComplete(item)) {
-      report.warnings.push(
-        `Repaired incomplete sentence: "${item.substring(0, 40)}..."`,
-      );
-      return repairSentence(item);
-    }
-    return ensureSentenceEnd(item);
-  });
+  return items
+    .map((item) => {
+      report.sentenceIntegrityChecks++;
+      let result = item;
+      if (!isSentenceComplete(result)) {
+        report.warnings.push(
+          `Repaired incomplete sentence: "${result.substring(0, 40)}..."`,
+        );
+        result = repairSentence(result);
+      }
+      result = ensureSentenceEnd(result);
+      // Final guard: if after repair the item is too short to be meaningful, drop it
+      const bare = result.replace(/[.\s]+$/, "").trim();
+      if (bare.length < 8) {
+        report.warnings.push(`Dropped too-short item after repair: "${bare}"`);
+        return "";
+      }
+      return result;
+    })
+    .filter((item) => item.length > 0);
 }
 
 function mergeShortItems(
