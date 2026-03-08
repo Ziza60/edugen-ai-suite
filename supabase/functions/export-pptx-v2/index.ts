@@ -520,7 +520,11 @@ function normalizeResidualText(text: string): string {
     }
   }
 
-  return ensureSentenceEnd(repairSentence(t));
+  const finalized = ensureSentenceEnd(repairSentence(t))
+    .replace(/\.{2,}/g, ".")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .trim();
+  return finalized;
 }
 
 function isEditoriallyStrongSentence(text: string): boolean {
