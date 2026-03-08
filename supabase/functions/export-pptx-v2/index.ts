@@ -1875,10 +1875,22 @@ function runPipeline(
       .replace(/^#{1,6}\s+.*$/gm, "") // remove heading lines entirely
       .replace(/^[-*]\s+/gm, "")      // remove bullet prefixes
       .trim());
-    const firstLine = sanitize(strippedContent.split(/[.!?]\s/)[0] || "");
+    let firstLine = sanitize(strippedContent.split(/[.!?]\s/)[0] || "");
+    // Validate the extracted description for sentence completeness
+    if (firstLine && firstLine.length > 10) {
+      let desc = smartTruncate(firstLine, 80);
+      if (!isSentenceComplete(desc.replace(/\.\s*$/, ""))) {
+        desc = repairSentence(desc);
+      }
+      // If after repair the description is too short, discard it
+      if (desc.replace(/[.\s]+$/, "").trim().length < 10) {
+        return { title: cleanMarkdown(cleanTitle), description: undefined };
+      }
+      return { title: cleanMarkdown(cleanTitle), description: ensureSentenceEnd(desc) };
+    }
     return {
       title: cleanMarkdown(cleanTitle),
-      description: firstLine && firstLine.length > 10 ? ensureSentenceEnd(smartTruncate(firstLine, 80)) : undefined,
+      description: undefined,
     };
   });
   renderTOC(pptx, tocModules, design);
