@@ -2463,12 +2463,7 @@ function runPipeline(
   const tocModules = modules.map((m) => {
     const rawTitle = sanitize(m.title || "");
     const cleanTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
-    const strippedContent = (m.content || "")
-      .replace(/^#{1,6}\s+.*$/gm, "")
-      .replace(/^[-*]\s+/gm, "")
-      .trim();
-
-    const desc = extractFirstCompleteSentence(strippedContent, 90);
+    const desc = extractTocDescription(m.content || "", 105);
     if (!desc) {
       return {
         title: cleanMarkdown(cleanTitle),
@@ -2478,7 +2473,7 @@ function runPipeline(
 
     return {
       title: cleanMarkdown(cleanTitle),
-      description: ensureSentenceEnd(desc),
+      description: ensureSentenceEnd(normalizeResidualText(desc)),
     };
   });
   renderTOC(pptx, tocModules, design);
