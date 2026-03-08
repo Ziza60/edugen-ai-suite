@@ -984,32 +984,34 @@ function distributeModuleToSlides(
         .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10)
         .filter((item) => !/^\d+[.)-]?$/.test(item.trim()));
 
-      // PHASE 1: Aggressive merge of weak/micro fragments into neighbors
+      // PHASE 1: Only absorb truly anaphoric weak fragments into their predecessor
       const phase1: string[] = [];
       for (const item of normalizedProcessItems) {
         const bare = item.replace(/[.\s]+$/, "").trim();
         if (phase1.length > 0 && isWeakProcessFragment(bare)) {
-          // Merge into previous item
           const prev = phase1[phase1.length - 1].replace(/[.\s]+$/, "").trim();
-          const normalizedFragment = bare.replace(/^(Isso|Esse processo|Essa abordagem)\s+/i, "").trim();
-          const fragmentLower = normalizedFragment.charAt(0).toLowerCase() + normalizedFragment.slice(1);
-          const connector = /^(Isso)\b/i.test(bare) ? ", o que " : "; ";
-          phase1[phase1.length - 1] = ensureSentenceEnd(`${prev}${connector}${fragmentLower}`);
+          // Extract the meaningful verb+complement from the anaphoric fragment
+          const stripped = bare
+            .replace(/^(Isso|Esse processo|Essa abordagem|Esse m[eé]todo|Essa ferramenta|Essa t[eé]cnica|Essa estrat[eé]gia|Essa pr[aá]tica|Esse recurso|Esse tipo|Ele|Ela)\s+/i, "")
+            .trim();
+          const fragmentLower = stripped.charAt(0).toLowerCase() + stripped.slice(1);
+          phase1[phase1.length - 1] = ensureSentenceEnd(`${prev}, o que ${fragmentLower}`);
         } else {
           phase1.push(item);
         }
       }
 
-      // PHASE 2: Merge remaining short adjacent items (< 100 chars each)
+      // PHASE 2: Only merge items that are BOTH very short (<65 chars) — 
+      // these are typically step labels without enough pedagogical substance alone
       const phase2: string[] = [];
       let i = 0;
       while (i < phase1.length) {
         const current = phase1[i].replace(/[.\s]+$/, "").trim();
         if (i + 1 < phase1.length) {
           const next = phase1[i + 1].replace(/[.\s]+$/, "").trim();
-          if (current.length < 100 && next.length < 100 && (current.length + next.length) < 220) {
-            const nextLower = next.charAt(0).toLowerCase() + next.slice(1);
-            phase2.push(ensureSentenceEnd(`${current}, além disso, ${nextLower}`));
+          // Only merge two genuinely tiny items that can't stand alone as bullets
+          if (current.length < 65 && next.length < 65) {
+            phase2.push(ensureSentenceEnd(`${current}. ${next}`));
             i += 2;
             continue;
           }
@@ -1018,13 +1020,24 @@ function distributeModuleToSlides(
         i++;
       }
 
-      // PHASE 3: Force max 4 items by merging first pair if needed
+      // PHASE 3: Cap at 6 items max (NOT 4 — allow pedagogically rich sections to breathe)
+      // Only merge if truly exceeding visual capacity
+      const MAX_PROCESS_ITEMS = 6;
       const compacted = [...phase2];
-      while (compacted.length > 4 && compacted.length >= 2) {
-        const first = compacted.shift()!.replace(/\.\s*$/, "");
-        const second = compacted.shift()!;
-        const secondLower = second.charAt(0).toLowerCase() + second.slice(1);
-        compacted.unshift(ensureSentenceEnd(`${first}; ${secondLower}`));
+      while (compacted.length > MAX_PROCESS_ITEMS && compacted.length >= 2) {
+        // Find the two shortest adjacent items to merge
+        let bestIdx = 0;
+        let bestLen = Infinity;
+        for (let j = 0; j < compacted.length - 1; j++) {
+          const combined = compacted[j].length + compacted[j + 1].length;
+          if (combined < bestLen) {
+            bestLen = combined;
+            bestIdx = j;
+          }
+        }
+        const a = compacted[bestIdx].replace(/\.\s*$/, "").trim();
+        const b = compacted[bestIdx + 1];
+        compacted.splice(bestIdx, 2, ensureSentenceEnd(`${a}. ${b}`));
       }
 
       validItems = compacted;
