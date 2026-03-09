@@ -1976,10 +1976,10 @@ const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
   grid_cards: 6,
   process_timeline: 4,
   example_highlight: 5,
-  warning_callout: 5,
-  reflection_callout: 4,
+  warning_callout: 4,
+  reflection_callout: 3,
   summary_slide: 6,
-  numbered_takeaways: 7,
+  numbered_takeaways: 6,
 };
 
 const LAYOUT_VISUAL_MAX_CHARS: Partial<Record<SlideLayoutV2, number>> = {
