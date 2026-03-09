@@ -68,7 +68,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
   const [open, setOpen] = useState(false);
   const [palette, setPalette] = useState<PptxExportOptions["palette"]>("default");
   const [density, setDensity] = useState<PptxExportOptions["density"]>("standard");
-  const [includeImages, setIncludeImages] = useState(false);
+  const [includeImages, setIncludeImages] = useState(true);
   const [theme, setTheme] = useState<PptxExportOptions["theme"]>("light");
   const [template, setTemplate] = useState<PptxExportOptions["template"]>("default");
   const [useV2] = useState(true);
