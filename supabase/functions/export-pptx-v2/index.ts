@@ -4602,6 +4602,7 @@ Deno.serve(async (req: Request) => {
           sentence_integrity_checks: report.sentenceIntegrityChecks,
           redistributions: report.redistributions,
           warnings: report.warnings,
+          image_audit: imageAudit,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
