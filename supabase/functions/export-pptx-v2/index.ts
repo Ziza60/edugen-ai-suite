@@ -659,7 +659,7 @@ function normalizeResidualText(text: string): string {
 
   t = t
     // English terms → Portuguese (expanded)
-    .replace(/\bwidely used\b/gi, "amplamente utilizado")
+    .replace(/\bwidely used\b/gi, "amplamente utilizada")
     .replace(/\bmachine learning\b/gi, "aprendizado de máquina")
     .replace(/\bdeep learning\b/gi, "aprendizado profundo")
     .replace(/\bnatural language processing\b/gi, "processamento de linguagem natural")
@@ -705,13 +705,24 @@ function normalizeResidualText(text: string): string {
     .replace(/\bthrough\b/gi, "por meio de")
     .replace(/\baccording\s+to\b/gi, "de acordo com")
 
-    // "percepções valiosos" → "percepções valiosas" (fem. plural)
-    .replace(/\bpercep[cç][oõ]es\s+(valiosos|baseados|obtidos|gerados|coletados|produzidos|fornecidos|relevantes)\b/gi, 
+    // "amplamente utilizado" → context-aware gender agreement
+    .replace(/\b(softwares?|ferramentas?|plataformas?|solu[cç][oõ]es|tecnologias?|t[eé]cnicas?|abordagens?|metodologias?|estrat[eé]gias?|pr[aá]ticas?)\s+amplamente\s+utilizado\b/gi,
+      (_, noun) => `${noun} amplamente utilizada`)
+    .replace(/\b(softwares?|ferramentas?|plataformas?|solu[cç][oõ]es|tecnologias?|t[eé]cnicas?|abordagens?|metodologias?|estrat[eé]gias?|pr[aá]ticas?)\s+amplamente\s+utilizados\b/gi,
+      (_, noun) => `${noun} amplamente utilizadas`)
+
+    // "percepções valiosos/imprecisos" → "percepções valiosas/imprecisas" (fem. plural)
+    .replace(/\bpercep[cç][oõ]es\s+(valiosos|baseados|obtidos|gerados|coletados|produzidos|fornecidos|relevantes|imprecisos|incorretos|errados|precisos|detalhados|significativos|importantes|essenciais|fundamentais|concretos|abstratos|profundos|superficiais|claros|complexos)\b/gi, 
       (_, adj) => {
         const femMap: Record<string, string> = {
           valiosos: "valiosas", baseados: "baseadas", obtidos: "obtidas",
           gerados: "geradas", coletados: "coletadas", produzidos: "produzidas",
           fornecidos: "fornecidas", relevantes: "relevantes",
+          imprecisos: "imprecisas", incorretos: "incorretas", errados: "erradas",
+          precisos: "precisas", detalhados: "detalhadas", significativos: "significativas",
+          importantes: "importantes", essenciais: "essenciais", fundamentais: "fundamentais",
+          concretos: "concretas", abstratos: "abstratas", profundos: "profundas",
+          superficiais: "superficiais", claros: "claras", complexos: "complexas",
         };
         return `percepções ${femMap[adj.toLowerCase()] || adj}`;
       })
@@ -750,6 +761,14 @@ function normalizeResidualText(text: string): string {
     // "métricas definidos" → "métricas definidas"
     .replace(/\bm[eé]tricas\s+(definidos|coletados|obtidos|utilizados|aplicados)\b/gi,
       (_, adj) => `métricas ${adj.replace(/os$/, "as")}`)
+    // Generic feminine plural noun + masculine plural adjective → feminine agreement
+    // Catches patterns like "respostas inadequados", "análises realizados", "previsões incorretos"
+    .replace(/\b(respostas?|an[aá]lises?|previs[oõ]es|condi[cç][oõ]es|opera[cç][oõ]es|avalia[cç][oõ]es|recomenda[cç][oõ]es|configura[cç][oõ]es|aplica[cç][oõ]es|classifica[cç][oõ]es|predi[cç][oõ]es|intera[cç][oõ]es|automa[cç][oõ]es|implementa[cç][oõ]es|comunica[cç][oõ]es|contribui[cç][oõ]es|m[aá]quinas?|redes?|tarefas?|regras?|vari[aá]veis|atividades?|compet[eê]ncias?|tend[eê]ncias?|refer[eê]ncias?|experi[eê]ncias?|inst[aâ]ncias?|demandas?|etapas?|camadas?|medidas?|bases?)\s+(inadequados|realizados|desenvolvidos|aplicados|utilizados|baseados|gerados|otimizados|automatizados|integrados|personalizados|implementados|configurados|conectados|processados|treinados|ajustados|avançados|especializados|refinados|aprimorados|combinados|relacionados|direcionados|orientados|destinados|preparados|projetados|estruturados)\b/gi,
+      (_, noun, adj) => `${noun} ${adj.replace(/os$/, "as")}`)
+    // Singular feminine + masculine adjective: "resposta inadequado" → "resposta inadequada"
+    .replace(/\b(resposta|an[aá]lise|previs[aã]o|condi[cç][aã]o|opera[cç][aã]o|avalia[cç][aã]o|recomenda[cç][aã]o|configura[cç][aã]o|aplica[cç][aã]o|classifica[cç][aã]o|predi[cç][aã]o|intera[cç][aã]o|automa[cç][aã]o|implementa[cç][aã]o|comunica[cç][aã]o|m[aá]quina|rede|tarefa|regra|vari[aá]vel|atividade|compet[eê]ncia|tend[eê]ncia|refer[eê]ncia|experi[eê]ncia|demanda|etapa|camada|medida|base)\s+(inadequado|realizado|desenvolvido|aplicado|utilizado|baseado|gerado|otimizado|automatizado|integrado|personalizado|implementado|configurado|conectado|processado|treinado|ajustado|avançado|especializado|refinado|aprimorado|combinado|relacionado|direcionado|orientado|destinado|preparado|projetado|estruturado)\b/gi,
+      (_, noun, adj) => `${noun} ${adj.replace(/o$/, "a")}`)
+
     // Missing preposition "de" in "gestão X" patterns
     .replace(/\bgest[aã]o\s+(documentos|projetos|dados|tarefas|equipes?|processos?|conte[uú]dos?|riscos?|tempo|conhecimento|recursos?|clientes?|pessoas|custos?|qualidade|mudan[cç]as?|contratos?)\b/gi, (_, noun) => `gestão de ${noun.toLowerCase()}`)
     // Missing preposition in "análise X" patterns
@@ -805,6 +824,12 @@ function normalizeResidualText(text: string): string {
       t = `${label}: ${desc}`;
     }
   }
+
+  t = t
+    .replace(/([.!?])\s+([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ])/g, "$1 $2")
+    .replace(/,\s*(entretanto|contudo|porém|no entanto|todavia)\b/gi, ". $1")
+    .replace(/,\s*(al[eé]m disso|ademais|outrossim|por outro lado)\b/gi, ". $1")
+    .trim();
 
   const finalized = ensureSentenceEnd(repairSentence(t))
     .replace(/\.{2,}/g, ".")
@@ -3456,7 +3481,6 @@ function renderExampleHighlight(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   _globalSlideIdx++;
-  addSlideBackground(slide, colors.bg);
 
   const items = (plan.items || [])
     .map((item) => normalizeResidualText(item))
@@ -3465,28 +3489,45 @@ function renderExampleHighlight(
       const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
       return ensureSentenceEnd(repaired);
     });
-  const cappedItems = items.slice(0, 4);
-  const defaultLabels = ["Cenário", "Desafio", "Ação", "Resultado"];
-  const phaseColors = [colors.p1, colors.p3, colors.p2, colors.p0];
+  const cappedItems = items.slice(0, 5);
+  const defaultLabels = ["Contexto", "Desafio", "Solução", "Implementação", "Resultado"];
+  const defaultIcons = ["●", "▲", "◆", "■", "★"];
+  const phaseColors = [colors.p1, colors.p3, colors.p0, colors.p2, colors.p4];
 
-  // ── Full-width dark header banner ──
-  const bannerH = 1.40;
+  addSlideBackground(slide, colors.coverDark);
+
   slide.addShape("rect" as any, {
-    x: 0, y: 0, w: SLIDE_W, h: bannerH,
-    fill: { color: colors.coverDark },
+    x: 0, y: 0, w: 0.50, h: SLIDE_H,
+    fill: { color: colors.panelMid },
   });
 
-  // "CASE" badge — rounded pill
-  const badgeW = 1.20;
-  const badgeH = 0.30;
+  for (let i = 0; i < Math.min(cappedItems.length, 5); i++) {
+    const dotY = 1.60 + i * ((SLIDE_H - 2.20) / Math.max(cappedItems.length - 1, 1));
+    const isActive = true;
+    slide.addShape("ellipse" as any, {
+      x: 0.18, y: dotY - 0.05, w: 0.14, h: 0.14,
+      fill: { color: isActive ? phaseColors[i] : colors.panelMid },
+    });
+    if (i < cappedItems.length - 1) {
+      const nextY = 1.60 + (i + 1) * ((SLIDE_H - 2.20) / Math.max(cappedItems.length - 1, 1));
+      slide.addShape("rect" as any, {
+        x: 0.24, y: dotY + 0.10, w: 0.02, h: nextY - dotY - 0.16,
+        fill: { color: phaseColors[i] },
+        transparency: 50,
+      });
+    }
+  }
+
+  const badgeW = 1.50;
+  const badgeH = 0.28;
   slide.addShape("roundRect" as any, {
-    x: 0.65, y: 0.22,
+    x: 0.80, y: 0.42,
     w: badgeW, h: badgeH,
     fill: { color: colors.p3 },
-    rectRadius: 0.15,
+    rectRadius: 0.14,
   });
   slide.addText("ESTUDO DE CASO", {
-    x: 0.65, y: 0.22,
+    x: 0.80, y: 0.42,
     w: badgeW, h: badgeH,
     fontSize: 8,
     fontFace: design.fonts.body,
@@ -3494,62 +3535,76 @@ function renderExampleHighlight(
     color: "FFFFFF",
     align: "center",
     valign: "middle",
-    charSpacing: 3,
+    charSpacing: 4,
   });
 
-  // Title on banner
   slide.addText(plan.title, {
-    x: 0.65, y: 0.62,
-    w: SLIDE_W - 1.30, h: 0.65,
-    fontSize: 26,
+    x: 0.80, y: 0.80,
+    w: SLIDE_W - 1.50, h: 0.60,
+    fontSize: 24,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "middle",
   });
+  addHR(slide, 0.80, 1.42, 3.50, colors.p3, 0.020);
 
-  // Accent strip at bottom of banner
-  slide.addShape("rect" as any, {
-    x: 0, y: bannerH - 0.05, w: SLIDE_W, h: 0.05,
-    fill: { color: colors.p3 },
-  });
-
-  // ── Storytelling horizontal bands (stacked rows) ──
-  const contentX = 0.65;
-  const contentW = SLIDE_W - 1.30;
-  const gridStartY = bannerH + 0.22;
-  const gridH = SLIDE_H - gridStartY - 0.40;
-  const bandGap = 0.10;
-  const bandH = (gridH - bandGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1);
+  const contentX = 0.80;
+  const contentW = SLIDE_W - 1.50;
+  const gridStartY = 1.60;
+  const gridH = SLIDE_H - gridStartY - 0.50;
+  const bandGap = 0.12;
+  const bandH = Math.min(
+    (gridH - bandGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1),
+    1.30,
+  );
 
   for (let i = 0; i < cappedItems.length; i++) {
     const y = gridStartY + i * (bandH + bandGap);
     const pal = phaseColors[i % phaseColors.length];
     const colonIdx = cappedItems[i].indexOf(":");
-    const label = colonIdx > 0 && colonIdx < 30
+    const label = colonIdx > 0 && colonIdx < 35
       ? cappedItems[i].substring(0, colonIdx).trim()
-      : defaultLabels[i];
+      : defaultLabels[i % defaultLabels.length];
     const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
 
-    addCardShadow(slide, contentX, y, contentW, bandH, colors.shadowColor);
+    addCardShadow(slide, contentX, y, contentW, bandH, "000000");
+
     slide.addShape("roundRect" as any, {
       x: contentX, y, w: contentW, h: bandH,
-      fill: { color: colors.cardBg },
-      rectRadius: 0.10,
+      fill: { color: colors.panelMid },
+      rectRadius: 0.08,
     });
 
     slide.addShape("rect" as any, {
-      x: contentX, y, w: 0.06, h: bandH,
+      x: contentX, y: y + 0.06, w: 0.05, h: bandH - 0.12,
       fill: { color: pal },
-      rectRadius: 0.10,
+      rectRadius: 0.03,
     });
 
-    // Phase label (left column)
-    const labelW = 1.80;
+    const iconSize = 0.34;
+    slide.addShape("roundRect" as any, {
+      x: contentX + 0.22, y: y + (bandH - iconSize) / 2,
+      w: iconSize, h: iconSize,
+      fill: { color: pal },
+      transparency: 80,
+      rectRadius: 0.06,
+    });
+    slide.addText(defaultIcons[i % defaultIcons.length], {
+      x: contentX + 0.22, y: y + (bandH - iconSize) / 2,
+      w: iconSize, h: iconSize,
+      fontSize: 13,
+      fontFace: design.fonts.body,
+      color: pal,
+      align: "center",
+      valign: "middle",
+    });
+
+    const labelW = 1.60;
     slide.addText(label.toUpperCase(), {
-      x: contentX + 0.25, y,
-      w: labelW, h: bandH,
-      fontSize: 11,
+      x: contentX + 0.65, y: y + 0.06,
+      w: labelW, h: 0.26,
+      fontSize: 9,
       fontFace: design.fonts.title,
       bold: true,
       color: pal,
@@ -3557,36 +3612,28 @@ function renderExampleHighlight(
       valign: "middle",
     });
 
-    // Vertical thin divider
-    slide.addShape("rect" as any, {
-      x: contentX + labelW + 0.30, y: y + 0.12,
-      w: 0.015, h: bandH - 0.24,
-      fill: { color: colors.divider },
-    });
-
-    // Description (right column)
     slide.addText(desc, {
-      x: contentX + labelW + 0.50, y,
-      w: contentW - labelW - 0.70, h: bandH,
+      x: contentX + 0.65, y: y + 0.30,
+      w: contentW - 0.90, h: bandH - 0.38,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "middle",
+      color: colors.coverSubtext,
+      valign: "top",
       lineSpacingMultiple: 1.22,
     });
 
-    // Step connector arrow between bands
     if (i < cappedItems.length - 1) {
       const arrowY = y + bandH + bandGap / 2;
       slide.addShape("rect" as any, {
-        x: contentX + 0.38, y: arrowY - 0.03,
-        w: 0.06, h: 0.06,
+        x: contentX + 0.36, y: arrowY - 0.035,
+        w: 0.07, h: 0.07,
         fill: { color: pal },
-        transparency: 40,
+        transparency: 50,
         rotate: 45,
       });
     }
   }
+
   addFooter(slide, colors, design.fonts.body);
 }
 
