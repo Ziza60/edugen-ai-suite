@@ -659,7 +659,7 @@ function normalizeResidualText(text: string): string {
 
   t = t
     // English terms → Portuguese (expanded)
-    .replace(/\bwidely used\b/gi, "amplamente utilizada")
+    .replace(/\bwidely used\b/gi, "amplamente utilizado")
     .replace(/\bmachine learning\b/gi, "aprendizado de máquina")
     .replace(/\bdeep learning\b/gi, "aprendizado profundo")
     .replace(/\bnatural language processing\b/gi, "processamento de linguagem natural")
@@ -705,11 +705,25 @@ function normalizeResidualText(text: string): string {
     .replace(/\bthrough\b/gi, "por meio de")
     .replace(/\baccording\s+to\b/gi, "de acordo com")
 
-    // "amplamente utilizado" → context-aware gender agreement
-    .replace(/\b(softwares?|ferramentas?|plataformas?|solu[cç][oõ]es|tecnologias?|t[eé]cnicas?|abordagens?|metodologias?|estrat[eé]gias?|pr[aá]ticas?)\s+amplamente\s+utilizado\b/gi,
+    // "amplamente utilizado/a" → context-aware gender agreement
+    // Feminine singular nouns
+    .replace(/\b(ferramenta|plataforma|tecnologia|t[eé]cnica|abordagem|metodologia|estrat[eé]gia|pr[aá]tica)\s+amplamente\s+utilizado\b/gi,
       (_, noun) => `${noun} amplamente utilizada`)
-    .replace(/\b(softwares?|ferramentas?|plataformas?|solu[cç][oõ]es|tecnologias?|t[eé]cnicas?|abordagens?|metodologias?|estrat[eé]gias?|pr[aá]ticas?)\s+amplamente\s+utilizados\b/gi,
+    // Feminine plural nouns
+    .replace(/\b(ferramentas|plataformas|solu[cç][oõ]es|tecnologias|t[eé]cnicas|abordagens|metodologias|estrat[eé]gias|pr[aá]ticas)\s+amplamente\s+utilizado\b/gi,
       (_, noun) => `${noun} amplamente utilizadas`)
+    .replace(/\b(ferramentas|plataformas|solu[cç][oõ]es|tecnologias|t[eé]cnicas|abordagens|metodologias|estrat[eé]gias|pr[aá]ticas)\s+amplamente\s+utilizados\b/gi,
+      (_, noun) => `${noun} amplamente utilizadas`)
+    // Masculine singular nouns — keep masculine singular
+    .replace(/\b(software|sistema|modelo|m[eé]todo|processo|algoritmo|recurso|aplicativo)\s+amplamente\s+utilizada\b/gi,
+      (_, noun) => `${noun} amplamente utilizado`)
+    // Masculine plural nouns — ensure masculine plural
+    .replace(/\b(softwares|sistemas|modelos|m[eé]todos|processos|algoritmos|recursos|aplicativos)\s+amplamente\s+utilizado\b/gi,
+      (_, noun) => `${noun} amplamente utilizados`)
+    .replace(/\b(softwares|sistemas|modelos|m[eé]todos|processos|algoritmos|recursos|aplicativos)\s+amplamente\s+utilizada\b/gi,
+      (_, noun) => `${noun} amplamente utilizados`)
+    .replace(/\b(softwares|sistemas|modelos|m[eé]todos|processos|algoritmos|recursos|aplicativos)\s+amplamente\s+utilizadas\b/gi,
+      (_, noun) => `${noun} amplamente utilizados`)
 
     // "percepções valiosos/imprecisos" → "percepções valiosas/imprecisas" (fem. plural)
     .replace(/\bpercep[cç][oõ]es\s+(valiosos|baseados|obtidos|gerados|coletados|produzidos|fornecidos|relevantes|imprecisos|incorretos|errados|precisos|detalhados|significativos|importantes|essenciais|fundamentais|concretos|abstratos|profundos|superficiais|claros|complexos)\b/gi, 
@@ -829,6 +843,14 @@ function normalizeResidualText(text: string): string {
     .replace(/([.!?])\s+([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ])/g, "$1 $2")
     .replace(/,\s*(entretanto|contudo|porém|no entanto|todavia)\b/gi, ". $1")
     .replace(/,\s*(al[eé]m disso|ademais|outrossim|por outro lado)\b/gi, ". $1")
+    .replace(/\b(é|são)\s+(muito|bastante)\s+(importante|essencial|fundamental|relevante|necess[aá]rio)\b/gi,
+      (_m, verb, _int, adj) => `${verb} ${adj}`)
+    .replace(/\b(utilizar|usar)\s+(de)\s+/gi, "$1 ")
+    .replace(/\bde\s+de\b/gi, "de")
+    .replace(/\bpara\s+para\b/gi, "para")
+    .replace(/\ba\s+a\b/gi, "a")
+    .replace(/\bque\s+que\b/gi, "que")
+    .replace(/\bcom\s+com\b/gi, "com")
     .trim();
 
   const finalized = ensureSentenceEnd(repairSentence(t))
@@ -1639,7 +1661,13 @@ function distributeModuleToSlides(
         coreItems.push(ensureSentenceEnd(extendedEntries[0]));
       }
 
-      // Step 5: Absorb short unlabeled items into the nearest labeled item
+      // Step 5: Absorb or label unlabeled items
+      const getUsedLabels = () => coreItems.map((ci) => {
+        const colonIdx = ci.indexOf(":");
+        return colonIdx > 0 ? ci.substring(0, colonIdx).trim() : "";
+      });
+      const FALLBACK_LABELS = ["Contexto", "Desafio", "Solução", "Implementação", "Resultado"];
+
       for (const unlabeled of nonLabeled) {
         const bare = unlabeled.replace(/[.\s]+$/, "").trim();
         if (bare.length < 80 && coreItems.length > 0) {
@@ -1648,12 +1676,29 @@ function distributeModuleToSlides(
           const prev = coreItems[targetIdx].replace(/[.\s]+$/, "").trim();
           coreItems[targetIdx] = ensureSentenceEnd(`${prev}. ${unlabeled}`);
         } else {
-          coreItems.push(unlabeled);
+          const usedLabels = getUsedLabels();
+          const availableLabel = FALLBACK_LABELS.find((l) => !usedLabels.includes(l)) || "Detalhe";
+          coreItems.push(ensureSentenceEnd(`${availableLabel}: ${bare}`));
         }
       }
 
-      // Step 6: Cap at 4 items for visual fit on example_highlight layout
-      validItems = coreItems.slice(0, 4);
+      // Step 5b: Ensure minimum 3 phases — synthesize labels if too few
+      if (coreItems.length < 3) {
+        const usedLabels = new Set(getUsedLabels());
+        for (const item of normalizedExamples) {
+          if (coreItems.length >= 3) break;
+          const colonIdx = item.indexOf(":");
+          if (colonIdx > 0) continue;
+          const nextLabel = FALLBACK_LABELS.find((l) => !usedLabels.has(l));
+          if (nextLabel) {
+            usedLabels.add(nextLabel);
+            coreItems.push(ensureSentenceEnd(`${nextLabel}: ${item.replace(/[.\s]+$/, "").trim()}`));
+          }
+        }
+      }
+
+      // Step 6: Cap at 5 items for premium case-study layout (5 phases)
+      validItems = coreItems.slice(0, 5);
     }
 
     if (validItems.length === 0) {
@@ -1881,8 +1926,8 @@ const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
   definition: 4,
   grid_cards: 6,
   process_timeline: 4,
-  example_highlight: 6,
-  warning_callout: 6,
+  example_highlight: 5,
+  warning_callout: 4,
   reflection_callout: 4,
   summary_slide: 6,
   numbered_takeaways: 7,
@@ -2035,16 +2080,16 @@ function visuallyFitsPlan(plan: SlidePlan): boolean {
     }
 
     case "example_highlight": {
-      const capped = items.slice(0, 3);
+      const capped = items.slice(0, 5);
       return capped.every((item, i) => {
         const colonIdx = item.indexOf(":");
-        const label = colonIdx > 0 && colonIdx < 30
+        const label = colonIdx > 0 && colonIdx < 35
           ? item.substring(0, colonIdx).trim()
-          : ["Cenário", "Solução", "Resultado"][i] || `Item ${i + 1}`;
+          : ["Contexto", "Desafio", "Solução", "Implementação", "Resultado"][i] || `Fase ${i + 1}`;
         const desc = colonIdx > 0 ? item.substring(colonIdx + 1).trim() : item;
         return (
-          fitsTextBox(label, TYPO.CARD_TITLE, 2.00, 0.35, 1.1) &&
-          fitsTextBox(desc, TYPO.BODY, SAFE_W - 0.60, 0.85, 1.2)
+          fitsTextBox(label, TYPO.CARD_TITLE, 2.00, 0.30, 1.1) &&
+          fitsTextBox(desc, TYPO.BODY, SAFE_W - 1.20, 0.65, 1.2)
         );
       });
     }
@@ -3553,11 +3598,12 @@ function renderExampleHighlight(
   const contentW = SLIDE_W - 1.50;
   const gridStartY = 1.60;
   const gridH = SLIDE_H - gridStartY - 0.50;
-  const bandGap = 0.12;
+  const bandGap = 0.10;
   const bandH = Math.min(
     (gridH - bandGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1),
-    1.30,
+    1.20,
   );
+  const descFontSize = cappedItems.length >= 5 ? TYPO.BODY - 1 : TYPO.BODY;
 
   for (let i = 0; i < cappedItems.length; i++) {
     const y = gridStartY + i * (bandH + bandGap);
@@ -3577,34 +3623,33 @@ function renderExampleHighlight(
     });
 
     slide.addShape("rect" as any, {
-      x: contentX, y: y + 0.06, w: 0.05, h: bandH - 0.12,
+      x: contentX, y: y + 0.04, w: 0.05, h: bandH - 0.08,
       fill: { color: pal },
       rectRadius: 0.03,
     });
 
-    const iconSize = 0.34;
-    slide.addShape("roundRect" as any, {
-      x: contentX + 0.22, y: y + (bandH - iconSize) / 2,
-      w: iconSize, h: iconSize,
+    const numBadgeSize = 0.30;
+    slide.addShape("ellipse" as any, {
+      x: contentX + 0.18, y: y + (bandH - numBadgeSize) / 2,
+      w: numBadgeSize, h: numBadgeSize,
       fill: { color: pal },
-      transparency: 80,
-      rectRadius: 0.06,
+      transparency: 15,
     });
-    slide.addText(defaultIcons[i % defaultIcons.length], {
-      x: contentX + 0.22, y: y + (bandH - iconSize) / 2,
-      w: iconSize, h: iconSize,
-      fontSize: 13,
-      fontFace: design.fonts.body,
-      color: pal,
+    slide.addText(`${i + 1}`, {
+      x: contentX + 0.18, y: y + (bandH - numBadgeSize) / 2,
+      w: numBadgeSize, h: numBadgeSize,
+      fontSize: 12,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: "FFFFFF",
       align: "center",
       valign: "middle",
     });
 
-    const labelW = 1.60;
     slide.addText(label.toUpperCase(), {
-      x: contentX + 0.65, y: y + 0.06,
-      w: labelW, h: 0.26,
-      fontSize: 9,
+      x: contentX + 0.56, y: y + 0.04,
+      w: 2.00, h: 0.24,
+      fontSize: 8,
       fontFace: design.fonts.title,
       bold: true,
       color: pal,
@@ -3613,23 +3658,25 @@ function renderExampleHighlight(
     });
 
     slide.addText(desc, {
-      x: contentX + 0.65, y: y + 0.30,
-      w: contentW - 0.90, h: bandH - 0.38,
-      fontSize: TYPO.BODY,
+      x: contentX + 0.56, y: y + 0.26,
+      w: contentW - 0.80, h: bandH - 0.32,
+      fontSize: descFontSize,
       fontFace: design.fonts.body,
       color: colors.coverSubtext,
       valign: "top",
-      lineSpacingMultiple: 1.22,
+      lineSpacingMultiple: 1.18,
     });
 
     if (i < cappedItems.length - 1) {
       const arrowY = y + bandH + bandGap / 2;
-      slide.addShape("rect" as any, {
-        x: contentX + 0.36, y: arrowY - 0.035,
-        w: 0.07, h: 0.07,
-        fill: { color: pal },
-        transparency: 50,
-        rotate: 45,
+      slide.addText("▼", {
+        x: contentX + 0.23, y: arrowY - 0.08,
+        w: 0.20, h: 0.16,
+        fontSize: 7,
+        color: phaseColors[i + 1] || pal,
+        align: "center",
+        valign: "middle",
+        transparency: 40,
       });
     }
   }
@@ -3670,14 +3717,16 @@ function renderWarningCallout(
     valign: "middle",
   });
 
-  const items = plan.items || [];
+  const allItems = plan.items || [];
+  const maxWarningItems = 4;
+  const items = allItems.slice(0, maxWarningItems);
   const contentX = 0.65;
   const contentW = SLIDE_W - contentX - 0.50;
   const contentY = 1.68;
-  const bulletGap = 0.08;
-  const contentH = SLIDE_H - contentY - 0.45;
+  const bulletGap = 0.12;
+  const contentH = SLIDE_H - contentY - 0.50;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
-  const itemH = Math.max(0.55, Math.min(1.00, rawItemH));
+  const itemH = Math.max(0.60, Math.min(1.10, rawItemH));
 
   for (let i = 0; i < items.length; i++) {
     const y = contentY + i * (itemH + bulletGap);
@@ -3692,15 +3741,43 @@ function renderWarningCallout(
       fill: { color: "E74C3C" },
       rectRadius: 0.08,
     });
-    slide.addText(items[i], {
-      x: contentX + 0.22, y: y + 0.03,
-      w: contentW - 0.30, h: itemH - 0.10,
-      fontSize: TYPO.BULLET_TEXT,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "middle",
-      lineSpacingMultiple: 1.20,
-    });
+
+    const colonIdx = items[i].indexOf(":");
+    const hasLabel = colonIdx > 0 && colonIdx < 40;
+    const itemLabel = hasLabel ? items[i].substring(0, colonIdx).trim() : "";
+    const itemDesc = hasLabel ? items[i].substring(colonIdx + 1).trim() : items[i];
+
+    if (hasLabel) {
+      slide.addText(itemLabel.toUpperCase(), {
+        x: contentX + 0.22, y: y + 0.06,
+        w: contentW - 0.30, h: 0.22,
+        fontSize: 8,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "E74C3C",
+        charSpacing: 2,
+        valign: "middle",
+      });
+      slide.addText(itemDesc, {
+        x: contentX + 0.22, y: y + 0.26,
+        w: contentW - 0.30, h: itemH - 0.34,
+        fontSize: TYPO.BULLET_TEXT,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "top",
+        lineSpacingMultiple: 1.22,
+      });
+    } else {
+      slide.addText(items[i], {
+        x: contentX + 0.22, y: y + 0.03,
+        w: contentW - 0.30, h: itemH - 0.10,
+        fontSize: TYPO.BULLET_TEXT,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "middle",
+        lineSpacingMultiple: 1.22,
+      });
+    }
   }
   addFooter(slide, colors, design.fonts.body);
 }
@@ -4498,8 +4575,9 @@ Deno.serve(async (req: Request) => {
       content: m.content || "",
     }));
 
+    const unsplashKeyPresent = !!Deno.env.get("UNSPLASH_ACCESS_KEY");
     console.log(
-      `[V2] Starting export: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, palette=${palette || "default"}, images=${design.includeImages}`,
+      `[V2] Starting export: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, palette=${palette || "default"}, images=${design.includeImages}, unsplashKey=${unsplashKeyPresent ? "SET" : "MISSING"}, includeImages_raw=${includeImages}`,
     );
 
     const { pptx, report } = await runPipeline(courseTitle, moduleData, design);

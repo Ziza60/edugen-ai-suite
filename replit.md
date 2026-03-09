@@ -16,7 +16,7 @@ src/                          # React frontend
 
 supabase/functions/           # Supabase Edge Functions (Deno)
   export-pptx/index.ts        # PPTX exporter v1 (7888 lines, production)
-  export-pptx-v2/index.ts     # PPTX exporter v2 (parallel, in development)
+  export-pptx-v2/index.ts     # PPTX exporter v2 (~4640 lines, DEFAULT)
   generate-course/            # AI course generation
   export-pdf/                 # PDF export
   export-scorm/               # SCORM export
@@ -41,24 +41,24 @@ supabase/functions/           # Supabase Edge Functions (Deno)
 - `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon/public key
 
 ## PPTX Exporter v2 (Default Engine)
-Premium exporter at `supabase/functions/export-pptx-v2/index.ts` (~4500 lines).
+Premium exporter at `supabase/functions/export-pptx-v2/index.ts` (~4640 lines).
 Pipeline: Parse → Segment → Distribute → Merge Sparse → Visual Fit → Anti-Repetition → Image Fetch → Render → Export.
 v2 is the DEFAULT engine. v1 remains untouched as emergency fallback.
 - All exports route to `export-pptx-v2` automatically
 - `useV2` flag hardcoded to `true` in PptxExportDialog
+- `includeImages` defaults to `true` (Unsplash images on by default)
 - Rollback: change `useState(true)` back to `useState(false)` in PptxExportDialog.tsx
 
 ### Image System
 - Fetches thematic images from Unsplash API based on course/module titles
-- Requires `UNSPLASH_ACCESS_KEY` env var in Supabase project
+- Requires `UNSPLASH_ACCESS_KEY` env var in Supabase Edge Functions (set via `supabase secrets set`)
 - Graceful degradation: if no key set, slides render without images (same as before)
+- Diagnostic logging: logs `unsplashKey=SET|MISSING` and `includeImages_raw` at export start
 - Images applied to: cover slide (full-bleed background), module covers (right-side panel), closing slide (background)
 - Overlays for readability: dark overlay on backgrounds, accent-tinted overlay on module image panels
 - Credits: photographer attribution shown at bottom-right of image slides
 - Keyword extraction: Portuguese titles translated to English via PT_EN_MAP for better Unsplash results
-- All images fetched in parallel via Promise.allSettled for speed
-- Image sizes: Unsplash "regular" (1080px wide) for good quality without bloating PPTX
-- Frontend toggle: "Incluir Imagens" switch in PptxExportDialog controls `includeImages` flag
+- All images fetched in parallel via Promise.allSettled (max 4 concurrent)
 
 ### v2 Visual Design (Premium Layout)
 - **Color palette**: Purple-primary (`6C63FF`), blue (`3B82F6`), green (`10B981`), amber (`F59E0B`), cyan (`06B6D4`)
@@ -69,17 +69,39 @@ v2 is the DEFAULT engine. v1 remains untouched as emergency fallback.
 - **Footer**: Gradient accent bar + branded dot + "EduGenAI" label
 - **Slide title**: Double underline (accent + divider)
 - **Cards**: White backgrounds with left color accent bars, rounded corners, shadows
-- **Number badges**: Rounded squares (not circles) with filled palette colors
+- **Number badges**: Circles with filled palette colors (example_highlight uses numbered phases)
+
+### Example Highlight (Case Study) Layout
+- Dark background with left-side timeline panel
+- Up to 5 phases: Contexto → Desafio → Solução → Implementação → Resultado
+- Numbered circle badges per phase with accent colors
+- Label detection pipeline: "Label: content" parsing with canonical label mapping
+- Unlabeled items get auto-assigned to available phase labels
+- Minimum 3 phases enforced — synthesizes labels from raw content if needed
+- Badge "ESTUDO DE CASO" at top
+
+### Warning Callout Layout
+- Max 4 items (reduced from 6 to prevent dense slides)
+- Items with "Label: content" get separated header/description styling
+- Red accent theme with alternating card backgrounds
+
+### Gender Agreement System
+- Context-aware "amplamente utilizado/a/os/as" with separate masculine/feminine noun groups
+- Feminine nouns: ferramenta, plataforma, tecnologia, técnica, abordagem, etc.
+- Masculine nouns: software, sistema, modelo, método, processo, etc.
+- Broad pattern-based agreement for ~30 feminine nouns × ~30 adjectives
+- "percepções" + masculine adjective → feminine adjective correction
+- Preposition insertion for "gestão/análise/segurança X" → "gestão de X"
 
 ### v2 Density Parameters
-- `maxItemsPerSlide: 9` (was 7) — more content per slide
-- `maxCharsPerItem: 200` (was 180) — longer text per bullet
-- `LAYOUT_VISUAL_MAX_ITEMS.bullets: 7` (was 5) — fits more bullets
-- `LAYOUT_VISUAL_MAX_ITEMS.two_column_bullets: 10` (was 8)
-- `mergeShortItems` threshold: 90 chars (was 60) — merges more aggressively
-- `MIN_CONTINUATION_ITEMS: 4` (was 3) — fewer weak continuation slides
-- Stage 3.6: merges adjacent sparse continuation slides (<400 chars each, same section)
-- Result: ~90 slides for 7-module course (was 106), 8 continuations (was 19)
+- `maxItemsPerSlide: 9` — max content items per slide
+- `maxCharsPerItem: 200` — max text length per bullet
+- `LAYOUT_VISUAL_MAX_ITEMS.bullets: 7`
+- `LAYOUT_VISUAL_MAX_ITEMS.example_highlight: 5`
+- `LAYOUT_VISUAL_MAX_ITEMS.warning_callout: 4`
+- `mergeShortItems` threshold: 90 chars
+- `MIN_CONTINUATION_ITEMS: 4`
+- Stage 3.6: merges adjacent sparse continuation slides
 
 ### Critical Constraints
 - NEVER modify `export-pptx/index.ts` (v1) — must remain 100% untouched
