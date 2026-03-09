@@ -71,7 +71,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
   const [includeImages, setIncludeImages] = useState(false);
   const [theme, setTheme] = useState<PptxExportOptions["theme"]>("light");
   const [template, setTemplate] = useState<PptxExportOptions["template"]>("default");
-  const [useV2, setUseV2] = useState(false);
+  const [useV2] = useState(true);
 
   const handleExport = () => {
     setOpen(false);
@@ -175,22 +175,12 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
           <div className="flex items-center justify-between">
             <div>
               <Label>Incluir Imagens</Label>
-              <p className="text-xs text-muted-foreground">Ícones ilustrativos nos slides de capítulo</p>
+              <p className="text-xs text-muted-foreground">Imagens temáticas na capa, módulos e encerramento</p>
             </div>
             <Switch checked={includeImages} onCheckedChange={setIncludeImages} />
           </div>
 
-          {/* V2 Engine toggle */}
-          <div className="flex items-center justify-between border-t pt-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <Label>Motor v2</Label>
-                <Badge variant="secondary" className="text-[10px] px-1.5">Beta</Badge>
-              </div>
-              <p className="text-xs text-muted-foreground">Novo pipeline com melhor integridade de texto e menos slides de continuação</p>
-            </div>
-            <Switch checked={useV2} onCheckedChange={setUseV2} />
-          </div>
+          {/* Premium engine enabled by default */}
         </div>
 
         <DialogFooter>
