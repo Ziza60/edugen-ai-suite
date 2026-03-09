@@ -3812,7 +3812,7 @@ function renderWarningCallout(
   const contentH = SLIDE_H - contentY - 0.45;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.55, Math.min(1.10, rawItemH));
-  const bodyFontSize = items.length >= 5 ? 10 : items.length >= 4 ? 11 : 12;
+  const bodyFontSize = items.length >= 4 ? 12 : 14;
 
   for (let i = 0; i < items.length; i++) {
     const y = contentY + i * (itemH + bulletGap);
