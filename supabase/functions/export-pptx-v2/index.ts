@@ -2273,14 +2273,17 @@ function renderCoverSlide(
     addSlideBackground(slide, colors.coverDark);
   }
 
-  addGradientBar(slide, SLIDE_W * 0.50, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
+  // Only add large decorative gradient/ellipse when there's no image (they obscure the photo)
+  if (!image) {
+    addGradientBar(slide, SLIDE_W * 0.50, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
 
-  slide.addShape("ellipse" as any, {
-    x: SLIDE_W * 0.55, y: -SLIDE_H * 0.35,
-    w: SLIDE_W * 0.70, h: SLIDE_W * 0.70,
-    fill: { color: colors.p1 },
-    transparency: 92,
-  });
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W * 0.55, y: -SLIDE_H * 0.35,
+      w: SLIDE_W * 0.70, h: SLIDE_W * 0.70,
+      fill: { color: colors.p1 },
+      transparency: 92,
+    });
+  }
 
   slide.addShape("rect" as any, {
     x: 0.80, y: 0.90, w: 0.035, h: SLIDE_H - 1.80,
@@ -2288,14 +2291,16 @@ function renderCoverSlide(
     transparency: 30,
   });
 
-  for (let b = 0; b < 5; b++) {
-    slide.addShape("roundRect" as any, {
-      x: 0.28, y: 1.10 + b * 0.30,
-      w: 0.32, h: 0.18,
-      fill: { color: design.palette[b % design.palette.length] },
-      transparency: 15,
-      rectRadius: 0.04,
-    });
+  if (!image) {
+    for (let b = 0; b < 5; b++) {
+      slide.addShape("roundRect" as any, {
+        x: 0.28, y: 1.10 + b * 0.30,
+        w: 0.32, h: 0.18,
+        fill: { color: design.palette[b % design.palette.length] },
+        transparency: 15,
+        rectRadius: 0.04,
+      });
+    }
   }
 
   addHR(slide, 1.20, 1.30, 3.50, colors.p0, 0.018);
@@ -2324,16 +2329,18 @@ function renderCoverSlide(
 
   addGradientBar(slide, 1.20, 5.50, 3.00, 0.07, colors.p0, "right");
 
-  for (let i = 0; i < 3; i++) {
-    const sz = 0.50 + i * 0.35;
-    slide.addShape("roundRect" as any, {
-      x: SLIDE_W - 2.60 + i * 0.55,
-      y: 0.40 + i * 0.90,
-      w: sz, h: sz,
-      fill: { color: design.palette[i % design.palette.length] },
-      transparency: 82,
-      rectRadius: 0.06,
-    });
+  if (!image) {
+    for (let i = 0; i < 3; i++) {
+      const sz = 0.50 + i * 0.35;
+      slide.addShape("roundRect" as any, {
+        x: SLIDE_W - 2.60 + i * 0.55,
+        y: 0.40 + i * 0.90,
+        w: sz, h: sz,
+        fill: { color: design.palette[i % design.palette.length] },
+        transparency: 82,
+        rectRadius: 0.06,
+      });
+    }
   }
 
   slide.addShape("ellipse" as any, {
@@ -4189,14 +4196,17 @@ function renderClosingSlide(
     addSlideBackground(slide, colors.coverDark);
   }
 
-  addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
+  // Only add large decorative gradient/ellipse when there's no image (they obscure the photo)
+  if (!image) {
+    addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
 
-  slide.addShape("ellipse" as any, {
-    x: SLIDE_W - 4.00, y: -1.20,
-    w: 5.00, h: 5.00,
-    fill: { color: colors.p1 },
-    transparency: 92,
-  });
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - 4.00, y: -1.20,
+      w: 5.00, h: 5.00,
+      fill: { color: colors.p1 },
+      transparency: 92,
+    });
+  }
 
   slide.addShape("rect" as any, {
     x: 0.80, y: 0.90, w: 0.05, h: 3.80,
@@ -4210,14 +4220,16 @@ function renderClosingSlide(
 
   addHR(slide, 1.20, 1.30, 3.00, colors.p0, 0.015);
 
-  for (let b = 0; b < 5; b++) {
-    slide.addShape("roundRect" as any, {
-      x: 0.28, y: 1.10 + b * 0.28,
-      w: 0.30, h: 0.16,
-      fill: { color: design.palette[b % design.palette.length] },
-      transparency: 20,
-      rectRadius: 0.04,
-    });
+  if (!image) {
+    for (let b = 0; b < 5; b++) {
+      slide.addShape("roundRect" as any, {
+        x: 0.28, y: 1.10 + b * 0.28,
+        w: 0.30, h: 0.16,
+        fill: { color: design.palette[b % design.palette.length] },
+        transparency: 20,
+        rectRadius: 0.04,
+      });
+    }
   }
 
   slide.addText("Obrigado!", {
@@ -4257,16 +4269,18 @@ function renderClosingSlide(
 
   // ── Bottom decorative elements ──
   // Small geometric squares (right area)
-  for (let i = 0; i < 3; i++) {
-    const sz = 0.50 + i * 0.25;
-    slide.addShape("rect" as any, {
-      x: SLIDE_W - 2.20 + i * 0.45,
-      y: SLIDE_H - 2.00 + i * 0.40,
-      w: sz, h: sz,
-      fill: { color: design.palette[i % design.palette.length] },
-      transparency: 85,
-      rectRadius: 0.04,
-    });
+  if (!image) {
+    for (let i = 0; i < 3; i++) {
+      const sz = 0.50 + i * 0.25;
+      slide.addShape("rect" as any, {
+        x: SLIDE_W - 2.20 + i * 0.45,
+        y: SLIDE_H - 2.00 + i * 0.40,
+        w: sz, h: sz,
+        fill: { color: design.palette[i % design.palette.length] },
+        transparency: 85,
+        rectRadius: 0.04,
+      });
+    }
   }
 
   // ── Date bottom-right ──
