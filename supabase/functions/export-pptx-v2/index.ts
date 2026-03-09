@@ -3241,9 +3241,9 @@ function renderGridCards(
       slide.addText(label, {
         x: labelX, y: y + 0.10,
         w: x + cardW - labelX - 0.10, h: 0.44,
-        fontSize: items.length >= 6 ? TYPO.CARD_TITLE - 2 : TYPO.CARD_TITLE,
+        fontSize: items.length >= 6 ? TYPO.CARD_TITLE - 1 : TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
-        bold: true, color: pal,
+        bold: true, color: ensureContrastOnLight(pal, colors.cardBg),
         valign: "middle",
       });
       const sepY = y + Math.min(0.58, 0.10 + gcBadge + 0.14);
