@@ -2291,14 +2291,16 @@ function renderCoverSlide(
     transparency: 30,
   });
 
-  for (let b = 0; b < 5; b++) {
-    slide.addShape("roundRect" as any, {
-      x: 0.28, y: 1.10 + b * 0.30,
-      w: 0.32, h: 0.18,
-      fill: { color: design.palette[b % design.palette.length] },
-      transparency: 15,
-      rectRadius: 0.04,
-    });
+  if (!image) {
+    for (let b = 0; b < 5; b++) {
+      slide.addShape("roundRect" as any, {
+        x: 0.28, y: 1.10 + b * 0.30,
+        w: 0.32, h: 0.18,
+        fill: { color: design.palette[b % design.palette.length] },
+        transparency: 15,
+        rectRadius: 0.04,
+      });
+    }
   }
 
   addHR(slide, 1.20, 1.30, 3.50, colors.p0, 0.018);
