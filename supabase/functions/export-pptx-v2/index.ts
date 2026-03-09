@@ -1685,27 +1685,12 @@ function visuallyFitsPlan(plan: SlidePlan): boolean {
     }
 
     case "process_timeline": {
-      const stepW = SAFE_W / Math.max(items.length, 1);
-      return items.every((item) => {
-        const colonIdx = item.indexOf(":");
-        let label: string;
-        let desc: string;
-        if (colonIdx > 0 && colonIdx < 40) {
-          label = item.substring(0, colonIdx).trim();
-          desc = item.substring(colonIdx + 1).trim();
-        } else if (item.length <= 50) {
-          label = item;
-          desc = "";
-        } else {
-          const words = item.split(/\s+/);
-          label = words.slice(0, 4).join(" ");
-          desc = words.slice(4).join(" ");
-        }
-
-        const labelOk = fitsTextBox(label, TYPO.CARD_TITLE, stepW - 0.10, 0.35, 1.1);
-        const descOk = !desc || fitsTextBox(desc, TYPO.CARD_BODY, stepW - 0.10, 1.80, 1.2);
-        return labelOk && descOk;
-      });
+      // Vertical timeline handles up to 7 items; horizontal up to 4.
+      // Always accept — the renderer adapts layout dynamically.
+      if (items.length <= 7) return true;
+      // For 8+ items, check if text fits in compact vertical cards
+      const stepH = Math.min(0.70, (SLIDE_H - 1.65 - 0.38) / items.length);
+      return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT - 1, SAFE_W - 1.20, stepH - 0.06, 1.15));
     }
 
     case "example_highlight": {
