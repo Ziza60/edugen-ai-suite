@@ -1229,9 +1229,8 @@ function distributeModuleToSlides(
       const compacted = mergeAdjacentShortest(phase2, maxProcessItems);
 
       validItems = compacted;
-      // Only use process_timeline for ≤3 items where ALL are short enough to fit horizontally
-      const allFitTimeline = validItems.length <= 3 && validItems.every((item) => item.length <= 85);
-      layout = allFitTimeline ? "process_timeline" : "bullets";
+    // FORCE process_timeline for ALL process sections — never fallback to bullets
+      layout = "process_timeline";
     }
 
     // Additional merge for summary/applications — only merge truly tiny fragments
