@@ -1830,11 +1830,11 @@ function enforceVisualRenderingGuards(
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// PREMIUM RENDER FUNCTIONS — v2 Editorial Visual Engine (Premium Redesign)
+// PREMIUM RENDER FUNCTIONS — v2 Editorial Visual Engine (Premium Redesign R4)
 // ═══════════════════════════════════════════════════════════════════
 
 // ────────────────────────────────────────────────────────────────
-// COVER HERO PREMIUM — Cinematic split with gradient overlay
+// COVER HERO PREMIUM — Full-bleed cinematic with overlay + decorative numbers
 // ────────────────────────────────────────────────────────────────
 function renderCoverSlide(
   pptx: PptxGenJS,
@@ -1843,105 +1843,120 @@ function renderCoverSlide(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
+
+  // ── Full dark background ──
   addSlideBackground(slide, colors.coverDark);
 
-  // ── Right panel: full-height accent gradient zone (38%) ──
-  const panelW = SLIDE_W * 0.38;
-  const panelX = SLIDE_W - panelW;
+  // ── Premium gradient overlay — diagonal accent slab (bottom-right) ──
   slide.addShape("rect" as any, {
-    x: panelX, y: 0, w: panelW, h: SLIDE_H,
+    x: SLIDE_W * 0.55, y: SLIDE_H * 0.30,
+    w: SLIDE_W * 0.50, h: SLIDE_H * 0.75,
     fill: { color: colors.p0 },
-  });
-  // Gradient overlay strip on panel edge
-  slide.addShape("rect" as any, {
-    x: panelX - 0.30, y: 0, w: 0.60, h: SLIDE_H,
-    fill: { color: colors.p1 },
-    transparency: 60,
+    transparency: 80,
+    rotate: -6,
   });
 
-  // ── Vertical accent line inside left zone ──
-  slide.addShape("rect" as any, {
-    x: 0.55, y: 0.80, w: 0.045, h: 5.20,
-    fill: { color: colors.p0 },
+  // ── Decorative "01" at 8% opacity — large background element ──
+  slide.addText("01", {
+    x: SLIDE_W - 5.5, y: SLIDE_H - 5.0,
+    w: 5.5, h: 5.0,
+    fontSize: 260,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+    transparency: 92,
+    align: "right",
+    valign: "bottom",
   });
 
-  // ── Stacked palette indicators ──
+  // ── Thin horizontal design lines ──
+  addHR(slide, 0.80, 1.20, 4.00, colors.p0, 0.015);
+  addHR(slide, 0.80, SLIDE_H - 1.40, 3.50, colors.p0, 0.015);
+
+  // ── Vertical accent line (thin, editorial) ──
+  slide.addShape("rect" as any, {
+    x: 0.80, y: 1.20, w: 0.030, h: SLIDE_H - 2.60,
+    fill: { color: colors.p0 },
+    transparency: 40,
+  });
+
+  // ── Small palette color chips — stacked vertically ──
   for (let b = 0; b < 5; b++) {
     slide.addShape("rect" as any, {
-      x: 0.72, y: 0.80 + b * 0.22,
-      w: 0.35, h: 0.12,
+      x: 0.30, y: 1.20 + b * 0.28,
+      w: 0.30, h: 0.16,
       fill: { color: design.palette[b % design.palette.length] },
-      transparency: 15,
+      transparency: 25,
+      rectRadius: 0.03,
     });
   }
 
-  // ── "CURSO COMPLETO" editorial label ──
+  // ── "CURSO COMPLETO" editorial label with letter-spacing ──
   slide.addText("CURSO COMPLETO", {
-    x: 1.30, y: 1.10,
-    w: 5.0, h: 0.26,
-    fontSize: 10,
+    x: 1.20, y: 1.55,
+    w: 5.0, h: 0.28,
+    fontSize: 11,
     fontFace: design.fonts.body,
     bold: true,
     color: colors.p0,
-    charSpacing: 6,
+    charSpacing: 7,
   });
 
-  // ── Course title — massive editorial ──
+  // ── Course title — massive, left-aligned, editorial weight ──
   slide.addText(courseTitle, {
-    x: 1.30, y: 1.65,
-    w: panelX - 1.80,
-    h: 3.60,
-    fontSize: 52,
+    x: 1.20, y: 2.10,
+    w: SLIDE_W * 0.55,
+    h: 3.20,
+    fontSize: 54,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "top",
-    lineSpacingMultiple: 1.02,
+    lineSpacingMultiple: 0.98,
   });
 
-  // ── Accent horizontal rule ──
-  addHR(slide, 1.30, 5.50, 2.80, colors.p0, 0.035);
+  // ── Bottom-left accent bar (thick, strong) ──
+  slide.addShape("rect" as any, {
+    x: 1.20, y: 5.60,
+    w: 2.80, h: 0.06,
+    fill: { color: colors.p0 },
+  });
 
-  // ── Brand text bottom-left ──
-  slide.addText("Gerado por EduGenAI", {
-    x: 1.30, y: SLIDE_H - 0.60,
-    w: 4.0, h: 0.28,
-    fontSize: 12,
+  // ── Right-side geometric decoration ──
+  // Outlined squares at various sizes for texture
+  for (let i = 0; i < 3; i++) {
+    const sz = 0.60 + i * 0.30;
+    slide.addShape("rect" as any, {
+      x: SLIDE_W - 2.40 + i * 0.50,
+      y: 0.50 + i * 0.80,
+      w: sz, h: sz,
+      fill: { color: design.palette[i % design.palette.length] },
+      transparency: 85,
+      rectRadius: 0.04,
+    });
+  }
+
+  // ── Small circle accent (dot) ──
+  slide.addShape("ellipse" as any, {
+    x: 1.20, y: 5.90, w: 0.14, h: 0.14,
+    fill: { color: colors.p0 },
+  });
+
+  // ── Date + info bottom-right ──
+  const dateStr = new Date().toISOString().slice(0, 10);
+  slide.addText(dateStr, {
+    x: SLIDE_W - 3.00, y: SLIDE_H - 0.65,
+    w: 2.60, h: 0.30,
+    fontSize: 11,
     fontFace: design.fonts.body,
     color: colors.coverSubtext,
-    charSpacing: 1.5,
+    align: "right",
+    charSpacing: 2,
   });
-
-  // ── Right panel: large module count + decorative ──
-  const modCountLabel = "MÓDULOS";
-  slide.addText(modCountLabel, {
-    x: panelX + 0.40, y: SLIDE_H - 1.80,
-    w: panelW - 0.80, h: 0.24,
-    fontSize: 10,
-    fontFace: design.fonts.body,
-    bold: true,
-    color: "FFFFFF",
-    charSpacing: 4,
-    transparency: 30,
-  });
-
-  // Geometric texture on right panel
-  for (let r = 0; r < 4; r++) {
-    for (let c = 0; c < 2; c++) {
-      slide.addShape("rect" as any, {
-        x: panelX + 0.50 + c * 1.60,
-        y: 0.60 + r * 1.50,
-        w: 1.20, h: 1.10,
-        fill: { color: "FFFFFF" },
-        transparency: 90 + (r % 2) * 3,
-        rectRadius: 0.06,
-      });
-    }
-  }
 }
 
 // ────────────────────────────────────────────────────────────────
-// TOC PREMIUM — Dark roadmap with horizontal module rows
+// TOC PREMIUM — Card grid (2-3 columns) with large numbered indicators
 // ────────────────────────────────────────────────────────────────
 function renderTOC(
   pptx: PptxGenJS,
@@ -1949,7 +1964,8 @@ function renderTOC(
   design: DesignConfig,
 ) {
   const colors = getColors(design);
-  const MAX_PER_PAGE = 5;
+  // For ≤6 modules: 1 page, 2 or 3 columns. For >6: paginate.
+  const MAX_PER_PAGE = 6;
   const pages: { title: string; description?: string }[][] = [];
   for (let i = 0; i < modules.length; i += MAX_PER_PAGE) {
     pages.push(modules.slice(i, i + MAX_PER_PAGE));
@@ -1958,126 +1974,132 @@ function renderTOC(
   for (let page = 0; page < pages.length; page++) {
     const pageModules = pages[page];
     const slide = pptx.addSlide();
-    // DARK background for TOC — strong contrast with content slides
     addSlideBackground(slide, colors.coverDark);
 
-    // ── Left accent sidebar (narrow) ──
-    slide.addShape("rect" as any, {
-      x: 0, y: 0, w: 0.65, h: SLIDE_H,
-      fill: { color: colors.panelDark },
-    });
-    // Accent line on sidebar edge
-    slide.addShape("rect" as any, {
-      x: 0.65, y: 0, w: 0.04, h: SLIDE_H,
-      fill: { color: colors.p0 },
-    });
+    // ── Top accent line ──
+    addHR(slide, 0, 0.03, SLIDE_W, colors.p0, 0.045);
 
-    // ── Header ──
-    const tocLabel = pages.length > 1
-      ? `ROTEIRO DO CURSO  ·  ${page + 1}/${pages.length}`
-      : "ROTEIRO DO CURSO";
-    slide.addText(tocLabel, {
-      x: 0.95, y: 0.35,
+    // ── Header area ──
+    slide.addText("CONTEÚDO PROGRAMÁTICO", {
+      x: 0.65, y: 0.32,
       w: 6.0, h: 0.24,
       fontSize: 10,
       fontFace: design.fonts.body,
       bold: true,
       color: colors.p0,
-      charSpacing: 5,
+      charSpacing: 6,
     });
-    slide.addText("O que você vai aprender", {
-      x: 0.95, y: 0.68,
-      w: 8.0, h: 0.52,
-      fontSize: 30,
+    slide.addText(pages.length > 1 ? `Índice  ·  ${page + 1}/${pages.length}` : "Índice", {
+      x: 0.65, y: 0.62,
+      w: 8.0, h: 0.60,
+      fontSize: 32,
       fontFace: design.fonts.title,
       bold: true,
       color: "FFFFFF",
       valign: "middle",
     });
-    addHR(slide, 0.95, 1.26, 2.40, colors.p0, 0.030);
+    addHR(slide, 0.65, 1.30, 2.00, colors.p0, 0.030);
 
-    // ── Module rows: full-width horizontal bands ──
+    // ── Progress bar (full width) ──
+    const progressY = 1.50;
+    slide.addShape("rect" as any, {
+      x: 0.65, y: progressY,
+      w: SLIDE_W - 1.30, h: 0.04,
+      fill: { color: colors.panelMid },
+    });
+    const progressFill = ((page + 1) / pages.length);
+    slide.addShape("rect" as any, {
+      x: 0.65, y: progressY,
+      w: (SLIDE_W - 1.30) * progressFill, h: 0.04,
+      fill: { color: colors.p0 },
+    });
+
+    // ── Card grid ──
     const globalOffset = page * MAX_PER_PAGE;
-    const startY = 1.65;
-    const rowGap = 0.12;
-    const contentH = SLIDE_H - startY - 0.30;
-    const rowH = Math.min(1.10, (contentH - rowGap * (pageModules.length - 1)) / pageModules.length);
+    const cols = pageModules.length <= 3 ? pageModules.length : pageModules.length <= 4 ? 2 : 3;
+    const rows = Math.ceil(pageModules.length / cols);
+    const gap = 0.18;
+    const gridX = 0.65;
+    const gridW = SLIDE_W - 1.30;
+    const cardW = (gridW - gap * (cols - 1)) / cols;
+    const gridY = 1.80;
+    const gridH = SLIDE_H - gridY - 0.30;
+    const cardH = Math.min(2.50, (gridH - gap * (rows - 1)) / rows);
 
     for (let i = 0; i < pageModules.length; i++) {
-      const y = startY + i * (rowH + rowGap);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = gridX + col * (cardW + gap);
+      const y = gridY + row * (cardH + gap);
       const pal = design.palette[(globalOffset + i) % design.palette.length];
       const num = String(globalOffset + i + 1).padStart(2, "0");
 
-      // Row background
+      // Card background
       slide.addShape("roundRect" as any, {
-        x: 0.95, y, w: SLIDE_W - 1.35, h: rowH,
+        x, y, w: cardW, h: cardH,
         fill: { color: colors.panelMid },
-        rectRadius: 0.06,
+        rectRadius: 0.10,
       });
 
-      // Left accent block with number
-      const accentBlockW = 0.90;
+      // Top accent strip
       slide.addShape("rect" as any, {
-        x: 0.95, y, w: accentBlockW, h: rowH,
+        x, y, w: cardW, h: 0.06,
         fill: { color: pal },
-        rectRadius: 0.06,
+        rectRadius: 0.10,
       });
-      // Fix right edge of accent block (square corner)
-      slide.addShape("rect" as any, {
-        x: 0.95 + accentBlockW - 0.06, y, w: 0.06, h: rowH,
-        fill: { color: pal },
-      });
+
+      // Large number — dominant visual element
       slide.addText(num, {
-        x: 0.95, y, w: accentBlockW, h: rowH,
-        fontSize: 28,
+        x: x + 0.18, y: y + 0.16,
+        w: 1.00, h: 0.70,
+        fontSize: 42,
         fontFace: design.fonts.title,
         bold: true,
-        color: "FFFFFF",
-        align: "center",
-        valign: "middle",
+        color: pal,
+        transparency: 15,
       });
 
       // Module title
-      const textX = 0.95 + accentBlockW + 0.25;
-      const textW = SLIDE_W - textX - 0.60;
       slide.addText(pageModules[i].title, {
-        x: textX, y: y + 0.08,
-        w: textW, h: 0.38,
-        fontSize: 17,
+        x: x + 0.18, y: y + 0.85,
+        w: cardW - 0.36, h: 0.52,
+        fontSize: 15,
         fontFace: design.fonts.title,
         bold: true,
         color: "FFFFFF",
-        valign: "middle",
+        valign: "top",
+        lineSpacingMultiple: 1.05,
       });
+
+      // Thin separator
+      addHR(slide, x + 0.18, y + 1.38, cardW * 0.5, pal, 0.012);
 
       // Description
       if (pageModules[i].description) {
         slide.addText(pageModules[i].description!, {
-          x: textX, y: y + 0.46,
-          w: textW, h: rowH - 0.56,
+          x: x + 0.18, y: y + 1.48,
+          w: cardW - 0.36, h: cardH - 1.62,
           fontSize: 11,
           fontFace: design.fonts.body,
           color: colors.coverSubtext,
           valign: "top",
-          lineSpacingMultiple: 1.2,
+          lineSpacingMultiple: 1.25,
         });
       }
 
-      // Connector line between rows
-      if (i < pageModules.length - 1) {
-        slide.addShape("rect" as any, {
-          x: 0.95 + accentBlockW / 2 - 0.012, y: y + rowH,
-          w: 0.024, h: rowGap,
-          fill: { color: colors.coverSubtext },
-          transparency: 50,
-        });
-      }
+      // Small decorative dot at bottom-right of card
+      slide.addShape("ellipse" as any, {
+        x: x + cardW - 0.30, y: y + cardH - 0.26,
+        w: 0.10, h: 0.10,
+        fill: { color: pal },
+        transparency: 40,
+      });
     }
   }
 }
 
 // ────────────────────────────────────────────────────────────────
-// MODULE COVER EDITORIAL — Asymmetric split: dark left + accent right
+// MODULE COVER — Giant number watermark + geometric decoration
 // ────────────────────────────────────────────────────────────────
 function renderModuleCover(
   pptx: PptxGenJS,
@@ -2086,116 +2108,122 @@ function renderModuleCover(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  const accentColor = design.palette[(plan.moduleIndex || 0) % design.palette.length];
-  const modNum = String((plan.moduleIndex !== undefined ? plan.moduleIndex + 1 : 1)).padStart(2, "0");
+  const modIdx = (plan.moduleIndex ?? 0);
+  const modNum = String(modIdx + 1).padStart(2, "0");
+  const accentColor = design.palette[modIdx % design.palette.length];
 
-  // ── LEFT PANEL: Dark (55%) — editorial text zone ──
-  const leftW = SLIDE_W * 0.58;
+  // Full dark background
   addSlideBackground(slide, colors.coverDark);
 
-  // ── RIGHT PANEL: Accent color (42%) ──
-  const rightW = SLIDE_W - leftW;
-  slide.addShape("rect" as any, {
-    x: leftW, y: 0, w: rightW, h: SLIDE_H,
-    fill: { color: accentColor },
+  // ── Giant module number — 150pt at 6% opacity, positioned bottom-right ──
+  slide.addText(modNum, {
+    x: SLIDE_W - 6.0, y: SLIDE_H - 5.50,
+    w: 6.0, h: 5.50,
+    fontSize: 220,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: accentColor,
+    transparency: 92,
+    align: "right",
+    valign: "bottom",
   });
 
-  // ── Transition strip ──
+  // ── Geometric decorative elements — circles and lines ──
+  // Large faded circle top-right
+  slide.addShape("ellipse" as any, {
+    x: SLIDE_W - 3.50, y: -0.80,
+    w: 3.80, h: 3.80,
+    fill: { color: accentColor },
+    transparency: 90,
+  });
+  // Small solid circle
+  slide.addShape("ellipse" as any, {
+    x: SLIDE_W - 2.00, y: 0.60,
+    w: 0.18, h: 0.18,
+    fill: { color: accentColor },
+    transparency: 30,
+  });
+  // Thin vertical line (right area)
   slide.addShape("rect" as any, {
-    x: leftW - 0.08, y: 0, w: 0.16, h: SLIDE_H,
+    x: SLIDE_W - 2.50, y: 0.40, w: 0.020, h: 2.50,
     fill: { color: accentColor },
     transparency: 50,
   });
 
-  // ── Giant number on RIGHT panel — watermark style ──
-  slide.addText(modNum, {
-    x: leftW + 0.20, y: SLIDE_H - 4.00,
-    w: rightW - 0.40, h: 4.00,
-    fontSize: 180,
-    fontFace: design.fonts.title,
-    bold: true,
-    color: "FFFFFF",
-    transparency: 80,
-    align: "center",
-    valign: "bottom",
+  // ── Left content zone ──
+  // Accent bar (thick, strong identity)
+  slide.addShape("rect" as any, {
+    x: 0.80, y: 1.30, w: 0.06, h: 2.00,
+    fill: { color: accentColor },
   });
 
-  // ── RIGHT panel: "MÓDULO" label ──
-  slide.addText("MÓDULO", {
-    x: leftW + 0.40, y: 0.50,
-    w: rightW - 0.80, h: 0.24,
-    fontSize: 10,
-    fontFace: design.fonts.body,
-    bold: true,
-    color: "FFFFFF",
-    charSpacing: 6,
-    transparency: 30,
-  });
-
-  // ── LEFT panel content ──
-  // Module label
+  // "MÓDULO XX" label
   slide.addText(`MÓDULO ${modNum}`, {
-    x: 0.65, y: 0.55,
-    w: 4.0, h: 0.26,
-    fontSize: 11,
+    x: 1.10, y: 1.30,
+    w: 5.0, h: 0.28,
+    fontSize: 12,
     fontFace: design.fonts.body,
     bold: true,
     color: accentColor,
-    charSpacing: 5,
+    charSpacing: 7,
   });
 
-  // Accent bar
-  addHR(slide, 0.65, 1.00, 1.80, accentColor, 0.030);
+  // Thin line under label
+  addHR(slide, 1.10, 1.72, 1.60, accentColor, 0.020);
 
-  // Module title — large, white
+  // Module title — large, white, editorial
   slide.addText(plan.title, {
-    x: 0.65, y: 1.30,
-    w: leftW - 1.20,
-    h: 2.80,
-    fontSize: 36,
+    x: 1.10, y: 1.95,
+    w: SLIDE_W * 0.55,
+    h: 2.50,
+    fontSize: 38,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "top",
-    lineSpacingMultiple: 1.08,
+    lineSpacingMultiple: 1.04,
   });
 
-  // Objectives below
+  // ── "O que você vai aprender" + objectives ──
   if (plan.objectives && plan.objectives.length > 0) {
-    addHR(slide, 0.65, 4.40, 3.00, accentColor, 0.018);
+    const objStartY = 4.80;
+    addHR(slide, 1.10, objStartY - 0.15, 2.50, accentColor, 0.015);
     slide.addText("O QUE VOCÊ VAI APRENDER", {
-      x: 0.65, y: 4.58,
+      x: 1.10, y: objStartY,
       w: 5.0, h: 0.22,
       fontSize: 9,
       fontFace: design.fonts.body,
       bold: true,
       color: accentColor,
-      charSpacing: 3.5,
+      charSpacing: 4,
     });
 
     for (let i = 0; i < Math.min(plan.objectives.length, 3); i++) {
-      const objY = 4.88 + i * 0.52;
-      // Small accent dot
+      const objY = objStartY + 0.35 + i * 0.48;
+      // Accent dot
       slide.addShape("ellipse" as any, {
-        x: 0.65, y: objY + 0.06,
-        w: 0.12, h: 0.12,
+        x: 1.10, y: objY + 0.08,
+        w: 0.10, h: 0.10,
         fill: { color: accentColor },
       });
       slide.addText(plan.objectives[i], {
-        x: 0.90, y: objY,
-        w: leftW - 1.40, h: 0.46,
-        fontSize: 11,
+        x: 1.35, y: objY,
+        w: SLIDE_W * 0.50, h: 0.40,
+        fontSize: 12,
         fontFace: design.fonts.body,
         color: colors.coverSubtext,
         valign: "middle",
-        lineSpacingMultiple: 1.2,
+        lineSpacingMultiple: 1.15,
       });
     }
   }
+
+  // ── Bottom thin line ──
+  addHR(slide, 0.80, SLIDE_H - 0.50, 3.00, accentColor, 0.012);
 }
 
 // ────────────────────────────────────────────────────────────────
-// BULLETS PREMIUM — 3 distinct visual variants for anti-monotony
+// BULLETS PREMIUM — 4 truly distinct visual compositions
 // ────────────────────────────────────────────────────────────────
 function renderBullets(
   pptx: PptxGenJS,
@@ -2205,140 +2233,78 @@ function renderBullets(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   _globalSlideIdx++;
-  const variant = _globalSlideIdx % 4; // 4 distinct visual styles
-
-  addSlideBackground(slide, colors.bg);
+  const variant = _globalSlideIdx % 4;
 
   const accentColor = design.palette[_globalSlideIdx % design.palette.length];
   const items = plan.items || [];
-  const contentX = 0.55;
-  const contentW = SLIDE_W - contentX - 0.45;
-  const contentY = 1.65;
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.55;
+  const contentY = 1.70;
   const bulletGap = 0.10;
-  const contentH = SLIDE_H - contentY - 0.38;
+  const contentH = SLIDE_H - contentY - 0.45;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.55, Math.min(1.40, rawItemH));
 
   if (variant === 0) {
-    // ── VARIANT A: Cards with left color stripe + alternating bg ──
-    addLeftEdge(slide, accentColor);
-    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
-    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
-
-    for (let i = 0; i < items.length; i++) {
-      const pal = design.palette[i % design.palette.length];
-      const yPos = contentY + i * (itemH + bulletGap);
-      slide.addShape("roundRect" as any, {
-        x: contentX, y: yPos,
-        w: contentW, h: itemH - 0.04,
-        fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
-        rectRadius: 0.05,
-        line: { color: colors.borders, width: 0.4 },
-      });
-      slide.addShape("rect" as any, {
-        x: contentX, y: yPos + 0.05,
-        w: 0.055, h: itemH - 0.14,
-        fill: { color: pal },
-      });
-      slide.addText(items[i], {
-        x: contentX + 0.20, y: yPos + 0.03,
-        w: contentW - 0.26, h: itemH - 0.10,
-        fontSize: TYPO.BULLET_TEXT,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "middle",
-        lineSpacingMultiple: 1.18,
-      });
-    }
-  } else if (variant === 1) {
-    // ── VARIANT B: Large editorial numbers + thin separators ──
-    addLeftEdge(slide, accentColor);
-    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
-    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
-
-    for (let i = 0; i < items.length; i++) {
-      const yPos = contentY + i * (itemH + bulletGap);
-      const pal = design.palette[i % design.palette.length];
-      if (i > 0) {
-        addHR(slide, contentX + 0.60, yPos - bulletGap / 2, contentW - 0.60, colors.divider, 0.008);
-      }
-      slide.addText(String(i + 1).padStart(2, "0"), {
-        x: contentX, y: yPos,
-        w: 0.55, h: itemH,
-        fontSize: 24,
-        fontFace: design.fonts.title,
-        bold: true,
-        color: pal,
-        transparency: 15,
-        valign: "middle",
-      });
-      slide.addText(items[i], {
-        x: contentX + 0.60, y: yPos,
-        w: contentW - 0.60, h: itemH,
-        fontSize: TYPO.BULLET_TEXT,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "middle",
-        lineSpacingMultiple: 1.20,
-      });
-    }
-  } else if (variant === 2) {
-    // ── VARIANT C: Dark sidebar with accent + content on light ──
-    const sidebarW = 3.40;
+    // ── VARIANT A: Split layout — dark left sidebar (40%) + content right ──
+    addSlideBackground(slide, colors.bg);
+    const sideW = SLIDE_W * 0.35;
     slide.addShape("rect" as any, {
-      x: 0, y: 0, w: sidebarW, h: SLIDE_H,
+      x: 0, y: 0, w: sideW, h: SLIDE_H,
       fill: { color: colors.coverDark },
     });
+    // Accent edge on sidebar
     slide.addShape("rect" as any, {
-      x: sidebarW, y: 0, w: 0.04, h: SLIDE_H,
+      x: sideW, y: 0, w: 0.05, h: SLIDE_H,
       fill: { color: accentColor },
     });
 
     // Section label + title on dark sidebar
     if (plan.sectionLabel) {
       slide.addText(plan.sectionLabel.toUpperCase(), {
-        x: 0.40, y: 0.55,
-        w: sidebarW - 0.80, h: 0.22,
+        x: 0.45, y: 0.55,
+        w: sideW - 0.90, h: 0.22,
         fontSize: 9,
         fontFace: design.fonts.body,
         bold: true,
         color: accentColor,
         charSpacing: 4,
       });
+      addHR(slide, 0.45, 0.82, 1.20, accentColor, 0.012);
     }
     slide.addText(plan.title, {
-      x: 0.40, y: 0.90,
-      w: sidebarW - 0.80, h: 2.80,
+      x: 0.45, y: 1.00,
+      w: sideW - 0.90, h: 3.40,
       fontSize: 24,
       fontFace: design.fonts.title,
       bold: true,
       color: "FFFFFF",
       valign: "top",
-      lineSpacingMultiple: 1.10,
+      lineSpacingMultiple: 1.08,
     });
-    // Accent dots on sidebar
+    // Decorative accent dots on sidebar
     for (let d = 0; d < Math.min(items.length, 5); d++) {
       slide.addShape("ellipse" as any, {
-        x: 0.40, y: 4.00 + d * 0.45,
+        x: 0.45, y: 4.80 + d * 0.40,
         w: 0.10, h: 0.10,
         fill: { color: design.palette[d % design.palette.length] },
       });
     }
 
-    // Items on right (light) zone
-    const rightX = sidebarW + 0.35;
-    const rightW = SLIDE_W - rightX - 0.35;
-    const rightY = 0.55;
-    const rightH = SLIDE_H - rightY - 0.35;
-    const rItemH = Math.min(1.20, (rightH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
+    // Items on right (light) zone with left color accent bar
+    const rightX = sideW + 0.35;
+    const rightW = SLIDE_W - rightX - 0.45;
+    const rightY = 0.50;
+    const rightH = SLIDE_H - rightY - 0.45;
+    const rItemH = Math.min(1.30, (rightH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
 
     for (let i = 0; i < items.length; i++) {
       const yPos = rightY + i * (rItemH + bulletGap);
       const pal = design.palette[i % design.palette.length];
-      // Accent left line
+      // Left accent bar
       slide.addShape("rect" as any, {
-        x: rightX, y: yPos + 0.08,
-        w: 0.04, h: rItemH - 0.20,
+        x: rightX, y: yPos + 0.06,
+        w: 0.045, h: rItemH - 0.16,
         fill: { color: pal },
       });
       slide.addText(items[i], {
@@ -2348,23 +2314,72 @@ function renderBullets(
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "middle",
-        lineSpacingMultiple: 1.20,
+        lineSpacingMultiple: 1.22,
       });
       if (i < items.length - 1) {
-        addHR(slide, rightX + 0.18, yPos + rItemH + bulletGap / 2 - 0.004, rightW - 0.18, colors.divider, 0.006);
+        addHR(slide, rightX + 0.18, yPos + rItemH + bulletGap / 2 - 0.003, rightW - 0.18, colors.divider, 0.005);
       }
     }
-  } else {
-    // ── VARIANT D: Icon-less grid cards (2-column if ≥4 items) ──
+
+  } else if (variant === 1) {
+    // ── VARIANT B: Full-width cards with colored number badges ──
+    addSlideBackground(slide, colors.bg);
+    addLeftEdge(slide, accentColor);
+    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
+    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+
+    for (let i = 0; i < items.length; i++) {
+      const pal = design.palette[i % design.palette.length];
+      const yPos = contentY + i * (itemH + bulletGap);
+      // Card background with subtle border
+      slide.addShape("roundRect" as any, {
+        x: contentX, y: yPos,
+        w: contentW, h: itemH - 0.04,
+        fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
+        rectRadius: 0.06,
+        line: { color: colors.borders, width: 0.4 },
+      });
+      // Number badge (circle)
+      const badgeSize = 0.38;
+      slide.addShape("ellipse" as any, {
+        x: contentX + 0.14, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
+        w: badgeSize, h: badgeSize,
+        fill: { color: pal },
+      });
+      slide.addText(String(i + 1), {
+        x: contentX + 0.14, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
+        w: badgeSize, h: badgeSize,
+        fontSize: 14,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        align: "center",
+        valign: "middle",
+      });
+      // Text
+      slide.addText(items[i], {
+        x: contentX + 0.65, y: yPos + 0.03,
+        w: contentW - 0.75, h: itemH - 0.10,
+        fontSize: TYPO.BULLET_TEXT,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "middle",
+        lineSpacingMultiple: 1.18,
+      });
+    }
+
+  } else if (variant === 2) {
+    // ── VARIANT C: 2-column card grid with colored top strips ──
+    addSlideBackground(slide, colors.bg);
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
 
     const cols = items.length >= 4 ? 2 : 1;
-    const gap = 0.14;
+    const gap = 0.16;
     const cardW = cols === 2 ? (contentW - gap) / 2 : contentW;
     const rows = Math.ceil(items.length / cols);
-    const cardH = Math.min(1.30, (contentH - gap * (rows - 1)) / rows);
+    const cardH = Math.min(1.50, (contentH - gap * (rows - 1)) / rows);
 
     for (let i = 0; i < items.length; i++) {
       const col = i % cols;
@@ -2376,30 +2391,101 @@ function renderBullets(
       slide.addShape("roundRect" as any, {
         x, y, w: cardW, h: cardH,
         fill: { color: colors.cardBgAlt },
-        rectRadius: 0.06,
-        line: { color: colors.borders, width: 0.5 },
+        rectRadius: 0.08,
+        line: { color: colors.borders, width: 0.4 },
       });
-      // Top accent strip
+      // Colored top strip
       slide.addShape("rect" as any, {
-        x: x + 0.10, y, w: 0.50, h: 0.04,
+        x, y, w: cardW, h: 0.06,
         fill: { color: pal },
+        rectRadius: 0.08,
+      });
+      // Large number top-left inside card
+      slide.addText(String(i + 1).padStart(2, "0"), {
+        x: x + 0.14, y: y + 0.14,
+        w: 0.60, h: 0.40,
+        fontSize: 22,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: pal,
+        transparency: 20,
       });
       slide.addText(items[i], {
-        x: x + 0.16, y: y + 0.12,
-        w: cardW - 0.32, h: cardH - 0.20,
+        x: x + 0.14, y: y + 0.50,
+        w: cardW - 0.28, h: cardH - 0.60,
         fontSize: TYPO.BULLET_TEXT - 1,
         fontFace: design.fonts.body,
         color: colors.text,
-        valign: "middle",
-        lineSpacingMultiple: 1.18,
+        valign: "top",
+        lineSpacingMultiple: 1.20,
       });
+    }
+
+  } else {
+    // ── VARIANT D: Single highlight — first item dominant, rest as compact list ──
+    addSlideBackground(slide, colors.bg);
+    addLeftEdge(slide, accentColor);
+    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
+    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+
+    if (items.length > 0) {
+      // Hero highlight box for first item
+      const heroH = items.length === 1 ? contentH : Math.min(1.60, contentH * 0.40);
+      slide.addShape("roundRect" as any, {
+        x: contentX, y: contentY,
+        w: contentW, h: heroH,
+        fill: { color: colors.coverDark },
+        rectRadius: 0.10,
+      });
+      // Accent left bar inside hero
+      slide.addShape("rect" as any, {
+        x: contentX + 0.14, y: contentY + 0.14,
+        w: 0.05, h: heroH - 0.28,
+        fill: { color: accentColor },
+      });
+      slide.addText(items[0], {
+        x: contentX + 0.32, y: contentY + 0.08,
+        w: contentW - 0.48, h: heroH - 0.16,
+        fontSize: TYPO.BODY_LARGE,
+        fontFace: design.fonts.body,
+        color: "FFFFFF",
+        valign: "middle",
+        lineSpacingMultiple: 1.30,
+        italic: true,
+      });
+
+      // Remaining items as compact numbered list
+      if (items.length > 1) {
+        const restY = contentY + heroH + 0.18;
+        const restH = SLIDE_H - restY - 0.45;
+        const restItemH = Math.min(0.80, (restH - 0.06 * (items.length - 2)) / (items.length - 1));
+        for (let i = 1; i < items.length; i++) {
+          const yPos = restY + (i - 1) * (restItemH + 0.06);
+          const pal = design.palette[i % design.palette.length];
+          // Bullet dot
+          slide.addShape("ellipse" as any, {
+            x: contentX + 0.04, y: yPos + restItemH / 2 - 0.05,
+            w: 0.10, h: 0.10,
+            fill: { color: pal },
+          });
+          slide.addText(items[i], {
+            x: contentX + 0.22, y: yPos,
+            w: contentW - 0.22, h: restItemH,
+            fontSize: TYPO.BULLET_TEXT - 1,
+            fontFace: design.fonts.body,
+            color: colors.text,
+            valign: "middle",
+            lineSpacingMultiple: 1.15,
+          });
+        }
+      }
     }
   }
   addFooter(slide, colors, design.fonts.body);
 }
 
 // ────────────────────────────────────────────────────────────────
-// TWO-COLUMN BULLETS PREMIUM
+// TWO-COLUMN BULLETS PREMIUM — Split with center accent divider
 // ────────────────────────────────────────────────────────────────
 function renderTwoColumnBullets(
   pptx: PptxGenJS,
@@ -2416,58 +2502,74 @@ function renderTwoColumnBullets(
   addSlideTitle(slide, plan.title, colors, design.fonts.title, pal);
 
   const items = plan.items || [];
-  const contentX = 0.55;
-  const totalW = SLIDE_W - contentX - 0.45;
-  const colGap = 0.30;
+  const contentX = 0.65;
+  const totalW = SLIDE_W - contentX - 0.55;
+  const colGap = 0.35;
   const colW = (totalW - colGap) / 2;
-  const contentY = 1.62;
+  const contentY = 1.68;
   const mid = Math.ceil(items.length / 2);
   const leftItems = items.slice(0, mid);
   const rightItems = items.slice(mid);
 
-  // Center divider — accent colored thin line
+  // Center divider — thin accent line with dot
+  const divX = contentX + colW + colGap / 2;
   slide.addShape("rect" as any, {
-    x: contentX + colW + colGap / 2 - 0.010, y: contentY,
-    w: 0.020, h: SLIDE_H - contentY - 0.38,
+    x: divX - 0.010, y: contentY,
+    w: 0.020, h: SLIDE_H - contentY - 0.45,
     fill: { color: pal },
-    transparency: 40,
+    transparency: 50,
+  });
+  // Center dot on divider
+  slide.addShape("ellipse" as any, {
+    x: divX - 0.05, y: contentY + (SLIDE_H - contentY - 0.45) / 2 - 0.05,
+    w: 0.10, h: 0.10,
+    fill: { color: pal },
   });
 
   for (let col = 0; col < 2; col++) {
     const colItems = col === 0 ? leftItems : rightItems;
     const colX = contentX + col * (colW + colGap);
     const bulletGap = 0.08;
-    const contentH = SLIDE_H - contentY - 0.38;
-    const rawItemH = (contentH - bulletGap * Math.max(colItems.length - 1, 0)) / Math.max(colItems.length, 1);
-    const itemH = Math.max(0.50, Math.min(1.10, rawItemH));
+    const colContentH = SLIDE_H - contentY - 0.45;
+    const rawItemH = (colContentH - bulletGap * Math.max(colItems.length - 1, 0)) / Math.max(colItems.length, 1);
+    const itemH = Math.max(0.50, Math.min(1.20, rawItemH));
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + bulletGap);
-      // Accent dot instead of full card
-      slide.addShape("ellipse" as any, {
-        x: colX, y: yPos + itemH / 2 - 0.06,
-        w: 0.12, h: 0.12,
+      // Number badge
+      const badgeW = 0.32;
+      slide.addShape("roundRect" as any, {
+        x: colX, y: yPos + (itemH - badgeW) / 2,
+        w: badgeW, h: badgeW,
         fill: { color: palColor },
+        rectRadius: 0.06,
+      });
+      slide.addText(String(col * mid + i + 1), {
+        x: colX, y: yPos + (itemH - badgeW) / 2,
+        w: badgeW, h: badgeW,
+        fontSize: 12,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        align: "center",
+        valign: "middle",
       });
       slide.addText(colItems[i], {
-        x: colX + 0.22, y: yPos + 0.03,
-        w: colW - 0.28, h: itemH - 0.06,
+        x: colX + badgeW + 0.12, y: yPos + 0.03,
+        w: colW - badgeW - 0.16, h: itemH - 0.06,
         fontSize: TYPO.BULLET_TEXT - 1,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "middle",
         lineSpacingMultiple: 1.15,
       });
-      if (i < colItems.length - 1) {
-        addHR(slide, colX + 0.22, yPos + itemH + bulletGap / 2 - 0.004, colW - 0.28, colors.divider, 0.006);
-      }
     }
   }
   addFooter(slide, colors, design.fonts.body);
 }
 
 // ────────────────────────────────────────────────────────────────
-// DEFINITION PREMIUM — Full-width hero definition + pillar cards
+// DEFINITION PREMIUM — Hero definition box + pillar cards
 // ────────────────────────────────────────────────────────────────
 function renderDefinition(
   pptx: PptxGenJS,
@@ -2483,24 +2585,30 @@ function renderDefinition(
   addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
 
   const items = plan.items || [];
-  const contentX = 0.55;
-  const contentW = SLIDE_W - contentX - 0.40;
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
 
   if (items.length > 0) {
-    // Hero definition — dark background for contrast
+    // Hero definition — dark bg, large opening quote
+    const heroH = 1.30;
     slide.addShape("roundRect" as any, {
-      x: contentX, y: 1.68, w: contentW, h: 1.20,
+      x: contentX, y: 1.68, w: contentW, h: heroH,
       fill: { color: colors.coverDark },
       rectRadius: 0.10,
     });
-    // Accent left bar inside dark box
-    slide.addShape("rect" as any, {
-      x: contentX + 0.12, y: 1.82, w: 0.045, h: 0.92,
-      fill: { color: colors.p2 },
+    // Opening quote mark
+    slide.addText("\u201C", {
+      x: contentX + 0.08, y: 1.58,
+      w: 0.50, h: 0.60,
+      fontSize: 52,
+      fontFace: design.fonts.title,
+      color: colors.p2,
+      transparency: 30,
+      bold: true,
     });
     slide.addText(items[0], {
-      x: contentX + 0.28, y: 1.72,
-      w: contentW - 0.44, h: 1.12,
+      x: contentX + 0.30, y: 1.72,
+      w: contentW - 0.50, h: heroH - 0.10,
       fontSize: TYPO.BODY_LARGE,
       fontFace: design.fonts.body,
       color: "FFFFFF",
@@ -2514,24 +2622,34 @@ function renderDefinition(
   if (pillars.length > 0) {
     const gap = 0.16;
     const pillarW = (contentW - gap * (pillars.length - 1)) / pillars.length;
-    const startY = 3.12;
+    const startY = 3.22;
     for (let i = 0; i < pillars.length; i++) {
       const x = contentX + i * (pillarW + gap);
       const pal = design.palette[i % design.palette.length];
       slide.addShape("roundRect" as any, {
-        x, y: startY, w: pillarW, h: SLIDE_H - startY - 0.38,
+        x, y: startY, w: pillarW, h: SLIDE_H - startY - 0.45,
         fill: { color: colors.cardBgAlt },
         rectRadius: 0.06,
         line: { color: colors.borders, width: 0.4 },
       });
       // Colored top edge
       slide.addShape("rect" as any, {
-        x, y: startY, w: pillarW, h: 0.05,
+        x, y: startY, w: pillarW, h: 0.06,
         fill: { color: pal },
       });
+      // Number inside
+      slide.addText(String(i + 2), {
+        x: x + 0.12, y: startY + 0.10,
+        w: 0.40, h: 0.35,
+        fontSize: 20,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: pal,
+        transparency: 25,
+      });
       slide.addText(pillars[i], {
-        x: x + 0.14, y: startY + 0.14,
-        w: pillarW - 0.28, h: SLIDE_H - startY - 0.60,
+        x: x + 0.14, y: startY + 0.45,
+        w: pillarW - 0.28, h: SLIDE_H - startY - 0.95,
         fontSize: TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
@@ -2544,7 +2662,7 @@ function renderDefinition(
 }
 
 // ────────────────────────────────────────────────────────────────
-// GRID CARDS PREMIUM — Cards with colored headers
+// GRID CARDS PREMIUM — Cards with colored header zones
 // ────────────────────────────────────────────────────────────────
 function renderGridCards(
   pptx: PptxGenJS,
@@ -2560,13 +2678,13 @@ function renderGridCards(
   addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
 
   const items = plan.items || [];
-  const contentX = 0.55;
-  const contentW = SLIDE_W - contentX - 0.40;
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
   const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
   const rows = Math.ceil(items.length / cols);
   const gap = 0.16;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  const contentArea = SLIDE_H - 1.68 - 0.38;
+  const contentArea = SLIDE_H - 1.68 - 0.45;
   const cardH = Math.min(2.50, (contentArea - gap * (rows - 1)) / rows);
 
   for (let i = 0; i < items.length; i++) {
@@ -2580,49 +2698,63 @@ function renderGridCards(
       x, y, w: cardW, h: cardH,
       fill: { color: colors.cardBgAlt },
       rectRadius: 0.08,
-      line: { color: colors.borders, width: 0.4 },
+      line: { color: colors.borders, width: 0.5 },
     });
-    const headerH = Math.max(0.36, cardH * 0.20);
+
+    // Colored header zone
+    const headerH = 0.50;
     slide.addShape("roundRect" as any, {
       x, y, w: cardW, h: headerH,
       fill: { color: pal },
       rectRadius: 0.08,
     });
+    // Fix bottom corners of header
     slide.addShape("rect" as any, {
       x, y: y + headerH - 0.08, w: cardW, h: 0.08,
       fill: { color: pal },
     });
 
+    // Parse label:desc
     const colonIdx = items[i].indexOf(":");
     if (colonIdx > 0 && colonIdx < 40) {
       const label = items[i].substring(0, colonIdx).trim();
       const desc = items[i].substring(colonIdx + 1).trim();
       slide.addText(label, {
-        x: x + 0.14, y: y + 0.04,
-        w: cardW - 0.28, h: headerH - 0.06,
+        x: x + 0.14, y: y + 0.06,
+        w: cardW - 0.28, h: headerH - 0.10,
         fontSize: TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
         bold: true, color: "FFFFFF",
         valign: "middle",
       });
       slide.addText(desc, {
-        x: x + 0.14, y: y + headerH + 0.08,
-        w: cardW - 0.28, h: cardH - headerH - 0.18,
+        x: x + 0.14, y: y + headerH + 0.10,
+        w: cardW - 0.28, h: cardH - headerH - 0.20,
         fontSize: TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.2,
+        lineSpacingMultiple: 1.22,
       });
     } else {
+      // No label — number in header
+      slide.addText(String(i + 1).padStart(2, "0"), {
+        x: x + 0.14, y: y + 0.06,
+        w: cardW - 0.28, h: headerH - 0.10,
+        fontSize: 18,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        valign: "middle",
+      });
       slide.addText(items[i], {
-        x: x + 0.14, y: y + headerH + 0.08,
-        w: cardW - 0.28, h: cardH - headerH - 0.18,
+        x: x + 0.14, y: y + headerH + 0.10,
+        w: cardW - 0.28, h: cardH - headerH - 0.20,
         fontSize: TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.2,
+        lineSpacingMultiple: 1.22,
       });
     }
   }
@@ -2630,8 +2762,8 @@ function renderGridCards(
 }
 
 // ────────────────────────────────────────────────────────────────
-// PROCESS TIMELINE — Always visual pipeline, never plain bullets
-// Horizontal for ≤4 items, Vertical node-line for 5+
+// PROCESS TIMELINE — Horizontal pipeline (≤4) / Vertical node-line (5+)
+// Always visual flow, never plain bullets
 // ────────────────────────────────────────────────────────────────
 function renderProcessTimeline(
   pptx: PptxGenJS,
@@ -2647,7 +2779,7 @@ function renderProcessTimeline(
   const contentW = SLIDE_W - contentX - 0.40;
 
   if (items.length <= 4) {
-    // ── HORIZONTAL PIPELINE — dark bg for distinct visual identity ──
+    // ── HORIZONTAL PIPELINE — dark bg, chevron-style cards ──
     addSlideBackground(slide, colors.coverDark);
 
     // Section label + title on dark
@@ -2659,13 +2791,13 @@ function renderProcessTimeline(
         fontFace: design.fonts.body,
         bold: true,
         color: colors.p2,
-        charSpacing: 4.5,
+        charSpacing: 5,
       });
-      addHR(slide, 0.55, 0.57, 0.80, colors.p2, 0.022);
+      addHR(slide, 0.55, 0.57, 1.00, colors.p2, 0.020);
     }
     slide.addText(plan.title, {
       x: 0.55, y: 0.68,
-      w: SLIDE_W - 1.10, h: 0.75,
+      w: SLIDE_W - 1.10, h: 0.70,
       fontSize: 26,
       fontFace: design.fonts.title,
       bold: true,
@@ -2673,16 +2805,25 @@ function renderProcessTimeline(
       valign: "middle",
     });
 
-    const gap = 0.08;
-    const arrowW = 0.35;
-    const totalArrowW = arrowW * Math.max(items.length - 1, 0);
-    const usableW = contentW - totalArrowW;
-    const cardW = usableW / items.length;
-    const cardY = 1.75;
+    // ── Horizontal flow line ──
+    const flowY = 1.68;
+    const cardY = flowY + 0.20;
     const cardH = SLIDE_H - cardY - 0.45;
+    const gap = 0.06;
+    const arrowW = 0.40;
+    const totalArrowW = arrowW * Math.max(items.length - 1, 0);
+    const cardW = (contentW - totalArrowW - gap * Math.max(items.length - 1, 0)) / items.length;
+
+    // Connecting flow line behind cards
+    slide.addShape("rect" as any, {
+      x: contentX, y: cardY + cardH * 0.35,
+      w: contentW, h: 0.04,
+      fill: { color: colors.p2 },
+      transparency: 60,
+    });
 
     for (let i = 0; i < items.length; i++) {
-      const x = contentX + i * (cardW + arrowW);
+      const x = contentX + i * (cardW + arrowW + gap);
       const pal = design.palette[i % design.palette.length];
 
       // Card bg
@@ -2692,8 +2833,8 @@ function renderProcessTimeline(
         rectRadius: 0.10,
       });
 
-      // Colored top strip
-      const topH = 0.70;
+      // Top colored header zone
+      const topH = 0.65;
       slide.addShape("roundRect" as any, {
         x, y: cardY, w: cardW, h: topH,
         fill: { color: pal },
@@ -2704,13 +2845,13 @@ function renderProcessTimeline(
         fill: { color: pal },
       });
 
-      // Step number circle
-      const circSize = 0.38;
+      // Step number
+      const circSize = 0.36;
       slide.addShape("ellipse" as any, {
         x: x + cardW / 2 - circSize / 2, y: cardY + 0.12,
         w: circSize, h: circSize,
         fill: { color: "FFFFFF" },
-        transparency: 20,
+        transparency: 15,
       });
       slide.addText(String(i + 1), {
         x: x + cardW / 2 - circSize / 2, y: cardY + 0.12,
@@ -2723,20 +2864,21 @@ function renderProcessTimeline(
 
       // Arrow connector
       if (i < items.length - 1) {
-        const arrowBodyX = x + cardW + 0.04;
-        const arrowMidY = cardY + cardH / 2;
+        const arrowX = x + cardW + gap / 2;
+        const arrowMidY = cardY + cardH * 0.35;
+        // Arrow shaft
         slide.addShape("rect" as any, {
-          x: arrowBodyX, y: arrowMidY - 0.025,
-          w: arrowW - 0.12, h: 0.05,
+          x: arrowX, y: arrowMidY - 0.02,
+          w: arrowW - 0.06, h: 0.04,
           fill: { color: pal },
-          transparency: 30,
+          transparency: 25,
         });
-        // Triangle head
+        // Arrow head (diamond rotated)
         slide.addShape("rect" as any, {
-          x: arrowBodyX + arrowW - 0.18, y: arrowMidY - 0.06,
+          x: arrowX + arrowW - 0.18, y: arrowMidY - 0.06,
           w: 0.12, h: 0.12,
           fill: { color: pal },
-          transparency: 30,
+          transparency: 25,
           rotate: 45,
         });
       }
@@ -2755,7 +2897,7 @@ function renderProcessTimeline(
         desc = words.slice(4).join(" ");
       }
       slide.addText(label, {
-        x: x + 0.10, y: cardY + topH + 0.08,
+        x: x + 0.10, y: cardY + topH + 0.10,
         w: cardW - 0.20, h: 0.40,
         fontSize: TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
@@ -2764,8 +2906,8 @@ function renderProcessTimeline(
       });
       if (desc) {
         slide.addText(desc, {
-          x: x + 0.10, y: cardY + topH + 0.48,
-          w: cardW - 0.20, h: cardH - topH - 0.58,
+          x: x + 0.10, y: cardY + topH + 0.50,
+          w: cardW - 0.20, h: cardH - topH - 0.60,
           fontSize: TYPO.CARD_BODY,
           fontFace: design.fonts.body,
           color: colors.coverSubtext,
@@ -2775,30 +2917,29 @@ function renderProcessTimeline(
       }
     }
   } else {
-    // ── VERTICAL TIMELINE with node-connector system ──
-    // Handles 5-7 items with compact but cohesive process feel
+    // ── VERTICAL TIMELINE with node-connector system (5-7 items) ──
     addSlideBackground(slide, colors.bg);
     addLeftEdge(slide, colors.p2);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
 
-    const contentY = 1.55;
-    const contentH = SLIDE_H - contentY - 0.32;
+    const vContentY = 1.55;
+    const vContentH = SLIDE_H - vContentY - 0.35;
     const stepGap = items.length <= 5 ? 0.06 : 0.03;
-    const stepH = (contentH - stepGap * (items.length - 1)) / items.length;
-    const nodeSize = items.length <= 5 ? 0.28 : 0.24;
+    const stepH = (vContentH - stepGap * (items.length - 1)) / items.length;
+    const nodeSize = items.length <= 5 ? 0.28 : 0.22;
     const nodeX = contentX + 0.10;
 
     // Vertical connector line
     const lineX = nodeX + nodeSize / 2 - 0.012;
     slide.addShape("rect" as any, {
-      x: lineX, y: contentY + nodeSize / 2,
-      w: 0.024, h: contentH - nodeSize,
+      x: lineX, y: vContentY + nodeSize / 2,
+      w: 0.024, h: vContentH - nodeSize,
       fill: { color: colors.divider },
     });
 
     for (let i = 0; i < items.length; i++) {
-      const y = contentY + i * (stepH + stepGap);
+      const y = vContentY + i * (stepH + stepGap);
       const pal = design.palette[i % design.palette.length];
 
       // Node circle
@@ -2821,20 +2962,16 @@ function renderProcessTimeline(
       const cardW = contentW - (cardX - contentX);
       const accentW = 0.05;
 
-      // Accent bar
       slide.addShape("rect" as any, {
         x: cardX, y, w: accentW, h: stepH - 0.02,
         fill: { color: pal },
       });
-
-      // Card body
       slide.addShape("roundRect" as any, {
         x: cardX + accentW, y, w: cardW - accentW, h: stepH - 0.02,
         fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
         rectRadius: 0.04,
       });
 
-      // Parse label:desc
       const colonIdx = items[i].indexOf(":");
       let label: string, desc: string;
       if (colonIdx > 0 && colonIdx < 40) {
@@ -2852,7 +2989,7 @@ function renderProcessTimeline(
         slide.addText(label, {
           x: textX, y: y + 0.02,
           w: textW, h: stepH * 0.38,
-          fontSize: fontSize,
+          fontSize,
           fontFace: design.fonts.title,
           bold: true, color: pal,
           valign: "bottom",
@@ -2870,7 +3007,7 @@ function renderProcessTimeline(
         slide.addText(desc, {
           x: textX, y,
           w: textW, h: stepH - 0.02,
-          fontSize: fontSize,
+          fontSize,
           fontFace: design.fonts.body,
           color: colors.text,
           valign: "middle",
@@ -2883,7 +3020,7 @@ function renderProcessTimeline(
 }
 
 // ────────────────────────────────────────────────────────────────
-// COMPARISON TABLE PREMIUM
+// COMPARISON TABLE PREMIUM — Zebra rows, minimal borders
 // ────────────────────────────────────────────────────────────────
 function renderComparisonTable(
   pptx: PptxGenJS,
@@ -2902,8 +3039,8 @@ function renderComparisonTable(
   const rows = plan.tableRows || [];
   if (headers.length === 0) { renderBullets(pptx, plan, design); return; }
 
-  const contentX = 0.55;
-  const contentW = SLIDE_W - contentX - 0.40;
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
   const tableData: any[][] = [];
   tableData.push(headers.map((h) => ({
     text: h,
@@ -2934,16 +3071,16 @@ function renderComparisonTable(
     x: contentX, y: 1.68,
     w: contentW,
     colW: new Array(headers.length).fill(contentW / headers.length),
-    rowH: 0.45,
-    border: { type: "solid", pt: 0.4, color: colors.borders },
+    rowH: 0.48,
+    border: { type: "solid", pt: 0.3, color: colors.borders },
     autoPage: false,
   });
   addFooter(slide, colors, design.fonts.body);
 }
 
 // ────────────────────────────────────────────────────────────────
-// CASE STUDY PREMIUM (example_highlight)
-// Dark header + 2x2 quadrant grid: Cenário/Desafio/Ação/Resultado
+// CASE STUDY PREMIUM — Badge + Storytelling horizontal bands
+// Cenário → Desafio → Ação → Resultado (color-coded phases)
 // ────────────────────────────────────────────────────────────────
 function renderExampleHighlight(
   pptx: PptxGenJS,
@@ -2964,147 +3101,125 @@ function renderExampleHighlight(
     });
   const cappedItems = items.slice(0, 4);
   const defaultLabels = ["Cenário", "Desafio", "Ação", "Resultado"];
+  const phaseColors = [colors.p1, colors.p3, colors.p2, colors.p0];
 
   // ── Full-width dark header banner ──
-  const bannerH = 1.35;
+  const bannerH = 1.40;
   slide.addShape("rect" as any, {
     x: 0, y: 0, w: SLIDE_W, h: bannerH,
     fill: { color: colors.coverDark },
   });
-  // Accent gradient strip at bottom of banner
-  slide.addShape("rect" as any, {
-    x: 0, y: bannerH - 0.05, w: SLIDE_W, h: 0.05,
-    fill: { color: colors.p3 },
-  });
 
-  // "ESTUDO DE CASO" label
+  // "CASE" badge — rounded pill
+  const badgeW = 1.20;
+  const badgeH = 0.30;
+  slide.addShape("roundRect" as any, {
+    x: 0.65, y: 0.22,
+    w: badgeW, h: badgeH,
+    fill: { color: colors.p3 },
+    rectRadius: 0.15,
+  });
   slide.addText("ESTUDO DE CASO", {
-    x: 0.55, y: 0.25,
-    w: 4.0, h: 0.22,
-    fontSize: 10,
+    x: 0.65, y: 0.22,
+    w: badgeW, h: badgeH,
+    fontSize: 8,
     fontFace: design.fonts.body,
     bold: true,
-    color: colors.p3,
-    charSpacing: 5,
+    color: "FFFFFF",
+    align: "center",
+    valign: "middle",
+    charSpacing: 3,
   });
+
   // Title on banner
   slide.addText(plan.title, {
-    x: 0.55, y: 0.52,
-    w: SLIDE_W - 1.10, h: 0.70,
-    fontSize: 24,
+    x: 0.65, y: 0.62,
+    w: SLIDE_W - 1.30, h: 0.65,
+    fontSize: 26,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "middle",
   });
 
-  // ── 2x2 quadrant grid below banner ──
-  const contentX = 0.55;
-  const contentW = SLIDE_W - contentX - 0.40;
-  const gridStartY = bannerH + 0.18;
-  const gridH = SLIDE_H - gridStartY - 0.38;
-  const gap = 0.14;
+  // Accent strip at bottom of banner
+  slide.addShape("rect" as any, {
+    x: 0, y: bannerH - 0.05, w: SLIDE_W, h: 0.05,
+    fill: { color: colors.p3 },
+  });
 
-  if (cappedItems.length <= 2) {
-    // Side-by-side for 1-2 items
-    const cardW = cappedItems.length === 1 ? contentW : (contentW - gap) / 2;
-    const cardH = gridH;
-    for (let i = 0; i < cappedItems.length; i++) {
-      const x = contentX + i * (cardW + gap);
-      const pal = design.palette[i % design.palette.length];
-      const colonIdx = cappedItems[i].indexOf(":");
-      const label = colonIdx > 0 && colonIdx < 30
-        ? cappedItems[i].substring(0, colonIdx).trim()
-        : defaultLabels[i];
-      const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
+  // ── Storytelling horizontal bands (stacked rows) ──
+  const contentX = 0.65;
+  const contentW = SLIDE_W - 1.30;
+  const gridStartY = bannerH + 0.22;
+  const gridH = SLIDE_H - gridStartY - 0.40;
+  const bandGap = 0.10;
+  const bandH = (gridH - bandGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1);
 
-      slide.addShape("roundRect" as any, {
-        x, y: gridStartY, w: cardW, h: cardH,
-        fill: { color: colors.cardBgAlt },
-        rectRadius: 0.08,
-        line: { color: pal, width: 1.2 },
-      });
-      // Top colored header zone
-      const headerH = 0.55;
-      slide.addShape("roundRect" as any, {
-        x, y: gridStartY, w: cardW, h: headerH,
-        fill: { color: pal },
-        rectRadius: 0.08,
-      });
+  for (let i = 0; i < cappedItems.length; i++) {
+    const y = gridStartY + i * (bandH + bandGap);
+    const pal = phaseColors[i % phaseColors.length];
+    const colonIdx = cappedItems[i].indexOf(":");
+    const label = colonIdx > 0 && colonIdx < 30
+      ? cappedItems[i].substring(0, colonIdx).trim()
+      : defaultLabels[i];
+    const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
+
+    // Band background
+    slide.addShape("roundRect" as any, {
+      x: contentX, y, w: contentW, h: bandH,
+      fill: { color: colors.cardBgAlt },
+      rectRadius: 0.08,
+      line: { color: colors.borders, width: 0.3 },
+    });
+
+    // Left color accent bar
+    slide.addShape("rect" as any, {
+      x: contentX + 0.06, y: y + 0.08,
+      w: 0.06, h: bandH - 0.16,
+      fill: { color: pal },
+    });
+
+    // Phase label (left column)
+    const labelW = 1.80;
+    slide.addText(label.toUpperCase(), {
+      x: contentX + 0.25, y,
+      w: labelW, h: bandH,
+      fontSize: 11,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: pal,
+      charSpacing: 3,
+      valign: "middle",
+    });
+
+    // Vertical thin divider
+    slide.addShape("rect" as any, {
+      x: contentX + labelW + 0.30, y: y + 0.12,
+      w: 0.015, h: bandH - 0.24,
+      fill: { color: colors.divider },
+    });
+
+    // Description (right column)
+    slide.addText(desc, {
+      x: contentX + labelW + 0.50, y,
+      w: contentW - labelW - 0.70, h: bandH,
+      fontSize: TYPO.BODY,
+      fontFace: design.fonts.body,
+      color: colors.text,
+      valign: "middle",
+      lineSpacingMultiple: 1.22,
+    });
+
+    // Step connector arrow between bands
+    if (i < cappedItems.length - 1) {
+      const arrowY = y + bandH + bandGap / 2;
       slide.addShape("rect" as any, {
-        x, y: gridStartY + headerH - 0.08, w: cardW, h: 0.08,
+        x: contentX + 0.38, y: arrowY - 0.03,
+        w: 0.06, h: 0.06,
         fill: { color: pal },
-      });
-      slide.addText(label.toUpperCase(), {
-        x: x + 0.18, y: gridStartY + 0.08,
-        w: cardW - 0.36, h: headerH - 0.14,
-        fontSize: 13,
-        fontFace: design.fonts.title,
-        bold: true,
-        color: "FFFFFF",
-        charSpacing: 3,
-        valign: "middle",
-      });
-      slide.addText(desc, {
-        x: x + 0.18, y: gridStartY + headerH + 0.12,
-        w: cardW - 0.36, h: cardH - headerH - 0.24,
-        fontSize: TYPO.BODY,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "top",
-        lineSpacingMultiple: 1.25,
-      });
-    }
-  } else {
-    // 2x2 quadrant grid for 3-4 items
-    const cols = 2;
-    const gridRows = Math.ceil(cappedItems.length / cols);
-    const cardW = (contentW - gap) / cols;
-    const cardH = (gridH - gap * (gridRows - 1)) / gridRows;
-
-    for (let i = 0; i < cappedItems.length; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = contentX + col * (cardW + gap);
-      const y = gridStartY + row * (cardH + gap);
-      const pal = design.palette[i % design.palette.length];
-      const colonIdx = cappedItems[i].indexOf(":");
-      const label = colonIdx > 0 && colonIdx < 30
-        ? cappedItems[i].substring(0, colonIdx).trim()
-        : defaultLabels[i];
-      const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
-
-      slide.addShape("roundRect" as any, {
-        x, y, w: cardW, h: cardH,
-        fill: { color: colors.cardBgAlt },
-        rectRadius: 0.08,
-        line: { color: pal, width: 1.0 },
-      });
-      // Left accent bar
-      slide.addShape("rect" as any, {
-        x: x + 0.06, y: y + 0.10,
-        w: 0.05, h: cardH - 0.20,
-        fill: { color: pal },
-      });
-      // Label
-      slide.addText(label.toUpperCase(), {
-        x: x + 0.22, y: y + 0.10,
-        w: cardW - 0.40, h: 0.28,
-        fontSize: 10,
-        fontFace: design.fonts.body,
-        bold: true,
-        color: pal,
-        charSpacing: 3,
-      });
-      // Description
-      slide.addText(desc, {
-        x: x + 0.22, y: y + 0.40,
-        w: cardW - 0.40, h: cardH - 0.52,
-        fontSize: TYPO.CARD_BODY + 1,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "top",
-        lineSpacingMultiple: 1.22,
+        transparency: 40,
+        rotate: 45,
       });
     }
   }
@@ -3112,7 +3227,7 @@ function renderExampleHighlight(
 }
 
 // ────────────────────────────────────────────────────────────────
-// WARNING CALLOUT PREMIUM — Red accent alert cards
+// WARNING CALLOUT PREMIUM — Alert cards with red accent
 // ────────────────────────────────────────────────────────────────
 function renderWarningCallout(
   pptx: PptxGenJS,
@@ -3123,16 +3238,33 @@ function renderWarningCallout(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+
+  // Red accent left edge
   addLeftEdge(slide, "C0392B");
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, "C0392B", design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, "C0392B");
 
+  // Warning icon area
+  slide.addShape("roundRect" as any, {
+    x: SLIDE_W - 1.50, y: 0.35,
+    w: 0.80, h: 0.80,
+    fill: { color: "FEF2F2" },
+    rectRadius: 0.12,
+  });
+  slide.addText("⚠", {
+    x: SLIDE_W - 1.50, y: 0.35,
+    w: 0.80, h: 0.80,
+    fontSize: 28,
+    align: "center",
+    valign: "middle",
+  });
+
   const items = plan.items || [];
-  const contentX = 0.55;
-  const contentW = SLIDE_W - contentX - 0.40;
-  const contentY = 1.62;
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
+  const contentY = 1.68;
   const bulletGap = 0.08;
-  const contentH = SLIDE_H - contentY - 0.38;
+  const contentH = SLIDE_H - contentY - 0.45;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.55, Math.min(1.00, rawItemH));
 
@@ -3141,17 +3273,18 @@ function renderWarningCallout(
     slide.addShape("roundRect" as any, {
       x: contentX, y, w: contentW, h: itemH - 0.04,
       fill: { color: i % 2 === 0 ? "FFF5F5" : colors.bg },
-      rectRadius: 0.05,
+      rectRadius: 0.06,
       line: { color: "FECACA", width: 0.4 },
     });
+    // Red left accent
     slide.addShape("rect" as any, {
-      x: contentX, y: y + 0.05,
-      w: 0.055, h: itemH - 0.14,
+      x: contentX + 0.06, y: y + 0.06,
+      w: 0.05, h: itemH - 0.16,
       fill: { color: "E74C3C" },
     });
     slide.addText(items[i], {
-      x: contentX + 0.20, y: y + 0.03,
-      w: contentW - 0.26, h: itemH - 0.10,
+      x: contentX + 0.22, y: y + 0.03,
+      w: contentW - 0.30, h: itemH - 0.10,
       fontSize: TYPO.BULLET_TEXT,
       fontFace: design.fonts.body,
       color: colors.text,
@@ -3163,7 +3296,7 @@ function renderWarningCallout(
 }
 
 // ────────────────────────────────────────────────────────────────
-// REFLECTION CALLOUT PREMIUM — Cinematic dark atmosphere
+// REFLECTION CALLOUT — Cinematic dark + large quotes
 // ────────────────────────────────────────────────────────────────
 function renderReflectionCallout(
   pptx: PptxGenJS,
@@ -3175,32 +3308,43 @@ function renderReflectionCallout(
   _globalSlideIdx++;
   addSlideBackground(slide, colors.coverDark);
 
+  // Large decorative quote mark (giant, faded)
+  slide.addText("\u201C", {
+    x: 0.30, y: -0.30,
+    w: 2.00, h: 2.00,
+    fontSize: 180,
+    fontFace: design.fonts.title,
+    color: colors.p1,
+    transparency: 88,
+    bold: true,
+  });
+
   // Accent line top
-  addHR(slide, 0.55, 0.50, SLIDE_W - 1.10, colors.p1, 0.020);
+  addHR(slide, 0.65, 0.55, SLIDE_W - 1.30, colors.p1, 0.018);
 
   // "REFLEXÃO" label
   slide.addText("REFLEXÃO", {
-    x: 0.55, y: 0.72,
+    x: 0.65, y: 0.80,
     w: 4.0, h: 0.24,
     fontSize: 10,
     fontFace: design.fonts.body,
     bold: true,
     color: colors.p1,
-    charSpacing: 5,
+    charSpacing: 6,
   });
 
   // Title
   slide.addText(plan.title, {
-    x: 0.55, y: 1.05,
-    w: SLIDE_W - 1.10, h: 0.55,
-    fontSize: 22,
+    x: 0.65, y: 1.12,
+    w: SLIDE_W - 1.30, h: 0.55,
+    fontSize: 24,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
   });
 
   const items = plan.items || [];
-  const contentY = 1.80;
+  const contentY = 1.90;
   const contentH = SLIDE_H - contentY - 0.60;
   const itemGap = 0.16;
   const rawItemH = (contentH - itemGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
@@ -3208,19 +3352,17 @@ function renderReflectionCallout(
 
   for (let i = 0; i < items.length; i++) {
     const y = contentY + i * (itemH + itemGap);
-    // Large opening quote mark
-    slide.addText("\u201C", {
-      x: 0.55, y: y - 0.08,
-      w: 0.42, h: 0.50,
-      fontSize: 44,
-      fontFace: design.fonts.title,
-      color: colors.p1,
-      transparency: 35,
-      bold: true,
+    // Subtle background panel for each reflection
+    slide.addShape("roundRect" as any, {
+      x: 0.65, y,
+      w: SLIDE_W - 1.30, h: itemH,
+      fill: { color: colors.panelMid },
+      rectRadius: 0.08,
+      transparency: 30,
     });
     slide.addText(items[i], {
-      x: 1.10, y,
-      w: SLIDE_W - 1.65, h: itemH,
+      x: 1.00, y,
+      w: SLIDE_W - 2.00, h: itemH,
       fontSize: TYPO.BODY_LARGE,
       fontFace: design.fonts.body,
       italic: true,
@@ -3231,11 +3373,11 @@ function renderReflectionCallout(
   }
 
   // Bottom accent line
-  addHR(slide, 0.55, SLIDE_H - 0.50, SLIDE_W - 1.10, colors.p1, 0.020);
+  addHR(slide, 0.65, SLIDE_H - 0.50, SLIDE_W - 1.30, colors.p1, 0.018);
 }
 
 // ────────────────────────────────────────────────────────────────
-// SUMMARY CARDS PREMIUM — Editorial sidebar accent + numbered insights
+// SUMMARY PREMIUM — 2x2 or 2x3 grid of numbered insight cards
 // ────────────────────────────────────────────────────────────────
 function renderSummarySlide(
   pptx: PptxGenJS,
@@ -3248,7 +3390,7 @@ function renderSummarySlide(
   addSlideBackground(slide, colors.bg);
 
   // ── Left accent sidebar ──
-  const sidebarW = 0.50;
+  const sidebarW = 0.45;
   slide.addShape("rect" as any, {
     x: 0, y: 0, w: sidebarW, h: SLIDE_H,
     fill: { color: colors.p0 },
@@ -3263,13 +3405,13 @@ function renderSummarySlide(
       fontFace: design.fonts.body,
       bold: true,
       color: colors.p0,
-      charSpacing: 4.5,
+      charSpacing: 5,
     });
-    addHR(slide, sidebarW + 0.30, 0.57, 0.80, colors.p0, 0.022);
+    addHR(slide, sidebarW + 0.30, 0.57, 0.90, colors.p0, 0.020);
   }
   slide.addText(plan.title, {
     x: sidebarW + 0.30, y: 0.68,
-    w: SLIDE_W - sidebarW - 0.70, h: 0.75,
+    w: SLIDE_W - sidebarW - 0.80, h: 0.75,
     fontSize: TYPO.SECTION_TITLE,
     fontFace: design.fonts.title,
     bold: true,
@@ -3282,27 +3424,44 @@ function renderSummarySlide(
     return ensureSentenceEnd(repaired);
   }).filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10);
 
+  // ── Grid layout: 2 columns for ≥4 items, single column for ≤3 ──
   const contentX = sidebarW + 0.30;
-  const contentW = SLIDE_W - contentX - 0.40;
+  const contentW = SLIDE_W - contentX - 0.50;
   const contentY = 1.60;
-  const contentH = SLIDE_H - contentY - 0.38;
-  const itemGap = 0.08;
-  const itemH = Math.min(0.90, (contentH - itemGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
+  const contentHAvail = SLIDE_H - contentY - 0.40;
+  const cols = items.length >= 4 ? 2 : 1;
+  const rows = Math.ceil(items.length / cols);
+  const gap = 0.12;
+  const cardW = (contentW - gap * (cols - 1)) / cols;
+  const cardH = Math.min(1.50, (contentHAvail - gap * (rows - 1)) / rows);
 
   for (let i = 0; i < items.length; i++) {
-    const y = contentY + i * (itemH + itemGap);
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = contentX + col * (cardW + gap);
+    const y = contentY + row * (cardH + gap);
     const pal = design.palette[i % design.palette.length];
 
-    // Number block
-    const numW = 0.65;
+    // Card bg
     slide.addShape("roundRect" as any, {
-      x: contentX, y, w: numW, h: itemH - 0.04,
+      x, y, w: cardW, h: cardH,
+      fill: { color: colors.cardBgAlt },
+      rectRadius: 0.08,
+      line: { color: colors.borders, width: 0.3 },
+    });
+
+    // Number block (top-left)
+    const numSize = 0.45;
+    slide.addShape("roundRect" as any, {
+      x: x + 0.10, y: y + 0.10,
+      w: numSize, h: numSize,
       fill: { color: pal },
-      rectRadius: 0.06,
+      rectRadius: 0.08,
     });
     slide.addText(String(i + 1), {
-      x: contentX, y, w: numW, h: itemH - 0.04,
-      fontSize: 22,
+      x: x + 0.10, y: y + 0.10,
+      w: numSize, h: numSize,
+      fontSize: 18,
       fontFace: design.fonts.title,
       bold: true,
       color: "FFFFFF",
@@ -3312,25 +3471,20 @@ function renderSummarySlide(
 
     // Text
     slide.addText(items[i], {
-      x: contentX + numW + 0.14, y,
-      w: contentW - numW - 0.14, h: itemH - 0.04,
+      x: x + 0.10, y: y + numSize + 0.12,
+      w: cardW - 0.20, h: cardH - numSize - 0.22,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
-      valign: "middle",
-      lineSpacingMultiple: 1.25,
+      valign: "top",
+      lineSpacingMultiple: 1.22,
     });
-
-    // Separator
-    if (i < items.length - 1) {
-      addHR(slide, contentX + numW + 0.14, y + itemH + itemGap / 2 - 0.004, contentW - numW - 0.14, colors.divider, 0.006);
-    }
   }
   addFooter(slide, colors, design.fonts.body);
 }
 
 // ────────────────────────────────────────────────────────────────
-// TAKEAWAYS NUMBERED PREMIUM — Full dark with accent grid
+// TAKEAWAYS — Full dark bg + grid cards with accent top strips
 // ────────────────────────────────────────────────────────────────
 function renderNumberedTakeaways(
   pptx: PptxGenJS,
@@ -3341,46 +3495,46 @@ function renderNumberedTakeaways(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
 
-  // Full dark background
+  // Full dark background for high contrast
   addSlideBackground(slide, colors.coverDark);
 
   // Top accent strip
-  addHR(slide, 0, 0.04, SLIDE_W, colors.p4, 0.040);
+  addHR(slide, 0, 0.04, SLIDE_W, colors.p4, 0.045);
 
   // Section label
   if (plan.sectionLabel) {
     slide.addText(plan.sectionLabel.toUpperCase(), {
-      x: 0.55, y: 0.28,
+      x: 0.65, y: 0.28,
       w: 6.0, h: 0.24,
       fontSize: 10,
       fontFace: design.fonts.body,
       bold: true,
       color: colors.p4,
-      charSpacing: 5,
+      charSpacing: 6,
     });
   }
   // Title on dark bg
   slide.addText(plan.title, {
-    x: 0.55, y: 0.58,
-    w: SLIDE_W - 1.10, h: 0.75,
+    x: 0.65, y: 0.58,
+    w: SLIDE_W - 1.30, h: 0.70,
     fontSize: 28,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "middle",
   });
-  addHR(slide, 0.55, 1.38, 1.80, colors.p4, 0.025);
+  addHR(slide, 0.65, 1.35, 1.80, colors.p4, 0.025);
 
   const items = plan.items || [];
-  const contentX = 0.55;
-  const contentW = SLIDE_W - contentX - 0.40;
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
   const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
-  const rows = Math.ceil(items.length / cols);
+  const gridRows = Math.ceil(items.length / cols);
   const gap = 0.14;
   const cardW = (contentW - gap * (cols - 1)) / cols;
   const contentY = 1.65;
   const contentH = SLIDE_H - contentY - 0.30;
-  const cardH = Math.min(1.60, (contentH - gap * (rows - 1)) / rows);
+  const cardH = Math.min(1.80, (contentH - gap * (gridRows - 1)) / gridRows);
 
   for (let i = 0; i < items.length; i++) {
     const col = i % cols;
@@ -3396,16 +3550,17 @@ function renderNumberedTakeaways(
       rectRadius: 0.10,
     });
 
-    // Top accent strip
+    // Thick top accent strip
     slide.addShape("rect" as any, {
-      x, y, w: cardW, h: 0.05,
+      x, y, w: cardW, h: 0.06,
       fill: { color: pal },
+      rectRadius: 0.10,
     });
 
     // Large number
-    slide.addText(String(i + 1), {
-      x: x + 0.14, y: y + 0.12,
-      w: 0.50, h: 0.50,
+    slide.addText(String(i + 1).padStart(2, "0"), {
+      x: x + 0.16, y: y + 0.14,
+      w: 0.80, h: 0.55,
       fontSize: 36,
       fontFace: design.fonts.title,
       bold: true,
@@ -3415,19 +3570,27 @@ function renderNumberedTakeaways(
 
     // Takeaway text
     slide.addText(items[i], {
-      x: x + 0.14, y: y + 0.58,
-      w: cardW - 0.28, h: cardH - 0.68,
+      x: x + 0.16, y: y + 0.68,
+      w: cardW - 0.32, h: cardH - 0.82,
       fontSize: TYPO.TAKEAWAY_BODY,
       fontFace: design.fonts.body,
       color: colors.coverSubtext,
       valign: "top",
       lineSpacingMultiple: 1.28,
     });
+
+    // Decorative dot bottom-right
+    slide.addShape("ellipse" as any, {
+      x: x + cardW - 0.24, y: y + cardH - 0.22,
+      w: 0.08, h: 0.08,
+      fill: { color: pal },
+      transparency: 50,
+    });
   }
 }
 
 // ────────────────────────────────────────────────────────────────
-// CLOSING HERO PREMIUM — Cinematic full-bleed with brand reprisal
+// CLOSING HERO — Cinematic, elegant, with CTA feel
 // ────────────────────────────────────────────────────────────────
 function renderClosingSlide(
   pptx: PptxGenJS,
@@ -3438,31 +3601,39 @@ function renderClosingSlide(
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.coverDark);
 
-  // ── Right accent panel echoing cover ──
-  const panelW = SLIDE_W * 0.35;
-  const panelX = SLIDE_W - panelW;
-  slide.addShape("rect" as any, {
-    x: panelX, y: 0, w: panelW, h: SLIDE_H,
+  // ── Large decorative circle (subtle, top-right) ──
+  slide.addShape("ellipse" as any, {
+    x: SLIDE_W - 4.50, y: -1.50,
+    w: 5.50, h: 5.50,
     fill: { color: colors.p0 },
-    transparency: 15,
-  });
-  // Panel edge strip
-  slide.addShape("rect" as any, {
-    x: panelX - 0.06, y: 0, w: 0.06, h: SLIDE_H,
-    fill: { color: colors.p0 },
+    transparency: 90,
   });
 
   // ── Vertical accent line (left) ──
   slide.addShape("rect" as any, {
-    x: 0.55, y: 0.80, w: 0.045, h: 3.00,
+    x: 0.80, y: 1.00, w: 0.04, h: 3.50,
     fill: { color: colors.p0 },
   });
 
-  // ── "Obrigado!" massive ──
+  // ── Thin design lines ──
+  addHR(slide, 0.80, 1.20, 3.50, colors.p0, 0.012);
+
+  // ── Small palette chips ──
+  for (let b = 0; b < 5; b++) {
+    slide.addShape("rect" as any, {
+      x: 0.30, y: 1.20 + b * 0.25,
+      w: 0.28, h: 0.14,
+      fill: { color: design.palette[b % design.palette.length] },
+      transparency: 30,
+      rectRadius: 0.03,
+    });
+  }
+
+  // ── "Obrigado!" — massive, editorial ──
   slide.addText("Obrigado!", {
-    x: 0.80, y: 1.60,
-    w: panelX - 1.20,
-    h: 2.20,
+    x: 1.20, y: 1.80,
+    w: SLIDE_W * 0.55,
+    h: 2.00,
     fontSize: 72,
     fontFace: design.fonts.title,
     bold: true,
@@ -3470,14 +3641,18 @@ function renderClosingSlide(
     valign: "middle",
   });
 
-  // Accent line
-  addHR(slide, 0.80, 4.10, 3.20, colors.p0, 0.035);
+  // Accent bar
+  slide.addShape("rect" as any, {
+    x: 1.20, y: 4.10,
+    w: 3.00, h: 0.06,
+    fill: { color: colors.p0 },
+  });
 
   // Course title recap
   slide.addText(courseTitle, {
-    x: 0.80, y: 4.30,
-    w: panelX - 1.20,
-    h: 0.65,
+    x: 1.20, y: 4.35,
+    w: SLIDE_W * 0.50,
+    h: 0.60,
     fontSize: 16,
     fontFace: design.fonts.body,
     color: colors.coverSubtext,
@@ -3485,40 +3660,44 @@ function renderClosingSlide(
     lineSpacingMultiple: 1.2,
   });
 
-  // "Conclusão" label
-  slide.addText("CONCLUSÃO DO CURSO", {
-    x: 0.80, y: 5.10,
-    w: 4.0, h: 0.22,
+  // ── CTA area ──
+  slide.addText("CONCLUSÃO", {
+    x: 1.20, y: 5.20,
+    w: 4.0, h: 0.24,
     fontSize: 10,
     fontFace: design.fonts.body,
     bold: true,
     color: colors.p0,
-    charSpacing: 5,
-    transparency: 20,
+    charSpacing: 6,
+    transparency: 25,
   });
 
-  // Brand
-  slide.addText("EduGenAI  ·  Conteúdo gerado com IA", {
-    x: 0.80, y: SLIDE_H - 0.60,
-    w: 5.0, h: 0.28,
-    fontSize: 12,
-    fontFace: design.fonts.body,
-    color: colors.coverSubtext,
-    transparency: 30,
-    charSpacing: 1.5,
-  });
-
-  // Right panel decorative texture
-  for (let r = 0; r < 3; r++) {
+  // ── Bottom decorative elements ──
+  // Small geometric squares (right area)
+  for (let i = 0; i < 3; i++) {
+    const sz = 0.50 + i * 0.25;
     slide.addShape("rect" as any, {
-      x: panelX + 0.40,
-      y: 0.80 + r * 2.00,
-      w: panelW - 0.80, h: 1.50,
-      fill: { color: "FFFFFF" },
-      transparency: 92 + r * 2,
-      rectRadius: 0.06,
+      x: SLIDE_W - 2.20 + i * 0.45,
+      y: SLIDE_H - 2.00 + i * 0.40,
+      w: sz, h: sz,
+      fill: { color: design.palette[i % design.palette.length] },
+      transparency: 85,
+      rectRadius: 0.04,
     });
   }
+
+  // ── Date bottom-right ──
+  const dateStr = new Date().toISOString().slice(0, 10);
+  slide.addText(dateStr, {
+    x: SLIDE_W - 2.50, y: SLIDE_H - 0.55,
+    w: 2.10, h: 0.28,
+    fontSize: 11,
+    fontFace: design.fonts.body,
+    color: colors.coverSubtext,
+    align: "right",
+    charSpacing: 2,
+    transparency: 30,
+  });
 }
 
 // ── Slide dispatcher ──
