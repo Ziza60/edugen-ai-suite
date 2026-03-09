@@ -2211,9 +2211,12 @@ function renderCoverSlide(
   const slide = pptx.addSlide();
 
   if (image) {
-    slide.background = { data: image.base64Data };
-    addImageOverlay(slide, colors.coverDark, 30);
-    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
+    slide.addImage({
+      data: image.base64Data,
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+    } as any);
+    addImageOverlay(slide, colors.coverDark, 15);
+    addImageOverlay(slide, colors.coverDark, 42, 0, 0, SLIDE_W * 0.65, SLIDE_H);
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
