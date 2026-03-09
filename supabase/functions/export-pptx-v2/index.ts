@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "2.6.4-diag-2026-03-09";
+const ENGINE_VERSION = "2.7.0-2026-03-09";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2261,14 +2261,14 @@ function renderCoverSlide(
 
   if (image) {
     try {
-      // DIAGNOSTIC: image as shape, NO overlays, to verify visibility
       slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
-      console.log(`[V2-RENDER] Cover: addImage (no overlay) OK, dataLen=${image.base64Data.length}`);
+      // Dark overlay so text/decorations are readable over the photo
+      addImageOverlay(slide, "000000", 45);
+      console.log(`[V2-RENDER] Cover: addImage + overlay OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
       console.error("[V2-RENDER] Cover addImage FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
     }
-    // NO overlays — diagnostic build to confirm image visibility
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
@@ -2553,11 +2553,12 @@ function renderModuleCover(
         data: image!.base64Data,
         x: imgX, y: 0, w: imgW, h: SLIDE_H,
       });
-      console.log(`[V2-RENDER] Module cover: addImage (no overlay) at x=${imgX}, w=${imgW}, dataLen=${image!.base64Data.length}`);
+      // Semi-transparent overlay for readability
+      addImageOverlay(slide, "000000", 35, imgX, 0, imgW, SLIDE_H);
+      console.log(`[V2-RENDER] Module cover: addImage + overlay at x=${imgX}, w=${imgW}, dataLen=${image!.base64Data.length}`);
     } catch (imgErr: any) {
       console.error(`[V2-RENDER] Module cover: addImage FAILED:`, imgErr.message);
     }
-    // NO overlays — diagnostic build
     slide.addShape("rect" as any, {
       x: imgX, y: 0, w: 0.04, h: SLIDE_H,
       fill: { color: accentColor },
@@ -4177,12 +4178,13 @@ function renderClosingSlide(
   if (image) {
     try {
       slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
-      console.log(`[V2-RENDER] Closing: addImage (no overlay) OK, dataLen=${image.base64Data.length}`);
+      // Dark overlay so text/decorations are readable over the photo
+      addImageOverlay(slide, "000000", 45);
+      console.log(`[V2-RENDER] Closing: addImage + overlay OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
       console.error("[V2-RENDER] Closing addImage FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
     }
-    // NO overlays — diagnostic build
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
