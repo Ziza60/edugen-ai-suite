@@ -2231,17 +2231,14 @@ function renderCoverSlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
+  addSlideBackground(slide, colors.coverDark);
   if (image) {
-    console.log(`[V2-RENDER] Cover slide: embedding image, base64Data starts with "${image.base64Data.substring(0, 30)}...", length=${image.base64Data.length}`);
-    addSlideBackground(slide, colors.coverDark);
     slide.addImage({
       data: image.base64Data,
       x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
     } as any);
     addImageOverlay(slide, colors.coverDark, 30);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
-  } else {
-    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, SLIDE_W * 0.50, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
@@ -2501,11 +2498,9 @@ function renderModuleCover(
   const hasImage = !!image;
   const contentW = hasImage ? SLIDE_W * 0.62 : SLIDE_W;
 
-  // Always set dark background first (left panel needs it even when image covers right panel)
   addSlideBackground(slide, colors.coverDark);
 
   if (hasImage) {
-    console.log(`[V2-RENDER] Module ${modNum} cover: embedding image, base64Data starts with "${image!.base64Data.substring(0, 40)}...", length=${image!.base64Data.length}`);
     const imgX = contentW;
     const imgW = SLIDE_W - contentW;
     slide.addImage({
@@ -2715,15 +2710,17 @@ function renderBullets(
         w: 0.045, h: rItemH - 0.16,
         fill: { color: pal },
       });
+      const aFontSize = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : items.length >= 4 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
       slide.addText(items[i], {
         x: rightX + 0.18, y: yPos,
         w: rightW - 0.18, h: rItemH,
-        fontSize: TYPO.BULLET_TEXT,
+        fontSize: aFontSize,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "middle",
-        lineSpacingMultiple: 1.22,
-      });
+        lineSpacingMultiple: 1.18,
+        autoFit: true,
+      } as any);
       if (i < items.length - 1) {
         addHR(slide, rightX + 0.18, yPos + rItemH + rBulletGap / 2 - 0.003, rightW - 0.18, colors.divider, 0.005);
       }
@@ -2753,7 +2750,8 @@ function renderBullets(
         fill: { color: pal },
         rectRadius: 0.08,
       });
-      const badgeSize = 0.36;
+      const badgeSize = Math.min(0.34, itemH - 0.14);
+      const badgeFontSize = badgeSize >= 0.30 ? 13 : 10;
       slide.addShape("roundRect" as any, {
         x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize,
@@ -2763,22 +2761,24 @@ function renderBullets(
       slide.addText(String(i + 1), {
         x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize,
-        fontSize: 13,
+        fontSize: badgeFontSize,
         fontFace: design.fonts.title,
         bold: true,
         color: "FFFFFF",
         align: "center",
         valign: "middle",
       });
+      const textFontSize = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1;
       slide.addText(items[i], {
-        x: contentX + 0.68, y: yPos + 0.03,
-        w: contentW - 0.78, h: itemH - 0.10,
-        fontSize: TYPO.BULLET_TEXT,
+        x: contentX + 0.18 + badgeSize + 0.14, y: yPos + 0.03,
+        w: contentW - badgeSize - 0.42, h: itemH - 0.10,
+        fontSize: textFontSize,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "middle",
         lineSpacingMultiple: 1.18,
-      });
+        autoFit: true,
+      } as any);
     }
 
   } else if (variant === 2) {
@@ -2812,10 +2812,11 @@ function renderBullets(
         fill: { color: pal },
         rectRadius: 0.10,
       });
+      const numW = Math.min(0.55, cardW * 0.25);
       slide.addText(String(i + 1).padStart(2, "0"), {
-        x: x + cardW - 0.75, y: y + 0.08,
-        w: 0.65, h: 0.40,
-        fontSize: 26,
+        x: x + cardW - numW - 0.10, y: y + 0.08,
+        w: numW, h: 0.36,
+        fontSize: Math.min(22, cardW > 3 ? 26 : 20),
         fontFace: design.fonts.title,
         bold: true,
         color: pal,
@@ -2824,7 +2825,7 @@ function renderBullets(
       });
       slide.addText(items[i], {
         x: x + 0.18, y: y + 0.12,
-        w: cardW - 0.95, h: cardH - 0.24,
+        w: cardW - numW - 0.36, h: cardH - 0.24,
         fontSize: TYPO.BULLET_TEXT - 1,
         fontFace: design.fonts.body,
         color: colors.text,
@@ -2864,7 +2865,8 @@ function renderBullets(
         valign: "middle",
         lineSpacingMultiple: 1.30,
         italic: true,
-      });
+        autoFit: true,
+      } as any);
 
       // Remaining items as compact numbered list
       if (items.length > 1) {
@@ -2883,7 +2885,7 @@ function renderBullets(
           slide.addText(items[i], {
             x: contentX + 0.22, y: yPos,
             w: contentW - 0.22, h: restItemH,
-            fontSize: TYPO.BULLET_TEXT - 1,
+            fontSize: items.length >= 5 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1,
             fontFace: design.fonts.body,
             color: colors.text,
             valign: "middle",
@@ -3146,23 +3148,24 @@ function renderGridCards(
     if (colonIdx > 0 && colonIdx < 40) {
       const label = items[i].substring(0, colonIdx).trim();
       const desc = items[i].substring(colonIdx + 1).trim();
+      const gcBadge = Math.min(0.38, cardW * 0.18, cardH * 0.22);
       slide.addShape("roundRect" as any, {
         x: x + 0.12, y: y + 0.18,
-        w: 0.42, h: 0.42,
+        w: gcBadge, h: gcBadge,
         fill: { color: pal },
         rectRadius: 0.08,
       });
       slide.addText(String(i + 1), {
         x: x + 0.12, y: y + 0.18,
-        w: 0.42, h: 0.42,
-        fontSize: 16,
+        w: gcBadge, h: gcBadge,
+        fontSize: Math.min(14, gcBadge * 36),
         fontFace: design.fonts.title,
         bold: true, color: "FFFFFF",
         align: "center", valign: "middle",
       });
       slide.addText(label, {
-        x: x + 0.64, y: y + 0.14,
-        w: cardW - 0.78, h: 0.50,
+        x: x + 0.12 + gcBadge + 0.10, y: y + 0.14,
+        w: cardW - gcBadge - 0.36, h: 0.50,
         fontSize: TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
         bold: true, color: pal,
@@ -3177,12 +3180,14 @@ function renderGridCards(
         color: colors.text,
         valign: "top",
         lineSpacingMultiple: 1.25,
-      });
+        autoFit: true,
+      } as any);
     } else {
+      const gcNumW = Math.min(0.50, cardW * 0.25);
       slide.addText(String(i + 1).padStart(2, "0"), {
-        x: x + cardW - 0.65, y: y + 0.10,
-        w: 0.55, h: 0.40,
-        fontSize: 24,
+        x: x + cardW - gcNumW - 0.08, y: y + 0.10,
+        w: gcNumW, h: 0.36,
+        fontSize: Math.min(22, cardW > 2.5 ? 24 : 18),
         fontFace: design.fonts.title,
         bold: true,
         color: pal,
@@ -3191,13 +3196,14 @@ function renderGridCards(
       });
       slide.addText(items[i], {
         x: x + 0.14, y: y + 0.16,
-        w: cardW - 0.84, h: cardH - 0.30,
+        w: cardW - gcNumW - 0.30, h: cardH - 0.30,
         fontSize: TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
         lineSpacingMultiple: 1.25,
-      });
+        autoFit: true,
+      } as any);
     }
   }
   addFooter(slide, colors, design.fonts.body);
@@ -3729,10 +3735,11 @@ function renderWarningCallout(
   const contentX = 0.65;
   const contentW = SLIDE_W - contentX - 0.50;
   const contentY = 1.68;
-  const bulletGap = 0.12;
-  const contentH = SLIDE_H - contentY - 0.50;
+  const bulletGap = 0.14;
+  const contentH = SLIDE_H - contentY - 0.55;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
-  const itemH = Math.max(0.60, Math.min(1.10, rawItemH));
+  const itemH = Math.max(0.65, Math.min(1.20, rawItemH));
+  const bodyFontSize = items.length >= 4 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1;
 
   for (let i = 0; i < items.length; i++) {
     const y = contentY + i * (itemH + bulletGap);
@@ -3753,36 +3760,39 @@ function renderWarningCallout(
     const itemLabel = hasLabel ? items[i].substring(0, colonIdx).trim() : "";
     const itemDesc = hasLabel ? items[i].substring(colonIdx + 1).trim() : items[i];
 
-    if (hasLabel) {
+    if (hasLabel && itemH >= 0.80) {
       slide.addText(itemLabel.toUpperCase(), {
         x: contentX + 0.22, y: y + 0.06,
         w: contentW - 0.30, h: 0.22,
         fontSize: 8,
         fontFace: design.fonts.title,
         bold: true,
-        color: "E74C3C",
+        color: "C0392B",
         charSpacing: 2,
         valign: "middle",
       });
       slide.addText(itemDesc, {
-        x: contentX + 0.22, y: y + 0.26,
-        w: contentW - 0.30, h: itemH - 0.34,
-        fontSize: TYPO.BULLET_TEXT,
+        x: contentX + 0.22, y: y + 0.28,
+        w: contentW - 0.34, h: itemH - 0.38,
+        fontSize: bodyFontSize,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.22,
-      });
+        lineSpacingMultiple: 1.18,
+        autoFit: true,
+      } as any);
     } else {
-      slide.addText(items[i], {
-        x: contentX + 0.22, y: y + 0.03,
-        w: contentW - 0.30, h: itemH - 0.10,
-        fontSize: TYPO.BULLET_TEXT,
+      const displayText = hasLabel ? `${itemLabel}: ${itemDesc}` : items[i];
+      slide.addText(displayText, {
+        x: contentX + 0.22, y: y + 0.04,
+        w: contentW - 0.34, h: itemH - 0.12,
+        fontSize: bodyFontSize,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "middle",
-        lineSpacingMultiple: 1.22,
-      });
+        lineSpacingMultiple: 1.18,
+        autoFit: true,
+      } as any);
     }
   }
   addFooter(slide, colors, design.fonts.body);
@@ -4074,16 +4084,17 @@ function renderNumberedTakeaways(
       rectRadius: 0.12,
     });
 
+    const tkBadge = Math.min(0.38, cardH * 0.28, cardW * 0.22);
     slide.addShape("roundRect" as any, {
-      x: x + 0.16, y: y + 0.16,
-      w: 0.42, h: 0.42,
+      x: x + 0.14, y: y + 0.14,
+      w: tkBadge, h: tkBadge,
       fill: { color: pal },
       rectRadius: 0.08,
     });
     slide.addText(String(i + 1), {
-      x: x + 0.16, y: y + 0.16,
-      w: 0.42, h: 0.42,
-      fontSize: 18,
+      x: x + 0.14, y: y + 0.14,
+      w: tkBadge, h: tkBadge,
+      fontSize: Math.min(16, tkBadge * 40),
       fontFace: design.fonts.title,
       bold: true,
       color: "FFFFFF",
@@ -4091,15 +4102,17 @@ function renderNumberedTakeaways(
       valign: "middle",
     });
 
+    const tkTextY = y + 0.14 + tkBadge + 0.10;
     slide.addText(items[i], {
-      x: x + 0.16, y: y + 0.68,
-      w: cardW - 0.32, h: cardH - 0.82,
+      x: x + 0.14, y: tkTextY,
+      w: cardW - 0.28, h: cardH - (tkTextY - y) - 0.10,
       fontSize: TYPO.TAKEAWAY_BODY,
       fontFace: design.fonts.body,
       color: colors.coverSubtext,
       valign: "top",
-      lineSpacingMultiple: 1.30,
-    });
+      lineSpacingMultiple: 1.25,
+      autoFit: true,
+    } as any);
   }
 }
 
@@ -4115,17 +4128,14 @@ function renderClosingSlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
+  addSlideBackground(slide, colors.coverDark);
   if (image) {
-    console.log(`[V2-RENDER] Closing slide: embedding image, base64Data starts with "${image.base64Data.substring(0, 30)}...", length=${image.base64Data.length}`);
-    addSlideBackground(slide, colors.coverDark);
     slide.addImage({
       data: image.base64Data,
       x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
     } as any);
     addImageOverlay(slide, colors.coverDark, 25);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
-  } else {
-    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
@@ -4401,17 +4411,18 @@ async function runPipeline(
       const isContinuation = next.continuationOf === baseTitle ||
         /\(Parte\s+\d+\)/i.test(next.title) ||
         /\(Parte\s+\d+\)/i.test(curr.title);
-      if (
-        sameSection &&
-        isContinuation &&
+      const canMerge = sameSection && isContinuation &&
         combinedItems <= design.density.maxItemsPerSlide &&
         combinedChars < 800 &&
         currChars < 400 &&
-        nextChars < 400
-      ) {
+        nextChars < 400;
+      const isVeryThin = currItems.length <= 2 && nextItems.length <= 2 &&
+        sameSection && (isContinuation || curr.layout === next.layout) &&
+        combinedItems <= design.density.maxItemsPerSlide;
+      if (canMerge || isVeryThin) {
         curr.items = [...currItems, ...nextItems];
         curr.title = stripPartSuffix(curr.title);
-        report.warnings.push(`[MERGE] Merged sparse continuation: "${next.title}" into "${curr.title}"`);
+        report.warnings.push(`[MERGE] Merged sparse slides: "${next.title}" into "${curr.title}"`);
         modulePlans.splice(i + 1, 1);
       }
     }
