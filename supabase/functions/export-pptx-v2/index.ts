@@ -4421,6 +4421,10 @@ async function runPipeline(
     const moduleImage = imagePlan.modules.get(moduleIdx) || null;
     for (const plan of modulePlans) {
       const img = plan.layout === "module_cover" ? moduleImage : null;
+      if (plan.layout === "module_cover") {
+        console.log(`[V2-IMAGE] Render module cover ${moduleIdx + 1}: ${img ? "with image" : "without image"}`);
+        if (img) imageAudit.rendered.moduleCovers++;
+      }
       renderSlide(pptx, plan, design, img);
       report.totalSlides++;
     }
@@ -4428,13 +4432,18 @@ async function runPipeline(
   }
 
   renderClosingSlide(pptx, courseTitle, design, imagePlan.closing);
+  imageAudit.rendered.closing = !!imagePlan.closing;
   report.totalSlides += 3;
+
+  console.log(
+    `[V2-IMAGE] Render audit: requested=${imageAudit.requested}, planned cover=${imageAudit.planned.cover}, modules=${imageAudit.planned.moduleCount}/${imageAudit.totalModules}, closing=${imageAudit.planned.closing}, rendered module covers=${imageAudit.rendered.moduleCovers}`,
+  );
 
   console.log(
     `[V2-PIPELINE] Complete: ${report.totalModules} modules, ${report.totalBlocks} blocks, ${report.totalSections} sections, ${report.totalSlides} slides`,
   );
 
-  return { pptx, report };
+  return { pptx, report, imageAudit };
 }
 
 // ═══════════════════════════════════════════════════════════════════
