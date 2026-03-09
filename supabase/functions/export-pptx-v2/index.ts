@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import PptxGenJS from "https://esm.sh/pptxgenjs@3.12.0";
+import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -413,7 +413,7 @@ async function fetchUnsplashImage(
     const buf = await imgRes.arrayBuffer();
     const base64 = arrayBufferToBase64(buf);
 
-    console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name}`);
+    console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name}, base64Length=${base64.length}, starts="${base64.substring(0, 20)}"`);
 
     return {
       base64Data: `data:image/jpeg;base64,${base64}`,
@@ -4341,10 +4341,13 @@ async function runPipeline(
     closingImageFetched: !!imagePlan.closing,
     moduleImagesFetched: imagePlan.modules.size,
     moduleImagesTotal: modules.length,
+    coverBase64Length: imagePlan.cover?.base64Data?.length ?? 0,
+    coverBase64Start: imagePlan.cover?.base64Data?.substring(0, 50) ?? "N/A",
+    pptxgenImport: "npm:pptxgenjs@3.12.0",
     errors: [],
-  };
-  if (!unsplashKey) report.imageDiagnostics.errors.push("UNSPLASH_ACCESS_KEY not set in Supabase secrets");
-  if (!design.includeImages) report.imageDiagnostics.errors.push("includeImages is false — images disabled by user");
+  } as any;
+  if (!unsplashKey) report.imageDiagnostics!.errors.push("UNSPLASH_ACCESS_KEY not set in Supabase secrets");
+  if (!design.includeImages) report.imageDiagnostics!.errors.push("includeImages is false — images disabled by user");
   console.log(`[V2-IMAGE-DIAG]`, JSON.stringify(report.imageDiagnostics));
 
   renderCoverSlide(pptx, courseTitle, design, imagePlan.cover);
