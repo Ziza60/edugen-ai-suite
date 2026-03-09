@@ -4218,14 +4218,16 @@ function renderClosingSlide(
 
   addHR(slide, 1.20, 1.30, 3.00, colors.p0, 0.015);
 
-  for (let b = 0; b < 5; b++) {
-    slide.addShape("roundRect" as any, {
-      x: 0.28, y: 1.10 + b * 0.28,
-      w: 0.30, h: 0.16,
-      fill: { color: design.palette[b % design.palette.length] },
-      transparency: 20,
-      rectRadius: 0.04,
-    });
+  if (!image) {
+    for (let b = 0; b < 5; b++) {
+      slide.addShape("roundRect" as any, {
+        x: 0.28, y: 1.10 + b * 0.28,
+        w: 0.30, h: 0.16,
+        fill: { color: design.palette[b % design.palette.length] },
+        transparency: 20,
+        rectRadius: 0.04,
+      });
+    }
   }
 
   slide.addText("Obrigado!", {
