@@ -1221,12 +1221,12 @@ function distributeModuleToSlides(
         i++;
       }
 
-      // PHASE 3: Cap process density based on source structure.
-      // Single paragraph source → max 3 (strong compaction)
-      // Few original items (2-3) → max 4 (balanced)
-      // Many original items (4+) → max 5 (preserve detail but avoid overload)
-      const maxProcessItems = rawItems.length <= 1 ? 3 : rawItems.length <= 3 ? 4 : 5;
-      const compacted = mergeAdjacentShortest(phase2, maxProcessItems);
+      // PHASE 3: Keep 4-5 items for a real process feel — never over-compact.
+      // Fewer than 4 items loses the "process/flow" visual identity.
+      const maxProcessItems = rawItems.length <= 1 ? 4 : 5;
+      const compacted = phase2.length > maxProcessItems
+        ? mergeAdjacentShortest(phase2, maxProcessItems)
+        : phase2;
 
       validItems = compacted;
     // FORCE process_timeline for ALL process sections — never fallback to bullets
@@ -1685,27 +1685,12 @@ function visuallyFitsPlan(plan: SlidePlan): boolean {
     }
 
     case "process_timeline": {
-      const stepW = SAFE_W / Math.max(items.length, 1);
-      return items.every((item) => {
-        const colonIdx = item.indexOf(":");
-        let label: string;
-        let desc: string;
-        if (colonIdx > 0 && colonIdx < 40) {
-          label = item.substring(0, colonIdx).trim();
-          desc = item.substring(colonIdx + 1).trim();
-        } else if (item.length <= 50) {
-          label = item;
-          desc = "";
-        } else {
-          const words = item.split(/\s+/);
-          label = words.slice(0, 4).join(" ");
-          desc = words.slice(4).join(" ");
-        }
-
-        const labelOk = fitsTextBox(label, TYPO.CARD_TITLE, stepW - 0.10, 0.35, 1.1);
-        const descOk = !desc || fitsTextBox(desc, TYPO.CARD_BODY, stepW - 0.10, 1.80, 1.2);
-        return labelOk && descOk;
-      });
+      // Vertical timeline handles up to 7 items; horizontal up to 4.
+      // Always accept — the renderer adapts layout dynamically.
+      if (items.length <= 7) return true;
+      // For 8+ items, check if text fits in compact vertical cards
+      const stepH = Math.min(0.70, (SLIDE_H - 1.65 - 0.38) / items.length);
+      return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT - 1, SAFE_W - 1.20, stepH - 0.06, 1.15));
     }
 
     case "example_highlight": {
@@ -1774,19 +1759,29 @@ function enforceVisualRenderingGuards(
         continue;
       }
 
-      // Process slides: compact before splitting to avoid 1-item continuation chains.
+      // Process slides: NEVER fragment process_timeline into tiny splits.
+      // Force vertical timeline which handles up to 7 items natively.
       if (
-        current.layout === "bullets" &&
-        /COMO\s+FUNCIONA/i.test(current.sectionLabel || "") &&
-        currentItems.length > 3
+        current.layout === "process_timeline" &&
+        currentItems.length <= 7
       ) {
-        const compacted = mergeAdjacentShortest(currentItems, 3);
-        if (compacted.length < currentItems.length) {
-          report.redistributions++;
-          report.warnings.push(`[VISUAL] Compacted process bullets before split: "${baseTitle}"`);
-          queue.unshift({ ...current, items: compacted });
-          continue;
-        }
+        // Always fits vertical timeline — push directly
+        fitted.push(current);
+        continue;
+      }
+      if (
+        current.layout === "process_timeline" &&
+        currentItems.length > 7
+      ) {
+        // Split into two balanced halves, both as process_timeline
+        const mid = Math.ceil(currentItems.length / 2);
+        report.redistributions++;
+        report.warnings.push(`[VISUAL] Split large process into 2 timeline slides: "${baseTitle}"`);
+        queue.unshift(
+          { ...current, items: currentItems.slice(mid), title: `${baseTitle} (cont.)` },
+          { ...current, items: currentItems.slice(0, mid) },
+        );
+        continue;
       }
 
       if (currentItems.length > 1) {
@@ -2781,16 +2776,17 @@ function renderProcessTimeline(
     }
   } else {
     // ── VERTICAL TIMELINE with node-connector system ──
+    // Handles 5-7 items with compact but cohesive process feel
     addSlideBackground(slide, colors.bg);
     addLeftEdge(slide, colors.p2);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
 
-    const contentY = 1.65;
-    const stepGap = 0.10;
-    const contentH = SLIDE_H - contentY - 0.38;
-    const stepH = Math.min(0.85, (contentH - stepGap * (items.length - 1)) / items.length);
-    const nodeSize = 0.30;
+    const contentY = 1.55;
+    const contentH = SLIDE_H - contentY - 0.32;
+    const stepGap = items.length <= 5 ? 0.06 : 0.03;
+    const stepH = (contentH - stepGap * (items.length - 1)) / items.length;
+    const nodeSize = items.length <= 5 ? 0.28 : 0.24;
     const nodeX = contentX + 0.10;
 
     // Vertical connector line
@@ -2814,30 +2810,73 @@ function renderProcessTimeline(
       slide.addText(String(i + 1), {
         x: nodeX, y: y + stepH / 2 - nodeSize / 2,
         w: nodeSize, h: nodeSize,
-        fontSize: 12,
+        fontSize: items.length <= 5 ? 12 : 10,
         fontFace: design.fonts.title,
         bold: true, color: "FFFFFF",
         align: "center", valign: "middle",
       });
 
-      // Content card
-      const cardX = nodeX + nodeSize + 0.18;
+      // Content card with left accent
+      const cardX = nodeX + nodeSize + 0.16;
       const cardW = contentW - (cardX - contentX);
+      const accentW = 0.05;
+
+      // Accent bar
+      slide.addShape("rect" as any, {
+        x: cardX, y, w: accentW, h: stepH - 0.02,
+        fill: { color: pal },
+      });
+
+      // Card body
       slide.addShape("roundRect" as any, {
-        x: cardX, y, w: cardW, h: stepH - 0.04,
+        x: cardX + accentW, y, w: cardW - accentW, h: stepH - 0.02,
         fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
-        rectRadius: 0.05,
-        line: { color: pal, width: 0.6 },
+        rectRadius: 0.04,
       });
-      slide.addText(items[i], {
-        x: cardX + 0.14, y,
-        w: cardW - 0.22, h: stepH - 0.04,
-        fontSize: TYPO.BULLET_TEXT - 1,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "middle",
-        lineSpacingMultiple: 1.15,
-      });
+
+      // Parse label:desc
+      const colonIdx = items[i].indexOf(":");
+      let label: string, desc: string;
+      if (colonIdx > 0 && colonIdx < 40) {
+        label = items[i].substring(0, colonIdx).trim();
+        desc = items[i].substring(colonIdx + 1).trim();
+      } else {
+        label = ""; desc = items[i];
+      }
+
+      const textX = cardX + accentW + 0.12;
+      const textW = cardW - accentW - 0.22;
+      const fontSize = items.length <= 5 ? TYPO.BULLET_TEXT : TYPO.BULLET_TEXT - 1;
+
+      if (label) {
+        slide.addText(label, {
+          x: textX, y: y + 0.02,
+          w: textW, h: stepH * 0.38,
+          fontSize: fontSize,
+          fontFace: design.fonts.title,
+          bold: true, color: pal,
+          valign: "bottom",
+        });
+        slide.addText(desc, {
+          x: textX, y: y + stepH * 0.38,
+          w: textW, h: stepH * 0.58,
+          fontSize: fontSize - 1,
+          fontFace: design.fonts.body,
+          color: colors.text,
+          valign: "top",
+          lineSpacingMultiple: 1.10,
+        });
+      } else {
+        slide.addText(desc, {
+          x: textX, y,
+          w: textW, h: stepH - 0.02,
+          fontSize: fontSize,
+          fontFace: design.fonts.body,
+          color: colors.text,
+          valign: "middle",
+          lineSpacingMultiple: 1.12,
+        });
+      }
     }
   }
   addFooter(slide, colors, design.fonts.body);
