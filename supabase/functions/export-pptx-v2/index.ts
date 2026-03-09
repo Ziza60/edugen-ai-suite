@@ -4186,7 +4186,7 @@ function renderClosingSlide(
     try {
       slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
       // Dark overlay so text/decorations are readable over the photo
-      addImageOverlay(slide, "000000", 45);
+      addImageOverlay(slide, "000000", 65);
       console.log(`[V2-RENDER] Closing: addImage + overlay OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
       console.error("[V2-RENDER] Closing addImage FAILED:", err.message);
