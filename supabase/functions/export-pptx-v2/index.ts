@@ -4682,7 +4682,7 @@ async function runPipeline(
   courseTitle: string,
   modules: { title: string; content: string }[],
   design: DesignConfig,
-): Promise<{ pptx: PptxGenJS; report: PipelineReport }> {
+): Promise<{ pptx: PptxGenJS; report: PipelineReport; imageAudit: ImageRenderAudit }> {
   const report: PipelineReport = {
     totalModules: modules.length,
     totalBlocks: 0,
@@ -4703,6 +4703,20 @@ async function runPipeline(
   _globalFooterBrand = design.footerBrand;
 
   const imagePlan = await buildImagePlan(courseTitle, modules, design.includeImages);
+  const imageAudit: ImageRenderAudit = {
+    requested: design.includeImages,
+    planned: {
+      cover: !!imagePlan.cover,
+      moduleCount: imagePlan.modules.size,
+      closing: !!imagePlan.closing,
+    },
+    rendered: {
+      cover: false,
+      moduleCovers: 0,
+      closing: false,
+    },
+    totalModules: modules.length,
+  };
 
   const unsplashKey = Deno.env.get("UNSPLASH_ACCESS_KEY") || "";
   report.imageDiagnostics = {
@@ -4727,6 +4741,7 @@ async function runPipeline(
   console.log(`[V2-IMAGE-DIAG]`, JSON.stringify(report.imageDiagnostics));
 
   renderCoverSlide(pptx, courseTitle, design, imagePlan.cover);
+  imageAudit.rendered.cover = !!imagePlan.cover;
 
   const allModuleSlidePlans: SlidePlan[][] = [];
 
