@@ -2558,8 +2558,7 @@ function renderModuleCover(
         data: image!.base64Data,
         x: imgX, y: 0, w: imgW, h: SLIDE_H,
       });
-      // Semi-transparent overlay for readability
-      addImageOverlay(slide, "000000", 55, imgX, 0, imgW, SLIDE_H);
+      console.log(`[V2-RENDER] Module cover: addImage at x=${imgX}, w=${imgW}, dataLen=${image!.base64Data.length}`);
       console.log(`[V2-RENDER] Module cover: addImage + overlay at x=${imgX}, w=${imgW}, dataLen=${image!.base64Data.length}`);
     } catch (imgErr: any) {
       console.error(`[V2-RENDER] Module cover: addImage FAILED:`, imgErr.message);
