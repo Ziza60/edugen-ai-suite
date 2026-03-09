@@ -118,78 +118,84 @@ const SAFE_H = SLIDE_H - 1.0;
 
 const THEMES = {
   light: {
-    bg: "FFFFFF",
-    bgAlt: "F8F9FA",
-    bgAccent: "F0EDFA",
-    text: "2C3E50",
-    textSecondary: "7F8C8D",
+    bg: "FAFBFC",
+    bgAlt: "F0F2F5",
+    bgAccent: "E8EDF3",
+    text: "1A2332",
+    textSecondary: "6B7A8D",
     accent: "E67E22",
-    accentMuted: "F5E6D3",
-    borders: "E0E4E8",
+    accentMuted: "FDF2E9",
+    borders: "D8DDE4",
     cardBg: "FFFFFF",
-    cardBgAlt: "F6F7F9",
-    tableHeaderBg: "34495E",
+    cardBgAlt: "F4F6FA",
+    tableHeaderBg: "1A2332",
     tableRowOdd: "FFFFFF",
-    tableRowEven: "F4F6F8",
+    tableRowEven: "F4F6FA",
     insightBg: "FEF9F3",
-    reflectionBg: "EFF6FB",
-    coverBg: "2C3E50",
+    reflectionBg: "EEF3FA",
+    coverBg: "060C14",
     coverText: "FFFFFF",
-    coverSubtext: "BDC3C7",
-    divider: "E8EAED",
+    coverSubtext: "8FA3BC",
+    divider: "D8DDE4",
+    coverDark: "060C14",
+    panelDark: "0D1625",
+    panelMid: "132035",
   },
   dark: {
-    bg: "1E2A38",
-    bgAlt: "253545",
-    bgAccent: "2D3A4A",
-    text: "ECF0F1",
-    textSecondary: "BDC3C7",
+    bg: "0F1923",
+    bgAlt: "182435",
+    bgAccent: "1E2F44",
+    text: "E8EDF5",
+    textSecondary: "8FA3BC",
     accent: "E67E22",
-    accentMuted: "3D3020",
-    borders: "3D4F63",
-    cardBg: "253545",
-    cardBgAlt: "2D3E50",
-    tableHeaderBg: "1A252F",
-    tableRowOdd: "253545",
-    tableRowEven: "2D3E50",
-    insightBg: "3D2E1A",
-    reflectionBg: "1A2E3D",
-    coverBg: "0F1923",
+    accentMuted: "2A1F0F",
+    borders: "253547",
+    cardBg: "182435",
+    cardBgAlt: "1E2F44",
+    tableHeaderBg: "0A1020",
+    tableRowOdd: "182435",
+    tableRowEven: "1E2F44",
+    insightBg: "2A1F0F",
+    reflectionBg: "0F1E32",
+    coverBg: "060C14",
     coverText: "FFFFFF",
-    coverSubtext: "95A5A6",
-    divider: "3D4F63",
+    coverSubtext: "8FA3BC",
+    divider: "253547",
+    coverDark: "060C14",
+    panelDark: "0D1625",
+    panelMid: "132035",
   },
 };
 
 const PALETTES: Record<string, string[]> = {
-  default: ["9B59B6", "3498DB", "27AE60", "F39C12", "1ABC9C"],
-  ocean: ["2980B9", "3498DB", "1ABC9C", "16A085", "2C3E50"],
-  forest: ["27AE60", "2ECC71", "1ABC9C", "16A085", "2C3E50"],
-  sunset: ["E74C3C", "E67E22", "F39C12", "D35400", "C0392B"],
-  monochrome: ["2C3E50", "34495E", "7F8C8D", "95A5A6", "BDC3C7"],
+  default: ["7C3AED", "2563EB", "059669", "D97706", "0891B2"],
+  ocean: ["0369A1", "0284C7", "0891B2", "0D9488", "1D4ED8"],
+  forest: ["15803D", "16A34A", "0D9488", "047857", "166534"],
+  sunset: ["DC2626", "EA580C", "D97706", "B91C1C", "C2410C"],
+  monochrome: ["1E293B", "334155", "475569", "64748B", "94A3B8"],
 };
 
 const TYPO = {
-  COVER_TITLE: 44,
-  MODULE_NUMBER: 72,
-  MODULE_TITLE: 36,
-  SECTION_TITLE: 30,
-  SUBTITLE: 22,
-  BODY: 18,
-  BODY_LARGE: 20,
-  SUPPORT: 14,
-  LABEL: 13,
-  TABLE_HEADER: 14,
-  TABLE_CELL: 13,
-  CARD_TITLE: 16,
-  CARD_BODY: 14,
-  BULLET_TEXT: 17,
-  TAKEAWAY_NUM: 32,
-  TAKEAWAY_BODY: 15,
-  FOOTER: 14,
-  TOC_NUMBER: 36,
-  TOC_TITLE: 18,
-  TOC_DESC: 13,
+  COVER_TITLE: 48,
+  MODULE_NUMBER: 120,
+  MODULE_TITLE: 34,
+  SECTION_TITLE: 28,
+  SUBTITLE: 20,
+  BODY: 17,
+  BODY_LARGE: 19,
+  SUPPORT: 13,
+  LABEL: 11,
+  TABLE_HEADER: 13,
+  TABLE_CELL: 12,
+  CARD_TITLE: 15,
+  CARD_BODY: 13,
+  BULLET_TEXT: 16,
+  TAKEAWAY_NUM: 52,
+  TAKEAWAY_BODY: 14,
+  FOOTER: 11,
+  TOC_NUMBER: 42,
+  TOC_TITLE: 17,
+  TOC_DESC: 12,
 };
 
 function buildDesignConfig(
@@ -229,6 +235,9 @@ function getColors(design: DesignConfig) {
     coverText: t.coverText,
     coverSubtext: t.coverSubtext,
     divider: t.divider,
+    coverDark: t.coverDark,
+    panelDark: t.panelDark,
+    panelMid: t.panelMid,
     p0: p[0],
     p1: p[1],
     p2: p[2],
@@ -1453,6 +1462,31 @@ function addSlideBackground(
   slide.background = { fill: color };
 }
 
+// ── Premium left accent bar (full-height, 0.18" wide) ──
+function addLeftAccentBar(
+  slide: ReturnType<PptxGenJS["addSlide"]>,
+  accentColor: string,
+  secondColor?: string,
+) {
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: 0,
+    w: 0.18,
+    h: SLIDE_H,
+    fill: { color: accentColor },
+  });
+  if (secondColor) {
+    slide.addShape("rect" as any, {
+      x: 0.18,
+      y: 0,
+      w: 0.055,
+      h: SLIDE_H,
+      fill: { color: secondColor },
+    });
+  }
+}
+
+// ── Thin top accent bar (4px) ──
 function addTopAccentBar(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   accentColor: string,
@@ -1461,68 +1495,73 @@ function addTopAccentBar(
     x: 0,
     y: 0,
     w: SLIDE_W,
-    h: 0.08,
+    h: 0.055,
     fill: { color: accentColor },
   });
 }
 
+// ── Premium pill badge label ──
 function addSectionLabel(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   label: string,
   accentColor: string,
   fontBody: string,
 ) {
-  slide.addShape("rect" as any, {
-    x: MARGIN,
-    y: 0.40,
-    w: 2.0,
-    h: 0.32,
+  const textW = Math.max(1.6, label.length * 0.085 + 0.4);
+  slide.addShape("roundRect" as any, {
+    x: 0.36,
+    y: 0.22,
+    w: textW,
+    h: 0.28,
     fill: { color: accentColor },
-    rectRadius: 0.06,
+    rectRadius: 0.14,
   });
   slide.addText(label.toUpperCase(), {
-    x: MARGIN,
-    y: 0.40,
-    w: 2.0,
-    h: 0.32,
+    x: 0.36,
+    y: 0.22,
+    w: textW,
+    h: 0.28,
     fontSize: TYPO.LABEL,
     fontFace: fontBody,
     bold: true,
     color: "FFFFFF",
     align: "center",
     valign: "middle",
-    letterSpacing: 1.5,
+    charSpacing: 2.5,
   });
 }
 
+// ── Slide title with left accent rule ──
 function addSlideTitle(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   title: string,
   colors: ReturnType<typeof getColors>,
   fontTitle: string,
+  accentColor?: string,
 ) {
-  // Decorative line under title
+  const accent = accentColor || colors.p0;
+  // Strong left rule
   slide.addShape("rect" as any, {
-    x: MARGIN,
-    y: 1.42,
-    w: 1.6,
-    h: 0.04,
-    fill: { color: colors.accent },
-    rectRadius: 0.02,
+    x: 0.36,
+    y: 0.60,
+    w: 0.055,
+    h: 0.90,
+    fill: { color: accent },
   });
   slide.addText(title, {
-    x: MARGIN,
-    y: 0.82,
-    w: SAFE_W,
-    h: 0.60,
+    x: 0.55,
+    y: 0.58,
+    w: SLIDE_W - 0.90,
+    h: 0.94,
     fontSize: TYPO.SECTION_TITLE,
     fontFace: fontTitle,
     bold: true,
     color: colors.text,
-    valign: "top",
+    valign: "middle",
   });
 }
 
+// ── Minimal dark footer ──
 function addFooter(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   colors: ReturnType<typeof getColors>,
@@ -1530,27 +1569,29 @@ function addFooter(
 ) {
   slide.addShape("rect" as any, {
     x: 0,
-    y: SLIDE_H - 0.35,
+    y: SLIDE_H - 0.28,
     w: SLIDE_W,
-    h: 0.35,
+    h: 0.28,
     fill: { color: colors.bgAlt },
   });
   slide.addShape("rect" as any, {
     x: 0,
-    y: SLIDE_H - 0.35,
+    y: SLIDE_H - 0.28,
     w: SLIDE_W,
-    h: 0.025,
+    h: 0.022,
     fill: { color: colors.divider },
   });
   slide.addText("EduGenAI", {
-    x: MARGIN,
-    y: SLIDE_H - 0.33,
-    w: 3,
-    h: 0.30,
-    fontSize: TYPO.FOOTER - 3,
+    x: 0.36,
+    y: SLIDE_H - 0.27,
+    w: 2.5,
+    h: 0.24,
+    fontSize: TYPO.FOOTER,
     fontFace: fontBody,
     color: colors.textSecondary,
     valign: "middle",
+    charSpacing: 1.5,
+    bold: true,
   });
 }
 
@@ -1850,6 +1891,11 @@ function enforceVisualRenderingGuards(
   return adjusted;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// PREMIUM RENDER FUNCTIONS — v2 Premium Visual Engine
+// ═══════════════════════════════════════════════════════════════════
+
+// ── MODULE COVER: Full dark split-panel, giant watermark number ──
 function renderModuleCover(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -1857,35 +1903,63 @@ function renderModuleCover(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  const accentColor = design.palette[((plan.moduleIndex || 0) % design.palette.length)];
+  const accentColor = design.palette[(plan.moduleIndex || 0) % design.palette.length];
   const secondaryAccent = design.palette[((plan.moduleIndex || 0) + 1) % design.palette.length];
 
-  // Top accent band
+  // Full dark background
+  addSlideBackground(slide, colors.coverDark);
+
+  // Left colored panel (40% of width)
+  const panelW = SLIDE_W * 0.40;
   slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: SLIDE_W,
-    h: 2.80,
+    x: 0, y: 0,
+    w: panelW, h: SLIDE_H,
     fill: { color: accentColor },
   });
 
-  // Decorative secondary stripe
+  // Thin secondary stripe at panel edge
   slide.addShape("rect" as any, {
-    x: 0,
-    y: 2.80,
-    w: SLIDE_W,
-    h: 0.06,
+    x: panelW, y: 0,
+    w: 0.055, h: SLIDE_H,
     fill: { color: secondaryAccent },
   });
 
-  // Module number (large, white, on accent band)
-  slide.addText(String(plan.moduleIndex !== undefined ? plan.moduleIndex + 1 : "").padStart(2, "0"), {
-    x: MARGIN,
-    y: 0.40,
-    w: 2.0,
-    h: 1.00,
+  // Giant watermark number (semi-transparent effect using very light color)
+  const modNum = String((plan.moduleIndex !== undefined ? plan.moduleIndex + 1 : 1)).padStart(2, "0");
+  slide.addText(modNum, {
+    x: -0.60,
+    y: SLIDE_H - 3.20,
+    w: panelW + 0.60,
+    h: 3.00,
+    fontSize: 160,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+    transparency: 82,
+    align: "right",
+    valign: "bottom",
+  });
+
+  // Module label on panel
+  slide.addText("MÓDULO", {
+    x: 0.26,
+    y: 0.55,
+    w: panelW - 0.36,
+    h: 0.26,
+    fontSize: TYPO.LABEL,
+    fontFace: design.fonts.body,
+    bold: true,
+    color: "FFFFFF",
+    transparency: 25,
+    charSpacing: 4,
+  });
+
+  // Module number text on panel
+  slide.addText(modNum, {
+    x: 0.26,
+    y: 0.80,
+    w: panelW - 0.36,
+    h: 1.10,
     fontSize: TYPO.MODULE_NUMBER,
     fontFace: design.fonts.title,
     bold: true,
@@ -1893,99 +1967,125 @@ function renderModuleCover(
     valign: "top",
   });
 
-  // Module subtitle label (on accent band)
-  slide.addText(plan.subtitle || "MÓDULO", {
-    x: MARGIN,
-    y: 1.30,
-    w: 4,
-    h: 0.40,
-    fontSize: TYPO.LABEL,
-    fontFace: design.fonts.body,
-    bold: true,
-    color: "FFFFFF",
-    letterSpacing: 3,
+  // Horizontal rule below number
+  slide.addShape("rect" as any, {
+    x: 0.26,
+    y: 2.00,
+    w: panelW - 0.52,
+    h: 0.040,
+    fill: { color: "FFFFFF" },
+    transparency: 50,
   });
 
-  // Module title (on accent band)
-  slide.addText(plan.title, {
-    x: MARGIN,
-    y: 1.70,
-    w: SAFE_W * 0.70,
-    h: 1.00,
-    fontSize: TYPO.MODULE_TITLE,
+  // Module title (short label below rule on panel)
+  const shortTitle = plan.title.length > 32 ? plan.title.substring(0, 30) + "…" : plan.title;
+  slide.addText(shortTitle, {
+    x: 0.26,
+    y: 2.10,
+    w: panelW - 0.36,
+    h: 1.40,
+    fontSize: 16,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "top",
+    lineSpacingMultiple: 1.2,
   });
 
-  if (plan.description) {
-    slide.addText(plan.description, {
-      x: MARGIN,
-      y: 3.10,
-      w: SAFE_W * 0.65,
-      h: 0.70,
-      fontSize: TYPO.BODY,
-      fontFace: design.fonts.body,
-      color: colors.textSecondary,
-      valign: "top",
-    });
-  }
+  // Right content zone: objectives
+  const contentX = panelW + 0.30;
+  const contentW = SLIDE_W - panelW - 0.50;
 
-  // Objectives in a subtle card on the right
   if (plan.objectives && plan.objectives.length > 0) {
-    const objStartY = 3.20;
-    const objCardW = SAFE_W * 0.38;
-    const objCardX = SLIDE_W - MARGIN - objCardW;
-
-    slide.addShape("roundRect" as any, {
-      x: objCardX,
-      y: objStartY,
-      w: objCardW,
-      h: 3.40,
-      fill: { color: colors.bgAlt },
-      rectRadius: 0.10,
-      line: { color: colors.borders, width: 0.5 },
-    });
-
-    slide.addText("OBJETIVOS", {
-      x: objCardX + 0.20,
-      y: objStartY + 0.15,
-      w: objCardW - 0.40,
-      h: 0.30,
+    // "O QUE VOCÊ VAI APRENDER" label
+    slide.addText("O QUE VOCÊ VAI APRENDER", {
+      x: contentX,
+      y: 0.75,
+      w: contentW,
+      h: 0.28,
       fontSize: TYPO.LABEL,
       fontFace: design.fonts.body,
       bold: true,
       color: accentColor,
-      letterSpacing: 2,
+      charSpacing: 2.5,
     });
 
-    const objTexts = plan.objectives.map(
-      (obj, i) =>
-        ({
-          text: `${i + 1}. ${obj}`,
-          options: {
-            fontSize: TYPO.SUPPORT,
-            fontFace: design.fonts.body,
-            color: colors.text,
-            bullet: false,
-            breakLine: true,
-            paraSpaceAfter: 8,
-          },
-        }) as any,
-    );
-    slide.addText(objTexts, {
-      x: objCardX + 0.20,
-      y: objStartY + 0.50,
-      w: objCardW - 0.40,
-      h: 2.70,
-      valign: "top",
+    // Accent underline
+    slide.addShape("rect" as any, {
+      x: contentX, y: 1.04,
+      w: 1.40, h: 0.038,
+      fill: { color: accentColor },
+    });
+
+    // Objective items
+    const objGap = 0.12;
+    const objH = Math.min(1.00, (SLIDE_H - 1.20 - 0.30 - objGap * Math.max(plan.objectives.length - 1, 0)) / Math.max(plan.objectives.length, 1));
+
+    for (let i = 0; i < plan.objectives.length; i++) {
+      const y = 1.22 + i * (objH + objGap);
+
+      // Background card
+      slide.addShape("roundRect" as any, {
+        x: contentX,
+        y,
+        w: contentW,
+        h: objH,
+        fill: { color: colors.panelMid },
+        rectRadius: 0.07,
+      });
+
+      // Number badge
+      slide.addShape("roundRect" as any, {
+        x: contentX + 0.14,
+        y: y + objH / 2 - 0.18,
+        w: 0.36,
+        h: 0.36,
+        fill: { color: accentColor },
+        rectRadius: 0.06,
+      });
+      slide.addText(String(i + 1), {
+        x: contentX + 0.14,
+        y: y + objH / 2 - 0.18,
+        w: 0.36,
+        h: 0.36,
+        fontSize: 11,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        align: "center",
+        valign: "middle",
+      });
+
+      slide.addText(plan.objectives[i], {
+        x: contentX + 0.60,
+        y,
+        w: contentW - 0.74,
+        h: objH,
+        fontSize: TYPO.SUPPORT,
+        fontFace: design.fonts.body,
+        color: colors.coverSubtext,
+        valign: "middle",
+        lineSpacingMultiple: 1.2,
+      });
+    }
+  } else {
+    // Full title when no objectives
+    slide.addText(plan.title, {
+      x: contentX,
+      y: 1.80,
+      w: contentW,
+      h: 2.20,
+      fontSize: TYPO.MODULE_TITLE,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: "FFFFFF",
+      valign: "middle",
+      lineSpacingMultiple: 1.2,
     });
   }
-
-  addFooter(slide, colors, design.fonts.body);
 }
 
+// ── BULLETS: Premium card layout with bold left stripes, alternating depth ──
 function renderBullets(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -1994,61 +2094,64 @@ function renderBullets(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
-  addTopAccentBar(slide, colors.accent);
+  addLeftAccentBar(slide, design.palette[0], design.palette[1]);
 
+  const accentColor = design.palette[0];
   if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
+    addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
   }
-
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
 
   const items = plan.items || [];
-  const contentY = 1.65;
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.30;
+  const contentY = 1.66;
   const bulletGap = 0.10;
-  const contentH = SLIDE_H - contentY - 0.50;
+  const contentH = SLIDE_H - contentY - 0.40;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
-  const itemH = Math.max(0.65, Math.min(1.40, rawItemH));
+  const itemH = Math.max(0.60, Math.min(1.50, rawItemH));
 
   for (let i = 0; i < items.length; i++) {
-    const accentColor = design.palette[i % design.palette.length];
+    const pal = design.palette[i % design.palette.length];
     const yPos = contentY + i * (itemH + bulletGap);
-    const isEven = i % 2 === 0;
 
-    // Subtle alternating card background
+    // Card background (full width)
     slide.addShape("roundRect" as any, {
-      x: MARGIN,
+      x: contentX,
       y: yPos,
-      w: SAFE_W,
+      w: contentW,
       h: itemH - 0.04,
-      fill: { color: isEven ? colors.cardBgAlt : colors.bg },
+      fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
       rectRadius: 0.06,
+      line: { color: i % 2 === 0 ? colors.borders : "transparent", width: 0.5 },
     });
 
-    // Colored left accent bar
+    // Bold left color stripe (4px)
     slide.addShape("rect" as any, {
-      x: MARGIN,
+      x: contentX,
       y: yPos + 0.06,
-      w: 0.07,
+      w: 0.055,
       h: itemH - 0.16,
-      fill: { color: accentColor },
-      rectRadius: 0.02,
+      fill: { color: pal },
     });
 
     slide.addText(items[i], {
-      x: MARGIN + 0.25,
-      y: yPos,
-      w: SAFE_W - 0.30,
-      h: itemH - 0.04,
+      x: contentX + 0.20,
+      y: yPos + 0.04,
+      w: contentW - 0.28,
+      h: itemH - 0.12,
       fontSize: TYPO.BULLET_TEXT,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "middle",
+      lineSpacingMultiple: 1.2,
     });
   }
 
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ── TWO-COLUMN BULLETS: Premium split layout with bold column header bars ──
 function renderTwoColumnBullets(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -2057,68 +2160,80 @@ function renderTwoColumnBullets(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
-  addTopAccentBar(slide, design.palette[1] || colors.accent);
+  addLeftAccentBar(slide, design.palette[1] || colors.p1, design.palette[2] || colors.p2);
+
+  const pal1 = design.palette[1] || colors.p1;
 
   if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, design.palette[1] || colors.accent, design.fonts.body);
+    addSectionLabel(slide, plan.sectionLabel, pal1, design.fonts.body);
   }
-
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, pal1);
 
   const items = plan.items || [];
-  const colGap = 0.40;
-  const colW = (SAFE_W - colGap) / 2;
-  const contentY = 1.65;
+  const contentX = 0.36;
+  const startX = contentX + 0.18;
+  const totalW = SLIDE_W - startX - 0.26;
+  const colGap = 0.32;
+  const colW = (totalW - colGap) / 2;
+  const contentY = 1.66;
   const mid = Math.ceil(items.length / 2);
   const leftItems = items.slice(0, mid);
   const rightItems = items.slice(mid);
 
+  // Center column divider
+  const divX = startX + colW + colGap / 2 - 0.015;
+  slide.addShape("rect" as any, {
+    x: divX, y: contentY,
+    w: 0.03,
+    h: SLIDE_H - contentY - 0.38,
+    fill: { color: colors.divider },
+  });
+
   for (let col = 0; col < 2; col++) {
     const colItems = col === 0 ? leftItems : rightItems;
-    const colX = MARGIN + col * (colW + colGap);
-    const bulletGap = 0.08;
-    const contentH = SLIDE_H - contentY - 0.50;
+    const colX = startX + col * (colW + colGap);
+    const bulletGap = 0.10;
+    const contentH = SLIDE_H - contentY - 0.38;
     const rawItemH = (contentH - bulletGap * Math.max(colItems.length - 1, 0)) / Math.max(colItems.length, 1);
-    const itemH = Math.max(0.55, Math.min(1.20, rawItemH));
+    const itemH = Math.max(0.52, Math.min(1.20, rawItemH));
 
     for (let i = 0; i < colItems.length; i++) {
-      const accentColor = design.palette[(col * mid + i) % design.palette.length];
+      const pal = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + bulletGap);
 
-      // Colored dot
-      slide.addShape("ellipse" as any, {
-        x: colX,
-        y: yPos + itemH / 2 - 0.08,
-        w: 0.16,
-        h: 0.16,
-        fill: { color: accentColor },
+      // Card background
+      slide.addShape("roundRect" as any, {
+        x: colX, y: yPos,
+        w: colW, h: itemH - 0.04,
+        fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
+        rectRadius: 0.05,
+      });
+
+      // Square color accent
+      slide.addShape("rect" as any, {
+        x: colX, y: yPos + 0.06,
+        w: 0.050, h: itemH - 0.16,
+        fill: { color: pal },
       });
 
       slide.addText(colItems[i], {
-        x: colX + 0.28,
-        y: yPos,
-        w: colW - 0.35,
-        h: itemH - 0.04,
-        fontSize: TYPO.BULLET_TEXT,
+        x: colX + 0.16,
+        y: yPos + 0.04,
+        w: colW - 0.22,
+        h: itemH - 0.12,
+        fontSize: TYPO.BULLET_TEXT - 1,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "middle",
+        lineSpacingMultiple: 1.15,
       });
     }
   }
 
-  // Vertical divider between columns
-  slide.addShape("rect" as any, {
-    x: MARGIN + colW + colGap / 2 - 0.01,
-    y: contentY,
-    w: 0.02,
-    h: SLIDE_H - contentY - 0.55,
-    fill: { color: colors.divider },
-  });
-
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ── DEFINITION: Premium quote-box + pillar cards ──
 function renderDefinition(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -2127,59 +2242,76 @@ function renderDefinition(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
+  addLeftAccentBar(slide, colors.p2, colors.p3);
 
   if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
+    addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
   }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
 
   const items = plan.items || [];
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.26;
+
   if (items.length > 0) {
-    slide.addShape("rect" as any, {
-      x: MARGIN,
-      y: 1.70,
-      w: SAFE_W,
-      h: 0.90,
+    // Quote-style big definition box
+    slide.addShape("roundRect" as any, {
+      x: contentX, y: 1.70,
+      w: contentW, h: 1.10,
       fill: { color: colors.bgAlt },
-      rectRadius: 0.08,
+      rectRadius: 0.10,
+      line: { color: colors.borders, width: 0.8 },
+    });
+    // Left quote bar
+    slide.addShape("rect" as any, {
+      x: contentX, y: 1.80,
+      w: 0.06, h: 0.90,
+      fill: { color: colors.p2 },
     });
     slide.addText(items[0], {
-      x: MARGIN + 0.20,
-      y: 1.75,
-      w: SAFE_W - 0.40,
-      h: 0.80,
+      x: contentX + 0.22, y: 1.72,
+      w: contentW - 0.36, h: 1.06,
       fontSize: TYPO.BODY_LARGE,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "middle",
+      italic: true,
+      lineSpacingMultiple: 1.3,
     });
   }
 
   const pillars = items.slice(1);
   if (pillars.length > 0) {
-    const pillarW = (SAFE_W - 0.30 * (pillars.length - 1)) / pillars.length;
-    const startY = 2.90;
+    const gap = 0.20;
+    const pillarW = (contentW - gap * (pillars.length - 1)) / pillars.length;
+    const startY = 3.05;
     for (let i = 0; i < pillars.length; i++) {
-      const x = MARGIN + i * (pillarW + 0.30);
-      const accentColor = design.palette[i % design.palette.length];
+      const x = contentX + i * (pillarW + gap);
+      const pal = design.palette[i % design.palette.length];
 
+      // Pillar card
+      slide.addShape("roundRect" as any, {
+        x, y: startY,
+        w: pillarW, h: SLIDE_H - startY - 0.38,
+        fill: { color: colors.cardBgAlt },
+        rectRadius: 0.08,
+        line: { color: colors.borders, width: 0.5 },
+      });
+      // Top color bar
       slide.addShape("rect" as any, {
-        x,
-        y: startY,
-        w: pillarW,
-        h: 0.06,
-        fill: { color: accentColor },
+        x, y: startY,
+        w: pillarW, h: 0.055,
+        fill: { color: pal },
       });
 
       slide.addText(pillars[i], {
-        x,
-        y: startY + 0.15,
-        w: pillarW,
-        h: 1.20,
+        x: x + 0.14, y: startY + 0.12,
+        w: pillarW - 0.28, h: SLIDE_H - startY - 0.60,
         fontSize: TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
+        lineSpacingMultiple: 1.2,
       });
     }
   }
@@ -2187,6 +2319,7 @@ function renderDefinition(
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ── GRID CARDS: Premium card grid with bold top color headers ──
 function renderGridCards(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -2195,43 +2328,50 @@ function renderGridCards(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
+  addLeftAccentBar(slide, colors.p3, colors.p0);
 
   if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
+    addSectionLabel(slide, plan.sectionLabel, colors.p3, design.fonts.body);
   }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
 
   const items = plan.items || [];
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.26;
   const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
   const rows = Math.ceil(items.length / cols);
-  const gap = 0.20;
-  const cardW = (SAFE_W - gap * (cols - 1)) / cols;
-  const contentArea = SLIDE_H - 1.70 - 0.60;
-  const cardH = (contentArea - gap * (rows - 1)) / rows;
+  const gap = 0.18;
+  const cardW = (contentW - gap * (cols - 1)) / cols;
+  const contentArea = SLIDE_H - 1.72 - 0.38;
+  const cardH = Math.min(2.50, (contentArea - gap * (rows - 1)) / rows);
 
   for (let i = 0; i < items.length; i++) {
     const col = i % cols;
     const row = Math.floor(i / cols);
-    const x = MARGIN + col * (cardW + gap);
-    const y = 1.70 + row * (cardH + gap);
-    const accentColor = design.palette[i % design.palette.length];
+    const x = contentX + col * (cardW + gap);
+    const y = 1.72 + row * (cardH + gap);
+    const pal = design.palette[i % design.palette.length];
 
+    // Card body
     slide.addShape("roundRect" as any, {
-      x,
-      y,
-      w: cardW,
-      h: cardH,
+      x, y, w: cardW, h: cardH,
       fill: { color: colors.cardBgAlt },
-      rectRadius: 0.08,
+      rectRadius: 0.10,
       line: { color: colors.borders, width: 0.5 },
     });
 
+    // Top color header zone (18% of card height)
+    const headerH = Math.max(0.36, cardH * 0.18);
+    slide.addShape("roundRect" as any, {
+      x, y, w: cardW, h: headerH,
+      fill: { color: pal },
+      rectRadius: 0.10,
+    });
+    // Fill bottom corners of header
     slide.addShape("rect" as any, {
-      x,
-      y,
-      w: cardW,
-      h: 0.06,
-      fill: { color: accentColor },
+      x, y: y + headerH - 0.10,
+      w: cardW, h: 0.10,
+      fill: { color: pal },
     });
 
     const colonIdx = items[i].indexOf(":");
@@ -2239,36 +2379,31 @@ function renderGridCards(
       const label = items[i].substring(0, colonIdx).trim();
       const desc = items[i].substring(colonIdx + 1).trim();
       slide.addText(label, {
-        x: x + 0.15,
-        y: y + 0.15,
-        w: cardW - 0.30,
-        h: 0.35,
+        x: x + 0.14, y: y + 0.06,
+        w: cardW - 0.28, h: headerH - 0.08,
         fontSize: TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
-        bold: true,
-        color: accentColor,
-        valign: "top",
+        bold: true, color: "FFFFFF",
+        valign: "middle",
       });
       slide.addText(desc, {
-        x: x + 0.15,
-        y: y + 0.50,
-        w: cardW - 0.30,
-        h: cardH - 0.65,
+        x: x + 0.14, y: y + headerH + 0.08,
+        w: cardW - 0.28, h: cardH - headerH - 0.18,
         fontSize: TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
+        lineSpacingMultiple: 1.2,
       });
     } else {
       slide.addText(items[i], {
-        x: x + 0.15,
-        y: y + 0.15,
-        w: cardW - 0.30,
-        h: cardH - 0.30,
+        x: x + 0.14, y: y + headerH + 0.08,
+        w: cardW - 0.28, h: cardH - headerH - 0.18,
         fontSize: TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
+        lineSpacingMultiple: 1.2,
       });
     }
   }
@@ -2276,6 +2411,7 @@ function renderGridCards(
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ── PROCESS TIMELINE: Premium horizontal nodes or vertical stepped timeline ──
 function renderProcessTimeline(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -2284,83 +2420,76 @@ function renderProcessTimeline(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
-  addTopAccentBar(slide, design.palette[2] || colors.accent);
+  addLeftAccentBar(slide, colors.p2, colors.p1);
 
   if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
+    addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
   }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
 
   const items = plan.items || [];
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.26;
 
-  if (items.length <= 3) {
-    // Horizontal card layout for ≤3 steps
-    const gap = 0.30;
-    const cardW = (SAFE_W - gap * (items.length - 1)) / items.length;
-    const cardY = 2.00;
-    const cardH = SLIDE_H - cardY - 0.55;
+  if (items.length <= 4) {
+    // ── Horizontal timeline with connector line ──
+    const gap = 0.24;
+    const cardW = (contentW - gap * (items.length - 1)) / items.length;
+    const cardY = 1.85;
+    const cardH = SLIDE_H - cardY - 0.42;
+    const nodeR = 0.36; // circle radius half
+    const nodeY = cardY - nodeR - 0.12;
+
+    // Connector line behind nodes
+    slide.addShape("rect" as any, {
+      x: contentX + nodeR,
+      y: nodeY + nodeR - 0.015,
+      w: contentW - nodeR * 2,
+      h: 0.030,
+      fill: { color: colors.divider },
+    });
 
     for (let i = 0; i < items.length; i++) {
-      const x = MARGIN + i * (cardW + gap);
-      const accentColor = design.palette[i % design.palette.length];
+      const x = contentX + i * (cardW + gap);
+      const pal = design.palette[i % design.palette.length];
+      const nodeX = x + cardW / 2 - nodeR;
 
-      // Card background
+      // Filled node circle
+      slide.addShape("ellipse" as any, {
+        x: nodeX, y: nodeY,
+        w: nodeR * 2, h: nodeR * 2,
+        fill: { color: pal },
+        line: { color: colors.bg, width: 2 },
+      });
+      // Step number in node
+      slide.addText(String(i + 1), {
+        x: nodeX, y: nodeY,
+        w: nodeR * 2, h: nodeR * 2,
+        fontSize: 14,
+        fontFace: design.fonts.title,
+        bold: true, color: "FFFFFF",
+        align: "center", valign: "middle",
+      });
+
+      // Card below node
       slide.addShape("roundRect" as any, {
-        x,
-        y: cardY,
-        w: cardW,
-        h: cardH,
+        x, y: cardY,
+        w: cardW, h: cardH,
         fill: { color: colors.cardBgAlt },
         rectRadius: 0.08,
-        line: { color: colors.borders, width: 0.5 },
+        line: { color: pal, width: 1.2 },
       });
 
-      // Colored top bar on card
+      // Vertical line connecting node to card
       slide.addShape("rect" as any, {
-        x: x + 0.01,
-        y: cardY + 0.01,
-        w: cardW - 0.02,
-        h: 0.06,
-        fill: { color: accentColor },
+        x: x + cardW / 2 - 0.015,
+        y: nodeY + nodeR * 2,
+        w: 0.030, h: cardY - nodeY - nodeR * 2,
+        fill: { color: pal },
       });
-
-      // Numbered circle
-      slide.addShape("ellipse" as any, {
-        x: x + cardW / 2 - 0.28,
-        y: cardY + 0.25,
-        w: 0.56,
-        h: 0.56,
-        fill: { color: accentColor },
-      });
-      slide.addText(String(i + 1), {
-        x: x + cardW / 2 - 0.28,
-        y: cardY + 0.25,
-        w: 0.56,
-        h: 0.56,
-        fontSize: TYPO.SUBTITLE,
-        fontFace: design.fonts.title,
-        bold: true,
-        color: "FFFFFF",
-        align: "center",
-        valign: "middle",
-      });
-
-      // Connector arrow between cards
-      if (i < items.length - 1) {
-        const arrowX = x + cardW + gap * 0.1;
-        const arrowW = gap * 0.8;
-        slide.addShape("rect" as any, {
-          x: arrowX,
-          y: cardY + 0.50,
-          w: arrowW,
-          h: 0.04,
-          fill: { color: colors.borders },
-        });
-      }
 
       const colonIdx = items[i].indexOf(":");
-      let label: string;
-      let desc: string;
+      let label: string, desc: string;
       if (colonIdx > 0 && colonIdx < 40) {
         label = items[i].substring(0, colonIdx).trim();
         desc = items[i].substring(colonIdx + 1).trim();
@@ -2374,96 +2503,86 @@ function renderProcessTimeline(
       }
 
       slide.addText(label, {
-        x: x + 0.12,
-        y: cardY + 0.95,
-        w: cardW - 0.24,
-        h: 0.40,
+        x: x + 0.12, y: cardY + 0.12,
+        w: cardW - 0.24, h: 0.38,
         fontSize: TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
-        bold: true,
-        color: accentColor,
+        bold: true, color: pal,
         align: "center",
       });
       if (desc) {
         slide.addText(desc, {
-          x: x + 0.12,
-          y: cardY + 1.35,
-          w: cardW - 0.24,
-          h: cardH - 1.55,
+          x: x + 0.12, y: cardY + 0.52,
+          w: cardW - 0.24, h: cardH - 0.66,
           fontSize: TYPO.CARD_BODY,
           fontFace: design.fonts.body,
           color: colors.text,
-          align: "center",
-          valign: "top",
+          align: "center", valign: "top",
+          lineSpacingMultiple: 1.2,
         });
       }
     }
   } else {
-    // Vertical numbered steps for >3 items
-    const contentY = 1.65;
-    const stepGap = 0.08;
-    const contentH = SLIDE_H - contentY - 0.50;
-    const stepH = Math.min(1.00, (contentH - stepGap * (items.length - 1)) / items.length);
-    const circleSize = 0.40;
-    const circleX = MARGIN + 0.05;
+    // ── Vertical stepped timeline ──
+    const contentY = 1.70;
+    const stepGap = 0.10;
+    const contentH = SLIDE_H - contentY - 0.40;
+    const stepH = Math.min(0.90, (contentH - stepGap * (items.length - 1)) / items.length);
+    const nodeSize = 0.36;
+    const nodeX = contentX;
+
+    // Continuous vertical track
+    slide.addShape("rect" as any, {
+      x: nodeX + nodeSize / 2 - 0.018,
+      y: contentY + nodeSize / 2,
+      w: 0.036,
+      h: contentH - nodeSize / 2,
+      fill: { color: colors.divider },
+    });
 
     for (let i = 0; i < items.length; i++) {
       const y = contentY + i * (stepH + stepGap);
-      const accentColor = design.palette[i % design.palette.length];
+      const pal = design.palette[i % design.palette.length];
 
-      // Vertical connector line
-      if (i < items.length - 1) {
-        slide.addShape("rect" as any, {
-          x: circleX + circleSize / 2 - 0.015,
-          y: y + circleSize + 0.02,
-          w: 0.03,
-          h: stepGap + stepH - circleSize - 0.02,
-          fill: { color: colors.divider },
-        });
-      }
-
-      // Number circle
+      // Node circle
       slide.addShape("ellipse" as any, {
-        x: circleX,
-        y,
-        w: circleSize,
-        h: circleSize,
-        fill: { color: accentColor },
+        x: nodeX, y: y + stepH / 2 - nodeSize / 2,
+        w: nodeSize, h: nodeSize,
+        fill: { color: pal },
       });
       slide.addText(String(i + 1), {
-        x: circleX,
-        y,
-        w: circleSize,
-        h: circleSize,
+        x: nodeX, y: y + stepH / 2 - nodeSize / 2,
+        w: nodeSize, h: nodeSize,
         fontSize: TYPO.SUPPORT,
         fontFace: design.fonts.title,
-        bold: true,
-        color: "FFFFFF",
-        align: "center",
-        valign: "middle",
+        bold: true, color: "FFFFFF",
+        align: "center", valign: "middle",
       });
 
       // Content card
-      const cardX = MARGIN + 0.65;
-      const cardW = SAFE_W - 0.70;
+      const cardX = contentX + nodeSize + 0.20;
+      const cardW = contentW - nodeSize - 0.20;
       slide.addShape("roundRect" as any, {
-        x: cardX,
-        y,
-        w: cardW,
-        h: stepH - 0.02,
+        x: cardX, y, w: cardW, h: stepH - 0.04,
         fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
         rectRadius: 0.06,
+        line: { color: pal, width: 0.8 },
+      });
+      // Left color accent on card
+      slide.addShape("rect" as any, {
+        x: cardX, y: y + 0.06,
+        w: 0.050, h: stepH - 0.16,
+        fill: { color: pal },
       });
 
       slide.addText(items[i], {
-        x: cardX + 0.15,
-        y,
-        w: cardW - 0.30,
-        h: stepH - 0.02,
-        fontSize: TYPO.BULLET_TEXT,
+        x: cardX + 0.18, y,
+        w: cardW - 0.26, h: stepH - 0.04,
+        fontSize: TYPO.BULLET_TEXT - 1,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "middle",
+        lineSpacingMultiple: 1.15,
       });
     }
   }
@@ -2471,6 +2590,7 @@ function renderProcessTimeline(
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ── COMPARISON TABLE: Premium striped table ──
 function renderComparisonTable(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -2479,11 +2599,12 @@ function renderComparisonTable(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
+  addLeftAccentBar(slide, colors.p0, colors.p1);
 
   if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
+    addSectionLabel(slide, plan.sectionLabel, colors.p0, design.fonts.body);
   }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p0);
 
   const headers = plan.tableHeaders || [];
   const rows = plan.tableRows || [];
@@ -2493,6 +2614,8 @@ function renderComparisonTable(
     return;
   }
 
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.26;
   const tableData: any[][] = [];
 
   tableData.push(
@@ -2526,19 +2649,19 @@ function renderComparisonTable(
     );
   }
 
-  const colW = SAFE_W / headers.length;
+  const colW = contentW / headers.length;
   slide.addTable(tableData, {
-    x: MARGIN,
-    y: 1.70,
-    w: SAFE_W,
+    x: contentX, y: 1.72,
+    w: contentW,
     colW: Array(headers.length).fill(colW),
     border: { type: "solid", pt: 0.5, color: colors.borders },
-    rowH: 0.50,
+    rowH: 0.48,
   });
 
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ── EXAMPLE HIGHLIGHT: Premium case-study layout ──
 function renderExampleHighlight(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -2547,12 +2670,12 @@ function renderExampleHighlight(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
-  addTopAccentBar(slide, design.palette[3] || colors.accent);
+  addLeftAccentBar(slide, colors.p3, colors.p4);
 
   if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, design.palette[3] || colors.accent, design.fonts.body);
+    addSectionLabel(slide, plan.sectionLabel, colors.p3, design.fonts.body);
   }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
 
   const items = plan.items || [];
   const normalizedItems = items
@@ -2564,113 +2687,82 @@ function renderExampleHighlight(
     });
 
   const cappedItems = normalizedItems.slice(0, 4);
-  const sectionColors = [design.palette[0], design.palette[1], design.palette[2], design.palette[3], design.palette[4]];
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.26;
 
   if (cappedItems.length <= 2) {
-    // Side-by-side large cards for 1-2 items
-    const gap = 0.30;
-    const cardW = cappedItems.length === 1 ? SAFE_W : (SAFE_W - gap) / 2;
-    const cardY = 1.70;
-    const cardH = SLIDE_H - cardY - 0.55;
+    // ── Full-height side-by-side large cards ──
+    const gap = 0.24;
+    const cardW = cappedItems.length === 1 ? contentW : (contentW - gap) / 2;
+    const cardY = 1.74;
+    const cardH = SLIDE_H - cardY - 0.42;
 
     for (let i = 0; i < cappedItems.length; i++) {
-      const x = MARGIN + i * (cardW + gap);
-      const color = sectionColors[i % sectionColors.length];
-
-      slide.addShape("roundRect" as any, {
-        x,
-        y: cardY,
-        w: cardW,
-        h: cardH,
-        fill: { color: colors.cardBgAlt },
-        rectRadius: 0.10,
-        line: { color: colors.borders, width: 0.5 },
-      });
-
-      // Colored header bar
-      slide.addShape("rect" as any, {
-        x: x + 0.01,
-        y: cardY + 0.01,
-        w: cardW - 0.02,
-        h: 0.50,
-        fill: { color },
-        rectRadius: 0.10,
-      });
-      // Fix bottom corners of header
-      slide.addShape("rect" as any, {
-        x: x + 0.01,
-        y: cardY + 0.30,
-        w: cardW - 0.02,
-        h: 0.21,
-        fill: { color },
-      });
-
+      const x = contentX + i * (cardW + gap);
+      const pal = design.palette[i % design.palette.length];
       const colonIdx = cappedItems[i].indexOf(":");
       const label = colonIdx > 0 && colonIdx < 30
         ? cappedItems[i].substring(0, colonIdx).trim()
         : ["Cenário", "Resultado"][i] || `Item ${i + 1}`;
       const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
 
-      slide.addText(label, {
-        x: x + 0.20,
-        y: cardY + 0.08,
-        w: cardW - 0.40,
-        h: 0.35,
-        fontSize: TYPO.CARD_TITLE + 2,
-        fontFace: design.fonts.title,
-        bold: true,
-        color: "FFFFFF",
+      // Card body
+      slide.addShape("roundRect" as any, {
+        x, y: cardY, w: cardW, h: cardH,
+        fill: { color: colors.cardBgAlt },
+        rectRadius: 0.12,
+        line: { color: colors.borders, width: 0.5 },
+      });
+
+      // Dark header zone (30% of card)
+      const hdrH = cardH * 0.32;
+      slide.addShape("roundRect" as any, {
+        x, y: cardY, w: cardW, h: hdrH,
+        fill: { color: pal },
+        rectRadius: 0.12,
+      });
+      slide.addShape("rect" as any, {
+        x, y: cardY + hdrH - 0.12,
+        w: cardW, h: 0.12,
+        fill: { color: pal },
+      });
+
+      slide.addText(label.toUpperCase(), {
+        x: x + 0.22, y: cardY + 0.10,
+        w: cardW - 0.44, h: hdrH - 0.16,
+        fontSize: TYPO.LABEL,
+        fontFace: design.fonts.body,
+        bold: true, color: "FFFFFF",
+        charSpacing: 2.5,
+        valign: "middle",
       });
 
       slide.addText(desc, {
-        x: x + 0.20,
-        y: cardY + 0.65,
-        w: cardW - 0.40,
-        h: cardH - 0.85,
+        x: x + 0.22, y: cardY + hdrH + 0.10,
+        w: cardW - 0.44, h: cardH - hdrH - 0.22,
         fontSize: TYPO.BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.3,
+        lineSpacingMultiple: 1.30,
       });
     }
   } else {
-    // 2x2 grid of cards for 3-4 items
+    // ── 2×2 grid of premium cards with bold color left border ──
     const cols = 2;
     const rows = Math.ceil(cappedItems.length / cols);
-    const gap = 0.20;
-    const cardW = (SAFE_W - gap) / cols;
-    const cardY = 1.65;
-    const contentH = SLIDE_H - cardY - 0.50;
+    const gap = 0.18;
+    const cardW = (contentW - gap) / cols;
+    const cardY = 1.70;
+    const contentH = SLIDE_H - cardY - 0.42;
     const cardH = (contentH - gap * (rows - 1)) / rows;
 
     for (let i = 0; i < cappedItems.length; i++) {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const x = MARGIN + col * (cardW + gap);
+      const x = contentX + col * (cardW + gap);
       const y = cardY + row * (cardH + gap);
-      const color = sectionColors[i % sectionColors.length];
-
-      slide.addShape("roundRect" as any, {
-        x,
-        y,
-        w: cardW,
-        h: cardH,
-        fill: { color: colors.cardBgAlt },
-        rectRadius: 0.08,
-        line: { color: colors.borders, width: 0.5 },
-      });
-
-      // Colored left bar
-      slide.addShape("rect" as any, {
-        x,
-        y: y + 0.08,
-        w: 0.06,
-        h: cardH - 0.16,
-        fill: { color },
-        rectRadius: 0.02,
-      });
-
+      const pal = design.palette[i % design.palette.length];
       const colonIdx = cappedItems[i].indexOf(":");
       const defaultLabels = ["Cenário", "Ação", "Resultado", "Impacto"];
       const label = colonIdx > 0 && colonIdx < 30
@@ -2678,27 +2770,47 @@ function renderExampleHighlight(
         : defaultLabels[i] || `Item ${i + 1}`;
       const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
 
-      slide.addText(label, {
-        x: x + 0.18,
-        y: y + 0.10,
-        w: cardW - 0.36,
-        h: 0.30,
-        fontSize: TYPO.CARD_TITLE,
-        fontFace: design.fonts.title,
-        bold: true,
-        color,
+      // Card
+      slide.addShape("roundRect" as any, {
+        x, y, w: cardW, h: cardH,
+        fill: { color: colors.cardBgAlt },
+        rectRadius: 0.08,
+        line: { color: colors.borders, width: 0.5 },
+      });
+
+      // Bold left color border (8px)
+      slide.addShape("rect" as any, {
+        x, y: y + 0.08,
+        w: 0.08, h: cardH - 0.16,
+        fill: { color: pal },
+      });
+
+      // Label uppercase
+      slide.addText(label.toUpperCase(), {
+        x: x + 0.22, y: y + 0.10,
+        w: cardW - 0.36, h: 0.28,
+        fontSize: TYPO.LABEL,
+        fontFace: design.fonts.body,
+        bold: true, color: pal,
+        charSpacing: 2,
+      });
+
+      // Separator line
+      slide.addShape("rect" as any, {
+        x: x + 0.22, y: y + 0.38,
+        w: cardW - 0.44, h: 0.020,
+        fill: { color: pal },
+        transparency: 60,
       });
 
       slide.addText(desc, {
-        x: x + 0.18,
-        y: y + 0.42,
-        w: cardW - 0.36,
-        h: cardH - 0.58,
+        x: x + 0.22, y: y + 0.44,
+        w: cardW - 0.36, h: cardH - 0.58,
         fontSize: TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.25,
+        lineSpacingMultiple: 1.22,
       });
     }
   }
@@ -2706,6 +2818,7 @@ function renderExampleHighlight(
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ── WARNING CALLOUT: Alert-style cards ──
 function renderWarningCallout(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -2714,218 +2827,43 @@ function renderWarningCallout(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
+  addLeftAccentBar(slide, "C0392B", "E74C3C");
 
   if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, "E74C3C", design.fonts.body);
+    addSectionLabel(slide, plan.sectionLabel, "C0392B", design.fonts.body);
   }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, "C0392B");
 
   const items = plan.items || [];
-  const contentY = 1.70;
-  const itemH = Math.min(0.80, (SLIDE_H - contentY - 0.60) / Math.max(items.length, 1));
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.26;
+  const contentY = 1.68;
+  const bulletGap = 0.10;
+  const contentH = SLIDE_H - contentY - 0.40;
+  const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
+  const itemH = Math.max(0.55, Math.min(1.00, rawItemH));
 
   for (let i = 0; i < items.length; i++) {
-    const y = contentY + i * itemH;
+    const y = contentY + i * (itemH + bulletGap);
 
-    slide.addText("⚠", {
-      x: MARGIN,
-      y,
-      w: 0.40,
-      h: itemH - 0.05,
-      fontSize: TYPO.BODY,
-      align: "center",
-      valign: "middle",
-    });
-
-    slide.addText(items[i], {
-      x: MARGIN + 0.50,
-      y,
-      w: SAFE_W - 0.55,
-      h: itemH - 0.05,
-      fontSize: TYPO.BULLET_TEXT,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "middle",
-    });
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderReflectionCallout(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.reflectionBg);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, design.palette[1], design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = plan.items || [];
-  const contentY = 1.90;
-  const itemH = Math.min(1.00, (SLIDE_H - contentY - 0.60) / Math.max(items.length, 1));
-
-  for (let i = 0; i < items.length; i++) {
-    const y = contentY + i * itemH;
-    slide.addText(`💭  ${items[i]}`, {
-      x: MARGIN + 0.30,
-      y,
-      w: SAFE_W - 0.60,
-      h: itemH - 0.10,
-      fontSize: TYPO.BODY_LARGE,
-      fontFace: design.fonts.body,
-      italic: true,
-      color: colors.text,
-      valign: "middle",
-    });
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderSummarySlide(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-  addTopAccentBar(slide, design.palette[0]);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, design.palette[0], design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = (plan.items || []).map((item) => {
-    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
-    return ensureSentenceEnd(repaired);
-  }).filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10);
-
-  // Render as numbered key points in a card
-  const contentY = 1.65;
-  const contentH = SLIDE_H - contentY - 0.50;
-
-  slide.addShape("roundRect" as any, {
-    x: MARGIN,
-    y: contentY,
-    w: SAFE_W,
-    h: contentH,
-    fill: { color: colors.bgAlt },
-    rectRadius: 0.10,
-  });
-
-  const itemGap = 0.06;
-  const itemH = Math.min(0.80, (contentH - 0.30 - itemGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
-
-  for (let i = 0; i < items.length; i++) {
-    const y = contentY + 0.15 + i * (itemH + itemGap);
-    const accentColor = design.palette[i % design.palette.length];
-
-    // Bullet accent dot
-    slide.addShape("ellipse" as any, {
-      x: MARGIN + 0.25,
-      y: y + itemH / 2 - 0.07,
-      w: 0.14,
-      h: 0.14,
-      fill: { color: accentColor },
-    });
-
-    slide.addText(items[i], {
-      x: MARGIN + 0.55,
-      y,
-      w: SAFE_W - 0.80,
-      h: itemH - 0.02,
-      fontSize: TYPO.BODY,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "middle",
-      lineSpacingMultiple: 1.25,
-    });
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderNumberedTakeaways(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-  addTopAccentBar(slide, design.palette[4] || colors.accent);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, design.palette[4] || colors.accent, design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = plan.items || [];
-
-  // 2-column grid of cards
-  const cols = items.length <= 2 ? items.length : 2;
-  const rows = Math.ceil(items.length / cols);
-  const gap = 0.20;
-  const cardW = (SAFE_W - gap * (cols - 1)) / cols;
-  const contentY = 1.65;
-  const contentH = SLIDE_H - contentY - 0.50;
-  const cardH = Math.min(1.40, (contentH - gap * (rows - 1)) / rows);
-  const circleSize = 0.44;
-
-  for (let i = 0; i < items.length; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = MARGIN + col * (cardW + gap);
-    const y = contentY + row * (cardH + gap);
-    const accentColor = design.palette[i % design.palette.length];
-
-    // Card background
     slide.addShape("roundRect" as any, {
-      x,
-      y,
-      w: cardW,
-      h: cardH,
-      fill: { color: colors.cardBgAlt },
-      rectRadius: 0.08,
-      line: { color: colors.borders, width: 0.5 },
+      x: contentX, y, w: contentW, h: itemH - 0.04,
+      fill: { color: i % 2 === 0 ? "FFF5F5" : colors.bg },
+      rectRadius: 0.06,
+      line: { color: i % 2 === 0 ? "FECACA" : "transparent", width: 0.5 },
     });
 
-    // Numbered circle
-    slide.addShape("ellipse" as any, {
-      x: x + 0.18,
-      y: y + 0.18,
-      w: circleSize,
-      h: circleSize,
-      fill: { color: accentColor },
-    });
-    slide.addText(String(i + 1), {
-      x: x + 0.18,
-      y: y + 0.18,
-      w: circleSize,
-      h: circleSize,
-      fontSize: TYPO.TAKEAWAY_BODY + 3,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: "FFFFFF",
-      align: "center",
-      valign: "middle",
+    // Red left border
+    slide.addShape("rect" as any, {
+      x: contentX, y: y + 0.06,
+      w: 0.055, h: itemH - 0.16,
+      fill: { color: "E74C3C" },
     });
 
-    // Takeaway text
     slide.addText(items[i], {
-      x: x + 0.18 + circleSize + 0.15,
-      y: y + 0.12,
-      w: cardW - circleSize - 0.65,
-      h: cardH - 0.24,
-      fontSize: TYPO.TAKEAWAY_BODY,
+      x: contentX + 0.20, y: y + 0.04,
+      w: contentW - 0.28, h: itemH - 0.12,
+      fontSize: TYPO.BULLET_TEXT,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "middle",
@@ -2936,13 +2874,224 @@ function renderNumberedTakeaways(
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ── REFLECTION CALLOUT: Elegant italic quote layout ──
+function renderReflectionCallout(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  addSlideBackground(slide, colors.reflectionBg);
+  addLeftAccentBar(slide, colors.p1, colors.p2);
+
+  if (plan.sectionLabel) {
+    addSectionLabel(slide, plan.sectionLabel, colors.p1, design.fonts.body);
+  }
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p1);
+
+  const items = plan.items || [];
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.26;
+  const contentY = 1.72;
+  const itemGap = 0.16;
+  const contentH = SLIDE_H - contentY - 0.40;
+  const rawItemH = (contentH - itemGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
+  const itemH = Math.max(0.70, Math.min(1.20, rawItemH));
+
+  for (let i = 0; i < items.length; i++) {
+    const y = contentY + i * (itemH + itemGap);
+
+    // Large opening quote mark
+    slide.addText("\u201C", {
+      x: contentX, y: y - 0.10,
+      w: 0.44, h: 0.55,
+      fontSize: 44,
+      fontFace: design.fonts.title,
+      color: colors.p1,
+      transparency: 35,
+      bold: true,
+    });
+
+    slide.addText(items[i], {
+      x: contentX + 0.42, y,
+      w: contentW - 0.42, h: itemH,
+      fontSize: TYPO.BODY_LARGE,
+      fontFace: design.fonts.body,
+      italic: true,
+      color: colors.text,
+      valign: "middle",
+      lineSpacingMultiple: 1.35,
+    });
+  }
+
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ── SUMMARY SLIDE: Premium bordered key-points card ──
+function renderSummarySlide(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  addSlideBackground(slide, colors.bg);
+  addLeftAccentBar(slide, colors.p0, colors.p4);
+
+  if (plan.sectionLabel) {
+    addSectionLabel(slide, plan.sectionLabel, colors.p0, design.fonts.body);
+  }
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p0);
+
+  const items = (plan.items || []).map((item) => {
+    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+    return ensureSentenceEnd(repaired);
+  }).filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10);
+
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.26;
+  const contentY = 1.68;
+  const contentH = SLIDE_H - contentY - 0.40;
+
+  // Large card container
+  slide.addShape("roundRect" as any, {
+    x: contentX, y: contentY,
+    w: contentW, h: contentH,
+    fill: { color: colors.bgAlt },
+    rectRadius: 0.12,
+    line: { color: colors.borders, width: 0.8 },
+  });
+
+  const itemGap = 0.10;
+  const itemH = Math.min(0.82, (contentH - 0.30 - itemGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
+
+  for (let i = 0; i < items.length; i++) {
+    const y = contentY + 0.16 + i * (itemH + itemGap);
+    const pal = design.palette[i % design.palette.length];
+
+    // Square color accent
+    slide.addShape("rect" as any, {
+      x: contentX + 0.22,
+      y: y + itemH / 2 - 0.10,
+      w: 0.20, h: 0.20,
+      fill: { color: pal },
+      rectRadius: 0.03,
+    });
+
+    slide.addText(items[i], {
+      x: contentX + 0.56, y,
+      w: contentW - 0.76, h: itemH,
+      fontSize: TYPO.BODY,
+      fontFace: design.fonts.body,
+      color: colors.text,
+      valign: "middle",
+      lineSpacingMultiple: 1.25,
+    });
+
+    // Thin separator (except after last item)
+    if (i < items.length - 1) {
+      slide.addShape("rect" as any, {
+        x: contentX + 0.20, y: y + itemH + itemGap / 2 - 0.010,
+        w: contentW - 0.40, h: 0.020,
+        fill: { color: colors.divider },
+      });
+    }
+  }
+
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ── NUMBERED TAKEAWAYS: Premium large-number card grid ──
+function renderNumberedTakeaways(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  addSlideBackground(slide, colors.bg);
+  addLeftAccentBar(slide, colors.p4, colors.p0);
+
+  if (plan.sectionLabel) {
+    addSectionLabel(slide, plan.sectionLabel, colors.p4, design.fonts.body);
+  }
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p4);
+
+  const items = plan.items || [];
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.26;
+  const cols = items.length <= 2 ? items.length : 2;
+  const rows = Math.ceil(items.length / cols);
+  const gap = 0.18;
+  const cardW = (contentW - gap * (cols - 1)) / cols;
+  const contentY = 1.68;
+  const contentH = SLIDE_H - contentY - 0.40;
+  const cardH = Math.min(1.60, (contentH - gap * (rows - 1)) / rows);
+  const numZoneW = 0.78;
+
+  for (let i = 0; i < items.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = contentX + col * (cardW + gap);
+    const y = contentY + row * (cardH + gap);
+    const pal = design.palette[i % design.palette.length];
+
+    // Card body
+    slide.addShape("roundRect" as any, {
+      x, y, w: cardW, h: cardH,
+      fill: { color: colors.cardBgAlt },
+      rectRadius: 0.10,
+      line: { color: colors.borders, width: 0.5 },
+    });
+
+    // Bold number zone (dark tinted)
+    slide.addShape("roundRect" as any, {
+      x, y, w: numZoneW, h: cardH,
+      fill: { color: pal },
+      rectRadius: 0.10,
+    });
+    // Fill right corners of number zone
+    slide.addShape("rect" as any, {
+      x: x + numZoneW - 0.10, y,
+      w: 0.10, h: cardH,
+      fill: { color: pal },
+    });
+
+    // Large number
+    slide.addText(String(i + 1), {
+      x, y,
+      w: numZoneW, h: cardH,
+      fontSize: TYPO.TAKEAWAY_NUM,
+      fontFace: design.fonts.title,
+      bold: true, color: "FFFFFF",
+      align: "center", valign: "middle",
+      transparency: 10,
+    });
+
+    // Takeaway text in right portion
+    slide.addText(items[i], {
+      x: x + numZoneW + 0.14, y: y + 0.10,
+      w: cardW - numZoneW - 0.28, h: cardH - 0.20,
+      fontSize: TYPO.TAKEAWAY_BODY,
+      fontFace: design.fonts.body,
+      color: colors.text,
+      valign: "middle",
+      lineSpacingMultiple: 1.22,
+    });
+  }
+
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ── TOC: Split dark panel + card grid ──
 function renderTOC(
   pptx: PptxGenJS,
   modules: { title: string; description?: string }[],
   design: DesignConfig,
 ) {
   const colors = getColors(design);
-  const MAX_TOC_PER_SLIDE = 6;
+  const MAX_TOC_PER_SLIDE = 5;
   const tocPages: { title: string; description?: string }[][] = [];
   for (let i = 0; i < modules.length; i += MAX_TOC_PER_SLIDE) {
     tocPages.push(modules.slice(i, i + MAX_TOC_PER_SLIDE));
@@ -2951,118 +3100,124 @@ function renderTOC(
   for (let page = 0; page < tocPages.length; page++) {
     const pageModules = tocPages[page];
     const slide = pptx.addSlide();
-    addSlideBackground(slide, colors.bg);
-    addTopAccentBar(slide, colors.accent);
+    addSlideBackground(slide, colors.coverDark);
+
+    // Left dark panel (30% width)
+    const panelW = SLIDE_W * 0.28;
+    slide.addShape("rect" as any, {
+      x: 0, y: 0,
+      w: panelW, h: SLIDE_H,
+      fill: { color: colors.panelDark },
+    });
+    slide.addShape("rect" as any, {
+      x: panelW, y: 0,
+      w: 0.050, h: SLIDE_H,
+      fill: { color: colors.p0 },
+    });
+
+    // TOC label on left panel
+    slide.addText("CONTEÚDO", {
+      x: 0.22, y: 0.65,
+      w: panelW - 0.34, h: 0.28,
+      fontSize: TYPO.LABEL,
+      fontFace: design.fonts.body,
+      bold: true, color: colors.p0,
+      charSpacing: 3,
+    });
 
     const tocTitle = tocPages.length > 1
       ? `O que você vai aprender (${page + 1}/${tocPages.length})`
       : "O que você vai aprender";
 
     slide.addText(tocTitle, {
-      x: MARGIN,
-      y: 0.40,
-      w: SAFE_W,
-      h: 0.70,
-      fontSize: TYPO.MODULE_TITLE,
+      x: 0.22, y: 1.05,
+      w: panelW - 0.34, h: 2.60,
+      fontSize: 20,
       fontFace: design.fonts.title,
-      bold: true,
-      color: colors.text,
+      bold: true, color: "FFFFFF",
+      valign: "top",
+      lineSpacingMultiple: 1.3,
     });
 
-    // Decorative line under title
+    // Bottom accent bar on left panel
     slide.addShape("rect" as any, {
-      x: MARGIN,
-      y: 1.10,
-      w: 2.0,
-      h: 0.04,
-      fill: { color: colors.accent },
-      rectRadius: 0.02,
+      x: 0.22, y: SLIDE_H - 1.40,
+      w: 0.8, h: 0.040,
+      fill: { color: colors.p0 },
+    });
+    slide.addText("EduGenAI", {
+      x: 0.22, y: SLIDE_H - 1.26,
+      w: panelW - 0.34, h: 0.28,
+      fontSize: TYPO.SUPPORT,
+      fontFace: design.fonts.body,
+      color: colors.coverSubtext,
+      bold: true, charSpacing: 1.5,
     });
 
+    // Right content: module cards
     const globalOffset = page * MAX_TOC_PER_SLIDE;
-
-    // 2-column card grid
-    const cols = pageModules.length <= 3 ? pageModules.length : pageModules.length <= 4 ? 2 : (pageModules.length <= 6 ? 3 : 3);
-    const rows = Math.ceil(pageModules.length / cols);
-    const gap = 0.22;
-    const cardW = (SAFE_W - gap * (cols - 1)) / cols;
-    const startY = 1.35;
-    const contentH = SLIDE_H - startY - 0.50;
-    const cardH = Math.min(2.40, (contentH - gap * (rows - 1)) / rows);
+    const contentX = panelW + 0.20;
+    const contentW = SLIDE_W - contentX - 0.20;
+    const cardGap = 0.14;
+    const cardH = Math.min(1.16, (SLIDE_H - 0.20 * 2 - cardGap * Math.max(pageModules.length - 1, 0)) / Math.max(pageModules.length, 1));
 
     for (let i = 0; i < pageModules.length; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = MARGIN + col * (cardW + gap);
-      const y = startY + row * (cardH + gap);
-      const accentColor = design.palette[(globalOffset + i) % design.palette.length];
+      const y = 0.20 + i * (cardH + cardGap);
+      const pal = design.palette[(globalOffset + i) % design.palette.length];
 
-      // Card
+      // Card body
       slide.addShape("roundRect" as any, {
-        x,
-        y,
-        w: cardW,
-        h: cardH,
-        fill: { color: colors.cardBgAlt },
-        rectRadius: 0.10,
-        line: { color: colors.borders, width: 0.5 },
+        x: contentX, y,
+        w: contentW, h: cardH,
+        fill: { color: colors.panelMid },
+        rectRadius: 0.08,
       });
 
-      // Colored top accent
+      // Left color accent bar (thick)
       slide.addShape("rect" as any, {
-        x: x + 0.01,
-        y: y + 0.01,
-        w: cardW - 0.02,
-        h: 0.06,
-        fill: { color: accentColor },
+        x: contentX, y: y + 0.08,
+        w: 0.08, h: cardH - 0.16,
+        fill: { color: pal },
       });
 
-      // Module number
+      // Large module number
+      const numW = 0.70;
       slide.addText(String(globalOffset + i + 1).padStart(2, "0"), {
-        x: x + 0.18,
-        y: y + 0.20,
-        w: 0.60,
-        h: 0.50,
+        x: contentX + 0.18, y,
+        w: numW, h: cardH,
         fontSize: TYPO.TOC_NUMBER,
         fontFace: design.fonts.title,
-        bold: true,
-        color: accentColor,
-        valign: "top",
+        bold: true, color: pal,
+        valign: "middle",
       });
 
       // Module title
       slide.addText(pageModules[i].title, {
-        x: x + 0.18,
-        y: y + 0.72,
-        w: cardW - 0.36,
-        h: 0.55,
+        x: contentX + 0.18 + numW + 0.10, y: y + 0.12,
+        w: contentW - 0.18 - numW - 0.28, h: 0.40,
         fontSize: TYPO.TOC_TITLE,
         fontFace: design.fonts.title,
-        bold: true,
-        color: colors.text,
+        bold: true, color: "FFFFFF",
         valign: "top",
       });
 
       // Description
       if (pageModules[i].description) {
         slide.addText(pageModules[i].description!, {
-          x: x + 0.18,
-          y: y + 1.30,
-          w: cardW - 0.36,
-          h: cardH - 1.50,
+          x: contentX + 0.18 + numW + 0.10, y: y + 0.52,
+          w: contentW - 0.18 - numW - 0.28, h: cardH - 0.64,
           fontSize: TYPO.TOC_DESC,
           fontFace: design.fonts.body,
-          color: colors.textSecondary,
+          color: colors.coverSubtext,
           valign: "top",
           lineSpacingMultiple: 1.2,
         });
       }
     }
-
-    addFooter(slide, colors, design.fonts.body);
   }
 }
 
+// ── COVER SLIDE: Full dark, diagonal accent panel, big title ──
 function renderCoverSlide(
   pptx: PptxGenJS,
   courseTitle: string,
@@ -3070,79 +3225,83 @@ function renderCoverSlide(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.coverBg);
+  addSlideBackground(slide, colors.coverDark);
 
-  // Accent colored side strip
+  // Full-width bottom color panel (bottom 35%)
+  const panelH = SLIDE_H * 0.35;
   slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: 0.40,
-    h: SLIDE_H,
-    fill: { color: colors.accent },
+    x: 0, y: SLIDE_H - panelH,
+    w: SLIDE_W, h: panelH,
+    fill: { color: colors.p0 },
   });
 
-  // Secondary accent stripe
+  // Thin secondary accent line above panel
   slide.addShape("rect" as any, {
-    x: 0.40,
-    y: 0,
-    w: 0.08,
-    h: SLIDE_H,
-    fill: { color: design.palette[1] },
+    x: 0, y: SLIDE_H - panelH - 0.055,
+    w: SLIDE_W, h: 0.055,
+    fill: { color: colors.p1 },
   });
 
-  // Decorative bottom accent bar
-  slide.addShape("rect" as any, {
-    x: 0,
-    y: SLIDE_H - 0.10,
-    w: SLIDE_W,
-    h: 0.10,
-    fill: { color: colors.accent },
-  });
-
-  // Course title
-  slide.addText(courseTitle, {
-    x: 1.20,
-    y: 1.80,
-    w: SLIDE_W - 2.00,
-    h: 2.40,
-    fontSize: TYPO.COVER_TITLE,
-    fontFace: design.fonts.title,
-    bold: true,
-    color: colors.coverText,
-    valign: "middle",
-  });
-
-  // Subtitle line
-  slide.addShape("rect" as any, {
-    x: 1.20,
-    y: 4.40,
-    w: 2.00,
-    h: 0.04,
-    fill: { color: colors.accent },
-  });
-
-  slide.addText("Gerado por EduGenAI", {
-    x: 1.20,
-    y: 4.60,
-    w: SLIDE_W - 2.00,
-    h: 0.50,
-    fontSize: TYPO.SUBTITLE,
-    fontFace: design.fonts.body,
-    color: colors.coverSubtext,
-  });
-
-  // Decorative palette dots in bottom right
-  for (let i = 0; i < design.palette.length; i++) {
-    slide.addShape("ellipse" as any, {
-      x: SLIDE_W - MARGIN - (design.palette.length - i) * 0.40,
-      y: SLIDE_H - 0.60,
-      w: 0.28,
-      h: 0.28,
-      fill: { color: design.palette[i] },
+  // Top-left identity mark: vertical stack of three thin bars
+  for (let b = 0; b < 3; b++) {
+    slide.addShape("rect" as any, {
+      x: 0.55,
+      y: 0.42 + b * 0.16,
+      w: 0.55 + b * 0.20,
+      h: 0.055,
+      fill: { color: design.palette[b % design.palette.length] },
     });
   }
+
+  // COURS label
+  slide.addText("CURSO COMPLETO", {
+    x: 0.55, y: 1.08,
+    w: 4.0, h: 0.28,
+    fontSize: TYPO.LABEL,
+    fontFace: design.fonts.body,
+    bold: true, color: colors.p0,
+    charSpacing: 4,
+  });
+
+  // Giant course title — white, ultra bold
+  slide.addText(courseTitle, {
+    x: 0.55, y: 1.40,
+    w: SLIDE_W * 0.80, h: 2.80,
+    fontSize: TYPO.COVER_TITLE,
+    fontFace: design.fonts.title,
+    bold: true, color: "FFFFFF",
+    valign: "top",
+    lineSpacingMultiple: 1.15,
+  });
+
+  // Decorative dots grid (bottom right, above panel)
+  const dotsStartX = SLIDE_W - 1.80;
+  const dotsStartY = SLIDE_H - panelH - 1.10;
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 5; col++) {
+      slide.addShape("ellipse" as any, {
+        x: dotsStartX + col * 0.30,
+        y: dotsStartY + row * 0.30,
+        w: 0.10, h: 0.10,
+        fill: { color: "FFFFFF" },
+        transparency: 65,
+      });
+    }
+  }
+
+  // Bottom panel: "Gerado por EduGenAI"
+  slide.addText("Gerado por EduGenAI", {
+    x: 0.55, y: SLIDE_H - panelH + 0.16,
+    w: SLIDE_W - 1.10, h: panelH - 0.32,
+    fontSize: TYPO.SUBTITLE,
+    fontFace: design.fonts.body,
+    bold: false, color: "FFFFFF",
+    transparency: 20,
+    valign: "middle",
+  });
 }
 
+// ── CLOSING SLIDE: Dark mirror of cover with "Obrigado!" hero text ──
 function renderClosingSlide(
   pptx: PptxGenJS,
   courseTitle: string,
@@ -3150,71 +3309,85 @@ function renderClosingSlide(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.coverBg);
+  addSlideBackground(slide, colors.coverDark);
 
-  // Match cover style
+  // Accent bottom panel
+  const panelH = SLIDE_H * 0.35;
   slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: 0.40,
-    h: SLIDE_H,
-    fill: { color: colors.accent },
-  });
-  slide.addShape("rect" as any, {
-    x: 0.40,
-    y: 0,
-    w: 0.08,
-    h: SLIDE_H,
-    fill: { color: design.palette[1] },
+    x: 0, y: SLIDE_H - panelH,
+    w: SLIDE_W, h: panelH,
+    fill: { color: colors.p0 },
   });
   slide.addShape("rect" as any, {
-    x: 0,
-    y: SLIDE_H - 0.10,
-    w: SLIDE_W,
-    h: 0.10,
-    fill: { color: colors.accent },
+    x: 0, y: SLIDE_H - panelH - 0.055,
+    w: SLIDE_W, h: 0.055,
+    fill: { color: colors.p1 },
   });
 
-  slide.addText("Obrigado!", {
-    x: 1.20,
-    y: 1.80,
-    w: SLIDE_W - 2.00,
-    h: 1.40,
-    fontSize: 52,
-    fontFace: design.fonts.title,
-    bold: true,
-    color: colors.coverText,
-    valign: "middle",
-  });
-
-  slide.addShape("rect" as any, {
-    x: 1.20,
-    y: 3.40,
-    w: 2.00,
-    h: 0.04,
-    fill: { color: colors.accent },
-  });
-
-  slide.addText(courseTitle, {
-    x: 1.20,
-    y: 3.60,
-    w: SLIDE_W - 2.00,
-    h: 0.60,
-    fontSize: TYPO.SUBTITLE,
-    fontFace: design.fonts.body,
-    color: colors.coverSubtext,
-  });
-
-  // Decorative palette dots
-  for (let i = 0; i < design.palette.length; i++) {
-    slide.addShape("ellipse" as any, {
-      x: SLIDE_W - MARGIN - (design.palette.length - i) * 0.40,
-      y: SLIDE_H - 0.60,
-      w: 0.28,
-      h: 0.28,
-      fill: { color: design.palette[i] },
+  // Top decoration bars (mirrored)
+  for (let b = 0; b < 3; b++) {
+    slide.addShape("rect" as any, {
+      x: 0.55,
+      y: 0.42 + b * 0.16,
+      w: 0.55 + b * 0.20,
+      h: 0.055,
+      fill: { color: design.palette[b % design.palette.length] },
     });
   }
+
+  // "OBRIGADO!" large hero text
+  slide.addText("Obrigado!", {
+    x: 0.55, y: 1.10,
+    w: SLIDE_W * 0.80, h: 1.80,
+    fontSize: 62,
+    fontFace: design.fonts.title,
+    bold: true, color: "FFFFFF",
+    valign: "top",
+  });
+
+  // Thin accent line
+  slide.addShape("rect" as any, {
+    x: 0.55, y: 3.10,
+    w: 2.50, h: 0.040,
+    fill: { color: colors.p0 },
+  });
+
+  // Course title recap
+  slide.addText(courseTitle, {
+    x: 0.55, y: 3.26,
+    w: SLIDE_W * 0.72, h: 0.65,
+    fontSize: TYPO.SUBTITLE - 2,
+    fontFace: design.fonts.body,
+    color: colors.coverSubtext,
+    valign: "top",
+    lineSpacingMultiple: 1.2,
+  });
+
+  // Dots decoration
+  const dotsStartX = SLIDE_W - 1.80;
+  const dotsStartY = SLIDE_H - panelH - 1.10;
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 5; col++) {
+      slide.addShape("ellipse" as any, {
+        x: dotsStartX + col * 0.30,
+        y: dotsStartY + row * 0.30,
+        w: 0.10, h: 0.10,
+        fill: { color: "FFFFFF" },
+        transparency: 65,
+      });
+    }
+  }
+
+  // Bottom panel text
+  slide.addText("EduGenAI  ·  Conteúdo gerado com IA", {
+    x: 0.55, y: SLIDE_H - panelH + 0.16,
+    w: SLIDE_W - 1.10, h: panelH - 0.32,
+    fontSize: TYPO.SUBTITLE,
+    fontFace: design.fonts.body,
+    color: "FFFFFF",
+    transparency: 20,
+    valign: "middle",
+  });
 }
 
 function renderSlide(
