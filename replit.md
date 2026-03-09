@@ -40,10 +40,20 @@ supabase/functions/           # Supabase Edge Functions (Deno)
 - `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon/public key
 
 ## PPTX Exporter v2 (Controlled Integration)
-Parallel exporter at `supabase/functions/export-pptx-v2/index.ts`.
-Pipeline: Parse → Segment → Distribute → Render → Export.
+Parallel exporter at `supabase/functions/export-pptx-v2/index.ts` (~4100 lines).
+Pipeline: Parse → Segment → Distribute → Merge Sparse → Visual Fit → Anti-Repetition → Render → Export.
 Does NOT replace v1. Integrated via "Motor v2 Beta" toggle in PptxExportDialog.
 - Toggle OFF (default): calls `export-pptx` (v1, production)
 - Toggle ON: calls `export-pptx-v2` (v2, beta)
 - `useV2` flag is NOT sent to the edge function — only used for URL routing.
 - Rollback: remove `useV2` from PptxExportOptions, revert URL logic in ExportButtons.tsx.
+
+### v2 Density Parameters
+- `maxItemsPerSlide: 9` (was 7) — more content per slide
+- `maxCharsPerItem: 200` (was 180) — longer text per bullet
+- `LAYOUT_VISUAL_MAX_ITEMS.bullets: 7` (was 5) — fits more bullets
+- `LAYOUT_VISUAL_MAX_ITEMS.two_column_bullets: 10` (was 8)
+- `mergeShortItems` threshold: 90 chars (was 60) — merges more aggressively
+- `MIN_CONTINUATION_ITEMS: 4` (was 3) — fewer weak continuation slides
+- Stage 3.6: merges adjacent sparse continuation slides (<400 chars each, same section)
+- Result: ~90 slides for 7-module course (was 106), 8 continuations (was 19)

@@ -106,10 +106,10 @@ function collectSectionItems(section){
   return items;
 }
 function validateAndRepairItems(items){return items.map(item=>{if(!isSentenceComplete(item))return repairSentence(item);return ensureSentenceEnd(item);});}
-function mergeShortItems(items,maxChars){if(items.length<=1)return items;const merged=[];let i=0;while(i<items.length){const cur=items[i];if(i+1<items.length&&cur.length<60&&items[i+1].length<60&&cur.length+items[i+1].length+2<=maxChars){merged.push(cur+". "+items[i+1]);i+=2;}else{merged.push(cur);i++;}}return merged;}
-function redistributeOverflow(items,maxPerSlide,maxChars){let working=items;if(working.length>maxPerSlide){working=mergeShortItems(working,maxChars);}if(working.length<=maxPerSlide)return[working];const chunks=[];for(let i=0;i<working.length;i+=maxPerSlide){chunks.push(working.slice(i,i+maxPerSlide));}return chunks;}
+function mergeShortItems(items,maxChars){if(items.length<=1)return items;const merged=[];let i=0;while(i<items.length){const cur=items[i];if(i+1<items.length&&cur.length<90&&items[i+1].length<90&&cur.length+items[i+1].length+2<=maxChars){const sep=/[.!?;]\s*$/.test(cur)?" ":". ";merged.push(cur+sep+items[i+1]);i+=2;}else{merged.push(cur);i++;}}return merged;}
+function redistributeOverflow(items,maxPerSlide,maxChars){let working=items;if(working.length>maxPerSlide){working=mergeShortItems(working,maxChars);}if(working.length<=maxPerSlide)return[working];const chunks=[];for(let i=0;i<working.length;i+=maxPerSlide){chunks.push(working.slice(i,i+maxPerSlide));}const MIN_CONT=4;if(chunks.length>=2){const last=chunks[chunks.length-1];if(last.length<MIN_CONT){chunks[chunks.length-2]=[...chunks[chunks.length-2],...last];chunks.pop();}}return chunks;}
 
-const maxItems=7;const maxChars=180;
+const maxItems=9;const maxChars=200;
 
 console.log("Found "+modules.length+" modules\n");
 

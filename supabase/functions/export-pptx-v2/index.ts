@@ -63,6 +63,7 @@ type SlideLayoutV2 =
   | "module_cover"
   | "toc"
   | "bullets"
+  | "two_column_bullets"
   | "definition"
   | "grid_cards"
   | "process_timeline"
@@ -117,62 +118,84 @@ const SAFE_H = SLIDE_H - 1.0;
 
 const THEMES = {
   light: {
-    bg: "FFFFFF",
-    bgAlt: "F8F9FA",
-    text: "2C3E50",
-    textSecondary: "7F8C8D",
+    bg: "FAFBFC",
+    bgAlt: "F0F2F5",
+    bgAccent: "E8EDF3",
+    text: "1A2332",
+    textSecondary: "6B7A8D",
     accent: "E67E22",
-    borders: "BDC3C7",
+    accentMuted: "FDF2E9",
+    borders: "D8DDE4",
     cardBg: "FFFFFF",
-    cardBgAlt: "F2F3F5",
-    tableHeaderBg: "34495E",
+    cardBgAlt: "F4F6FA",
+    tableHeaderBg: "1A2332",
     tableRowOdd: "FFFFFF",
-    tableRowEven: "ECF0F1",
-    insightBg: "FDF2E9",
-    reflectionBg: "EBF5FB",
+    tableRowEven: "F4F6FA",
+    insightBg: "FEF9F3",
+    reflectionBg: "EEF3FA",
+    coverBg: "060C14",
+    coverText: "FFFFFF",
+    coverSubtext: "8FA3BC",
+    divider: "D8DDE4",
+    coverDark: "060C14",
+    panelDark: "0D1625",
+    panelMid: "132035",
   },
   dark: {
-    bg: "2C3E50",
-    bgAlt: "34495E",
-    text: "ECF0F1",
-    textSecondary: "BDC3C7",
+    bg: "0F1923",
+    bgAlt: "182435",
+    bgAccent: "1E2F44",
+    text: "E8EDF5",
+    textSecondary: "8FA3BC",
     accent: "E67E22",
-    borders: "7F8C8D",
-    cardBg: "2C3E50",
-    cardBgAlt: "3D566E",
-    tableHeaderBg: "1A252F",
-    tableRowOdd: "2C3E50",
-    tableRowEven: "3D566E",
-    insightBg: "3D2E1A",
-    reflectionBg: "1A2E3D",
+    accentMuted: "2A1F0F",
+    borders: "253547",
+    cardBg: "182435",
+    cardBgAlt: "1E2F44",
+    tableHeaderBg: "0A1020",
+    tableRowOdd: "182435",
+    tableRowEven: "1E2F44",
+    insightBg: "2A1F0F",
+    reflectionBg: "0F1E32",
+    coverBg: "060C14",
+    coverText: "FFFFFF",
+    coverSubtext: "8FA3BC",
+    divider: "253547",
+    coverDark: "060C14",
+    panelDark: "0D1625",
+    panelMid: "132035",
   },
 };
 
 const PALETTES: Record<string, string[]> = {
-  default: ["9B59B6", "3498DB", "27AE60", "F39C12", "1ABC9C"],
-  ocean: ["2980B9", "3498DB", "1ABC9C", "16A085", "2C3E50"],
-  forest: ["27AE60", "2ECC71", "1ABC9C", "16A085", "2C3E50"],
-  sunset: ["E74C3C", "E67E22", "F39C12", "D35400", "C0392B"],
-  monochrome: ["2C3E50", "34495E", "7F8C8D", "95A5A6", "BDC3C7"],
+  default: ["7C3AED", "2563EB", "059669", "D97706", "0891B2"],
+  ocean: ["0369A1", "0284C7", "0891B2", "0D9488", "1D4ED8"],
+  forest: ["15803D", "16A34A", "0D9488", "047857", "166534"],
+  sunset: ["DC2626", "EA580C", "D97706", "B91C1C", "C2410C"],
+  monochrome: ["1E293B", "334155", "475569", "64748B", "94A3B8"],
 };
 
 const TYPO = {
-  MODULE_NUMBER: 72,
-  MODULE_TITLE: 32,
+  COVER_TITLE: 48,
+  MODULE_NUMBER: 120,
+  MODULE_TITLE: 34,
   SECTION_TITLE: 28,
   SUBTITLE: 20,
-  BODY: 18,
-  BODY_LARGE: 20,
-  SUPPORT: 14,
-  LABEL: 14,
-  TABLE_HEADER: 14,
-  TABLE_CELL: 13,
-  CARD_TITLE: 16,
-  CARD_BODY: 14,
-  BULLET_TEXT: 18,
-  TAKEAWAY_NUM: 28,
+  BODY: 17,
+  BODY_LARGE: 19,
+  SUPPORT: 13,
+  LABEL: 11,
+  TABLE_HEADER: 13,
+  TABLE_CELL: 12,
+  CARD_TITLE: 15,
+  CARD_BODY: 13,
+  BULLET_TEXT: 16,
+  TAKEAWAY_NUM: 52,
   TAKEAWAY_BODY: 14,
-  FOOTER: 14,
+  FOOTER: 11,
+  TOC_NUMBER: 42,
+  TOC_TITLE: 17,
+  TOC_DESC: 12,
 };
 
 function buildDesignConfig(
@@ -185,7 +208,7 @@ function buildDesignConfig(
     theme,
     palette,
     fonts: { title: "Montserrat", body: "Open Sans" },
-    density: { maxItemsPerSlide: 7, maxCharsPerItem: 180 },
+    density: { maxItemsPerSlide: 9, maxCharsPerItem: 200 },
   };
 }
 
@@ -195,9 +218,11 @@ function getColors(design: DesignConfig) {
   return {
     bg: t.bg,
     bgAlt: t.bgAlt,
+    bgAccent: t.bgAccent,
     text: t.text,
     textSecondary: t.textSecondary,
     accent: t.accent,
+    accentMuted: t.accentMuted,
     borders: t.borders,
     cardBg: t.cardBg,
     cardBgAlt: t.cardBgAlt,
@@ -206,6 +231,13 @@ function getColors(design: DesignConfig) {
     tableRowEven: t.tableRowEven,
     insightBg: t.insightBg,
     reflectionBg: t.reflectionBg,
+    coverBg: t.coverBg,
+    coverText: t.coverText,
+    coverSubtext: t.coverSubtext,
+    divider: t.divider,
+    coverDark: t.coverDark,
+    panelDark: t.panelDark,
+    panelMid: t.panelMid,
     p0: p[0],
     p1: p[1],
     p2: p[2],
@@ -246,11 +278,16 @@ function ensureSentenceEnd(text: string): string {
 function isSentenceComplete(text: string): boolean {
   if (!text || text.trim().length < 5) return true;
   const t = text.trim().replace(/\.+$/, "").trim();
+  if (/[,;:\-–]$/.test(t)) return false;
+  // Dangling compound prepositional phrases (e.g. "de forma", "de modo", "por meio")
+  const danglingCompound =
+    /\s(de\s+forma|de\s+modo|de\s+maneira|por\s+meio|em\s+termos|no\s+âmbito|ao\s+longo|a\s+partir|em\s+função|com\s+base|por\s+conta|no\s+sentido|de\s+acordo|em\s+relação|a\s+fim|de\s+cada|de\s+um|de\s+uma|a\s+cada)\s*$/i;
+  if (danglingCompound.test(t)) return false;
   const danglingEndings =
-    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i;
+    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i;
   if (danglingEndings.test(t)) return false;
   const incompleteVerbs =
-    /\s(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra)\s*$/i;
+    /\s(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra|exige|exigem|requer|requerem|transforma|cria|define|produz|realiza|proporciona|determina|estabelece|identifica|desenvolve|implementa|combina|conecta|automatiza)\s*$/i;
   if (incompleteVerbs.test(t)) return false;
   return true;
 }
@@ -258,13 +295,37 @@ function isSentenceComplete(text: string): boolean {
 function repairSentence(text: string): string {
   if (!text) return "";
   let t = text.trim();
+  // Strip dangling compound prepositional phrases first (before single-word stripping)
   t = t
     .replace(
-      /\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas)\s*$/i,
+      /\s+(de\s+forma|de\s+modo|de\s+maneira|por\s+meio|em\s+termos|no\s+âmbito|ao\s+longo|a\s+partir|em\s+função|com\s+base|por\s+conta|no\s+sentido|de\s+acordo|em\s+relação|a\s+fim|de\s+cada|de\s+um|de\s+uma|a\s+cada)\s*$/i,
+      "",
+    )
+    .trim();
+  // Strip dangling prepositions/articles
+  t = t
+    .replace(
+      /\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i,
+      "",
+    )
+    .trim();
+  // Strip dangling transitive verbs (the sentence is incomplete without an object)
+  t = t
+    .replace(
+      /\s+(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra|exigem|exige|requer|requerem|transforma|cria|define|produz|realiza|proporciona|determina|estabelece|identifica|desenvolve|implementa|combina|conecta|automatiza)\s*$/i,
       "",
     )
     .trim();
   t = t.replace(/[,:;\-–]+$/, "").trim();
+  // After stripping, re-check recursively (up to 3 passes) for new dangling endings
+  for (let pass = 0; pass < 3; pass++) {
+    const before = t;
+    t = t.replace(/\s+(de\s+forma|de\s+modo|de\s+maneira|por\s+meio|em\s+termos|no\s+âmbito|ao\s+longo|a\s+partir|em\s+função|com\s+base|por\s+conta|no\s+sentido|de\s+acordo|em\s+relação|a\s+fim|de\s+cada|de\s+um|de\s+uma|a\s+cada)\s*$/i, "").trim();
+    t = t.replace(/\s+(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|um|uma|uns|umas|e|ou|que|seu|sua|seus|suas|sem|como|mais|não)\s*$/i, "").trim();
+    t = t.replace(/\s+(permite|oferece|utiliza|analisa|envolve|gera|inclui|aplica|usa|apresenta|fornece|facilita|ajuda|promove|garante|aumenta|reduz|melhora|possibilita|integra|exigem|exige|requer|requerem|transforma|cria|define|produz|realiza|proporciona|determina|estabelece|identifica|desenvolve|implementa|combina|conecta|automatiza)\s*$/i, "").trim();
+    t = t.replace(/[,:;\-–]+$/, "").trim();
+    if (t === before) break;
+  }
   return ensureSentenceEnd(t);
 }
 
@@ -279,6 +340,11 @@ function cleanMarkdown(text: string): string {
     .trim();
 }
 
+function startsWithConnectorFragment(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return /^(e|ou|mas|porém|entretanto|além|como|com|sem|para|por|de|da|do|das|dos|em|na|no|nas|nos|que|quando|onde|enquanto)\b/.test(t);
+}
+
 function smartTruncate(text: string, maxLen: number): string {
   if (!text || text.length <= maxLen) return text;
   const sub = text.substring(0, maxLen);
@@ -286,6 +352,7 @@ function smartTruncate(text: string, maxLen: number): string {
     sub.lastIndexOf(". "),
     sub.lastIndexOf("! "),
     sub.lastIndexOf("? "),
+    sub.lastIndexOf("; "),
   );
   if (sentenceEnd > maxLen * 0.5) {
     return text.substring(0, sentenceEnd + 1).trim();
@@ -293,9 +360,246 @@ function smartTruncate(text: string, maxLen: number): string {
   const lastSpace = sub.lastIndexOf(" ");
   if (lastSpace > maxLen * 0.6) {
     const cut = text.substring(0, lastSpace).trim();
-    return repairSentence(cut);
+    const repaired = repairSentence(cut);
+    if (isSentenceComplete(repaired.replace(/\.\s*$/, ""))) {
+      return repaired;
+    }
   }
-  return repairSentence(sub.trim());
+  // Do not force semantic amputation when there is no safe sentence boundary.
+  return ensureSentenceEnd(text.trim());
+}
+
+function extractFirstCompleteSentence(text: string, maxLen: number): string {
+  const normalized = sanitize(cleanMarkdown(text)).replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+
+  const sentenceCandidates = (normalized.match(/[^.!?]+[.!?]?/g) || [])
+    .map((s) => sanitize(s).trim())
+    .filter(Boolean);
+
+  for (const candidate of sentenceCandidates) {
+    const repaired = repairSentence(candidate);
+    const bare = repaired.replace(/[.\s]+$/, "").trim();
+    if (bare.length >= 10 && isSentenceComplete(bare)) {
+      return smartTruncate(repaired, maxLen);
+    }
+  }
+
+  return "";
+}
+
+function isWeakProcessFragment(text: string): boolean {
+  const t = text.trim();
+  if (t.length > 120) return false;
+  // Known weak openers — anaphoric references that lack standalone meaning
+  if (/^(Isso|Esse processo|Essa abordagem|Esse m[eé]todo|Esse tipo|Essa ferramenta|Essa t[eé]cnica|Essa estrat[eé]gia|Essa pr[aá]tica|Esse recurso)\s+(oferece|garante|facilita|possibilita|ajuda|promove|permite|gera|reduz|melhora|acelera|aumenta|é|envolve|produz)\b/i.test(t)) return true;
+  // "Ele/Ela + verb" filler
+  if (/^(Ele|Ela|Eles|Elas)\s+(permite|oferece|garante|facilita|possibilita|ajuda|promove)\b/i.test(t)) return true;
+  // REMOVED: the overly aggressive <70 chars rule that was catching legitimate content
+  return false;
+}
+
+function normalizeResidualText(text: string): string {
+  let t = sanitize(cleanMarkdown(text || ""));
+  if (!t) return "";
+
+  t = t
+    // English terms → Portuguese (expanded)
+    .replace(/\bwidely used\b/gi, "amplamente utilizado")
+    .replace(/\bmachine learning\b/gi, "aprendizado de máquina")
+    .replace(/\bdeep learning\b/gi, "aprendizado profundo")
+    .replace(/\bnatural language processing\b/gi, "processamento de linguagem natural")
+    .replace(/\bbest practices?\b/gi, "boas práticas")
+    .replace(/\buse cases?\b/gi, "casos de uso")
+    .replace(/\breal[- ]?time\b/gi, "tempo real")
+    .replace(/\bfeedback\b/gi, "retorno")
+    .replace(/\bframework\b/gi, "estrutura")
+    .replace(/\binput\b/gi, "entrada")
+    .replace(/\boutput\b/gi, "saída")
+    .replace(/\bdata[- ]?driven\b/gi, "orientado por dados")
+    .replace(/\bstakeholders?\b/gi, "partes interessadas")
+    .replace(/\binsights?\b/gi, "percepções")
+    .replace(/\bbenchmark(ing)?\b/gi, "referência")
+    .replace(/\bscalability\b/gi, "escalabilidade")
+    .replace(/\bworkflow\b/gi, "fluxo de trabalho")
+    .replace(/\bcloud[- ]?based\b/gi, "baseado em nuvem")
+    .replace(/\boverall\b/gi, "no geral")
+    .replace(/\bapproach\b/gi, "abordagem")
+    .replace(/\bkey\b/gi, "chave")
+    .replace(/\btools?\b/gi, "ferramentas")
+    // "soft skills" / "soft habilidades" MUST come before generic "skills"
+    .replace(/\bsoft\s+skills?\b/gi, "habilidades interpessoais")
+    .replace(/\bsoft\s+habilidades?\b/gi, "habilidades interpessoais")
+    .replace(/\bhard\s+skills?\b/gi, "habilidades técnicas")
+    .replace(/\bskills?\b/gi, "habilidades")
+    .replace(/\bperformance\b/gi, "desempenho")
+    .replace(/\befficiency\b/gi, "eficiência")
+    .replace(/\baccuracy\b/gi, "precisão")
+    .replace(/\btraining\b/gi, "treinamento")
+    .replace(/\bdataset\b/gi, "conjunto de dados")
+    .replace(/\bpipeline\b/gi, "fluxo de processamento")
+    .replace(/\bdeployment\b/gi, "implantação")
+    // Additional English leaks
+    .replace(/\bhowever\b/gi, "entretanto")
+    .replace(/\btherefore\b/gi, "portanto")
+    .replace(/\bmoreover\b/gi, "além disso")
+    .replace(/\bfurthermore\b/gi, "além disso")
+    .replace(/\bin\s+order\s+to\b/gi, "para")
+    .replace(/\bas\s+well\s+as\b/gi, "assim como")
+    .replace(/\bon\s+the\s+other\s+hand\b/gi, "por outro lado")
+    .replace(/\bbased\s+on\b/gi, "com base em")
+    .replace(/\bthrough\b/gi, "por meio de")
+    .replace(/\baccording\s+to\b/gi, "de acordo com")
+
+    // "percepções valiosos" → "percepções valiosas" (fem. plural)
+    .replace(/\bpercep[cç][oõ]es\s+(valiosos|baseados|obtidos|gerados|coletados|produzidos|fornecidos|relevantes)\b/gi, 
+      (_, adj) => {
+        const femMap: Record<string, string> = {
+          valiosos: "valiosas", baseados: "baseadas", obtidos: "obtidas",
+          gerados: "geradas", coletados: "coletadas", produzidos: "produzidas",
+          fornecidos: "fornecidas", relevantes: "relevantes",
+        };
+        return `percepções ${femMap[adj.toLowerCase()] || adj}`;
+      })
+    // "informações coletados" → "informações coletadas"
+    .replace(/\binforma[cç][oõ]es\s+(coletados|obtidos|gerados|baseados|fornecidos|relevantes)\b/gi,
+      (_, adj) => {
+        const femMap: Record<string, string> = {
+          coletados: "coletadas", obtidos: "obtidas", gerados: "geradas",
+          baseados: "baseadas", fornecidos: "fornecidas", relevantes: "relevantes",
+        };
+        return `informações ${femMap[adj.toLowerCase()] || adj}`;
+      })
+    // "decisões baseados" → "decisões baseadas"
+    .replace(/\bdecis[oõ]es\s+(baseados|informados|tomados)\b/gi,
+      (_, adj) => {
+        const femMap: Record<string, string> = {
+          baseados: "baseadas", informados: "informadas", tomados: "tomadas",
+        };
+        return `decisões ${femMap[adj.toLowerCase()] || adj}`;
+      })
+    // "soluções personalizados" → "soluções personalizadas"
+    .replace(/\bsolu[cç][oõ]es\s+(personalizados|automatizados|integrados|otimizados|implementados|desenvolvidos)\b/gi,
+      (_, adj) => `soluções ${adj.replace(/os$/, "as")}`)
+    // "ferramentas utilizados" → "ferramentas utilizadas"
+    .replace(/\bferramentas\s+(utilizados|usados|aplicados|desenvolvidos|integrados)\b/gi,
+      (_, adj) => `ferramentas ${adj.replace(/os$/, "as")}`)
+    // "estratégias utilizados" → "estratégias utilizadas"
+    .replace(/\bestrat[eé]gias\s+(utilizados|baseados|aplicados|desenvolvidos|implementados)\b/gi,
+      (_, adj) => `estratégias ${adj.replace(/os$/, "as")}`)
+    // "tecnologias avançados" → "tecnologias avançadas"
+    .replace(/\btecnologias\s+(avan[cç]ados|utilizados|baseados|integrados|modernos)\b/gi,
+      (_, adj) => `tecnologias ${adj.replace(/os$/, "as")}`)
+    // "práticas recomendados" → "práticas recomendadas"
+    .replace(/\bpr[aá]ticas\s+(recomendados|aplicados|utilizados|baseados|desenvolvidos)\b/gi,
+      (_, adj) => `práticas ${adj.replace(/os$/, "as")}`)
+    // "métricas definidos" → "métricas definidas"
+    .replace(/\bm[eé]tricas\s+(definidos|coletados|obtidos|utilizados|aplicados)\b/gi,
+      (_, adj) => `métricas ${adj.replace(/os$/, "as")}`)
+    // Missing preposition "de" in "gestão X" patterns
+    .replace(/\bgest[aã]o\s+(documentos|projetos|dados|tarefas|equipes?|processos?|conte[uú]dos?|riscos?|tempo|conhecimento|recursos?|clientes?|pessoas|custos?|qualidade|mudan[cç]as?|contratos?)\b/gi, (_, noun) => `gestão de ${noun.toLowerCase()}`)
+    // Missing preposition in "análise X" patterns
+    .replace(/\ban[aá]lise\s+(dados|sentimentos?|riscos?|resultados?|desempenho|mercado)\b/gi, (_, noun) => `análise de ${noun.toLowerCase()}`)
+    // Missing preposition in "segurança X" patterns
+    .replace(/\bseguran[cç]a\s+(dados|informa[cç][oõ]es|sistemas?|redes?)\b/gi, (_, noun) => `segurança de ${noun.toLowerCase()}`)
+    // Missing preposition in "automação X", "integração X", "otimização X"
+    .replace(/\bautoma[cç][aã]o\s+(processos?|tarefas?|sistemas?)\b/gi, (_, noun) => `automação de ${noun.toLowerCase()}`)
+    .replace(/\bintegra[cç][aã]o\s+(dados|sistemas?|ferramentas?|plataformas?)\b/gi, (_, noun) => `integração de ${noun.toLowerCase()}`)
+    .replace(/\botimiza[cç][aã]o\s+(processos?|recursos?|custos?|resultados?|tempo)\b/gi, (_, noun) => `otimização de ${noun.toLowerCase()}`)
+    // Missing preposition in "monitoramento X", "processamento X"
+    .replace(/\bmonitoramento\s+(dados|resultados?|desempenho|sistemas?)\b/gi, (_, noun) => `monitoramento de ${noun.toLowerCase()}`)
+    .replace(/\bprocessamento\s+(dados|linguagem|texto|imagens?)\b/gi, (_, noun) => `processamento de ${noun.toLowerCase()}`)
+
+    // Punctuation cleanup
+    .replace(/\.{2,}/g, ".")
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .replace(/([.!?])\s*"\s*\./g, '$1"')
+    .replace(/\"\s*\"/g, '"')
+    .replace(/"\s*\.\s*$/g, '".')
+    .replace(/,\s*(al[eé]m disso|e tamb[eé]m),?\s*\d+\.?$/i, ".")
+    .replace(/^\s*\d+[.)]\s*/g, "")
+    // Fix broken prompt quotation: ensure closing quote before period
+    .replace(/"([^"]{5,})\.\s*$/g, '"$1."')
+    // Fix doubled periods after quotes
+    .replace(/\."\./g, '."')
+    .replace(/\."\.$/g, '."')
+    // Fix trailing period inside and outside quotes
+    .replace(/([.!?])"\s*\.\s*$/g, '$1"')
+    // Fix orphan punctuation at start
+    .replace(/^[.,;:!?\s]+/, "")
+    // Fix period-space-period artifacts (e.g., "Dados. .")
+    .replace(/\.\s+\./g, ".")
+    // Fix double spaces left by replacements
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (/^\d+[.)-]?$/.test(t)) return "";
+
+  // ── UNIVERSAL "Label / Content" slash-to-colon conversion ──
+  // Catches ANY "CapitalizedWord(s) / content" pattern where label is 2-40 chars
+  // and doesn't contain sentence-ending punctuation (so it's a real label, not prose).
+  // This replaces the old separate CORE + EXTENDED regex approach that missed patterns
+  // like "Necessidade / ...", "Ferramenta Escolhida / ...", etc.
+  const UNIVERSAL_SLASH = /^([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][a-záàâãéêíóôõúüç]+(?:\s+[A-Za-záàâãéêíóôõúüç]+){0,2})\s*\/\s*(.+)$/;
+  const slashMatch = t.match(UNIVERSAL_SLASH);
+  if (slashMatch) {
+    const label = slashMatch[1].replace(/\s+/g, " ").trim();
+    const desc = slashMatch[2].trim();
+    if (label.length >= 2 && label.length <= 40 && !/[.!?]/.test(label)) {
+      t = `${label}: ${desc}`;
+    }
+  }
+
+  const finalized = ensureSentenceEnd(repairSentence(t))
+    .replace(/\.{2,}/g, ".")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .trim();
+  return finalized;
+}
+
+function isEditoriallyStrongSentence(text: string): boolean {
+  const bare = sanitize(text).replace(/[.\s]+$/, "").trim();
+  if (bare.length < 36) return false;
+  if (bare.split(/\s+/).length < 7) return false;
+  if (/\b(and|with|for|the|widely used)\b/i.test(bare) && /\b(com|de|para|que|dos|das)\b/i.test(bare)) return false;
+  if (/\b(grandes|intelig[eê]ncia|processo|dados)\s*$/i.test(bare)) return false;
+  return isSentenceComplete(bare);
+}
+
+function extractTocDescription(content: string, maxLen: number): string {
+  const stripped = (content || "")
+    .replace(/^#{1,6}\s+.*$/gm, "")
+    .replace(/^[-*]\s+/gm, "")
+    .replace(/^\d+[.)]\s+/gm, "")
+    .trim();
+
+  const normalized = sanitize(cleanMarkdown(stripped));
+  if (!normalized) return "";
+
+  const candidates = (normalized.match(/[^.!?]+[.!?]?/g) || [])
+    .map((s) => normalizeResidualText(s))
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (isEditoriallyStrongSentence(candidate)) {
+      return smartTruncate(candidate, maxLen);
+    }
+  }
+
+  const objectiveLines = stripped
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 20)
+    .map((line) => normalizeResidualText(line))
+    .filter((line) => isEditoriallyStrongSentence(line));
+
+  if (objectiveLines.length > 0) {
+    return smartTruncate(objectiveLines[0], maxLen);
+  }
+
+  return "";
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -353,6 +657,30 @@ function parseModuleContent(content: string): ParsedBlock[] {
         if (rawTitle.includes(emoji)) {
           sectionHint = hint;
           break;
+        }
+      }
+      // TEXT-BASED FALLBACK: detect pedagogical type from heading keywords
+      // when no emoji is present — this is the root cause of slides like 32-35
+      // being classified as "generic" and bypassing anti-fragmentation logic
+      if (!sectionHint) {
+        const titleUpper = rawTitle.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const KEYWORD_SECTION_MAP: [RegExp, string][] = [
+          [/\b(COMO\s+FUNCIONA|FUNCIONAMENTO|PROCESSO|PASSO\s+A\s+PASSO|ETAPAS|FLUXO\s+DE\s+TRABALHO|WORKFLOW|MECANISMO|COMO\s+FAZER|COMO\s+USAR|COMO\s+APLICAR|COMO\s+UTILIZAR|NA\s+PRATICA)\b/, "process"],
+          [/\b(OBJETIVOS?|METAS?|O\s+QUE\s+VOCE\s+VAI\s+APRENDER)\b/, "objectives"],
+          [/\b(FUNDAMENTOS?|CONCEITOS?\s+(BASICOS?|ESSENCIAIS?|FUNDAMENTAIS?|CHAVE)|BASE\s+TEORICA|INTRODUCAO|O\s+QUE\s+[EÉ])\b/, "fundamentals"],
+          [/\b(MODELOS?|TIPOS?|CATEGORIAS?|CLASSIFICACAO|ABORDAGENS?|METODOLOGIAS?)\b/, "models"],
+          [/\b(APLICACOES?|USOS?\s+REAIS?|CASOS?\s+DE\s+USO|ONDE\s+APLICAR|APLICACOES?\s+PRATICAS?)\b/, "applications"],
+          [/\b(EXEMPLOS?\s+PRATICOS?|ESTUDO\s+DE\s+CASO|CASO\s+REAL|CENARIO|DEMONSTRACAO)\b/, "example"],
+          [/\b(DESAFIOS?|CUIDADOS?|RISCOS?|LIMITACOES?|ERROS?\s+COMUNS?|ARMADILHAS?|PROBLEMAS?)\b/, "challenges"],
+          [/\b(REFLEXAO|PENSE\s+SOBRE|PARA\s+PENSAR|REFLEXOES?)\b/, "reflection"],
+          [/\b(RESUMO|SINTESE|RECAPITULACAO|EM\s+RESUMO)\b/, "summary"],
+          [/\b(TAKEAWAYS?|PONTOS\s+CHAVE|PONTOS?\s+PRINCIPAIS?|CONCLUSOES?|DESTAQUES?)\b/, "takeaways"],
+        ];
+        for (const [pattern, hint] of KEYWORD_SECTION_MAP) {
+          if (pattern.test(titleUpper)) {
+            sectionHint = hint;
+            break;
+          }
         }
       }
       currentSectionHint = sectionHint;
@@ -549,52 +877,41 @@ const PEDAGOGICAL_LAYOUT_MAP: Record<string, SlideLayoutV2> = {
 
 function splitLongItem(text: string, maxLen: number): string[] {
   if (text.length <= maxLen) return [text];
-  const danglingRe =
-    /\s(de|da|do|das|dos|na|no|nas|nos|em|para|por|com|ao|à|a|o|as|os|e|ou|que|seu|sua|seus|suas|sem|como|mais)\s*$/i;
+
+  const sentences = (text.match(/[^.!?;]+[.!?;]?/g) || [])
+    .map((s) => sanitize(s).trim())
+    .filter(Boolean)
+    .map((s) => ensureSentenceEnd(repairSentence(s)));
+
+  // If there is no safe sentence boundary, keep item intact to avoid semantic amputation.
+  if (sentences.length <= 1) {
+    return [ensureSentenceEnd(repairSentence(text))];
+  }
+
   const parts: string[] = [];
-  let remaining = text;
-  while (remaining.length > maxLen) {
-    const cutZone = remaining.substring(0, maxLen);
-    const splitAt = Math.max(
-      cutZone.lastIndexOf(". "),
-      cutZone.lastIndexOf("! "),
-      cutZone.lastIndexOf("? "),
-      cutZone.lastIndexOf("; "),
-      cutZone.lastIndexOf(", "),
-    );
-    if (splitAt > maxLen * 0.4) {
-      let part = remaining.substring(0, splitAt + 1).trim();
-      if (danglingRe.test(part)) {
-        const backUp = part.lastIndexOf(" ", part.length - 4);
-        if (backUp > maxLen * 0.3) {
-          part = remaining.substring(0, backUp).trim() + ".";
-          remaining = remaining.substring(backUp).trim();
-          parts.push(part);
-          continue;
-        }
-      }
-      parts.push(part);
-      remaining = remaining.substring(splitAt + 1).trim();
+  let current = "";
+
+  for (const sentence of sentences) {
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (candidate.length <= maxLen) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) {
+      parts.push(current);
+      current = "";
+    }
+
+    // Keep oversized single sentence intact rather than splitting mid-idea.
+    if (sentence.length > maxLen) {
+      parts.push(sentence);
     } else {
-      let wordBreak = cutZone.lastIndexOf(" ");
-      if (wordBreak > maxLen * 0.5) {
-        let candidate = remaining.substring(0, wordBreak).trim();
-        if (danglingRe.test(candidate)) {
-          const earlier = candidate.lastIndexOf(" ", candidate.length - 4);
-          if (earlier > maxLen * 0.4) {
-            candidate = remaining.substring(0, earlier).trim();
-            wordBreak = earlier;
-          }
-        }
-        parts.push(candidate + ".");
-        remaining = remaining.substring(wordBreak).trim();
-      } else {
-        parts.push(remaining.substring(0, maxLen - 3).trim() + "...");
-        remaining = remaining.substring(maxLen - 3).trim();
-      }
+      current = sentence;
     }
   }
-  if (remaining.length > 3) parts.push(remaining);
+
+  if (current) parts.push(current);
   return parts;
 }
 
@@ -644,16 +961,27 @@ function extractTableFromSection(section: SemanticSection): {
 }
 
 function validateAndRepairItems(items: string[], report: PipelineReport): string[] {
-  return items.map((item) => {
-    report.sentenceIntegrityChecks++;
-    if (!isSentenceComplete(item)) {
-      report.warnings.push(
-        `Repaired incomplete sentence: "${item.substring(0, 40)}..."`,
-      );
-      return repairSentence(item);
-    }
-    return ensureSentenceEnd(item);
-  });
+  return items
+    .map((item) => normalizeResidualText(item))
+    .filter(Boolean)
+    .map((item) => {
+      report.sentenceIntegrityChecks++;
+      let result = item;
+      if (!isSentenceComplete(result)) {
+        report.warnings.push(
+          `Repaired incomplete sentence: "${result.substring(0, 40)}..."`,
+        );
+        result = repairSentence(result);
+      }
+      result = ensureSentenceEnd(result);
+      const bare = result.replace(/[.\s]+$/, "").trim();
+      if (bare.length < 8) {
+        report.warnings.push(`Dropped too-short item after repair: "${bare}"`);
+        return "";
+      }
+      return result;
+    })
+    .filter((item) => item.length > 0);
 }
 
 function mergeShortItems(
@@ -667,11 +995,12 @@ function mergeShortItems(
     const current = items[i];
     if (
       i + 1 < items.length &&
-      current.length < 60 &&
-      items[i + 1].length < 60 &&
+      current.length < 90 &&
+      items[i + 1].length < 90 &&
       current.length + items[i + 1].length + 2 <= maxChars
     ) {
-      merged.push(current + ". " + items[i + 1]);
+      const sep = /[.!?;]\s*$/.test(current) ? " " : ". ";
+      merged.push(current + sep + items[i + 1]);
       i += 2;
     } else {
       merged.push(current);
@@ -679,6 +1008,33 @@ function mergeShortItems(
     }
   }
   return merged;
+}
+
+function mergeAdjacentShortest(
+  items: string[],
+  targetCount: number,
+): string[] {
+  if (items.length <= targetCount) return items;
+
+  const compacted = [...items];
+  while (compacted.length > targetCount && compacted.length >= 2) {
+    let bestIdx = 0;
+    let bestLen = Infinity;
+
+    for (let i = 0; i < compacted.length - 1; i++) {
+      const combinedLen = compacted[i].length + compacted[i + 1].length;
+      if (combinedLen < bestLen) {
+        bestLen = combinedLen;
+        bestIdx = i;
+      }
+    }
+
+    const a = compacted[bestIdx].replace(/\.\s*$/, "").trim();
+    const b = compacted[bestIdx + 1].trim();
+    compacted.splice(bestIdx, 2, ensureSentenceEnd(`${a}. ${b}`));
+  }
+
+  return compacted;
 }
 
 function redistributeOverflow(
@@ -697,7 +1053,71 @@ function redistributeOverflow(
   for (let i = 0; i < working.length; i += maxPerSlide) {
     chunks.push(working.slice(i, i + maxPerSlide));
   }
+  // Merge last chunk back if it's too short (≤2 items) to avoid weak continuation slides
+  const MIN_CONTINUATION_ITEMS = 4;
+  if (chunks.length >= 2) {
+    const lastChunk = chunks[chunks.length - 1];
+    if (lastChunk.length < MIN_CONTINUATION_ITEMS) {
+      const prevChunk = chunks[chunks.length - 2];
+      chunks[chunks.length - 2] = [...prevChunk, ...lastChunk];
+      chunks.pop();
+    }
+  }
   return chunks;
+}
+
+function hasMeaningfulContent(items: string[]): boolean {
+  if (items.length === 0) return false;
+  const meaningful = items.filter((item) => {
+    const bare = item.replace(/[.\s]+$/, "").trim();
+    return bare.length >= 16 && isSentenceComplete(bare);
+  });
+  return meaningful.length >= 2 || meaningful.some((m) => m.length >= 40);
+}
+
+function rebalanceChunksForSemanticIntegrity(
+  chunks: string[][],
+  report: PipelineReport,
+): string[][] {
+  if (chunks.length <= 1) return chunks;
+
+  // 1) Prevent sentence/idea suspension across chunk boundary
+  for (let i = 0; i < chunks.length - 1; i++) {
+    const current = chunks[i];
+    const next = chunks[i + 1];
+    if (!current.length || !next.length) continue;
+
+    let tail = current[current.length - 1];
+    let head = next[0];
+
+    while (
+      next.length > 0 &&
+      (
+        !isSentenceComplete(tail.replace(/\.\s*$/, "")) ||
+        /[,;:\-–]$/.test(tail.trim()) ||
+        startsWithConnectorFragment(head)
+      )
+    ) {
+      current.push(next.shift()!);
+      tail = current[current.length - 1];
+      head = next[0] || "";
+      report.warnings.push("Adjusted chunk boundary to keep sentence/idea intact");
+    }
+  }
+
+  // 2) Remove weak continuation chunks by folding them back
+  const compact: string[][] = [chunks[0]];
+  for (let i = 1; i < chunks.length; i++) {
+    const chunk = chunks[i].filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
+    if (!hasMeaningfulContent(chunk)) {
+      compact[compact.length - 1].push(...chunk);
+      report.warnings.push("Merged weak continuation chunk back into previous slide");
+      continue;
+    }
+    compact.push(chunk);
+  }
+
+  return compact.filter((chunk) => chunk.length > 0);
 }
 
 function distributeModuleToSlides(
@@ -714,9 +1134,18 @@ function distributeModuleToSlides(
   const objectivesSection = sections.find(
     (s) => s.pedagogicalType === "objectives",
   );
-  const objectiveItems = objectivesSection
+  let objectiveItems = objectivesSection
     ? validateAndRepairItems(collectSectionItems(objectivesSection), report)
     : [];
+  // Extra integrity pass on objectives shown on module cover
+  objectiveItems = objectiveItems
+    .map((obj) => {
+      if (!isSentenceComplete(obj.replace(/\.\s*$/, ""))) {
+        return repairSentence(obj);
+      }
+      return obj;
+    })
+    .filter((obj) => obj.replace(/[.\s]+$/, "").trim().length >= 10);
 
   slides.push({
     layout: "module_cover",
@@ -728,11 +1157,11 @@ function distributeModuleToSlides(
 
   for (const section of sections) {
     if (section.pedagogicalType === "objectives") continue;
-    const layout = PEDAGOGICAL_LAYOUT_MAP[section.pedagogicalType] || "bullets";
+    let layout = PEDAGOGICAL_LAYOUT_MAP[section.pedagogicalType] || "bullets";
 
     if (layout === "comparison_table") {
       const table = extractTableFromSection(section);
-      if (table) {
+      if (table && table.rows.length > 0) {
         slides.push({
           layout: "comparison_table",
           title: section.title,
@@ -743,37 +1172,270 @@ function distributeModuleToSlides(
         });
         continue;
       }
+      // If no valid table found, fall through to items-based rendering
     }
 
     let rawItems = collectSectionItems(section);
     const repairedItems = validateAndRepairItems(rawItems, report);
-    const validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
+    let validItems = repairedItems.flatMap((item) => splitLongItem(item, maxChars));
+
+    // ── Process/Timeline anti-fragmentation (final pass) ──
+    if (section.pedagogicalType === "process" && validItems.length > 1) {
+      const normalizedProcessItems = validItems
+        .map((item) => normalizeResidualText(item))
+        .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10)
+        .filter((item) => !/^\d+[.)-]?$/.test(item.trim()));
+
+      // PHASE 1: Only absorb truly anaphoric weak fragments into their predecessor
+      const phase1: string[] = [];
+      for (const item of normalizedProcessItems) {
+        const bare = item.replace(/[.\s]+$/, "").trim();
+        if (phase1.length > 0 && isWeakProcessFragment(bare)) {
+          const prev = phase1[phase1.length - 1].replace(/[.\s]+$/, "").trim();
+          // Extract the meaningful verb+complement from the anaphoric fragment
+          const stripped = bare
+            .replace(/^(Isso|Esse processo|Essa abordagem|Esse m[eé]todo|Essa ferramenta|Essa t[eé]cnica|Essa estrat[eé]gia|Essa pr[aá]tica|Esse recurso|Esse tipo|Ele|Ela)\s+/i, "")
+            .trim();
+          const fragmentLower = stripped.charAt(0).toLowerCase() + stripped.slice(1);
+          phase1[phase1.length - 1] = ensureSentenceEnd(`${prev}, o que ${fragmentLower}`);
+        } else {
+          phase1.push(item);
+        }
+      }
+
+      // PHASE 2: Only merge items that are BOTH very short (<65 chars) — 
+      // these are typically step labels without enough pedagogical substance alone
+      const phase2: string[] = [];
+      let i = 0;
+      while (i < phase1.length) {
+        const current = phase1[i].replace(/[.\s]+$/, "").trim();
+        if (i + 1 < phase1.length) {
+          const next = phase1[i + 1].replace(/[.\s]+$/, "").trim();
+          // Only merge two genuinely tiny items that can't stand alone as bullets
+          if (current.length < 65 && next.length < 65) {
+            phase2.push(ensureSentenceEnd(`${current}. ${next}`));
+            i += 2;
+            continue;
+          }
+        }
+        phase2.push(ensureSentenceEnd(current));
+        i++;
+      }
+
+      // PHASE 3: Keep 4-5 items for a real process feel — never over-compact.
+      // Fewer than 4 items loses the "process/flow" visual identity.
+      const maxProcessItems = rawItems.length <= 1 ? 4 : 5;
+      const compacted = phase2.length > maxProcessItems
+        ? mergeAdjacentShortest(phase2, maxProcessItems)
+        : phase2;
+
+      validItems = compacted;
+    // FORCE process_timeline for ALL process sections — never fallback to bullets
+      layout = "process_timeline";
+    }
+
+    // Additional merge for summary/applications — only merge truly tiny fragments
+    if ((section.pedagogicalType === "summary" || section.pedagogicalType === "applications") && validItems.length > 1) {
+      const merged: string[] = [];
+      let i = 0;
+      while (i < validItems.length) {
+        if (i + 1 < validItems.length && validItems[i].length < 55 && validItems[i + 1].length < 55) {
+          merged.push(ensureSentenceEnd(`${validItems[i].replace(/\.\s*$/, "")}. ${validItems[i + 1]}`));
+          i += 2;
+        } else {
+          merged.push(validItems[i]);
+          i++;
+        }
+      }
+      validItems = merged;
+    }
+
+    // Example sections: consolidate and structure practical example blocks
+    if (section.pedagogicalType === "example" && validItems.length > 0) {
+      // Step 1: Normalize all items through residual text cleanup
+      let normalizedExamples = validItems
+        .map((item) => normalizeResidualText(item))
+        .filter(Boolean);
+
+      const normalizeLabelKey = (label: string) =>
+        label
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const isImperativeAction = (content: string) => {
+        return /^(Sugira|Inclua|Defina|Liste|Escreva|Crie|Aplique|Use|Elabore|Estruture|Compare|Avalie|Gere|Selecione|Descreva|Proponha)\b/i.test(content.trim());
+      };
+
+      const toCanonicalLabel = (rawLabel: string, content: string, hasAction: boolean): string => {
+        const key = normalizeLabelKey(rawLabel);
+        if (["cenario", "contexto", "desafio", "acao", "solucao", "resultado", "impacto", "beneficio"].includes(key)) {
+          if (key === "resultado" && isImperativeAction(content)) {
+            return hasAction ? "Solução" : "Ação";
+          }
+          const map: Record<string, string> = {
+            cenario: "Cenário",
+            contexto: "Contexto",
+            desafio: "Desafio",
+            acao: "Ação",
+            solucao: "Solução",
+            resultado: "Resultado",
+            impacto: "Impacto",
+            beneficio: "Benefício",
+          };
+          return map[key] || rawLabel;
+        }
+        if (/^necessidade( do negocio)?$/.test(key)) return "Desafio";
+        if (/^ferramenta( escolhida)?$/.test(key)) return "Solução";
+        if (/^prompt( para ia)?$/.test(key)) return "Ação";
+        if (/^resultado esperado$/.test(key)) return "Resultado";
+        if (/^(relevancia|facilidade|custo|criterios aplicados?)$/.test(key)) return "__criteria__";
+        return rawLabel;
+      };
+
+      // Step 2: Universal label detection — ANY "Label: content" pattern
+      const ANY_LABEL = /^([A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ][a-záàâãéêíóôõúüç]+(?:\s+[A-Za-záàâãéêíóôõúüç]+){0,3})\s*:\s*(.+)$/;
+
+      const labelBuckets = new Map<string, string[]>();
+      const nonLabeled: string[] = [];
+      const criteriaEntries: string[] = [];
+
+      for (const item of normalizedExamples) {
+        const labelMatch = item.match(ANY_LABEL);
+        if (labelMatch) {
+          const rawLabel = labelMatch[1].trim();
+          const content = labelMatch[2].replace(/\.\s*$/, "").trim();
+          const hasAction = labelBuckets.has("Ação");
+          const canonicalLabel = toCanonicalLabel(rawLabel, content, hasAction);
+
+          if (canonicalLabel === "__criteria__") {
+            criteriaEntries.push(`${rawLabel}: ${content}`);
+            continue;
+          }
+
+          if (!labelBuckets.has(canonicalLabel)) {
+            labelBuckets.set(canonicalLabel, []);
+          }
+
+          // Strengthen prompt closure when label is prompt/action and content is too abrupt.
+          if (/^Ação$/i.test(canonicalLabel) && /^Prompt\s+para\s+IA\b/i.test(rawLabel)) {
+            const closed = /[.!?]$/.test(content)
+              ? content
+              : `${content}. Adapte o prompt ao contexto do caso`;
+            labelBuckets.get(canonicalLabel)!.push(closed);
+          } else {
+            labelBuckets.get(canonicalLabel)!.push(content);
+          }
+        } else {
+          nonLabeled.push(item);
+        }
+      }
+
+      // Step 3: Rebuild items — one per label, merging duplicates.
+      const coreItems: string[] = [];
+      const CANONICAL_ORDER = ["Cenário", "Contexto", "Desafio", "Ação", "Solução", "Resultado", "Impacto", "Benefício"];
+
+      for (const canonical of CANONICAL_ORDER) {
+        const bucket = labelBuckets.get(canonical);
+        if (bucket && bucket.length > 0) {
+          const merged = bucket.join(". ").replace(/\.\s*\./g, ".").trim();
+          coreItems.push(ensureSentenceEnd(`${canonical}: ${merged}`));
+          labelBuckets.delete(canonical);
+        }
+      }
+
+      // Remaining labels (if any) still get consolidated in one criteria block when multiple
+      const extendedEntries: string[] = [...criteriaEntries];
+      for (const [label, bucket] of labelBuckets) {
+        const merged = bucket.join(". ").replace(/\.\s*\./g, ".").trim();
+        extendedEntries.push(`${label}: ${merged}`);
+      }
+      if (extendedEntries.length >= 2) {
+        const consolidated = extendedEntries.map((e) => e.replace(/\.\s*$/, "")).join("; ");
+        coreItems.push(ensureSentenceEnd(`Critérios Aplicados: ${consolidated}`));
+      } else if (extendedEntries.length === 1) {
+        coreItems.push(ensureSentenceEnd(extendedEntries[0]));
+      }
+
+      // Step 5: Absorb short unlabeled items into the nearest labeled item
+      for (const unlabeled of nonLabeled) {
+        const bare = unlabeled.replace(/[.\s]+$/, "").trim();
+        if (bare.length < 80 && coreItems.length > 0) {
+          const resultIdx = coreItems.findIndex((ci) => /^Resultado:/i.test(ci));
+          const targetIdx = resultIdx >= 0 ? resultIdx : coreItems.length - 1;
+          const prev = coreItems[targetIdx].replace(/[.\s]+$/, "").trim();
+          coreItems[targetIdx] = ensureSentenceEnd(`${prev}. ${unlabeled}`);
+        } else {
+          coreItems.push(unlabeled);
+        }
+      }
+
+      // Step 6: Cap at 4 items for visual fit on example_highlight layout
+      validItems = coreItems.slice(0, 4);
+    }
 
     if (validItems.length === 0) {
-      slides.push({
-        layout,
-        title: section.title,
-        sectionLabel: section.sectionLabel,
-        items: [ensureSentenceEnd(section.title)],
-        moduleIndex,
-      });
+      // Skip empty sections entirely — don't create slides with only the title as content
+      report.warnings.push(`Skipped empty section: "${section.title}"`);
       continue;
     }
 
-    const chunks = redistributeOverflow(validItems, maxItems, maxChars, report);
+    const chunks = rebalanceChunksForSemanticIntegrity(
+      redistributeOverflow(validItems, maxItems, maxChars, report),
+      report,
+    );
 
     for (let ci = 0; ci < chunks.length; ci++) {
       const isContination = ci > 0;
-      const slideTitle = isContination
-        ? `${section.title} (Parte ${ci + 1})`
-        : section.title;
 
-      const finalItems = chunks[ci].map((item) => {
+      let finalItems = chunks[ci].map((item) => {
         if (item.length > maxChars) {
           return smartTruncate(item, maxChars);
         }
         return item;
       });
+
+      // Final sentence integrity pass on every item before rendering
+      finalItems = finalItems
+        .map((item) => {
+          if (!isSentenceComplete(item.replace(/\.\s*$/, ""))) {
+            return repairSentence(item);
+          }
+          return item;
+        })
+        .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
+
+      // Skip any slide (including first) with no meaningful items
+      if (finalItems.length === 0) {
+        report.warnings.push(`Dropped slide with no valid items: "${section.title}"`);
+        continue;
+      }
+
+      // A slide must have meaningful content — not just a title with 1 weak bullet
+      if (!hasMeaningfulContent(finalItems)) {
+        // Try to fold into previous slide
+        const prev = slides[slides.length - 1];
+        if (prev && prev.items) {
+          prev.items = [...prev.items, ...finalItems].filter(
+            (item) => item.replace(/[.\s]+$/, "").trim().length >= 8,
+          );
+          report.warnings.push(`Merged weak slide into previous: "${section.title}" (${isContination ? "continuation" : "first"})`);
+          continue;
+        }
+        // If no previous slide to merge into and content is truly empty, drop
+        if (finalItems.length === 0) {
+          report.warnings.push(`Dropped empty slide: "${section.title}"`);
+          continue;
+        }
+        // Otherwise let it through — it's the very first slide and has some content
+      }
+
+      const slideTitle = isContination
+        ? `${section.title} (Parte ${ci + 1})`
+        : section.title;
 
       slides.push({
         layout,
@@ -793,11 +1455,30 @@ function distributeModuleToSlides(
 // SECTION 7: STAGE 4 — RENDER (SlidePlans → PptxGenJS slides)
 // ═══════════════════════════════════════════════════════════════════
 
+let _globalSlideIdx = 0;
+
 function addSlideBackground(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   color: string,
 ) {
   slide.background = { fill: color };
+}
+
+function addHR(
+  slide: ReturnType<PptxGenJS["addSlide"]>,
+  x: number, y: number, w: number, color: string, h = 0.028,
+) {
+  slide.addShape("rect" as any, { x, y, w, h, fill: { color } });
+}
+
+function addLeftEdge(
+  slide: ReturnType<PptxGenJS["addSlide"]>,
+  color: string,
+) {
+  slide.addShape("rect" as any, {
+    x: 0, y: 0, w: 0.06, h: SLIDE_H,
+    fill: { color },
+  });
 }
 
 function addSectionLabel(
@@ -806,26 +1487,16 @@ function addSectionLabel(
   accentColor: string,
   fontBody: string,
 ) {
-  slide.addShape("rect" as any, {
-    x: MARGIN,
-    y: 0.45,
-    w: 1.8,
-    h: 0.30,
-    fill: { color: accentColor },
-    rectRadius: 0.05,
-  });
   slide.addText(label.toUpperCase(), {
-    x: MARGIN,
-    y: 0.45,
-    w: 1.8,
-    h: 0.30,
-    fontSize: TYPO.LABEL,
+    x: 0.55, y: 0.30,
+    w: 6.0, h: 0.24,
+    fontSize: 10,
     fontFace: fontBody,
     bold: true,
-    color: "FFFFFF",
-    align: "center",
-    valign: "middle",
+    color: accentColor,
+    charSpacing: 4.5,
   });
+  addHR(slide, 0.55, 0.57, 0.80, accentColor, 0.022);
 }
 
 function addSlideTitle(
@@ -833,17 +1504,18 @@ function addSlideTitle(
   title: string,
   colors: ReturnType<typeof getColors>,
   fontTitle: string,
+  _accentColor?: string,
 ) {
   slide.addText(title, {
-    x: MARGIN,
-    y: 0.85,
-    w: SAFE_W,
-    h: 0.65,
+    x: 0.55, y: 0.68,
+    w: SLIDE_W - 1.10,
+    h: 0.82,
     fontSize: TYPO.SECTION_TITLE,
     fontFace: fontTitle,
     bold: true,
     color: colors.text,
-    valign: "top",
+    valign: "middle",
+    lineSpacingMultiple: 1.08,
   });
 }
 
@@ -852,784 +1524,323 @@ function addFooter(
   colors: ReturnType<typeof getColors>,
   fontBody: string,
 ) {
-  slide.addShape("rect" as any, {
-    x: 0,
-    y: SLIDE_H - 0.40,
-    w: SLIDE_W,
-    h: 0.40,
-    fill: { color: colors.bgAlt },
-  });
+  addHR(slide, 0, SLIDE_H - 0.26, SLIDE_W, colors.divider, 0.012);
   slide.addText("EduGenAI", {
-    x: MARGIN,
-    y: SLIDE_H - 0.38,
-    w: 3,
-    h: 0.35,
-    fontSize: TYPO.FOOTER - 2,
+    x: SLIDE_W - 1.50, y: SLIDE_H - 0.24,
+    w: 1.30, h: 0.20,
+    fontSize: 9,
     fontFace: fontBody,
     color: colors.textSecondary,
+    align: "right",
     valign: "middle",
+    charSpacing: 1.5,
   });
 }
 
-function renderModuleCover(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
 
-  const accentColor = design.palette[((plan.moduleIndex || 0) % design.palette.length)];
 
-  slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: 0.25,
-    h: SLIDE_H,
-    fill: { color: accentColor },
-  });
+const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
+  bullets: 7,
+  two_column_bullets: 10,
+  definition: 4,
+  grid_cards: 6,
+  process_timeline: 4,
+  example_highlight: 6,
+  warning_callout: 6,
+  reflection_callout: 4,
+  summary_slide: 6,
+  numbered_takeaways: 7,
+};
 
-  slide.addText(plan.subtitle || "MÓDULO", {
-    x: 0.60,
-    y: 0.80,
-    w: 4,
-    h: 0.50,
-    fontSize: TYPO.LABEL,
-    fontFace: design.fonts.body,
-    bold: true,
-    color: accentColor,
-    letterSpacing: 3,
-  });
+const LAYOUT_VISUAL_MAX_CHARS: Partial<Record<SlideLayoutV2, number>> = {
+  bullets: 200,
+  two_column_bullets: 180,
+  definition: 160,
+  grid_cards: 140,
+  process_timeline: 120,
+  example_highlight: 180,
+  warning_callout: 170,
+  reflection_callout: 140,
+  summary_slide: 500,
+  numbered_takeaways: 140,
+};
 
-  slide.addText(plan.title, {
-    x: 0.60,
-    y: 1.40,
-    w: SAFE_W * 0.65,
-    h: 1.20,
-    fontSize: TYPO.MODULE_TITLE,
-    fontFace: design.fonts.title,
-    bold: true,
-    color: colors.text,
-    valign: "top",
-  });
+function estimateTextHeightInches(
+  text: string,
+  fontSize: number,
+  boxW: number,
+  lineSpacing = 1.25,
+): number {
+  const clean = sanitize(text || "");
+  if (!clean) return 0;
 
-  if (plan.description) {
-    slide.addText(plan.description, {
-      x: 0.60,
-      y: 2.80,
-      w: SAFE_W * 0.65,
-      h: 0.80,
-      fontSize: TYPO.BODY,
-      fontFace: design.fonts.body,
-      color: colors.textSecondary,
-      valign: "top",
-    });
-  }
+  const boxWidthPt = Math.max(boxW * 72, 24);
+  const avgCharWidthPt = Math.max(fontSize * 0.52, 1);
+  const charsPerLine = Math.max(Math.floor(boxWidthPt / avgCharWidthPt), 8);
 
-  if (plan.objectives && plan.objectives.length > 0) {
-    const startY = plan.description ? 3.80 : 2.80;
-    const objTexts = plan.objectives.map(
-      (obj, i) =>
-        ({
-          text: `${i + 1}. ${obj}`,
-          options: {
-            fontSize: TYPO.SUPPORT,
-            fontFace: design.fonts.body,
-            color: colors.text,
-            bullet: false,
-            breakLine: true,
-            paraSpaceAfter: 6,
-          },
-        }) as any,
-    );
-    slide.addText(objTexts, {
-      x: SAFE_W * 0.65 + 1.20,
-      y: startY,
-      w: SAFE_W * 0.30,
-      h: 2.50,
-      valign: "top",
-    });
-  }
+  const lines = clean
+    .split(/\n+/)
+    .map((part) => Math.max(1, Math.ceil(part.trim().length / charsPerLine)))
+    .reduce((sum, v) => sum + v, 0);
 
-  addFooter(slide, colors, design.fonts.body);
+  return (lines * fontSize * lineSpacing) / 72;
 }
 
-function renderBullets(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
+function fitsTextBox(
+  text: string,
+  fontSize: number,
+  boxW: number,
+  boxH: number,
+  lineSpacing = 1.25,
+  padding = 0.03,
+): boolean {
+  const needed = estimateTextHeightInches(text, fontSize, boxW, lineSpacing);
+  return needed <= Math.max(0, boxH - padding);
+}
 
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
-  }
+function stripPartSuffix(title: string): string {
+  return sanitize(title).replace(/\s*\(Parte\s+\d+\)\s*$/i, "").trim();
+}
 
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+function getBulletLayoutMetrics(itemCount: number) {
+  const contentY = 1.65;
+  const bulletGap = 0.05;
+  const contentH = SLIDE_H - contentY - 0.50;
+  const rawItemH = (contentH - bulletGap * Math.max(itemCount - 1, 0)) / Math.max(itemCount, 1);
+  const itemH = Math.max(0.52, Math.min(1.40, rawItemH));
+  return { contentY, bulletGap, contentH, itemH };
+}
 
+function visuallyFitsPlan(plan: SlidePlan): boolean {
   const items = plan.items || [];
-  const contentY = 1.70;
-  const contentH = SLIDE_H - contentY - 0.60;
-  const itemH = Math.min(0.60, contentH / Math.max(items.length, 1));
+  if (items.length === 0) return false;
 
-  for (let i = 0; i < items.length; i++) {
-    const accentColor = design.palette[i % design.palette.length];
+  switch (plan.layout) {
+    case "two_column_bullets": {
+      const colW = (SAFE_W - 0.40) / 2;
+      const halfCount = Math.ceil(items.length / 2);
+      const { itemH } = getBulletLayoutMetrics(halfCount);
+      return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, colW - 0.30, itemH - 0.05, 1.2));
+    }
 
-    slide.addShape("rect" as any, {
-      x: MARGIN,
-      y: contentY + i * itemH,
-      w: 0.08,
-      h: itemH - 0.08,
-      fill: { color: accentColor },
-      rectRadius: 0.02,
-    });
+    case "bullets": {
+      const { itemH, bulletGap } = getBulletLayoutMetrics(items.length);
+      const sideW = SLIDE_W * 0.35;
+      const worstCaseW = SLIDE_W - sideW - 0.35 - 0.45 - 0.18;
+      const rBulletGap = items.length >= 7 ? 0.03 : bulletGap;
+      const rightH = SLIDE_H - 0.50 - 0.45;
+      const rItemH = Math.max(0.45, Math.min(1.20, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1)));
+      const worstItemH = Math.min(itemH, rItemH);
+      return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, worstCaseW, worstItemH - 0.05, 1.2));
+    }
 
-    slide.addText(items[i], {
-      x: MARGIN + 0.25,
-      y: contentY + i * itemH,
-      w: SAFE_W - 0.30,
-      h: itemH - 0.05,
-      fontSize: TYPO.BULLET_TEXT,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "middle",
-    });
-  }
+    case "warning_callout": {
+      const contentY = 1.70;
+      const itemH = Math.min(0.80, (SLIDE_H - contentY - 0.60) / Math.max(items.length, 1));
+      return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT, SAFE_W - 0.55, itemH - 0.05, 1.2));
+    }
 
-  addFooter(slide, colors, design.fonts.body);
-}
+    case "reflection_callout": {
+      const contentY = 1.90;
+      const itemH = Math.min(1.00, (SLIDE_H - contentY - 0.60) / Math.max(items.length, 1));
+      return items.every((item) => fitsTextBox(item, TYPO.BODY_LARGE, SAFE_W - 0.60, itemH - 0.10, 1.2));
+    }
 
-function renderDefinition(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
+    case "numbered_takeaways": {
+      const contentY = 1.70;
+      const contentH = SLIDE_H - contentY - 0.60;
+      const itemH = Math.min(0.65, contentH / Math.max(items.length, 1));
+      return items.every((item) => fitsTextBox(item, TYPO.TAKEAWAY_BODY, SAFE_W - 0.60, itemH - 0.05, 1.2));
+    }
 
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+    case "summary_slide": {
+      const bodyText = items.join(" ");
+      return fitsTextBox(bodyText, TYPO.BODY, SAFE_W - 0.60, SLIDE_H - 1.90 - 0.80, 1.3);
+    }
 
-  const items = plan.items || [];
-  if (items.length > 0) {
-    slide.addShape("rect" as any, {
-      x: MARGIN,
-      y: 1.70,
-      w: SAFE_W,
-      h: 0.90,
-      fill: { color: colors.bgAlt },
-      rectRadius: 0.08,
-    });
-    slide.addText(items[0], {
-      x: MARGIN + 0.20,
-      y: 1.75,
-      w: SAFE_W - 0.40,
-      h: 0.80,
-      fontSize: TYPO.BODY_LARGE,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "middle",
-    });
-  }
+    case "definition": {
+      if (!fitsTextBox(items[0] || "", TYPO.BODY_LARGE, SAFE_W - 0.40, 0.80, 1.2)) return false;
+      const pillars = items.slice(1);
+      if (pillars.length === 0) return true;
+      const pillarW = (SAFE_W - 0.30 * (pillars.length - 1)) / pillars.length;
+      return pillars.every((item) => fitsTextBox(item, TYPO.CARD_BODY, pillarW, 1.20, 1.2));
+    }
 
-  const pillars = items.slice(1);
-  if (pillars.length > 0) {
-    const pillarW = (SAFE_W - 0.30 * (pillars.length - 1)) / pillars.length;
-    const startY = 2.90;
-    for (let i = 0; i < pillars.length; i++) {
-      const x = MARGIN + i * (pillarW + 0.30);
-      const accentColor = design.palette[i % design.palette.length];
+    case "grid_cards": {
+      const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
+      if (cols <= 0) return false;
+      const rows = Math.ceil(items.length / cols);
+      const gap = 0.20;
+      const cardW = (SAFE_W - gap * (cols - 1)) / cols;
+      const contentArea = SLIDE_H - 1.70 - 0.60;
+      const cardH = (contentArea - gap * (rows - 1)) / rows;
 
-      slide.addShape("rect" as any, {
-        x,
-        y: startY,
-        w: pillarW,
-        h: 0.06,
-        fill: { color: accentColor },
+      return items.every((item) => {
+        const colonIdx = item.indexOf(":");
+        if (colonIdx > 0 && colonIdx < 40) {
+          const label = item.substring(0, colonIdx).trim();
+          const desc = item.substring(colonIdx + 1).trim();
+          return (
+            fitsTextBox(label, TYPO.CARD_TITLE, cardW - 0.30, 0.35, 1.1) &&
+            fitsTextBox(desc, TYPO.CARD_BODY, cardW - 0.30, cardH - 0.65, 1.2)
+          );
+        }
+        return fitsTextBox(item, TYPO.CARD_BODY, cardW - 0.30, cardH - 0.30, 1.2);
       });
+    }
 
-      slide.addText(pillars[i], {
-        x,
-        y: startY + 0.15,
-        w: pillarW,
-        h: 1.20,
-        fontSize: TYPO.CARD_BODY,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "top",
+    case "process_timeline": {
+      // Vertical timeline handles up to 7 items; horizontal up to 4.
+      // Always accept — the renderer adapts layout dynamically.
+      if (items.length <= 7) return true;
+      // For 8+ items, check if text fits in compact vertical cards
+      const stepH = Math.min(0.70, (SLIDE_H - 1.65 - 0.38) / items.length);
+      return items.every((item) => fitsTextBox(item, TYPO.BULLET_TEXT - 1, SAFE_W - 1.20, stepH - 0.06, 1.15));
+    }
+
+    case "example_highlight": {
+      const capped = items.slice(0, 3);
+      return capped.every((item, i) => {
+        const colonIdx = item.indexOf(":");
+        const label = colonIdx > 0 && colonIdx < 30
+          ? item.substring(0, colonIdx).trim()
+          : ["Cenário", "Solução", "Resultado"][i] || `Item ${i + 1}`;
+        const desc = colonIdx > 0 ? item.substring(colonIdx + 1).trim() : item;
+        return (
+          fitsTextBox(label, TYPO.CARD_TITLE, 2.00, 0.35, 1.1) &&
+          fitsTextBox(desc, TYPO.BODY, SAFE_W - 0.60, 0.85, 1.2)
+        );
+      });
+    }
+
+    default:
+      return true;
+  }
+}
+
+function enforceVisualRenderingGuards(
+  modulePlans: SlidePlan[],
+  design: DesignConfig,
+  report: PipelineReport,
+): SlidePlan[] {
+  const adjusted: SlidePlan[] = [];
+
+  for (const plan of modulePlans) {
+    if (plan.layout === "module_cover" || plan.layout === "comparison_table" || !plan.items || plan.items.length === 0) {
+      adjusted.push(plan);
+      continue;
+    }
+
+    const baseTitle = stripPartSuffix(plan.continuationOf || plan.title);
+    const maxItems = LAYOUT_VISUAL_MAX_ITEMS[plan.layout] || design.density.maxItemsPerSlide;
+    const maxChars = LAYOUT_VISUAL_MAX_CHARS[plan.layout] || design.density.maxCharsPerItem;
+
+    const normalizedItems = plan.items
+      .flatMap((item) => splitLongItem(item, maxChars))
+      .map((item) => ensureSentenceEnd(repairSentence(item)))
+      .filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8);
+
+    if (normalizedItems.length === 0) {
+      report.warnings.push(`[VISUAL] Dropped plan without renderable items: "${plan.title}"`);
+      continue;
+    }
+
+    const initialChunks = redistributeOverflow(normalizedItems, maxItems, maxChars, report)
+      .map((chunk) => chunk.filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 8))
+      .filter((chunk) => chunk.length > 0);
+
+    const queue: SlidePlan[] = initialChunks.map((chunk) => ({ ...plan, items: chunk, title: baseTitle }));
+    const fitted: SlidePlan[] = [];
+    let guard = 0;
+
+    while (queue.length > 0 && guard < 100) {
+      guard++;
+      const current = queue.shift()!;
+      const currentItems = current.items || [];
+      if (currentItems.length === 0) continue;
+
+      if (visuallyFitsPlan(current)) {
+        fitted.push(current);
+        continue;
+      }
+
+      // Process slides: NEVER fragment process_timeline into tiny splits.
+      // Force vertical timeline which handles up to 7 items natively.
+      if (
+        current.layout === "process_timeline" &&
+        currentItems.length <= 7
+      ) {
+        // Always fits vertical timeline — push directly
+        fitted.push(current);
+        continue;
+      }
+      if (
+        current.layout === "process_timeline" &&
+        currentItems.length > 7
+      ) {
+        // Split into two balanced halves, both as process_timeline
+        const mid = Math.ceil(currentItems.length / 2);
+        report.redistributions++;
+        report.warnings.push(`[VISUAL] Split large process into 2 timeline slides: "${baseTitle}"`);
+        queue.unshift(
+          { ...current, items: currentItems.slice(mid), title: `${baseTitle} (cont.)` },
+          { ...current, items: currentItems.slice(0, mid) },
+        );
+        continue;
+      }
+
+      if (currentItems.length > 1) {
+        const mid = Math.ceil(currentItems.length / 2);
+        report.redistributions++;
+        report.warnings.push(`[VISUAL] Split by visual overflow: "${baseTitle}"`);
+        queue.unshift(
+          { ...current, items: currentItems.slice(mid) },
+          { ...current, items: currentItems.slice(0, mid) },
+        );
+        continue;
+      }
+
+      if (current.layout !== "bullets") {
+        const fallback = { ...current, layout: "bullets" as SlideLayoutV2 };
+        if (visuallyFitsPlan(fallback)) {
+          report.warnings.push(`[VISUAL] Fallback to bullets for fit: "${baseTitle}"`);
+          fitted.push(fallback);
+          continue;
+        }
+      }
+
+      const single = currentItems[0];
+      const forcedParts = splitLongItem(single, Math.max(48, Math.floor(maxChars * 0.7)));
+      if (forcedParts.length > 1) {
+        report.redistributions++;
+        report.warnings.push(`[VISUAL] Forced re-split long item: "${baseTitle}"`);
+        queue.unshift(...forcedParts.map((part) => ({ ...current, items: [part] })));
+        continue;
+      }
+
+      report.warnings.push(`[VISUAL] Dropped non-fitting item after safeguards: "${single.substring(0, 50)}..."`);
+    }
+
+    for (let i = 0; i < fitted.length; i++) {
+      const partTitle = i === 0 ? baseTitle : `${baseTitle} (Parte ${i + 1})`;
+      adjusted.push({
+        ...fitted[i],
+        title: partTitle,
+        continuationOf: i === 0 ? plan.continuationOf : baseTitle,
       });
     }
   }
 
-  addFooter(slide, colors, design.fonts.body);
+  return adjusted;
 }
 
-function renderGridCards(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = plan.items || [];
-  const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
-  const rows = Math.ceil(items.length / cols);
-  const gap = 0.20;
-  const cardW = (SAFE_W - gap * (cols - 1)) / cols;
-  const contentArea = SLIDE_H - 1.70 - 0.60;
-  const cardH = (contentArea - gap * (rows - 1)) / rows;
-
-  for (let i = 0; i < items.length; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = MARGIN + col * (cardW + gap);
-    const y = 1.70 + row * (cardH + gap);
-    const accentColor = design.palette[i % design.palette.length];
-
-    slide.addShape("roundRect" as any, {
-      x,
-      y,
-      w: cardW,
-      h: cardH,
-      fill: { color: colors.cardBgAlt },
-      rectRadius: 0.08,
-      line: { color: colors.borders, width: 0.5 },
-    });
-
-    slide.addShape("rect" as any, {
-      x,
-      y,
-      w: cardW,
-      h: 0.06,
-      fill: { color: accentColor },
-    });
-
-    const colonIdx = items[i].indexOf(":");
-    if (colonIdx > 0 && colonIdx < 40) {
-      const label = items[i].substring(0, colonIdx).trim();
-      const desc = items[i].substring(colonIdx + 1).trim();
-      slide.addText(label, {
-        x: x + 0.15,
-        y: y + 0.15,
-        w: cardW - 0.30,
-        h: 0.35,
-        fontSize: TYPO.CARD_TITLE,
-        fontFace: design.fonts.title,
-        bold: true,
-        color: accentColor,
-        valign: "top",
-      });
-      slide.addText(desc, {
-        x: x + 0.15,
-        y: y + 0.50,
-        w: cardW - 0.30,
-        h: cardH - 0.65,
-        fontSize: TYPO.CARD_BODY,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "top",
-      });
-    } else {
-      slide.addText(items[i], {
-        x: x + 0.15,
-        y: y + 0.15,
-        w: cardW - 0.30,
-        h: cardH - 0.30,
-        fontSize: TYPO.CARD_BODY,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "top",
-      });
-    }
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderProcessTimeline(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = plan.items || [];
-  const stepW = SAFE_W / Math.max(items.length, 1);
-  const stepY = 2.20;
-
-  for (let i = 0; i < items.length; i++) {
-    const x = MARGIN + i * stepW;
-    const accentColor = design.palette[i % design.palette.length];
-
-    slide.addShape("ellipse" as any, {
-      x: x + stepW / 2 - 0.25,
-      y: stepY,
-      w: 0.50,
-      h: 0.50,
-      fill: { color: accentColor },
-    });
-    slide.addText(String(i + 1), {
-      x: x + stepW / 2 - 0.25,
-      y: stepY,
-      w: 0.50,
-      h: 0.50,
-      fontSize: TYPO.BODY,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: "FFFFFF",
-      align: "center",
-      valign: "middle",
-    });
-
-    if (i < items.length - 1) {
-      slide.addShape("rect" as any, {
-        x: x + stepW / 2 + 0.28,
-        y: stepY + 0.22,
-        w: stepW - 0.56,
-        h: 0.06,
-        fill: { color: colors.borders },
-      });
-    }
-
-    const colonIdx = items[i].indexOf(":");
-    const label =
-      colonIdx > 0 && colonIdx < 30
-        ? items[i].substring(0, colonIdx).trim()
-        : `Etapa ${i + 1}`;
-    const desc =
-      colonIdx > 0 && colonIdx < 30
-        ? items[i].substring(colonIdx + 1).trim()
-        : items[i];
-
-    slide.addText(label, {
-      x: x + 0.05,
-      y: stepY + 0.65,
-      w: stepW - 0.10,
-      h: 0.35,
-      fontSize: TYPO.CARD_TITLE,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: accentColor,
-      align: "center",
-    });
-    slide.addText(desc, {
-      x: x + 0.05,
-      y: stepY + 1.00,
-      w: stepW - 0.10,
-      h: 1.80,
-      fontSize: TYPO.CARD_BODY,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      align: "center",
-      valign: "top",
-    });
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderComparisonTable(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const headers = plan.tableHeaders || [];
-  const rows = plan.tableRows || [];
-
-  if (headers.length === 0) {
-    renderBullets(pptx, plan, design);
-    return;
-  }
-
-  const tableData: any[][] = [];
-
-  tableData.push(
-    headers.map((h) => ({
-      text: h,
-      options: {
-        bold: true,
-        color: "FFFFFF",
-        fill: { color: colors.tableHeaderBg },
-        fontSize: TYPO.TABLE_HEADER,
-        fontFace: design.fonts.body,
-        align: "center",
-        valign: "middle",
-      },
-    })),
-  );
-
-  for (let r = 0; r < rows.length; r++) {
-    const fillColor = r % 2 === 0 ? colors.tableRowOdd : colors.tableRowEven;
-    tableData.push(
-      rows[r].map((cell) => ({
-        text: cell,
-        options: {
-          fontSize: TYPO.TABLE_CELL,
-          fontFace: design.fonts.body,
-          color: colors.text,
-          fill: { color: fillColor },
-          valign: "middle",
-        },
-      })),
-    );
-  }
-
-  const colW = SAFE_W / headers.length;
-  slide.addTable(tableData, {
-    x: MARGIN,
-    y: 1.70,
-    w: SAFE_W,
-    colW: Array(headers.length).fill(colW),
-    border: { type: "solid", pt: 0.5, color: colors.borders },
-    rowH: 0.50,
-  });
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderExampleHighlight(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, design.palette[3] || colors.accent, design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = plan.items || [];
-
-  slide.addShape("roundRect" as any, {
-    x: MARGIN,
-    y: 1.70,
-    w: SAFE_W,
-    h: SLIDE_H - 1.70 - 0.60,
-    fill: { color: colors.insightBg },
-    rectRadius: 0.10,
-    line: { color: colors.accent, width: 1.5 },
-  });
-
-  const sectionLabels = ["Cenário", "Solução", "Resultado"];
-  const sectionColors = [design.palette[1], design.palette[2], design.palette[3]];
-
-  for (let i = 0; i < Math.min(items.length, 3); i++) {
-    const y = 1.90 + i * 1.40;
-    const color = sectionColors[i % sectionColors.length];
-
-    const colonIdx = items[i].indexOf(":");
-    const label =
-      colonIdx > 0 && colonIdx < 30
-        ? items[i].substring(0, colonIdx).trim()
-        : sectionLabels[i] || `Item ${i + 1}`;
-    const desc =
-      colonIdx > 0 ? items[i].substring(colonIdx + 1).trim() : items[i];
-
-    slide.addText(label, {
-      x: MARGIN + 0.30,
-      y,
-      w: 2.00,
-      h: 0.35,
-      fontSize: TYPO.CARD_TITLE,
-      fontFace: design.fonts.title,
-      bold: true,
-      color,
-    });
-    slide.addText(desc, {
-      x: MARGIN + 0.30,
-      y: y + 0.35,
-      w: SAFE_W - 0.60,
-      h: 0.85,
-      fontSize: TYPO.BODY,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "top",
-    });
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderWarningCallout(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, "E74C3C", design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = plan.items || [];
-  const contentY = 1.70;
-  const itemH = Math.min(0.80, (SLIDE_H - contentY - 0.60) / Math.max(items.length, 1));
-
-  for (let i = 0; i < items.length; i++) {
-    const y = contentY + i * itemH;
-
-    slide.addText("⚠", {
-      x: MARGIN,
-      y,
-      w: 0.40,
-      h: itemH - 0.05,
-      fontSize: TYPO.BODY,
-      align: "center",
-      valign: "middle",
-    });
-
-    slide.addText(items[i], {
-      x: MARGIN + 0.50,
-      y,
-      w: SAFE_W - 0.55,
-      h: itemH - 0.05,
-      fontSize: TYPO.BULLET_TEXT,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "middle",
-    });
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderReflectionCallout(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.reflectionBg);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, design.palette[1], design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = plan.items || [];
-  const contentY = 1.90;
-  const itemH = Math.min(1.00, (SLIDE_H - contentY - 0.60) / Math.max(items.length, 1));
-
-  for (let i = 0; i < items.length; i++) {
-    const y = contentY + i * itemH;
-    slide.addText(`💭  ${items[i]}`, {
-      x: MARGIN + 0.30,
-      y,
-      w: SAFE_W - 0.60,
-      h: itemH - 0.10,
-      fontSize: TYPO.BODY_LARGE,
-      fontFace: design.fonts.body,
-      italic: true,
-      color: colors.text,
-      valign: "middle",
-    });
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderSummarySlide(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, design.palette[0], design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = plan.items || [];
-  const bodyText = items.join(" ");
-
-  slide.addShape("roundRect" as any, {
-    x: MARGIN,
-    y: 1.70,
-    w: SAFE_W,
-    h: SLIDE_H - 1.70 - 0.60,
-    fill: { color: colors.bgAlt },
-    rectRadius: 0.10,
-  });
-
-  slide.addText(bodyText, {
-    x: MARGIN + 0.30,
-    y: 1.90,
-    w: SAFE_W - 0.60,
-    h: SLIDE_H - 1.90 - 0.80,
-    fontSize: TYPO.BODY,
-    fontFace: design.fonts.body,
-    color: colors.text,
-    valign: "top",
-    lineSpacingMultiple: 1.3,
-  });
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderNumberedTakeaways(
-  pptx: PptxGenJS,
-  plan: SlidePlan,
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, design.palette[4] || colors.accent, design.fonts.body);
-  }
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
-
-  const items = plan.items || [];
-  const contentY = 1.70;
-  const contentH = SLIDE_H - contentY - 0.60;
-  const itemH = Math.min(0.65, contentH / Math.max(items.length, 1));
-
-  for (let i = 0; i < items.length; i++) {
-    const y = contentY + i * itemH;
-    const accentColor = design.palette[i % design.palette.length];
-
-    slide.addShape("ellipse" as any, {
-      x: MARGIN,
-      y: y + 0.05,
-      w: 0.40,
-      h: 0.40,
-      fill: { color: accentColor },
-    });
-    slide.addText(String(i + 1), {
-      x: MARGIN,
-      y: y + 0.05,
-      w: 0.40,
-      h: 0.40,
-      fontSize: TYPO.TAKEAWAY_BODY,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: "FFFFFF",
-      align: "center",
-      valign: "middle",
-    });
-    slide.addText(items[i], {
-      x: MARGIN + 0.55,
-      y: y + 0.02,
-      w: SAFE_W - 0.60,
-      h: itemH - 0.05,
-      fontSize: TYPO.TAKEAWAY_BODY,
-      fontFace: design.fonts.body,
-      color: colors.text,
-      valign: "middle",
-    });
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
-function renderTOC(
-  pptx: PptxGenJS,
-  modules: { title: string; description?: string }[],
-  design: DesignConfig,
-) {
-  const colors = getColors(design);
-  const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  slide.addText("O que você vai aprender", {
-    x: MARGIN,
-    y: 0.50,
-    w: SAFE_W,
-    h: 0.80,
-    fontSize: TYPO.MODULE_TITLE,
-    fontFace: design.fonts.title,
-    bold: true,
-    color: colors.text,
-  });
-
-  const startY = 1.60;
-  const itemH = Math.min(0.80, (SLIDE_H - startY - 0.60) / Math.max(modules.length, 1));
-
-  for (let i = 0; i < modules.length; i++) {
-    const y = startY + i * itemH;
-    const accentColor = design.palette[i % design.palette.length];
-
-    slide.addText(String(i + 1).padStart(2, "0"), {
-      x: MARGIN,
-      y,
-      w: 0.60,
-      h: itemH - 0.05,
-      fontSize: TYPO.SUBTITLE,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: accentColor,
-      valign: "middle",
-    });
-
-    slide.addText(modules[i].title, {
-      x: MARGIN + 0.70,
-      y,
-      w: SAFE_W * 0.40,
-      h: itemH - 0.05,
-      fontSize: TYPO.BODY,
-      fontFace: design.fonts.title,
-      bold: true,
-      color: colors.text,
-      valign: "middle",
-    });
-
-    if (modules[i].description) {
-      slide.addText(modules[i].description!, {
-        x: SAFE_W * 0.45 + MARGIN,
-        y,
-        w: SAFE_W * 0.52,
-        h: itemH - 0.05,
-        fontSize: TYPO.SUPPORT,
-        fontFace: design.fonts.body,
-        color: colors.textSecondary,
-        valign: "middle",
-      });
-    }
-  }
-
-  addFooter(slide, colors, design.fonts.body);
-}
-
+// ═══════════════════════════════════════════════════════════════════
+// PREMIUM RENDER FUNCTIONS — v2 Editorial Visual Engine (Premium Redesign R4)
+// ═══════════════════════════════════════════════════════════════════
+
+// ────────────────────────────────────────────────────────────────
+// COVER HERO PREMIUM — Full-bleed cinematic with overlay + decorative numbers
+// ────────────────────────────────────────────────────────────────
 function renderCoverSlide(
   pptx: PptxGenJS,
   courseTitle: string,
@@ -1637,43 +1848,1756 @@ function renderCoverSlide(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
 
+  // ── Full dark background ──
+  addSlideBackground(slide, colors.coverDark);
+
+  // ── Premium gradient overlay — diagonal accent slab (bottom-right) ──
   slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: SLIDE_W,
-    h: 0.12,
-    fill: { color: colors.accent },
+    x: SLIDE_W * 0.55, y: SLIDE_H * 0.30,
+    w: SLIDE_W * 0.50, h: SLIDE_H * 0.75,
+    fill: { color: colors.p0 },
+    transparency: 80,
+    rotate: -6,
   });
 
-  slide.addText(courseTitle, {
-    x: MARGIN,
-    y: 2.00,
-    w: SAFE_W,
-    h: 2.00,
-    fontSize: 40,
+  // ── Decorative "01" at 8% opacity — large background element ──
+  slide.addText("01", {
+    x: SLIDE_W - 5.5, y: SLIDE_H - 5.0,
+    w: 5.5, h: 5.0,
+    fontSize: 260,
     fontFace: design.fonts.title,
     bold: true,
-    color: colors.text,
+    color: "FFFFFF",
+    transparency: 92,
+    align: "right",
+    valign: "bottom",
+  });
+
+  // ── Thin horizontal design lines ──
+  addHR(slide, 0.80, 1.20, 4.00, colors.p0, 0.015);
+  addHR(slide, 0.80, SLIDE_H - 1.40, 3.50, colors.p0, 0.015);
+
+  // ── Vertical accent line (thin, editorial) ──
+  slide.addShape("rect" as any, {
+    x: 0.80, y: 1.20, w: 0.030, h: SLIDE_H - 2.60,
+    fill: { color: colors.p0 },
+    transparency: 40,
+  });
+
+  // ── Small palette color chips — stacked vertically ──
+  for (let b = 0; b < 5; b++) {
+    slide.addShape("rect" as any, {
+      x: 0.30, y: 1.20 + b * 0.28,
+      w: 0.30, h: 0.16,
+      fill: { color: design.palette[b % design.palette.length] },
+      transparency: 25,
+      rectRadius: 0.03,
+    });
+  }
+
+  // ── "CURSO COMPLETO" editorial label with letter-spacing ──
+  slide.addText("CURSO COMPLETO", {
+    x: 1.20, y: 1.55,
+    w: 5.0, h: 0.28,
+    fontSize: 11,
+    fontFace: design.fonts.body,
+    bold: true,
+    color: colors.p0,
+    charSpacing: 7,
+  });
+
+  // ── Course title — massive, left-aligned, editorial weight ──
+  slide.addText(courseTitle, {
+    x: 1.20, y: 2.10,
+    w: SLIDE_W * 0.55,
+    h: 3.20,
+    fontSize: 54,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+    valign: "top",
+    lineSpacingMultiple: 0.98,
+  });
+
+  // ── Bottom-left accent bar (thick, strong) ──
+  slide.addShape("rect" as any, {
+    x: 1.20, y: 5.60,
+    w: 2.80, h: 0.06,
+    fill: { color: colors.p0 },
+  });
+
+  // ── Right-side geometric decoration ──
+  // Outlined squares at various sizes for texture
+  for (let i = 0; i < 3; i++) {
+    const sz = 0.60 + i * 0.30;
+    slide.addShape("rect" as any, {
+      x: SLIDE_W - 2.40 + i * 0.50,
+      y: 0.50 + i * 0.80,
+      w: sz, h: sz,
+      fill: { color: design.palette[i % design.palette.length] },
+      transparency: 85,
+      rectRadius: 0.04,
+    });
+  }
+
+  // ── Small circle accent (dot) ──
+  slide.addShape("ellipse" as any, {
+    x: 1.20, y: 5.90, w: 0.14, h: 0.14,
+    fill: { color: colors.p0 },
+  });
+
+  // ── Date + info bottom-right ──
+  const dateStr = new Date().toISOString().slice(0, 10);
+  slide.addText(dateStr, {
+    x: SLIDE_W - 3.00, y: SLIDE_H - 0.65,
+    w: 2.60, h: 0.30,
+    fontSize: 11,
+    fontFace: design.fonts.body,
+    color: colors.coverSubtext,
+    align: "right",
+    charSpacing: 2,
+  });
+}
+
+// ────────────────────────────────────────────────────────────────
+// TOC PREMIUM — Card grid (2-3 columns) with large numbered indicators
+// ────────────────────────────────────────────────────────────────
+function renderTOC(
+  pptx: PptxGenJS,
+  modules: { title: string; description?: string }[],
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  // For ≤6 modules: 1 page, 2 or 3 columns. For >6: paginate.
+  const MAX_PER_PAGE = 6;
+  const pages: { title: string; description?: string }[][] = [];
+  for (let i = 0; i < modules.length; i += MAX_PER_PAGE) {
+    pages.push(modules.slice(i, i + MAX_PER_PAGE));
+  }
+
+  for (let page = 0; page < pages.length; page++) {
+    const pageModules = pages[page];
+    const slide = pptx.addSlide();
+    addSlideBackground(slide, colors.coverDark);
+
+    // ── Top accent line ──
+    addHR(slide, 0, 0.03, SLIDE_W, colors.p0, 0.045);
+
+    // ── Header area ──
+    slide.addText("CONTEÚDO PROGRAMÁTICO", {
+      x: 0.65, y: 0.32,
+      w: 6.0, h: 0.24,
+      fontSize: 10,
+      fontFace: design.fonts.body,
+      bold: true,
+      color: colors.p0,
+      charSpacing: 6,
+    });
+    slide.addText(pages.length > 1 ? `Índice  ·  ${page + 1}/${pages.length}` : "Índice", {
+      x: 0.65, y: 0.62,
+      w: 8.0, h: 0.60,
+      fontSize: 32,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: "FFFFFF",
+      valign: "middle",
+    });
+    addHR(slide, 0.65, 1.30, 2.00, colors.p0, 0.030);
+
+    // ── Progress bar (full width) ──
+    const progressY = 1.50;
+    slide.addShape("rect" as any, {
+      x: 0.65, y: progressY,
+      w: SLIDE_W - 1.30, h: 0.04,
+      fill: { color: colors.panelMid },
+    });
+    const progressFill = ((page + 1) / pages.length);
+    slide.addShape("rect" as any, {
+      x: 0.65, y: progressY,
+      w: (SLIDE_W - 1.30) * progressFill, h: 0.04,
+      fill: { color: colors.p0 },
+    });
+
+    // ── Card grid ──
+    const globalOffset = page * MAX_PER_PAGE;
+    const cols = pageModules.length <= 3 ? pageModules.length : pageModules.length <= 4 ? 2 : 3;
+    const rows = Math.ceil(pageModules.length / cols);
+    const gap = 0.18;
+    const gridX = 0.65;
+    const gridW = SLIDE_W - 1.30;
+    const cardW = (gridW - gap * (cols - 1)) / cols;
+    const gridY = 1.80;
+    const gridH = SLIDE_H - gridY - 0.30;
+    const cardH = Math.min(2.50, (gridH - gap * (rows - 1)) / rows);
+
+    for (let i = 0; i < pageModules.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = gridX + col * (cardW + gap);
+      const y = gridY + row * (cardH + gap);
+      const pal = design.palette[(globalOffset + i) % design.palette.length];
+      const num = String(globalOffset + i + 1).padStart(2, "0");
+
+      // Card background
+      slide.addShape("roundRect" as any, {
+        x, y, w: cardW, h: cardH,
+        fill: { color: colors.panelMid },
+        rectRadius: 0.10,
+      });
+
+      // Top accent strip
+      slide.addShape("rect" as any, {
+        x, y, w: cardW, h: 0.06,
+        fill: { color: pal },
+        rectRadius: 0.10,
+      });
+
+      // Large number — dominant visual element
+      slide.addText(num, {
+        x: x + 0.18, y: y + 0.16,
+        w: 1.00, h: 0.70,
+        fontSize: 42,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: pal,
+        transparency: 15,
+      });
+
+      // Module title
+      slide.addText(pageModules[i].title, {
+        x: x + 0.18, y: y + 0.85,
+        w: cardW - 0.36, h: 0.52,
+        fontSize: 15,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        valign: "top",
+        lineSpacingMultiple: 1.05,
+      });
+
+      // Thin separator
+      addHR(slide, x + 0.18, y + 1.38, cardW * 0.5, pal, 0.012);
+
+      // Description
+      if (pageModules[i].description) {
+        slide.addText(pageModules[i].description!, {
+          x: x + 0.18, y: y + 1.48,
+          w: cardW - 0.36, h: cardH - 1.62,
+          fontSize: 11,
+          fontFace: design.fonts.body,
+          color: colors.coverSubtext,
+          valign: "top",
+          lineSpacingMultiple: 1.25,
+        });
+      }
+
+      // Small decorative dot at bottom-right of card
+      slide.addShape("ellipse" as any, {
+        x: x + cardW - 0.30, y: y + cardH - 0.26,
+        w: 0.10, h: 0.10,
+        fill: { color: pal },
+        transparency: 40,
+      });
+    }
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// MODULE COVER — Giant number watermark + geometric decoration
+// ────────────────────────────────────────────────────────────────
+function renderModuleCover(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  const modIdx = (plan.moduleIndex ?? 0);
+  const modNum = String(modIdx + 1).padStart(2, "0");
+  const accentColor = design.palette[modIdx % design.palette.length];
+
+  // Full dark background
+  addSlideBackground(slide, colors.coverDark);
+
+  // ── Giant module number — 150pt at 6% opacity, positioned bottom-right ──
+  slide.addText(modNum, {
+    x: SLIDE_W - 6.0, y: SLIDE_H - 5.50,
+    w: 6.0, h: 5.50,
+    fontSize: 220,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: accentColor,
+    transparency: 92,
+    align: "right",
+    valign: "bottom",
+  });
+
+  // ── Geometric decorative elements — circles and lines ──
+  // Large faded circle top-right
+  slide.addShape("ellipse" as any, {
+    x: SLIDE_W - 3.50, y: -0.80,
+    w: 3.80, h: 3.80,
+    fill: { color: accentColor },
+    transparency: 90,
+  });
+  // Small solid circle
+  slide.addShape("ellipse" as any, {
+    x: SLIDE_W - 2.00, y: 0.60,
+    w: 0.18, h: 0.18,
+    fill: { color: accentColor },
+    transparency: 30,
+  });
+  // Thin vertical line (right area)
+  slide.addShape("rect" as any, {
+    x: SLIDE_W - 2.50, y: 0.40, w: 0.020, h: 2.50,
+    fill: { color: accentColor },
+    transparency: 50,
+  });
+
+  // ── Left content zone ──
+  // Accent bar (thick, strong identity)
+  slide.addShape("rect" as any, {
+    x: 0.80, y: 1.30, w: 0.06, h: 2.00,
+    fill: { color: accentColor },
+  });
+
+  // "MÓDULO XX" label
+  slide.addText(`MÓDULO ${modNum}`, {
+    x: 1.10, y: 1.30,
+    w: 5.0, h: 0.28,
+    fontSize: 12,
+    fontFace: design.fonts.body,
+    bold: true,
+    color: accentColor,
+    charSpacing: 7,
+  });
+
+  // Thin line under label
+  addHR(slide, 1.10, 1.72, 1.60, accentColor, 0.020);
+
+  // Module title — large, white, editorial
+  slide.addText(plan.title, {
+    x: 1.10, y: 1.95,
+    w: SLIDE_W * 0.55,
+    h: 2.50,
+    fontSize: 38,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+    valign: "top",
+    lineSpacingMultiple: 1.04,
+  });
+
+  // ── "O que você vai aprender" + objectives ──
+  if (plan.objectives && plan.objectives.length > 0) {
+    const objStartY = 4.80;
+    addHR(slide, 1.10, objStartY - 0.15, 2.50, accentColor, 0.015);
+    slide.addText("O QUE VOCÊ VAI APRENDER", {
+      x: 1.10, y: objStartY,
+      w: 5.0, h: 0.22,
+      fontSize: 9,
+      fontFace: design.fonts.body,
+      bold: true,
+      color: accentColor,
+      charSpacing: 4,
+    });
+
+    for (let i = 0; i < Math.min(plan.objectives.length, 3); i++) {
+      const objY = objStartY + 0.35 + i * 0.48;
+      // Accent dot
+      slide.addShape("ellipse" as any, {
+        x: 1.10, y: objY + 0.08,
+        w: 0.10, h: 0.10,
+        fill: { color: accentColor },
+      });
+      slide.addText(plan.objectives[i], {
+        x: 1.35, y: objY,
+        w: SLIDE_W * 0.50, h: 0.40,
+        fontSize: 12,
+        fontFace: design.fonts.body,
+        color: colors.coverSubtext,
+        valign: "middle",
+        lineSpacingMultiple: 1.15,
+      });
+    }
+  }
+
+  // ── Bottom thin line ──
+  addHR(slide, 0.80, SLIDE_H - 0.50, 3.00, accentColor, 0.012);
+}
+
+// ────────────────────────────────────────────────────────────────
+// BULLETS PREMIUM — 4 truly distinct visual compositions
+// ────────────────────────────────────────────────────────────────
+function renderBullets(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+  const variant = _globalSlideIdx % 4;
+
+  const accentColor = design.palette[_globalSlideIdx % design.palette.length];
+  const items = plan.items || [];
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.55;
+  const contentY = 1.65;
+  const bulletGap = items.length >= 7 ? 0.04 : 0.08;
+  const contentH = SLIDE_H - contentY - 0.40;
+  const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
+  const itemH = Math.max(0.48, Math.min(1.30, rawItemH));
+
+  if (variant === 0) {
+    // ── VARIANT A: Split layout — dark left sidebar (40%) + content right ──
+    addSlideBackground(slide, colors.bg);
+    const sideW = SLIDE_W * 0.35;
+    slide.addShape("rect" as any, {
+      x: 0, y: 0, w: sideW, h: SLIDE_H,
+      fill: { color: colors.coverDark },
+    });
+    // Accent edge on sidebar
+    slide.addShape("rect" as any, {
+      x: sideW, y: 0, w: 0.05, h: SLIDE_H,
+      fill: { color: accentColor },
+    });
+
+    // Section label + title on dark sidebar
+    if (plan.sectionLabel) {
+      slide.addText(plan.sectionLabel.toUpperCase(), {
+        x: 0.45, y: 0.55,
+        w: sideW - 0.90, h: 0.22,
+        fontSize: 9,
+        fontFace: design.fonts.body,
+        bold: true,
+        color: accentColor,
+        charSpacing: 4,
+      });
+      addHR(slide, 0.45, 0.82, 1.20, accentColor, 0.012);
+    }
+    slide.addText(plan.title, {
+      x: 0.45, y: 1.00,
+      w: sideW - 0.90, h: 3.40,
+      fontSize: 24,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: "FFFFFF",
+      valign: "top",
+      lineSpacingMultiple: 1.08,
+    });
+    // Decorative accent dots on sidebar
+    for (let d = 0; d < Math.min(items.length, 5); d++) {
+      slide.addShape("ellipse" as any, {
+        x: 0.45, y: 4.80 + d * 0.40,
+        w: 0.10, h: 0.10,
+        fill: { color: design.palette[d % design.palette.length] },
+      });
+    }
+
+    // Items on right (light) zone with left color accent bar
+    const rightX = sideW + 0.35;
+    const rightW = SLIDE_W - rightX - 0.45;
+    const rightY = 0.50;
+    const rightH = SLIDE_H - rightY - 0.45;
+    const rBulletGap = items.length >= 7 ? 0.03 : bulletGap;
+    const rItemH = Math.max(0.45, Math.min(1.20, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1)));
+
+    for (let i = 0; i < items.length; i++) {
+      const yPos = rightY + i * (rItemH + rBulletGap);
+      const pal = design.palette[i % design.palette.length];
+      // Left accent bar
+      slide.addShape("rect" as any, {
+        x: rightX, y: yPos + 0.06,
+        w: 0.045, h: rItemH - 0.16,
+        fill: { color: pal },
+      });
+      slide.addText(items[i], {
+        x: rightX + 0.18, y: yPos,
+        w: rightW - 0.18, h: rItemH,
+        fontSize: TYPO.BULLET_TEXT,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "middle",
+        lineSpacingMultiple: 1.22,
+      });
+      if (i < items.length - 1) {
+        addHR(slide, rightX + 0.18, yPos + rItemH + rBulletGap / 2 - 0.003, rightW - 0.18, colors.divider, 0.005);
+      }
+    }
+
+  } else if (variant === 1) {
+    // ── VARIANT B: Full-width cards with colored number badges ──
+    addSlideBackground(slide, colors.bg);
+    addLeftEdge(slide, accentColor);
+    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
+    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+
+    for (let i = 0; i < items.length; i++) {
+      const pal = design.palette[i % design.palette.length];
+      const yPos = contentY + i * (itemH + bulletGap);
+      // Card background with subtle border
+      slide.addShape("roundRect" as any, {
+        x: contentX, y: yPos,
+        w: contentW, h: itemH - 0.04,
+        fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
+        rectRadius: 0.06,
+        line: { color: colors.borders, width: 0.4 },
+      });
+      // Number badge (circle)
+      const badgeSize = 0.38;
+      slide.addShape("ellipse" as any, {
+        x: contentX + 0.14, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
+        w: badgeSize, h: badgeSize,
+        fill: { color: pal },
+      });
+      slide.addText(String(i + 1), {
+        x: contentX + 0.14, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
+        w: badgeSize, h: badgeSize,
+        fontSize: 14,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        align: "center",
+        valign: "middle",
+      });
+      // Text
+      slide.addText(items[i], {
+        x: contentX + 0.65, y: yPos + 0.03,
+        w: contentW - 0.75, h: itemH - 0.10,
+        fontSize: TYPO.BULLET_TEXT,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "middle",
+        lineSpacingMultiple: 1.18,
+      });
+    }
+
+  } else if (variant === 2) {
+    // ── VARIANT C: 2-column card grid with colored top strips ──
+    addSlideBackground(slide, colors.bg);
+    addLeftEdge(slide, accentColor);
+    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
+    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+
+    const cols = items.length >= 4 ? 2 : 1;
+    const gap = 0.16;
+    const cardW = cols === 2 ? (contentW - gap) / 2 : contentW;
+    const rows = Math.ceil(items.length / cols);
+    const cardH = Math.min(1.50, (contentH - gap * (rows - 1)) / rows);
+
+    for (let i = 0; i < items.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = contentX + col * (cardW + gap);
+      const y = contentY + row * (cardH + gap);
+      const pal = design.palette[i % design.palette.length];
+
+      slide.addShape("roundRect" as any, {
+        x, y, w: cardW, h: cardH,
+        fill: { color: colors.cardBgAlt },
+        rectRadius: 0.08,
+        line: { color: colors.borders, width: 0.4 },
+      });
+      // Colored top strip
+      slide.addShape("rect" as any, {
+        x, y, w: cardW, h: 0.06,
+        fill: { color: pal },
+        rectRadius: 0.08,
+      });
+      // Large number top-left inside card
+      slide.addText(String(i + 1).padStart(2, "0"), {
+        x: x + 0.14, y: y + 0.14,
+        w: 0.60, h: 0.40,
+        fontSize: 22,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: pal,
+        transparency: 20,
+      });
+      slide.addText(items[i], {
+        x: x + 0.14, y: y + 0.50,
+        w: cardW - 0.28, h: cardH - 0.60,
+        fontSize: TYPO.BULLET_TEXT - 1,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "top",
+        lineSpacingMultiple: 1.20,
+      });
+    }
+
+  } else {
+    // ── VARIANT D: Single highlight — first item dominant, rest as compact list ──
+    addSlideBackground(slide, colors.bg);
+    addLeftEdge(slide, accentColor);
+    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
+    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+
+    if (items.length > 0) {
+      // Hero highlight box for first item
+      const heroH = items.length === 1 ? contentH : Math.min(1.60, contentH * 0.40);
+      slide.addShape("roundRect" as any, {
+        x: contentX, y: contentY,
+        w: contentW, h: heroH,
+        fill: { color: colors.coverDark },
+        rectRadius: 0.10,
+      });
+      // Accent left bar inside hero
+      slide.addShape("rect" as any, {
+        x: contentX + 0.14, y: contentY + 0.14,
+        w: 0.05, h: heroH - 0.28,
+        fill: { color: accentColor },
+      });
+      slide.addText(items[0], {
+        x: contentX + 0.32, y: contentY + 0.08,
+        w: contentW - 0.48, h: heroH - 0.16,
+        fontSize: TYPO.BODY_LARGE,
+        fontFace: design.fonts.body,
+        color: "FFFFFF",
+        valign: "middle",
+        lineSpacingMultiple: 1.30,
+        italic: true,
+      });
+
+      // Remaining items as compact numbered list
+      if (items.length > 1) {
+        const restY = contentY + heroH + 0.18;
+        const restH = SLIDE_H - restY - 0.45;
+        const restItemH = Math.min(0.80, (restH - 0.06 * (items.length - 2)) / (items.length - 1));
+        for (let i = 1; i < items.length; i++) {
+          const yPos = restY + (i - 1) * (restItemH + 0.06);
+          const pal = design.palette[i % design.palette.length];
+          // Bullet dot
+          slide.addShape("ellipse" as any, {
+            x: contentX + 0.04, y: yPos + restItemH / 2 - 0.05,
+            w: 0.10, h: 0.10,
+            fill: { color: pal },
+          });
+          slide.addText(items[i], {
+            x: contentX + 0.22, y: yPos,
+            w: contentW - 0.22, h: restItemH,
+            fontSize: TYPO.BULLET_TEXT - 1,
+            fontFace: design.fonts.body,
+            color: colors.text,
+            valign: "middle",
+            lineSpacingMultiple: 1.15,
+          });
+        }
+      }
+    }
+  }
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ────────────────────────────────────────────────────────────────
+// TWO-COLUMN BULLETS PREMIUM — Split with center accent divider
+// ────────────────────────────────────────────────────────────────
+function renderTwoColumnBullets(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+  addSlideBackground(slide, colors.bg);
+  const pal = design.palette[_globalSlideIdx % design.palette.length];
+  addLeftEdge(slide, pal);
+  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, pal, design.fonts.body);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, pal);
+
+  const items = plan.items || [];
+  const contentX = 0.65;
+  const totalW = SLIDE_W - contentX - 0.55;
+  const colGap = 0.35;
+  const colW = (totalW - colGap) / 2;
+  const contentY = 1.68;
+  const mid = Math.ceil(items.length / 2);
+  const leftItems = items.slice(0, mid);
+  const rightItems = items.slice(mid);
+
+  // Center divider — thin accent line with dot
+  const divX = contentX + colW + colGap / 2;
+  slide.addShape("rect" as any, {
+    x: divX - 0.010, y: contentY,
+    w: 0.020, h: SLIDE_H - contentY - 0.45,
+    fill: { color: pal },
+    transparency: 50,
+  });
+  // Center dot on divider
+  slide.addShape("ellipse" as any, {
+    x: divX - 0.05, y: contentY + (SLIDE_H - contentY - 0.45) / 2 - 0.05,
+    w: 0.10, h: 0.10,
+    fill: { color: pal },
+  });
+
+  for (let col = 0; col < 2; col++) {
+    const colItems = col === 0 ? leftItems : rightItems;
+    const colX = contentX + col * (colW + colGap);
+    const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
+    const colContentH = SLIDE_H - contentY - 0.40;
+    const rawItemH = (colContentH - colBulletGap * Math.max(colItems.length - 1, 0)) / Math.max(colItems.length, 1);
+    const itemH = Math.max(0.42, Math.min(1.10, rawItemH));
+    for (let i = 0; i < colItems.length; i++) {
+      const palColor = design.palette[(col * mid + i) % design.palette.length];
+      const yPos = contentY + i * (itemH + colBulletGap);
+      // Number badge
+      const badgeW = 0.32;
+      slide.addShape("roundRect" as any, {
+        x: colX, y: yPos + (itemH - badgeW) / 2,
+        w: badgeW, h: badgeW,
+        fill: { color: palColor },
+        rectRadius: 0.06,
+      });
+      slide.addText(String(col * mid + i + 1), {
+        x: colX, y: yPos + (itemH - badgeW) / 2,
+        w: badgeW, h: badgeW,
+        fontSize: 12,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        align: "center",
+        valign: "middle",
+      });
+      slide.addText(colItems[i], {
+        x: colX + badgeW + 0.12, y: yPos + 0.03,
+        w: colW - badgeW - 0.16, h: itemH - 0.06,
+        fontSize: TYPO.BULLET_TEXT - 1,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "middle",
+        lineSpacingMultiple: 1.15,
+      });
+    }
+  }
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ────────────────────────────────────────────────────────────────
+// DEFINITION PREMIUM — Hero definition box + pillar cards
+// ────────────────────────────────────────────────────────────────
+function renderDefinition(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+  addSlideBackground(slide, colors.bg);
+  addLeftEdge(slide, colors.p2);
+  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
+
+  const items = plan.items || [];
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
+
+  if (items.length > 0) {
+    // Hero definition — dark bg, large opening quote
+    const heroH = 1.30;
+    slide.addShape("roundRect" as any, {
+      x: contentX, y: 1.68, w: contentW, h: heroH,
+      fill: { color: colors.coverDark },
+      rectRadius: 0.10,
+    });
+    // Opening quote mark
+    slide.addText("\u201C", {
+      x: contentX + 0.08, y: 1.58,
+      w: 0.50, h: 0.60,
+      fontSize: 52,
+      fontFace: design.fonts.title,
+      color: colors.p2,
+      transparency: 30,
+      bold: true,
+    });
+    slide.addText(items[0], {
+      x: contentX + 0.30, y: 1.72,
+      w: contentW - 0.50, h: heroH - 0.10,
+      fontSize: TYPO.BODY_LARGE,
+      fontFace: design.fonts.body,
+      color: "FFFFFF",
+      valign: "middle",
+      italic: true,
+      lineSpacingMultiple: 1.35,
+    });
+  }
+
+  const pillars = items.slice(1);
+  if (pillars.length > 0) {
+    const gap = 0.16;
+    const pillarW = (contentW - gap * (pillars.length - 1)) / pillars.length;
+    const startY = 3.22;
+    for (let i = 0; i < pillars.length; i++) {
+      const x = contentX + i * (pillarW + gap);
+      const pal = design.palette[i % design.palette.length];
+      slide.addShape("roundRect" as any, {
+        x, y: startY, w: pillarW, h: SLIDE_H - startY - 0.45,
+        fill: { color: colors.cardBgAlt },
+        rectRadius: 0.06,
+        line: { color: colors.borders, width: 0.4 },
+      });
+      // Colored top edge
+      slide.addShape("rect" as any, {
+        x, y: startY, w: pillarW, h: 0.06,
+        fill: { color: pal },
+      });
+      // Number inside
+      slide.addText(String(i + 2), {
+        x: x + 0.12, y: startY + 0.10,
+        w: 0.40, h: 0.35,
+        fontSize: 20,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: pal,
+        transparency: 25,
+      });
+      slide.addText(pillars[i], {
+        x: x + 0.14, y: startY + 0.45,
+        w: pillarW - 0.28, h: SLIDE_H - startY - 0.95,
+        fontSize: TYPO.CARD_BODY,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "top",
+        lineSpacingMultiple: 1.22,
+      });
+    }
+  }
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ────────────────────────────────────────────────────────────────
+// GRID CARDS PREMIUM — Cards with colored header zones
+// ────────────────────────────────────────────────────────────────
+function renderGridCards(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+  addSlideBackground(slide, colors.bg);
+  addLeftEdge(slide, colors.p3);
+  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p3, design.fonts.body);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
+
+  const items = plan.items || [];
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
+  const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
+  const rows = Math.ceil(items.length / cols);
+  const gap = 0.16;
+  const cardW = (contentW - gap * (cols - 1)) / cols;
+  const contentArea = SLIDE_H - 1.68 - 0.45;
+  const cardH = Math.min(2.50, (contentArea - gap * (rows - 1)) / rows);
+
+  for (let i = 0; i < items.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = contentX + col * (cardW + gap);
+    const y = 1.68 + row * (cardH + gap);
+    const pal = design.palette[i % design.palette.length];
+
+    slide.addShape("roundRect" as any, {
+      x, y, w: cardW, h: cardH,
+      fill: { color: colors.cardBgAlt },
+      rectRadius: 0.08,
+      line: { color: colors.borders, width: 0.5 },
+    });
+
+    // Colored header zone
+    const headerH = 0.50;
+    slide.addShape("roundRect" as any, {
+      x, y, w: cardW, h: headerH,
+      fill: { color: pal },
+      rectRadius: 0.08,
+    });
+    // Fix bottom corners of header
+    slide.addShape("rect" as any, {
+      x, y: y + headerH - 0.08, w: cardW, h: 0.08,
+      fill: { color: pal },
+    });
+
+    // Parse label:desc
+    const colonIdx = items[i].indexOf(":");
+    if (colonIdx > 0 && colonIdx < 40) {
+      const label = items[i].substring(0, colonIdx).trim();
+      const desc = items[i].substring(colonIdx + 1).trim();
+      slide.addText(label, {
+        x: x + 0.14, y: y + 0.06,
+        w: cardW - 0.28, h: headerH - 0.10,
+        fontSize: TYPO.CARD_TITLE,
+        fontFace: design.fonts.title,
+        bold: true, color: "FFFFFF",
+        valign: "middle",
+      });
+      slide.addText(desc, {
+        x: x + 0.14, y: y + headerH + 0.10,
+        w: cardW - 0.28, h: cardH - headerH - 0.20,
+        fontSize: TYPO.CARD_BODY,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "top",
+        lineSpacingMultiple: 1.22,
+      });
+    } else {
+      // No label — number in header
+      slide.addText(String(i + 1).padStart(2, "0"), {
+        x: x + 0.14, y: y + 0.06,
+        w: cardW - 0.28, h: headerH - 0.10,
+        fontSize: 18,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        valign: "middle",
+      });
+      slide.addText(items[i], {
+        x: x + 0.14, y: y + headerH + 0.10,
+        w: cardW - 0.28, h: cardH - headerH - 0.20,
+        fontSize: TYPO.CARD_BODY,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "top",
+        lineSpacingMultiple: 1.22,
+      });
+    }
+  }
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ────────────────────────────────────────────────────────────────
+// PROCESS TIMELINE — Horizontal pipeline (≤4) / Vertical node-line (5+)
+// Always visual flow, never plain bullets
+// ────────────────────────────────────────────────────────────────
+function renderProcessTimeline(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+
+  const items = plan.items || [];
+  const contentX = 0.55;
+  const contentW = SLIDE_W - contentX - 0.40;
+
+  if (items.length <= 4) {
+    // ── HORIZONTAL PIPELINE — dark bg, chevron-style cards ──
+    addSlideBackground(slide, colors.coverDark);
+
+    // Section label + title on dark
+    if (plan.sectionLabel) {
+      slide.addText(plan.sectionLabel.toUpperCase(), {
+        x: 0.55, y: 0.30,
+        w: 6.0, h: 0.24,
+        fontSize: 10,
+        fontFace: design.fonts.body,
+        bold: true,
+        color: colors.p2,
+        charSpacing: 5,
+      });
+      addHR(slide, 0.55, 0.57, 1.00, colors.p2, 0.020);
+    }
+    slide.addText(plan.title, {
+      x: 0.55, y: 0.68,
+      w: SLIDE_W - 1.10, h: 0.70,
+      fontSize: 26,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: "FFFFFF",
+      valign: "middle",
+    });
+
+    // ── Horizontal flow line ──
+    const flowY = 1.68;
+    const cardY = flowY + 0.20;
+    const cardH = SLIDE_H - cardY - 0.45;
+    const gap = 0.06;
+    const arrowW = 0.40;
+    const totalArrowW = arrowW * Math.max(items.length - 1, 0);
+    const cardW = (contentW - totalArrowW - gap * Math.max(items.length - 1, 0)) / items.length;
+
+    // Connecting flow line behind cards
+    slide.addShape("rect" as any, {
+      x: contentX, y: cardY + cardH * 0.35,
+      w: contentW, h: 0.04,
+      fill: { color: colors.p2 },
+      transparency: 60,
+    });
+
+    for (let i = 0; i < items.length; i++) {
+      const x = contentX + i * (cardW + arrowW + gap);
+      const pal = design.palette[i % design.palette.length];
+
+      // Card bg
+      slide.addShape("roundRect" as any, {
+        x, y: cardY, w: cardW, h: cardH,
+        fill: { color: colors.panelMid },
+        rectRadius: 0.10,
+      });
+
+      // Top colored header zone
+      const topH = 0.65;
+      slide.addShape("roundRect" as any, {
+        x, y: cardY, w: cardW, h: topH,
+        fill: { color: pal },
+        rectRadius: 0.10,
+      });
+      slide.addShape("rect" as any, {
+        x, y: cardY + topH - 0.10, w: cardW, h: 0.10,
+        fill: { color: pal },
+      });
+
+      // Step number
+      const circSize = 0.36;
+      slide.addShape("ellipse" as any, {
+        x: x + cardW / 2 - circSize / 2, y: cardY + 0.12,
+        w: circSize, h: circSize,
+        fill: { color: "FFFFFF" },
+        transparency: 15,
+      });
+      slide.addText(String(i + 1), {
+        x: x + cardW / 2 - circSize / 2, y: cardY + 0.12,
+        w: circSize, h: circSize,
+        fontSize: 16,
+        fontFace: design.fonts.title,
+        bold: true, color: pal,
+        align: "center", valign: "middle",
+      });
+
+      // Arrow connector
+      if (i < items.length - 1) {
+        const arrowX = x + cardW + gap / 2;
+        const arrowMidY = cardY + cardH * 0.35;
+        // Arrow shaft
+        slide.addShape("rect" as any, {
+          x: arrowX, y: arrowMidY - 0.02,
+          w: arrowW - 0.06, h: 0.04,
+          fill: { color: pal },
+          transparency: 25,
+        });
+        // Arrow head (diamond rotated)
+        slide.addShape("rect" as any, {
+          x: arrowX + arrowW - 0.18, y: arrowMidY - 0.06,
+          w: 0.12, h: 0.12,
+          fill: { color: pal },
+          transparency: 25,
+          rotate: 45,
+        });
+      }
+
+      // Label + description
+      const colonIdx = items[i].indexOf(":");
+      let label: string, desc: string;
+      if (colonIdx > 0 && colonIdx < 40) {
+        label = items[i].substring(0, colonIdx).trim();
+        desc = items[i].substring(colonIdx + 1).trim();
+      } else if (items[i].length <= 50) {
+        label = items[i]; desc = "";
+      } else {
+        const words = items[i].split(/\s+/);
+        label = words.slice(0, 4).join(" ");
+        desc = words.slice(4).join(" ");
+      }
+      slide.addText(label, {
+        x: x + 0.10, y: cardY + topH + 0.10,
+        w: cardW - 0.20, h: 0.40,
+        fontSize: TYPO.CARD_TITLE,
+        fontFace: design.fonts.title,
+        bold: true, color: pal,
+        align: "center",
+      });
+      if (desc) {
+        slide.addText(desc, {
+          x: x + 0.10, y: cardY + topH + 0.50,
+          w: cardW - 0.20, h: cardH - topH - 0.60,
+          fontSize: TYPO.CARD_BODY,
+          fontFace: design.fonts.body,
+          color: colors.coverSubtext,
+          align: "center", valign: "top",
+          lineSpacingMultiple: 1.22,
+        });
+      }
+    }
+  } else {
+    // ── VERTICAL TIMELINE with node-connector system (5-7 items) ──
+    addSlideBackground(slide, colors.bg);
+    addLeftEdge(slide, colors.p2);
+    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
+    addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
+
+    const vContentY = 1.55;
+    const vContentH = SLIDE_H - vContentY - 0.35;
+    const stepGap = items.length <= 5 ? 0.06 : 0.03;
+    const stepH = (vContentH - stepGap * (items.length - 1)) / items.length;
+    const nodeSize = items.length <= 5 ? 0.28 : 0.22;
+    const nodeX = contentX + 0.10;
+
+    // Vertical connector line
+    const lineX = nodeX + nodeSize / 2 - 0.012;
+    slide.addShape("rect" as any, {
+      x: lineX, y: vContentY + nodeSize / 2,
+      w: 0.024, h: vContentH - nodeSize,
+      fill: { color: colors.divider },
+    });
+
+    for (let i = 0; i < items.length; i++) {
+      const y = vContentY + i * (stepH + stepGap);
+      const pal = design.palette[i % design.palette.length];
+
+      // Node circle
+      slide.addShape("ellipse" as any, {
+        x: nodeX, y: y + stepH / 2 - nodeSize / 2,
+        w: nodeSize, h: nodeSize,
+        fill: { color: pal },
+      });
+      slide.addText(String(i + 1), {
+        x: nodeX, y: y + stepH / 2 - nodeSize / 2,
+        w: nodeSize, h: nodeSize,
+        fontSize: items.length <= 5 ? 12 : 10,
+        fontFace: design.fonts.title,
+        bold: true, color: "FFFFFF",
+        align: "center", valign: "middle",
+      });
+
+      // Content card with left accent
+      const cardX = nodeX + nodeSize + 0.16;
+      const cardW = contentW - (cardX - contentX);
+      const accentW = 0.05;
+
+      slide.addShape("rect" as any, {
+        x: cardX, y, w: accentW, h: stepH - 0.02,
+        fill: { color: pal },
+      });
+      slide.addShape("roundRect" as any, {
+        x: cardX + accentW, y, w: cardW - accentW, h: stepH - 0.02,
+        fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
+        rectRadius: 0.04,
+      });
+
+      const colonIdx = items[i].indexOf(":");
+      let label: string, desc: string;
+      if (colonIdx > 0 && colonIdx < 40) {
+        label = items[i].substring(0, colonIdx).trim();
+        desc = items[i].substring(colonIdx + 1).trim();
+      } else {
+        label = ""; desc = items[i];
+      }
+
+      const textX = cardX + accentW + 0.12;
+      const textW = cardW - accentW - 0.22;
+      const fontSize = items.length <= 5 ? TYPO.BULLET_TEXT : TYPO.BULLET_TEXT - 1;
+
+      if (label) {
+        slide.addText(label, {
+          x: textX, y: y + 0.02,
+          w: textW, h: stepH * 0.38,
+          fontSize,
+          fontFace: design.fonts.title,
+          bold: true, color: pal,
+          valign: "bottom",
+        });
+        slide.addText(desc, {
+          x: textX, y: y + stepH * 0.38,
+          w: textW, h: stepH * 0.58,
+          fontSize: fontSize - 1,
+          fontFace: design.fonts.body,
+          color: colors.text,
+          valign: "top",
+          lineSpacingMultiple: 1.10,
+        });
+      } else {
+        slide.addText(desc, {
+          x: textX, y,
+          w: textW, h: stepH - 0.02,
+          fontSize,
+          fontFace: design.fonts.body,
+          color: colors.text,
+          valign: "middle",
+          lineSpacingMultiple: 1.12,
+        });
+      }
+    }
+  }
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ────────────────────────────────────────────────────────────────
+// COMPARISON TABLE PREMIUM — Zebra rows, minimal borders
+// ────────────────────────────────────────────────────────────────
+function renderComparisonTable(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+  addSlideBackground(slide, colors.bg);
+  addLeftEdge(slide, colors.p0);
+  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p0, design.fonts.body);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p0);
+
+  const headers = plan.tableHeaders || [];
+  const rows = plan.tableRows || [];
+  if (headers.length === 0) { renderBullets(pptx, plan, design); return; }
+
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
+  const tableData: any[][] = [];
+  tableData.push(headers.map((h) => ({
+    text: h,
+    options: {
+      fontSize: TYPO.TABLE_HEADER,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: "FFFFFF",
+      fill: { color: colors.p0 },
+      align: "center",
+      valign: "middle",
+    },
+  })));
+  for (let r = 0; r < rows.length; r++) {
+    tableData.push(rows[r].map((cell) => ({
+      text: cell,
+      options: {
+        fontSize: TYPO.TABLE_CELL,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        fill: { color: r % 2 === 0 ? colors.tableRowOdd : colors.tableRowEven },
+        valign: "middle",
+      },
+    })));
+  }
+
+  slide.addTable(tableData, {
+    x: contentX, y: 1.68,
+    w: contentW,
+    colW: new Array(headers.length).fill(contentW / headers.length),
+    rowH: 0.48,
+    border: { type: "solid", pt: 0.3, color: colors.borders },
+    autoPage: false,
+  });
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ────────────────────────────────────────────────────────────────
+// CASE STUDY PREMIUM — Badge + Storytelling horizontal bands
+// Cenário → Desafio → Ação → Resultado (color-coded phases)
+// ────────────────────────────────────────────────────────────────
+function renderExampleHighlight(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+  addSlideBackground(slide, colors.bg);
+
+  const items = (plan.items || [])
+    .map((item) => normalizeResidualText(item))
+    .filter(Boolean)
+    .map((item) => {
+      const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+      return ensureSentenceEnd(repaired);
+    });
+  const cappedItems = items.slice(0, 4);
+  const defaultLabels = ["Cenário", "Desafio", "Ação", "Resultado"];
+  const phaseColors = [colors.p1, colors.p3, colors.p2, colors.p0];
+
+  // ── Full-width dark header banner ──
+  const bannerH = 1.40;
+  slide.addShape("rect" as any, {
+    x: 0, y: 0, w: SLIDE_W, h: bannerH,
+    fill: { color: colors.coverDark },
+  });
+
+  // "CASE" badge — rounded pill
+  const badgeW = 1.20;
+  const badgeH = 0.30;
+  slide.addShape("roundRect" as any, {
+    x: 0.65, y: 0.22,
+    w: badgeW, h: badgeH,
+    fill: { color: colors.p3 },
+    rectRadius: 0.15,
+  });
+  slide.addText("ESTUDO DE CASO", {
+    x: 0.65, y: 0.22,
+    w: badgeW, h: badgeH,
+    fontSize: 8,
+    fontFace: design.fonts.body,
+    bold: true,
+    color: "FFFFFF",
+    align: "center",
+    valign: "middle",
+    charSpacing: 3,
+  });
+
+  // Title on banner
+  slide.addText(plan.title, {
+    x: 0.65, y: 0.62,
+    w: SLIDE_W - 1.30, h: 0.65,
+    fontSize: 26,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+    valign: "middle",
+  });
+
+  // Accent strip at bottom of banner
+  slide.addShape("rect" as any, {
+    x: 0, y: bannerH - 0.05, w: SLIDE_W, h: 0.05,
+    fill: { color: colors.p3 },
+  });
+
+  // ── Storytelling horizontal bands (stacked rows) ──
+  const contentX = 0.65;
+  const contentW = SLIDE_W - 1.30;
+  const gridStartY = bannerH + 0.22;
+  const gridH = SLIDE_H - gridStartY - 0.40;
+  const bandGap = 0.10;
+  const bandH = (gridH - bandGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1);
+
+  for (let i = 0; i < cappedItems.length; i++) {
+    const y = gridStartY + i * (bandH + bandGap);
+    const pal = phaseColors[i % phaseColors.length];
+    const colonIdx = cappedItems[i].indexOf(":");
+    const label = colonIdx > 0 && colonIdx < 30
+      ? cappedItems[i].substring(0, colonIdx).trim()
+      : defaultLabels[i];
+    const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
+
+    // Band background
+    slide.addShape("roundRect" as any, {
+      x: contentX, y, w: contentW, h: bandH,
+      fill: { color: colors.cardBgAlt },
+      rectRadius: 0.08,
+      line: { color: colors.borders, width: 0.3 },
+    });
+
+    // Left color accent bar
+    slide.addShape("rect" as any, {
+      x: contentX + 0.06, y: y + 0.08,
+      w: 0.06, h: bandH - 0.16,
+      fill: { color: pal },
+    });
+
+    // Phase label (left column)
+    const labelW = 1.80;
+    slide.addText(label.toUpperCase(), {
+      x: contentX + 0.25, y,
+      w: labelW, h: bandH,
+      fontSize: 11,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: pal,
+      charSpacing: 3,
+      valign: "middle",
+    });
+
+    // Vertical thin divider
+    slide.addShape("rect" as any, {
+      x: contentX + labelW + 0.30, y: y + 0.12,
+      w: 0.015, h: bandH - 0.24,
+      fill: { color: colors.divider },
+    });
+
+    // Description (right column)
+    slide.addText(desc, {
+      x: contentX + labelW + 0.50, y,
+      w: contentW - labelW - 0.70, h: bandH,
+      fontSize: TYPO.BODY,
+      fontFace: design.fonts.body,
+      color: colors.text,
+      valign: "middle",
+      lineSpacingMultiple: 1.22,
+    });
+
+    // Step connector arrow between bands
+    if (i < cappedItems.length - 1) {
+      const arrowY = y + bandH + bandGap / 2;
+      slide.addShape("rect" as any, {
+        x: contentX + 0.38, y: arrowY - 0.03,
+        w: 0.06, h: 0.06,
+        fill: { color: pal },
+        transparency: 40,
+        rotate: 45,
+      });
+    }
+  }
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ────────────────────────────────────────────────────────────────
+// WARNING CALLOUT PREMIUM — Alert cards with red accent
+// ────────────────────────────────────────────────────────────────
+function renderWarningCallout(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+  addSlideBackground(slide, colors.bg);
+
+  // Red accent left edge
+  addLeftEdge(slide, "C0392B");
+  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, "C0392B", design.fonts.body);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, "C0392B");
+
+  // Warning icon area
+  slide.addShape("roundRect" as any, {
+    x: SLIDE_W - 1.50, y: 0.35,
+    w: 0.80, h: 0.80,
+    fill: { color: "FEF2F2" },
+    rectRadius: 0.12,
+  });
+  slide.addText("⚠", {
+    x: SLIDE_W - 1.50, y: 0.35,
+    w: 0.80, h: 0.80,
+    fontSize: 28,
     align: "center",
     valign: "middle",
   });
 
-  slide.addText("Gerado por EduGenAI", {
-    x: MARGIN,
-    y: 4.50,
-    w: SAFE_W,
-    h: 0.60,
-    fontSize: TYPO.SUBTITLE,
-    fontFace: design.fonts.body,
-    color: colors.textSecondary,
-    align: "center",
-  });
+  const items = plan.items || [];
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
+  const contentY = 1.68;
+  const bulletGap = 0.08;
+  const contentH = SLIDE_H - contentY - 0.45;
+  const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
+  const itemH = Math.max(0.55, Math.min(1.00, rawItemH));
 
+  for (let i = 0; i < items.length; i++) {
+    const y = contentY + i * (itemH + bulletGap);
+    slide.addShape("roundRect" as any, {
+      x: contentX, y, w: contentW, h: itemH - 0.04,
+      fill: { color: i % 2 === 0 ? "FFF5F5" : colors.bg },
+      rectRadius: 0.06,
+      line: { color: "FECACA", width: 0.4 },
+    });
+    // Red left accent
+    slide.addShape("rect" as any, {
+      x: contentX + 0.06, y: y + 0.06,
+      w: 0.05, h: itemH - 0.16,
+      fill: { color: "E74C3C" },
+    });
+    slide.addText(items[i], {
+      x: contentX + 0.22, y: y + 0.03,
+      w: contentW - 0.30, h: itemH - 0.10,
+      fontSize: TYPO.BULLET_TEXT,
+      fontFace: design.fonts.body,
+      color: colors.text,
+      valign: "middle",
+      lineSpacingMultiple: 1.18,
+    });
+  }
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ────────────────────────────────────────────────────────────────
+// REFLECTION CALLOUT — Cinematic dark + large quotes
+// ────────────────────────────────────────────────────────────────
+function renderReflectionCallout(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+  addSlideBackground(slide, colors.coverDark);
+
+  // Large decorative quote mark (giant, faded)
+  slide.addText("\u201C", {
+    x: 0.30, y: -0.30,
+    w: 2.00, h: 2.00,
+    fontSize: 180,
+    fontFace: design.fonts.title,
+    color: colors.p1,
+    transparency: 88,
+    bold: true,
+  });
+
+  // Accent line top
+  addHR(slide, 0.65, 0.55, SLIDE_W - 1.30, colors.p1, 0.018);
+
+  // "REFLEXÃO" label
+  slide.addText("REFLEXÃO", {
+    x: 0.65, y: 0.80,
+    w: 4.0, h: 0.24,
+    fontSize: 10,
+    fontFace: design.fonts.body,
+    bold: true,
+    color: colors.p1,
+    charSpacing: 6,
+  });
+
+  // Title
+  slide.addText(plan.title, {
+    x: 0.65, y: 1.12,
+    w: SLIDE_W - 1.30, h: 0.55,
+    fontSize: 24,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+  });
+
+  const items = plan.items || [];
+  const contentY = 1.90;
+  const contentH = SLIDE_H - contentY - 0.60;
+  const itemGap = 0.16;
+  const rawItemH = (contentH - itemGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
+  const itemH = Math.max(0.65, Math.min(1.30, rawItemH));
+
+  for (let i = 0; i < items.length; i++) {
+    const y = contentY + i * (itemH + itemGap);
+    // Subtle background panel for each reflection
+    slide.addShape("roundRect" as any, {
+      x: 0.65, y,
+      w: SLIDE_W - 1.30, h: itemH,
+      fill: { color: colors.panelMid },
+      rectRadius: 0.08,
+      transparency: 30,
+    });
+    slide.addText(items[i], {
+      x: 1.00, y,
+      w: SLIDE_W - 2.00, h: itemH,
+      fontSize: TYPO.BODY_LARGE,
+      fontFace: design.fonts.body,
+      italic: true,
+      color: colors.coverSubtext,
+      valign: "middle",
+      lineSpacingMultiple: 1.42,
+    });
+  }
+
+  // Bottom accent line
+  addHR(slide, 0.65, SLIDE_H - 0.50, SLIDE_W - 1.30, colors.p1, 0.018);
+}
+
+// ────────────────────────────────────────────────────────────────
+// SUMMARY PREMIUM — 2x2 or 2x3 grid of numbered insight cards
+// ────────────────────────────────────────────────────────────────
+function renderSummarySlide(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+  addSlideBackground(slide, colors.bg);
+
+  // ── Left accent sidebar ──
+  const sidebarW = 0.45;
+  slide.addShape("rect" as any, {
+    x: 0, y: 0, w: sidebarW, h: SLIDE_H,
+    fill: { color: colors.p0 },
+  });
+
+  // Section label + title
+  if (plan.sectionLabel) {
+    slide.addText(plan.sectionLabel.toUpperCase(), {
+      x: sidebarW + 0.30, y: 0.30,
+      w: 6.0, h: 0.24,
+      fontSize: 10,
+      fontFace: design.fonts.body,
+      bold: true,
+      color: colors.p0,
+      charSpacing: 5,
+    });
+    addHR(slide, sidebarW + 0.30, 0.57, 0.90, colors.p0, 0.020);
+  }
+  slide.addText(plan.title, {
+    x: sidebarW + 0.30, y: 0.68,
+    w: SLIDE_W - sidebarW - 0.80, h: 0.75,
+    fontSize: TYPO.SECTION_TITLE,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: colors.text,
+    valign: "middle",
+  });
+
+  const items = (plan.items || []).map((item) => {
+    const repaired = isSentenceComplete(item.replace(/\.\s*$/, "")) ? item : repairSentence(item);
+    return ensureSentenceEnd(repaired);
+  }).filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10);
+
+  // ── Grid layout: 2 columns for ≥4 items, single column for ≤3 ──
+  const contentX = sidebarW + 0.30;
+  const contentW = SLIDE_W - contentX - 0.50;
+  const contentY = 1.60;
+  const contentHAvail = SLIDE_H - contentY - 0.40;
+  const cols = items.length >= 4 ? 2 : 1;
+  const rows = Math.ceil(items.length / cols);
+  const gap = 0.12;
+  const cardW = (contentW - gap * (cols - 1)) / cols;
+  const cardH = Math.min(1.50, (contentHAvail - gap * (rows - 1)) / rows);
+
+  for (let i = 0; i < items.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = contentX + col * (cardW + gap);
+    const y = contentY + row * (cardH + gap);
+    const pal = design.palette[i % design.palette.length];
+
+    // Card bg
+    slide.addShape("roundRect" as any, {
+      x, y, w: cardW, h: cardH,
+      fill: { color: colors.cardBgAlt },
+      rectRadius: 0.08,
+      line: { color: colors.borders, width: 0.3 },
+    });
+
+    // Number block (top-left)
+    const numSize = 0.45;
+    slide.addShape("roundRect" as any, {
+      x: x + 0.10, y: y + 0.10,
+      w: numSize, h: numSize,
+      fill: { color: pal },
+      rectRadius: 0.08,
+    });
+    slide.addText(String(i + 1), {
+      x: x + 0.10, y: y + 0.10,
+      w: numSize, h: numSize,
+      fontSize: 18,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: "FFFFFF",
+      align: "center",
+      valign: "middle",
+    });
+
+    // Text
+    slide.addText(items[i], {
+      x: x + 0.10, y: y + numSize + 0.12,
+      w: cardW - 0.20, h: cardH - numSize - 0.22,
+      fontSize: TYPO.BODY,
+      fontFace: design.fonts.body,
+      color: colors.text,
+      valign: "top",
+      lineSpacingMultiple: 1.22,
+    });
+  }
+  addFooter(slide, colors, design.fonts.body);
+}
+
+// ────────────────────────────────────────────────────────────────
+// TAKEAWAYS — Full dark bg + grid cards with accent top strips
+// ────────────────────────────────────────────────────────────────
+function renderNumberedTakeaways(
+  pptx: PptxGenJS,
+  plan: SlidePlan,
+  design: DesignConfig,
+) {
+  const colors = getColors(design);
+  const slide = pptx.addSlide();
+  _globalSlideIdx++;
+
+  // Full dark background for high contrast
+  addSlideBackground(slide, colors.coverDark);
+
+  // Top accent strip
+  addHR(slide, 0, 0.04, SLIDE_W, colors.p4, 0.045);
+
+  // Section label
+  if (plan.sectionLabel) {
+    slide.addText(plan.sectionLabel.toUpperCase(), {
+      x: 0.65, y: 0.28,
+      w: 6.0, h: 0.24,
+      fontSize: 10,
+      fontFace: design.fonts.body,
+      bold: true,
+      color: colors.p4,
+      charSpacing: 6,
+    });
+  }
+  // Title on dark bg
+  slide.addText(plan.title, {
+    x: 0.65, y: 0.58,
+    w: SLIDE_W - 1.30, h: 0.70,
+    fontSize: 28,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+    valign: "middle",
+  });
+  addHR(slide, 0.65, 1.35, 1.80, colors.p4, 0.025);
+
+  const items = plan.items || [];
+  const contentX = 0.65;
+  const contentW = SLIDE_W - contentX - 0.50;
+  const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
+  const gridRows = Math.ceil(items.length / cols);
+  const gap = 0.14;
+  const cardW = (contentW - gap * (cols - 1)) / cols;
+  const contentY = 1.65;
+  const contentH = SLIDE_H - contentY - 0.30;
+  const cardH = Math.min(1.80, (contentH - gap * (gridRows - 1)) / gridRows);
+
+  for (let i = 0; i < items.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = contentX + col * (cardW + gap);
+    const y = contentY + row * (cardH + gap);
+    const pal = design.palette[i % design.palette.length];
+
+    // Card bg
+    slide.addShape("roundRect" as any, {
+      x, y, w: cardW, h: cardH,
+      fill: { color: colors.panelMid },
+      rectRadius: 0.10,
+    });
+
+    // Thick top accent strip
+    slide.addShape("rect" as any, {
+      x, y, w: cardW, h: 0.06,
+      fill: { color: pal },
+      rectRadius: 0.10,
+    });
+
+    // Large number
+    slide.addText(String(i + 1).padStart(2, "0"), {
+      x: x + 0.16, y: y + 0.14,
+      w: 0.80, h: 0.55,
+      fontSize: 36,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: pal,
+      transparency: 10,
+    });
+
+    // Takeaway text
+    slide.addText(items[i], {
+      x: x + 0.16, y: y + 0.68,
+      w: cardW - 0.32, h: cardH - 0.82,
+      fontSize: TYPO.TAKEAWAY_BODY,
+      fontFace: design.fonts.body,
+      color: colors.coverSubtext,
+      valign: "top",
+      lineSpacingMultiple: 1.28,
+    });
+
+    // Decorative dot bottom-right
+    slide.addShape("ellipse" as any, {
+      x: x + cardW - 0.24, y: y + cardH - 0.22,
+      w: 0.08, h: 0.08,
+      fill: { color: pal },
+      transparency: 50,
+    });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// CLOSING HERO — Cinematic, elegant, with CTA feel
+// ────────────────────────────────────────────────────────────────
 function renderClosingSlide(
   pptx: PptxGenJS,
   courseTitle: string,
@@ -1681,35 +3605,108 @@ function renderClosingSlide(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
+  addSlideBackground(slide, colors.coverDark);
 
+  // ── Large decorative circle (subtle, top-right) ──
+  slide.addShape("ellipse" as any, {
+    x: SLIDE_W - 4.50, y: -1.50,
+    w: 5.50, h: 5.50,
+    fill: { color: colors.p0 },
+    transparency: 90,
+  });
+
+  // ── Vertical accent line (left) ──
+  slide.addShape("rect" as any, {
+    x: 0.80, y: 1.00, w: 0.04, h: 3.50,
+    fill: { color: colors.p0 },
+  });
+
+  // ── Thin design lines ──
+  addHR(slide, 0.80, 1.20, 3.50, colors.p0, 0.012);
+
+  // ── Small palette chips ──
+  for (let b = 0; b < 5; b++) {
+    slide.addShape("rect" as any, {
+      x: 0.30, y: 1.20 + b * 0.25,
+      w: 0.28, h: 0.14,
+      fill: { color: design.palette[b % design.palette.length] },
+      transparency: 30,
+      rectRadius: 0.03,
+    });
+  }
+
+  // ── "Obrigado!" — massive, editorial ──
   slide.addText("Obrigado!", {
-    x: MARGIN,
-    y: 2.20,
-    w: SAFE_W,
-    h: 1.20,
-    fontSize: 44,
+    x: 1.20, y: 1.80,
+    w: SLIDE_W * 0.55,
+    h: 2.00,
+    fontSize: 72,
     fontFace: design.fonts.title,
     bold: true,
-    color: colors.text,
-    align: "center",
+    color: "FFFFFF",
     valign: "middle",
   });
 
-  slide.addText(courseTitle, {
-    x: MARGIN,
-    y: 3.60,
-    w: SAFE_W,
-    h: 0.60,
-    fontSize: TYPO.SUBTITLE,
-    fontFace: design.fonts.body,
-    color: colors.textSecondary,
-    align: "center",
+  // Accent bar
+  slide.addShape("rect" as any, {
+    x: 1.20, y: 4.10,
+    w: 3.00, h: 0.06,
+    fill: { color: colors.p0 },
   });
 
-  addFooter(slide, colors, design.fonts.body);
+  // Course title recap
+  slide.addText(courseTitle, {
+    x: 1.20, y: 4.35,
+    w: SLIDE_W * 0.50,
+    h: 0.60,
+    fontSize: 16,
+    fontFace: design.fonts.body,
+    color: colors.coverSubtext,
+    valign: "top",
+    lineSpacingMultiple: 1.2,
+  });
+
+  // ── CTA area ──
+  slide.addText("CONCLUSÃO", {
+    x: 1.20, y: 5.20,
+    w: 4.0, h: 0.24,
+    fontSize: 10,
+    fontFace: design.fonts.body,
+    bold: true,
+    color: colors.p0,
+    charSpacing: 6,
+    transparency: 25,
+  });
+
+  // ── Bottom decorative elements ──
+  // Small geometric squares (right area)
+  for (let i = 0; i < 3; i++) {
+    const sz = 0.50 + i * 0.25;
+    slide.addShape("rect" as any, {
+      x: SLIDE_W - 2.20 + i * 0.45,
+      y: SLIDE_H - 2.00 + i * 0.40,
+      w: sz, h: sz,
+      fill: { color: design.palette[i % design.palette.length] },
+      transparency: 85,
+      rectRadius: 0.04,
+    });
+  }
+
+  // ── Date bottom-right ──
+  const dateStr = new Date().toISOString().slice(0, 10);
+  slide.addText(dateStr, {
+    x: SLIDE_W - 2.50, y: SLIDE_H - 0.55,
+    w: 2.10, h: 0.28,
+    fontSize: 11,
+    fontFace: design.fonts.body,
+    color: colors.coverSubtext,
+    align: "right",
+    charSpacing: 2,
+    transparency: 30,
+  });
 }
 
+// ── Slide dispatcher ──
 function renderSlide(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -1718,6 +3715,9 @@ function renderSlide(
   switch (plan.layout) {
     case "module_cover":
       renderModuleCover(pptx, plan, design);
+      break;
+    case "two_column_bullets":
+      renderTwoColumnBullets(pptx, plan, design);
       break;
     case "definition":
       renderDefinition(pptx, plan, design);
@@ -1777,6 +3777,7 @@ function runPipeline(
   pptx.author = "EduGenAI v2";
   pptx.title = courseTitle;
 
+  _globalSlideIdx = 0; // Reset anti-monotonia counter per export
   renderCoverSlide(pptx, courseTitle, design);
 
   const allModuleSlidePlans: SlidePlan[][] = [];
@@ -1799,16 +3800,139 @@ function runPipeline(
     allModuleSlidePlans.push(slidePlans);
   }
 
-  const tocModules = modules.map((m, i) => {
+  const tocModules = modules.map((m) => {
     const rawTitle = sanitize(m.title || "");
     const cleanTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
-    const firstLine = sanitize((m.content || "").split(/[.!?]\s/)[0] || "");
+    const desc = extractTocDescription(m.content || "", 105);
+    if (!desc) {
+      return {
+        title: cleanMarkdown(cleanTitle),
+        description: undefined,
+      };
+    }
+
     return {
-      title: cleanTitle,
-      description: firstLine ? ensureSentenceEnd(smartTruncate(firstLine, 80)) : undefined,
+      title: cleanMarkdown(cleanTitle),
+      description: ensureSentenceEnd(normalizeResidualText(desc)),
     };
   });
   renderTOC(pptx, tocModules, design);
+
+  // ── POST-PROCESSING: Final sweep to eliminate empty/weak slides ──
+  console.log(`[V2-STAGE-3.5] Post-processing: eliminating empty/weak slides...`);
+  for (const modulePlans of allModuleSlidePlans) {
+    for (let i = modulePlans.length - 1; i >= 0; i--) {
+      const plan = modulePlans[i];
+      if (plan.layout === "module_cover") continue; // Always keep module covers
+      if (plan.layout === "comparison_table") {
+        // Table slides need actual rows
+        if (!plan.tableRows || plan.tableRows.length === 0) {
+          report.warnings.push(`[POST] Removed empty table slide: "${plan.title}"`);
+          modulePlans.splice(i, 1);
+          continue;
+        }
+        continue;
+      }
+      // For all other layouts: must have meaningful items
+      const items = plan.items || [];
+      if (items.length === 0) {
+        report.warnings.push(`[POST] Removed slide with no items: "${plan.title}"`);
+        // Try to fold items into previous slide
+        if (i > 0 && modulePlans[i - 1].items) {
+          // nothing to fold, just remove
+        }
+        modulePlans.splice(i, 1);
+        continue;
+      }
+      if (!hasMeaningfulContent(items)) {
+        // Fold into previous slide if possible
+        if (i > 0 && modulePlans[i - 1].items) {
+          modulePlans[i - 1].items = [...(modulePlans[i - 1].items || []), ...items];
+          report.warnings.push(`[POST] Merged weak slide "${plan.title}" into "${modulePlans[i - 1].title}"`);
+        } else {
+          report.warnings.push(`[POST] Removed weak slide: "${plan.title}" (${items.length} items, none meaningful)`);
+        }
+        modulePlans.splice(i, 1);
+        continue;
+      }
+    }
+  }
+
+  console.log(`[V2-STAGE-3.6] Merging adjacent sparse continuation slides...`);
+  for (const modulePlans of allModuleSlidePlans) {
+    for (let i = modulePlans.length - 2; i >= 0; i--) {
+      const curr = modulePlans[i];
+      const next = modulePlans[i + 1];
+      if (curr.layout === "module_cover" || next.layout === "module_cover") continue;
+      if (curr.layout === "comparison_table" || next.layout === "comparison_table") continue;
+      const currItems = curr.items || [];
+      const nextItems = next.items || [];
+      if (currItems.length === 0 || nextItems.length === 0) continue;
+      const currChars = currItems.reduce((s, t) => s + t.length, 0);
+      const nextChars = nextItems.reduce((s, t) => s + t.length, 0);
+      const combinedItems = currItems.length + nextItems.length;
+      const combinedChars = currChars + nextChars;
+      const baseTitle = stripPartSuffix(curr.title);
+      const sameSection = baseTitle === stripPartSuffix(next.title);
+      const isContinuation = next.continuationOf === baseTitle ||
+        /\(Parte\s+\d+\)/i.test(next.title) ||
+        /\(Parte\s+\d+\)/i.test(curr.title);
+      if (
+        sameSection &&
+        isContinuation &&
+        combinedItems <= design.density.maxItemsPerSlide &&
+        combinedChars < 800 &&
+        currChars < 400 &&
+        nextChars < 400
+      ) {
+        curr.items = [...currItems, ...nextItems];
+        curr.title = stripPartSuffix(curr.title);
+        report.warnings.push(`[MERGE] Merged sparse continuation: "${next.title}" into "${curr.title}"`);
+        modulePlans.splice(i + 1, 1);
+      }
+    }
+  }
+
+  console.log(`[V2-STAGE-3.7] Visual fit pass: preventing overflow and overlap...`);
+  for (let i = 0; i < allModuleSlidePlans.length; i++) {
+    allModuleSlidePlans[i] = enforceVisualRenderingGuards(allModuleSlidePlans[i], design, report);
+  }
+
+  // ── STAGE 3.8: Anti-repetition & breathing — diversify sequential layouts ──
+  console.log(`[V2-STAGE-3.8] Anti-repetition: diversifying sequential layouts...`);
+  const LAYOUT_ALTS: Partial<Record<SlideLayoutV2, SlideLayoutV2[]>> = {
+    bullets: ["two_column_bullets", "grid_cards"],
+    two_column_bullets: ["bullets", "grid_cards"],
+    definition: ["grid_cards", "bullets"],
+    grid_cards: ["two_column_bullets", "definition"],
+    warning_callout: ["bullets"],
+  };
+  for (const modulePlans of allModuleSlidePlans) {
+    let consecutiveSame = 0;
+    for (let i = 1; i < modulePlans.length; i++) {
+      const prev = modulePlans[i - 1];
+      const curr = modulePlans[i];
+      if (curr.layout === "module_cover" || curr.layout === "comparison_table") {
+        consecutiveSame = 0;
+        continue;
+      }
+      if (curr.layout === prev.layout) {
+        consecutiveSame++;
+      } else {
+        consecutiveSame = 0;
+      }
+      // Swap after any 2 consecutive same layouts
+      if (consecutiveSame >= 1 && LAYOUT_ALTS[curr.layout]) {
+        const alts = LAYOUT_ALTS[curr.layout]!;
+        // Pick an alternative that differs from both prev and prev-prev
+        const prevPrev = i >= 2 ? modulePlans[i - 2].layout : null;
+        const alt = alts.find((a) => a !== prev.layout && a !== prevPrev) || alts[0];
+        report.warnings.push(`[ANTI-REP] Swapped "${curr.layout}" → "${alt}" for "${curr.title}"`);
+        curr.layout = alt;
+        consecutiveSame = 0;
+      }
+    }
+  }
 
   console.log(`[V2-STAGE-4] Rendering slides...`);
   for (const modulePlans of allModuleSlidePlans) {
@@ -1928,7 +4052,7 @@ Deno.serve(async (req: Request) => {
 
     const design = buildDesignConfig(theme || "light", palette || "default");
 
-    const courseTitle = sanitize(course.title || "Curso EduGenAI");
+    const courseTitle = sanitize(cleanMarkdown(course.title || "Curso EduGenAI"));
     const moduleData = modules.map((m: any) => ({
       title: m.title || "",
       content: m.content || "",
