@@ -384,19 +384,28 @@ async function fetchUnsplashImage(
     }
 
     const photo = data.results[0];
-    const imageUrl = photo.urls?.regular || photo.urls?.small;
+    const rawUrl = photo.urls?.raw;
+    const fallbackUrl = photo.urls?.regular || photo.urls?.small;
+    const imageUrl = rawUrl
+      ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}fm=jpg&q=82&w=1600&fit=max`
+      : fallbackUrl;
     if (!imageUrl) return null;
 
-    const imgRes = await fetch(imageUrl);
+    const imgRes = await fetch(imageUrl, {
+      headers: { Accept: "image/jpeg,image/png;q=0.9,*/*;q=0.8" },
+    });
     if (!imgRes.ok) return null;
+
+    const contentType = (imgRes.headers.get("content-type") || "").toLowerCase();
+    const mime = contentType.includes("png") ? "image/png" : "image/jpeg";
 
     const buf = await imgRes.arrayBuffer();
     const base64 = arrayBufferToBase64(buf);
 
-    console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name}`);
+    console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name} — mime: ${mime}`);
 
     return {
-      base64Data: `data:image/jpeg;base64,${base64}`,
+      base64Data: `${mime};base64,${base64}`,
       credit: photo.user?.name || "Unsplash",
       creditUrl: photo.user?.links?.html || "https://unsplash.com",
     };
