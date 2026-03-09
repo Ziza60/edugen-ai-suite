@@ -2776,16 +2776,17 @@ function renderProcessTimeline(
     }
   } else {
     // ── VERTICAL TIMELINE with node-connector system ──
+    // Handles 5-7 items with compact but cohesive process feel
     addSlideBackground(slide, colors.bg);
     addLeftEdge(slide, colors.p2);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
 
-    const contentY = 1.65;
-    const stepGap = 0.10;
-    const contentH = SLIDE_H - contentY - 0.38;
-    const stepH = Math.min(0.85, (contentH - stepGap * (items.length - 1)) / items.length);
-    const nodeSize = 0.30;
+    const contentY = 1.55;
+    const contentH = SLIDE_H - contentY - 0.32;
+    const stepGap = items.length <= 5 ? 0.06 : 0.03;
+    const stepH = (contentH - stepGap * (items.length - 1)) / items.length;
+    const nodeSize = items.length <= 5 ? 0.28 : 0.24;
     const nodeX = contentX + 0.10;
 
     // Vertical connector line
@@ -2809,30 +2810,73 @@ function renderProcessTimeline(
       slide.addText(String(i + 1), {
         x: nodeX, y: y + stepH / 2 - nodeSize / 2,
         w: nodeSize, h: nodeSize,
-        fontSize: 12,
+        fontSize: items.length <= 5 ? 12 : 10,
         fontFace: design.fonts.title,
         bold: true, color: "FFFFFF",
         align: "center", valign: "middle",
       });
 
-      // Content card
-      const cardX = nodeX + nodeSize + 0.18;
+      // Content card with left accent
+      const cardX = nodeX + nodeSize + 0.16;
       const cardW = contentW - (cardX - contentX);
+      const accentW = 0.05;
+
+      // Accent bar
+      slide.addShape("rect" as any, {
+        x: cardX, y, w: accentW, h: stepH - 0.02,
+        fill: { color: pal },
+      });
+
+      // Card body
       slide.addShape("roundRect" as any, {
-        x: cardX, y, w: cardW, h: stepH - 0.04,
+        x: cardX + accentW, y, w: cardW - accentW, h: stepH - 0.02,
         fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
-        rectRadius: 0.05,
-        line: { color: pal, width: 0.6 },
+        rectRadius: 0.04,
       });
-      slide.addText(items[i], {
-        x: cardX + 0.14, y,
-        w: cardW - 0.22, h: stepH - 0.04,
-        fontSize: TYPO.BULLET_TEXT - 1,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "middle",
-        lineSpacingMultiple: 1.15,
-      });
+
+      // Parse label:desc
+      const colonIdx = items[i].indexOf(":");
+      let label: string, desc: string;
+      if (colonIdx > 0 && colonIdx < 40) {
+        label = items[i].substring(0, colonIdx).trim();
+        desc = items[i].substring(colonIdx + 1).trim();
+      } else {
+        label = ""; desc = items[i];
+      }
+
+      const textX = cardX + accentW + 0.12;
+      const textW = cardW - accentW - 0.22;
+      const fontSize = items.length <= 5 ? TYPO.BULLET_TEXT : TYPO.BULLET_TEXT - 1;
+
+      if (label) {
+        slide.addText(label, {
+          x: textX, y: y + 0.02,
+          w: textW, h: stepH * 0.38,
+          fontSize: fontSize,
+          fontFace: design.fonts.title,
+          bold: true, color: pal,
+          valign: "bottom",
+        });
+        slide.addText(desc, {
+          x: textX, y: y + stepH * 0.38,
+          w: textW, h: stepH * 0.58,
+          fontSize: fontSize - 1,
+          fontFace: design.fonts.body,
+          color: colors.text,
+          valign: "top",
+          lineSpacingMultiple: 1.10,
+        });
+      } else {
+        slide.addText(desc, {
+          x: textX, y,
+          w: textW, h: stepH - 0.02,
+          fontSize: fontSize,
+          fontFace: design.fonts.body,
+          color: colors.text,
+          valign: "middle",
+          lineSpacingMultiple: 1.12,
+        });
+      }
     }
   }
   addFooter(slide, colors, design.fonts.body);
