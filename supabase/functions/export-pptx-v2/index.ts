@@ -277,6 +277,27 @@ function getColors(design: DesignConfig) {
   };
 }
 
+/**
+ * Ensures a foreground hex color has enough contrast against a background.
+ * If the contrast ratio is too low (e.g. yellow text on white card),
+ * returns a safe dark or light alternative.
+ */
+function ensureContrastOnLight(fgHex: string, bgHex: string): string {
+  const toLum = (hex: string) => {
+    const r = parseInt(hex.substring(0, 2), 16) / 255;
+    const g = parseInt(hex.substring(2, 4), 16) / 255;
+    const b = parseInt(hex.substring(4, 6), 16) / 255;
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  };
+  const fgLum = toLum(fgHex);
+  const bgLum = toLum(bgHex);
+  if (Math.abs(fgLum - bgLum) < 0.3) {
+    // Not enough contrast — return safe dark or light color
+    return bgLum > 0.5 ? "1E293B" : "E8EDF5";
+  }
+  return fgHex;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 2.5: IMAGE SERVICE
 // ═══════════════════════════════════════════════════════════════════
