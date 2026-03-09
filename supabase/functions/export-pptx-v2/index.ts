@@ -1455,6 +1455,8 @@ function distributeModuleToSlides(
 // SECTION 7: STAGE 4 — RENDER (SlidePlans → PptxGenJS slides)
 // ═══════════════════════════════════════════════════════════════════
 
+let _globalSlideIdx = 0;
+
 function addSlideBackground(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   color: string,
@@ -1462,137 +1464,78 @@ function addSlideBackground(
   slide.background = { fill: color };
 }
 
-// ── Premium left accent bar (full-height, 0.18" wide) ──
-function addLeftAccentBar(
+function addHR(
   slide: ReturnType<PptxGenJS["addSlide"]>,
-  accentColor: string,
-  secondColor?: string,
+  x: number, y: number, w: number, color: string, h = 0.028,
 ) {
-  slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: 0.18,
-    h: SLIDE_H,
-    fill: { color: accentColor },
-  });
-  if (secondColor) {
-    slide.addShape("rect" as any, {
-      x: 0.18,
-      y: 0,
-      w: 0.055,
-      h: SLIDE_H,
-      fill: { color: secondColor },
-    });
-  }
+  slide.addShape("rect" as any, { x, y, w, h, fill: { color } });
 }
 
-// ── Thin top accent bar (4px) ──
-function addTopAccentBar(
+function addLeftEdge(
   slide: ReturnType<PptxGenJS["addSlide"]>,
-  accentColor: string,
+  color: string,
 ) {
   slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: SLIDE_W,
-    h: 0.055,
-    fill: { color: accentColor },
+    x: 0, y: 0, w: 0.06, h: SLIDE_H,
+    fill: { color },
   });
 }
 
-// ── Premium pill badge label ──
 function addSectionLabel(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   label: string,
   accentColor: string,
   fontBody: string,
 ) {
-  const textW = Math.max(1.6, label.length * 0.085 + 0.4);
-  slide.addShape("roundRect" as any, {
-    x: 0.36,
-    y: 0.22,
-    w: textW,
-    h: 0.28,
-    fill: { color: accentColor },
-    rectRadius: 0.14,
-  });
   slide.addText(label.toUpperCase(), {
-    x: 0.36,
-    y: 0.22,
-    w: textW,
-    h: 0.28,
-    fontSize: TYPO.LABEL,
+    x: 0.55, y: 0.30,
+    w: 6.0, h: 0.24,
+    fontSize: 10,
     fontFace: fontBody,
     bold: true,
-    color: "FFFFFF",
-    align: "center",
-    valign: "middle",
-    charSpacing: 2.5,
+    color: accentColor,
+    charSpacing: 4.5,
   });
+  addHR(slide, 0.55, 0.57, 0.80, accentColor, 0.022);
 }
 
-// ── Slide title with left accent rule ──
 function addSlideTitle(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   title: string,
   colors: ReturnType<typeof getColors>,
   fontTitle: string,
-  accentColor?: string,
+  _accentColor?: string,
 ) {
-  const accent = accentColor || colors.p0;
-  // Strong left rule
-  slide.addShape("rect" as any, {
-    x: 0.36,
-    y: 0.60,
-    w: 0.055,
-    h: 0.90,
-    fill: { color: accent },
-  });
   slide.addText(title, {
-    x: 0.55,
-    y: 0.58,
-    w: SLIDE_W - 0.90,
-    h: 0.94,
+    x: 0.55, y: 0.68,
+    w: SLIDE_W - 1.10,
+    h: 0.82,
     fontSize: TYPO.SECTION_TITLE,
     fontFace: fontTitle,
     bold: true,
     color: colors.text,
     valign: "middle",
+    lineSpacingMultiple: 1.08,
   });
 }
 
-// ── Minimal dark footer ──
 function addFooter(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   colors: ReturnType<typeof getColors>,
   fontBody: string,
 ) {
-  slide.addShape("rect" as any, {
-    x: 0,
-    y: SLIDE_H - 0.28,
-    w: SLIDE_W,
-    h: 0.28,
-    fill: { color: colors.bgAlt },
-  });
-  slide.addShape("rect" as any, {
-    x: 0,
-    y: SLIDE_H - 0.28,
-    w: SLIDE_W,
-    h: 0.022,
-    fill: { color: colors.divider },
-  });
+  addHR(slide, 0, SLIDE_H - 0.26, SLIDE_W, colors.divider, 0.012);
   slide.addText("EduGenAI", {
-    x: 0.36,
-    y: SLIDE_H - 0.27,
-    w: 2.5,
-    h: 0.24,
-    fontSize: TYPO.FOOTER,
+    x: SLIDE_W - 1.50, y: SLIDE_H - 0.24,
+    w: 1.30, h: 0.20,
+    fontSize: 9,
     fontFace: fontBody,
     color: colors.textSecondary,
+    align: "right",
     valign: "middle",
     charSpacing: 1.5,
-    bold: true,
   });
+}
 }
 
 const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
