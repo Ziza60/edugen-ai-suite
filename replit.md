@@ -69,7 +69,10 @@ v2 is the DEFAULT engine. v1 remains untouched as emergency fallback.
 - **Footer**: Gradient accent bar + branded dot + "EduGenAI" label
 - **Slide title**: Double underline (accent + divider)
 - **Cards**: White backgrounds with left color accent bars, rounded corners, shadows
-- **Number badges**: Circles with filled palette colors (example_highlight uses numbered phases)
+- **Number badges**: Adaptive sizing (capped by card dimensions to prevent overflow)
+- **Text autoFit**: All content text boxes use autoFit to prevent text clipping
+- **Images**: `slide.addImage()` used instead of `slide.background` for reliability
+- **Base64 prefix**: `data:image/jpeg;base64,...` (PptxGenJS requires `data:` prefix)
 
 ### Example Highlight (Case Study) Layout
 - Dark background with left-side timeline panel
