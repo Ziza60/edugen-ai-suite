@@ -2261,14 +2261,16 @@ function renderCoverSlide(
 
   if (image) {
     try {
-      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
-      console.log(`[V2-RENDER] Cover: addImage OK, dataLen=${image.base64Data.length}`);
+      // Use slide.background for maximum cross-viewer compatibility
+      slide.background = { data: image.base64Data };
+      console.log(`[V2-RENDER] Cover: slide.background with image OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
-      console.error("[V2-RENDER] Cover addImage FAILED:", err.message);
+      console.error("[V2-RENDER] Cover background image FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
     }
-    addImageOverlay(slide, colors.coverDark, 55);
-    addImageOverlay(slide, colors.coverDark, 70, 0, 0, SLIDE_W * 0.60, SLIDE_H);
+    // Single overlay to darken image while keeping it visible
+    addImageOverlay(slide, colors.coverDark, 40);
+    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
