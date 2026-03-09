@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "2.5.3-2026-03-09";
+const ENGINE_VERSION = "2.6.1-2026-03-09";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1955,7 +1955,7 @@ const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
   grid_cards: 6,
   process_timeline: 4,
   example_highlight: 5,
-  warning_callout: 4,
+  warning_callout: 5,
   reflection_callout: 4,
   summary_slide: 6,
   numbered_takeaways: 7,
@@ -2259,17 +2259,18 @@ function renderCoverSlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
-  addSlideBackground(slide, colors.coverDark);
-
   if (image) {
     try {
       slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
       console.log(`[V2-RENDER] Cover: addImage OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
       console.error("[V2-RENDER] Cover addImage FAILED:", err.message);
+      addSlideBackground(slide, colors.coverDark);
     }
-    addImageOverlay(slide, colors.coverDark, 30);
-    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
+    addImageOverlay(slide, colors.coverDark, 55);
+    addImageOverlay(slide, colors.coverDark, 70, 0, 0, SLIDE_W * 0.60, SLIDE_H);
+  } else {
+    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, SLIDE_W * 0.50, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
@@ -2466,16 +2467,17 @@ function renderTOC(
         rectRadius: 0.12,
       });
 
+      const badgeS = Math.min(0.44, cardH * 0.25);
       slide.addShape("roundRect" as any, {
-        x: x + 0.16, y: y + 0.16,
-        w: 0.50, h: 0.50,
+        x: x + 0.14, y: y + 0.14,
+        w: badgeS, h: badgeS,
         fill: { color: pal },
-        rectRadius: 0.10,
+        rectRadius: 0.08,
       });
       slide.addText(num, {
-        x: x + 0.16, y: y + 0.16,
-        w: 0.50, h: 0.50,
-        fontSize: 20,
+        x: x + 0.14, y: y + 0.14,
+        w: badgeS, h: badgeS,
+        fontSize: Math.min(18, badgeS * 38),
         fontFace: design.fonts.title,
         bold: true,
         color: "FFFFFF",
@@ -2483,10 +2485,12 @@ function renderTOC(
         valign: "middle",
       });
 
+      const titleY = y + 0.14 + badgeS + 0.08;
+      const titleH = Math.min(0.48, (cardH - badgeS - 0.36) * 0.45);
       slide.addText(pageModules[i].title, {
-        x: x + 0.18, y: y + 0.80,
-        w: cardW - 0.36, h: 0.52,
-        fontSize: 14,
+        x: x + 0.14, y: titleY,
+        w: cardW - 0.28, h: titleH,
+        fontSize: cardH < 1.4 ? 12 : 14,
         fontFace: design.fonts.title,
         bold: true,
         color: "FFFFFF",
@@ -2494,26 +2498,26 @@ function renderTOC(
         lineSpacingMultiple: 1.06,
       });
 
-      // Thin separator
-      addHR(slide, x + 0.18, y + 1.38, cardW * 0.5, pal, 0.012);
+      const sepY = titleY + titleH + 0.04;
+      addHR(slide, x + 0.14, sepY, cardW * 0.45, pal, 0.010);
 
-      // Description
       if (pageModules[i].description) {
+        const descY = sepY + 0.06;
+        const descH = Math.max(0.20, y + cardH - descY - 0.12);
         slide.addText(pageModules[i].description!, {
-          x: x + 0.18, y: y + 1.48,
-          w: cardW - 0.36, h: cardH - 1.62,
-          fontSize: 11,
+          x: x + 0.14, y: descY,
+          w: cardW - 0.28, h: descH,
+          fontSize: cardH < 1.4 ? 9 : 11,
           fontFace: design.fonts.body,
           color: colors.coverSubtext,
           valign: "top",
-          lineSpacingMultiple: 1.25,
+          lineSpacingMultiple: 1.18,
         });
       }
 
-      // Small decorative dot at bottom-right of card
       slide.addShape("ellipse" as any, {
-        x: x + cardW - 0.30, y: y + cardH - 0.26,
-        w: 0.10, h: 0.10,
+        x: x + cardW - 0.26, y: y + cardH - 0.22,
+        w: 0.08, h: 0.08,
         fill: { color: pal },
         transparency: 40,
       });
@@ -2553,8 +2557,8 @@ function renderModuleCover(
     } catch (imgErr: any) {
       console.error(`[V2-RENDER] Module cover: addImage FAILED:`, imgErr.message);
     }
-    addImageOverlay(slide, accentColor, 70, imgX, 0, imgW, SLIDE_H);
-    addImageOverlay(slide, colors.coverDark, 40, imgX, 0, imgW, SLIDE_H);
+    addImageOverlay(slide, accentColor, 80, imgX, 0, imgW, SLIDE_H);
+    addImageOverlay(slide, colors.coverDark, 60, imgX, 0, imgW, SLIDE_H);
     slide.addShape("rect" as any, {
       x: imgX, y: 0, w: 0.04, h: SLIDE_H,
       fill: { color: accentColor },
@@ -2858,25 +2862,24 @@ function renderBullets(
         fill: { color: pal },
         rectRadius: 0.10,
       });
-      const numW = Math.min(0.55, cardW * 0.25);
       slide.addText(String(i + 1).padStart(2, "0"), {
-        x: x + cardW - numW - 0.10, y: y + 0.08,
-        w: numW, h: 0.36,
-        fontSize: Math.min(22, cardW > 3 ? 26 : 20),
+        x: x + 0.12, y: y + 0.06,
+        w: 0.40, h: 0.28,
+        fontSize: Math.min(16, cardW > 3 ? 18 : 14),
         fontFace: design.fonts.title,
         bold: true,
         color: pal,
-        transparency: 30,
-        align: "right",
+        transparency: 25,
+        align: "left",
       });
       slide.addText(items[i], {
-        x: x + 0.18, y: y + 0.12,
-        w: cardW - numW - 0.36, h: cardH - 0.24,
+        x: x + 0.14, y: y + 0.38,
+        w: cardW - 0.28, h: cardH - 0.48,
         fontSize: TYPO.BULLET_TEXT - 1,
         fontFace: design.fonts.body,
         color: colors.text,
-        valign: "middle",
-        lineSpacingMultiple: 1.22,
+        valign: "top",
+        lineSpacingMultiple: 1.18,
       });
     }
 
@@ -3194,62 +3197,61 @@ function renderGridCards(
     if (colonIdx > 0 && colonIdx < 40) {
       const label = items[i].substring(0, colonIdx).trim();
       const desc = items[i].substring(colonIdx + 1).trim();
-      const gcBadge = Math.min(0.38, cardW * 0.18, cardH * 0.22);
+      const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
       slide.addShape("roundRect" as any, {
-        x: x + 0.12, y: y + 0.18,
+        x: x + 0.10, y: y + 0.14,
         w: gcBadge, h: gcBadge,
         fill: { color: pal },
-        rectRadius: 0.08,
+        rectRadius: 0.06,
       });
       slide.addText(String(i + 1), {
-        x: x + 0.12, y: y + 0.18,
+        x: x + 0.10, y: y + 0.14,
         w: gcBadge, h: gcBadge,
-        fontSize: Math.min(14, gcBadge * 36),
+        fontSize: Math.min(12, gcBadge * 34),
         fontFace: design.fonts.title,
         bold: true, color: "FFFFFF",
         align: "center", valign: "middle",
       });
+      const labelX = x + 0.10 + gcBadge + 0.08;
       slide.addText(label, {
-        x: x + 0.12 + gcBadge + 0.10, y: y + 0.14,
-        w: cardW - gcBadge - 0.36, h: 0.50,
-        fontSize: TYPO.CARD_TITLE,
+        x: labelX, y: y + 0.10,
+        w: x + cardW - labelX - 0.10, h: 0.44,
+        fontSize: items.length >= 6 ? TYPO.CARD_TITLE - 2 : TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
         bold: true, color: pal,
         valign: "middle",
       });
-      addHR(slide, x + 0.12, y + 0.70, cardW - 0.24, colors.borders, 0.004);
+      const sepY = y + Math.min(0.58, 0.10 + gcBadge + 0.14);
+      addHR(slide, x + 0.10, sepY, cardW - 0.20, colors.borders, 0.004);
       slide.addText(desc, {
-        x: x + 0.14, y: y + 0.76,
-        w: cardW - 0.28, h: cardH - 0.90,
-        fontSize: TYPO.CARD_BODY,
+        x: x + 0.12, y: sepY + 0.06,
+        w: cardW - 0.24, h: Math.max(0.30, y + cardH - sepY - 0.14),
+        fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.25,
-        autoFit: true,
-      } as any);
+        lineSpacingMultiple: 1.18,
+      });
     } else {
-      const gcNumW = Math.min(0.50, cardW * 0.25);
       slide.addText(String(i + 1).padStart(2, "0"), {
-        x: x + cardW - gcNumW - 0.08, y: y + 0.10,
-        w: gcNumW, h: 0.36,
-        fontSize: Math.min(22, cardW > 2.5 ? 24 : 18),
+        x: x + 0.10, y: y + 0.12,
+        w: 0.40, h: 0.30,
+        fontSize: Math.min(16, cardW > 2.5 ? 18 : 14),
         fontFace: design.fonts.title,
         bold: true,
         color: pal,
-        transparency: 25,
-        align: "right",
+        transparency: 20,
+        align: "left",
       });
       slide.addText(items[i], {
-        x: x + 0.14, y: y + 0.16,
-        w: cardW - gcNumW - 0.30, h: cardH - 0.30,
-        fontSize: TYPO.CARD_BODY,
+        x: x + 0.12, y: y + 0.48,
+        w: cardW - 0.24, h: cardH - 0.58,
+        fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.25,
-        autoFit: true,
-      } as any);
+        lineSpacingMultiple: 1.20,
+      });
     }
   }
   addFooter(slide, colors, design.fonts.body);
@@ -3776,27 +3778,28 @@ function renderWarningCallout(
   });
 
   const allItems = plan.items || [];
-  const maxWarningItems = 4;
+  const maxWarningItems = 5;
   const items = allItems.slice(0, maxWarningItems);
   const contentX = 0.65;
   const contentW = SLIDE_W - contentX - 0.50;
-  const contentY = 1.68;
-  const bulletGap = 0.14;
-  const contentH = SLIDE_H - contentY - 0.55;
+  const contentY = 1.58;
+  const bulletGap = 0.10;
+  const contentH = SLIDE_H - contentY - 0.45;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
-  const itemH = Math.max(0.65, Math.min(1.20, rawItemH));
-  const bodyFontSize = items.length >= 4 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1;
+  const itemH = Math.max(0.55, Math.min(1.10, rawItemH));
+  const bodyFontSize = items.length >= 5 ? 10 : items.length >= 4 ? 11 : 12;
 
   for (let i = 0; i < items.length; i++) {
     const y = contentY + i * (itemH + bulletGap);
-    addCardShadow(slide, contentX, y, contentW, itemH - 0.04, colors.shadowColor);
+    const cardH = itemH - 0.04;
+    addCardShadow(slide, contentX, y, contentW, cardH, colors.shadowColor);
     slide.addShape("roundRect" as any, {
-      x: contentX, y, w: contentW, h: itemH - 0.04,
+      x: contentX, y, w: contentW, h: cardH,
       fill: { color: i % 2 === 0 ? "FFF5F5" : colors.cardBg },
       rectRadius: 0.08,
     });
     slide.addShape("rect" as any, {
-      x: contentX, y, w: 0.06, h: itemH - 0.04,
+      x: contentX, y, w: 0.06, h: cardH,
       fill: { color: "E74C3C" },
       rectRadius: 0.08,
     });
@@ -3806,11 +3809,12 @@ function renderWarningCallout(
     const itemLabel = hasLabel ? items[i].substring(0, colonIdx).trim() : "";
     const itemDesc = hasLabel ? items[i].substring(colonIdx + 1).trim() : items[i];
 
-    if (hasLabel && itemH >= 0.80) {
+    if (hasLabel) {
+      const labelH = 0.18;
       slide.addText(itemLabel.toUpperCase(), {
-        x: contentX + 0.22, y: y + 0.06,
-        w: contentW - 0.30, h: 0.22,
-        fontSize: 8,
+        x: contentX + 0.18, y: y + 0.04,
+        w: contentW - 0.26, h: labelH,
+        fontSize: 7,
         fontFace: design.fonts.title,
         bold: true,
         color: "C0392B",
@@ -3818,27 +3822,24 @@ function renderWarningCallout(
         valign: "middle",
       });
       slide.addText(itemDesc, {
-        x: contentX + 0.22, y: y + 0.28,
-        w: contentW - 0.34, h: itemH - 0.38,
+        x: contentX + 0.18, y: y + 0.04 + labelH,
+        w: contentW - 0.30, h: cardH - labelH - 0.08,
         fontSize: bodyFontSize,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.18,
-        autoFit: true,
-      } as any);
+        lineSpacingMultiple: 1.12,
+      });
     } else {
-      const displayText = hasLabel ? `${itemLabel}: ${itemDesc}` : items[i];
-      slide.addText(displayText, {
-        x: contentX + 0.22, y: y + 0.04,
-        w: contentW - 0.34, h: itemH - 0.12,
+      slide.addText(items[i], {
+        x: contentX + 0.18, y: y + 0.04,
+        w: contentW - 0.30, h: cardH - 0.08,
         fontSize: bodyFontSize,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "middle",
-        lineSpacingMultiple: 1.18,
-        autoFit: true,
-      } as any);
+        lineSpacingMultiple: 1.12,
+      });
     }
   }
   addFooter(slide, colors, design.fonts.body);
@@ -4182,8 +4183,8 @@ function renderClosingSlide(
     } catch (err: any) {
       console.error("[V2-RENDER] Closing addImage FAILED:", err.message);
     }
-    addImageOverlay(slide, colors.coverDark, 25);
-    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
+    addImageOverlay(slide, colors.coverDark, 55);
+    addImageOverlay(slide, colors.coverDark, 70, 0, 0, SLIDE_W * 0.55, SLIDE_H);
   }
 
   addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
