@@ -2329,16 +2329,18 @@ function renderCoverSlide(
 
   addGradientBar(slide, 1.20, 5.50, 3.00, 0.07, colors.p0, "right");
 
-  for (let i = 0; i < 3; i++) {
-    const sz = 0.50 + i * 0.35;
-    slide.addShape("roundRect" as any, {
-      x: SLIDE_W - 2.60 + i * 0.55,
-      y: 0.40 + i * 0.90,
-      w: sz, h: sz,
-      fill: { color: design.palette[i % design.palette.length] },
-      transparency: 82,
-      rectRadius: 0.06,
-    });
+  if (!image) {
+    for (let i = 0; i < 3; i++) {
+      const sz = 0.50 + i * 0.35;
+      slide.addShape("roundRect" as any, {
+        x: SLIDE_W - 2.60 + i * 0.55,
+        y: 0.40 + i * 0.90,
+        w: sz, h: sz,
+        fill: { color: design.palette[i % design.palette.length] },
+        transparency: 82,
+        rectRadius: 0.06,
+      });
+    }
   }
 
   slide.addShape("ellipse" as any, {
