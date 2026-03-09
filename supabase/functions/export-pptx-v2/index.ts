@@ -119,6 +119,21 @@ interface ImagePlan {
   closing: SlideImage | null;
 }
 
+interface ImageRenderAudit {
+  requested: boolean;
+  planned: {
+    cover: boolean;
+    moduleCount: number;
+    closing: boolean;
+  };
+  rendered: {
+    cover: boolean;
+    moduleCovers: number;
+    closing: boolean;
+  };
+  totalModules: number;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 2: DESIGN SYSTEM
 // ═══════════════════════════════════════════════════════════════════
@@ -2196,9 +2211,12 @@ function renderCoverSlide(
   const slide = pptx.addSlide();
 
   if (image) {
-    slide.background = { data: image.base64Data };
-    addImageOverlay(slide, colors.coverDark, 30);
-    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
+    slide.addImage({
+      data: image.base64Data,
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+    } as any);
+    addImageOverlay(slide, colors.coverDark, 15);
+    addImageOverlay(slide, colors.coverDark, 42, 0, 0, SLIDE_W * 0.65, SLIDE_H);
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
@@ -4042,9 +4060,12 @@ function renderClosingSlide(
   const slide = pptx.addSlide();
 
   if (image) {
-    slide.background = { data: image.base64Data };
-    addImageOverlay(slide, colors.coverDark, 25);
-    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
+    slide.addImage({
+      data: image.base64Data,
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+    } as any);
+    addImageOverlay(slide, colors.coverDark, 14);
+    addImageOverlay(slide, colors.coverDark, 45, 0, 0, SLIDE_W * 0.60, SLIDE_H);
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
@@ -4203,7 +4224,7 @@ async function runPipeline(
   courseTitle: string,
   modules: { title: string; content: string }[],
   design: DesignConfig,
-): Promise<{ pptx: PptxGenJS; report: PipelineReport }> {
+): Promise<{ pptx: PptxGenJS; report: PipelineReport; imageAudit: ImageRenderAudit }> {
   const report: PipelineReport = {
     totalModules: modules.length,
     totalBlocks: 0,
@@ -4222,8 +4243,23 @@ async function runPipeline(
   _globalSlideIdx = 0;
 
   const imagePlan = await buildImagePlan(courseTitle, modules, design.includeImages);
+  const imageAudit: ImageRenderAudit = {
+    requested: design.includeImages,
+    planned: {
+      cover: !!imagePlan.cover,
+      moduleCount: imagePlan.modules.size,
+      closing: !!imagePlan.closing,
+    },
+    rendered: {
+      cover: false,
+      moduleCovers: 0,
+      closing: false,
+    },
+    totalModules: modules.length,
+  };
 
   renderCoverSlide(pptx, courseTitle, design, imagePlan.cover);
+  imageAudit.rendered.cover = !!imagePlan.cover;
 
   const allModuleSlidePlans: SlidePlan[][] = [];
 
@@ -4385,6 +4421,10 @@ async function runPipeline(
     const moduleImage = imagePlan.modules.get(moduleIdx) || null;
     for (const plan of modulePlans) {
       const img = plan.layout === "module_cover" ? moduleImage : null;
+      if (plan.layout === "module_cover") {
+        console.log(`[V2-IMAGE] Render module cover ${moduleIdx + 1}: ${img ? "with image" : "without image"}`);
+        if (img) imageAudit.rendered.moduleCovers++;
+      }
       renderSlide(pptx, plan, design, img);
       report.totalSlides++;
     }
@@ -4392,13 +4432,18 @@ async function runPipeline(
   }
 
   renderClosingSlide(pptx, courseTitle, design, imagePlan.closing);
+  imageAudit.rendered.closing = !!imagePlan.closing;
   report.totalSlides += 3;
+
+  console.log(
+    `[V2-IMAGE] Render audit: requested=${imageAudit.requested}, planned cover=${imageAudit.planned.cover}, modules=${imageAudit.planned.moduleCount}/${imageAudit.totalModules}, closing=${imageAudit.planned.closing}, rendered module covers=${imageAudit.rendered.moduleCovers}`,
+  );
 
   console.log(
     `[V2-PIPELINE] Complete: ${report.totalModules} modules, ${report.totalBlocks} blocks, ${report.totalSections} sections, ${report.totalSlides} slides`,
   );
 
-  return { pptx, report };
+  return { pptx, report, imageAudit };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -4511,7 +4556,7 @@ Deno.serve(async (req: Request) => {
       `[V2] Starting export: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, palette=${palette || "default"}, images=${design.includeImages}`,
     );
 
-    const { pptx, report } = await runPipeline(courseTitle, moduleData, design);
+    const { pptx, report, imageAudit } = await runPipeline(courseTitle, moduleData, design);
 
     const pptxData = await pptx.write({ outputType: "uint8array" });
     const dateStr = new Date().toISOString().slice(0, 10);
@@ -4557,6 +4602,7 @@ Deno.serve(async (req: Request) => {
           sentence_integrity_checks: report.sentenceIntegrityChecks,
           redistributions: report.redistributions,
           warnings: report.warnings,
+          image_audit: imageAudit,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
