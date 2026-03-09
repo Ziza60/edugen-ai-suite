@@ -104,6 +104,19 @@ interface DesignConfig {
   palette: string[];
   fonts: { title: string; body: string };
   density: { maxItemsPerSlide: number; maxCharsPerItem: number };
+  includeImages: boolean;
+}
+
+interface SlideImage {
+  base64Data: string;
+  credit: string;
+  creditUrl: string;
+}
+
+interface ImagePlan {
+  cover: SlideImage | null;
+  modules: Map<number, SlideImage>;
+  closing: SlideImage | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -203,6 +216,7 @@ const TYPO = {
 function buildDesignConfig(
   themeKey: string,
   paletteKey: string,
+  includeImages = false,
 ): DesignConfig {
   const theme = (themeKey === "dark" ? "dark" : "light") as "light" | "dark";
   const palette = PALETTES[paletteKey] || PALETTES.default;
@@ -211,6 +225,7 @@ function buildDesignConfig(
     palette,
     fonts: { title: "Montserrat", body: "Open Sans" },
     density: { maxItemsPerSlide: 9, maxCharsPerItem: 200 },
+    includeImages,
   };
 }
 
@@ -248,6 +263,242 @@ function getColors(design: DesignConfig) {
     p4: p[4],
     white: "FFFFFF",
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SECTION 2.5: IMAGE SERVICE
+// ═══════════════════════════════════════════════════════════════════
+
+const PT_EN_MAP: Record<string, string> = {
+  "inteligência": "intelligence", "artificial": "artificial", "produtividade": "productivity",
+  "trabalho": "work", "negócios": "business", "marketing": "marketing", "vendas": "sales",
+  "educação": "education", "tecnologia": "technology", "saúde": "health", "gestão": "management",
+  "liderança": "leadership", "inovação": "innovation", "empreendedorismo": "entrepreneurship",
+  "finanças": "finance", "comunicação": "communication", "estratégia": "strategy",
+  "dados": "data", "digital": "digital", "criatividade": "creativity", "design": "design",
+  "sustentabilidade": "sustainability", "automação": "automation", "análise": "analysis",
+  "desenvolvimento": "development", "programação": "programming", "segurança": "security",
+  "nuvem": "cloud", "rede": "network", "máquina": "machine", "aprendizado": "learning",
+  "profundo": "deep", "natural": "natural", "linguagem": "language", "processamento": "processing",
+  "robótica": "robotics", "internet": "internet", "projeto": "project", "planejamento": "planning",
+  "equipe": "team", "cliente": "customer", "produto": "product", "serviço": "service",
+  "resultado": "results", "crescimento": "growth", "transformação": "transformation",
+  "pesquisa": "research", "ciência": "science", "engenharia": "engineering",
+  "computação": "computing", "blockchain": "blockchain", "criptomoeda": "cryptocurrency",
+  "investimento": "investment", "economia": "economy", "mercado": "market",
+  "psicologia": "psychology", "neurociência": "neuroscience", "medicina": "medicine",
+  "farmácia": "pharmacy", "ambiente": "environment", "energia": "energy",
+  "agricultura": "agriculture", "alimento": "food", "logística": "logistics",
+  "transporte": "transportation", "construção": "construction", "arquitetura": "architecture",
+  "música": "music", "arte": "art", "fotografia": "photography", "vídeo": "video",
+  "jogos": "games", "esporte": "sport", "turismo": "tourism", "moda": "fashion",
+  "direito": "law", "ética": "ethics", "sociedade": "society", "cultura": "culture",
+  "história": "history", "filosofia": "philosophy", "matemática": "mathematics",
+  "física": "physics", "química": "chemistry", "biologia": "biology",
+  "pedagógica": "pedagogical", "ensino": "teaching", "aprendizagem": "learning",
+  "curso": "course", "aula": "class", "professor": "teacher", "aluno": "student",
+  "avaliação": "evaluation", "metodologia": "methodology", "conteúdo": "content",
+  "ferramenta": "tool", "plataforma": "platform", "aplicativo": "application",
+  "sistema": "system", "processo": "process", "modelo": "model", "framework": "framework",
+  "código": "code", "software": "software", "hardware": "hardware", "algoritmo": "algorithm",
+  "banco": "database", "servidor": "server", "api": "api", "web": "web", "mobile": "mobile",
+  "aumentar": "increase", "reduzir": "reduce", "melhorar": "improve", "otimizar": "optimize",
+};
+
+const PT_STOP_WORDS = new Set([
+  "de", "da", "do", "das", "dos", "para", "com", "em", "na", "no", "nas", "nos",
+  "um", "uma", "uns", "umas", "o", "a", "os", "as", "e", "ou", "que", "por",
+  "ao", "à", "como", "mais", "não", "se", "seu", "sua", "seus", "suas",
+  "muito", "bem", "todo", "toda", "todos", "todas", "este", "esta", "esse",
+  "essa", "aquele", "aquela", "ser", "ter", "fazer", "poder", "dever",
+  "módulo", "capítulo", "seção", "parte", "sobre", "entre", "até", "sem",
+]);
+
+const _PT_EN_NORM_CACHE: Map<string, [string, string]> = new Map();
+function _getPtEnNormalized(): [string, string][] {
+  if (_PT_EN_NORM_CACHE.size === 0) {
+    for (const [pt, en] of Object.entries(PT_EN_MAP)) {
+      const ptNorm = pt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      _PT_EN_NORM_CACHE.set(ptNorm, [ptNorm, en]);
+    }
+  }
+  return [..._PT_EN_NORM_CACHE.values()];
+}
+
+const _PT_STOP_NORM = new Set(
+  [...PT_STOP_WORDS].map((w) => w.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()),
+);
+
+function buildImageQuery(title: string): string {
+  const normalized = title.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const words = normalized.split(" ").filter((w) => w.length > 2 && !_PT_STOP_NORM.has(w));
+
+  const ptEnEntries = _getPtEnNormalized();
+  const translated = words.map((w) => {
+    for (const [ptNorm, en] of ptEnEntries) {
+      if (w === ptNorm) return en;
+    }
+    return w;
+  });
+
+  const unique = [...new Set(translated)];
+  return unique.slice(0, 4).join(" ") + " professional";
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 8192;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    parts.push(String.fromCharCode(...chunk));
+  }
+  return btoa(parts.join(""));
+}
+
+async function fetchUnsplashImage(
+  query: string,
+  orientation: "landscape" | "portrait" | "squarish" = "landscape",
+): Promise<SlideImage | null> {
+  const accessKey = Deno.env.get("UNSPLASH_ACCESS_KEY");
+  if (!accessKey) return null;
+
+  try {
+    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=1&content_filter=high`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Client-ID ${accessKey}` },
+    });
+    if (!res.ok) {
+      console.warn(`[V2-IMAGE] Unsplash returned ${res.status} for query "${query}"`);
+      return null;
+    }
+    const data = await res.json();
+    if (!data.results?.length) {
+      console.warn(`[V2-IMAGE] No results for query "${query}"`);
+      return null;
+    }
+
+    const photo = data.results[0];
+    const imageUrl = photo.urls?.regular || photo.urls?.small;
+    if (!imageUrl) return null;
+
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) return null;
+
+    const buf = await imgRes.arrayBuffer();
+    const base64 = arrayBufferToBase64(buf);
+
+    console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name}`);
+
+    return {
+      base64Data: `image/jpeg;base64,${base64}`,
+      credit: photo.user?.name || "Unsplash",
+      creditUrl: photo.user?.links?.html || "https://unsplash.com",
+    };
+  } catch (e: any) {
+    console.warn(`[V2-IMAGE] Failed to fetch image for "${query}":`, e.message);
+    return null;
+  }
+}
+
+async function buildImagePlan(
+  courseTitle: string,
+  modules: { title: string; content: string }[],
+  includeImages: boolean,
+): Promise<ImagePlan> {
+  const empty: ImagePlan = { cover: null, modules: new Map(), closing: null };
+  if (!includeImages) return empty;
+
+  const accessKey = Deno.env.get("UNSPLASH_ACCESS_KEY");
+  if (!accessKey) {
+    console.log("[V2-IMAGE] No UNSPLASH_ACCESS_KEY set — skipping images");
+    return empty;
+  }
+
+  console.log(`[V2-IMAGE] Building image plan for "${courseTitle}" with ${modules.length} modules`);
+
+  const coverQuery = buildImageQuery(courseTitle);
+  const moduleQueries = modules.map((m) => {
+    const rawTitle = m.title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || m.title;
+    return buildImageQuery(rawTitle);
+  });
+
+  const MAX_CONCURRENT = 4;
+  const allQueries: { query: string; orientation: "landscape" | "portrait" | "squarish" }[] = [];
+  allQueries.push({ query: coverQuery, orientation: "landscape" });
+  for (const q of moduleQueries) {
+    allQueries.push({ query: q, orientation: "landscape" });
+  }
+  allQueries.push({ query: coverQuery + " conclusion", orientation: "landscape" });
+
+  const results: PromiseSettledResult<SlideImage | null>[] = [];
+  for (let i = 0; i < allQueries.length; i += MAX_CONCURRENT) {
+    const batch = allQueries.slice(i, i + MAX_CONCURRENT);
+    const batchResults = await Promise.allSettled(
+      batch.map((q) => fetchUnsplashImage(q.query, q.orientation)),
+    );
+    results.push(...batchResults);
+  }
+
+  const plan: ImagePlan = { cover: null, modules: new Map(), closing: null };
+
+  const coverResult = results[0];
+  if (coverResult.status === "fulfilled" && coverResult.value) {
+    plan.cover = coverResult.value;
+  }
+
+  for (let i = 0; i < modules.length; i++) {
+    const result = results[i + 1];
+    if (result.status === "fulfilled" && result.value) {
+      plan.modules.set(i, result.value);
+    }
+  }
+
+  const closingResult = results[results.length - 1];
+  if (closingResult.status === "fulfilled" && closingResult.value) {
+    plan.closing = closingResult.value;
+  }
+
+  const fetched = (plan.cover ? 1 : 0) + plan.modules.size + (plan.closing ? 1 : 0);
+  console.log(`[V2-IMAGE] Fetched ${fetched}/${allQueries.length} images`);
+
+  return plan;
+}
+
+function addImageCredit(
+  slide: ReturnType<PptxGenJS["addSlide"]>,
+  credit: string,
+  design: DesignConfig,
+) {
+  slide.addText(`Foto: ${credit} / Unsplash`, {
+    x: SLIDE_W - 4.00,
+    y: SLIDE_H - 0.32,
+    w: 3.60,
+    h: 0.22,
+    fontSize: 7,
+    fontFace: design.fonts.body,
+    color: "FFFFFF",
+    align: "right",
+    transparency: 50,
+  });
+}
+
+function addImageOverlay(
+  slide: ReturnType<PptxGenJS["addSlide"]>,
+  color: string,
+  transparency: number,
+  x = 0, y = 0, w = SLIDE_W, h = SLIDE_H,
+) {
+  slide.addShape("rect" as any, {
+    x, y, w, h,
+    fill: { color },
+    transparency,
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1905,11 +2156,18 @@ function renderCoverSlide(
   pptx: PptxGenJS,
   courseTitle: string,
   design: DesignConfig,
+  image?: SlideImage | null,
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
-  addSlideBackground(slide, colors.coverDark);
+  if (image) {
+    slide.background = { data: image.base64Data };
+    addImageOverlay(slide, colors.coverDark, 30);
+    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
+  } else {
+    addSlideBackground(slide, colors.coverDark);
+  }
 
   addGradientBar(slide, SLIDE_W * 0.50, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
 
@@ -1991,6 +2249,10 @@ function renderCoverSlide(
     align: "right",
     charSpacing: 2.5,
   });
+
+  if (image) {
+    addImageCredit(slide, image.credit, design);
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -2153,6 +2415,7 @@ function renderModuleCover(
   pptx: PptxGenJS,
   plan: SlidePlan,
   design: DesignConfig,
+  image?: SlideImage | null,
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
@@ -2160,34 +2423,58 @@ function renderModuleCover(
   const modNum = String(modIdx + 1).padStart(2, "0");
   const accentColor = design.palette[modIdx % design.palette.length];
 
-  addSlideBackground(slide, colors.coverDark);
+  const hasImage = !!image;
+  const contentW = hasImage ? SLIDE_W * 0.62 : SLIDE_W;
 
-  addGradientBar(slide, SLIDE_W * 0.60, 0, SLIDE_W * 0.45, SLIDE_H, accentColor, "down");
+  if (hasImage) {
+    addSlideBackground(slide, colors.coverDark);
+    const imgX = contentW;
+    const imgW = SLIDE_W - contentW;
+    slide.addImage({
+      data: image!.base64Data,
+      x: imgX, y: 0, w: imgW, h: SLIDE_H,
+    } as any);
+    addImageOverlay(slide, accentColor, 70, imgX, 0, imgW, SLIDE_H);
+    addImageOverlay(slide, colors.coverDark, 40, imgX, 0, imgW, SLIDE_H);
+    slide.addShape("rect" as any, {
+      x: imgX, y: 0, w: 0.04, h: SLIDE_H,
+      fill: { color: accentColor },
+    });
+    addImageCredit(slide, image!.credit, design);
+  } else {
+    addSlideBackground(slide, colors.coverDark);
+  }
 
-  slide.addText(modNum, {
-    x: SLIDE_W - 5.0, y: SLIDE_H - 4.50,
-    w: 5.0, h: 4.50,
-    fontSize: 200,
-    fontFace: design.fonts.title,
-    bold: true,
-    color: accentColor,
-    transparency: 90,
-    align: "right",
-    valign: "bottom",
-  });
+  addGradientBar(slide, contentW * 0.60, 0, contentW * 0.45, SLIDE_H, accentColor, "down");
 
-  slide.addShape("ellipse" as any, {
-    x: SLIDE_W - 3.00, y: -0.60,
-    w: 3.50, h: 3.50,
-    fill: { color: accentColor },
-    transparency: 90,
-  });
-  slide.addShape("ellipse" as any, {
-    x: SLIDE_W - 1.80, y: 0.65,
-    w: 0.16, h: 0.16,
-    fill: { color: accentColor },
-    transparency: 20,
-  });
+  if (!hasImage) {
+    slide.addText(modNum, {
+      x: contentW - 5.0, y: SLIDE_H - 4.50,
+      w: 5.0, h: 4.50,
+      fontSize: 200,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: accentColor,
+      transparency: 90,
+      align: "right",
+      valign: "bottom",
+    });
+  }
+
+  if (!hasImage) {
+    slide.addShape("ellipse" as any, {
+      x: contentW - 3.00, y: -0.60,
+      w: 3.50, h: 3.50,
+      fill: { color: accentColor },
+      transparency: 90,
+    });
+    slide.addShape("ellipse" as any, {
+      x: contentW - 1.80, y: 0.65,
+      w: 0.16, h: 0.16,
+      fill: { color: accentColor },
+      transparency: 20,
+    });
+  }
 
   slide.addShape("rect" as any, {
     x: 0.80, y: 1.10, w: 0.05, h: 2.30,
@@ -2211,9 +2498,10 @@ function renderModuleCover(
 
   addHR(slide, 1.10, 1.62, 1.40, accentColor, 0.022);
 
+  const titleW = hasImage ? contentW * 0.75 : SLIDE_W * 0.53;
   slide.addText(plan.title, {
     x: 1.10, y: 1.85,
-    w: SLIDE_W * 0.53,
+    w: titleW,
     h: 2.50,
     fontSize: 36,
     fontFace: design.fonts.title,
@@ -2225,6 +2513,7 @@ function renderModuleCover(
 
   if (plan.objectives && plan.objectives.length > 0) {
     const objStartY = 4.65;
+    const objW = hasImage ? contentW * 0.70 : SLIDE_W * 0.48;
     addHR(slide, 1.10, objStartY - 0.12, 2.20, accentColor, 0.012);
     slide.addText("O QUE VOCÊ VAI APRENDER", {
       x: 1.10, y: objStartY,
@@ -2246,7 +2535,7 @@ function renderModuleCover(
       });
       slide.addText(plan.objectives[i], {
         x: 1.35, y: objY,
-        w: SLIDE_W * 0.48, h: 0.38,
+        w: objW, h: 0.38,
         fontSize: 11,
         fontFace: design.fonts.body,
         color: colors.coverSubtext,
@@ -3691,10 +3980,18 @@ function renderClosingSlide(
   pptx: PptxGenJS,
   courseTitle: string,
   design: DesignConfig,
+  image?: SlideImage | null,
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.coverDark);
+
+  if (image) {
+    slide.background = { data: image.base64Data };
+    addImageOverlay(slide, colors.coverDark, 25);
+    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
+  } else {
+    addSlideBackground(slide, colors.coverDark);
+  }
 
   addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
 
@@ -3788,6 +4085,10 @@ function renderClosingSlide(
     charSpacing: 2,
     transparency: 30,
   });
+
+  if (image) {
+    addImageCredit(slide, image.credit, design);
+  }
 }
 
 // ── Slide dispatcher ──
@@ -3795,10 +4096,11 @@ function renderSlide(
   pptx: PptxGenJS,
   plan: SlidePlan,
   design: DesignConfig,
+  image?: SlideImage | null,
 ) {
   switch (plan.layout) {
     case "module_cover":
-      renderModuleCover(pptx, plan, design);
+      renderModuleCover(pptx, plan, design, image);
       break;
     case "two_column_bullets":
       renderTwoColumnBullets(pptx, plan, design);
@@ -3841,11 +4143,11 @@ function renderSlide(
 // SECTION 8: STAGE 5 — FULL PIPELINE ORCHESTRATOR
 // ═══════════════════════════════════════════════════════════════════
 
-function runPipeline(
+async function runPipeline(
   courseTitle: string,
   modules: { title: string; content: string }[],
   design: DesignConfig,
-): { pptx: PptxGenJS; report: PipelineReport } {
+): Promise<{ pptx: PptxGenJS; report: PipelineReport }> {
   const report: PipelineReport = {
     totalModules: modules.length,
     totalBlocks: 0,
@@ -3861,8 +4163,11 @@ function runPipeline(
   pptx.author = "EduGenAI v2";
   pptx.title = courseTitle;
 
-  _globalSlideIdx = 0; // Reset anti-monotonia counter per export
-  renderCoverSlide(pptx, courseTitle, design);
+  _globalSlideIdx = 0;
+
+  const imagePlan = await buildImagePlan(courseTitle, modules, design.includeImages);
+
+  renderCoverSlide(pptx, courseTitle, design, imagePlan.cover);
 
   const allModuleSlidePlans: SlidePlan[][] = [];
 
@@ -4019,14 +4324,18 @@ function runPipeline(
   }
 
   console.log(`[V2-STAGE-4] Rendering slides...`);
+  let moduleIdx = 0;
   for (const modulePlans of allModuleSlidePlans) {
+    const moduleImage = imagePlan.modules.get(moduleIdx) || null;
     for (const plan of modulePlans) {
-      renderSlide(pptx, plan, design);
+      const img = plan.layout === "module_cover" ? moduleImage : null;
+      renderSlide(pptx, plan, design, img);
       report.totalSlides++;
     }
+    moduleIdx++;
   }
 
-  renderClosingSlide(pptx, courseTitle, design);
+  renderClosingSlide(pptx, courseTitle, design, imagePlan.closing);
   report.totalSlides += 3;
 
   console.log(
@@ -4134,7 +4443,7 @@ Deno.serve(async (req: Request) => {
       .eq("course_id", course_id)
       .order("order_index");
 
-    const design = buildDesignConfig(theme || "light", palette || "default");
+    const design = buildDesignConfig(theme || "light", palette || "default", !!includeImages);
 
     const courseTitle = sanitize(cleanMarkdown(course.title || "Curso EduGenAI"));
     const moduleData = modules.map((m: any) => ({
@@ -4143,10 +4452,10 @@ Deno.serve(async (req: Request) => {
     }));
 
     console.log(
-      `[V2] Starting export: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, palette=${palette || "default"}`,
+      `[V2] Starting export: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, palette=${palette || "default"}, images=${design.includeImages}`,
     );
 
-    const { pptx, report } = runPipeline(courseTitle, moduleData, design);
+    const { pptx, report } = await runPipeline(courseTitle, moduleData, design);
 
     const pptxData = await pptx.write({ outputType: "uint8array" });
     const dateStr = new Date().toISOString().slice(0, 10);

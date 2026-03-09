@@ -175,7 +175,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
           <div className="flex items-center justify-between">
             <div>
               <Label>Incluir Imagens</Label>
-              <p className="text-xs text-muted-foreground">Ícones ilustrativos nos slides de capítulo</p>
+              <p className="text-xs text-muted-foreground">Imagens temáticas na capa, módulos e encerramento</p>
             </div>
             <Switch checked={includeImages} onCheckedChange={setIncludeImages} />
           </div>

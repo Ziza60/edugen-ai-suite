@@ -40,14 +40,25 @@ supabase/functions/           # Supabase Edge Functions (Deno)
 - `VITE_SUPABASE_URL` — Supabase project URL
 - `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon/public key
 
-## PPTX Exporter v2 (Controlled Integration)
-Parallel exporter at `supabase/functions/export-pptx-v2/index.ts` (~4180 lines).
-Pipeline: Parse → Segment → Distribute → Merge Sparse → Visual Fit → Anti-Repetition → Render → Export.
-Does NOT replace v1. Integrated via "Motor v2 Beta" toggle in PptxExportDialog.
-- Toggle OFF (default): calls `export-pptx` (v1, production)
-- Toggle ON: calls `export-pptx-v2` (v2, beta)
-- `useV2` flag is NOT sent to the edge function — only used for URL routing.
-- Rollback: remove `useV2` from PptxExportOptions, revert URL logic in ExportButtons.tsx.
+## PPTX Exporter v2 (Default Engine)
+Premium exporter at `supabase/functions/export-pptx-v2/index.ts` (~4500 lines).
+Pipeline: Parse → Segment → Distribute → Merge Sparse → Visual Fit → Anti-Repetition → Image Fetch → Render → Export.
+v2 is the DEFAULT engine. v1 remains untouched as emergency fallback.
+- All exports route to `export-pptx-v2` automatically
+- `useV2` flag hardcoded to `true` in PptxExportDialog
+- Rollback: change `useState(true)` back to `useState(false)` in PptxExportDialog.tsx
+
+### Image System
+- Fetches thematic images from Unsplash API based on course/module titles
+- Requires `UNSPLASH_ACCESS_KEY` env var in Supabase project
+- Graceful degradation: if no key set, slides render without images (same as before)
+- Images applied to: cover slide (full-bleed background), module covers (right-side panel), closing slide (background)
+- Overlays for readability: dark overlay on backgrounds, accent-tinted overlay on module image panels
+- Credits: photographer attribution shown at bottom-right of image slides
+- Keyword extraction: Portuguese titles translated to English via PT_EN_MAP for better Unsplash results
+- All images fetched in parallel via Promise.allSettled for speed
+- Image sizes: Unsplash "regular" (1080px wide) for good quality without bloating PPTX
+- Frontend toggle: "Incluir Imagens" switch in PptxExportDialog controls `includeImages` flag
 
 ### v2 Visual Design (Premium Layout)
 - **Color palette**: Purple-primary (`6C63FF`), blue (`3B82F6`), green (`10B981`), amber (`F59E0B`), cyan (`06B6D4`)
