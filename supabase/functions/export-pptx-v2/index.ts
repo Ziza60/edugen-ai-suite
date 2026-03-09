@@ -396,7 +396,7 @@ async function fetchUnsplashImage(
     console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name}`);
 
     return {
-      base64Data: `image/jpeg;base64,${base64}`,
+      base64Data: `data:image/jpeg;base64,${base64}`,
       credit: photo.user?.name || "Unsplash",
       creditUrl: photo.user?.links?.html || "https://unsplash.com",
     };
@@ -2501,8 +2501,11 @@ function renderModuleCover(
   const hasImage = !!image;
   const contentW = hasImage ? SLIDE_W * 0.62 : SLIDE_W;
 
+  // Always set dark background first (left panel needs it even when image covers right panel)
+  addSlideBackground(slide, colors.coverDark);
+
   if (hasImage) {
-    console.log(`[V2-RENDER] Module ${modNum} cover: embedding image, base64Data starts with "${image!.base64Data.substring(0, 30)}...", length=${image!.base64Data.length}`);
+    console.log(`[V2-RENDER] Module ${modNum} cover: embedding image, base64Data starts with "${image!.base64Data.substring(0, 40)}...", length=${image!.base64Data.length}`);
     const imgX = contentW;
     const imgW = SLIDE_W - contentW;
     slide.addImage({
@@ -2516,8 +2519,6 @@ function renderModuleCover(
       fill: { color: accentColor },
     });
     addImageCredit(slide, image!.credit, design);
-  } else {
-    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, contentW * 0.60, 0, contentW * 0.45, SLIDE_H, accentColor, "down");
