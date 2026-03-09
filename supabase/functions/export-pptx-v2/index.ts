@@ -1774,19 +1774,29 @@ function enforceVisualRenderingGuards(
         continue;
       }
 
-      // Process slides: compact before splitting to avoid 1-item continuation chains.
+      // Process slides: NEVER fragment process_timeline into tiny splits.
+      // Force vertical timeline which handles up to 7 items natively.
       if (
-        current.layout === "bullets" &&
-        /COMO\s+FUNCIONA/i.test(current.sectionLabel || "") &&
-        currentItems.length > 3
+        current.layout === "process_timeline" &&
+        currentItems.length <= 7
       ) {
-        const compacted = mergeAdjacentShortest(currentItems, 3);
-        if (compacted.length < currentItems.length) {
-          report.redistributions++;
-          report.warnings.push(`[VISUAL] Compacted process bullets before split: "${baseTitle}"`);
-          queue.unshift({ ...current, items: compacted });
-          continue;
-        }
+        // Always fits vertical timeline — push directly
+        fitted.push(current);
+        continue;
+      }
+      if (
+        current.layout === "process_timeline" &&
+        currentItems.length > 7
+      ) {
+        // Split into two balanced halves, both as process_timeline
+        const mid = Math.ceil(currentItems.length / 2);
+        report.redistributions++;
+        report.warnings.push(`[VISUAL] Split large process into 2 timeline slides: "${baseTitle}"`);
+        queue.unshift(
+          { ...current, items: currentItems.slice(mid), title: `${baseTitle} (cont.)` },
+          { ...current, items: currentItems.slice(0, mid) },
+        );
+        continue;
       }
 
       if (currentItems.length > 1) {
