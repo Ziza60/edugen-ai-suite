@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "2.5.1-2026-03-09";
+const ENGINE_VERSION = "2.5.2-2026-03-09";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -412,13 +412,15 @@ async function fetchUnsplashImage(
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) return null;
 
+    const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+    const mimeType = contentType.split(";")[0].trim();
     const buf = await imgRes.arrayBuffer();
     const base64 = arrayBufferToBase64(buf);
 
-    console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name}, base64Length=${base64.length}, starts="${base64.substring(0, 20)}"`);
+    console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name}, mime=${mimeType}, base64Length=${base64.length}, starts="${base64.substring(0, 20)}"`);
 
     return {
-      base64Data: `data:image/jpeg;base64,${base64}`,
+      base64Data: `data:${mimeType};base64,${base64}`,
       credit: photo.user?.name || "Unsplash",
       creditUrl: photo.user?.links?.html || "https://unsplash.com",
     };
@@ -2253,18 +2255,35 @@ function renderCoverSlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
+  addSlideBackground(slide, colors.coverDark);
+
+  const TEST_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVQYV2P8z8BQz0BhwMgwqpBuCgEAa/YIoRQuMEoAAAAASUVORK5CYII=";
+  try {
+    slide.addImage({ data: TEST_PNG, x: SLIDE_W - 1.5, y: 0.15, w: 0.4, h: 0.4 });
+    console.log("[V2-TEST] Added test PNG image on cover");
+  } catch (testErr: any) {
+    console.error("[V2-TEST] Test PNG addImage FAILED:", testErr.message);
+  }
+
   if (image) {
     try {
-      slide.background = { data: image.base64Data } as any;
-      console.log("[V2-RENDER] Cover: applied image via slide.background");
-    } catch (bgErr: any) {
-      console.warn("[V2-RENDER] Cover: slide.background failed:", bgErr.message);
-      addSlideBackground(slide, colors.coverDark);
+      slide.addImage({
+        data: image.base64Data,
+        x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+        sizing: { type: "cover", w: SLIDE_W, h: SLIDE_H },
+      } as any);
+      console.log("[V2-RENDER] Cover: added photo via addImage+sizing");
+    } catch (err1: any) {
+      console.warn("[V2-RENDER] Cover addImage+sizing failed:", err1.message);
+      try {
+        slide.background = { data: image.base64Data } as any;
+        console.log("[V2-RENDER] Cover: fallback to slide.background");
+      } catch (err2: any) {
+        console.warn("[V2-RENDER] Cover slide.background also failed:", err2.message);
+      }
     }
     addImageOverlay(slide, colors.coverDark, 30);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
-  } else {
-    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, SLIDE_W * 0.50, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
