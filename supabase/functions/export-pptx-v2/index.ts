@@ -1891,6 +1891,11 @@ function enforceVisualRenderingGuards(
   return adjusted;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// PREMIUM RENDER FUNCTIONS — v2 Premium Visual Engine
+// ═══════════════════════════════════════════════════════════════════
+
+// ── MODULE COVER: Full dark split-panel, giant watermark number ──
 function renderModuleCover(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -1898,35 +1903,63 @@ function renderModuleCover(
 ) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
-  addSlideBackground(slide, colors.bg);
-
-  const accentColor = design.palette[((plan.moduleIndex || 0) % design.palette.length)];
+  const accentColor = design.palette[(plan.moduleIndex || 0) % design.palette.length];
   const secondaryAccent = design.palette[((plan.moduleIndex || 0) + 1) % design.palette.length];
 
-  // Top accent band
+  // Full dark background
+  addSlideBackground(slide, colors.coverDark);
+
+  // Left colored panel (40% of width)
+  const panelW = SLIDE_W * 0.40;
   slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: SLIDE_W,
-    h: 2.80,
+    x: 0, y: 0,
+    w: panelW, h: SLIDE_H,
     fill: { color: accentColor },
   });
 
-  // Decorative secondary stripe
+  // Thin secondary stripe at panel edge
   slide.addShape("rect" as any, {
-    x: 0,
-    y: 2.80,
-    w: SLIDE_W,
-    h: 0.06,
+    x: panelW, y: 0,
+    w: 0.055, h: SLIDE_H,
     fill: { color: secondaryAccent },
   });
 
-  // Module number (large, white, on accent band)
-  slide.addText(String(plan.moduleIndex !== undefined ? plan.moduleIndex + 1 : "").padStart(2, "0"), {
-    x: MARGIN,
-    y: 0.40,
-    w: 2.0,
-    h: 1.00,
+  // Giant watermark number (semi-transparent effect using very light color)
+  const modNum = String((plan.moduleIndex !== undefined ? plan.moduleIndex + 1 : 1)).padStart(2, "0");
+  slide.addText(modNum, {
+    x: -0.60,
+    y: SLIDE_H - 3.20,
+    w: panelW + 0.60,
+    h: 3.00,
+    fontSize: 160,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+    transparency: 82,
+    align: "right",
+    valign: "bottom",
+  });
+
+  // Module label on panel
+  slide.addText("MÓDULO", {
+    x: 0.26,
+    y: 0.55,
+    w: panelW - 0.36,
+    h: 0.26,
+    fontSize: TYPO.LABEL,
+    fontFace: design.fonts.body,
+    bold: true,
+    color: "FFFFFF",
+    transparency: 25,
+    charSpacing: 4,
+  });
+
+  // Module number text on panel
+  slide.addText(modNum, {
+    x: 0.26,
+    y: 0.80,
+    w: panelW - 0.36,
+    h: 1.10,
     fontSize: TYPO.MODULE_NUMBER,
     fontFace: design.fonts.title,
     bold: true,
@@ -1934,99 +1967,125 @@ function renderModuleCover(
     valign: "top",
   });
 
-  // Module subtitle label (on accent band)
-  slide.addText(plan.subtitle || "MÓDULO", {
-    x: MARGIN,
-    y: 1.30,
-    w: 4,
-    h: 0.40,
-    fontSize: TYPO.LABEL,
-    fontFace: design.fonts.body,
-    bold: true,
-    color: "FFFFFF",
-    letterSpacing: 3,
+  // Horizontal rule below number
+  slide.addShape("rect" as any, {
+    x: 0.26,
+    y: 2.00,
+    w: panelW - 0.52,
+    h: 0.040,
+    fill: { color: "FFFFFF" },
+    transparency: 50,
   });
 
-  // Module title (on accent band)
-  slide.addText(plan.title, {
-    x: MARGIN,
-    y: 1.70,
-    w: SAFE_W * 0.70,
-    h: 1.00,
-    fontSize: TYPO.MODULE_TITLE,
+  // Module title (short label below rule on panel)
+  const shortTitle = plan.title.length > 32 ? plan.title.substring(0, 30) + "…" : plan.title;
+  slide.addText(shortTitle, {
+    x: 0.26,
+    y: 2.10,
+    w: panelW - 0.36,
+    h: 1.40,
+    fontSize: 16,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "top",
+    lineSpacingMultiple: 1.2,
   });
 
-  if (plan.description) {
-    slide.addText(plan.description, {
-      x: MARGIN,
-      y: 3.10,
-      w: SAFE_W * 0.65,
-      h: 0.70,
-      fontSize: TYPO.BODY,
-      fontFace: design.fonts.body,
-      color: colors.textSecondary,
-      valign: "top",
-    });
-  }
+  // Right content zone: objectives
+  const contentX = panelW + 0.30;
+  const contentW = SLIDE_W - panelW - 0.50;
 
-  // Objectives in a subtle card on the right
   if (plan.objectives && plan.objectives.length > 0) {
-    const objStartY = 3.20;
-    const objCardW = SAFE_W * 0.38;
-    const objCardX = SLIDE_W - MARGIN - objCardW;
-
-    slide.addShape("roundRect" as any, {
-      x: objCardX,
-      y: objStartY,
-      w: objCardW,
-      h: 3.40,
-      fill: { color: colors.bgAlt },
-      rectRadius: 0.10,
-      line: { color: colors.borders, width: 0.5 },
-    });
-
-    slide.addText("OBJETIVOS", {
-      x: objCardX + 0.20,
-      y: objStartY + 0.15,
-      w: objCardW - 0.40,
-      h: 0.30,
+    // "O QUE VOCÊ VAI APRENDER" label
+    slide.addText("O QUE VOCÊ VAI APRENDER", {
+      x: contentX,
+      y: 0.75,
+      w: contentW,
+      h: 0.28,
       fontSize: TYPO.LABEL,
       fontFace: design.fonts.body,
       bold: true,
       color: accentColor,
-      letterSpacing: 2,
+      charSpacing: 2.5,
     });
 
-    const objTexts = plan.objectives.map(
-      (obj, i) =>
-        ({
-          text: `${i + 1}. ${obj}`,
-          options: {
-            fontSize: TYPO.SUPPORT,
-            fontFace: design.fonts.body,
-            color: colors.text,
-            bullet: false,
-            breakLine: true,
-            paraSpaceAfter: 8,
-          },
-        }) as any,
-    );
-    slide.addText(objTexts, {
-      x: objCardX + 0.20,
-      y: objStartY + 0.50,
-      w: objCardW - 0.40,
-      h: 2.70,
-      valign: "top",
+    // Accent underline
+    slide.addShape("rect" as any, {
+      x: contentX, y: 1.04,
+      w: 1.40, h: 0.038,
+      fill: { color: accentColor },
+    });
+
+    // Objective items
+    const objGap = 0.12;
+    const objH = Math.min(1.00, (SLIDE_H - 1.20 - 0.30 - objGap * Math.max(plan.objectives.length - 1, 0)) / Math.max(plan.objectives.length, 1));
+
+    for (let i = 0; i < plan.objectives.length; i++) {
+      const y = 1.22 + i * (objH + objGap);
+
+      // Background card
+      slide.addShape("roundRect" as any, {
+        x: contentX,
+        y,
+        w: contentW,
+        h: objH,
+        fill: { color: colors.panelMid },
+        rectRadius: 0.07,
+      });
+
+      // Number badge
+      slide.addShape("roundRect" as any, {
+        x: contentX + 0.14,
+        y: y + objH / 2 - 0.18,
+        w: 0.36,
+        h: 0.36,
+        fill: { color: accentColor },
+        rectRadius: 0.06,
+      });
+      slide.addText(String(i + 1), {
+        x: contentX + 0.14,
+        y: y + objH / 2 - 0.18,
+        w: 0.36,
+        h: 0.36,
+        fontSize: 11,
+        fontFace: design.fonts.title,
+        bold: true,
+        color: "FFFFFF",
+        align: "center",
+        valign: "middle",
+      });
+
+      slide.addText(plan.objectives[i], {
+        x: contentX + 0.60,
+        y,
+        w: contentW - 0.74,
+        h: objH,
+        fontSize: TYPO.SUPPORT,
+        fontFace: design.fonts.body,
+        color: colors.coverSubtext,
+        valign: "middle",
+        lineSpacingMultiple: 1.2,
+      });
+    }
+  } else {
+    // Full title when no objectives
+    slide.addText(plan.title, {
+      x: contentX,
+      y: 1.80,
+      w: contentW,
+      h: 2.20,
+      fontSize: TYPO.MODULE_TITLE,
+      fontFace: design.fonts.title,
+      bold: true,
+      color: "FFFFFF",
+      valign: "middle",
+      lineSpacingMultiple: 1.2,
     });
   }
-
-  addFooter(slide, colors, design.fonts.body);
 }
 
+// ── BULLETS: Premium card layout with bold left stripes, alternating depth ──
 function renderBullets(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -2035,61 +2094,64 @@ function renderBullets(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
-  addTopAccentBar(slide, colors.accent);
+  addLeftAccentBar(slide, design.palette[0], design.palette[1]);
 
+  const accentColor = design.palette[0];
   if (plan.sectionLabel) {
-    addSectionLabel(slide, plan.sectionLabel, colors.accent, design.fonts.body);
+    addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
   }
-
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
 
   const items = plan.items || [];
-  const contentY = 1.65;
+  const contentX = 0.36;
+  const contentW = SLIDE_W - contentX - 0.30;
+  const contentY = 1.66;
   const bulletGap = 0.10;
-  const contentH = SLIDE_H - contentY - 0.50;
+  const contentH = SLIDE_H - contentY - 0.40;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
-  const itemH = Math.max(0.65, Math.min(1.40, rawItemH));
+  const itemH = Math.max(0.60, Math.min(1.50, rawItemH));
 
   for (let i = 0; i < items.length; i++) {
-    const accentColor = design.palette[i % design.palette.length];
+    const pal = design.palette[i % design.palette.length];
     const yPos = contentY + i * (itemH + bulletGap);
-    const isEven = i % 2 === 0;
 
-    // Subtle alternating card background
+    // Card background (full width)
     slide.addShape("roundRect" as any, {
-      x: MARGIN,
+      x: contentX,
       y: yPos,
-      w: SAFE_W,
+      w: contentW,
       h: itemH - 0.04,
-      fill: { color: isEven ? colors.cardBgAlt : colors.bg },
+      fill: { color: i % 2 === 0 ? colors.cardBgAlt : colors.bg },
       rectRadius: 0.06,
+      line: { color: i % 2 === 0 ? colors.borders : "transparent", width: 0.5 },
     });
 
-    // Colored left accent bar
+    // Bold left color stripe (4px)
     slide.addShape("rect" as any, {
-      x: MARGIN,
+      x: contentX,
       y: yPos + 0.06,
-      w: 0.07,
+      w: 0.055,
       h: itemH - 0.16,
-      fill: { color: accentColor },
-      rectRadius: 0.02,
+      fill: { color: pal },
     });
 
     slide.addText(items[i], {
-      x: MARGIN + 0.25,
-      y: yPos,
-      w: SAFE_W - 0.30,
-      h: itemH - 0.04,
+      x: contentX + 0.20,
+      y: yPos + 0.04,
+      w: contentW - 0.28,
+      h: itemH - 0.12,
       fontSize: TYPO.BULLET_TEXT,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "middle",
+      lineSpacingMultiple: 1.2,
     });
   }
 
   addFooter(slide, colors, design.fonts.body);
 }
 
+// ── TWO-COLUMN BULLETS: Premium two-column with section divider ──
 function renderTwoColumnBullets(
   pptx: PptxGenJS,
   plan: SlidePlan,
