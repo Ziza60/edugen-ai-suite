@@ -2261,16 +2261,14 @@ function renderCoverSlide(
 
   if (image) {
     try {
-      // Use slide.background for maximum cross-viewer compatibility
-      slide.background = { data: image.base64Data };
-      console.log(`[V2-RENDER] Cover: slide.background with image OK, dataLen=${image.base64Data.length}`);
+      // DIAGNOSTIC: image as shape, NO overlays, to verify visibility
+      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
+      console.log(`[V2-RENDER] Cover: addImage (no overlay) OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
-      console.error("[V2-RENDER] Cover background image FAILED:", err.message);
+      console.error("[V2-RENDER] Cover addImage FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
     }
-    // Single overlay to darken image while keeping it visible
-    addImageOverlay(slide, colors.coverDark, 40);
-    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
+    // NO overlays — diagnostic build to confirm image visibility
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
