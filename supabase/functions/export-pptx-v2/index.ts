@@ -4192,14 +4192,17 @@ function renderClosingSlide(
     addSlideBackground(slide, colors.coverDark);
   }
 
-  addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
+  // Only add large decorative gradient/ellipse when there's no image (they obscure the photo)
+  if (!image) {
+    addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
 
-  slide.addShape("ellipse" as any, {
-    x: SLIDE_W - 4.00, y: -1.20,
-    w: 5.00, h: 5.00,
-    fill: { color: colors.p1 },
-    transparency: 92,
-  });
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - 4.00, y: -1.20,
+      w: 5.00, h: 5.00,
+      fill: { color: colors.p1 },
+      transparency: 92,
+    });
+  }
 
   slide.addShape("rect" as any, {
     x: 0.80, y: 0.90, w: 0.05, h: 3.80,
