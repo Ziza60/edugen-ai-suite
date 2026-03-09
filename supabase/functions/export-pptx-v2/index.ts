@@ -3264,8 +3264,8 @@ function renderGridCards(
         fontSize: Math.min(16, cardW > 2.5 ? 18 : 14),
         fontFace: design.fonts.title,
         bold: true,
-        color: pal,
-        transparency: 20,
+        color: ensureContrastOnLight(pal, colors.cardBg),
+        transparency: 10,
         align: "left",
       });
       slide.addText(items[i], {
