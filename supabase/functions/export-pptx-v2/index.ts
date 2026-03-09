@@ -4177,16 +4177,18 @@ function renderClosingSlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
-  addSlideBackground(slide, colors.coverDark);
   if (image) {
     try {
-      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
-      console.log(`[V2-RENDER] Closing: addImage OK, dataLen=${image.base64Data.length}`);
+      slide.background = { data: image.base64Data };
+      console.log(`[V2-RENDER] Closing: slide.background with image OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
-      console.error("[V2-RENDER] Closing addImage FAILED:", err.message);
+      console.error("[V2-RENDER] Closing background image FAILED:", err.message);
+      addSlideBackground(slide, colors.coverDark);
     }
-    addImageOverlay(slide, colors.coverDark, 55);
-    addImageOverlay(slide, colors.coverDark, 70, 0, 0, SLIDE_W * 0.55, SLIDE_H);
+    addImageOverlay(slide, colors.coverDark, 40);
+    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.55, SLIDE_H);
+  } else {
+    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
