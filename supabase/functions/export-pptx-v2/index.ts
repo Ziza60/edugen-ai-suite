@@ -1221,12 +1221,12 @@ function distributeModuleToSlides(
         i++;
       }
 
-      // PHASE 3: Cap process density based on source structure.
-      // Single paragraph source → max 3 (strong compaction)
-      // Few original items (2-3) → max 4 (balanced)
-      // Many original items (4+) → max 5 (preserve detail but avoid overload)
-      const maxProcessItems = rawItems.length <= 1 ? 3 : rawItems.length <= 3 ? 4 : 5;
-      const compacted = mergeAdjacentShortest(phase2, maxProcessItems);
+      // PHASE 3: Keep 4-5 items for a real process feel — never over-compact.
+      // Fewer than 4 items loses the "process/flow" visual identity.
+      const maxProcessItems = rawItems.length <= 1 ? 4 : 5;
+      const compacted = phase2.length > maxProcessItems
+        ? mergeAdjacentShortest(phase2, maxProcessItems)
+        : phase2;
 
       validItems = compacted;
     // FORCE process_timeline for ALL process sections — never fallback to bullets
