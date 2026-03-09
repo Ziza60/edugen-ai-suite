@@ -2232,7 +2232,12 @@ function renderCoverSlide(
   const slide = pptx.addSlide();
 
   if (image) {
-    slide.background = { data: image.base64Data };
+    console.log(`[V2-RENDER] Cover slide: embedding image, base64Data starts with "${image.base64Data.substring(0, 30)}...", length=${image.base64Data.length}`);
+    addSlideBackground(slide, colors.coverDark);
+    slide.addImage({
+      data: image.base64Data,
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+    } as any);
     addImageOverlay(slide, colors.coverDark, 30);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
   } else {
