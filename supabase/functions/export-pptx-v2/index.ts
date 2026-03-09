@@ -396,7 +396,7 @@ async function fetchUnsplashImage(
     console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name}`);
 
     return {
-      base64Data: `data:image/jpeg;base64,${base64}`,
+      base64Data: `image/jpeg;base64,${base64}`,
       credit: photo.user?.name || "Unsplash",
       creditUrl: photo.user?.links?.html || "https://unsplash.com",
     };
@@ -2232,7 +2232,12 @@ function renderCoverSlide(
   const slide = pptx.addSlide();
 
   if (image) {
-    slide.background = { data: image.base64Data };
+    console.log(`[V2-RENDER] Cover slide: embedding image, base64Data starts with "${image.base64Data.substring(0, 30)}...", length=${image.base64Data.length}`);
+    addSlideBackground(slide, colors.coverDark);
+    slide.addImage({
+      data: image.base64Data,
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+    } as any);
     addImageOverlay(slide, colors.coverDark, 30);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
   } else {
@@ -2497,7 +2502,7 @@ function renderModuleCover(
   const contentW = hasImage ? SLIDE_W * 0.62 : SLIDE_W;
 
   if (hasImage) {
-    addSlideBackground(slide, colors.coverDark);
+    console.log(`[V2-RENDER] Module ${modNum} cover: embedding image, base64Data starts with "${image!.base64Data.substring(0, 30)}...", length=${image!.base64Data.length}`);
     const imgX = contentW;
     const imgW = SLIDE_W - contentW;
     slide.addImage({
@@ -4110,7 +4115,12 @@ function renderClosingSlide(
   const slide = pptx.addSlide();
 
   if (image) {
-    slide.background = { data: image.base64Data };
+    console.log(`[V2-RENDER] Closing slide: embedding image, base64Data starts with "${image.base64Data.substring(0, 30)}...", length=${image.base64Data.length}`);
+    addSlideBackground(slide, colors.coverDark);
+    slide.addImage({
+      data: image.base64Data,
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+    } as any);
     addImageOverlay(slide, colors.coverDark, 25);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
   } else {
