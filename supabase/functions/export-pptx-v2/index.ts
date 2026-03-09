@@ -2553,11 +2553,12 @@ function renderModuleCover(
         data: image!.base64Data,
         x: imgX, y: 0, w: imgW, h: SLIDE_H,
       });
-      console.log(`[V2-RENDER] Module cover: addImage (no overlay) at x=${imgX}, w=${imgW}, dataLen=${image!.base64Data.length}`);
+      // Semi-transparent overlay for readability
+      addImageOverlay(slide, "000000", 35, imgX, 0, imgW, SLIDE_H);
+      console.log(`[V2-RENDER] Module cover: addImage + overlay at x=${imgX}, w=${imgW}, dataLen=${image!.base64Data.length}`);
     } catch (imgErr: any) {
       console.error(`[V2-RENDER] Module cover: addImage FAILED:`, imgErr.message);
     }
-    // NO overlays — diagnostic build
     slide.addShape("rect" as any, {
       x: imgX, y: 0, w: 0.04, h: SLIDE_H,
       fill: { color: accentColor },
