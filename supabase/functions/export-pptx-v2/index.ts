@@ -2893,8 +2893,8 @@ function renderBullets(
         fontSize: Math.min(16, cardW > 3 ? 18 : 14),
         fontFace: design.fonts.title,
         bold: true,
-        color: pal,
-        transparency: 25,
+        color: ensureContrastOnLight(pal, colors.cardBg),
+        transparency: 15,
         align: "left",
       });
       slide.addText(items[i], {
