@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "2.6.2-2026-03-09";
+const ENGINE_VERSION = "2.6.3-2026-03-09";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2261,14 +2261,16 @@ function renderCoverSlide(
 
   if (image) {
     try {
-      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
-      console.log(`[V2-RENDER] Cover: addImage OK, dataLen=${image.base64Data.length}`);
+      // Use slide.background for maximum cross-viewer compatibility
+      slide.background = { data: image.base64Data };
+      console.log(`[V2-RENDER] Cover: slide.background with image OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
-      console.error("[V2-RENDER] Cover addImage FAILED:", err.message);
+      console.error("[V2-RENDER] Cover background image FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
     }
-    addImageOverlay(slide, colors.coverDark, 55);
-    addImageOverlay(slide, colors.coverDark, 70, 0, 0, SLIDE_W * 0.60, SLIDE_H);
+    // Single overlay to darken image while keeping it visible
+    addImageOverlay(slide, colors.coverDark, 40);
+    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
@@ -2557,8 +2559,8 @@ function renderModuleCover(
     } catch (imgErr: any) {
       console.error(`[V2-RENDER] Module cover: addImage FAILED:`, imgErr.message);
     }
-    addImageOverlay(slide, accentColor, 80, imgX, 0, imgW, SLIDE_H);
-    addImageOverlay(slide, colors.coverDark, 60, imgX, 0, imgW, SLIDE_H);
+    // Single lighter overlay to keep image visible
+    addImageOverlay(slide, colors.coverDark, 50, imgX, 0, imgW, SLIDE_H);
     slide.addShape("rect" as any, {
       x: imgX, y: 0, w: 0.04, h: SLIDE_H,
       fill: { color: accentColor },
@@ -4175,16 +4177,18 @@ function renderClosingSlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
-  addSlideBackground(slide, colors.coverDark);
   if (image) {
     try {
-      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
-      console.log(`[V2-RENDER] Closing: addImage OK, dataLen=${image.base64Data.length}`);
+      slide.background = { data: image.base64Data };
+      console.log(`[V2-RENDER] Closing: slide.background with image OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
-      console.error("[V2-RENDER] Closing addImage FAILED:", err.message);
+      console.error("[V2-RENDER] Closing background image FAILED:", err.message);
+      addSlideBackground(slide, colors.coverDark);
     }
-    addImageOverlay(slide, colors.coverDark, 55);
-    addImageOverlay(slide, colors.coverDark, 70, 0, 0, SLIDE_W * 0.55, SLIDE_H);
+    addImageOverlay(slide, colors.coverDark, 40);
+    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.55, SLIDE_H);
+  } else {
+    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
