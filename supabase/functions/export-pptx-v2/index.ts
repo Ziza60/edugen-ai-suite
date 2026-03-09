@@ -4265,16 +4265,18 @@ function renderClosingSlide(
 
   // ── Bottom decorative elements ──
   // Small geometric squares (right area)
-  for (let i = 0; i < 3; i++) {
-    const sz = 0.50 + i * 0.25;
-    slide.addShape("rect" as any, {
-      x: SLIDE_W - 2.20 + i * 0.45,
-      y: SLIDE_H - 2.00 + i * 0.40,
-      w: sz, h: sz,
-      fill: { color: design.palette[i % design.palette.length] },
-      transparency: 85,
-      rectRadius: 0.04,
-    });
+  if (!image) {
+    for (let i = 0; i < 3; i++) {
+      const sz = 0.50 + i * 0.25;
+      slide.addShape("rect" as any, {
+        x: SLIDE_W - 2.20 + i * 0.45,
+        y: SLIDE_H - 2.00 + i * 0.40,
+        w: sz, h: sz,
+        fill: { color: design.palette[i % design.palette.length] },
+        transparency: 85,
+        rectRadius: 0.04,
+      });
+    }
   }
 
   // ── Date bottom-right ──
