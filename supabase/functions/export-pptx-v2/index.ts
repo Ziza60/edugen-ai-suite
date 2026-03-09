@@ -2519,8 +2519,6 @@ function renderModuleCover(
       fill: { color: accentColor },
     });
     addImageCredit(slide, image!.credit, design);
-  } else {
-    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, contentW * 0.60, 0, contentW * 0.45, SLIDE_H, accentColor, "down");
