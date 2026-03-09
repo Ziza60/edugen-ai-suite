@@ -119,6 +119,21 @@ interface ImagePlan {
   closing: SlideImage | null;
 }
 
+interface ImageRenderAudit {
+  requested: boolean;
+  planned: {
+    cover: boolean;
+    moduleCount: number;
+    closing: boolean;
+  };
+  rendered: {
+    cover: boolean;
+    moduleCovers: number;
+    closing: boolean;
+  };
+  totalModules: number;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 2: DESIGN SYSTEM
 // ═══════════════════════════════════════════════════════════════════
