@@ -5072,7 +5072,7 @@ Deno.serve(async (req: Request) => {
       `[V2] ENGINE_VERSION=${ENGINE_VERSION} | Starting export: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, palette=${palette || "default"}, images=${design.includeImages}, unsplashKey=${unsplashKeyPresent ? "SET" : "MISSING"}, includeImages_raw=${includeImages}`,
     );
 
-    const { pptx, report } = await runPipeline(courseTitle, moduleData, design);
+    const { pptx, report, imageAudit } = await runPipeline(courseTitle, moduleData, design);
 
     const pptxData = await pptx.write({ outputType: "uint8array" });
 
