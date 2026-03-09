@@ -2559,8 +2559,8 @@ function renderModuleCover(
     } catch (imgErr: any) {
       console.error(`[V2-RENDER] Module cover: addImage FAILED:`, imgErr.message);
     }
-    addImageOverlay(slide, accentColor, 80, imgX, 0, imgW, SLIDE_H);
-    addImageOverlay(slide, colors.coverDark, 60, imgX, 0, imgW, SLIDE_H);
+    // Single lighter overlay to keep image visible
+    addImageOverlay(slide, colors.coverDark, 50, imgX, 0, imgW, SLIDE_H);
     slide.addShape("rect" as any, {
       x: imgX, y: 0, w: 0.04, h: SLIDE_H,
       fill: { color: accentColor },
