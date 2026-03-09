@@ -3817,10 +3817,18 @@ function renderWarningCallout(
   for (let i = 0; i < items.length; i++) {
     const y = contentY + i * (itemH + bulletGap);
     const cardH = itemH - 0.04;
+    // Use theme-appropriate card bg — never hardcode light bg on dark theme
+    const isLightCard = i % 2 === 0;
+    const cardBgColor = isLightCard
+      ? (design.theme === "dark" ? colors.cardBgAlt : "FFF5F5")
+      : colors.cardBg;
+    // Text must contrast with the card background
+    const cardTextColor = isLightCard && design.theme === "light" ? "1E293B" : colors.text;
+
     addCardShadow(slide, contentX, y, contentW, cardH, colors.shadowColor);
     slide.addShape("roundRect" as any, {
       x: contentX, y, w: contentW, h: cardH,
-      fill: { color: i % 2 === 0 ? "FFF5F5" : colors.cardBg },
+      fill: { color: cardBgColor },
       rectRadius: 0.08,
     });
     slide.addShape("rect" as any, {
@@ -3851,7 +3859,7 @@ function renderWarningCallout(
         w: contentW - 0.30, h: cardH - labelH - 0.08,
         fontSize: bodyFontSize,
         fontFace: design.fonts.body,
-        color: colors.text,
+        color: cardTextColor,
         valign: "top",
         lineSpacingMultiple: 1.12,
       });
@@ -3861,7 +3869,7 @@ function renderWarningCallout(
         w: contentW - 0.30, h: cardH - 0.08,
         fontSize: bodyFontSize,
         fontFace: design.fonts.body,
-        color: colors.text,
+        color: cardTextColor,
         valign: "middle",
         lineSpacingMultiple: 1.12,
       });
