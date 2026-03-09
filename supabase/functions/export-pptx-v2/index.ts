@@ -4556,7 +4556,7 @@ Deno.serve(async (req: Request) => {
       `[V2] Starting export: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, palette=${palette || "default"}, images=${design.includeImages}`,
     );
 
-    const { pptx, report } = await runPipeline(courseTitle, moduleData, design);
+    const { pptx, report, imageAudit } = await runPipeline(courseTitle, moduleData, design);
 
     const pptxData = await pptx.write({ outputType: "uint8array" });
     const dateStr = new Date().toISOString().slice(0, 10);
