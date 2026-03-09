@@ -2502,7 +2502,7 @@ function renderModuleCover(
   const contentW = hasImage ? SLIDE_W * 0.62 : SLIDE_W;
 
   if (hasImage) {
-    addSlideBackground(slide, colors.coverDark);
+    console.log(`[V2-RENDER] Module ${modNum} cover: embedding image, base64Data starts with "${image!.base64Data.substring(0, 30)}...", length=${image!.base64Data.length}`);
     const imgX = contentW;
     const imgW = SLIDE_W - contentW;
     slide.addImage({
