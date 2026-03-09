@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "2.5.2-2026-03-09";
+const ENGINE_VERSION = "2.5.3-2026-03-09";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -364,11 +364,15 @@ function buildImageQuery(title: string): string {
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
-  const chunkSize = 8192;
+  const CHUNK = 1024;
   const parts: string[] = [];
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    parts.push(String.fromCharCode(...chunk));
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const end = Math.min(i + CHUNK, bytes.length);
+    let str = "";
+    for (let j = i; j < end; j++) {
+      str += String.fromCharCode(bytes[j]);
+    }
+    parts.push(str);
   }
   return btoa(parts.join(""));
 }
@@ -2257,30 +2261,12 @@ function renderCoverSlide(
 
   addSlideBackground(slide, colors.coverDark);
 
-  const TEST_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVQYV2P8z8BQz0BhwMgwqpBuCgEAa/YIoRQuMEoAAAAASUVORK5CYII=";
-  try {
-    slide.addImage({ data: TEST_PNG, x: SLIDE_W - 1.5, y: 0.15, w: 0.4, h: 0.4 });
-    console.log("[V2-TEST] Added test PNG image on cover");
-  } catch (testErr: any) {
-    console.error("[V2-TEST] Test PNG addImage FAILED:", testErr.message);
-  }
-
   if (image) {
     try {
-      slide.addImage({
-        data: image.base64Data,
-        x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
-        sizing: { type: "cover", w: SLIDE_W, h: SLIDE_H },
-      } as any);
-      console.log("[V2-RENDER] Cover: added photo via addImage+sizing");
-    } catch (err1: any) {
-      console.warn("[V2-RENDER] Cover addImage+sizing failed:", err1.message);
-      try {
-        slide.background = { data: image.base64Data } as any;
-        console.log("[V2-RENDER] Cover: fallback to slide.background");
-      } catch (err2: any) {
-        console.warn("[V2-RENDER] Cover slide.background also failed:", err2.message);
-      }
+      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
+      console.log(`[V2-RENDER] Cover: addImage OK, dataLen=${image.base64Data.length}`);
+    } catch (err: any) {
+      console.error("[V2-RENDER] Cover addImage FAILED:", err.message);
     }
     addImageOverlay(slide, colors.coverDark, 30);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
@@ -4188,18 +4174,16 @@ function renderClosingSlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
+  addSlideBackground(slide, colors.coverDark);
   if (image) {
     try {
-      slide.background = { data: image.base64Data } as any;
-      console.log("[V2-RENDER] Closing: applied image via slide.background");
-    } catch (bgErr: any) {
-      console.warn("[V2-RENDER] Closing: slide.background failed:", bgErr.message);
-      addSlideBackground(slide, colors.coverDark);
+      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
+      console.log(`[V2-RENDER] Closing: addImage OK, dataLen=${image.base64Data.length}`);
+    } catch (err: any) {
+      console.error("[V2-RENDER] Closing addImage FAILED:", err.message);
     }
     addImageOverlay(slide, colors.coverDark, 25);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
-  } else {
-    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
@@ -4688,6 +4672,37 @@ Deno.serve(async (req: Request) => {
     const { pptx, report } = await runPipeline(courseTitle, moduleData, design);
 
     const pptxData = await pptx.write({ outputType: "uint8array" });
+
+    let zipDiag: any = null;
+    try {
+      const JSZip = (await import("npm:jszip@3.10.1")).default;
+      const zip = await JSZip.loadAsync(pptxData);
+      const allFiles = Object.keys(zip.files);
+      const mediaFiles = allFiles.filter((f: string) => f.startsWith("ppt/media/"));
+      const mediaSizes: Record<string, number> = {};
+      for (const mf of mediaFiles) {
+        const fileData = await zip.file(mf)?.async("uint8array");
+        mediaSizes[mf] = fileData?.length ?? 0;
+      }
+      let slide1ImageRefs = 0;
+      const slide1Rels = allFiles.find((f: string) => f.includes("slide1.xml.rels"));
+      if (slide1Rels) {
+        const relsContent = await zip.file(slide1Rels)?.async("string");
+        slide1ImageRefs = (relsContent || "").match(/image/gi)?.length ?? 0;
+      }
+      zipDiag = {
+        totalFiles: allFiles.length,
+        mediaFileCount: mediaFiles.length,
+        mediaFiles: mediaSizes,
+        slide1ImageRefs,
+      };
+      console.log(`[V2-ZIP] Diagnostics:`, JSON.stringify(zipDiag));
+    } catch (zipErr: any) {
+      console.warn("[V2-ZIP] ZIP inspection failed:", zipErr.message);
+      zipDiag = { error: zipErr.message };
+    }
+    (report as any).zipDiagnostics = zipDiag;
+
     const dateStr = new Date().toISOString().slice(0, 10);
     const safeName = (course.title || "curso")
       .normalize("NFD")
@@ -4733,6 +4748,7 @@ Deno.serve(async (req: Request) => {
           redistributions: report.redistributions,
           warnings: report.warnings,
           image_diagnostics: report.imageDiagnostics || null,
+          zip_diagnostics: report.zipDiagnostics || null,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },

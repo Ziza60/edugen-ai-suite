@@ -159,6 +159,9 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               if (data?.quality_report?.image_diagnostics) {
                 console.log("[PPTX] IMAGE DIAGNOSTICS:", JSON.stringify(data.quality_report.image_diagnostics, null, 2));
               }
+              if (data?.quality_report?.zip_diagnostics) {
+                console.log("[PPTX] ZIP DIAGNOSTICS:", JSON.stringify(data.quality_report.zip_diagnostics, null, 2));
+              }
 
               // Store quality report for display
               if (data?.quality_report) {
