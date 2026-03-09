@@ -4060,9 +4060,12 @@ function renderClosingSlide(
   const slide = pptx.addSlide();
 
   if (image) {
-    slide.background = { data: image.base64Data };
-    addImageOverlay(slide, colors.coverDark, 25);
-    addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
+    slide.addImage({
+      data: image.base64Data,
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+    } as any);
+    addImageOverlay(slide, colors.coverDark, 14);
+    addImageOverlay(slide, colors.coverDark, 45, 0, 0, SLIDE_W * 0.60, SLIDE_H);
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
