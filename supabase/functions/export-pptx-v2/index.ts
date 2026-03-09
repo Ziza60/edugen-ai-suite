@@ -396,7 +396,7 @@ async function fetchUnsplashImage(
     console.log(`[V2-IMAGE] Fetched image for "${query}" — credit: ${photo.user?.name}`);
 
     return {
-      base64Data: `data:image/jpeg;base64,${base64}`,
+      base64Data: `image/jpeg;base64,${base64}`,
       credit: photo.user?.name || "Unsplash",
       creditUrl: photo.user?.links?.html || "https://unsplash.com",
     };
