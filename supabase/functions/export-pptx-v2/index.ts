@@ -2151,7 +2151,7 @@ function renderBullets(
   addFooter(slide, colors, design.fonts.body);
 }
 
-// ── TWO-COLUMN BULLETS: Premium two-column with section divider ──
+// ── TWO-COLUMN BULLETS: Premium split layout with bold column header bars ──
 function renderTwoColumnBullets(
   pptx: PptxGenJS,
   plan: SlidePlan,
@@ -2160,7 +2160,7 @@ function renderTwoColumnBullets(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
-  addTopAccentBar(slide, design.palette[1] || colors.accent);
+  addLeftAccentBar(slide, design.palette[1] || colors.p1, design.palette[2] || colors.p2);
 
   if (plan.sectionLabel) {
     addSectionLabel(slide, plan.sectionLabel, design.palette[1] || colors.accent, design.fonts.body);
