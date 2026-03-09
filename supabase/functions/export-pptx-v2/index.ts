@@ -97,6 +97,16 @@ interface PipelineReport {
   sentenceIntegrityChecks: number;
   redistributions: number;
   warnings: string[];
+  imageDiagnostics?: {
+    unsplashKeyPresent: boolean;
+    unsplashKeyLength: number;
+    includeImages: boolean;
+    coverImageFetched: boolean;
+    closingImageFetched: boolean;
+    moduleImagesFetched: number;
+    moduleImagesTotal: number;
+    errors: string[];
+  };
 }
 
 interface DesignConfig {
@@ -4322,6 +4332,21 @@ async function runPipeline(
 
   const imagePlan = await buildImagePlan(courseTitle, modules, design.includeImages);
 
+  const unsplashKey = Deno.env.get("UNSPLASH_ACCESS_KEY") || "";
+  report.imageDiagnostics = {
+    unsplashKeyPresent: unsplashKey.length > 0,
+    unsplashKeyLength: unsplashKey.length,
+    includeImages: design.includeImages,
+    coverImageFetched: !!imagePlan.cover,
+    closingImageFetched: !!imagePlan.closing,
+    moduleImagesFetched: imagePlan.modules.size,
+    moduleImagesTotal: modules.length,
+    errors: [],
+  };
+  if (!unsplashKey) report.imageDiagnostics.errors.push("UNSPLASH_ACCESS_KEY not set in Supabase secrets");
+  if (!design.includeImages) report.imageDiagnostics.errors.push("includeImages is false — images disabled by user");
+  console.log(`[V2-IMAGE-DIAG]`, JSON.stringify(report.imageDiagnostics));
+
   renderCoverSlide(pptx, courseTitle, design, imagePlan.cover);
 
   const allModuleSlidePlans: SlidePlan[][] = [];
@@ -4661,6 +4686,7 @@ Deno.serve(async (req: Request) => {
           sentence_integrity_checks: report.sentenceIntegrityChecks,
           redistributions: report.redistributions,
           warnings: report.warnings,
+          image_diagnostics: report.imageDiagnostics || null,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
