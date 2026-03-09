@@ -1536,7 +1536,8 @@ function addFooter(
     charSpacing: 1.5,
   });
 }
-}
+
+
 
 const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
   bullets: 5,
