@@ -366,7 +366,13 @@ async function fetchUnsplashImage(
   orientation: "landscape" | "portrait" | "squarish" = "landscape",
 ): Promise<SlideImage | null> {
   const accessKey = Deno.env.get("UNSPLASH_ACCESS_KEY");
-  if (!accessKey) return null;
+  if (!accessKey) {
+    console.warn("[V2-IMAGE] UNSPLASH_ACCESS_KEY not found in environment");
+    return null;
+  }
+
+  const keyPreview = accessKey.length > 8 ? `${accessKey.substring(0, 4)}...${accessKey.substring(accessKey.length - 4)}` : "***";
+  console.log(`[V2-IMAGE] Using key: ${keyPreview} (length=${accessKey.length})`);
 
   try {
     const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=1&content_filter=high`;
@@ -374,7 +380,11 @@ async function fetchUnsplashImage(
       headers: { Authorization: `Client-ID ${accessKey}` },
     });
     if (!res.ok) {
-      console.warn(`[V2-IMAGE] Unsplash returned ${res.status} for query "${query}"`);
+      const errorBody = await res.text().catch(() => "");
+      console.warn(`[V2-IMAGE] Unsplash returned ${res.status} for query "${query}". Response: ${errorBody.substring(0, 200)}`);
+      if (res.status === 401) {
+        console.error("[V2-IMAGE] ERROR 401: Access Key is INVALID. Go to https://unsplash.com/developers, open your app, and copy the 'Access Key' (NOT 'Secret Key'). Then set it via: supabase secrets set UNSPLASH_ACCESS_KEY=your_access_key");
+      }
       return null;
     }
     const data = await res.json();
@@ -416,11 +426,11 @@ async function buildImagePlan(
 
   const accessKey = Deno.env.get("UNSPLASH_ACCESS_KEY");
   if (!accessKey) {
-    console.log("[V2-IMAGE] No UNSPLASH_ACCESS_KEY set — skipping images");
+    console.error("[V2-IMAGE] UNSPLASH_ACCESS_KEY NOT FOUND in Supabase secrets. To fix: run 'supabase secrets set UNSPLASH_ACCESS_KEY=your_access_key' or add it in the Supabase Dashboard under Edge Functions > Secrets.");
     return empty;
   }
 
-  console.log(`[V2-IMAGE] Building image plan for "${courseTitle}" with ${modules.length} modules`);
+  console.log(`[V2-IMAGE] Building image plan for "${courseTitle}" with ${modules.length} modules. Key present: YES (length=${accessKey.length})`);
 
   const coverQuery = buildImageQuery(courseTitle);
   const moduleQueries = modules.map((m) => {
