@@ -2262,9 +2262,7 @@ function renderCoverSlide(
   if (image) {
     try {
       slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
-      // Dark overlay so text/decorations are readable over the photo
-      addImageOverlay(slide, "000000", 65);
-      console.log(`[V2-RENDER] Cover: addImage + overlay OK, dataLen=${image.base64Data.length}`);
+      console.log(`[V2-RENDER] Cover: addImage OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
       console.error("[V2-RENDER] Cover addImage FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
@@ -2560,8 +2558,7 @@ function renderModuleCover(
         data: image!.base64Data,
         x: imgX, y: 0, w: imgW, h: SLIDE_H,
       });
-      // Semi-transparent overlay for readability
-      addImageOverlay(slide, "000000", 55, imgX, 0, imgW, SLIDE_H);
+      console.log(`[V2-RENDER] Module cover: addImage at x=${imgX}, w=${imgW}, dataLen=${image!.base64Data.length}`);
       console.log(`[V2-RENDER] Module cover: addImage + overlay at x=${imgX}, w=${imgW}, dataLen=${image!.base64Data.length}`);
     } catch (imgErr: any) {
       console.error(`[V2-RENDER] Module cover: addImage FAILED:`, imgErr.message);
@@ -4185,9 +4182,7 @@ function renderClosingSlide(
   if (image) {
     try {
       slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
-      // Dark overlay so text/decorations are readable over the photo
-      addImageOverlay(slide, "000000", 65);
-      console.log(`[V2-RENDER] Closing: addImage + overlay OK, dataLen=${image.base64Data.length}`);
+      console.log(`[V2-RENDER] Closing: addImage OK, dataLen=${image.base64Data.length}`);
     } catch (err: any) {
       console.error("[V2-RENDER] Closing addImage FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
