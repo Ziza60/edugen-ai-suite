@@ -156,6 +156,9 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               }
 
               console.log("[PPTX] Response data keys:", Object.keys(data || {}), "engine_version:", data?.engine_version);
+              if (data?.quality_report?.image_diagnostics) {
+                console.log("[PPTX] IMAGE DIAGNOSTICS:", JSON.stringify(data.quality_report.image_diagnostics, null, 2));
+              }
 
               // Store quality report for display
               if (data?.quality_report) {

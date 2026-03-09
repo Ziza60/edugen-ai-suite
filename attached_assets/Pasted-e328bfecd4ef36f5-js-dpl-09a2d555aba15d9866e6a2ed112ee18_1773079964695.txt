@@ -1,0 +1,32 @@
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19   RS SDK - TikTok Ads  Event name (chat_suggestions_shown) is not valid, must be mapped to one of standard events
+(anônimo) @ e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19  server_sse_error Object
+(anônimo) @ e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 stream_connection_retry Object
+3e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 devserver_websocket_close
+3e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 devserver_websocket_open
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 Checking for app updates
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 App update check: Object
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 Checking for app updates
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 App update check: Object
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 Checking for app updates
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 App update check: Object
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 [LocalStorage Test] Checking iframe Object
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 [LocalStorage Test] Sending GET_LOCALSTORAGE request with id: Object
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 [LocalStorage Test] Response time: Object
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 [LocalStorage Test] Received auth token Object
+/cdn-cgi/image/width=1920,f=auto,fit=scale-down/https://storage.googleapis.com/gpt-engineer-file-uploads/GJHdL4BDZKdpOPZiehoGqg2XFI33/2c85d46d-1172-488e-88ee-b16fa023a48e?Expires=1773083375&GoogleAccessId=go-api-on-aws%40gpt-engineer-390607.iam.gserviceaccount.com&Signature=cLF3sQl7h3Ju20mkVrBc%2BeL%2B%2Bqi0qE8EUQAx8TsBkfu0MmMmarWGHt7KJejxKSZwWYmkTIPbN64u1d85NwYfLNuE1ROc90kR3h9kQoFuAtM90vlTTby4%2FlqOL3X3V9Z%2FY0%2BDiWoIP9R3XCN2PlCqTXVh5N8dOjw%2B0LgLnit7rcCnyyCwuvUuGROA40Ty%2F6J2g4VYRwxM%2F9y%2Beyc9iK8CWAkND%2B7hgXna%2B56BEyIcuHVSPWyZRW3CLPuZMR6zrhcga1ueVB9iKzg0PvcFlpwo2rRjRipuj8dkuCu5RfZf9EbccezoB04U%2BR%2FyvEIA20YYrEspq5hTAO1YZrXUCiaNFA%3D%3D:1   Failed to load resource: the server responded with a status of 415 ()
+/cdn-cgi/image/width=1920,f=auto,fit=scale-down/https://storage.googleapis.com/gpt-engineer-file-uploads/GJHdL4BDZKdpOPZiehoGqg2XFI33/6b3743df-5e66-442d-8889-11be9562882a?Expires=1773083375&GoogleAccessId=go-api-on-aws%40gpt-engineer-390607.iam.gserviceaccount.com&Signature=aXKvhcRhLIAQ57XG%2BoO2jB2Lp8qt3QOKZhhdnsUYiEDAuFLpDBBO7wuKDZuxCMsl9OiL9zjqDy4m4wcel5vLS%2Fi79nfzLuM0i11b%2BHA6Phv7S6fL1vdZak6ebnBxw%2BzWI9qQX%2FKjz03bCYEGAWU0d0L%2FzzvE%2BNC5PPqL4kC0KpehIdbQnPkWq9kgqdVvWe0srOX72cdbFWEUP040Oj7%2BDP81Lx3sZjfyJG3FHWDOI%2BfSndrwoE9dvLIuP4S5NRuWARWrxEMChXeYlKyO0Os42rXGOH6L5RqSYAfxlXAzfOCAKX79XXx1dwCkDVQYF3aU6XUS8m1rRaepgU6NwlK1nQ%3D%3D:1   Failed to load resource: the server responded with a status of 415 ()
+3e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 devserver_websocket_close
+3e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 devserver_websocket_open
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 Checking for app updates
+client:223 [vite] hot updated: /src/components/course/PptxExportDialog.tsx
+client:223 [vite] hot updated: /src/index.css
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19 App update check: Object
+lovable.js:1  Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+console.<computed> @ lovable.js:1
+lovable.js:1 [PPTX] Starting export to: https://hhlzaryhsyqbqktxdgyb.supabase.co/functions/v1/export-pptx-v2 (engine: v2)
+e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19   RS SDK - TikTok Ads  Event name (chat_suggestions_shown) is not valid, must be mapped to one of standard events
+(anônimo) @ e328bfecd4ef36f5.js?dpl=09a2d555aba15d9866e6a2ed112ee18e:19
+lovable.js:1 [PPTX] Response status: 200
+lovable.js:1 [PPTX] Response data keys: Array(4)
