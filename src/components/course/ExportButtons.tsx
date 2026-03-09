@@ -66,6 +66,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
         body: { course_id: courseId },
       });
       if (error) throw error;
+      console.log(`[ExportButtons] Response from ${functionName}:`, { engine_version: data?.engine_version, quality_report: data?.quality_report });
       if (data?.url) {
         const response = await fetch(data.url);
         if (!response.ok) throw new Error(`Não foi possível baixar o ${label}.`);
@@ -154,7 +155,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 throw new Error("Resposta inválida da exportação.");
               }
 
-              console.log("[PPTX] Response data keys:", Object.keys(data || {}));
+              console.log("[PPTX] Response data keys:", Object.keys(data || {}), "engine_version:", data?.engine_version);
 
               // Store quality report for display
               if (data?.quality_report) {

@@ -4502,6 +4502,8 @@ async function runPipeline(
 }
 
 // ═══════════════════════════════════════════════════════════════════
+const ENGINE_VERSION = "2.5.0-2026-03-09";
+
 // SECTION 9: HTTP HANDLER (Deno.serve)
 // ═══════════════════════════════════════════════════════════════════
 
@@ -4609,7 +4611,7 @@ Deno.serve(async (req: Request) => {
 
     const unsplashKeyPresent = !!Deno.env.get("UNSPLASH_ACCESS_KEY");
     console.log(
-      `[V2] Starting export: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, palette=${palette || "default"}, images=${design.includeImages}, unsplashKey=${unsplashKeyPresent ? "SET" : "MISSING"}, includeImages_raw=${includeImages}`,
+      `[V2] ENGINE_VERSION=${ENGINE_VERSION} | Starting export: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, palette=${palette || "default"}, images=${design.includeImages}, unsplashKey=${unsplashKeyPresent ? "SET" : "MISSING"}, includeImages_raw=${includeImages}`,
     );
 
     const { pptx, report } = await runPipeline(courseTitle, moduleData, design);
@@ -4649,8 +4651,9 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         url: signedUrl.signedUrl,
         version: "v2",
+        engine_version: ENGINE_VERSION,
         quality_report: {
-          version: "v2",
+          engine_version: ENGINE_VERSION,
           total_modules: report.totalModules,
           total_slides: report.totalSlides,
           total_blocks_parsed: report.totalBlocks,
