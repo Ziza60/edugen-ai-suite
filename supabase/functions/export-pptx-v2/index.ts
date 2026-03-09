@@ -3238,19 +3238,25 @@ function renderGridCards(
         align: "center", valign: "middle",
       });
       const labelX = x + 0.10 + gcBadge + 0.08;
+      const labelW = x + cardW - labelX - 0.10;
+      // Estimate if label wraps to 2+ lines: ~7px per char at card_title size
+      const estCharsPerLine = Math.max(1, Math.floor(labelW * 72 / (TYPO.CARD_TITLE * 0.55)));
+      const estLines = Math.ceil(label.length / estCharsPerLine);
+      const labelH = estLines > 1 ? 0.62 : 0.38;
       slide.addText(label, {
-        x: labelX, y: y + 0.10,
-        w: x + cardW - labelX - 0.10, h: 0.44,
+        x: labelX, y: y + 0.12,
+        w: labelW, h: labelH,
         fontSize: items.length >= 6 ? TYPO.CARD_TITLE - 1 : TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
         bold: true, color: ensureContrastOnLight(pal, colors.cardBg),
         valign: "middle",
+        lineSpacingMultiple: 1.10,
       });
-      const sepY = y + Math.min(0.58, 0.10 + gcBadge + 0.14);
+      const sepY = y + 0.12 + labelH + 0.06;
       addHR(slide, x + 0.10, sepY, cardW - 0.20, colors.borders, 0.004);
       slide.addText(desc, {
-        x: x + 0.12, y: sepY + 0.06,
-        w: cardW - 0.24, h: Math.max(0.30, y + cardH - sepY - 0.14),
+        x: x + 0.12, y: sepY + 0.08,
+        w: cardW - 0.24, h: Math.max(0.30, y + cardH - sepY - 0.16),
         fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
