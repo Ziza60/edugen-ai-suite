@@ -2,6 +2,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
+const ENGINE_VERSION = "2.5.1-2026-03-09";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -2251,14 +2253,18 @@ function renderCoverSlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
-  addSlideBackground(slide, colors.coverDark);
   if (image) {
-    slide.addImage({
-      data: image.base64Data,
-      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
-    } as any);
+    try {
+      slide.background = { data: image.base64Data } as any;
+      console.log("[V2-RENDER] Cover: applied image via slide.background");
+    } catch (bgErr: any) {
+      console.warn("[V2-RENDER] Cover: slide.background failed:", bgErr.message);
+      addSlideBackground(slide, colors.coverDark);
+    }
     addImageOverlay(slide, colors.coverDark, 30);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.65, SLIDE_H);
+  } else {
+    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, SLIDE_W * 0.50, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
@@ -2345,6 +2351,16 @@ function renderCoverSlide(
   if (image) {
     addImageCredit(slide, image.credit, design);
   }
+
+  slide.addText(`Engine ${ENGINE_VERSION}`, {
+    x: SLIDE_W - 2.2, y: SLIDE_H - 0.35,
+    w: 2.0, h: 0.25,
+    fontSize: 7,
+    fontFace: design.fonts.body,
+    color: "666666",
+    align: "right",
+    transparency: 50,
+  });
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -2523,10 +2539,15 @@ function renderModuleCover(
   if (hasImage) {
     const imgX = contentW;
     const imgW = SLIDE_W - contentW;
-    slide.addImage({
-      data: image!.base64Data,
-      x: imgX, y: 0, w: imgW, h: SLIDE_H,
-    } as any);
+    try {
+      slide.addImage({
+        data: image!.base64Data,
+        x: imgX, y: 0, w: imgW, h: SLIDE_H,
+      });
+      console.log(`[V2-RENDER] Module cover: addImage at x=${imgX}, w=${imgW}, dataLen=${image!.base64Data.length}`);
+    } catch (imgErr: any) {
+      console.error(`[V2-RENDER] Module cover: addImage FAILED:`, imgErr.message);
+    }
     addImageOverlay(slide, accentColor, 70, imgX, 0, imgW, SLIDE_H);
     addImageOverlay(slide, colors.coverDark, 40, imgX, 0, imgW, SLIDE_H);
     slide.addShape("rect" as any, {
@@ -4148,14 +4169,18 @@ function renderClosingSlide(
   const colors = getColors(design);
   const slide = pptx.addSlide();
 
-  addSlideBackground(slide, colors.coverDark);
   if (image) {
-    slide.addImage({
-      data: image.base64Data,
-      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
-    } as any);
+    try {
+      slide.background = { data: image.base64Data } as any;
+      console.log("[V2-RENDER] Closing: applied image via slide.background");
+    } catch (bgErr: any) {
+      console.warn("[V2-RENDER] Closing: slide.background failed:", bgErr.message);
+      addSlideBackground(slide, colors.coverDark);
+    }
     addImageOverlay(slide, colors.coverDark, 25);
     addImageOverlay(slide, colors.coverDark, 55, 0, 0, SLIDE_W * 0.60, SLIDE_H);
+  } else {
+    addSlideBackground(slide, colors.coverDark);
   }
 
   addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
@@ -4530,7 +4555,6 @@ async function runPipeline(
 }
 
 // ═══════════════════════════════════════════════════════════════════
-const ENGINE_VERSION = "2.5.0-2026-03-09";
 
 // SECTION 9: HTTP HANDLER (Deno.serve)
 // ═══════════════════════════════════════════════════════════════════
