@@ -3242,6 +3242,7 @@ function runPipeline(
   pptx.author = "EduGenAI v2";
   pptx.title = courseTitle;
 
+  _globalSlideIdx = 0; // Reset anti-monotonia counter per export
   renderCoverSlide(pptx, courseTitle, design);
 
   const allModuleSlidePlans: SlidePlan[][] = [];
