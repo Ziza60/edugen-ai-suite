@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "2.6.1-2026-03-09";
+const ENGINE_VERSION = "2.6.2-2026-03-09";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -4685,17 +4685,53 @@ Deno.serve(async (req: Request) => {
         const fileData = await zip.file(mf)?.async("uint8array");
         mediaSizes[mf] = fileData?.length ?? 0;
       }
+
+      // Deep slide XML inspection for image debugging
       let slide1ImageRefs = 0;
+      let slide1RelsContent = "";
       const slide1Rels = allFiles.find((f: string) => f.includes("slide1.xml.rels"));
       if (slide1Rels) {
-        const relsContent = await zip.file(slide1Rels)?.async("string");
-        slide1ImageRefs = (relsContent || "").match(/image/gi)?.length ?? 0;
+        slide1RelsContent = (await zip.file(slide1Rels)?.async("string")) || "";
+        slide1ImageRefs = (slide1RelsContent).match(/image/gi)?.length ?? 0;
       }
+
+      // Extract slide1.xml to check image element properties
+      let slide1XmlSnippet = "";
+      const slide1Xml = allFiles.find((f: string) => f === "ppt/slides/slide1.xml");
+      if (slide1Xml) {
+        const slide1Content = (await zip.file(slide1Xml)?.async("string")) || "";
+        // Extract all <a:blip> tags (image references in OOXML)
+        const blipMatches = slide1Content.match(/<a:blip[^>]*>/g) || [];
+        // Extract all <a:ext> tags inside <a:xfrm> (dimensions)
+        const xfrmMatches = slide1Content.match(/<a:xfrm[^>]*>[\s\S]*?<\/a:xfrm>/g) || [];
+        // Extract <p:pic> elements (picture shapes)
+        const picCount = (slide1Content.match(/<p:pic>/g) || []).length;
+        slide1XmlSnippet = JSON.stringify({
+          blipTags: blipMatches.map((b: string) => b.substring(0, 120)),
+          xfrmCount: xfrmMatches.length,
+          xfrmSamples: xfrmMatches.slice(0, 3).map((x: string) => x.substring(0, 200)),
+          picShapeCount: picCount,
+          xmlLength: slide1Content.length,
+        });
+      }
+
+      // Check [Content_Types].xml for image content types
+      let contentTypesInfo = "";
+      const ctFile = allFiles.find((f: string) => f === "[Content_Types].xml");
+      if (ctFile) {
+        const ctContent = (await zip.file(ctFile)?.async("string")) || "";
+        const imageTypes = (ctContent.match(/<Default[^>]*Extension="(jpeg|jpg|png|gif|webp)"[^>]*/gi) || []);
+        contentTypesInfo = JSON.stringify(imageTypes.map((t: string) => t.substring(0, 100)));
+      }
+
       zipDiag = {
         totalFiles: allFiles.length,
         mediaFileCount: mediaFiles.length,
         mediaFiles: mediaSizes,
         slide1ImageRefs,
+        slide1RelsContent: slide1RelsContent.substring(0, 500),
+        slide1XmlAnalysis: slide1XmlSnippet,
+        contentTypesImageEntries: contentTypesInfo,
       };
       console.log(`[V2-ZIP] Diagnostics:`, JSON.stringify(zipDiag));
     } catch (zipErr: any) {
