@@ -4,7 +4,7 @@
 - **Frontend**: React + Vite + TypeScript + Tailwind CSS + shadcn/ui
 - **Backend**: Supabase (Auth, Database, Edge Functions, Storage)
 - **Billing**: Stripe (Free/Pro plans)
-- **AI**: Lovable AI Gateway (course generation)
+- **AI**: AI Gateway (course generation)
 
 ## Project Structure
 ```
@@ -34,19 +34,31 @@ supabase/functions/           # Supabase Edge Functions (Deno)
 ## Replit Configuration
 - Vite dev server: host 0.0.0.0, port 5000
 - No Node.js backend server needed (pure frontend + Supabase)
+- Supabase client gracefully handles missing credentials (shows warning)
 
 ## Environment Variables Needed
 - `VITE_SUPABASE_URL` — Supabase project URL
 - `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon/public key
 
 ## PPTX Exporter v2 (Controlled Integration)
-Parallel exporter at `supabase/functions/export-pptx-v2/index.ts` (~4100 lines).
+Parallel exporter at `supabase/functions/export-pptx-v2/index.ts` (~4180 lines).
 Pipeline: Parse → Segment → Distribute → Merge Sparse → Visual Fit → Anti-Repetition → Render → Export.
 Does NOT replace v1. Integrated via "Motor v2 Beta" toggle in PptxExportDialog.
 - Toggle OFF (default): calls `export-pptx` (v1, production)
 - Toggle ON: calls `export-pptx-v2` (v2, beta)
 - `useV2` flag is NOT sent to the edge function — only used for URL routing.
 - Rollback: remove `useV2` from PptxExportOptions, revert URL logic in ExportButtons.tsx.
+
+### v2 Visual Design (Premium Layout)
+- **Color palette**: Purple-primary (`6C63FF`), blue (`3B82F6`), green (`10B981`), amber (`F59E0B`), cyan (`06B6D4`)
+- **Backgrounds**: Deep navy (`050A18` cover, `F7F8FC` light, `0C1322` dark)
+- **Card shadows**: Simulated via semi-transparent offset shapes (`addCardShadow`)
+- **Gradient bars**: Simulated via stepped transparency shapes (`addGradientBar`)
+- **Left edge**: Double-line accent (solid + 50% transparency ghost line)
+- **Footer**: Gradient accent bar + branded dot + "EduGenAI" label
+- **Slide title**: Double underline (accent + divider)
+- **Cards**: White backgrounds with left color accent bars, rounded corners, shadows
+- **Number badges**: Rounded squares (not circles) with filled palette colors
 
 ### v2 Density Parameters
 - `maxItemsPerSlide: 9` (was 7) — more content per slide
@@ -57,3 +69,7 @@ Does NOT replace v1. Integrated via "Motor v2 Beta" toggle in PptxExportDialog.
 - `MIN_CONTINUATION_ITEMS: 4` (was 3) — fewer weak continuation slides
 - Stage 3.6: merges adjacent sparse continuation slides (<400 chars each, same section)
 - Result: ~90 slides for 7-module course (was 106), 8 continuations (was 19)
+
+### Critical Constraints
+- NEVER modify `export-pptx/index.ts` (v1) — must remain 100% untouched
+- v1 confirmed untouched across all sessions
