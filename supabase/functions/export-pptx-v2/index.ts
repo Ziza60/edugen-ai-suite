@@ -3384,23 +3384,38 @@ function runPipeline(
     allModuleSlidePlans[i] = enforceVisualRenderingGuards(allModuleSlidePlans[i], design, report);
   }
 
-  // ── STAGE 3.8: Anti-repetition sweep — diversify sequential layouts ──
+  // ── STAGE 3.8: Anti-repetition & breathing — diversify sequential layouts ──
   console.log(`[V2-STAGE-3.8] Anti-repetition: diversifying sequential layouts...`);
-  const LAYOUT_ALTERNATIVES: Partial<Record<SlideLayoutV2, SlideLayoutV2>> = {
-    bullets: "two_column_bullets",
-    two_column_bullets: "bullets",
-    definition: "grid_cards",
-    grid_cards: "two_column_bullets",
+  const LAYOUT_ALTS: Partial<Record<SlideLayoutV2, SlideLayoutV2[]>> = {
+    bullets: ["two_column_bullets", "grid_cards"],
+    two_column_bullets: ["bullets", "grid_cards"],
+    definition: ["grid_cards", "bullets"],
+    grid_cards: ["two_column_bullets", "definition"],
+    warning_callout: ["bullets"],
   };
   for (const modulePlans of allModuleSlidePlans) {
+    let consecutiveSame = 0;
     for (let i = 1; i < modulePlans.length; i++) {
       const prev = modulePlans[i - 1];
       const curr = modulePlans[i];
-      if (curr.layout !== "module_cover" && curr.layout !== "comparison_table" &&
-          curr.layout === prev.layout && LAYOUT_ALTERNATIVES[curr.layout]) {
-        const alt = LAYOUT_ALTERNATIVES[curr.layout]!;
+      if (curr.layout === "module_cover" || curr.layout === "comparison_table") {
+        consecutiveSame = 0;
+        continue;
+      }
+      if (curr.layout === prev.layout) {
+        consecutiveSame++;
+      } else {
+        consecutiveSame = 0;
+      }
+      // Swap after any 2 consecutive same layouts
+      if (consecutiveSame >= 1 && LAYOUT_ALTS[curr.layout]) {
+        const alts = LAYOUT_ALTS[curr.layout]!;
+        // Pick an alternative that differs from both prev and prev-prev
+        const prevPrev = i >= 2 ? modulePlans[i - 2].layout : null;
+        const alt = alts.find((a) => a !== prev.layout && a !== prevPrev) || alts[0];
         report.warnings.push(`[ANTI-REP] Swapped "${curr.layout}" → "${alt}" for "${curr.title}"`);
         curr.layout = alt;
+        consecutiveSame = 0;
       }
     }
   }
