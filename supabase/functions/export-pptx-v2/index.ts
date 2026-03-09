@@ -4672,6 +4672,37 @@ Deno.serve(async (req: Request) => {
     const { pptx, report } = await runPipeline(courseTitle, moduleData, design);
 
     const pptxData = await pptx.write({ outputType: "uint8array" });
+
+    let zipDiag: any = null;
+    try {
+      const JSZip = (await import("npm:jszip@3.10.1")).default;
+      const zip = await JSZip.loadAsync(pptxData);
+      const allFiles = Object.keys(zip.files);
+      const mediaFiles = allFiles.filter((f: string) => f.startsWith("ppt/media/"));
+      const mediaSizes: Record<string, number> = {};
+      for (const mf of mediaFiles) {
+        const fileData = await zip.file(mf)?.async("uint8array");
+        mediaSizes[mf] = fileData?.length ?? 0;
+      }
+      let slide1ImageRefs = 0;
+      const slide1Rels = allFiles.find((f: string) => f.includes("slide1.xml.rels"));
+      if (slide1Rels) {
+        const relsContent = await zip.file(slide1Rels)?.async("string");
+        slide1ImageRefs = (relsContent || "").match(/image/gi)?.length ?? 0;
+      }
+      zipDiag = {
+        totalFiles: allFiles.length,
+        mediaFileCount: mediaFiles.length,
+        mediaFiles: mediaSizes,
+        slide1ImageRefs,
+      };
+      console.log(`[V2-ZIP] Diagnostics:`, JSON.stringify(zipDiag));
+    } catch (zipErr: any) {
+      console.warn("[V2-ZIP] ZIP inspection failed:", zipErr.message);
+      zipDiag = { error: zipErr.message };
+    }
+    (report as any).zipDiagnostics = zipDiag;
+
     const dateStr = new Date().toISOString().slice(0, 10);
     const safeName = (course.title || "curso")
       .normalize("NFD")
@@ -4717,6 +4748,7 @@ Deno.serve(async (req: Request) => {
           redistributions: report.redistributions,
           warnings: report.warnings,
           image_diagnostics: report.imageDiagnostics || null,
+          zip_diagnostics: report.zipDiagnostics || null,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
