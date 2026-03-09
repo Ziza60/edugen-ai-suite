@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "2.7.0-2026-03-09";
+const ENGINE_VERSION = "2.8.0-2026-03-09";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -275,6 +275,27 @@ function getColors(design: DesignConfig) {
     p4: p[4],
     white: "FFFFFF",
   };
+}
+
+/**
+ * Ensures a foreground hex color has enough contrast against a background.
+ * If the contrast ratio is too low (e.g. yellow text on white card),
+ * returns a safe dark or light alternative.
+ */
+function ensureContrastOnLight(fgHex: string, bgHex: string): string {
+  const toLum = (hex: string) => {
+    const r = parseInt(hex.substring(0, 2), 16) / 255;
+    const g = parseInt(hex.substring(2, 4), 16) / 255;
+    const b = parseInt(hex.substring(4, 6), 16) / 255;
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  };
+  const fgLum = toLum(fgHex);
+  const bgLum = toLum(bgHex);
+  if (Math.abs(fgLum - bgLum) < 0.3) {
+    // Not enough contrast — return safe dark or light color
+    return bgLum > 0.5 ? "1E293B" : "E8EDF5";
+  }
+  return fgHex;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1955,10 +1976,10 @@ const LAYOUT_VISUAL_MAX_ITEMS: Partial<Record<SlideLayoutV2, number>> = {
   grid_cards: 6,
   process_timeline: 4,
   example_highlight: 5,
-  warning_callout: 5,
-  reflection_callout: 4,
+  warning_callout: 4,
+  reflection_callout: 3,
   summary_slide: 6,
-  numbered_takeaways: 7,
+  numbered_takeaways: 6,
 };
 
 const LAYOUT_VISUAL_MAX_CHARS: Partial<Record<SlideLayoutV2, number>> = {
@@ -2872,8 +2893,8 @@ function renderBullets(
         fontSize: Math.min(16, cardW > 3 ? 18 : 14),
         fontFace: design.fonts.title,
         bold: true,
-        color: pal,
-        transparency: 25,
+        color: ensureContrastOnLight(pal, colors.cardBg),
+        transparency: 15,
         align: "left",
       });
       slide.addText(items[i], {
@@ -3220,9 +3241,9 @@ function renderGridCards(
       slide.addText(label, {
         x: labelX, y: y + 0.10,
         w: x + cardW - labelX - 0.10, h: 0.44,
-        fontSize: items.length >= 6 ? TYPO.CARD_TITLE - 2 : TYPO.CARD_TITLE,
+        fontSize: items.length >= 6 ? TYPO.CARD_TITLE - 1 : TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
-        bold: true, color: pal,
+        bold: true, color: ensureContrastOnLight(pal, colors.cardBg),
         valign: "middle",
       });
       const sepY = y + Math.min(0.58, 0.10 + gcBadge + 0.14);
@@ -3243,8 +3264,8 @@ function renderGridCards(
         fontSize: Math.min(16, cardW > 2.5 ? 18 : 14),
         fontFace: design.fonts.title,
         bold: true,
-        color: pal,
-        transparency: 20,
+        color: ensureContrastOnLight(pal, colors.cardBg),
+        transparency: 10,
         align: "left",
       });
       slide.addText(items[i], {
@@ -3791,7 +3812,7 @@ function renderWarningCallout(
   const contentH = SLIDE_H - contentY - 0.45;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.55, Math.min(1.10, rawItemH));
-  const bodyFontSize = items.length >= 5 ? 10 : items.length >= 4 ? 11 : 12;
+  const bodyFontSize = items.length >= 4 ? 12 : 14;
 
   for (let i = 0; i < items.length; i++) {
     const y = contentY + i * (itemH + bulletGap);
