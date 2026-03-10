@@ -3345,10 +3345,10 @@ function renderGridCards(
         lineSpacingMultiple: 1.18,
       });
     } else {
-      slide.addText(String(i + 1).padStart(2, "0"), {
+      slide.addText(String(i + 1), {
         x: x + 0.10, y: y + 0.12,
-        w: 0.40, h: 0.30,
-        fontSize: Math.min(16, cardW > 2.5 ? 18 : 14),
+        w: 0.40, h: 0.34,
+        fontSize: Math.min(15, cardW > 2.5 ? 16 : 13),
         fontFace: design.fonts.title,
         bold: true,
         color: ensureContrastOnLight(pal, colors.cardBg),
