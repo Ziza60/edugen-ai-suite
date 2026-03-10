@@ -2553,7 +2553,7 @@ function renderTOC(
       const x = gridX + col * (cardW + gap);
       const y = gridY + row * (cardH + gap);
       const pal = design.palette[(globalOffset + i) % design.palette.length];
-      const num = String(globalOffset + i + 1).padStart(2, "0");
+      const num = String(globalOffset + i + 1);
 
       slide.addShape("roundRect" as any, {
         x: x + 0.02, y: y + 0.03,
