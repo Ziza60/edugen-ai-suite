@@ -2853,9 +2853,9 @@ function renderBullets(
     const rightX = sideW + 0.35;
     const rightW = SLIDE_W - rightX - 0.45;
     const rightY = 0.50;
-    const rightH = SLIDE_H - rightY - 0.45;
+    const rightH = SLIDE_H - rightY - 0.70;  // increased bottom margin from 0.45 to 0.70
     const rBulletGap = items.length >= 7 ? 0.03 : bulletGap;
-    const rItemH = Math.max(0.45, Math.min(1.20, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1)));
+    const rItemH = Math.max(0.42, Math.min(1.10, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1)));
 
     for (let i = 0; i < items.length; i++) {
       const yPos = rightY + i * (rItemH + rBulletGap);
