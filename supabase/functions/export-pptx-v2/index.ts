@@ -2377,6 +2377,12 @@ function renderCoverSlide(
       console.error("[V2-RENDER] Cover addImage FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
     }
+    // Overlay to soften background image and ensure text legibility
+    slide.addShape("rect" as any, {
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+      fill: { color: "000000" },
+      transparency: 45,
+    });
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
@@ -2853,9 +2859,9 @@ function renderBullets(
     const rightX = sideW + 0.35;
     const rightW = SLIDE_W - rightX - 0.45;
     const rightY = 0.50;
-    const rightH = SLIDE_H - rightY - 0.45;
+    const rightH = SLIDE_H - rightY - 0.70;  // increased bottom margin from 0.45 to 0.70
     const rBulletGap = items.length >= 7 ? 0.03 : bulletGap;
-    const rItemH = Math.max(0.45, Math.min(1.20, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1)));
+    const rItemH = Math.max(0.42, Math.min(1.10, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1)));
 
     for (let i = 0; i < items.length; i++) {
       const yPos = rightY + i * (rItemH + rBulletGap);
@@ -3345,24 +3351,29 @@ function renderGridCards(
         lineSpacingMultiple: 1.18,
       });
     } else {
+      const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
+      slide.addShape("roundRect" as any, {
+        x: x + 0.10, y: y + 0.14,
+        w: gcBadge, h: gcBadge,
+        fill: { color: pal },
+        rectRadius: 0.06,
+      });
       slide.addText(String(i + 1), {
-        x: x + 0.10, y: y + 0.12,
-        w: 0.40, h: 0.34,
-        fontSize: Math.min(15, cardW > 2.5 ? 16 : 13),
+        x: x + 0.10, y: y + 0.14,
+        w: gcBadge, h: gcBadge,
+        fontSize: Math.min(12, gcBadge * 34),
         fontFace: design.fonts.title,
-        bold: true,
-        color: ensureContrastOnLight(pal, colors.cardBg),
-        transparency: 10,
-        align: "left",
+        bold: true, color: "FFFFFF",
+        align: "center", valign: "middle",
       });
       slide.addText(items[i], {
-        x: x + 0.12, y: y + 0.48,
-        w: cardW - 0.24, h: cardH - 0.58,
+        x: x + 0.12, y: y + 0.14 + gcBadge + 0.10,
+        w: cardW - 0.24, h: cardH - (0.14 + gcBadge + 0.18),
         fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.20,
+        lineSpacingMultiple: 1.18,
       });
     }
   }
@@ -4303,6 +4314,12 @@ function renderClosingSlide(
       console.error("[V2-RENDER] Closing addImage FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
     }
+    // Overlay to soften background image and ensure text legibility
+    slide.addShape("rect" as any, {
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+      fill: { color: "000000" },
+      transparency: 45,
+    });
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
