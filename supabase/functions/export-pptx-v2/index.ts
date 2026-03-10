@@ -3509,7 +3509,7 @@ function renderProcessTimeline(
         w: cardW - 0.20, h: 0.40,
         fontSize: TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
-        bold: true, color: pal,
+        bold: true, color: ensureContrastOnLight(pal, colors.panelMid),
         align: "center",
       });
       if (desc) {
