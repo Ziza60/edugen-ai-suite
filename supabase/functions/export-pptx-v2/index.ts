@@ -1536,7 +1536,7 @@ function distributeModuleToSlides(
   slides.push({
     layout: "module_cover",
     title: moduleTitle,
-    subtitle: `MÓDULO ${String(moduleIndex + 1).padStart(2, "0")}`,
+    subtitle: `MÓDULO ${String(moduleIndex + 1)}`,
     objectives: objectiveItems.slice(0, 3),
     moduleIndex,
   });
@@ -2553,7 +2553,7 @@ function renderTOC(
       const x = gridX + col * (cardW + gap);
       const y = gridY + row * (cardH + gap);
       const pal = design.palette[(globalOffset + i) % design.palette.length];
-      const num = String(globalOffset + i + 1).padStart(2, "0");
+      const num = String(globalOffset + i + 1);
 
       slide.addShape("roundRect" as any, {
         x: x + 0.02, y: y + 0.03,
@@ -2644,7 +2644,7 @@ function renderModuleCover(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   const modIdx = (plan.moduleIndex ?? 0);
-  const modNum = String(modIdx + 1).padStart(2, "0");
+  const modNum = String(modIdx + 1);
   const accentColor = design.palette[modIdx % design.palette.length];
 
   const hasImage = !!image;
@@ -2968,10 +2968,10 @@ function renderBullets(
         fill: { color: pal },
         rectRadius: 0.10,
       });
-      slide.addText(String(i + 1).padStart(2, "0"), {
+      slide.addText(String(i + 1), {
         x: x + 0.12, y: y + 0.06,
-        w: 0.40, h: 0.28,
-        fontSize: Math.min(16, cardW > 3 ? 18 : 14),
+        w: 0.40, h: 0.34,
+        fontSize: Math.min(15, cardW > 3 ? 16 : 13),
         fontFace: design.fonts.title,
         bold: true,
         color: ensureContrastOnLight(pal, colors.cardBg),
@@ -3345,10 +3345,10 @@ function renderGridCards(
         lineSpacingMultiple: 1.18,
       });
     } else {
-      slide.addText(String(i + 1).padStart(2, "0"), {
+      slide.addText(String(i + 1), {
         x: x + 0.10, y: y + 0.12,
-        w: 0.40, h: 0.30,
-        fontSize: Math.min(16, cardW > 2.5 ? 18 : 14),
+        w: 0.40, h: 0.34,
+        fontSize: Math.min(15, cardW > 2.5 ? 16 : 13),
         fontFace: design.fonts.title,
         bold: true,
         color: ensureContrastOnLight(pal, colors.cardBg),
@@ -3509,7 +3509,7 @@ function renderProcessTimeline(
         w: cardW - 0.20, h: 0.40,
         fontSize: TYPO.CARD_TITLE,
         fontFace: design.fonts.title,
-        bold: true, color: pal,
+        bold: true, color: ensureContrastOnLight(pal, colors.panelMid),
         align: "center",
       });
       if (desc) {
