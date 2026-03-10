@@ -144,6 +144,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
             theme={theme}
             courseType={courseType}
             footerBrand={footerBrand}
+            template={template}
           />
         </div>
 
