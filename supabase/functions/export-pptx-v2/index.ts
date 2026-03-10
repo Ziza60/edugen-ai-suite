@@ -4314,6 +4314,12 @@ function renderClosingSlide(
       console.error("[V2-RENDER] Closing addImage FAILED:", err.message);
       addSlideBackground(slide, colors.coverDark);
     }
+    // Overlay to soften background image and ensure text legibility
+    slide.addShape("rect" as any, {
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+      fill: { color: "000000" },
+      transparency: 45,
+    });
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
