@@ -27,6 +27,9 @@ export default function Landing() {
             <span className="font-display text-xl font-bold">EduGen AI</span>
           </Link>
           <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={() => window.open(window.location.href, '_blank')} title="Abrir em nova aba">
+              <ExternalLink className="h-4 w-4" />
+            </Button>
             <Button variant="ghost" size="icon" onClick={toggleTheme}>
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
