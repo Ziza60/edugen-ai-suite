@@ -2644,7 +2644,7 @@ function renderModuleCover(
   const colors = getColors(design);
   const slide = pptx.addSlide();
   const modIdx = (plan.moduleIndex ?? 0);
-  const modNum = String(modIdx + 1).padStart(2, "0");
+  const modNum = String(modIdx + 1);
   const accentColor = design.palette[modIdx % design.palette.length];
 
   const hasImage = !!image;
