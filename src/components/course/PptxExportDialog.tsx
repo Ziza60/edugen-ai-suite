@@ -180,7 +180,12 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro }: Props
             <Switch checked={includeImages} onCheckedChange={setIncludeImages} />
           </div>
 
-          {/* Premium engine enabled by default */}
+          {/* Compatibility note */}
+          <div className="rounded-md border border-border bg-muted/50 p-3">
+            <p className="text-xs text-muted-foreground">
+              📎 O arquivo gerado é um <strong>.pptx padrão</strong>, totalmente editável no PowerPoint, Google Slides, Canva, LibreOffice Impress e Keynote.
+            </p>
+          </div>
         </div>
 
         <DialogFooter>
