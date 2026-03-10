@@ -1505,30 +1505,30 @@ function distributeModuleToSlides(
     moduleIndex,
   });
 
-  // ── Merge multiple "example" sections into a single consolidated section ──
-  // When a module has 3 separate "Exemplo Prático" sections, they should be
-  // consolidated into ONE example_highlight slide instead of 3 separate ones.
+  // ── Merge ALL "example" sections into a single consolidated section ──
+  // When a module has multiple "Exemplo Prático" sections (even non-consecutive),
+  // they should be consolidated into ONE example_highlight slide.
   const mergedSections: SemanticSection[] = [];
   let exampleAccumulator: SemanticSection | null = null;
+  let firstExampleInsertIndex = -1;
 
-  for (const section of sections) {
+  // First pass: collect all example sections and note where the first one appeared
+  for (let si = 0; si < sections.length; si++) {
+    const section = sections[si];
     if (section.pedagogicalType === "example") {
       if (!exampleAccumulator) {
         exampleAccumulator = { ...section, blocks: [...section.blocks] };
+        firstExampleInsertIndex = mergedSections.length;
       } else {
-        // Merge blocks from subsequent example sections into the first one
         exampleAccumulator.blocks.push(...section.blocks);
       }
     } else {
-      if (exampleAccumulator) {
-        mergedSections.push(exampleAccumulator);
-        exampleAccumulator = null;
-      }
       mergedSections.push(section);
     }
   }
+  // Insert the merged example section at the position of the first example
   if (exampleAccumulator) {
-    mergedSections.push(exampleAccumulator);
+    mergedSections.splice(firstExampleInsertIndex, 0, exampleAccumulator);
   }
 
   for (const section of mergedSections) {
