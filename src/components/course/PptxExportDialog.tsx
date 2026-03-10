@@ -131,7 +131,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Exportar PowerPoint</DialogTitle>
         </DialogHeader>
@@ -144,6 +144,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
             theme={theme}
             courseType={courseType}
             footerBrand={footerBrand}
+            template={template}
           />
         </div>
 
