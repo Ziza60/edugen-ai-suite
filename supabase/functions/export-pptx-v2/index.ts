@@ -1536,7 +1536,7 @@ function distributeModuleToSlides(
   slides.push({
     layout: "module_cover",
     title: moduleTitle,
-    subtitle: `MÓDULO ${String(moduleIndex + 1).padStart(2, "0")}`,
+    subtitle: `MÓDULO ${String(moduleIndex + 1)}`,
     objectives: objectiveItems.slice(0, 3),
     moduleIndex,
   });
