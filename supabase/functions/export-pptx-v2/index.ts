@@ -117,6 +117,9 @@ interface DesignConfig {
   fonts: { title: string; body: string };
   density: { maxItemsPerSlide: number; maxCharsPerItem: number };
   includeImages: boolean;
+  template: "default" | "academic" | "corporate" | "creative";
+  courseType: string;
+  footerBrand: string | null;
 }
 
 interface SlideImage {
@@ -225,19 +228,52 @@ const TYPO = {
   TOC_DESC: 12,
 };
 
+// ── Font map by template ──
+const TEMPLATE_FONTS: Record<string, { title: string; body: string }> = {
+  default:   { title: "Montserrat",        body: "Open Sans" },
+  academic:  { title: "Times New Roman",   body: "Arial" },
+  corporate: { title: "Montserrat",        body: "Open Sans" },
+  creative:  { title: "Playfair Display",  body: "Lato" },
+};
+
+// ── Default palette per template (used when palette = "default") ──
+const TEMPLATE_DEFAULT_PALETTES: Record<string, string[]> = {
+  default:   PALETTES.default,
+  academic:  ["003366", "336699", "FF6600", "006633", "660033"],
+  corporate: ["1A1A2E", "16213E", "0F3460", "533483", "E94560"],
+  creative:  ["2C3E50", "E74C3C", "F39C12", "8E44AD", "16A085"],
+};
+
+// ── Content density config ──
+const DENSITY_CONFIG: Record<string, { maxItemsPerSlide: number; maxCharsPerItem: number }> = {
+  compact:  { maxItemsPerSlide: 5, maxCharsPerItem: 130 },
+  standard: { maxItemsPerSlide: 6, maxCharsPerItem: 160 },
+  detailed: { maxItemsPerSlide: 8, maxCharsPerItem: 200 },
+};
+
 function buildDesignConfig(
   themeKey: string,
   paletteKey: string,
   includeImages = false,
+  templateKey = "default",
+  densityKey = "standard",
+  courseType = "CURSO COMPLETO",
+  footerBrand: string | null = "EduGenAI",
 ): DesignConfig {
   const theme = (themeKey === "dark" ? "dark" : "light") as "light" | "dark";
-  const palette = PALETTES[paletteKey] || PALETTES.default;
+  // If palette is "default", use template-specific default palette
+  const palette = paletteKey === "default"
+    ? (TEMPLATE_DEFAULT_PALETTES[templateKey] || PALETTES.default)
+    : (PALETTES[paletteKey] || PALETTES.default);
   return {
     theme,
     palette,
-    fonts: { title: "Montserrat", body: "Open Sans" },
-    density: { maxItemsPerSlide: 9, maxCharsPerItem: 200 },
+    fonts: TEMPLATE_FONTS[templateKey] || TEMPLATE_FONTS.default,
+    density: DENSITY_CONFIG[densityKey] || DENSITY_CONFIG.standard,
     includeImages,
+    template: (templateKey as DesignConfig["template"]) || "default",
+    courseType: courseType || "CURSO COMPLETO",
+    footerBrand: footerBrand !== undefined ? footerBrand : "EduGenAI",
   };
 }
 
@@ -1833,13 +1869,17 @@ function distributeModuleToSlides(
       }
 
       const slideTitle = isContination
-        ? `${section.title} (Parte ${ci + 1})`
+        ? section.title  // Keep clean title — continuation shown via dot indicator in sectionLabel
         : section.title;
+
+      const sectionLabelFinal = isContination
+        ? `${section.sectionLabel}  ·  ${ci + 1}/${chunks.length}`
+        : section.sectionLabel;
 
       slides.push({
         layout,
         title: slideTitle,
-        sectionLabel: section.sectionLabel,
+        sectionLabel: sectionLabelFinal,
         items: finalItems,
         moduleIndex,
         continuationOf: isContination ? section.title : undefined,
@@ -1855,6 +1895,9 @@ function distributeModuleToSlides(
 // ═══════════════════════════════════════════════════════════════════
 
 let _globalSlideIdx = 0;
+let _globalSlideNumber = 0;   // current rendered slide number (for footer)
+let _globalTotalSlides = 0;   // total planned slides (set before render loop)
+let _globalFooterBrand: string | null = "EduGenAI"; // set from design config
 
 function addSlideBackground(
   slide: ReturnType<PptxGenJS["addSlide"]>,
@@ -1972,25 +2015,45 @@ function addFooter(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   colors: ReturnType<typeof getColors>,
   fontBody: string,
+  slideNumber?: number,
+  totalSlides?: number,
+  footerBrand?: string | null,
 ) {
   addGradientBar(slide, 0, SLIDE_H - 0.28, SLIDE_W, 0.005, colors.p0, "right");
   addHR(slide, 0, SLIDE_H - 0.275, SLIDE_W, colors.divider, 0.003);
-  slide.addText("EduGenAI", {
-    x: SLIDE_W - 1.80, y: SLIDE_H - 0.24,
-    w: 1.50, h: 0.20,
-    fontSize: 8,
-    fontFace: fontBody,
-    bold: true,
-    color: colors.textSecondary,
-    align: "right",
-    valign: "middle",
-    charSpacing: 3,
-  });
-  slide.addShape("ellipse" as any, {
-    x: SLIDE_W - 1.92, y: SLIDE_H - 0.18,
-    w: 0.08, h: 0.08,
-    fill: { color: colors.p0 },
-  });
+
+  // Slide number (left side)
+  if (slideNumber !== undefined && totalSlides !== undefined) {
+    slide.addText(`${slideNumber} / ${totalSlides}`, {
+      x: 0.55, y: SLIDE_H - 0.24,
+      w: 1.20, h: 0.20,
+      fontSize: 8,
+      fontFace: fontBody,
+      color: colors.textSecondary,
+      align: "left",
+      valign: "middle",
+    });
+  }
+
+  // Brand (right side) — only if footerBrand is non-null
+  if (footerBrand) {
+    slide.addText(footerBrand, {
+      x: SLIDE_W - 1.80, y: SLIDE_H - 0.24,
+      w: 1.50, h: 0.20,
+      fontSize: 8,
+      fontFace: fontBody,
+      bold: true,
+      color: colors.textSecondary,
+      align: "right",
+      valign: "middle",
+      charSpacing: 3,
+    });
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - 1.92, y: SLIDE_H - 0.18,
+      w: 0.08, h: 0.08,
+      fill: { color: colors.p0 },
+    });
+  }
 }
 
 
@@ -2350,7 +2413,7 @@ function renderCoverSlide(
 
   addHR(slide, 1.20, 1.30, 3.50, colors.p0, 0.018);
 
-  slide.addText("CURSO COMPLETO", {
+  slide.addText(design.courseType || "CURSO COMPLETO", {
     x: 1.20, y: 1.55,
     w: 5.0, h: 0.28,
     fontSize: 10,
@@ -2395,7 +2458,8 @@ function renderCoverSlide(
 
   addHR(slide, 1.20, SLIDE_H - 1.20, 3.00, colors.p0, 0.012);
 
-  const dateStr = new Date().toISOString().slice(0, 10);
+  // PT-BR formatted date (e.g. "março de 2026")
+  const dateStr = new Intl.DateTimeFormat("pt-BR", { year: "numeric", month: "long" }).format(new Date());
   slide.addText(dateStr, {
     x: SLIDE_W - 3.00, y: SLIDE_H - 0.65,
     w: 2.60, h: 0.30,
@@ -2409,16 +2473,7 @@ function renderCoverSlide(
   if (image) {
     addImageCredit(slide, image.credit, design);
   }
-
-  slide.addText(`Engine ${ENGINE_VERSION}`, {
-    x: SLIDE_W - 2.2, y: SLIDE_H - 0.35,
-    w: 2.0, h: 0.25,
-    fontSize: 7,
-    fontFace: design.fonts.body,
-    color: "666666",
-    align: "right",
-    transparency: 50,
-  });
+  // Engine version removed — not visible in commercial output
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -2995,7 +3050,7 @@ function renderBullets(
       }
     }
   }
-  addFooter(slide, colors, design.fonts.body);
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -3091,7 +3146,7 @@ function renderTwoColumnBullets(
       });
     }
   }
-  addFooter(slide, colors, design.fonts.body);
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -3195,7 +3250,7 @@ function renderDefinition(
       });
     }
   }
-  addFooter(slide, colors, design.fonts.body);
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -3311,7 +3366,7 @@ function renderGridCards(
       });
     }
   }
-  addFooter(slide, colors, design.fonts.body);
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -3569,7 +3624,7 @@ function renderProcessTimeline(
       }
     }
   }
-  addFooter(slide, colors, design.fonts.body);
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -3628,7 +3683,7 @@ function renderComparisonTable(
     border: { type: "solid", pt: 0.3, color: colors.borders },
     autoPage: false,
   });
-  addFooter(slide, colors, design.fonts.body);
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -3798,7 +3853,7 @@ function renderExampleHighlight(
     }
   }
 
-  addFooter(slide, colors, design.fonts.body);
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -3907,7 +3962,7 @@ function renderWarningCallout(
       });
     }
   }
-  addFooter(slide, colors, design.fonts.body);
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -4114,7 +4169,7 @@ function renderSummarySlide(
       lineSpacingMultiple: 1.25,
     });
   }
-  addFooter(slide, colors, design.fonts.body);
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -4339,11 +4394,11 @@ function renderClosingSlide(
     }
   }
 
-  // ── Date bottom-right ──
-  const dateStr = new Date().toISOString().slice(0, 10);
+  // ── Date bottom-right (PT-BR format) ──
+  const dateStr = new Intl.DateTimeFormat("pt-BR", { year: "numeric", month: "long" }).format(new Date());
   slide.addText(dateStr, {
-    x: SLIDE_W - 2.50, y: SLIDE_H - 0.55,
-    w: 2.10, h: 0.28,
+    x: SLIDE_W - 2.80, y: SLIDE_H - 0.55,
+    w: 2.40, h: 0.28,
     fontSize: 11,
     fontFace: design.fonts.body,
     color: colors.coverSubtext,
@@ -4430,6 +4485,8 @@ async function runPipeline(
   pptx.title = courseTitle;
 
   _globalSlideIdx = 0;
+  _globalSlideNumber = 0;
+  _globalFooterBrand = design.footerBrand;
 
   const imagePlan = await buildImagePlan(courseTitle, modules, design.includeImages);
 
@@ -4449,6 +4506,10 @@ async function runPipeline(
   } as any;
   if (!unsplashKey) report.imageDiagnostics!.errors.push("UNSPLASH_ACCESS_KEY not set in Supabase secrets");
   if (!design.includeImages) report.imageDiagnostics!.errors.push("includeImages is false — images disabled by user");
+  if (design.includeImages && unsplashKey && (imagePlan.modules.size === 0 && !imagePlan.cover)) {
+    report.imageDiagnostics!.errors.push("IMAGES_NOT_FETCHED: includeImages was true but no images were retrieved. Check Unsplash API key and quota.");
+    report.warnings.push("IMAGES_NOT_FETCHED: Presentation generated without images. Check Unsplash configuration.");
+  }
   console.log(`[V2-IMAGE-DIAG]`, JSON.stringify(report.imageDiagnostics));
 
   renderCoverSlide(pptx, courseTitle, design, imagePlan.cover);
@@ -4609,6 +4670,8 @@ async function runPipeline(
   }
 
   console.log(`[V2-STAGE-4] Rendering slides...`);
+  // Compute total content slides for footer numbering (cover + TOC + module slides + closing)
+  _globalTotalSlides = allModuleSlidePlans.reduce((sum, plans) => sum + plans.length, 0);
   let moduleIdx = 0;
   for (const modulePlans of allModuleSlidePlans) {
     const moduleImage = imagePlan.modules.get(moduleIdx) || null;
@@ -4669,7 +4732,7 @@ Deno.serve(async (req: Request) => {
     const userId = claimsData.user.id;
 
     const body = await req.json();
-    const { course_id, palette, density, theme, includeImages, template } = body;
+    const { course_id, palette, density, theme, includeImages, template, courseType, footerBrand } = body;
     if (!course_id) {
       return new Response(
         JSON.stringify({ error: "course_id required" }),
@@ -4729,7 +4792,15 @@ Deno.serve(async (req: Request) => {
       .eq("course_id", course_id)
       .order("order_index");
 
-    const design = buildDesignConfig(theme || "light", palette || "default", !!includeImages);
+    const design = buildDesignConfig(
+      theme || "light",
+      palette || "default",
+      !!includeImages,
+      template || "default",
+      density || "standard",
+      courseType || "CURSO COMPLETO",
+      footerBrand !== undefined ? footerBrand : "EduGenAI",
+    );
 
     const courseTitle = sanitize(cleanMarkdown(course.title || "Curso EduGenAI"));
     const moduleData = modules.map((m: any) => ({
@@ -4857,6 +4928,7 @@ Deno.serve(async (req: Request) => {
           redistributions: report.redistributions,
           warnings: report.warnings,
           image_diagnostics: report.imageDiagnostics || null,
+          images_warning: (report.imageDiagnostics?.errors || []).find(e => e.startsWith("IMAGES_NOT_FETCHED")) || null,
           zip_diagnostics: report.zipDiagnostics || null,
         },
       }),
