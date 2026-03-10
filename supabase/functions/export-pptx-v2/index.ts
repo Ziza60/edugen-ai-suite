@@ -3345,24 +3345,29 @@ function renderGridCards(
         lineSpacingMultiple: 1.18,
       });
     } else {
+      const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
+      slide.addShape("roundRect" as any, {
+        x: x + 0.10, y: y + 0.14,
+        w: gcBadge, h: gcBadge,
+        fill: { color: pal },
+        rectRadius: 0.06,
+      });
       slide.addText(String(i + 1), {
-        x: x + 0.10, y: y + 0.12,
-        w: 0.40, h: 0.34,
-        fontSize: Math.min(15, cardW > 2.5 ? 16 : 13),
+        x: x + 0.10, y: y + 0.14,
+        w: gcBadge, h: gcBadge,
+        fontSize: Math.min(12, gcBadge * 34),
         fontFace: design.fonts.title,
-        bold: true,
-        color: ensureContrastOnLight(pal, colors.cardBg),
-        transparency: 10,
-        align: "left",
+        bold: true, color: "FFFFFF",
+        align: "center", valign: "middle",
       });
       slide.addText(items[i], {
-        x: x + 0.12, y: y + 0.48,
-        w: cardW - 0.24, h: cardH - 0.58,
+        x: x + 0.12, y: y + 0.14 + gcBadge + 0.10,
+        w: cardW - 0.24, h: cardH - (0.14 + gcBadge + 0.18),
         fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.20,
+        lineSpacingMultiple: 1.18,
       });
     }
   }
