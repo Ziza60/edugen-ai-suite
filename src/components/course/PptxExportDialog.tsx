@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { SlidePreview } from "./SlidePreview";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -135,8 +136,20 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
           <DialogTitle>Exportar PowerPoint</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        {/* ── Slide Preview ── */}
+        <div className="space-y-1.5 py-1">
+          <span className="text-xs text-muted-foreground">Pré-visualização</span>
+          <SlidePreview
+            previewColors={previewColors}
+            theme={theme}
+            courseType={courseType}
+            footerBrand={footerBrand}
+          />
+        </div>
 
+        <hr className="border-border" />
+
+        <div className="space-y-5 py-2">
           {/* ── Tema Visual (first — sets the overall mood) ── */}
           <div className="space-y-2">
             <Label>Tema Visual</Label>
