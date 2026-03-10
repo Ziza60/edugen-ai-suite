@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, BookOpen, Zap, Award, ArrowRight, FileUp, CheckCircle, Crown, Moon, Sun } from "lucide-react";
+import { Sparkles, BookOpen, Zap, Award, ArrowRight, FileUp, CheckCircle, Crown, Moon, Sun, ExternalLink } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTheme } from "@/hooks/useTheme";
 
