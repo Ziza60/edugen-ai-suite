@@ -1505,7 +1505,33 @@ function distributeModuleToSlides(
     moduleIndex,
   });
 
+  // ── Merge multiple "example" sections into a single consolidated section ──
+  // When a module has 3 separate "Exemplo Prático" sections, they should be
+  // consolidated into ONE example_highlight slide instead of 3 separate ones.
+  const mergedSections: SemanticSection[] = [];
+  let exampleAccumulator: SemanticSection | null = null;
+
   for (const section of sections) {
+    if (section.pedagogicalType === "example") {
+      if (!exampleAccumulator) {
+        exampleAccumulator = { ...section, blocks: [...section.blocks] };
+      } else {
+        // Merge blocks from subsequent example sections into the first one
+        exampleAccumulator.blocks.push(...section.blocks);
+      }
+    } else {
+      if (exampleAccumulator) {
+        mergedSections.push(exampleAccumulator);
+        exampleAccumulator = null;
+      }
+      mergedSections.push(section);
+    }
+  }
+  if (exampleAccumulator) {
+    mergedSections.push(exampleAccumulator);
+  }
+
+  for (const section of mergedSections) {
     if (section.pedagogicalType === "objectives") continue;
     let layout = PEDAGOGICAL_LAYOUT_MAP[section.pedagogicalType] || "bullets";
 
