@@ -2968,10 +2968,10 @@ function renderBullets(
         fill: { color: pal },
         rectRadius: 0.10,
       });
-      slide.addText(String(i + 1).padStart(2, "0"), {
+      slide.addText(String(i + 1), {
         x: x + 0.12, y: y + 0.06,
-        w: 0.40, h: 0.28,
-        fontSize: Math.min(16, cardW > 3 ? 18 : 14),
+        w: 0.40, h: 0.34,
+        fontSize: Math.min(15, cardW > 3 ? 16 : 13),
         fontFace: design.fonts.title,
         bold: true,
         color: ensureContrastOnLight(pal, colors.cardBg),
