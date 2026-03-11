@@ -2751,13 +2751,6 @@ function renderTOC(
         });
       }
     }
-      slide.addShape("ellipse" as any, {
-        x: x + cardW - 0.26, y: y + cardH - 0.22,
-        w: 0.08, h: 0.08,
-        fill: { color: pal },
-        transparency: 40,
-      });
-    }
   }
 }
 
