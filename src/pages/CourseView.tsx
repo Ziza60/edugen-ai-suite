@@ -18,7 +18,7 @@ import remarkGfm from "remark-gfm";
 import { useMarkdownTableComponents } from "@/components/course/MarkdownTable";
 import { motion } from "framer-motion";
 import { useEffect, useState, useRef } from "react";
-import { Textarea } from "@/components/ui/textarea";
+import { BlockEditor } from "@/components/course/BlockEditor";
 import { CertificateDialog } from "@/components/course/CertificateDialog";
 import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
@@ -457,11 +457,10 @@ export default function CourseView() {
               {/* Module content */}
               {editingModuleId === activeModule.id ? (
                 <div className="space-y-3">
-                  <Textarea
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    rows={20}
-                    className="font-mono text-sm resize-y"
+                  <BlockEditor
+                    content={editContent}
+                    onChange={(md) => setEditContent(md)}
+                    isPro={isPro}
                   />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent })}>
