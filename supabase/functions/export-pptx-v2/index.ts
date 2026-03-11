@@ -146,29 +146,29 @@ const SAFE_H = SLIDE_H - 1.0;
 
 const THEMES = {
   light: {
-    bg: "F7F8FC",
-    bgAlt: "EDEEF5",
-    bgAccent: "E2E5F0",
+    bg: "F0F2F8",           // cinza-azulado frio em vez de branco puro
+    bgAlt: "E4E8F2",        // levemente mais escuro para alternância
+    bgAccent: "D6DCF0",
     text: "0F172A",
-    textSecondary: "5A6578",
+    textSecondary: "4A5568",
     accent: "6C63FF",
     accentMuted: "EEEDFF",
-    borders: "CDD2DE",
+    borders: "C8CEDF",
     cardBg: "FFFFFF",
-    cardBgAlt: "F1F3FA",
+    cardBgAlt: "EEF1FA",
     tableHeaderBg: "0F172A",
     tableRowOdd: "FFFFFF",
-    tableRowEven: "F1F3FA",
+    tableRowEven: "EEF1FA",
     insightBg: "FFF8ED",
     reflectionBg: "EDF0FA",
-    coverBg: "050A18",
+    coverBg: "0F1C3F",      // azul-marinho escuro para capa
     coverText: "FFFFFF",
-    coverSubtext: "94A3C0",
-    divider: "D0D5E0",
-    coverDark: "050A18",
-    panelDark: "0A1228",
-    panelMid: "111D38",
-    shadowColor: "0F172A",
+    coverSubtext: "A0AEC0",
+    divider: "C8CEDF",
+    coverDark: "0F1C3F",
+    panelDark: "162040",
+    panelMid: "1E2D55",
+    shadowColor: "8896B0",  // sombra azulada em vez de preta
   },
   dark: {
     bg: "0C1322",
