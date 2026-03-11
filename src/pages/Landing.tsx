@@ -5,10 +5,12 @@ import {
   Sparkles, BookOpen, Zap, Award, ArrowRight, FileUp, CheckCircle, Crown,
   Moon, Sun, Brain, Target, BarChart3, Pencil, Globe, Presentation,
   GraduationCap, School, Bot, Video, Users, Star, FileText, Download,
-  MessageSquare,
+  MessageSquare, ExternalLink, Copy,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTheme } from "@/hooks/useTheme";
+import { useState } from "react";
+import { toast } from "sonner";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -78,8 +80,22 @@ export default function Landing() {
             <span className="font-display-sora text-xl font-bold tracking-tight">EduGen AI</span>
           </Link>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="text-white/60 hover:text-white hover:bg-white/5 hidden md:inline-flex" asChild>
-              <Link to="/plans">Preços</Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                const url = window.location.href;
+                navigator.clipboard.writeText(url).then(() => {
+                  toast.success("URL copiada! Cole em uma nova aba do navegador.");
+                }).catch(() => {
+                  // Fallback: show URL in a prompt
+                  window.prompt("Copie esta URL e cole em uma nova aba:", url);
+                });
+              }}
+              className="text-white/60 hover:text-white hover:bg-white/5"
+              title="Copiar URL do app"
+            >
+              <Copy className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-white/60 hover:text-white hover:bg-white/5">
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
