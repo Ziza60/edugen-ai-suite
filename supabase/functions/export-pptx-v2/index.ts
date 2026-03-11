@@ -2607,100 +2607,149 @@ function renderTOC(
       fill: { color: colors.p0 },
     });
 
-    // ── Card grid ──
+    // ── Layout choice: list for 5+ modules, grid otherwise ──
     const globalOffset = page * MAX_PER_PAGE;
-    const cols = pageModules.length <= 3 ? pageModules.length : pageModules.length <= 4 ? 2 : 3;
-    const rows = Math.ceil(pageModules.length / cols);
-    const gap = 0.18;
-    const gridX = 0.65;
-    const gridW = SLIDE_W - 1.30;
-    const cardW = (gridW - gap * (cols - 1)) / cols;
-    const gridY = 1.80;
-    const gridH = SLIDE_H - gridY - 0.30;
-    const cardH = Math.min(2.50, (gridH - gap * (rows - 1)) / rows);
+    const useListLayout = modules.length > 5;
 
-    for (let i = 0; i < pageModules.length; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = gridX + col * (cardW + gap);
-      const y = gridY + row * (cardH + gap);
-      const pal = design.palette[(globalOffset + i) % design.palette.length];
-      const num = String(globalOffset + i + 1);
+    if (useListLayout) {
+      // ── Vertical list layout ──
+      const itemH = Math.min(0.85, (SLIDE_H - 1.80 - 0.45) / pageModules.length);
+      for (let i = 0; i < pageModules.length; i++) {
+        const mod = pageModules[i];
+        const pal = design.palette[(globalOffset + i) % design.palette.length];
+        const y = 1.80 + i * (itemH + 0.08);
+        // badge número
+        slide.addShape("roundRect" as any, {
+          x: 0.65, y: y + itemH / 2 - 0.18,
+          w: 0.36, h: 0.36,
+          fill: { color: pal }, rectRadius: 0.06,
+        });
+        slide.addText(String(globalOffset + i + 1), {
+          x: 0.65, y: y + itemH / 2 - 0.18,
+          w: 0.36, h: 0.36,
+          fontSize: 13, fontFace: design.fonts.title,
+          bold: true, color: "FFFFFF",
+          align: "center", valign: "middle",
+        });
+        // título
+        slide.addText(mod.title, {
+          x: 1.18, y,
+          w: 5.50, h: itemH,
+          fontSize: 13, fontFace: design.fonts.title,
+          bold: true, color: "FFFFFF",
+          valign: "middle",
+        });
+        // descrição
+        if (mod.description) {
+          slide.addText(mod.description, {
+            x: 7.00, y,
+            w: SLIDE_W - 7.50, h: itemH,
+            fontSize: 10, fontFace: design.fonts.body,
+            color: colors.coverSubtext,
+            valign: "middle",
+            lineSpacingMultiple: 1.15,
+          });
+        }
+        // linha divisória
+        if (i < pageModules.length - 1) {
+          addHR(slide, 0.65, y + itemH + 0.04, SLIDE_W - 1.20, colors.divider, 0.008);
+        }
+      }
+    } else {
+      // ── Card grid (original) ──
+      const cols = pageModules.length <= 3 ? pageModules.length : pageModules.length <= 4 ? 2 : 3;
+      const rows = Math.ceil(pageModules.length / cols);
+      const gap = 0.18;
+      const gridX = 0.65;
+      const gridW = SLIDE_W - 1.30;
+      const cardW = (gridW - gap * (cols - 1)) / cols;
+      const gridY = 1.80;
+      const gridH = SLIDE_H - gridY - 0.30;
+      const cardH = Math.min(2.50, (gridH - gap * (rows - 1)) / rows);
 
-      slide.addShape("roundRect" as any, {
-        x: x + 0.02, y: y + 0.03,
-        w: cardW, h: cardH,
-        fill: { color: "000000" },
-        transparency: 70,
-        rectRadius: 0.12,
-      });
-      slide.addShape("roundRect" as any, {
-        x, y, w: cardW, h: cardH,
-        fill: { color: colors.panelMid },
-        rectRadius: 0.12,
-      });
+      for (let i = 0; i < pageModules.length; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const x = gridX + col * (cardW + gap);
+        const y = gridY + row * (cardH + gap);
+        const pal = design.palette[(globalOffset + i) % design.palette.length];
+        const num = String(globalOffset + i + 1);
 
-      slide.addShape("rect" as any, {
-        x, y, w: 0.05, h: cardH,
-        fill: { color: pal },
-        rectRadius: 0.12,
-      });
+        slide.addShape("roundRect" as any, {
+          x: x + 0.02, y: y + 0.03,
+          w: cardW, h: cardH,
+          fill: { color: "000000" },
+          transparency: 70,
+          rectRadius: 0.12,
+        });
+        slide.addShape("roundRect" as any, {
+          x, y, w: cardW, h: cardH,
+          fill: { color: colors.panelMid },
+          rectRadius: 0.12,
+        });
 
-      const badgeS = Math.min(0.44, cardH * 0.25);
-      slide.addShape("roundRect" as any, {
-        x: x + 0.14, y: y + 0.14,
-        w: badgeS, h: badgeS,
-        fill: { color: pal },
-        rectRadius: 0.08,
-      });
-      slide.addText(num, {
-        x: x + 0.14, y: y + 0.14,
-        w: badgeS, h: badgeS,
-        fontSize: Math.min(18, badgeS * 38),
-        fontFace: design.fonts.title,
-        bold: true,
-        color: "FFFFFF",
-        align: "center",
-        valign: "middle",
-      });
+        slide.addShape("rect" as any, {
+          x, y, w: 0.05, h: cardH,
+          fill: { color: pal },
+          rectRadius: 0.12,
+        });
 
-      const titleY = y + 0.14 + badgeS + 0.08;
-      const titleH = Math.min(0.60, (cardH - badgeS - 0.36) * 0.50);
-      slide.addText(pageModules[i].title, {
-        x: x + 0.14, y: titleY,
-        w: cardW - 0.28, h: titleH,
-        fontSize: cardH < 1.4 ? 12 : 14,
-        fontFace: design.fonts.title,
-        bold: true,
-        color: "FFFFFF",
-        valign: "top",
-        lineSpacingMultiple: 1.06,
-        autoFit: true,
-      });
+        const badgeS = Math.min(0.44, cardH * 0.25);
+        slide.addShape("roundRect" as any, {
+          x: x + 0.14, y: y + 0.14,
+          w: badgeS, h: badgeS,
+          fill: { color: pal },
+          rectRadius: 0.08,
+        });
+        slide.addText(num, {
+          x: x + 0.14, y: y + 0.14,
+          w: badgeS, h: badgeS,
+          fontSize: Math.min(18, badgeS * 38),
+          fontFace: design.fonts.title,
+          bold: true,
+          color: "FFFFFF",
+          align: "center",
+          valign: "middle",
+        });
 
-      const sepY = titleY + titleH + 0.04;
-      addHR(slide, x + 0.14, sepY, cardW * 0.45, pal, 0.010);
-
-      if (pageModules[i].description) {
-        const descY = sepY + 0.06;
-        const descH = Math.max(0.20, y + cardH - descY - 0.12);
-        slide.addText(pageModules[i].description!, {
-          x: x + 0.14, y: descY,
-          w: cardW - 0.28, h: descH,
-          fontSize: cardH < 1.4 ? 9 : 11,
-          fontFace: design.fonts.body,
-          color: colors.coverSubtext,
+        const titleY = y + 0.14 + badgeS + 0.08;
+        const titleH = Math.min(0.60, (cardH - badgeS - 0.36) * 0.50);
+        slide.addText(pageModules[i].title, {
+          x: x + 0.14, y: titleY,
+          w: cardW - 0.28, h: titleH,
+          fontSize: cardH < 1.4 ? 12 : 14,
+          fontFace: design.fonts.title,
+          bold: true,
+          color: "FFFFFF",
           valign: "top",
-          lineSpacingMultiple: 1.18,
+          lineSpacingMultiple: 1.06,
+          autoFit: true,
+        });
+
+        const sepY = titleY + titleH + 0.04;
+        addHR(slide, x + 0.14, sepY, cardW * 0.45, pal, 0.010);
+
+        if (pageModules[i].description) {
+          const descY = sepY + 0.06;
+          const descH = Math.max(0.20, y + cardH - descY - 0.12);
+          slide.addText(pageModules[i].description!, {
+            x: x + 0.14, y: descY,
+            w: cardW - 0.28, h: descH,
+            fontSize: cardH < 1.4 ? 9 : 11,
+            fontFace: design.fonts.body,
+            color: colors.coverSubtext,
+            valign: "top",
+            lineSpacingMultiple: 1.18,
+          });
+        }
+
+        slide.addShape("ellipse" as any, {
+          x: x + cardW - 0.26, y: y + cardH - 0.22,
+          w: 0.08, h: 0.08,
+          fill: { color: pal },
+          transparency: 40,
         });
       }
-
-      slide.addShape("ellipse" as any, {
-        x: x + cardW - 0.26, y: y + cardH - 0.22,
-        w: 0.08, h: 0.08,
-        fill: { color: pal },
-        transparency: 40,
-      });
     }
   }
 }
