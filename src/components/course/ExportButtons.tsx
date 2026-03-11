@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Download, FileText, Loader2, Package, StickyNote,
+  Download, FileText, Loader2, Package, StickyNote, GraduationCap,
 } from "lucide-react";
 import { PptxExportDialog, type PptxExportOptions } from "./PptxExportDialog";
 import { PptxQualityReport, type QualityReport } from "./PptxQualityReport";
@@ -25,6 +25,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const [exportingPptx, setExportingPptx] = useState(false);
   const [exportingScorm, setExportingScorm] = useState(false);
   const [exportingNotion, setExportingNotion] = useState(false);
+  const [exportingMoodle, setExportingMoodle] = useState(false);
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
 
@@ -236,6 +237,18 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
         >
           {exportingNotion ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <StickyNote className="h-4 w-4 mr-1" />}
           Notion {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+        </Button>
+
+        {/* Moodle - Pro */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleExportWithFunction("export-moodle", "zip", setExportingMoodle, "Moodle")}
+          disabled={exportingMoodle || !isPublished}
+          title={!isPublished ? "Publique o curso primeiro" : "Exportar para Moodle (XML Backup)"}
+        >
+          {exportingMoodle ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <GraduationCap className="h-4 w-4 mr-1" />}
+          Moodle {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
         </Button>
 
         {/* SCORM - Business */}

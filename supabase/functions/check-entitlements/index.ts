@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PRO_FEATURES = ["flashcards_flip", "export_pdf", "export_pptx", "export_notion", "ai_images", "custom_certificate"];
+const PRO_FEATURES = ["flashcards_flip", "export_pdf", "export_pptx", "export_notion", "ai_images", "custom_certificate", "export_moodle"];
 const BUSINESS_FEATURES = ["export_scorm"];
 
 Deno.serve(async (req: Request) => {
