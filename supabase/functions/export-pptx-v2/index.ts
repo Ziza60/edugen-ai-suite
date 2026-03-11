@@ -2959,6 +2959,7 @@ function renderBullets(
   } else if (variant === 2) {
     // ── VARIANT C: 2-column card grid with colored left edge + shadow ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
