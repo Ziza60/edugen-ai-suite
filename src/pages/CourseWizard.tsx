@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
+import { TemplateSelector, CourseTemplate } from "@/components/course/TemplateSelector";
 
 const STEPS = [
   { label: "Sobre o curso", num: 1 },
@@ -40,6 +41,9 @@ interface UploadedSource {
 }
 
 export default function CourseWizard() {
+  const [showTemplates, setShowTemplates] = useState(true);
+  const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null);
+
   const { user } = useAuth();
   const { plan, limits } = useSubscription();
   const { usage } = useMonthlyUsage();
@@ -76,6 +80,27 @@ export default function CourseWizard() {
   const canUseSources = plan === "pro";
   const maxFiles = plan === "pro" ? MAX_FILES_PRO : MAX_FILES_FREE;
   const totalChars = uploadedSources.reduce((sum, s) => sum + s.char_count, 0);
+
+  const handleTemplateSelect = (template: CourseTemplate) => {
+    setSelectedTemplate(template);
+    setForm((prev) => ({
+      ...prev,
+      title: template.suggestedTitle,
+      theme: template.suggestedTheme,
+      targetAudience: template.targetAudience,
+      tone: template.tone,
+      numModules: Math.min(template.suggestedModules, limits.maxModules),
+    }));
+    setShowTemplates(false);
+  };
+
+  const handleSkipTemplates = () => {
+    setShowTemplates(false);
+  };
+
+  if (showTemplates) {
+    return <TemplateSelector onSelect={handleTemplateSelect} onSkip={handleSkipTemplates} />;
+  }
 
   const updateForm = (key: string, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -219,6 +244,11 @@ export default function CourseWizard() {
           </Button>
           <div className="h-5 w-px bg-border" />
           <h1 className="font-display text-lg font-bold text-foreground">Criar novo curso</h1>
+          {selectedTemplate && (
+            <Badge variant="secondary" className="text-xs">
+              Template: {selectedTemplate.name}
+            </Badge>
+          )}
         </div>
       </div>
 
