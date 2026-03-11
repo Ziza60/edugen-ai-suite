@@ -2818,6 +2818,7 @@ function renderBullets(
   if (variant === 0) {
     // ── VARIANT A: Split layout — dark left sidebar + content right ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     const sideW = SLIDE_W * 0.35;
     slide.addShape("rect" as any, {
       x: 0, y: 0, w: sideW, h: SLIDE_H,
