@@ -1956,12 +1956,13 @@ function addCardShadow(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   x: number, y: number, w: number, h: number,
   shadowColor: string,
+  isLightTheme = false,
 ) {
   slide.addShape("roundRect" as any, {
     x: x + 0.03, y: y + 0.04,
     w, h,
     fill: { color: shadowColor },
-    transparency: 88,
+    transparency: isLightTheme ? 78 : 88,
     rectRadius: 0.10,
   });
 }
