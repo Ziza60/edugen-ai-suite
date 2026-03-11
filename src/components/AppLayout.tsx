@@ -2,7 +2,7 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
-import { LayoutDashboard, BookOpen, Award, LogOut, Sparkles, Menu, X, Star, CreditCard, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, BookOpen, Award, LogOut, Sparkles, Menu, X, Star, CreditCard, Moon, Sun, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
