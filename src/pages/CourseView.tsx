@@ -10,7 +10,7 @@ import {
   ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
   RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
   Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2,
-  BarChart3
+  BarChart3, Globe, Rocket
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { ExportButtons } from "@/components/course/ExportButtons";
@@ -53,6 +53,7 @@ export default function CourseView() {
   const [togglingTutor, setTogglingTutor] = useState(false);
   const [eduScore, setEduScore] = useState<any>(null);
   const [calculatingScore, setCalculatingScore] = useState(false);
+  const [generatingLanding, setGeneratingLanding] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isPro = plan === "pro";
@@ -143,6 +144,20 @@ export default function CourseView() {
       return count || 0;
     },
     enabled: !!id && !!(course as any)?.tutor_enabled,
+  });
+
+  // Landing page data
+  const { data: landing, refetch: refetchLanding } = useQuery({
+    queryKey: ["course-landing", id],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("course_landings") as any)
+        .select("*")
+        .eq("course_id", id!)
+        .single();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!id,
   });
 
   useQuery({
@@ -440,6 +455,100 @@ export default function CourseView() {
                   </Button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Landing Page Controls ── */}
+          {isPublished && (
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border">
+              <div className="flex items-center gap-3">
+                <Globe className="h-5 w-5 text-primary" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Landing Page</span>
+                    {landing && (
+                      <Badge variant={landing.is_published ? "default" : "outline"} className="text-[10px]">
+                        {landing.is_published ? "Publicada" : "Rascunho"}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {landing ? "Página de vendas gerada por IA" : "Gere uma página de vendas com IA"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={generatingLanding || modules.length === 0}
+                  onClick={async () => {
+                    setGeneratingLanding(true);
+                    try {
+                      const { data, error } = await supabase.functions.invoke("generate-landing", {
+                        body: { course_id: id },
+                      });
+                      if (error) throw error;
+                      refetchLanding();
+                      toast({
+                        title: "Landing page gerada!",
+                        description: "O copy foi criado por IA a partir do conteúdo do curso.",
+                      });
+                    } catch (err: any) {
+                      toast({ title: "Erro ao gerar landing", description: err.message, variant: "destructive" });
+                    } finally {
+                      setGeneratingLanding(false);
+                    }
+                  }}
+                >
+                  {generatingLanding ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <Rocket className="h-3 w-3 mr-1.5" />}
+                  {landing ? "Regenerar" : "Gerar Landing"}
+                </Button>
+
+                {landing && (
+                  <>
+                    <Switch
+                      checked={!!landing.is_published}
+                      onCheckedChange={async (pub) => {
+                        try {
+                          const { error } = await (supabase.from("course_landings") as any)
+                            .update({ is_published: pub })
+                            .eq("id", landing.id);
+                          if (error) throw error;
+                          refetchLanding();
+                          toast({ title: pub ? "Landing publicada!" : "Landing despublicada" });
+                        } catch (err: any) {
+                          toast({ title: "Erro", description: err.message, variant: "destructive" });
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        const url = `${window.location.origin}/c/${landing.slug}`;
+                        navigator.clipboard.writeText(url);
+                        toast({ title: "Link copiado!", description: url });
+                      }}
+                    >
+                      <Copy className="h-3 w-3 mr-1.5" />
+                      Copiar link
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => window.open(`/c/${landing.slug}`, "_blank")}
+                    >
+                      <Link2 className="h-3 w-3 mr-1.5" />
+                      Abrir
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
