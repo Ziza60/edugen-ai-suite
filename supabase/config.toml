@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.tutor-chat]
 verify_jwt = false
+
+[functions.calculate-eduscore]
+verify_jwt = false
