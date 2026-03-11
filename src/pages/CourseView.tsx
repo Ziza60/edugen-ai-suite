@@ -51,6 +51,8 @@ export default function CourseView() {
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizRevealed, setQuizRevealed] = useState<Record<string, boolean>>({});
   const [togglingTutor, setTogglingTutor] = useState(false);
+  const [eduScore, setEduScore] = useState<any>(null);
+  const [calculatingScore, setCalculatingScore] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isPro = plan === "pro";
