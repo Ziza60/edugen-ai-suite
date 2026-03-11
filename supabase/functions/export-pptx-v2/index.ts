@@ -1832,6 +1832,24 @@ function distributeModuleToSlides(
       validItems = coreItems.slice(0, 5);
     }
 
+    // ── Fragment merging for process_timeline items ──
+    if (layout === "process_timeline") {
+      const merged: string[] = [];
+      for (let i = 0; i < validItems.length; i++) {
+        const curr = validItems[i];
+        const next = validItems[i + 1] || "";
+        // If the current item doesn't end with punctuation and the next starts with lowercase
+        // or a connector, merge them into a single item
+        if (!curr.match(/[.!?]$/) && next && /^[a-záàãâéêíóôõúç]/.test(next)) {
+          merged.push(`${curr} ${next}`);
+          i++; // skip next
+        } else {
+          merged.push(curr);
+        }
+      }
+      validItems = merged;
+    }
+
     if (validItems.length === 0) {
       // Skip empty sections entirely — don't create slides with only the title as content
       report.warnings.push(`Skipped empty section: "${section.title}"`);
@@ -1929,6 +1947,20 @@ function distributeModuleToSlides(
         moduleIndex,
         continuationOf: isContination ? section.title : undefined,
       });
+    }
+  }
+
+  // ── Deduplication: remove consecutive example_highlight slides with identical content ──
+  for (let i = slides.length - 1; i > 0; i--) {
+    const curr = slides[i];
+    const prev = slides[i - 1];
+    if (
+      curr.layout === "example_highlight" &&
+      prev.layout === "example_highlight" &&
+      curr.items?.join(" ").trim() === prev.items?.join(" ").trim()
+    ) {
+      slides.splice(i, 1);
+      report.warnings.push(`[DEDUP] Removed duplicate example slide: "${curr.title}"`);
     }
   }
 
@@ -2798,9 +2830,9 @@ function renderModuleCover(
 
   if (!hasImage) {
     slide.addText(modNum, {
-      x: contentW - 5.0, y: SLIDE_H - 4.50,
-      w: 5.0, h: 4.50,
-      fontSize: 200,
+      x: contentW - 5.20, y: 2.20,
+      w: 4.80, h: 4.00,
+      fontSize: 180,
       fontFace: design.fonts.title,
       bold: true,
       color: accentColor,
@@ -3646,7 +3678,7 @@ function renderProcessTimeline(
         });
       }
 
-      // Label + description
+      // Label + description — detect if label and body are fragments of the same sentence
       const colonIdx = items[i].indexOf(":");
       let label: string, desc: string;
       if (colonIdx > 0 && colonIdx < 40) {
@@ -3659,26 +3691,23 @@ function renderProcessTimeline(
         label = words.slice(0, 4).join(" ");
         desc = words.slice(4).join(" ");
       }
-      const labelY = cardY + 0.62;
-      slide.addText(label, {
-        x: x + 0.10, y: labelY,
-        w: cardW - 0.20, h: 0.40,
-        fontSize: TYPO.CARD_TITLE,
-        fontFace: design.fonts.title,
-        bold: true, color: ensureContrastOnLight(pal, colors.panelMid),
+
+      // Unify label+body into single text when they're fragments of the same sentence
+      const fullText = desc && desc.length > 0 && !label.endsWith(".")
+        ? `${label} ${desc}`.trim()
+        : label || desc;
+
+      slide.addText(fullText, {
+        x: x + 0.15, y: cardY + 0.55,
+        w: cardW - 0.30, h: cardH - 0.70,
+        fontSize: TYPO.BODY,
+        fontFace: design.fonts.body,
+        color: colors.coverSubtext,
+        valign: "top",
         align: "center",
-      });
-      if (desc) {
-        slide.addText(desc, {
-          x: x + 0.10, y: labelY + 0.40,
-          w: cardW - 0.20, h: cardH - 1.10,
-          fontSize: TYPO.CARD_BODY,
-          fontFace: design.fonts.body,
-          color: colors.coverSubtext,
-          align: "center", valign: "top",
-          lineSpacingMultiple: 1.22,
-        });
-      }
+        lineSpacingMultiple: 1.25,
+        autoFit: true,
+      } as any);
     }
   } else {
     // ── VERTICAL TIMELINE with node-connector system (5-7 items) ──
@@ -4782,14 +4811,35 @@ async function runPipeline(
         combinedChars < 800 &&
         currChars < 400 &&
         nextChars < 400;
-      const isVeryThin = currItems.length <= 2 && nextItems.length <= 2 &&
-        sameSection && (isContinuation || curr.layout === next.layout) &&
+      const isVeryThin = (currItems.length <= 1 || nextItems.length <= 1) &&
+        sameSection &&
         combinedItems <= design.density.maxItemsPerSlide;
       if (canMerge || isVeryThin) {
         curr.items = [...currItems, ...nextItems];
         curr.title = stripPartSuffix(curr.title);
         report.warnings.push(`[MERGE] Merged sparse slides: "${next.title}" into "${curr.title}"`);
         modulePlans.splice(i + 1, 1);
+      }
+    }
+  }
+
+  // ── STAGE 3.6b: Absorb 1-item slides into previous slide ──
+  console.log(`[V2-STAGE-3.6b] Absorbing 1-item slides...`);
+  for (const modulePlans of allModuleSlidePlans) {
+    for (let i = modulePlans.length - 1; i > 0; i--) {
+      const curr = modulePlans[i];
+      const prev = modulePlans[i - 1];
+      if (
+        curr.layout !== "module_cover" &&
+        prev.layout !== "module_cover" &&
+        curr.layout !== "comparison_table" &&
+        prev.layout !== "comparison_table" &&
+        (curr.items?.length ?? 0) === 1 &&
+        (prev.items?.length ?? 0) < design.density.maxItemsPerSlide - 1
+      ) {
+        prev.items = [...(prev.items || []), ...(curr.items || [])];
+        report.warnings.push(`[THIN] Absorbed 1-item slide "${curr.title}" into "${prev.title}"`);
+        modulePlans.splice(i, 1);
       }
     }
   }
