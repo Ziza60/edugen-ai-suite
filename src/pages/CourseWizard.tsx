@@ -49,6 +49,7 @@ export default function CourseWizard() {
   const { user } = useAuth();
   const { plan, limits } = useSubscription();
   const { usage } = useMonthlyUsage();
+  const { isDev } = useDevMode();
   const navigate = useNavigate();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
