@@ -27,6 +27,7 @@ import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EduScorePanel } from "@/components/course/EduScorePanel";
+import { TranslateDialog } from "@/components/course/TranslateDialog";
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
