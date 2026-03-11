@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.check-entitlements]
 verify_jwt = false
+
+[functions.generate-script]
+verify_jwt = false

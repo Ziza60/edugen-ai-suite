@@ -245,6 +245,12 @@ export default function CourseView() {
                 isPro={isPro}
                 modules={modules}
               />
+              <ScriptGeneratorButton
+                courseId={id!}
+                courseTitle={course.title}
+                isPro={isPro}
+                disabled={!isPublished}
+              />
               <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)} className="h-9">
                 <GraduationCap className="h-4 w-4 mr-1.5" />
                 Certificado
