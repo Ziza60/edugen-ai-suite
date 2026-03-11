@@ -58,9 +58,12 @@ export default function CourseWizard() {
   const [generating, setGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState("");
+  const [generationMessage, setGenerationMessage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [importingUrl, setImportingUrl] = useState(false);
   const [urlInput, setUrlInput] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const [useSources, setUseSources] = useState(false);
   const [tempCourseId] = useState(() => crypto.randomUUID());
