@@ -1888,9 +1888,23 @@ function distributeModuleToSlides(
         // Otherwise let it through — it's the very first slide and has some content
       }
 
-      const slideTitle = isContination
-        ? section.title  // Keep clean title — continuation shown via dot indicator in sectionLabel
-        : section.title;
+      // ── Layout diversity enforcement ──
+      // Force pedagogically-appropriate layouts based on section type and item count
+      if (section.pedagogicalType === "applications" && finalItems.length >= 4) {
+        layout = "grid_cards";
+      }
+      if (section.pedagogicalType === "models" && finalItems.length >= 3) {
+        layout = "comparison_table";
+      }
+      if (section.pedagogicalType === "takeaways" && finalItems.length >= 3) {
+        layout = "numbered_takeaways";
+      }
+      // For continuation chunks, alternate between bullets and two_column_bullets
+      if (isContination && layout === "bullets") {
+        layout = (ci % 2 === 0) ? "bullets" : "two_column_bullets";
+      }
+
+      const slideTitle = section.title;  // Never add "(Parte N)" suffix
 
       const sectionLabelFinal = isContination
         ? `${section.sectionLabel}  ·  ${ci + 1}/${chunks.length}`
@@ -2362,10 +2376,15 @@ function enforceVisualRenderingGuards(
     }
 
     for (let i = 0; i < fitted.length; i++) {
-      const partTitle = i === 0 ? baseTitle : `${baseTitle} (Parte ${i + 1})`;
+      // Never add "(Parte N)" suffix — continuation is shown via sectionLabel dot indicator
+      const partTitle = baseTitle;
+      const partLabel = i > 0
+        ? `${fitted[i].sectionLabel || ""}  ·  ${i + 1}/${fitted.length}`.trim()
+        : fitted[i].sectionLabel;
       adjusted.push({
         ...fitted[i],
         title: partTitle,
+        sectionLabel: partLabel,
         continuationOf: i === 0 ? plan.continuationOf : baseTitle,
       });
     }
