@@ -445,6 +445,11 @@ export default function CourseView() {
         </div>
       </div>
 
+      {/* ═══════════ EDUSCORE PANEL ═══════════ */}
+      {eduScore && (
+        <EduScorePanel data={eduScore} onClose={() => setEduScore(null)} />
+      )}
+
       {/* ═══════════ QUALITY REPORT PANEL ═══════════ */}
       {qualityReport && (
         <div className="max-w-[1400px] mx-auto w-full px-6 py-4 border-b border-border bg-card">
