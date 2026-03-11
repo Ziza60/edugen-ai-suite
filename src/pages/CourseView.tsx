@@ -10,7 +10,7 @@ import {
   ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
   RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
   Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2,
-  BarChart3, Globe, Rocket, Languages
+  BarChart3, Globe, Rocket, Languages, Save, Cloud, CloudOff
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { ExportButtons } from "@/components/course/ExportButtons";
@@ -19,7 +19,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useMarkdownTableComponents } from "@/components/course/MarkdownTable";
 import { motion } from "framer-motion";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { BlockEditor } from "@/components/course/BlockEditor";
 import { CertificateDialog } from "@/components/course/CertificateDialog";
 import { ScriptGeneratorButton } from "@/components/course/ScriptGeneratorButton";
@@ -29,6 +29,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { EduScorePanel } from "@/components/course/EduScorePanel";
 import { TranslateDialog } from "@/components/course/TranslateDialog";
 import { ReviewPanel } from "@/components/course/ReviewPanel";
+import { ModuleSidebar } from "@/components/course/ModuleSidebar";
+import { RestructureDiffDialog } from "@/components/course/RestructureDiffDialog";
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
@@ -58,6 +60,16 @@ export default function CourseView() {
   const [generatingLanding, setGeneratingLanding] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // ── Auto-save state ──
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  // ── Restructure diff state ──
+  const [diffDialogOpen, setDiffDialogOpen] = useState(false);
+  const [restructuredModules, setRestructuredModules] = useState<any[]>([]);
+  const [applyingRestructure, setApplyingRestructure] = useState(false);
 
   const isPro = plan === "pro";
 
@@ -187,6 +199,8 @@ export default function CourseView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
       setEditingModuleId(null);
+      setSaveStatus("saved");
+      setLastSavedAt(new Date());
       toast({ title: "Módulo atualizado!" });
     },
   });
@@ -202,6 +216,85 @@ export default function CourseView() {
       toast({ title: course?.status === "published" ? "Curso despublicado" : "Curso publicado!" });
     },
   });
+
+  // ── Auto-save handler ──
+  const handleContentChange = useCallback((newContent: string) => {
+    setEditContent(newContent);
+    setSaveStatus("unsaved");
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      const activeModule = modules[activeModuleIndex];
+      if (!activeModule || !editingModuleId) return;
+      setSaveStatus("saving");
+      try {
+        const { error } = await supabase.from("course_modules")
+          .update({ content: newContent })
+          .eq("id", activeModule.id);
+        if (error) throw error;
+        setSaveStatus("saved");
+        setLastSavedAt(new Date());
+        queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
+      } catch {
+        setSaveStatus("unsaved");
+      }
+    }, 3000);
+  }, [modules, activeModuleIndex, editingModuleId, id, queryClient]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(saveTimerRef.current);
+  }, []);
+
+  // ── Restructure with diff preview ──
+  const handleRestructureWithDiff = async () => {
+    setRestructuring(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("restructure-modules", {
+        body: { course_id: id },
+      });
+      if (error) throw error;
+
+      // Store restructured data for diff preview
+      if (data?.restructured_modules) {
+        setRestructuredModules(data.restructured_modules);
+      } else {
+        // Fallback: refetch after save
+        setQualityReport(data?.markdown_quality_report || null);
+        toast({
+          title: "Módulos reestruturados!",
+          description: data?.message || "Conteúdo padronizado com sucesso.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
+        setRestructuring(false);
+        return;
+      }
+
+      setQualityReport(data?.markdown_quality_report || null);
+      setDiffDialogOpen(true);
+    } catch (err: any) {
+      toast({ title: "Erro ao reestruturar", description: err.message, variant: "destructive" });
+    } finally {
+      setRestructuring(false);
+    }
+  };
+
+  const handleApplyRestructure = async () => {
+    setApplyingRestructure(true);
+    try {
+      await Promise.all(
+        restructuredModules.map((mod: any) =>
+          supabase.from("course_modules").update({ content: mod.content }).eq("id", mod.id)
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
+      toast({ title: "Módulos reestruturados!", description: "Mudanças aplicadas com sucesso." });
+      setDiffDialogOpen(false);
+    } catch (err: any) {
+      toast({ title: "Erro ao aplicar", description: err.message, variant: "destructive" });
+    } finally {
+      setApplyingRestructure(false);
+    }
+  };
 
   if (loadingCourse || loadingModules) {
     return (
@@ -232,6 +325,14 @@ export default function CourseView() {
     flashcards.length > 0 && "flashcards",
     "certificado",
   ].filter(Boolean);
+
+  const saveStatusLabel = saveStatus === "saved"
+    ? lastSavedAt
+      ? `Salvo há ${Math.max(1, Math.round((Date.now() - lastSavedAt.getTime()) / 1000))}s`
+      : "Salvo"
+    : saveStatus === "saving"
+    ? "Salvando..."
+    : "Alterações não salvas";
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -341,7 +442,6 @@ export default function CourseView() {
                     });
                     if (error) throw error;
                     setQualityReport(data?.markdown_quality_report || null);
-                    console.log("[Quality Report]", JSON.stringify(data?.markdown_quality_report, null, 2));
                     const summary = data?.markdown_quality_report?.summary;
                     toast({
                       title: `Validação: ${summary?.modules_passed || 0}/${summary?.modules_passed + summary?.modules_failed || 0} PASS`,
@@ -363,26 +463,7 @@ export default function CourseView() {
                 size="sm"
                 className="h-9"
                 disabled={restructuring}
-                onClick={async () => {
-                  setRestructuring(true);
-                  try {
-                    const { data, error } = await supabase.functions.invoke("restructure-modules", {
-                      body: { course_id: id },
-                    });
-                    if (error) throw error;
-                    setQualityReport(data?.markdown_quality_report || null);
-                    console.log("[Quality Report]", JSON.stringify(data?.markdown_quality_report, null, 2));
-                    toast({
-                      title: "Módulos reestruturados!",
-                      description: data?.message || "Conteúdo padronizado com sucesso.",
-                    });
-                    queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
-                  } catch (err: any) {
-                    toast({ title: "Erro ao reestruturar", description: err.message, variant: "destructive" });
-                  } finally {
-                    setRestructuring(false);
-                  }
-                }}
+                onClick={handleRestructureWithDiff}
               >
                 {restructuring ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <RefreshCw className="h-4 w-4 mr-1.5" />}
                 Padronizar
@@ -634,33 +715,19 @@ export default function CourseView() {
 
       {/* ═══════════ TWO-PANEL LAYOUT ═══════════ */}
       <div className="flex-1 flex max-w-[1400px] mx-auto w-full">
-        {/* ── Left: Module sidebar ── */}
+        {/* ── Left: Module sidebar with DnD ── */}
         <aside className="hidden lg:block w-72 border-r border-border bg-card shrink-0">
           <ScrollArea className="h-[calc(100vh-160px)] sticky top-0">
             <div className="p-4">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
                 Módulos ({modules.length})
               </p>
-              <nav className="space-y-1">
-                {modules.map((mod, i) => (
-                  <button
-                    key={mod.id}
-                    onClick={() => setActiveModuleIndex(i)}
-                    className={`w-full text-left rounded-xl px-3 py-2.5 text-sm transition-all flex items-start gap-3 ${
-                      i === activeModuleIndex
-                        ? "bg-primary/10 text-primary font-semibold border border-primary/20"
-                        : "text-foreground/70 hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    <span className={`shrink-0 h-6 w-6 rounded-md flex items-center justify-center text-xs font-bold mt-0.5 ${
-                      i === activeModuleIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    }`}>
-                      {i + 1}
-                    </span>
-                    <span className="line-clamp-2 leading-snug">{mod.title}</span>
-                  </button>
-                ))}
-              </nav>
+              <ModuleSidebar
+                modules={modules as any}
+                activeModuleIndex={activeModuleIndex}
+                onSelectModule={setActiveModuleIndex}
+                courseId={id!}
+              />
             </div>
           </ScrollArea>
         </aside>
@@ -696,25 +763,39 @@ export default function CourseView() {
                   </p>
                   <h2 className="font-display text-2xl font-bold text-foreground">{activeModule.title}</h2>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 h-9"
-                  onClick={() => {
-                    if (editingModuleId === activeModule.id) {
-                      updateModule.mutate({ moduleId: activeModule.id, content: editContent });
-                    } else {
-                      setEditingModuleId(activeModule.id);
-                      setEditContent(activeModule.content || "");
-                    }
-                  }}
-                >
-                  {editingModuleId === activeModule.id ? (
-                    <><CheckCircle2 className="h-4 w-4 mr-1.5" />Salvar</>
-                  ) : (
-                    <><Pencil className="h-4 w-4 mr-1.5" />Editar</>
+                <div className="flex items-center gap-2">
+                  {/* Auto-save indicator */}
+                  {editingModuleId === activeModule.id && (
+                    <span className={`text-xs flex items-center gap-1 ${
+                      saveStatus === "saved" ? "text-secondary" : saveStatus === "saving" ? "text-primary" : "text-destructive"
+                    }`}>
+                      {saveStatus === "saved" ? <Cloud className="h-3 w-3" /> :
+                       saveStatus === "saving" ? <Loader2 className="h-3 w-3 animate-spin" /> :
+                       <CloudOff className="h-3 w-3" />}
+                      {saveStatusLabel}
+                    </span>
                   )}
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 h-9"
+                    onClick={() => {
+                      if (editingModuleId === activeModule.id) {
+                        updateModule.mutate({ moduleId: activeModule.id, content: editContent });
+                      } else {
+                        setEditingModuleId(activeModule.id);
+                        setEditContent(activeModule.content || "");
+                        setSaveStatus("saved");
+                      }
+                    }}
+                  >
+                    {editingModuleId === activeModule.id ? (
+                      <><CheckCircle2 className="h-4 w-4 mr-1.5" />Salvar</>
+                    ) : (
+                      <><Pencil className="h-4 w-4 mr-1.5" />Editar</>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {/* Module content */}
@@ -722,14 +803,14 @@ export default function CourseView() {
                 <div className="space-y-3">
                   <BlockEditor
                     content={editContent}
-                    onChange={(md) => setEditContent(md)}
+                    onChange={handleContentChange}
                     isPro={isPro}
                   />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent })}>
                       Salvar alterações
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setEditingModuleId(null)}>
+                    <Button variant="ghost" size="sm" onClick={() => { setEditingModuleId(null); setSaveStatus("saved"); }}>
                       Cancelar
                     </Button>
                   </div>
@@ -744,7 +825,6 @@ export default function CourseView() {
                         className="w-full h-auto object-cover max-h-[360px]"
                         loading="lazy"
                       />
-                      {/* Text overlay — all visible text is real HTML, never baked into the image */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-6">
                         <p className="text-xs font-semibold text-white/80 uppercase tracking-wider mb-1">
                           Módulo {activeModuleIndex + 1}
@@ -897,12 +977,10 @@ export default function CourseView() {
                   </div>
 
                   {isPro && flipEntitled ? (
-                    /* PRO: render FlipView directly inline — no static cards, no modal button */
                     <div className="rounded-xl border border-border bg-card p-4 min-h-[320px]">
                       <FlashcardsFlipView flashcards={moduleFlashcards} />
                     </div>
                   ) : (
-                    /* FREE: static preview + button to open modal */
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                         {moduleFlashcards.slice(0, 4).map((fc) => (
@@ -1019,6 +1097,16 @@ export default function CourseView() {
         currentLanguage={course.language}
         isPro={isPro}
         modulesCount={modules.length}
+      />
+
+      {/* Restructure Diff Dialog */}
+      <RestructureDiffDialog
+        open={diffDialogOpen}
+        onOpenChange={setDiffDialogOpen}
+        beforeModules={modules.map((m) => ({ id: m.id, title: m.title, content: m.content }))}
+        afterModules={restructuredModules}
+        onApply={handleApplyRestructure}
+        applying={applyingRestructure}
       />
     </div>
   );
