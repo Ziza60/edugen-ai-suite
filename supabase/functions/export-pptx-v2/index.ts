@@ -313,14 +313,22 @@ function getColors(design: DesignConfig) {
   };
 }
 
-/** Adds a subtle decorative ellipse on light-theme content slides */
+/** Adds subtle decorative ellipses on light-theme content slides */
 function addLightBgDecoration(slide: any, design: DesignConfig, colors: ReturnType<typeof getColors>) {
   if (design.theme === "light") {
+    // Círculo pequeno — canto superior direito
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W - 3.50, y: -1.80,
-      w: 5.00, h: 5.00,
+      x: SLIDE_W - 1.60, y: -0.60,
+      w: 1.80, h: 1.80,
       fill: { color: colors.p0 },
-      transparency: 94,
+      transparency: 92,
+    });
+    // Círculo menor secundário
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - 0.80, y: 0.50,
+      w: 0.80, h: 0.80,
+      fill: { color: colors.p1 },
+      transparency: 88,
     });
   }
 }
@@ -574,7 +582,7 @@ function addImageCredit(
 ) {
   slide.addText(`Foto: ${credit} / Unsplash`, {
     x: SLIDE_W - 4.00,
-    y: SLIDE_H - 0.32,
+    y: SLIDE_H - 0.42,
     w: 3.60,
     h: 0.22,
     fontSize: 7,
@@ -2032,13 +2040,13 @@ function addFooter(
   totalSlides?: number,
   footerBrand?: string | null,
 ) {
-  addGradientBar(slide, 0, SLIDE_H - 0.28, SLIDE_W, 0.005, colors.p0, "right");
-  addHR(slide, 0, SLIDE_H - 0.275, SLIDE_W, colors.divider, 0.003);
+  addGradientBar(slide, 0, SLIDE_H - 0.34, SLIDE_W, 0.005, colors.p0, "right");
+  addHR(slide, 0, SLIDE_H - 0.335, SLIDE_W, colors.divider, 0.003);
 
   // Slide number (left side)
   if (slideNumber !== undefined && totalSlides !== undefined) {
     slide.addText(`${slideNumber} / ${totalSlides}`, {
-      x: 0.55, y: SLIDE_H - 0.24,
+      x: 0.55, y: SLIDE_H - 0.30,
       w: 1.20, h: 0.20,
       fontSize: 8,
       fontFace: fontBody,
@@ -2051,7 +2059,7 @@ function addFooter(
   // Brand (right side) — only if footerBrand is non-null
   if (footerBrand) {
     slide.addText(footerBrand, {
-      x: SLIDE_W - 1.80, y: SLIDE_H - 0.24,
+      x: SLIDE_W - 1.80, y: SLIDE_H - 0.30,
       w: 1.50, h: 0.20,
       fontSize: 8,
       fontFace: fontBody,
@@ -2062,7 +2070,7 @@ function addFooter(
       charSpacing: 3,
     });
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W - 1.92, y: SLIDE_H - 0.18,
+      x: SLIDE_W - 1.92, y: SLIDE_H - 0.24,
       w: 0.08, h: 0.08,
       fill: { color: colors.p0 },
     });
@@ -2627,7 +2635,7 @@ function renderTOC(
       });
 
       const titleY = y + 0.14 + badgeS + 0.08;
-      const titleH = Math.min(0.48, (cardH - badgeS - 0.36) * 0.45);
+      const titleH = Math.min(0.60, (cardH - badgeS - 0.36) * 0.50);
       slide.addText(pageModules[i].title, {
         x: x + 0.14, y: titleY,
         w: cardW - 0.28, h: titleH,
@@ -2637,6 +2645,7 @@ function renderTOC(
         color: "FFFFFF",
         valign: "top",
         lineSpacingMultiple: 1.06,
+        autoFit: true,
       });
 
       const sepY = titleY + titleH + 0.04;
