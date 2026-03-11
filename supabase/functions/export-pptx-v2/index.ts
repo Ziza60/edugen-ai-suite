@@ -1838,10 +1838,21 @@ function distributeModuleToSlides(
       continue;
     }
 
-    const chunks = rebalanceChunksForSemanticIntegrity(
+    const MAX_CHUNKS_PER_SECTION = 3;
+    const rawChunks = rebalanceChunksForSemanticIntegrity(
       redistributeOverflow(validItems, maxItems, maxChars, report),
       report,
     );
+    // Limit chunks per section to avoid 60+ slide courses
+    const chunks = rawChunks.slice(0, MAX_CHUNKS_PER_SECTION);
+    if (rawChunks.length > MAX_CHUNKS_PER_SECTION) {
+      const overflow = rawChunks.slice(MAX_CHUNKS_PER_SECTION).flat();
+      chunks[MAX_CHUNKS_PER_SECTION - 1] = [
+        ...chunks[MAX_CHUNKS_PER_SECTION - 1],
+        ...overflow,
+      ].slice(0, maxItems + 2);
+      report.warnings.push(`Capped ${rawChunks.length} chunks to ${MAX_CHUNKS_PER_SECTION} for section "${section.title}"`);
+    }
 
     for (let ci = 0; ci < chunks.length; ci++) {
       const isContination = ci > 0;
