@@ -20,6 +20,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState, useRef } from "react";
 import { BlockEditor } from "@/components/course/BlockEditor";
 import { CertificateDialog } from "@/components/course/CertificateDialog";
+import { ScriptGeneratorButton } from "@/components/course/ScriptGeneratorButton";
 import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
 import { ScrollArea } from "@/components/ui/scroll-area";
