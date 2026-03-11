@@ -82,8 +82,8 @@ export default function CourseWizard() {
   };
 
   const handleFileUpload = async (file: File) => {
-    if (uploadedSources.length >= MAX_FILES) {
-      toast({ title: "Limite atingido", description: `Máximo de ${MAX_FILES} arquivos por curso.`, variant: "destructive" });
+    if (uploadedSources.length >= maxFiles) {
+      toast({ title: "Limite atingido", description: `Máximo de ${maxFiles} fontes por curso.`, variant: "destructive" });
       return;
     }
 
