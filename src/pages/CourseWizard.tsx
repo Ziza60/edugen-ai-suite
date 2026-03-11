@@ -58,9 +58,12 @@ export default function CourseWizard() {
   const [generating, setGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState("");
+  const [generationMessage, setGenerationMessage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [importingUrl, setImportingUrl] = useState(false);
   const [urlInput, setUrlInput] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const [useSources, setUseSources] = useState(false);
   const [tempCourseId] = useState(() => crypto.randomUUID());
@@ -207,43 +210,89 @@ export default function CourseWizard() {
     }
 
     setGenerating(true);
-    setGenerationProgress(10);
+    setGenerationProgress(5);
     setGenerationStep("Preparando geração…");
+    setGenerationMessage("");
 
     try {
-      let moduleProgress = 0;
-      const progressInterval = setInterval(() => {
-        moduleProgress++;
-        const pct = Math.min(10 + moduleProgress * 8, 85);
-        setGenerationProgress(pct);
-        const currentMod = Math.min(Math.ceil(moduleProgress / 2), form.numModules);
-        setGenerationStep(`Gerando módulo ${currentMod}/${form.numModules}…`);
-      }, 2000);
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-course`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            title: form.title.trim(),
+            theme: form.theme,
+            target_audience: form.targetAudience,
+            tone: form.tone,
+            language: form.language,
+            num_modules: form.numModules,
+            include_quiz: form.includeQuiz,
+            include_flashcards: form.includeFlashcards,
+            include_images: form.includeImages,
+            use_sources: useSources,
+            temp_course_id: useSources ? tempCourseId : undefined,
+          }),
+        }
+      );
 
-      const { data, error } = await supabase.functions.invoke("generate-course", {
-        body: {
-          title: form.title.trim(),
-          theme: form.theme,
-          target_audience: form.targetAudience,
-          tone: form.tone,
-          language: form.language,
-          num_modules: form.numModules,
-          include_quiz: form.includeQuiz,
-          include_flashcards: form.includeFlashcards,
-          include_images: form.includeImages,
-          use_sources: useSources,
-          temp_course_id: useSources ? tempCourseId : undefined,
-        },
-      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Erro ao gerar curso");
+      }
 
-      clearInterval(progressInterval);
-      setGenerationProgress(100);
-      setGenerationStep("Finalizando…");
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      if (error) throw error;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
-      toast({ title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." });
-      setTimeout(() => navigate(`/app/courses/${data.course_id}`), 1000);
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.replace("data: ", ""));
+            if (event.type === "status") {
+              setGenerationStep(event.message);
+            }
+            if (event.type === "structure_done") {
+              setGenerationProgress(15);
+              setGenerationStep("Estrutura criada!");
+            }
+            if (event.type === "module_start") {
+              const pct = 15 + Math.round((event.module / event.total) * 70);
+              setGenerationProgress(pct);
+              setGenerationMessage(`Gerando Módulo ${event.module} de ${event.total}: ${event.title}...`);
+              setGenerationStep(`Módulo ${event.module}/${event.total}`);
+            }
+            if (event.type === "module_done") {
+              const pct = 15 + Math.round((event.module / event.total) * 75);
+              setGenerationProgress(pct);
+            }
+            if (event.type === "complete") {
+              setGenerationProgress(100);
+              setGenerationStep("Concluído!");
+              setGenerationMessage("");
+              toast({ title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." });
+              setTimeout(() => navigate(`/app/courses/${event.courseId}`), 1000);
+            }
+            if (event.type === "error") {
+              throw new Error(event.message);
+            }
+          } catch (parseErr: any) {
+            if (parseErr.message && !parseErr.message.includes("JSON")) throw parseErr;
+          }
+        }
+      }
     } catch (error: any) {
       toast({
         title: "Erro ao gerar curso",
@@ -329,7 +378,10 @@ export default function CourseWizard() {
                   ? "A IA está analisando suas fontes e criando o conteúdo."
                   : "A IA está criando o conteúdo do seu curso."}
               </p>
-              <p className="text-sm font-medium text-primary mb-6">{generationStep}</p>
+              <p className="text-sm font-medium text-primary mb-2">{generationStep}</p>
+              {generationMessage && (
+                <p className="text-xs text-muted-foreground mb-4">{generationMessage}</p>
+              )}
               <Progress value={generationProgress} className="max-w-sm mx-auto h-2.5" />
               <p className="text-xs text-muted-foreground mt-3">{generationProgress}% concluído</p>
             </CardContent>
@@ -486,15 +538,37 @@ export default function CourseWizard() {
 
                             {uploadedSources.length < maxFiles && (
                               <>
+                                <div
+                                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                                  onDragLeave={() => setDragging(false)}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragging(false);
+                                    const file = e.dataTransfer.files[0];
+                                    if (file) handleFileUpload(file);
+                                  }}
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
+                                    dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                                  }`}
+                                >
+                                  {uploading ? (
+                                    <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin text-primary" />
+                                  ) : (
+                                    <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                                  )}
+                                  <p className="text-sm text-muted-foreground">
+                                    {uploading ? "Processando…" : <>Arraste um arquivo aqui ou <span className="text-primary font-medium">clique para selecionar</span></>}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">PDF, TXT, MD — máx. 10MB</p>
+                                </div>
+                                {uploading && (
+                                  <Progress value={uploadProgress} className="h-1.5" />
+                                )}
                                 <input
                                   ref={fileInputRef} type="file" accept=".pdf,.txt,.md" className="hidden"
                                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ""; }}
                                 />
-                                <Button variant="outline" className="w-full h-10" onClick={() => fileInputRef.current?.click()} disabled={uploading || importingUrl}>
-                                  {uploading
-                                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processando…</>
-                                    : <><Upload className="h-4 w-4 mr-2" />Enviar arquivo (PDF, TXT ou MD)</>}
-                                </Button>
 
                                 {/* URL Import */}
                                 <div className="flex items-center gap-2 pt-2 border-t border-border/40">
