@@ -16,7 +16,8 @@ import { Slider } from "@/components/ui/slider";
 import {
   ArrowLeft, ArrowRight, Loader2, Sparkles, BookOpen, Brain, Image,
   CheckCircle2, Upload, FileText, X, AlertCircle, Award, Zap,
-  Check, Circle, MessageSquare, GraduationCap, FileDown, Globe, Youtube
+  Check, Circle, MessageSquare, GraduationCap, FileDown, Globe, Youtube,
+  Clock, Gauge
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -73,7 +74,38 @@ export default function CourseWizard() {
     includeQuiz: true,
     includeFlashcards: true,
     includeImages: false,
+    density: "standard" as "compact" | "standard" | "detailed",
   });
+
+  // ── Prompt quality score ──
+  const calcPromptScore = () => {
+    let score = 0;
+    if (form.title?.trim().length >= 10) score += 25;
+    if (form.theme?.trim().length >= 15) score += 25;
+    if (form.targetAudience?.trim().length > 0) score += 20;
+    if (form.numModules >= 5) score += 10;
+    if (useSources && uploadedSources.length > 0) score += 20;
+    return Math.min(score, 100);
+  };
+
+  const promptScore = calcPromptScore();
+  const promptScoreColor = promptScore < 40 ? "bg-destructive" : promptScore < 75 ? "bg-yellow-500" : "bg-green-500";
+  const promptScoreLabel = promptScore < 40
+    ? "Adicione mais detalhes para gerar um curso de qualidade"
+    : promptScore < 75
+    ? "Bom começo — defina o público-alvo para melhorar"
+    : "Ótimo! Seu curso está pronto para ser gerado";
+
+  // ── Reading time estimate ──
+  const calcReadingTime = () => {
+    const wordsPerModule = { compact: 400, standard: 700, detailed: 1100 };
+    const wpm = 200;
+    const totalMinutes = Math.round((form.numModules * wordsPerModule[form.density]) / wpm);
+    if (totalMinutes < 60) return `~${totalMinutes} min de conteúdo`;
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return m > 0 ? `~${h}h ${m}min de conteúdo` : `~${h}h de conteúdo`;
+  };
 
   const canCreate = usage < limits.maxCourses;
   const canUseImages = limits.images;
@@ -520,6 +552,24 @@ export default function CourseWizard() {
                           </div>
                         )}
                       </div>
+
+                      {/* Prompt quality indicator */}
+                      <div className="rounded-xl border border-border/60 bg-muted/40 p-4 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Gauge className="h-4 w-4 text-muted-foreground" />
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Qualidade do prompt</p>
+                          </div>
+                          <span className="text-xs font-bold text-foreground">{promptScore}%</span>
+                        </div>
+                        <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${promptScoreColor}`}
+                            style={{ width: `${promptScore}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">{promptScoreLabel}</p>
+                      </div>
                     </div>
                   )}
 
@@ -560,9 +610,30 @@ export default function CourseWizard() {
                               }}
                               className="w-20 h-10 text-center font-bold text-lg"
                             />
-                          </div>
+                        </div>
+
+                        {/* Density selector */}
+                        <div className="space-y-1.5 pt-2 border-t border-border/40">
+                          <Label className="font-medium">Densidade do conteúdo</Label>
+                          <Select value={form.density} onValueChange={(v) => updateForm("density", v)}>
+                            <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="compact">Compacto — resumos objetivos</SelectItem>
+                              <SelectItem value="standard">Padrão — equilíbrio ideal</SelectItem>
+                              <SelectItem value="detailed">Detalhado — explicações aprofundadas</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Reading time badge */}
+                        <div className="flex items-center gap-2 pt-2">
+                          <Badge variant="secondary" className="text-xs font-medium gap-1.5 py-1 px-2.5">
+                            <Clock className="h-3.5 w-3.5" />
+                            {calcReadingTime()}
+                          </Badge>
                         </div>
                       </div>
+                    </div>
 
                       {/* Module preview cards */}
                       <div className="space-y-3">
