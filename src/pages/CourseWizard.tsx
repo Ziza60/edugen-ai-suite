@@ -74,6 +74,7 @@ export default function CourseWizard() {
   const canCreate = usage < limits.maxCourses;
   const canUseImages = limits.images;
   const canUseSources = plan === "pro";
+  const maxFiles = plan === "pro" ? MAX_FILES_PRO : MAX_FILES_FREE;
   const totalChars = uploadedSources.reduce((sum, s) => sum + s.char_count, 0);
 
   const updateForm = (key: string, value: any) => {
