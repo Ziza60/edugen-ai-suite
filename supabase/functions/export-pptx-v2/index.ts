@@ -2635,7 +2635,7 @@ function renderTOC(
       });
 
       const titleY = y + 0.14 + badgeS + 0.08;
-      const titleH = Math.min(0.48, (cardH - badgeS - 0.36) * 0.45);
+      const titleH = Math.min(0.60, (cardH - badgeS - 0.36) * 0.50);
       slide.addText(pageModules[i].title, {
         x: x + 0.14, y: titleY,
         w: cardW - 0.28, h: titleH,
@@ -2645,6 +2645,7 @@ function renderTOC(
         color: "FFFFFF",
         valign: "top",
         lineSpacingMultiple: 1.06,
+        autoFit: true,
       });
 
       const sepY = titleY + titleH + 0.04;
