@@ -146,6 +146,20 @@ export default function CourseView() {
     enabled: !!id && !!(course as any)?.tutor_enabled,
   });
 
+  // Landing page data
+  const { data: landing, refetch: refetchLanding } = useQuery({
+    queryKey: ["course-landing", id],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("course_landings") as any)
+        .select("*")
+        .eq("course_id", id!)
+        .single();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!id,
+  });
+
   useQuery({
     queryKey: ["flip-entitlement", user?.id, plan],
     queryFn: async () => {
