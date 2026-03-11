@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.calculate-eduscore]
 verify_jwt = false
+
+[functions.generate-landing]
+verify_jwt = false
