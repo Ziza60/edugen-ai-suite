@@ -10,7 +10,7 @@ import {
   ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
   RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
   Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2,
-  BarChart3, Globe, Rocket
+  BarChart3, Globe, Rocket, Languages
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { ExportButtons } from "@/components/course/ExportButtons";
@@ -27,6 +27,7 @@ import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EduScorePanel } from "@/components/course/EduScorePanel";
+import { TranslateDialog } from "@/components/course/TranslateDialog";
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
@@ -54,6 +55,7 @@ export default function CourseView() {
   const [eduScore, setEduScore] = useState<any>(null);
   const [calculatingScore, setCalculatingScore] = useState(false);
   const [generatingLanding, setGeneratingLanding] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isPro = plan === "pro";
@@ -314,6 +316,16 @@ export default function CourseView() {
               >
                 {calculatingScore ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <BarChart3 className="h-4 w-4 mr-1.5" />}
                 EduScore™
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                disabled={modules.length === 0}
+                onClick={() => setTranslateOpen(true)}
+              >
+                <Languages className="h-4 w-4 mr-1.5" />
+                Traduzir
               </Button>
               <Button
                 variant="outline"
@@ -992,6 +1004,17 @@ export default function CourseView() {
         courseId={id!}
         courseTitle={course.title}
         courseStatus={course.status}
+      />
+
+      {/* Translate Dialog */}
+      <TranslateDialog
+        open={translateOpen}
+        onOpenChange={setTranslateOpen}
+        courseId={id!}
+        courseTitle={course.title}
+        currentLanguage={course.language}
+        isPro={isPro}
+        modulesCount={modules.length}
       />
     </div>
   );
