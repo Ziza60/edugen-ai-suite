@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
+import { TemplateSelector, CourseTemplate } from "@/components/course/TemplateSelector";
 
 const STEPS = [
   { label: "Sobre o curso", num: 1 },
