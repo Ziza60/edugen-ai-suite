@@ -1950,6 +1950,20 @@ function distributeModuleToSlides(
     }
   }
 
+  // ── Deduplication: remove consecutive example_highlight slides with identical content ──
+  for (let i = slides.length - 1; i > 0; i--) {
+    const curr = slides[i];
+    const prev = slides[i - 1];
+    if (
+      curr.layout === "example_highlight" &&
+      prev.layout === "example_highlight" &&
+      curr.items?.join(" ").trim() === prev.items?.join(" ").trim()
+    ) {
+      slides.splice(i, 1);
+      report.warnings.push(`[DEDUP] Removed duplicate example slide: "${curr.title}"`);
+    }
+  }
+
   return slides;
 }
 
