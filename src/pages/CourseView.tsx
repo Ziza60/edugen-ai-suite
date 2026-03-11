@@ -334,6 +334,87 @@ export default function CourseView() {
               </Button>
             </div>
           </div>
+
+          {/* ── Tutor IA Toggle ── */}
+          {isPublished && (
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={!!(course as any)?.tutor_enabled}
+                  disabled={togglingTutor}
+                  onCheckedChange={async (enabled) => {
+                    setTogglingTutor(true);
+                    try {
+                      const updates: any = { tutor_enabled: enabled };
+                      if (enabled && !(course as any)?.tutor_slug) {
+                        updates.tutor_slug = id!.slice(0, 8);
+                      }
+                      const { error } = await (supabase.from("courses") as any)
+                        .update(updates)
+                        .eq("id", id!);
+                      if (error) throw error;
+                      queryClient.invalidateQueries({ queryKey: ["course", id] });
+                      toast({
+                        title: enabled ? "Tutor IA ativado!" : "Tutor IA desativado",
+                        description: enabled
+                          ? "Alunos podem acessar o tutor pelo link público."
+                          : "O link público do tutor foi desativado.",
+                      });
+                    } catch (err: any) {
+                      toast({ title: "Erro", description: err.message, variant: "destructive" });
+                    } finally {
+                      setTogglingTutor(false);
+                    }
+                  }}
+                />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <BrainCircuit className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold text-foreground">Tutor IA</span>
+                    <Badge variant="outline" className="text-[10px]">PRO</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Alunos consultam a IA sobre o conteúdo do curso
+                  </p>
+                </div>
+              </div>
+
+              {(course as any)?.tutor_enabled && (course as any)?.tutor_slug && (
+                <div className="ml-auto flex items-center gap-3">
+                  {typeof tutorStats === "number" && (
+                    <span className="text-xs text-muted-foreground">
+                      <MessageSquare className="h-3 w-3 inline mr-1" />
+                      {tutorStats} pergunta{tutorStats !== 1 ? "s" : ""} nos últimos 7 dias
+                    </span>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      const url = `${window.location.origin}/tutor/${(course as any).tutor_slug}`;
+                      navigator.clipboard.writeText(url);
+                      toast({ title: "Link copiado!", description: url });
+                    }}
+                  >
+                    <Copy className="h-3 w-3 mr-1.5" />
+                    Copiar link
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      window.open(`/tutor/${(course as any).tutor_slug}`, "_blank");
+                    }}
+                  >
+                    <Link2 className="h-3 w-3 mr-1.5" />
+                    Abrir
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
