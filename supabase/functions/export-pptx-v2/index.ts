@@ -1956,12 +1956,13 @@ function addCardShadow(
   slide: ReturnType<PptxGenJS["addSlide"]>,
   x: number, y: number, w: number, h: number,
   shadowColor: string,
+  isLightTheme = false,
 ) {
   slide.addShape("roundRect" as any, {
     x: x + 0.03, y: y + 0.04,
     w, h,
     fill: { color: shadowColor },
-    transparency: 88,
+    transparency: isLightTheme ? 78 : 88,
     rectRadius: 0.10,
   });
 }
@@ -2409,6 +2410,21 @@ function renderCoverSlide(
       fill: { color: colors.p1 },
       transparency: 92,
     });
+  }
+
+  // Light theme: decorative dot grid on cover
+  if (design.theme === "light" && !image) {
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        slide.addShape("ellipse" as any, {
+          x: SLIDE_W - 2.80 + col * 0.55,
+          y: 0.60 + row * 0.55,
+          w: 0.08, h: 0.08,
+          fill: { color: colors.p0 },
+          transparency: 70,
+        });
+      }
+    }
   }
 
   slide.addShape("rect" as any, {
@@ -2912,7 +2928,7 @@ function renderBullets(
     for (let i = 0; i < items.length; i++) {
       const pal = design.palette[i % design.palette.length];
       const yPos = contentY + i * (itemH + bulletGap);
-      addCardShadow(slide, contentX, yPos, contentW, itemH - 0.04, colors.shadowColor);
+      addCardShadow(slide, contentX, yPos, contentW, itemH - 0.04, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x: contentX, y: yPos,
         w: contentW, h: itemH - 0.04,
@@ -2978,7 +2994,7 @@ function renderBullets(
       const y = contentY + row * (cardH + gap);
       const pal = design.palette[i % design.palette.length];
 
-      addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor);
+      addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x, y, w: cardW, h: cardH,
         fill: { color: colors.cardBg },
@@ -3128,7 +3144,7 @@ function renderTwoColumnBullets(
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + colBulletGap);
-      addCardShadow(slide, colX, yPos, colW, itemH - 0.02, colors.shadowColor);
+      addCardShadow(slide, colX, yPos, colW, itemH - 0.02, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x: colX, y: yPos,
         w: colW, h: itemH - 0.02,
@@ -3195,7 +3211,7 @@ function renderDefinition(
 
   if (items.length > 0) {
     const heroH = 1.30;
-    addCardShadow(slide, contentX, 1.68, contentW, heroH, colors.shadowColor);
+    addCardShadow(slide, contentX, 1.68, contentW, heroH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, {
       x: contentX, y: 1.68, w: contentW, h: heroH,
       fill: { color: colors.coverDark },
@@ -3236,7 +3252,7 @@ function renderDefinition(
       const x = contentX + i * (pillarW + gap);
       const pal = design.palette[i % design.palette.length];
       const pH = SLIDE_H - startY - 0.45;
-      addCardShadow(slide, x, startY, pillarW, pH, colors.shadowColor);
+      addCardShadow(slide, x, startY, pillarW, pH, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x, y: startY, w: pillarW, h: pH,
         fill: { color: colors.cardBg },
@@ -3311,7 +3327,7 @@ function renderGridCards(
     const y = 1.68 + row * (cardH + gap);
     const pal = design.palette[i % design.palette.length];
 
-    addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor);
+    addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, {
       x, y, w: cardW, h: cardH,
       fill: { color: colors.cardBg },
@@ -3599,7 +3615,7 @@ function renderProcessTimeline(
       const cardX = nodeX + nodeSize + 0.16;
       const cardW = contentW - (cardX - contentX);
 
-      addCardShadow(slide, cardX, y, cardW, stepH - 0.02, colors.shadowColor);
+      addCardShadow(slide, cardX, y, cardW, stepH - 0.02, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x: cardX, y, w: cardW, h: stepH - 0.02,
         fill: { color: colors.cardBg },
@@ -3945,7 +3961,7 @@ function renderWarningCallout(
     // Text must contrast with the card background
     const cardTextColor = isLightCard && design.theme === "light" ? "1E293B" : colors.text;
 
-    addCardShadow(slide, contentX, y, contentW, cardH, colors.shadowColor);
+    addCardShadow(slide, contentX, y, contentW, cardH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, {
       x: contentX, y, w: contentW, h: cardH,
       fill: { color: cardBgColor },
@@ -4162,7 +4178,7 @@ function renderSummarySlide(
     const y = contentY + row * (cardH + gap);
     const pal = design.palette[i % design.palette.length];
 
-    addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor);
+    addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, {
       x, y, w: cardW, h: cardH,
       fill: { color: colors.cardBg },
