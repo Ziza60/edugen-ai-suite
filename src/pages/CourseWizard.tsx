@@ -610,9 +610,30 @@ export default function CourseWizard() {
                               }}
                               className="w-20 h-10 text-center font-bold text-lg"
                             />
-                          </div>
+                        </div>
+
+                        {/* Density selector */}
+                        <div className="space-y-1.5 pt-2 border-t border-border/40">
+                          <Label className="font-medium">Densidade do conteúdo</Label>
+                          <Select value={form.density} onValueChange={(v) => updateForm("density", v)}>
+                            <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="compact">Compacto — resumos objetivos</SelectItem>
+                              <SelectItem value="standard">Padrão — equilíbrio ideal</SelectItem>
+                              <SelectItem value="detailed">Detalhado — explicações aprofundadas</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Reading time badge */}
+                        <div className="flex items-center gap-2 pt-2">
+                          <Badge variant="secondary" className="text-xs font-medium gap-1.5 py-1 px-2.5">
+                            <Clock className="h-3.5 w-3.5" />
+                            {calcReadingTime()}
+                          </Badge>
                         </div>
                       </div>
+                    </div>
 
                       {/* Module preview cards */}
                       <div className="space-y-3">
