@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
+import { useDevMode } from "@/hooks/useDevMode";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,7 @@ export default function CourseWizard() {
   const { user } = useAuth();
   const { plan, limits } = useSubscription();
   const { usage } = useMonthlyUsage();
+  const { isDev } = useDevMode();
   const navigate = useNavigate();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,7 +109,7 @@ export default function CourseWizard() {
     return m > 0 ? `~${h}h ${m}min de conteúdo` : `~${h}h de conteúdo`;
   };
 
-  const canCreate = usage < limits.maxCourses;
+  const canCreate = isDev || usage < limits.maxCourses;
   const canUseImages = limits.images;
   const canUseSources = plan === "pro";
   const maxFiles = plan === "pro" ? MAX_FILES_PRO : MAX_FILES_FREE;
