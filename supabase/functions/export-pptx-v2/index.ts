@@ -3556,6 +3556,7 @@ function renderProcessTimeline(
   } else {
     // ── VERTICAL TIMELINE with node-connector system (5-7 items) ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, colors.p2);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
