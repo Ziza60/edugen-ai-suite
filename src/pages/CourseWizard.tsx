@@ -109,7 +109,7 @@ export default function CourseWizard() {
     return m > 0 ? `~${h}h ${m}min de conteúdo` : `~${h}h de conteúdo`;
   };
 
-  const canCreate = usage < limits.maxCourses;
+  const canCreate = isDev || usage < limits.maxCourses;
   const canUseImages = limits.images;
   const canUseSources = plan === "pro";
   const maxFiles = plan === "pro" ? MAX_FILES_PRO : MAX_FILES_FREE;
