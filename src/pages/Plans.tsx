@@ -192,11 +192,11 @@ export default function Plans() {
                 Plano Pro
               </Badge>
               <div className="flex items-baseline gap-1">
-                <span className="font-display text-4xl font-bold text-foreground">R$ 39,90</span>
+                <span className="font-display text-4xl font-bold text-foreground">R$ 59,90</span>
                 <span className="text-muted-foreground text-sm">/ mês</span>
               </div>
               <p className="text-sm text-muted-foreground mt-2">
-                Para criadores que querem o máximo da plataforma
+                Tudo que você precisa para criar, publicar e vender cursos
               </p>
             </div>
 
