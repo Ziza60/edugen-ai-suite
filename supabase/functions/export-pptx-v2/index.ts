@@ -3646,7 +3646,7 @@ function renderProcessTimeline(
         });
       }
 
-      // Label + description
+      // Label + description — detect if label and body are fragments of the same sentence
       const colonIdx = items[i].indexOf(":");
       let label: string, desc: string;
       if (colonIdx > 0 && colonIdx < 40) {
@@ -3659,26 +3659,23 @@ function renderProcessTimeline(
         label = words.slice(0, 4).join(" ");
         desc = words.slice(4).join(" ");
       }
-      const labelY = cardY + 0.62;
-      slide.addText(label, {
-        x: x + 0.10, y: labelY,
-        w: cardW - 0.20, h: 0.40,
-        fontSize: TYPO.CARD_TITLE,
-        fontFace: design.fonts.title,
-        bold: true, color: ensureContrastOnLight(pal, colors.panelMid),
+
+      // Unify label+body into single text when they're fragments of the same sentence
+      const fullText = desc && desc.length > 0 && !label.endsWith(".")
+        ? `${label} ${desc}`.trim()
+        : label || desc;
+
+      slide.addText(fullText, {
+        x: x + 0.15, y: cardY + 0.55,
+        w: cardW - 0.30, h: cardH - 0.70,
+        fontSize: TYPO.BODY,
+        fontFace: design.fonts.body,
+        color: colors.coverSubtext,
+        valign: "top",
         align: "center",
-      });
-      if (desc) {
-        slide.addText(desc, {
-          x: x + 0.10, y: labelY + 0.40,
-          w: cardW - 0.20, h: cardH - 1.10,
-          fontSize: TYPO.CARD_BODY,
-          fontFace: design.fonts.body,
-          color: colors.coverSubtext,
-          align: "center", valign: "top",
-          lineSpacingMultiple: 1.22,
-        });
-      }
+        lineSpacingMultiple: 1.25,
+        autoFit: true,
+      } as any);
     }
   } else {
     // ── VERTICAL TIMELINE with node-connector system (5-7 items) ──
