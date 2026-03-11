@@ -281,6 +281,29 @@ export default function CourseView() {
                 variant="outline"
                 size="sm"
                 className="h-9"
+                disabled={calculatingScore || modules.length === 0}
+                onClick={async () => {
+                  setCalculatingScore(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("calculate-eduscore", {
+                      body: { course_id: id },
+                    });
+                    if (error) throw error;
+                    setEduScore(data);
+                  } catch (err: any) {
+                    toast({ title: "Erro ao calcular EduScore", description: err.message, variant: "destructive" });
+                  } finally {
+                    setCalculatingScore(false);
+                  }
+                }}
+              >
+                {calculatingScore ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <BarChart3 className="h-4 w-4 mr-1.5" />}
+                EduScore™
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
                 disabled={validating}
                 onClick={async () => {
                   setValidating(true);
