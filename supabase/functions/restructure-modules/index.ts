@@ -11,7 +11,7 @@ const REQUIRED_SECTIONS = [
   { emoji: "🎯", label: "Objetivo do Módulo" },
   { emoji: "🧠", label: "Fundamentos" },
   { emoji: "⚙️", label: "Como funciona" },
-  { emoji: "🧩", label: "Modelos / Tipos" },
+  // 🧩 Modelos / Tipos é OPCIONAL — omitida quando não há comparação real
   { emoji: "🛠️", label: "Aplicações reais" },
   { emoji: "💡", label: "Exemplo prático" },
   { emoji: "⚠️", label: "Desafios e cuidados" },
@@ -32,11 +32,13 @@ const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestr
    - ---
    - ### ⚙️ Como funciona (3-4 parágrafos ou lista de 5-7 itens)
    - ---
-   - ### 🧩 Modelos / Tipos (tabela comparativa simples OU lista tipificada, max 5 linhas na tabela)
+   - ### 🧩 Modelos / Tipos — CONDICIONAL: inclua SOMENTE se o conteúdo já contiver 2+ modelos/tipos/categorias DISTINTOS para comparar. Se não existir no conteúdo recebido, OMITA completamente esta seção — não crie título sem conteúdo, não invente categorias. Quando existir: tabela comparativa com 2-4 colunas e 2-5 linhas de dados reais.
+   - --- (apenas se a seção 🧩 foi incluída)
+   - ### 🛠️ Aplicações reais (MÍNIMO 4 itens distintos, cada um com 1 frase objetiva — se o conteúdo tiver menos de 4, consolide slides/parágrafos próximos para completar)
    - ---
-   - ### 🛠️ Aplicações reais (4-5 áreas com 1 frase cada)
-   - ---
-   - ### 💡 Exemplo prático (DEVE ter: **Cenário:** / **Solução:** / **Resultado:** )
+   - ### 💡 Exemplo prático — ORDEM OBRIGATÓRIA e IMUTÁVEL das fases, sempre nesta sequência:
+     **Contexto:** (ou **Cenário:**) → **Desafio:** → **Solução:** → **Resultado:**
+     PROIBIDO inverter ou embaralhar esta ordem. Se o conteúdo vier em outra ordem, reordene mantendo os textos originais.
    - ---
    - ### ⚠️ Desafios e cuidados (lista de 5 itens máximo)
    - ---
@@ -44,7 +46,7 @@ const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestr
    - ---
    - ### 🧾 Resumo do Módulo (1 parágrafo conciso)
    - ---
-   - ### 📌 Key Takeaways (5-7 bullets acionáveis, cada um começando com verbo)
+   - ### 📌 Key Takeaways (mínimo 5, máximo 6 bullets — cada bullet UMA única ideia com verbo no início; PROIBIDO colapsar duas ideias em um bullet com ponto e vírgula ou " e ")
 
 3. **Formatação**:
    - Separadores --- entre TODAS as seções
@@ -56,11 +58,13 @@ const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestr
    - Frases curtas, parágrafos de no máximo 4 linhas
 
 4. **Conteúdo**:
-   - Se uma seção está faltando, crie-a com base no conteúdo existente
+   - Se uma seção OBRIGATÓRIA está faltando, crie-a com base no conteúdo existente
+   - A seção 🧩 Modelos/Tipos é OPCIONAL — só crie se o conteúdo já tiver dados comparativos reais
    - Elimine conteúdo redundante
    - Reflexão (💭) SEMPRE após Desafios e ANTES do Resumo
-   - Key Takeaways devem ser concisos e acionáveis (iniciar com verbo)
-   - Exemplo prático DEVE ter cenário, solução e resultado separados
+   - Key Takeaways: mínimo 5 bullets, cada um com UMA ideia acionável iniciando com verbo
+   - Exemplo prático DEVE ter as 4 fases em ordem FIXA: Contexto/Cenário → Desafio → Solução → Resultado
+   - Se o exemplo vier com fases embaralhadas, reordene os blocos mantendo os textos originais
 
 5. **Proibições**:
    - NÃO adicione markdown code blocks ao redor do resultado
