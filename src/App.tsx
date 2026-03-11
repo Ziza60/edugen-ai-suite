@@ -50,6 +50,7 @@ const App = () => (
                 <Route path="analytics" element={<Analytics />} />
               </Route>
               <Route path="/certificate/:token" element={<CertificateValidation />} />
+              <Route path="/tutor/:slug" element={<TutorPublic />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

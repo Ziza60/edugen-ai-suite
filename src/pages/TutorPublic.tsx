@@ -34,9 +34,9 @@ export default function TutorPublic() {
   const { data: course, isLoading: loadingCourse, error } = useQuery({
     queryKey: ["tutor-course", slug],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from("courses")
-        .select("id, title, description")
+        .select("id, title, description") as any)
         .eq("tutor_slug", slug!)
         .eq("tutor_enabled", true)
         .eq("status", "published")
