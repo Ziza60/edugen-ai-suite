@@ -48,6 +48,7 @@ export default function CourseView() {
   const [showFlashcardsModal, setShowFlashcardsModal] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizRevealed, setQuizRevealed] = useState<Record<string, boolean>>({});
+  const [togglingTutor, setTogglingTutor] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isPro = plan === "pro";
