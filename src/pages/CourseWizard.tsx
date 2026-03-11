@@ -16,7 +16,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   ArrowLeft, ArrowRight, Loader2, Sparkles, BookOpen, Brain, Image,
   CheckCircle2, Upload, FileText, X, AlertCircle, Award, Zap,
-  Check, Circle, MessageSquare, GraduationCap, FileDown
+  Check, Circle, MessageSquare, GraduationCap, FileDown, Globe, Youtube
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -28,7 +28,8 @@ const STEPS = [
   { label: "Revisão", num: 4 },
 ];
 
-const MAX_FILES = 3;
+const MAX_FILES_FREE = 3;
+const MAX_FILES_PRO = 20;
 const MAX_TOTAL_CHARS = 150_000;
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
 
@@ -51,6 +52,8 @@ export default function CourseWizard() {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [importingUrl, setImportingUrl] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
 
   const [useSources, setUseSources] = useState(false);
   const [tempCourseId] = useState(() => crypto.randomUUID());
@@ -71,6 +74,7 @@ export default function CourseWizard() {
   const canCreate = usage < limits.maxCourses;
   const canUseImages = limits.images;
   const canUseSources = plan === "pro";
+  const maxFiles = plan === "pro" ? MAX_FILES_PRO : MAX_FILES_FREE;
   const totalChars = uploadedSources.reduce((sum, s) => sum + s.char_count, 0);
 
   const updateForm = (key: string, value: any) => {
@@ -78,8 +82,8 @@ export default function CourseWizard() {
   };
 
   const handleFileUpload = async (file: File) => {
-    if (uploadedSources.length >= MAX_FILES) {
-      toast({ title: "Limite atingido", description: `Máximo de ${MAX_FILES} arquivos por curso.`, variant: "destructive" });
+    if (uploadedSources.length >= maxFiles) {
+      toast({ title: "Limite atingido", description: `Máximo de ${maxFiles} fontes por curso.`, variant: "destructive" });
       return;
     }
 
@@ -411,22 +415,76 @@ export default function CourseWizard() {
                                   </div>
                                 ))}
                                 <p className="text-xs text-muted-foreground">
-                                  {totalChars.toLocaleString()} / {MAX_TOTAL_CHARS.toLocaleString()} chars · {uploadedSources.length}/{MAX_FILES} arquivos
+                                  {totalChars.toLocaleString()} / {MAX_TOTAL_CHARS.toLocaleString()} chars · {uploadedSources.length}/{maxFiles} fontes
                                 </p>
                               </div>
                             )}
 
-                            {uploadedSources.length < MAX_FILES && (
+                            {uploadedSources.length < maxFiles && (
                               <>
                                 <input
                                   ref={fileInputRef} type="file" accept=".pdf,.txt,.md" className="hidden"
                                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ""; }}
                                 />
-                                <Button variant="outline" className="w-full h-10" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                                <Button variant="outline" className="w-full h-10" onClick={() => fileInputRef.current?.click()} disabled={uploading || importingUrl}>
                                   {uploading
                                     ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processando…</>
                                     : <><Upload className="h-4 w-4 mr-2" />Enviar arquivo (PDF, TXT ou MD)</>}
                                 </Button>
+
+                                {/* URL Import */}
+                                <div className="flex items-center gap-2 pt-2 border-t border-border/40">
+                                  <div className="relative flex-1">
+                                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                    <Input
+                                      placeholder="Cole URL do YouTube ou artigo web"
+                                      value={urlInput}
+                                      onChange={(e) => setUrlInput(e.target.value)}
+                                      className="h-10 pl-9 text-sm"
+                                      disabled={importingUrl || uploading}
+                                    />
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-10 shrink-0"
+                                    disabled={!urlInput.trim() || importingUrl || uploading}
+                                    onClick={async () => {
+                                      setImportingUrl(true);
+                                      try {
+                                        const { data: { session } } = await supabase.auth.getSession();
+                                        const { data, error } = await supabase.functions.invoke("import-url-source", {
+                                          body: { url: urlInput.trim(), course_id: tempCourseId },
+                                        });
+                                        if (error) throw error;
+                                        setUploadedSources((prev) => [
+                                          ...prev,
+                                          { id: data.id, filename: data.filename, char_count: data.char_count },
+                                        ]);
+                                        setUrlInput("");
+                                        toast({
+                                          title: data.source_type === "youtube" ? "Vídeo importado!" : "Artigo importado!",
+                                          description: `${data.filename} — ${data.char_count.toLocaleString()} caracteres extraídos.`,
+                                        });
+                                      } catch (err: any) {
+                                        toast({ title: "Erro na importação", description: err.message, variant: "destructive" });
+                                      } finally {
+                                        setImportingUrl(false);
+                                      }
+                                    }}
+                                  >
+                                    {importingUrl ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : urlInput.includes("youtu") ? (
+                                      <><Youtube className="h-4 w-4 mr-1" />Importar</>
+                                    ) : (
+                                      <><Globe className="h-4 w-4 mr-1" />Importar</>
+                                    )}
+                                  </Button>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">
+                                  YouTube (transcrição automática) · Artigos e blogs · Páginas web
+                                </p>
                               </>
                             )}
                           </div>

@@ -7,8 +7,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const MAX_FILES = 3;
-const MAX_TOTAL_CHARS = 150_000;
+const MAX_FILES_FREE = 3;
+const MAX_FILES_PRO = 20;
 const ALLOWED_TYPES = ["application/pdf", "text/plain", "text/markdown"];
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
 
@@ -153,15 +153,16 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check existing sources count for this course
+    const maxFiles = plan === "pro" || isDev ? MAX_FILES_PRO : MAX_FILES_FREE;
     const { count: existingCount } = await serviceClient
       .from("course_sources")
       .select("*", { count: "exact", head: true })
       .eq("course_id", courseId)
       .eq("user_id", userId);
 
-    if ((existingCount ?? 0) >= MAX_FILES) {
+    if ((existingCount ?? 0) >= maxFiles) {
       return new Response(
-        JSON.stringify({ error: `Limite de ${MAX_FILES} arquivos por curso atingido.` }),
+        JSON.stringify({ error: `Limite de ${maxFiles} fontes por curso atingido.` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

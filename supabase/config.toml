@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.synthesize-reviews]
 verify_jwt = false
+
+[functions.import-url-source]
+verify_jwt = false
