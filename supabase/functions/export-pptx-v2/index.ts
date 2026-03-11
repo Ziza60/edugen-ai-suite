@@ -2816,9 +2816,9 @@ function renderModuleCover(
 
   if (!hasImage) {
     slide.addText(modNum, {
-      x: contentW - 5.0, y: SLIDE_H - 4.50,
-      w: 5.0, h: 4.50,
-      fontSize: 200,
+      x: contentW - 5.20, y: 2.20,
+      w: 4.80, h: 4.00,
+      fontSize: 180,
       fontFace: design.fonts.title,
       bold: true,
       color: accentColor,
