@@ -2040,13 +2040,13 @@ function addFooter(
   totalSlides?: number,
   footerBrand?: string | null,
 ) {
-  addGradientBar(slide, 0, SLIDE_H - 0.28, SLIDE_W, 0.005, colors.p0, "right");
-  addHR(slide, 0, SLIDE_H - 0.275, SLIDE_W, colors.divider, 0.003);
+  addGradientBar(slide, 0, SLIDE_H - 0.34, SLIDE_W, 0.005, colors.p0, "right");
+  addHR(slide, 0, SLIDE_H - 0.335, SLIDE_W, colors.divider, 0.003);
 
   // Slide number (left side)
   if (slideNumber !== undefined && totalSlides !== undefined) {
     slide.addText(`${slideNumber} / ${totalSlides}`, {
-      x: 0.55, y: SLIDE_H - 0.24,
+      x: 0.55, y: SLIDE_H - 0.30,
       w: 1.20, h: 0.20,
       fontSize: 8,
       fontFace: fontBody,
@@ -2059,7 +2059,7 @@ function addFooter(
   // Brand (right side) — only if footerBrand is non-null
   if (footerBrand) {
     slide.addText(footerBrand, {
-      x: SLIDE_W - 1.80, y: SLIDE_H - 0.24,
+      x: SLIDE_W - 1.80, y: SLIDE_H - 0.30,
       w: 1.50, h: 0.20,
       fontSize: 8,
       fontFace: fontBody,
@@ -2070,7 +2070,7 @@ function addFooter(
       charSpacing: 3,
     });
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W - 1.92, y: SLIDE_H - 0.18,
+      x: SLIDE_W - 1.92, y: SLIDE_H - 0.24,
       w: 0.08, h: 0.08,
       fill: { color: colors.p0 },
     });
