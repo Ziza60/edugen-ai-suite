@@ -464,6 +464,7 @@ Sua tarefa: converter o conteúdo do Módulo ${moduleIndex + 1} abaixo em uma se
 
 ## REGRA FUNDAMENTAL
 Retorne APENAS um array JSON válido. ZERO texto fora do JSON. ZERO explicações. ZERO markdown.
+NÃO inclua preamble, saudação ou confirmação — o primeiro caractere deve ser [ e o último ].
 
 ## LAYOUTS DISPONÍVEIS
 
@@ -490,7 +491,10 @@ Retorne APENAS um array JSON válido. ZERO texto fora do JSON. ZERO explicaçõe
 
 **"example_highlight"** — Exemplo prático ou estudo de caso
 - SEMPRE usar para blocos de exemplo. NUNCA usar bullets para exemplos.
-- Campos: title (ex: "Exemplo Prático"), sectionLabel ("ESTUDO DE CASO"), items (array de 3-5 strings, cada uma no formato "Rótulo: descrição" — Rótulo deve ser um dos: Contexto, Desafio, Solução, Ação, Resultado, Impacto)
+- Campos: title (ex: "Exemplo Prático"), sectionLabel ("ESTUDO DE CASO"), items (array de 3-5 strings, cada uma no formato "Rótulo: descrição")
+- ORDEM OBRIGATÓRIA E IMUTÁVEL dos rótulos: Contexto → Desafio → Solução → Resultado
+- PROIBIDO usar outro rótulo inicial que não seja Contexto ou Cenário
+- PROIBIDO colocar Resultado antes de Solução ou Desafio
 - CRÍTICO: cada item deve ter conteúdo único — PROIBIDO repetir a mesma informação
 
 **"warning_callout"** — Desafios, riscos, limitações, erros comuns
@@ -594,6 +598,22 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
       .slice(0, maxItems + 2);
   }
 
+  // For example_highlight: enforce canonical phase order
+  // Contexto/Cenário → Desafio → Solução/Ação → Resultado/Impacto
+  if (layout === "example_highlight" && items.length > 1) {
+    const PHASE_ORDER = ["contexto", "cenário", "cenario", "desafio", "solução", "solucao", "ação", "acao", "resultado", "impacto", "implementação", "implementacao"];
+    const getPhaseRank = (item: string): number => {
+      const lower = item.toLowerCase();
+      if (/^(contexto|cenário|cenario):/.test(lower)) return 0;
+      if (/^desafio:/.test(lower)) return 1;
+      if (/^(solução|solucao|ação|acao):/.test(lower)) return 2;
+      if (/^(resultado|impacto):/.test(lower)) return 3;
+      if (/^implementação:|implementacao:/.test(lower)) return 4;
+      return 5; // unknown phases go to end
+    };
+    items = [...items].sort((a, b) => getPhaseRank(a) - getPhaseRank(b));
+  }
+
   // Objectives for module_cover
   let objectives: string[] = [];
   if (Array.isArray(raw.objectives)) {
@@ -627,6 +647,14 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
   if (objectives.length > 0) plan.objectives = objectives;
   if (tableHeaders) plan.tableHeaders = tableHeaders;
   if (tableRows) plan.tableRows = tableRows;
+
+  // Guard: skip slides with no content (except structural slides)
+  const structuralLayouts: SlideLayoutV3[] = ["module_cover", "summary_slide", "numbered_takeaways"];
+  if (!structuralLayouts.includes(layout)) {
+    const hasItems = (plan.items?.length ?? 0) > 0;
+    const hasTable = (plan.tableRows?.length ?? 0) > 0;
+    if (!hasItems && !hasTable) return null; // drop empty slide
+  }
 
   return plan;
 }

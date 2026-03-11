@@ -231,6 +231,10 @@ Aprovado: bullets que nomeiam E explicam o porquê ou como aplicar.
 ## RESTRIÇÕES ABSOLUTAS
 - NÃO altere títulos de seções, emojis ou separadores (---)
 - NÃO adicione seções novas nem remova seções existentes
+- NÃO aumente o número de bullets de nenhuma seção — substitua bullets fracos por versões mais específicas, mantendo a mesma quantidade
+- NÃO adicione subseções ou subtítulos novos que não existiam no original
+- O volume total de texto deve ser similar ao original (±20%) — eleve qualidade, não quantidade
+- Comece DIRETAMENTE com ## [título do módulo] — ZERO preamble, saudação ou explicação antes do conteúdo
 - Mantenha o idioma: ${language}
 - Retorne APENAS o markdown melhorado, sem comentários
 
@@ -539,10 +543,24 @@ Write 800-1200 words. Be thorough and educational.`;
               target_audience || "profissionais da área", language || "pt-BR",
             );
             const qualityResult = await callAI("google/gemini-2.5-flash", qualityPrompt);
-            const cleanedQuality = qualityResult
+            // Strip markdown fences AND any preamble before the first ## heading
+            const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
-            if (cleanedQuality.length >= refinedContent.length * 0.75) {
-              elevatedContent = cleanedQuality;
+            const firstHeading = strippedFences.indexOf("\n## ");
+            const cleanedQuality = firstHeading > 0
+              ? strippedFences.slice(firstHeading).trim()
+              : strippedFences.startsWith("## ")
+                ? strippedFences
+                : strippedFences;
+            // Additional preamble guard: if result starts with a conversational line
+            // (no ##), extract from first ## occurrence
+            const preambleGuard = (s: string) => {
+              const idx = s.search(/^## /m);
+              return idx > 0 ? s.slice(idx).trim() : s;
+            };
+            const finalQuality = preambleGuard(cleanedQuality);
+            if (finalQuality.length >= refinedContent.length * 0.75) {
+              elevatedContent = finalQuality;
               console.log(`[generate-course] Quality Elevation OK: ${refinedContent.length} → ${elevatedContent.length} chars`);
             } else {
               console.warn(`[generate-course] Quality Elevation result too short, keeping refined content`);
