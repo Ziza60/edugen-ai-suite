@@ -55,6 +55,7 @@ export default function CourseView() {
   const [eduScore, setEduScore] = useState<any>(null);
   const [calculatingScore, setCalculatingScore] = useState(false);
   const [generatingLanding, setGeneratingLanding] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isPro = plan === "pro";
