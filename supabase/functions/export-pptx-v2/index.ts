@@ -3899,6 +3899,7 @@ function renderWarningCallout(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
 
   // Red accent left edge
   addLeftEdge(slide, "C0392B");
