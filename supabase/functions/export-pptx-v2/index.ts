@@ -1832,6 +1832,24 @@ function distributeModuleToSlides(
       validItems = coreItems.slice(0, 5);
     }
 
+    // ── Fragment merging for process_timeline items ──
+    if (layout === "process_timeline") {
+      const merged: string[] = [];
+      for (let i = 0; i < validItems.length; i++) {
+        const curr = validItems[i];
+        const next = validItems[i + 1] || "";
+        // If the current item doesn't end with punctuation and the next starts with lowercase
+        // or a connector, merge them into a single item
+        if (!curr.match(/[.!?]$/) && next && /^[a-záàãâéêíóôõúç]/.test(next)) {
+          merged.push(`${curr} ${next}`);
+          i++; // skip next
+        } else {
+          merged.push(curr);
+        }
+      }
+      validItems = merged;
+    }
+
     if (validItems.length === 0) {
       // Skip empty sections entirely — don't create slides with only the title as content
       report.warnings.push(`Skipped empty section: "${section.title}"`);
