@@ -2903,6 +2903,7 @@ function renderBullets(
   } else if (variant === 1) {
     // ── VARIANT B: Full-width cards with colored number badges + shadow ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
