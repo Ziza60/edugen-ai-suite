@@ -20,6 +20,7 @@ import Analytics from "@/pages/Analytics";
 import NotFound from "@/pages/NotFound";
 import TutorPublic from "@/pages/TutorPublic";
 import CourseLanding from "@/pages/CourseLanding";
+import ReviewPublic from "@/pages/ReviewPublic";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,7 @@ const App = () => (
               <Route path="/certificate/:token" element={<CertificateValidation />} />
               <Route path="/tutor/:slug" element={<TutorPublic />} />
               <Route path="/c/:slug" element={<CourseLanding />} />
+              <Route path="/review/:token" element={<ReviewPublic />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

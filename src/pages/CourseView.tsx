@@ -28,6 +28,7 @@ import { FlashcardsListView } from "@/components/course/FlashcardsListView";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EduScorePanel } from "@/components/course/EduScorePanel";
 import { TranslateDialog } from "@/components/course/TranslateDialog";
+import { ReviewPanel } from "@/components/course/ReviewPanel";
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
@@ -563,6 +564,9 @@ export default function CourseView() {
               </div>
             </div>
           )}
+
+          {/* ── Review Panel ── */}
+          <ReviewPanel courseId={id!} isPublished={isPublished} />
         </div>
       </div>
 
