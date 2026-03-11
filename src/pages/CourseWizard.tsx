@@ -210,43 +210,89 @@ export default function CourseWizard() {
     }
 
     setGenerating(true);
-    setGenerationProgress(10);
+    setGenerationProgress(5);
     setGenerationStep("Preparando geração…");
+    setGenerationMessage("");
 
     try {
-      let moduleProgress = 0;
-      const progressInterval = setInterval(() => {
-        moduleProgress++;
-        const pct = Math.min(10 + moduleProgress * 8, 85);
-        setGenerationProgress(pct);
-        const currentMod = Math.min(Math.ceil(moduleProgress / 2), form.numModules);
-        setGenerationStep(`Gerando módulo ${currentMod}/${form.numModules}…`);
-      }, 2000);
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-course`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            title: form.title.trim(),
+            theme: form.theme,
+            target_audience: form.targetAudience,
+            tone: form.tone,
+            language: form.language,
+            num_modules: form.numModules,
+            include_quiz: form.includeQuiz,
+            include_flashcards: form.includeFlashcards,
+            include_images: form.includeImages,
+            use_sources: useSources,
+            temp_course_id: useSources ? tempCourseId : undefined,
+          }),
+        }
+      );
 
-      const { data, error } = await supabase.functions.invoke("generate-course", {
-        body: {
-          title: form.title.trim(),
-          theme: form.theme,
-          target_audience: form.targetAudience,
-          tone: form.tone,
-          language: form.language,
-          num_modules: form.numModules,
-          include_quiz: form.includeQuiz,
-          include_flashcards: form.includeFlashcards,
-          include_images: form.includeImages,
-          use_sources: useSources,
-          temp_course_id: useSources ? tempCourseId : undefined,
-        },
-      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Erro ao gerar curso");
+      }
 
-      clearInterval(progressInterval);
-      setGenerationProgress(100);
-      setGenerationStep("Finalizando…");
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      if (error) throw error;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
-      toast({ title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." });
-      setTimeout(() => navigate(`/app/courses/${data.course_id}`), 1000);
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.replace("data: ", ""));
+            if (event.type === "status") {
+              setGenerationStep(event.message);
+            }
+            if (event.type === "structure_done") {
+              setGenerationProgress(15);
+              setGenerationStep("Estrutura criada!");
+            }
+            if (event.type === "module_start") {
+              const pct = 15 + Math.round((event.module / event.total) * 70);
+              setGenerationProgress(pct);
+              setGenerationMessage(`Gerando Módulo ${event.module} de ${event.total}: ${event.title}...`);
+              setGenerationStep(`Módulo ${event.module}/${event.total}`);
+            }
+            if (event.type === "module_done") {
+              const pct = 15 + Math.round((event.module / event.total) * 75);
+              setGenerationProgress(pct);
+            }
+            if (event.type === "complete") {
+              setGenerationProgress(100);
+              setGenerationStep("Concluído!");
+              setGenerationMessage("");
+              toast({ title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." });
+              setTimeout(() => navigate(`/app/courses/${event.courseId}`), 1000);
+            }
+            if (event.type === "error") {
+              throw new Error(event.message);
+            }
+          } catch (parseErr: any) {
+            if (parseErr.message && !parseErr.message.includes("JSON")) throw parseErr;
+          }
+        }
+      }
     } catch (error: any) {
       toast({
         title: "Erro ao gerar curso",
