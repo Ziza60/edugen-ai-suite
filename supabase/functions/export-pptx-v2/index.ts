@@ -3012,6 +3012,7 @@ function renderBullets(
   } else {
     // ── VARIANT D: Single highlight — first item dominant, rest as compact list ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
