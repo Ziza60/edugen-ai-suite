@@ -16,6 +16,7 @@ import Courses from "@/pages/Courses";
 import Certificates from "@/pages/Certificates";
 import CertificateValidation from "@/pages/CertificateValidation";
 import Plans from "@/pages/Plans";
+import Analytics from "@/pages/Analytics";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
                 <Route path="courses/:id" element={<CourseView />} />
                 <Route path="certificates" element={<Certificates />} />
                 <Route path="planos" element={<Plans />} />
+                <Route path="analytics" element={<Analytics />} />
               </Route>
               <Route path="/certificate/:token" element={<CertificateValidation />} />
               <Route path="*" element={<NotFound />} />
