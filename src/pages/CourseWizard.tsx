@@ -16,7 +16,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   ArrowLeft, ArrowRight, Loader2, Sparkles, BookOpen, Brain, Image,
   CheckCircle2, Upload, FileText, X, AlertCircle, Award, Zap,
-  Check, Circle, MessageSquare, GraduationCap, FileDown
+  Check, Circle, MessageSquare, GraduationCap, FileDown, Globe, Youtube
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
