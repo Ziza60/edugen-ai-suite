@@ -11,10 +11,10 @@ export default function CourseLanding() {
   const { data: landing, isLoading, error } = useQuery({
     queryKey: ["course-landing", slug],
     queryFn: async () => {
+      // Try published first (public access), then owner access (no is_published filter)
       const { data, error } = await (supabase.from("course_landings") as any)
         .select("*, courses(title, description, language)")
         .eq("slug", slug!)
-        .eq("is_published", true)
         .single();
       if (error) throw error;
       return data;
