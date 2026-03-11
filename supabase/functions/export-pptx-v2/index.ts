@@ -2362,10 +2362,15 @@ function enforceVisualRenderingGuards(
     }
 
     for (let i = 0; i < fitted.length; i++) {
-      const partTitle = i === 0 ? baseTitle : `${baseTitle} (Parte ${i + 1})`;
+      // Never add "(Parte N)" suffix — continuation is shown via sectionLabel dot indicator
+      const partTitle = baseTitle;
+      const partLabel = i > 0
+        ? `${fitted[i].sectionLabel || ""}  ·  ${i + 1}/${fitted.length}`.trim()
+        : fitted[i].sectionLabel;
       adjusted.push({
         ...fitted[i],
         title: partTitle,
+        sectionLabel: partLabel,
         continuationOf: i === 0 ? plan.continuationOf : baseTitle,
       });
     }
