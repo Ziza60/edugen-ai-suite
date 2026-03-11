@@ -21,6 +21,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { OnboardingModal, useOnboarding } from "@/components/OnboardingModal";
 
 // ── Hash-based color for thumbnail ──
 const THUMB_COLORS = [
@@ -72,6 +73,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [deletingCourse, setDeletingCourse] = useState<{ id: string; title: string } | null>(null);
+  const { open: onboardingOpen, dismiss: dismissOnboarding } = useOnboarding();
 
   // Filters & sorting
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published">("all");
@@ -601,6 +603,7 @@ export default function Dashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <OnboardingModal open={onboardingOpen} onDismiss={dismissOnboarding} freeCourses={limits.maxCourses} />
     </div>
   );
 }
