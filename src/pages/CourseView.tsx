@@ -1005,6 +1005,17 @@ export default function CourseView() {
         courseTitle={course.title}
         courseStatus={course.status}
       />
+
+      {/* Translate Dialog */}
+      <TranslateDialog
+        open={translateOpen}
+        onOpenChange={setTranslateOpen}
+        courseId={id!}
+        courseTitle={course.title}
+        currentLanguage={course.language}
+        isPro={isPro}
+        modulesCount={modules.length}
+      />
     </div>
   );
 }
