@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Download, FileText, Loader2, Package, StickyNote,
+  Download, FileText, Loader2, Package, StickyNote, GraduationCap,
 } from "lucide-react";
 import { PptxExportDialog, type PptxExportOptions } from "./PptxExportDialog";
 import { PptxQualityReport, type QualityReport } from "./PptxQualityReport";

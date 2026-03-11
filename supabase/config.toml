@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.import-url-source]
 verify_jwt = false
+
+[functions.export-moodle]
+verify_jwt = false
