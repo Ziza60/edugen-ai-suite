@@ -20,6 +20,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState, useRef } from "react";
 import { BlockEditor } from "@/components/course/BlockEditor";
 import { CertificateDialog } from "@/components/course/CertificateDialog";
+import { ScriptGeneratorButton } from "@/components/course/ScriptGeneratorButton";
 import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -243,6 +244,12 @@ export default function CourseView() {
                 courseStatus={course.status}
                 isPro={isPro}
                 modules={modules}
+              />
+              <ScriptGeneratorButton
+                courseId={id!}
+                courseTitle={course.title}
+                isPro={isPro}
+                disabled={!isPublished}
               />
               <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)} className="h-9">
                 <GraduationCap className="h-4 w-4 mr-1.5" />
