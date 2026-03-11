@@ -4106,6 +4106,7 @@ function renderSummarySlide(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
 
   // ── Left accent sidebar ──
   const sidebarW = 0.45;
