@@ -227,6 +227,18 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
           isPro={isPro}
         />
 
+        {/* Notion - Pro */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleExportWithFunction("export-notion", "md", setExportingNotion, "Notion")}
+          disabled={exportingNotion || !isPublished}
+          title={!isPublished ? "Publique o curso primeiro" : undefined}
+        >
+          {exportingNotion ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <StickyNote className="h-4 w-4 mr-1" />}
+          Notion {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+        </Button>
+
         {/* Moodle - Pro */}
         <Button
           variant="outline"
