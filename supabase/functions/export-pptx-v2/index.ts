@@ -3283,7 +3283,29 @@ function renderDefinition(
   }
 
   const pillars = items.slice(1);
-  if (pillars.length > 0) {
+  if (pillars.length > 4) {
+    // Too many pillars for columns — render as compact vertical list
+    const listY = 3.22;
+    const listItemH = Math.min(0.65, (SLIDE_H - listY - 0.45) / pillars.length);
+    for (let i = 0; i < pillars.length; i++) {
+      const pal = design.palette[i % design.palette.length];
+      const yPos = listY + i * (listItemH + 0.06);
+      slide.addShape("ellipse" as any, {
+        x: contentX + 0.04, y: yPos + listItemH / 2 - 0.06,
+        w: 0.12, h: 0.12,
+        fill: { color: pal },
+      });
+      slide.addText(pillars[i], {
+        x: contentX + 0.24, y: yPos,
+        w: contentW - 0.30, h: listItemH,
+        fontSize: TYPO.BULLET_TEXT - 1,
+        fontFace: design.fonts.body,
+        color: colors.text,
+        valign: "middle",
+        lineSpacingMultiple: 1.15,
+      });
+    }
+  } else if (pillars.length > 0) {
     const gap = 0.16;
     const pillarW = (contentW - gap * (pillars.length - 1)) / pillars.length;
     const startY = 3.22;
