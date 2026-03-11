@@ -254,6 +254,44 @@ export type Database = {
           },
         ]
       }
+      course_reviews: {
+        Row: {
+          course_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          review_token: string
+          user_id: string
+        }
+        Insert: {
+          course_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          review_token?: string
+          user_id: string
+        }
+        Update: {
+          course_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          review_token?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_reviews_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: true
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       course_sources: {
         Row: {
           char_count: number
@@ -443,6 +481,51 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      review_comments: {
+        Row: {
+          comment: string
+          created_at: string
+          id: string
+          module_id: string
+          resolved: boolean
+          review_id: string
+          reviewer_name: string
+        }
+        Insert: {
+          comment: string
+          created_at?: string
+          id?: string
+          module_id: string
+          resolved?: boolean
+          review_id: string
+          reviewer_name?: string
+        }
+        Update: {
+          comment?: string
+          created_at?: string
+          id?: string
+          module_id?: string
+          resolved?: boolean
+          review_id?: string
+          reviewer_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_comments_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "course_modules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_comments_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "course_reviews"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {
