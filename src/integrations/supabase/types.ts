@@ -119,6 +119,65 @@ export type Database = {
           },
         ]
       }
+      course_landings: {
+        Row: {
+          benefits: Json
+          course_id: string
+          created_at: string
+          cta_text: string
+          headline: string
+          id: string
+          is_published: boolean
+          slug: string
+          subtitle: string
+          summary: string
+          testimonial_name: string
+          testimonial_text: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          benefits?: Json
+          course_id: string
+          created_at?: string
+          cta_text?: string
+          headline?: string
+          id?: string
+          is_published?: boolean
+          slug: string
+          subtitle?: string
+          summary?: string
+          testimonial_name?: string
+          testimonial_text?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          benefits?: Json
+          course_id?: string
+          created_at?: string
+          cta_text?: string
+          headline?: string
+          id?: string
+          is_published?: boolean
+          slug?: string
+          subtitle?: string
+          summary?: string
+          testimonial_name?: string
+          testimonial_text?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_landings_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: true
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       course_modules: {
         Row: {
           content: string | null
