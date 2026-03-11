@@ -603,6 +603,7 @@ export default function Dashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <OnboardingModal open={onboardingOpen} onDismiss={dismissOnboarding} freeCourses={limits.maxCourses} />
     </div>
   );
 }
