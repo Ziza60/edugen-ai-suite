@@ -3961,7 +3961,7 @@ function renderWarningCallout(
     // Text must contrast with the card background
     const cardTextColor = isLightCard && design.theme === "light" ? "1E293B" : colors.text;
 
-    addCardShadow(slide, contentX, y, contentW, cardH, colors.shadowColor);
+    addCardShadow(slide, contentX, y, contentW, cardH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, {
       x: contentX, y, w: contentW, h: cardH,
       fill: { color: cardBgColor },
