@@ -239,7 +239,7 @@ Gere a landing page de vendas para este curso.`,
           summary: copy.summary,
           testimonial_name: copy.testimonial_name,
           testimonial_text: copy.testimonial_text,
-          is_published: false,
+          is_published: true,
         })
         .select()
         .single();
