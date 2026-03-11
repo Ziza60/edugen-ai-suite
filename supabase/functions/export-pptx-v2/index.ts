@@ -146,29 +146,29 @@ const SAFE_H = SLIDE_H - 1.0;
 
 const THEMES = {
   light: {
-    bg: "F7F8FC",
-    bgAlt: "EDEEF5",
-    bgAccent: "E2E5F0",
+    bg: "F0F2F8",           // cinza-azulado frio em vez de branco puro
+    bgAlt: "E4E8F2",        // levemente mais escuro para alternância
+    bgAccent: "D6DCF0",
     text: "0F172A",
-    textSecondary: "5A6578",
+    textSecondary: "4A5568",
     accent: "6C63FF",
     accentMuted: "EEEDFF",
-    borders: "CDD2DE",
+    borders: "C8CEDF",
     cardBg: "FFFFFF",
-    cardBgAlt: "F1F3FA",
+    cardBgAlt: "EEF1FA",
     tableHeaderBg: "0F172A",
     tableRowOdd: "FFFFFF",
-    tableRowEven: "F1F3FA",
+    tableRowEven: "EEF1FA",
     insightBg: "FFF8ED",
     reflectionBg: "EDF0FA",
-    coverBg: "050A18",
+    coverBg: "0F1C3F",      // azul-marinho escuro para capa
     coverText: "FFFFFF",
-    coverSubtext: "94A3C0",
-    divider: "D0D5E0",
-    coverDark: "050A18",
-    panelDark: "0A1228",
-    panelMid: "111D38",
-    shadowColor: "0F172A",
+    coverSubtext: "A0AEC0",
+    divider: "C8CEDF",
+    coverDark: "0F1C3F",
+    panelDark: "162040",
+    panelMid: "1E2D55",
+    shadowColor: "8896B0",  // sombra azulada em vez de preta
   },
   dark: {
     bg: "0C1322",
@@ -311,6 +311,18 @@ function getColors(design: DesignConfig) {
     p4: p[4],
     white: "FFFFFF",
   };
+}
+
+/** Adds a subtle decorative ellipse on light-theme content slides */
+function addLightBgDecoration(slide: any, design: DesignConfig, colors: ReturnType<typeof getColors>) {
+  if (design.theme === "light") {
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - 3.50, y: -1.80,
+      w: 5.00, h: 5.00,
+      fill: { color: colors.p0 },
+      transparency: 94,
+    });
+  }
 }
 
 /**
@@ -2807,6 +2819,7 @@ function renderBullets(
   if (variant === 0) {
     // ── VARIANT A: Split layout — dark left sidebar + content right ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     const sideW = SLIDE_W * 0.35;
     slide.addShape("rect" as any, {
       x: 0, y: 0, w: sideW, h: SLIDE_H,
@@ -2891,6 +2904,7 @@ function renderBullets(
   } else if (variant === 1) {
     // ── VARIANT B: Full-width cards with colored number badges + shadow ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
@@ -2946,6 +2960,7 @@ function renderBullets(
   } else if (variant === 2) {
     // ── VARIANT C: 2-column card grid with colored left edge + shadow ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
@@ -2998,6 +3013,7 @@ function renderBullets(
   } else {
     // ── VARIANT D: Single highlight — first item dominant, rest as compact list ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
@@ -3071,6 +3087,7 @@ function renderTwoColumnBullets(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
   const pal = design.palette[_globalSlideIdx % design.palette.length];
   addLeftEdge(slide, pal);
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, pal, design.fonts.body);
@@ -3167,6 +3184,7 @@ function renderDefinition(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
   addLeftEdge(slide, colors.p2);
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
@@ -3271,6 +3289,7 @@ function renderGridCards(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
   addLeftEdge(slide, colors.p3);
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p3, design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
@@ -3538,6 +3557,7 @@ function renderProcessTimeline(
   } else {
     // ── VERTICAL TIMELINE with node-connector system (5-7 items) ──
     addSlideBackground(slide, colors.bg);
+    addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, colors.p2);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
@@ -3650,6 +3670,7 @@ function renderComparisonTable(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
   addLeftEdge(slide, colors.p0);
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p0, design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p0);
@@ -3879,6 +3900,7 @@ function renderWarningCallout(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
 
   // Red accent left edge
   addLeftEdge(slide, "C0392B");
@@ -4085,6 +4107,7 @@ function renderSummarySlide(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
 
   // ── Left accent sidebar ──
   const sidebarW = 0.45;
