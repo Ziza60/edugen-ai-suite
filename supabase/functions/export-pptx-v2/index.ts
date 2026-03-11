@@ -3211,7 +3211,7 @@ function renderDefinition(
 
   if (items.length > 0) {
     const heroH = 1.30;
-    addCardShadow(slide, contentX, 1.68, contentW, heroH, colors.shadowColor);
+    addCardShadow(slide, contentX, 1.68, contentW, heroH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, {
       x: contentX, y: 1.68, w: contentW, h: heroH,
       fill: { color: colors.coverDark },
