@@ -415,7 +415,7 @@ export default function CourseWizard() {
                                   </div>
                                 ))}
                                 <p className="text-xs text-muted-foreground">
-                                  {totalChars.toLocaleString()} / {MAX_TOTAL_CHARS.toLocaleString()} chars · {uploadedSources.length}/{MAX_FILES} arquivos
+                                  {totalChars.toLocaleString()} / {MAX_TOTAL_CHARS.toLocaleString()} chars · {uploadedSources.length}/{maxFiles} fontes
                                 </p>
                               </div>
                             )}
