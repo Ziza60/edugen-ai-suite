@@ -20,6 +20,7 @@ import Analytics from "@/pages/Analytics";
 import NotFound from "@/pages/NotFound";
 import TutorPublic from "@/pages/TutorPublic";
 import CourseLanding from "@/pages/CourseLanding";
+import ReviewPublic from "@/pages/ReviewPublic";
 
 const queryClient = new QueryClient();
 
