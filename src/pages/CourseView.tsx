@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
   RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
-  Pencil, Share2, GraduationCap, CheckCircle2, XCircle
+  Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { ExportButtons } from "@/components/course/ExportButtons";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
@@ -47,6 +48,7 @@ export default function CourseView() {
   const [showFlashcardsModal, setShowFlashcardsModal] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizRevealed, setQuizRevealed] = useState<Record<string, boolean>>({});
+  const [togglingTutor, setTogglingTutor] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isPro = plan === "pro";
@@ -121,6 +123,22 @@ export default function CourseView() {
       return data;
     },
     enabled: modules.length > 0,
+  });
+
+  // Tutor stats: questions in last 7 days
+  const { data: tutorStats } = useQuery({
+    queryKey: ["tutor-stats", id],
+    queryFn: async () => {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { count, error } = await (supabase
+        .from("tutor_sessions") as any)
+        .select("id", { count: "exact", head: true })
+        .eq("course_id", id!)
+        .gte("created_at", sevenDaysAgo);
+      if (error) return 0;
+      return count || 0;
+    },
+    enabled: !!id && !!(course as any)?.tutor_enabled,
   });
 
   useQuery({
@@ -316,6 +334,87 @@ export default function CourseView() {
               </Button>
             </div>
           </div>
+
+          {/* ── Tutor IA Toggle ── */}
+          {isPublished && (
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={!!(course as any)?.tutor_enabled}
+                  disabled={togglingTutor}
+                  onCheckedChange={async (enabled) => {
+                    setTogglingTutor(true);
+                    try {
+                      const updates: any = { tutor_enabled: enabled };
+                      if (enabled && !(course as any)?.tutor_slug) {
+                        updates.tutor_slug = id!.slice(0, 8);
+                      }
+                      const { error } = await (supabase.from("courses") as any)
+                        .update(updates)
+                        .eq("id", id!);
+                      if (error) throw error;
+                      queryClient.invalidateQueries({ queryKey: ["course", id] });
+                      toast({
+                        title: enabled ? "Tutor IA ativado!" : "Tutor IA desativado",
+                        description: enabled
+                          ? "Alunos podem acessar o tutor pelo link público."
+                          : "O link público do tutor foi desativado.",
+                      });
+                    } catch (err: any) {
+                      toast({ title: "Erro", description: err.message, variant: "destructive" });
+                    } finally {
+                      setTogglingTutor(false);
+                    }
+                  }}
+                />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <BrainCircuit className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold text-foreground">Tutor IA</span>
+                    <Badge variant="outline" className="text-[10px]">PRO</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Alunos consultam a IA sobre o conteúdo do curso
+                  </p>
+                </div>
+              </div>
+
+              {(course as any)?.tutor_enabled && (course as any)?.tutor_slug && (
+                <div className="ml-auto flex items-center gap-3">
+                  {typeof tutorStats === "number" && (
+                    <span className="text-xs text-muted-foreground">
+                      <MessageSquare className="h-3 w-3 inline mr-1" />
+                      {tutorStats} pergunta{tutorStats !== 1 ? "s" : ""} nos últimos 7 dias
+                    </span>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      const url = `${window.location.origin}/tutor/${(course as any).tutor_slug}`;
+                      navigator.clipboard.writeText(url);
+                      toast({ title: "Link copiado!", description: url });
+                    }}
+                  >
+                    <Copy className="h-3 w-3 mr-1.5" />
+                    Copiar link
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      window.open(`/tutor/${(course as any).tutor_slug}`, "_blank");
+                    }}
+                  >
+                    <Link2 className="h-3 w-3 mr-1.5" />
+                    Abrir
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

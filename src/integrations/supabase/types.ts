@@ -253,6 +253,8 @@ export type Database = {
           theme: string | null
           title: string
           tone: string | null
+          tutor_enabled: boolean
+          tutor_slug: string | null
           updated_at: string
           use_sources: boolean
           user_id: string
@@ -270,6 +272,8 @@ export type Database = {
           theme?: string | null
           title: string
           tone?: string | null
+          tutor_enabled?: boolean
+          tutor_slug?: string | null
           updated_at?: string
           use_sources?: boolean
           user_id: string
@@ -287,6 +291,8 @@ export type Database = {
           theme?: string | null
           title?: string
           tone?: string | null
+          tutor_enabled?: boolean
+          tutor_slug?: string | null
           updated_at?: string
           use_sources?: boolean
           user_id?: string
@@ -408,6 +414,41 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      tutor_sessions: {
+        Row: {
+          answer: string
+          course_id: string
+          created_at: string
+          id: string
+          question: string
+          session_token: string
+        }
+        Insert: {
+          answer: string
+          course_id: string
+          created_at?: string
+          id?: string
+          question: string
+          session_token: string
+        }
+        Update: {
+          answer?: string
+          course_id?: string
+          created_at?: string
+          id?: string
+          question?: string
+          session_token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tutor_sessions_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       usage_events: {
         Row: {

@@ -18,6 +18,7 @@ import CertificateValidation from "@/pages/CertificateValidation";
 import Plans from "@/pages/Plans";
 import Analytics from "@/pages/Analytics";
 import NotFound from "@/pages/NotFound";
+import TutorPublic from "@/pages/TutorPublic";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ const App = () => (
                 <Route path="analytics" element={<Analytics />} />
               </Route>
               <Route path="/certificate/:token" element={<CertificateValidation />} />
+              <Route path="/tutor/:slug" element={<TutorPublic />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

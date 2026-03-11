@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.generate-script]
 verify_jwt = false
+
+[functions.tutor-chat]
+verify_jwt = false
