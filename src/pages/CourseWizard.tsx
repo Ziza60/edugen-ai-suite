@@ -552,6 +552,24 @@ export default function CourseWizard() {
                           </div>
                         )}
                       </div>
+
+                      {/* Prompt quality indicator */}
+                      <div className="rounded-xl border border-border/60 bg-muted/40 p-4 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Gauge className="h-4 w-4 text-muted-foreground" />
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Qualidade do prompt</p>
+                          </div>
+                          <span className="text-xs font-bold text-foreground">{promptScore}%</span>
+                        </div>
+                        <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${promptScoreColor}`}
+                            style={{ width: `${promptScore}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">{promptScoreLabel}</p>
+                      </div>
                     </div>
                   )}
 
