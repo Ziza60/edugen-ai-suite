@@ -538,15 +538,37 @@ export default function CourseWizard() {
 
                             {uploadedSources.length < maxFiles && (
                               <>
+                                <div
+                                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                                  onDragLeave={() => setDragging(false)}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragging(false);
+                                    const file = e.dataTransfer.files[0];
+                                    if (file) handleFileUpload(file);
+                                  }}
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
+                                    dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                                  }`}
+                                >
+                                  {uploading ? (
+                                    <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin text-primary" />
+                                  ) : (
+                                    <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                                  )}
+                                  <p className="text-sm text-muted-foreground">
+                                    {uploading ? "Processando…" : <>Arraste um arquivo aqui ou <span className="text-primary font-medium">clique para selecionar</span></>}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">PDF, TXT, MD — máx. 10MB</p>
+                                </div>
+                                {uploading && (
+                                  <Progress value={uploadProgress} className="h-1.5" />
+                                )}
                                 <input
                                   ref={fileInputRef} type="file" accept=".pdf,.txt,.md" className="hidden"
                                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ""; }}
                                 />
-                                <Button variant="outline" className="w-full h-10" onClick={() => fileInputRef.current?.click()} disabled={uploading || importingUrl}>
-                                  {uploading
-                                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processando…</>
-                                    : <><Upload className="h-4 w-4 mr-2" />Enviar arquivo (PDF, TXT ou MD)</>}
-                                </Button>
 
                                 {/* URL Import */}
                                 <div className="flex items-center gap-2 pt-2 border-t border-border/40">
