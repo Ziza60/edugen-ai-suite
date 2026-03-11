@@ -74,7 +74,38 @@ export default function CourseWizard() {
     includeQuiz: true,
     includeFlashcards: true,
     includeImages: false,
+    density: "standard" as "compact" | "standard" | "detailed",
   });
+
+  // ── Prompt quality score ──
+  const calcPromptScore = () => {
+    let score = 0;
+    if (form.title?.trim().length >= 10) score += 25;
+    if (form.theme?.trim().length >= 15) score += 25;
+    if (form.targetAudience?.trim().length > 0) score += 20;
+    if (form.numModules >= 5) score += 10;
+    if (useSources && uploadedSources.length > 0) score += 20;
+    return Math.min(score, 100);
+  };
+
+  const promptScore = calcPromptScore();
+  const promptScoreColor = promptScore < 40 ? "bg-destructive" : promptScore < 75 ? "bg-yellow-500" : "bg-green-500";
+  const promptScoreLabel = promptScore < 40
+    ? "Adicione mais detalhes para gerar um curso de qualidade"
+    : promptScore < 75
+    ? "Bom começo — defina o público-alvo para melhorar"
+    : "Ótimo! Seu curso está pronto para ser gerado";
+
+  // ── Reading time estimate ──
+  const calcReadingTime = () => {
+    const wordsPerModule = { compact: 400, standard: 700, detailed: 1100 };
+    const wpm = 200;
+    const totalMinutes = Math.round((form.numModules * wordsPerModule[form.density]) / wpm);
+    if (totalMinutes < 60) return `~${totalMinutes} min de conteúdo`;
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return m > 0 ? `~${h}h ${m}min de conteúdo` : `~${h}h de conteúdo`;
+  };
 
   const canCreate = usage < limits.maxCourses;
   const canUseImages = limits.images;
