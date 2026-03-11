@@ -18,6 +18,7 @@ import CertificateValidation from "@/pages/CertificateValidation";
 import Plans from "@/pages/Plans";
 import Analytics from "@/pages/Analytics";
 import NotFound from "@/pages/NotFound";
+import TutorPublic from "@/pages/TutorPublic";
 
 const queryClient = new QueryClient();
 
