@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
   RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
-  Pencil, Share2, GraduationCap, CheckCircle2, XCircle
+  Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { ExportButtons } from "@/components/course/ExportButtons";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
