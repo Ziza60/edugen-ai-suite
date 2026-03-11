@@ -420,7 +420,7 @@ export default function CourseWizard() {
                               </div>
                             )}
 
-                            {uploadedSources.length < MAX_FILES && (
+                            {uploadedSources.length < maxFiles && (
                               <>
                                 <input
                                   ref={fileInputRef} type="file" accept=".pdf,.txt,.md" className="hidden"
