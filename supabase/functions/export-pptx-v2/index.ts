@@ -3252,7 +3252,7 @@ function renderDefinition(
       const x = contentX + i * (pillarW + gap);
       const pal = design.palette[i % design.palette.length];
       const pH = SLIDE_H - startY - 0.45;
-      addCardShadow(slide, x, startY, pillarW, pH, colors.shadowColor);
+      addCardShadow(slide, x, startY, pillarW, pH, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x, y: startY, w: pillarW, h: pH,
         fill: { color: colors.cardBg },
