@@ -313,14 +313,22 @@ function getColors(design: DesignConfig) {
   };
 }
 
-/** Adds a subtle decorative ellipse on light-theme content slides */
+/** Adds subtle decorative ellipses on light-theme content slides */
 function addLightBgDecoration(slide: any, design: DesignConfig, colors: ReturnType<typeof getColors>) {
   if (design.theme === "light") {
+    // Círculo pequeno — canto superior direito
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W - 3.50, y: -1.80,
-      w: 5.00, h: 5.00,
+      x: SLIDE_W - 1.60, y: -0.60,
+      w: 1.80, h: 1.80,
       fill: { color: colors.p0 },
-      transparency: 94,
+      transparency: 92,
+    });
+    // Círculo menor secundário
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - 0.80, y: 0.50,
+      w: 0.80, h: 0.80,
+      fill: { color: colors.p1 },
+      transparency: 88,
     });
   }
 }
