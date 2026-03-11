@@ -37,8 +37,8 @@ export default function TutorPublic() {
       const { data, error } = await supabase
         .from("courses")
         .select("id, title, description")
-        .eq("tutor_slug" as any, slug!)
-        .eq("tutor_enabled" as any, true)
+        .eq("tutor_slug", slug!)
+        .eq("tutor_enabled", true)
         .eq("status", "published")
         .single();
       if (error) throw error;
