@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
 import { useDevMode } from "@/hooks/useDevMode";
@@ -8,10 +8,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Plus, BookOpen, Clock, Sparkles, ArrowRight, Loader2, Trash2,
   Eye, Pencil, GraduationCap, Bot, BarChart3, PenTool,
-  Zap, TrendingUp, FileText, BrainCircuit, Award
+  Zap, TrendingUp, FileText, BrainCircuit, Award,
+  Share2, Download, Filter, ArrowUpDown, Lightbulb
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -20,15 +22,47 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
-function getCourseIcon(theme?: string | null): React.ElementType {
-  if (!theme) return BookOpen;
-  const lower = theme.toLowerCase();
-  if (lower.includes("ia") || lower.includes("inteligência") || lower.includes("machine")) return Bot;
-  if (lower.includes("marketing") || lower.includes("negócio") || lower.includes("vendas") || lower.includes("dados")) return BarChart3;
-  if (lower.includes("educação") || lower.includes("didática") || lower.includes("pedagog") || lower.includes("ensino")) return GraduationCap;
-  if (lower.includes("escrita") || lower.includes("redação") || lower.includes("texto") || lower.includes("conteúdo")) return PenTool;
-  return BookOpen;
+// ── Hash-based color for thumbnail ──
+const THUMB_COLORS = [
+  "from-rose-500 to-pink-600",
+  "from-violet-500 to-purple-600",
+  "from-blue-500 to-indigo-600",
+  "from-cyan-500 to-teal-600",
+  "from-emerald-500 to-green-600",
+  "from-amber-500 to-orange-600",
+  "from-red-500 to-rose-600",
+  "from-fuchsia-500 to-pink-600",
+  "from-sky-500 to-blue-600",
+  "from-lime-500 to-emerald-600",
+];
+
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash);
 }
+
+function getThumbColor(id: string): string {
+  return THUMB_COLORS[hashString(id) % THUMB_COLORS.length];
+}
+
+function getInitials(title: string): string {
+  return title
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
+}
+
+// ── Empty state suggestions ──
+const SUGGESTIONS = [
+  { icon: BarChart3, title: "Estratégias de Social Media", desc: "Marketing digital para iniciantes", theme: "marketing" },
+  { icon: Bot, title: "Introdução à Inteligência Artificial", desc: "Conceitos fundamentais de IA e ML", theme: "tecnologia" },
+  { icon: GraduationCap, title: "Metodologias de Ensino Online", desc: "Técnicas para educação a distância", theme: "educação" },
+];
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -38,6 +72,11 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [deletingCourse, setDeletingCourse] = useState<{ id: string; title: string } | null>(null);
+
+  // Filters & sorting
+  const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published">("all");
+  const [langFilter, setLangFilter] = useState<"all" | string>("all");
+  const [sortBy, setSortBy] = useState<"recent" | "oldest" | "title">("recent");
 
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ["courses", user?.id],
@@ -84,6 +123,30 @@ export default function Dashboard() {
       toast.error("Erro ao excluir o curso. Tente novamente.");
     },
   });
+
+  // ── Filtered & sorted courses ──
+  const filteredCourses = useMemo(() => {
+    let result = [...courses];
+
+    // Status filter
+    if (statusFilter === "draft") result = result.filter((c: any) => c.status === "draft");
+    if (statusFilter === "published") result = result.filter((c: any) => c.status === "published");
+
+    // Language filter
+    if (langFilter !== "all") result = result.filter((c: any) => c.language === langFilter);
+
+    // Sort
+    if (sortBy === "recent") result.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    if (sortBy === "oldest") result.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    if (sortBy === "title") result.sort((a: any, b: any) => a.title.localeCompare(b.title, "pt-BR"));
+
+    return result;
+  }, [courses, statusFilter, langFilter, sortBy]);
+
+  const availableLanguages = useMemo(() => {
+    const langs = new Set(courses.map((c: any) => c.language));
+    return Array.from(langs);
+  }, [courses]);
 
   const canCreate = isDev || usage < limits.maxCourses;
   const usagePercent = Math.min((usage / limits.maxCourses) * 100, 100);
@@ -256,7 +319,7 @@ export default function Dashboard() {
 
         {/* ═══════════════════ COURSES SECTION ═══════════════════ */}
         <div>
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
               <h2 className="font-display text-xl lg:text-2xl font-bold text-foreground">Meus cursos</h2>
               <p className="text-sm text-muted-foreground mt-0.5">
@@ -265,6 +328,51 @@ export default function Dashboard() {
                   : "Nenhum curso criado ainda"}
               </p>
             </div>
+
+            {/* ── Filters & Sort ── */}
+            {courses.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+                  <SelectTrigger className="h-9 w-[130px] text-xs">
+                    <Filter className="h-3 w-3 mr-1.5 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="draft">Rascunho</SelectItem>
+                    <SelectItem value="published">Publicado</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {availableLanguages.length > 1 && (
+                  <Select value={langFilter} onValueChange={setLangFilter}>
+                    <SelectTrigger className="h-9 w-[120px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Idiomas</SelectItem>
+                      {availableLanguages.map((lang) => (
+                        <SelectItem key={lang} value={lang}>
+                          {lang === "pt-BR" ? "Português" : lang === "en" ? "English" : lang === "es" ? "Español" : lang}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+                  <SelectTrigger className="h-9 w-[140px] text-xs">
+                    <ArrowUpDown className="h-3 w-3 mr-1.5 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Mais recente</SelectItem>
+                    <SelectItem value="oldest">Mais antigo</SelectItem>
+                    <SelectItem value="title">Título A–Z</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           {isLoading ? (
@@ -273,13 +381,13 @@ export default function Dashboard() {
               <span className="text-sm text-muted-foreground">Carregando cursos…</span>
             </div>
           ) : courses.length === 0 ? (
-            /* ── Empty State ── */
+            /* ── Empty State with contextual suggestions ── */
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               className="border-2 border-dashed border-border rounded-2xl bg-card/50"
             >
-              <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+              <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
                 <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center mb-6">
                   <BrainCircuit className="h-10 w-10 text-primary" />
                 </div>
@@ -289,21 +397,54 @@ export default function Dashboard() {
                 <p className="text-muted-foreground mb-8 max-w-md text-base">
                   Crie seu primeiro curso com IA em menos de 10 minutos. Módulos, quizzes, flashcards e certificados — tudo automático.
                 </p>
-                <Button onClick={() => navigate("/app/courses/new")} size="lg" className="h-12 px-8 text-base font-semibold shadow-lg shadow-primary/20">
+                <Button onClick={() => navigate("/app/courses/new")} size="lg" className="h-12 px-8 text-base font-semibold shadow-lg shadow-primary/20 mb-10">
                   <Plus className="h-5 w-5 mr-2" />
                   Criar primeiro curso
                 </Button>
+
+                {/* ── Contextual suggestions ── */}
+                <div className="w-full max-w-2xl">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Lightbulb className="h-4 w-4 text-primary" />
+                    <p className="text-sm font-semibold text-foreground">Sugestões para começar</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {SUGGESTIONS.map((s) => (
+                      <button
+                        key={s.title}
+                        onClick={() => navigate("/app/courses/new")}
+                        className="group/sug text-left bg-muted/40 hover:bg-primary/5 border border-border/60 hover:border-primary/25 rounded-xl p-4 transition-all"
+                      >
+                        <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                          <s.icon className="h-4 w-4 text-primary" />
+                        </div>
+                        <p className="text-sm font-semibold text-foreground leading-snug mb-1">{s.title}</p>
+                        <p className="text-xs text-muted-foreground">{s.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </motion.div>
+          ) : filteredCourses.length === 0 ? (
+            /* ── No results for current filter ── */
+            <div className="text-center py-16">
+              <Filter className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">Nenhum curso encontrado com os filtros selecionados.</p>
+              <Button variant="link" size="sm" onClick={() => { setStatusFilter("all"); setLangFilter("all"); }} className="mt-2">
+                Limpar filtros
+              </Button>
+            </div>
           ) : (
             /* ── Course Grid ── */
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               <AnimatePresence>
-                {courses.map((course: any, i: number) => {
-                  const IconComp = getCourseIcon(course.theme);
+                {filteredCourses.map((course: any, i: number) => {
                   const stats = (courseStats as any)[course.id];
                   const moduleCount = stats?.modules ?? 0;
                   const isPublished = course.status === "published";
+                  const initials = getInitials(course.title);
+                  const thumbGradient = getThumbColor(course.id);
 
                   return (
                     <motion.div
@@ -314,80 +455,69 @@ export default function Dashboard() {
                       transition={{ delay: i * 0.04, duration: 0.3 }}
                     >
                       <div className="group relative bg-card rounded-2xl border border-border hover:border-primary/25 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200 overflow-hidden">
-                        {/* Top accent bar */}
-                        <div className={`h-1 w-full ${isPublished ? "bg-secondary" : "bg-muted-foreground/20"}`} />
-
-                        <div className="p-5 space-y-4">
-                          {/* Row 1 — Icon + Title + Status */}
-                          <div className="flex items-start gap-3">
-                            <div className="h-11 w-11 rounded-xl bg-primary/8 flex items-center justify-center shrink-0 mt-0.5">
-                              <IconComp className="h-5 w-5 text-primary" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-display font-semibold text-[15px] leading-snug text-foreground line-clamp-2">
-                                {course.title}
-                              </h3>
-                              <div className="mt-1.5">
-                                <Badge
-                                  variant={isPublished ? "default" : "outline"}
-                                  className={`text-[10px] font-semibold px-2 py-0.5 ${
-                                    isPublished
-                                      ? "bg-secondary/15 text-secondary border-secondary/30 hover:bg-secondary/20"
-                                      : ""
-                                  }`}
-                                >
-                                  {isPublished ? "✓ Publicado" : "Rascunho"}
-                                </Badge>
-                              </div>
-                            </div>
+                        {/* ── Thumbnail header ── */}
+                        <div className={`h-24 bg-gradient-to-br ${thumbGradient} relative overflow-hidden`}>
+                          <div className="absolute inset-0 bg-black/10" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-3xl font-display font-bold text-white/90 tracking-wider select-none">
+                              {initials}
+                            </span>
                           </div>
+                          {/* Status badge on thumbnail */}
+                          <div className="absolute top-3 right-3">
+                            <Badge
+                              variant={isPublished ? "default" : "outline"}
+                              className={`text-[10px] font-semibold px-2 py-0.5 backdrop-blur-sm ${
+                                isPublished
+                                  ? "bg-white/20 text-white border-white/30 hover:bg-white/30"
+                                  : "bg-black/20 text-white border-white/20 hover:bg-black/30"
+                              }`}
+                            >
+                              {isPublished ? "✓ Publicado" : "Rascunho"}
+                            </Badge>
+                          </div>
+                        </div>
 
-                          {/* Row 2 — Description */}
-                          {course.description && (
-                            <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
-                              {course.description}
-                            </p>
-                          )}
+                        <div className="p-5 space-y-3">
+                          {/* Title */}
+                          <h3 className="font-display font-semibold text-[15px] leading-snug text-foreground line-clamp-2">
+                            {course.title}
+                          </h3>
 
-                          {/* Row 3 — Metadata chips */}
-                          <div className="flex flex-wrap items-center gap-2">
-                            {moduleCount > 0 && (
-                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted/60 rounded-md px-2 py-1">
-                                <FileText className="h-3 w-3" /> {moduleCount} módulos
-                              </span>
-                            )}
+                          {/* Status + progress line */}
+                          <p className="text-xs text-muted-foreground">
+                            {isPublished
+                              ? `Publicado — ${moduleCount} módulo${moduleCount !== 1 ? "s" : ""}`
+                              : `Rascunho — ${moduleCount} módulo${moduleCount !== 1 ? "s" : ""}`}
+                          </p>
+
+                          {/* Metadata chips */}
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {course.include_quiz && (
-                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted/60 rounded-md px-2 py-1">
+                              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5">
                                 <BookOpen className="h-3 w-3" /> quizzes
                               </span>
                             )}
                             {course.include_flashcards && (
-                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted/60 rounded-md px-2 py-1">
+                              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5">
                                 <BrainCircuit className="h-3 w-3" /> flashcards
                               </span>
                             )}
-                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted/60 rounded-md px-2 py-1">
+                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5">
                               <Award className="h-3 w-3" /> certificado
+                            </span>
+                            <span className="inline-flex items-center text-[11px] text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5 uppercase tracking-wider font-medium">
+                              {course.language}
                             </span>
                           </div>
 
-                          {/* Row 4 — Date + Language */}
-                          <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/60">
-                            <span>Criado em: {new Date(course.created_at).toLocaleDateString("pt-BR")}</span>
-                            <span className="uppercase tracking-wider font-medium">{course.language}</span>
+                          {/* Date */}
+                          <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/60">
+                            Criado em {new Date(course.created_at).toLocaleDateString("pt-BR")}
                           </div>
 
-                          {/* Row 5 — Actions (always visible) */}
+                          {/* Quick actions */}
                           <div className="flex items-center gap-2 pt-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 text-xs flex-1 font-medium"
-                              onClick={() => navigate(`/app/courses/${course.id}`)}
-                            >
-                              <Eye className="h-3.5 w-3.5 mr-1" />
-                              Visualizar
-                            </Button>
                             <Button
                               variant="outline"
                               size="sm"
@@ -397,6 +527,28 @@ export default function Dashboard() {
                               <Pencil className="h-3.5 w-3.5 mr-1" />
                               Editar
                             </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs flex-1 font-medium"
+                              onClick={() => navigate(`/app/courses/${course.id}`)}
+                            >
+                              <Download className="h-3.5 w-3.5 mr-1" />
+                              Exportar
+                            </Button>
+                            {isPublished && course.tutor_slug && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(`${window.location.origin}/tutor/${course.tutor_slug}`);
+                                  toast.success("Link copiado!");
+                                }}
+                              >
+                                <Share2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
