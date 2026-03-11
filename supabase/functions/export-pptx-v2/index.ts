@@ -3144,7 +3144,7 @@ function renderTwoColumnBullets(
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + colBulletGap);
-      addCardShadow(slide, colX, yPos, colW, itemH - 0.02, colors.shadowColor);
+      addCardShadow(slide, colX, yPos, colW, itemH - 0.02, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x: colX, y: yPos,
         w: colW, h: itemH - 0.02,
