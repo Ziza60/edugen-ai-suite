@@ -539,48 +539,7 @@ export function BlockEditor({ content, onChange, isPro = false }: BlockEditorPro
         </div>
       </div>
 
-      {/* ── Bubble menu (floating toolbar on text selection) ── */}
-      {editor && (
-        <BubbleMenu
-          editor={editor}
-          tippyOptions={{ duration: 150 }}
-          className="flex items-center gap-0.5 bg-popover border border-border shadow-lg rounded-lg px-1.5 py-1"
-        >
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            isActive={editor.isActive("bold")}
-            title="Negrito"
-          >
-            <Bold className="h-3.5 w-3.5" />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            isActive={editor.isActive("italic")}
-            title="Itálico"
-          >
-            <Italic className="h-3.5 w-3.5" />
-          </ToolbarButton>
-          <ToolbarButton onClick={setLink} isActive={editor.isActive("link")} title="Link">
-            <LinkIcon className="h-3.5 w-3.5" />
-          </ToolbarButton>
-          {isPro && (
-            <>
-              <div className="w-px h-4 bg-border mx-0.5" />
-              <ToolbarButton
-                onClick={() => handleAIEnhance("improve")}
-                disabled={enhancing}
-                title="Melhorar com IA (⌘↵)"
-              >
-                {enhancing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5" />
-                )}
-              </ToolbarButton>
-            </>
-          )}
-        </BubbleMenu>
-      )}
+      {/* Bubble menu removed — toolbar at top provides all formatting */}
 
       {/* ── Footer status ── */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border bg-muted/20 text-xs text-muted-foreground">
