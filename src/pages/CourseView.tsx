@@ -26,6 +26,7 @@ import { ScriptGeneratorButton } from "@/components/course/ScriptGeneratorButton
 import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { EduScorePanel } from "@/components/course/EduScorePanel";
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
