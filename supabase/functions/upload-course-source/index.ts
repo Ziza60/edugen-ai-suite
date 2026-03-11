@@ -153,15 +153,16 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check existing sources count for this course
+    const maxFiles = plan === "pro" || isDev ? MAX_FILES_PRO : MAX_FILES_FREE;
     const { count: existingCount } = await serviceClient
       .from("course_sources")
       .select("*", { count: "exact", head: true })
       .eq("course_id", courseId)
       .eq("user_id", userId);
 
-    if ((existingCount ?? 0) >= MAX_FILES) {
+    if ((existingCount ?? 0) >= maxFiles) {
       return new Response(
-        JSON.stringify({ error: `Limite de ${MAX_FILES} arquivos por curso atingido.` }),
+        JSON.stringify({ error: `Limite de ${maxFiles} fontes por curso atingido.` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
