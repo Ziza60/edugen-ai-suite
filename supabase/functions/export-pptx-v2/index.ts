@@ -3615,7 +3615,7 @@ function renderProcessTimeline(
       const cardX = nodeX + nodeSize + 0.16;
       const cardW = contentW - (cardX - contentX);
 
-      addCardShadow(slide, cardX, y, cardW, stepH - 0.02, colors.shadowColor);
+      addCardShadow(slide, cardX, y, cardW, stepH - 0.02, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x: cardX, y, w: cardW, h: stepH - 0.02,
         fill: { color: colors.cardBg },
