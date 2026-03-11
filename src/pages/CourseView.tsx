@@ -321,6 +321,16 @@ export default function CourseView() {
                 variant="outline"
                 size="sm"
                 className="h-9"
+                disabled={modules.length === 0}
+                onClick={() => setTranslateOpen(true)}
+              >
+                <Languages className="h-4 w-4 mr-1.5" />
+                Traduzir
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
                 disabled={validating}
                 onClick={async () => {
                   setValidating(true);
