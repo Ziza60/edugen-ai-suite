@@ -564,6 +564,9 @@ export default function CourseView() {
               </div>
             </div>
           )}
+
+          {/* ── Review Panel ── */}
+          <ReviewPanel courseId={id!} isPublished={isPublished} />
         </div>
       </div>
 
