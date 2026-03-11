@@ -220,13 +220,14 @@ function validateModuleMarkdown(content: string, moduleIndex: number, title: str
 }
 
 async function callLLM(prompt: string, content: string): Promise<string> {
-  const aiGatewayUrl = Deno.env.get("SUPABASE_URL")!.replace(".supabase.co", ".functions.supabase.co");
-  
-  const response = await fetch(`${aiGatewayUrl}/ai/v1/chat/completions`, {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+      "Authorization": `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: "google/gemini-2.5-flash",
