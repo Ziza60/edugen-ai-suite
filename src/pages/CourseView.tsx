@@ -18,7 +18,7 @@ import remarkGfm from "remark-gfm";
 import { useMarkdownTableComponents } from "@/components/course/MarkdownTable";
 import { motion } from "framer-motion";
 import { useEffect, useState, useRef } from "react";
-import { Textarea } from "@/components/ui/textarea";
+import { BlockEditor } from "@/components/course/BlockEditor";
 import { CertificateDialog } from "@/components/course/CertificateDialog";
 import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
