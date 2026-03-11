@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Send, BrainCircuit, GraduationCap } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ReactMarkdown from "react-markdown";
-import { v4 as uuidv4 } from "uuid";
 
 interface ChatMessage {
   role: "user" | "assistant";
