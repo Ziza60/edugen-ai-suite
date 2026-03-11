@@ -3669,6 +3669,7 @@ function renderComparisonTable(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
   addLeftEdge(slide, colors.p0);
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p0, design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p0);
