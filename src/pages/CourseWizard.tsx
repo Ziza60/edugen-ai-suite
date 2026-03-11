@@ -378,7 +378,10 @@ export default function CourseWizard() {
                   ? "A IA está analisando suas fontes e criando o conteúdo."
                   : "A IA está criando o conteúdo do seu curso."}
               </p>
-              <p className="text-sm font-medium text-primary mb-6">{generationStep}</p>
+              <p className="text-sm font-medium text-primary mb-2">{generationStep}</p>
+              {generationMessage && (
+                <p className="text-xs text-muted-foreground mb-4">{generationMessage}</p>
+              )}
               <Progress value={generationProgress} className="max-w-sm mx-auto h-2.5" />
               <p className="text-xs text-muted-foreground mt-3">{generationProgress}% concluído</p>
             </CardContent>
