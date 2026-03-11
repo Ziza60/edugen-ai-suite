@@ -5,10 +5,12 @@ import {
   Sparkles, BookOpen, Zap, Award, ArrowRight, FileUp, CheckCircle, Crown,
   Moon, Sun, Brain, Target, BarChart3, Pencil, Globe, Presentation,
   GraduationCap, School, Bot, Video, Users, Star, FileText, Download,
-  MessageSquare,
+  MessageSquare, ExternalLink, Copy,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTheme } from "@/hooks/useTheme";
+import { useState } from "react";
+import { toast } from "sonner";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
