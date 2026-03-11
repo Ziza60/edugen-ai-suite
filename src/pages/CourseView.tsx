@@ -125,6 +125,22 @@ export default function CourseView() {
     enabled: modules.length > 0,
   });
 
+  // Tutor stats: questions in last 7 days
+  const { data: tutorStats } = useQuery({
+    queryKey: ["tutor-stats", id],
+    queryFn: async () => {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { count, error } = await (supabase
+        .from("tutor_sessions") as any)
+        .select("id", { count: "exact", head: true })
+        .eq("course_id", id!)
+        .gte("created_at", sevenDaysAgo);
+      if (error) return 0;
+      return count || 0;
+    },
+    enabled: !!id && !!(course as any)?.tutor_enabled,
+  });
+
   useQuery({
     queryKey: ["flip-entitlement", user?.id, plan],
     queryFn: async () => {
