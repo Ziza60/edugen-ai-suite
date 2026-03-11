@@ -2928,7 +2928,7 @@ function renderBullets(
     for (let i = 0; i < items.length; i++) {
       const pal = design.palette[i % design.palette.length];
       const yPos = contentY + i * (itemH + bulletGap);
-      addCardShadow(slide, contentX, yPos, contentW, itemH - 0.04, colors.shadowColor);
+      addCardShadow(slide, contentX, yPos, contentW, itemH - 0.04, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x: contentX, y: yPos,
         w: contentW, h: itemH - 0.04,
