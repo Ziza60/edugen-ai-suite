@@ -3288,6 +3288,7 @@ function renderGridCards(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
   addLeftEdge(slide, colors.p3);
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p3, design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
