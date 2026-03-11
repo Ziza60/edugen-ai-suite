@@ -2412,6 +2412,21 @@ function renderCoverSlide(
     });
   }
 
+  // Light theme: decorative dot grid on cover
+  if (design.theme === "light" && !image) {
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        slide.addShape("ellipse" as any, {
+          x: SLIDE_W - 2.80 + col * 0.55,
+          y: 0.60 + row * 0.55,
+          w: 0.08, h: 0.08,
+          fill: { color: colors.p0 },
+          transparency: 70,
+        });
+      }
+    }
+  }
+
   slide.addShape("rect" as any, {
     x: 0.80, y: 0.90, w: 0.035, h: SLIDE_H - 1.80,
     fill: { color: colors.p0 },
