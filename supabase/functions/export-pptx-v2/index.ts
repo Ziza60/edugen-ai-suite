@@ -3086,6 +3086,7 @@ function renderTwoColumnBullets(
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
   const pal = design.palette[_globalSlideIdx % design.palette.length];
   addLeftEdge(slide, pal);
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, pal, design.fonts.body);
