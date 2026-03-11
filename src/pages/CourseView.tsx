@@ -457,11 +457,10 @@ export default function CourseView() {
               {/* Module content */}
               {editingModuleId === activeModule.id ? (
                 <div className="space-y-3">
-                  <Textarea
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    rows={20}
-                    className="font-mono text-sm resize-y"
+                  <BlockEditor
+                    content={editContent}
+                    onChange={(md) => setEditContent(md)}
+                    isPro={isPro}
                   />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent })}>
