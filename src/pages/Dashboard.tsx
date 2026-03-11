@@ -21,6 +21,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { OnboardingModal, useOnboarding } from "@/components/OnboardingModal";
 
 // ── Hash-based color for thumbnail ──
 const THUMB_COLORS = [
