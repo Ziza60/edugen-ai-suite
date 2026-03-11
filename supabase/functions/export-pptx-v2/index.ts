@@ -1972,11 +1972,11 @@ function addLeftEdge(
   color: string,
 ) {
   slide.addShape("rect" as any, {
-    x: 0, y: 0, w: 0.07, h: SLIDE_H,
+    x: 0, y: 0, w: 0.09, h: SLIDE_H,
     fill: { color },
   });
   slide.addShape("rect" as any, {
-    x: 0.07, y: 0, w: 0.02, h: SLIDE_H,
+    x: 0.09, y: 0, w: 0.03, h: SLIDE_H,
     fill: { color },
     transparency: 50,
   });
