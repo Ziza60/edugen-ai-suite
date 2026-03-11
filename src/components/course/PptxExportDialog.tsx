@@ -17,6 +17,7 @@ export interface PptxExportOptions {
   theme: "light" | "dark";
   template: "default" | "academic" | "corporate" | "creative";
   useV2: boolean;
+  useV3: boolean;
   courseType: string;
   footerBrand: string | null;
 }
@@ -97,6 +98,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [footerBrandEnabled, setFooterBrandEnabled] = useState(true);
   const [footerBrandValue, setFooterBrandValue]     = useState("EduGenAI");
   const [useV2] = useState(true);
+  const [useV3, setUseV3] = useState(false);
 
   // Estimate slide count based on density + module count
   const slideEstimates: Record<string, [number, number]> = {
@@ -117,7 +119,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme, template, useV2, courseType, footerBrand });
+    onExport({ palette, density, includeImages, theme, template, useV2, useV3, courseType, footerBrand });
   };
 
   return (
@@ -297,6 +299,15 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
                 className="text-sm"
               />
             )}
+          </div>
+
+          {/* ── V3 AI Generation toggle ── */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">🧪 Nova geração de slides (beta)</p>
+              <p className="text-xs text-muted-foreground">IA gera slides diretamente — menos erros estruturais</p>
+            </div>
+            <Switch checked={useV3} onCheckedChange={setUseV3} />
           </div>
 
           {/* ── Compatibility note ── */}
