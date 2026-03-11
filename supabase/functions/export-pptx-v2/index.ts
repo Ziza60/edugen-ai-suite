@@ -582,7 +582,7 @@ function addImageCredit(
 ) {
   slide.addText(`Foto: ${credit} / Unsplash`, {
     x: SLIDE_W - 4.00,
-    y: SLIDE_H - 0.32,
+    y: SLIDE_H - 0.42,
     w: 3.60,
     h: 0.22,
     fontSize: 7,
