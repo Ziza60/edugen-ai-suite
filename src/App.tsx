@@ -52,6 +52,7 @@ const App = () => (
               </Route>
               <Route path="/certificate/:token" element={<CertificateValidation />} />
               <Route path="/tutor/:slug" element={<TutorPublic />} />
+              <Route path="/c/:slug" element={<CourseLanding />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
