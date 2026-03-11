@@ -325,6 +325,7 @@ function addLightBgDecoration(slide: any, design: DesignConfig, colors: ReturnTy
   }
 }
 
+/**
  * Ensures a foreground hex color has enough contrast against a background.
  * If the contrast ratio is too low (e.g. yellow text on white card),
  * returns a safe dark or light alternative.
