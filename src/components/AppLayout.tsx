@@ -21,6 +21,7 @@ export function AppLayout() {
 
   const navItems = [
     { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/app/analytics", label: "Analytics", icon: BarChart3 },
     { to: "/app/certificates", label: "Certificados", icon: Award },
     { to: "/app/planos", label: "Planos", icon: CreditCard },
   ];

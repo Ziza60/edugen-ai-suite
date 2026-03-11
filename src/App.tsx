@@ -46,6 +46,7 @@ const App = () => (
                 <Route path="courses/:id" element={<CourseView />} />
                 <Route path="certificates" element={<Certificates />} />
                 <Route path="planos" element={<Plans />} />
+                <Route path="analytics" element={<Analytics />} />
               </Route>
               <Route path="/certificate/:token" element={<CertificateValidation />} />
               <Route path="*" element={<NotFound />} />
