@@ -4797,14 +4797,35 @@ async function runPipeline(
         combinedChars < 800 &&
         currChars < 400 &&
         nextChars < 400;
-      const isVeryThin = currItems.length <= 2 && nextItems.length <= 2 &&
-        sameSection && (isContinuation || curr.layout === next.layout) &&
+      const isVeryThin = (currItems.length <= 1 || nextItems.length <= 1) &&
+        sameSection &&
         combinedItems <= design.density.maxItemsPerSlide;
       if (canMerge || isVeryThin) {
         curr.items = [...currItems, ...nextItems];
         curr.title = stripPartSuffix(curr.title);
         report.warnings.push(`[MERGE] Merged sparse slides: "${next.title}" into "${curr.title}"`);
         modulePlans.splice(i + 1, 1);
+      }
+    }
+  }
+
+  // ── STAGE 3.6b: Absorb 1-item slides into previous slide ──
+  console.log(`[V2-STAGE-3.6b] Absorbing 1-item slides...`);
+  for (const modulePlans of allModuleSlidePlans) {
+    for (let i = modulePlans.length - 1; i > 0; i--) {
+      const curr = modulePlans[i];
+      const prev = modulePlans[i - 1];
+      if (
+        curr.layout !== "module_cover" &&
+        prev.layout !== "module_cover" &&
+        curr.layout !== "comparison_table" &&
+        prev.layout !== "comparison_table" &&
+        (curr.items?.length ?? 0) === 1 &&
+        (prev.items?.length ?? 0) < design.density.maxItemsPerSlide - 1
+      ) {
+        prev.items = [...(prev.items || []), ...(curr.items || [])];
+        report.warnings.push(`[THIN] Absorbed 1-item slide "${curr.title}" into "${prev.title}"`);
+        modulePlans.splice(i, 1);
       }
     }
   }
