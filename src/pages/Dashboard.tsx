@@ -73,6 +73,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [deletingCourse, setDeletingCourse] = useState<{ id: string; title: string } | null>(null);
+  const { open: onboardingOpen, dismiss: dismissOnboarding } = useOnboarding();
 
   // Filters & sorting
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published">("all");
