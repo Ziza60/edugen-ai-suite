@@ -28,7 +28,8 @@ const STEPS = [
   { label: "Revisão", num: 4 },
 ];
 
-const MAX_FILES = 3;
+const MAX_FILES_FREE = 3;
+const MAX_FILES_PRO = 20;
 const MAX_TOTAL_CHARS = 150_000;
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
 
