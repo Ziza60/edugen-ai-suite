@@ -25,6 +25,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const [exportingPptx, setExportingPptx] = useState(false);
   const [exportingScorm, setExportingScorm] = useState(false);
   const [exportingNotion, setExportingNotion] = useState(false);
+  const [exportingMoodle, setExportingMoodle] = useState(false);
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
 
