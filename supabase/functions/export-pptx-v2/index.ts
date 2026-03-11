@@ -313,7 +313,18 @@ function getColors(design: DesignConfig) {
   };
 }
 
-/**
+/** Adds a subtle decorative ellipse on light-theme content slides */
+function addLightBgDecoration(slide: any, design: DesignConfig, colors: ReturnType<typeof getColors>) {
+  if (design.theme === "light") {
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - 3.50, y: -1.80,
+      w: 5.00, h: 5.00,
+      fill: { color: colors.p0 },
+      transparency: 94,
+    });
+  }
+}
+
  * Ensures a foreground hex color has enough contrast against a background.
  * If the contrast ratio is too low (e.g. yellow text on white card),
  * returns a safe dark or light alternative.
