@@ -244,6 +244,11 @@ export default function CourseWizard() {
           </Button>
           <div className="h-5 w-px bg-border" />
           <h1 className="font-display text-lg font-bold text-foreground">Criar novo curso</h1>
+          {selectedTemplate && (
+            <Badge variant="secondary" className="text-xs">
+              Template: {selectedTemplate.name}
+            </Badge>
+          )}
         </div>
       </div>
 
