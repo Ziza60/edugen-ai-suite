@@ -122,7 +122,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               if (!session?.access_token) {
                 throw new Error("Sessão expirada. Faça login novamente.");
               }
-              const functionName = options.useV2 ? "export-pptx-v2" : "export-pptx";
+              const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx";
               const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
               console.log(`[PPTX] Starting export to: ${url} (engine: ${options.useV2 ? "v2" : "v1"})`);
               const EXPORT_TIMEOUT_MS = 480000;
