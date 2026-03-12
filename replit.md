@@ -16,7 +16,8 @@ src/                          # React frontend
 
 supabase/functions/           # Supabase Edge Functions (Deno)
   export-pptx/index.ts        # PPTX exporter v1 (7888 lines, production)
-  export-pptx-v2/index.ts     # PPTX exporter v2 (~4640 lines, DEFAULT)
+  export-pptx-v2/index.ts     # PPTX exporter v2 (~5173 lines, v2.8.1)
+  export-pptx-v3/index.ts     # PPTX exporter v3 (~2284 lines, v3.4.1, DEFAULT)
   generate-course/            # AI course generation
   export-pdf/                 # PDF export
   export-scorm/               # SCORM export
@@ -40,14 +41,14 @@ supabase/functions/           # Supabase Edge Functions (Deno)
 - `VITE_SUPABASE_URL` — Supabase project URL
 - `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon/public key
 
-## PPTX Exporter v2 (Default Engine)
-Premium exporter at `supabase/functions/export-pptx-v2/index.ts` (~4640 lines).
+## PPTX Exporter v3 (Current Engine)
+Production exporter at `supabase/functions/export-pptx-v3/index.ts` (2284 lines, v3.4.1).
 Pipeline: Parse → Segment → Distribute → Merge Sparse → Visual Fit → Anti-Repetition → Image Fetch → Render → Export.
-v2 is the DEFAULT engine. v1 remains untouched as emergency fallback.
-- All exports route to `export-pptx-v2` automatically
-- `useV2` flag hardcoded to `true` in PptxExportDialog
-- `includeImages` defaults to `true` (Unsplash images on by default)
-- Rollback: change `useState(true)` back to `useState(false)` in PptxExportDialog.tsx
+v3 is the active engine; v1 remains untouched as emergency fallback; v2 at 5173 lines (v2.8.1).
+- Bug fixes applied (v3.4.1): gradient bar overflows, summary numSize, objectives height, colonIdx thresholds, image fallback, per_page random selection
+
+## PPTX Exporter v2 (Legacy)
+`supabase/functions/export-pptx-v2/index.ts` (5173 lines, v2.8.1). Bug fixes applied but superseded by v3.
 
 ### Image System
 - Fetches thematic images from Unsplash API based on course/module titles
