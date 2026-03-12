@@ -1998,7 +1998,11 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
       console.error(`[V3-RENDER] Closing addImage FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: "000000" }, transparency: 45 });
+    // Semi-transparent dark overlay for text readability
+    slide.addShape("rect" as any, {
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+      fill: { color: "000000", transparency: 45 },
+    });
   } else {
     console.log("[V3-RENDER] Closing: no image provided");
     addSlideBackground(slide, colors.coverDark);
