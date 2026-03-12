@@ -1061,12 +1061,8 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
       console.error(`[V3-RENDER] Cover addImage FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    // Semi-transparent dark overlay for text readability (same pattern as v2)
-    slide.addShape("rect" as any, {
-      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
-      fill: { color: "000000" },
-      transparency: 45,
-    });
+    // Dark panel focused on text zones (prevents full-slide black-out).
+    addHeroTextReadabilityOverlay(slide);
   } else {
     console.log("[V3-RENDER] Cover: no image provided");
     addSlideBackground(slide, colors.coverDark);
