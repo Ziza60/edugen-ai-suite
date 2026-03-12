@@ -1044,10 +1044,11 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
       console.error(`[V3-RENDER] Cover addImage FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    // Semi-transparent dark overlay for text readability
+    // Semi-transparent dark overlay for text readability (same pattern as v2)
     slide.addShape("rect" as any, {
       x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
-      fill: { color: "000000", transparency: 45 },
+      fill: { color: "000000" },
+      transparency: 45,
     });
   } else {
     console.log("[V3-RENDER] Cover: no image provided");
