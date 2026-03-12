@@ -1045,10 +1045,16 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
   const slide = pptx.addSlide();
 
   if (image) {
-    try { slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H }); }
-    catch { addSlideBackground(slide, colors.coverDark); }
+    try {
+      console.log(`[V3-RENDER] Cover image: base64 length=${image.base64Data.length}, starts=${image.base64Data.substring(0, 30)}`);
+      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
+    } catch (e) {
+      console.error(`[V3-RENDER] Cover addImage FAILED:`, e);
+      addSlideBackground(slide, colors.coverDark);
+    }
     slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: "000000" }, transparency: 62 });
   } else {
+    console.log("[V3-RENDER] Cover: no image provided");
     addSlideBackground(slide, colors.coverDark);
   }
 
@@ -1981,9 +1987,16 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
   const slide = pptx.addSlide();
 
   if (image) {
-    try { slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H }); } catch { addSlideBackground(slide, colors.coverDark); }
+    try {
+      console.log(`[V3-RENDER] Closing image: base64 length=${image.base64Data.length}, starts=${image.base64Data.substring(0, 30)}`);
+      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
+    } catch (e) {
+      console.error(`[V3-RENDER] Closing addImage FAILED:`, e);
+      addSlideBackground(slide, colors.coverDark);
+    }
     slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: "000000" }, transparency: 62 });
   } else {
+    console.log("[V3-RENDER] Closing: no image provided");
     addSlideBackground(slide, colors.coverDark);
   }
   if (!image) {
