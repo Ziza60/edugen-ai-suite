@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.4.1-2026-03-12";
+const ENGINE_VERSION = "3.4.2-2026-03-12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1027,6 +1027,23 @@ function addImageCredit(slide: any, credit: string, design: DesignConfig) {
   });
 }
 
+function addHeroTextReadabilityOverlay(slide: any) {
+  // Keep the image visible on the right while guaranteeing text contrast on the left.
+  slide.addShape("rect" as any, {
+    x: 0, y: 0, w: SLIDE_W * 0.62, h: SLIDE_H,
+    fill: { color: "000000" },
+    transparency: 25,
+  });
+
+  // Extra support behind date/credit area (bottom-right).
+  slide.addShape("roundRect" as any, {
+    x: SLIDE_W - 3.30, y: SLIDE_H - 0.82, w: 2.95, h: 0.60,
+    fill: { color: "000000" },
+    transparency: 35,
+    rectRadius: 0.05,
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 7: RENDER FUNCTIONS (visual engine — identical to v2)
 // ═══════════════════════════════════════════════════════════════════
@@ -1044,12 +1061,8 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
       console.error(`[V3-RENDER] Cover addImage FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    // Semi-transparent dark overlay for text readability (same pattern as v2)
-    slide.addShape("rect" as any, {
-      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
-      fill: { color: "000000" },
-      transparency: 45,
-    });
+    // Dark panel focused on text zones (prevents full-slide black-out).
+    addHeroTextReadabilityOverlay(slide);
   } else {
     console.log("[V3-RENDER] Cover: no image provided");
     addSlideBackground(slide, colors.coverDark);
@@ -1991,12 +2004,8 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
       console.error(`[V3-RENDER] Closing addImage FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    // Semi-transparent dark overlay for text readability (same pattern as v2)
-    slide.addShape("rect" as any, {
-      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
-      fill: { color: "000000" },
-      transparency: 45,
-    });
+    // Dark panel focused on text zones (prevents full-slide black-out).
+    addHeroTextReadabilityOverlay(slide);
   } else {
     console.log("[V3-RENDER] Closing: no image provided");
     addSlideBackground(slide, colors.coverDark);
