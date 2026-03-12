@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "3.2.0-2026-03-12";
+const ENGINE_VERSION = "3.3.0-2026-03-12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -605,22 +605,28 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
       .slice(0, maxItems + 2);
   }
 
-  // For example_highlight: enforce canonical phase order
-  // Contexto/Cenário → Desafio → Solução/Ação → Resultado/Impacto
+  // For example_highlight: enforce canonical 4-phase order
+  // Contexto(0) → Desafio(1) → Solução(2) → Resultado(3)
+  // IMPLEMENTAÇÃO and any other non-canonical phases are removed
   if (layout === "example_highlight" && items.length > 1) {
-    const PHASE_ORDER = ["contexto", "cenário", "cenario", "desafio", "solução", "solucao", "ação", "acao", "resultado", "impacto", "implementação", "implementacao"];
     const getPhaseRank = (item: string): number => {
       const lower = item.toLowerCase();
-      if (/^(contexto|cenário|cenario)[: ]/.test(lower)) return 0;
-      if (/^desafio[: ]/.test(lower)) return 1;
-      if (/^(solução|solucao|ação|acao)[: ]/.test(lower)) return 2;
-      if (/^(resultado|impacto)[: ]/.test(lower)) return 3;
-      if (/^(implementação|implementacao)[: ]/.test(lower)) return 4;
-      return 5; // unknown phases go to end
+      if (/^(contexto|cen[aá]rio|context)[: ]/.test(lower)) return 0;
+      if (/^(desafio|challenge|problema)[: ]/.test(lower)) return 1;
+      if (/^(solu[cç][aã]o|a[cç][aã]o|solution|abordagem)[: ]/.test(lower)) return 2;
+      if (/^(resultado|impacto|result|conclus[aã]o)[: ]/.test(lower)) return 3;
+      return 9; // IMPLEMENTAÇÃO and all other phases: remove
     };
-    items = [...items]
-      .sort((a, b) => getPhaseRank(a) - getPhaseRank(b))
-      .filter(item => getPhaseRank(item) <= 3); // remove non-canonical phases (IMPLEMENTAÇÃO etc)
+    // Deduplicate by phase rank: keep only first item per rank
+    const seenRanks = new Set<number>();
+    const deduped: string[] = [];
+    for (const item of items) {
+      const rank = getPhaseRank(item);
+      if (!seenRanks.has(rank)) { seenRanks.add(rank); deduped.push(item); }
+    }
+    items = deduped
+      .filter(item => getPhaseRank(item) <= 3)
+      .sort((a, b) => getPhaseRank(a) - getPhaseRank(b));
   }
 
   // Objectives for module_cover
@@ -1117,11 +1123,17 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           fontSize: 13, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
         });
         if (mod.description) {
-          slide.addText(mod.description, {
-            x: 7.00, y, w: SLIDE_W - 7.50, h: itemH,
-            fontSize: 10, fontFace: design.fonts.body, color: colors.coverSubtext,
-            valign: "middle", lineSpacingMultiple: 1.15,
-          });
+          const cleanDesc = sanitizeText(mod.description)
+            .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
+            .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
+            .replace(/\.$/, "").trim();
+          if (cleanDesc) {
+            slide.addText(cleanDesc, {
+              x: 7.00, y, w: SLIDE_W - 7.50, h: itemH,
+              fontSize: 10, fontFace: design.fonts.body, color: colors.coverSubtext,
+              valign: "middle", lineSpacingMultiple: 1.15,
+            });
+          }
         }
         if (i < pageModules.length - 1) addHR(slide, 0.65, y + itemH + 0.04, SLIDE_W - 1.20, colors.divider, 0.008);
       }
@@ -1163,13 +1175,19 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         const sepY = titleY + titleH + 0.04;
         addHR(slide, x + 0.14, sepY, cardW * 0.45, pal, 0.010);
         if (pageModules[i].description) {
-          const descY = sepY + 0.06;
-          const descH = Math.max(0.20, y + cardH - descY - 0.12);
-          slide.addText(pageModules[i].description!, {
-            x: x + 0.14, y: descY, w: cardW - 0.28, h: descH,
-            fontSize: cardH < 1.4 ? 9 : 11, fontFace: design.fonts.body,
-            color: colors.coverSubtext, valign: "top", lineSpacingMultiple: 1.18,
-          });
+          const rawGridDesc = sanitizeText(pageModules[i].description!)
+            .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
+            .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
+            .replace(/\.$/, "").trim();
+          if (rawGridDesc) {
+            const descY = sepY + 0.06;
+            const descH = Math.max(0.20, y + cardH - descY - 0.12);
+            slide.addText(rawGridDesc, {
+              x: x + 0.14, y: descY, w: cardW - 0.28, h: descH,
+              fontSize: cardH < 1.4 ? 9 : 11, fontFace: design.fonts.body,
+              color: colors.coverSubtext, valign: "top", lineSpacingMultiple: 1.18,
+            });
+          }
         }
         slide.addShape("ellipse" as any, {
           x: x + cardW - 0.26, y: y + cardH - 0.22, w: 0.08, h: 0.08,
@@ -1200,7 +1218,7 @@ function renderModuleCover(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfi
     addImageCredit(slide, image!.credit, design);
   }
 
-  addGradientBar(slide, contentW * 0.60, 0, contentW * 0.45, SLIDE_H, accentColor, "down");
+  addGradientBar(slide, contentW * 0.60, 0, Math.min(contentW * 0.45, SLIDE_W - contentW * 0.60), SLIDE_H, accentColor, "down");
 
   if (!hasImage) {
     slide.addText(modNum, {
@@ -1208,7 +1226,7 @@ function renderModuleCover(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfi
       fontSize: 180, fontFace: design.fonts.title, bold: true,
       color: accentColor, transparency: 90, align: "right", valign: "bottom",
     });
-    slide.addShape("ellipse" as any, { x: contentW - 3.00, y: -0.60, w: 3.50, h: 3.50, fill: { color: accentColor }, transparency: 90 });
+    slide.addShape("ellipse" as any, { x: contentW - 2.70, y: -0.60, w: 3.00, h: 3.00, fill: { color: accentColor }, transparency: 90 });
     slide.addShape("ellipse" as any, { x: contentW - 1.80, y: 0.65, w: 0.16, h: 0.16, fill: { color: accentColor }, transparency: 20 });
   }
 
@@ -1628,8 +1646,10 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
       else if (items[i].length <= 50) { label = items[i]; desc = ""; }
       else { const words = items[i].split(/\s+/); label = words.slice(0, 4).join(" "); desc = words.slice(4).join(" "); }
       if (desc && desc.length > 0) {
-        slide.addText(label, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: 0.26, fontSize: TYPO.BODY - 1, fontFace: design.fonts.title, bold: true, color: pal, align: "center", valign: "middle" });
-        slide.addText(desc, { x: x + 0.15, y: cardY + 0.82, w: cardW - 0.30, h: cardH - 0.94, fontSize: TYPO.BODY - 1, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "top", align: "center", lineSpacingMultiple: 1.18, autoFit: true } as any);
+        const ptLabelH = label.length > 20 ? 0.44 : 0.28;
+        const ptDescY = cardY + 0.55 + ptLabelH + 0.06;
+        slide.addText(label, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: ptLabelH, fontSize: TYPO.BODY - 1, fontFace: design.fonts.title, bold: true, color: pal, align: "center", valign: "middle", lineSpacingMultiple: 1.08 });
+        slide.addText(desc, { x: x + 0.15, y: ptDescY, w: cardW - 0.30, h: cardH - (ptDescY - cardY) - 0.10, fontSize: TYPO.BODY - 1, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "top", align: "center", lineSpacingMultiple: 1.18, autoFit: true } as any);
       } else {
         slide.addText(label, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: cardH - 0.70, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "top", align: "center", lineSpacingMultiple: 1.25, autoFit: true } as any);
       }
@@ -1732,9 +1752,9 @@ function renderExampleHighlight(pptx: PptxGenJS, plan: SlidePlan, design: Design
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   const items = (plan.items || []).filter(Boolean).map((item) => ensureSentenceEnd(sanitizeText(item)));
-  const cappedItems = items.slice(0, 5);
-  const defaultLabels = ["Contexto", "Desafio", "Solução", "Implementação", "Resultado"];
-  const phaseColors = [colors.p1, colors.p3, colors.p0, colors.p2, colors.p4];
+  const cappedItems = items.slice(0, 4);  // max 4: Contexto → Desafio → Solução → Resultado
+  const defaultLabels = ["Contexto", "Desafio", "Solução", "Resultado"];
+  const phaseColors = [colors.p1, colors.p3, colors.p0, colors.p4];
 
   addSlideBackground(slide, colors.coverDark);
   slide.addShape("rect" as any, { x: 0, y: 0, w: 0.50, h: SLIDE_H, fill: { color: colors.panelMid } });
@@ -1756,8 +1776,8 @@ function renderExampleHighlight(pptx: PptxGenJS, plan: SlidePlan, design: Design
   const gridStartY = 1.60;
   const gridH = SLIDE_H - gridStartY - 0.50;
   const bandGap = 0.10;
-  const bandH = Math.min((gridH - bandGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1), 1.20);
-  const descFontSize = cappedItems.length >= 5 ? TYPO.BODY - 1 : TYPO.BODY;
+  const bandH = Math.min((gridH - bandGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1), 1.35);
+  const descFontSize = cappedItems.length >= 4 ? TYPO.BODY - 1 : TYPO.BODY;
   for (let i = 0; i < cappedItems.length; i++) {
     const y = gridStartY + i * (bandH + bandGap);
     const pal = phaseColors[i % phaseColors.length];
