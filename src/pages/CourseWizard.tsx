@@ -304,9 +304,13 @@ export default function CourseWizard() {
     }
   };
 
+  const resolvedTitle = form.title.trim() || selectedTemplate?.suggestedTitle || "";
+  const resolvedTheme = form.theme.trim() || selectedTemplate?.suggestedTheme || "";
+  const resolvedAudience = form.targetAudience.trim() || selectedTemplate?.targetAudience || "";
+
   const canNext = () => {
     switch (step) {
-      case 0: return form.title.trim().length > 0 && form.theme.trim().length > 0;
+      case 0: return resolvedTitle.length > 0 && resolvedTheme.length > 0;
       case 1: return form.numModules > 0;
       case 2: return true;
       case 3: return true;
