@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "3.3.0-2026-03-12";
+const ENGINE_VERSION = "3.4.0-2026-03-12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -316,6 +316,20 @@ const PT_EN_MAP: Record<string, string> = {
   "ferramenta": "tool", "plataforma": "platform", "sistema": "system", "processo": "process",
   "modelo": "model", "código": "code", "software": "software", "algoritmo": "algorithm",
   "servidor": "server", "web": "web", "mobile": "mobile",
+  // Palavras de domínio frequentes sem tradução no mapa original
+  "auditoria": "audit", "operacional": "operational", "controle": "control",
+  "compliance": "compliance", "governanca": "governance", "risco": "risk",
+  "qualidade": "quality", "melhoria": "improvement", "diagnostico": "diagnostic",
+  "relatorio": "report", "indicador": "indicator", "desempenho": "performance",
+  "contabilidade": "accounting", "fiscal": "fiscal", "tributario": "tax",
+  "juridico": "legal", "contrato": "contract", "negociacao": "negotiation",
+  "vendedor": "sales", "atendimento": "customer service", "suporte": "support",
+  "treinamento": "training", "capacitacao": "training", "habilidade": "skill",
+  "competencia": "competency", "certificacao": "certification", "carreira": "career",
+  "projeto": "project", "agil": "agile", "scrum": "scrum", "sprint": "sprint",
+  "startup": "startup", "escalonamento": "scaling", "parceria": "partnership",
+  "apresentacao": "presentation", "reuniao": "meeting", "workshop": "workshop",
+  "planejamento": "planning", "execucao": "execution", "monitoramento": "monitoring",
 };
 
 const PT_STOP_WORDS = new Set([
@@ -333,13 +347,19 @@ function buildImageQuery(title: string): string {
     .replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   const words = normalized.split(" ").filter((w) => w.length > 2 && !PT_STOP_WORDS.has(w));
   const translated = words.map((w) => {
+    const wNorm = w.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     for (const [pt, en] of Object.entries(PT_EN_MAP)) {
       const ptNorm = pt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-      if (w === ptNorm) return en;
+      if (wNorm === ptNorm) return en;
     }
     return w;
   });
-  return [...new Set(translated)].slice(0, 4).join(" ") + " professional";
+  const unique = [...new Set(translated)].slice(0, 3);
+  // Add visual context anchor so Unsplash returns workplace/business photos, not random results
+  const VISUAL_ANCHORS = new Set(["technology","design","art","music","sport","nature","medicine","architecture","cooking"]);
+  const hasVisualAnchor = unique.some(w => VISUAL_ANCHORS.has(w));
+  const suffix = hasVisualAnchor ? " professional" : " workplace professional";
+  return unique.join(" ") + suffix;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -1014,7 +1034,7 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
   if (image) {
     try { slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H }); }
     catch { addSlideBackground(slide, colors.coverDark); }
-    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: "000000" }, transparency: 45 });
+    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: "000000" }, transparency: 62 });
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
@@ -1949,7 +1969,7 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
 
   if (image) {
     try { slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H }); } catch { addSlideBackground(slide, colors.coverDark); }
-    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: "000000" }, transparency: 45 });
+    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: "000000" }, transparency: 62 });
   } else {
     addSlideBackground(slide, colors.coverDark);
   }
