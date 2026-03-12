@@ -835,8 +835,8 @@ export default function CourseWizard() {
                       <div className="bg-muted/40 rounded-xl p-5 border border-border/60 space-y-3">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resumo do curso</p>
                         <div className="space-y-2.5 text-sm">
-                          <ReviewRow label="Título" value={form.title} />
-                          <ReviewRow label="Público-alvo" value={form.targetAudience || "Não especificado"} />
+                          <ReviewRow label="Título" value={resolvedTitle} />
+                          <ReviewRow label="Público-alvo" value={resolvedAudience || "Não especificado"} />
                           <ReviewRow label="Idioma" value={form.language === "pt-BR" ? "Português (BR)" : form.language === "en" ? "English" : "Español"} />
                           <ReviewRow label="Tom" value={form.tone.charAt(0).toUpperCase() + form.tone.slice(1)} />
                           <ReviewRow label="Módulos" value={`${form.numModules}`} />
