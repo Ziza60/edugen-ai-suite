@@ -424,7 +424,7 @@ export default function CourseWizard() {
                         <div className="space-y-1.5">
                           <Label className="font-medium">Tema / Assunto principal <span className="text-destructive">*</span></Label>
                           <Textarea
-                            placeholder="Explique em 1–2 frases o que o curso ensina"
+                            placeholder={selectedTemplate?.suggestedTheme || "Explique em 1–2 frases o que o curso ensina"}
                             value={form.theme}
                             onChange={(e) => updateForm("theme", e.target.value)}
                             rows={3}
