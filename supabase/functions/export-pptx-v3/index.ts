@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "3.1.0-2026-03-12";
+const ENGINE_VERSION = "3.2.0-2026-03-12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -563,10 +563,13 @@ function sanitizeText(text: string): string {
   if (!text || typeof text !== "string") return "";
   return text
     .replace(/[\u0000-\u001F\u007F]/g, " ")
-    .replace(/(\d+)\. (\d{3})/g, "$1.$2")  // fix "R$500. 000" → "R$500.000"
+    .replace(/(\d+)\.\s+(\d{3})/g, "$1.$2")       // fix "R$500. 000" / "Lei nº 8. 443" → correct
+    .replace(/\|\s*:?-+\s*\|?/g, " ")              // remove markdown table separators | :--- |
+    .replace(/\|/g, " ")                             // remove any remaining pipe chars
     .replace(/\s+/g, " ")
-    .replace(/"\.$/g, ".")  // fix artifact '". ' at end of items
-    .replace(/\."\./g, ".")  // fix double-end artifacts
+    .replace(/\s*\"\s*\.\s*$/g, ".")             // fix trailing artifact ". at end
+    .replace(/\.\s*\"\s*\./g, ".")               // fix mid-artifact ."."
+    .replace(/\"\s*\.$/g, ".")                     // fix trailing ".
     .trim();
 }
 
@@ -595,9 +598,10 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
   const maxItems = design.density.maxItemsPerSlide + 2; // allow slight overflow for AI
   let items: string[] = [];
   if (Array.isArray(raw.items)) {
+    const itemCharLimit = layout === "example_highlight" ? 350 : 200;
     items = raw.items
       .filter((i: any) => typeof i === "string" && i.trim().length > 5)
-      .map((i: string) => ensureSentenceEnd(sanitizeText(i).substring(0, 200)))
+      .map((i: string) => ensureSentenceEnd(sanitizeText(i).substring(0, itemCharLimit)))
       .slice(0, maxItems + 2);
   }
 
@@ -607,11 +611,11 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
     const PHASE_ORDER = ["contexto", "cenário", "cenario", "desafio", "solução", "solucao", "ação", "acao", "resultado", "impacto", "implementação", "implementacao"];
     const getPhaseRank = (item: string): number => {
       const lower = item.toLowerCase();
-      if (/^(contexto|cenário|cenario):/.test(lower)) return 0;
-      if (/^desafio:/.test(lower)) return 1;
-      if (/^(solução|solucao|ação|acao):/.test(lower)) return 2;
-      if (/^(resultado|impacto):/.test(lower)) return 3;
-      if (/^implementação:|implementacao:/.test(lower)) return 4;
+      if (/^(contexto|cenário|cenario)[: ]/.test(lower)) return 0;
+      if (/^desafio[: ]/.test(lower)) return 1;
+      if (/^(solução|solucao|ação|acao)[: ]/.test(lower)) return 2;
+      if (/^(resultado|impacto)[: ]/.test(lower)) return 3;
+      if (/^(implementação|implementacao)[: ]/.test(lower)) return 4;
       return 5; // unknown phases go to end
     };
     items = [...items]
@@ -1293,11 +1297,20 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       const pal = design.palette[i % design.palette.length];
       slide.addShape("rect" as any, { x: rightX, y: yPos + 0.06, w: 0.045, h: rItemH - 0.16, fill: { color: pal } });
       const aFontSize = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : items.length >= 4 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
-      slide.addText(items[i], {
-        x: rightX + 0.18, y: yPos, w: rightW - 0.18, h: rItemH,
-        fontSize: aFontSize, fontFace: design.fonts.body, color: colors.text,
-        valign: "middle", lineSpacingMultiple: 1.18, autoFit: true,
-      } as any);
+      { // title:desc split rendering for bullets
+        const bColonIdx = items[i].indexOf(":");
+        const bHasTitle = bColonIdx > 0 && bColonIdx < 45 && items[i].split(" ").slice(0, bColonIdx).length <= 5;
+        if (bHasTitle) {
+          const bTitle = items[i].substring(0, bColonIdx).trim();
+          const bDesc = items[i].substring(bColonIdx + 1).trim();
+          slide.addText([
+            { text: bTitle + ": ", options: { bold: true, color: pal } },
+            { text: bDesc, options: { bold: false, color: colors.text } },
+          ], { x: rightX + 0.18, y: yPos, w: rightW - 0.18, h: rItemH, fontSize: aFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+        } else {
+          slide.addText(items[i], { x: rightX + 0.18, y: yPos, w: rightW - 0.18, h: rItemH, fontSize: aFontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+        }
+      }
       if (i < items.length - 1) addHR(slide, rightX + 0.18, yPos + rItemH + rBulletGap / 2 - 0.003, rightW - 0.18, colors.divider, 0.005);
     }
   } else if (variant === 1) {
@@ -1327,13 +1340,23 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         fontSize: badgeSize >= 0.30 ? 13 : 10, fontFace: design.fonts.title, bold: true,
         color: "FFFFFF", align: "center", valign: "middle",
       });
-      slide.addText(items[i], {
-        x: contentX + 0.18 + badgeSize + 0.14, y: yPos + 0.03,
-        w: contentW - badgeSize - 0.42, h: itemH - 0.10,
-        fontSize: items.length >= 6 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1,
-        fontFace: design.fonts.body, color: colors.text,
-        valign: "middle", lineSpacingMultiple: 1.18, autoFit: true,
-      } as any);
+      { // title:desc split rendering for variant 1
+        const v1ColonIdx = items[i].indexOf(":");
+        const v1HasTitle = v1ColonIdx > 0 && v1ColonIdx < 45;
+        const v1FontSize = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1;
+        const v1X = contentX + 0.18 + badgeSize + 0.14;
+        const v1W = contentW - badgeSize - 0.42;
+        if (v1HasTitle) {
+          const v1Title = items[i].substring(0, v1ColonIdx).trim();
+          const v1Desc = items[i].substring(v1ColonIdx + 1).trim();
+          slide.addText([
+            { text: v1Title + ": ", options: { bold: true, color: pal } },
+            { text: v1Desc, options: { bold: false, color: colors.text } },
+          ], { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+        } else {
+          slide.addText(items[i], { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+        }
+      }
     }
   } else if (variant === 2) {
     addSlideBackground(slide, colors.bg);
@@ -1604,12 +1627,12 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
       if (colonIdx > 0 && colonIdx < 40) { label = items[i].substring(0, colonIdx).trim(); desc = items[i].substring(colonIdx + 1).trim(); }
       else if (items[i].length <= 50) { label = items[i]; desc = ""; }
       else { const words = items[i].split(/\s+/); label = words.slice(0, 4).join(" "); desc = words.slice(4).join(" "); }
-      const fullText = desc && desc.length > 0 && !label.endsWith(".") ? `${label} ${desc}`.trim() : label || desc;
-      slide.addText(fullText, {
-        x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: cardH - 0.70,
-        fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.coverSubtext,
-        valign: "top", align: "center", lineSpacingMultiple: 1.25, autoFit: true,
-      } as any);
+      if (desc && desc.length > 0) {
+        slide.addText(label, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: 0.26, fontSize: TYPO.BODY - 1, fontFace: design.fonts.title, bold: true, color: pal, align: "center", valign: "middle" });
+        slide.addText(desc, { x: x + 0.15, y: cardY + 0.82, w: cardW - 0.30, h: cardH - 0.94, fontSize: TYPO.BODY - 1, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "top", align: "center", lineSpacingMultiple: 1.18, autoFit: true } as any);
+      } else {
+        slide.addText(label, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: cardH - 0.70, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "top", align: "center", lineSpacingMultiple: 1.25, autoFit: true } as any);
+      }
     }
   } else {
     addSlideBackground(slide, colors.bg);
