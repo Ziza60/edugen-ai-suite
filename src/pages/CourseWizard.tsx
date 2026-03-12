@@ -85,9 +85,12 @@ export default function CourseWizard() {
   // ── Prompt quality score ──
   const calcPromptScore = () => {
     let score = 0;
-    if (form.title?.trim().length >= 10) score += 25;
-    if (form.theme?.trim().length >= 15) score += 25;
-    if (form.targetAudience?.trim().length > 0) score += 20;
+    const rt = form.title.trim() || selectedTemplate?.suggestedTitle || "";
+    const rth = form.theme.trim() || selectedTemplate?.suggestedTheme || "";
+    const ra = form.targetAudience.trim() || selectedTemplate?.targetAudience || "";
+    if (rt.length >= 10) score += 25;
+    if (rth.length >= 15) score += 25;
+    if (ra.length > 0) score += 20;
     if (form.numModules >= 5) score += 10;
     if (useSources && uploadedSources.length > 0) score += 20;
     return Math.min(score, 100);
@@ -122,9 +125,9 @@ export default function CourseWizard() {
     setSelectedTemplate(template);
     setForm((prev) => ({
       ...prev,
-      title: template.suggestedTitle,
-      theme: template.suggestedTheme,
-      targetAudience: template.targetAudience,
+      title: "",
+      theme: "",
+      targetAudience: "",
       tone: template.tone,
       numModules: Math.min(template.suggestedModules, limits.maxModules),
     }));
@@ -226,9 +229,9 @@ export default function CourseWizard() {
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
           body: JSON.stringify({
-            title: form.title.trim(),
-            theme: form.theme,
-            target_audience: form.targetAudience,
+            title: (form.title.trim() || selectedTemplate?.suggestedTitle || "").trim(),
+            theme: form.theme.trim() || selectedTemplate?.suggestedTheme || "",
+            target_audience: form.targetAudience.trim() || selectedTemplate?.targetAudience || "",
             tone: form.tone,
             language: form.language,
             num_modules: form.numModules,
@@ -304,9 +307,13 @@ export default function CourseWizard() {
     }
   };
 
+  const resolvedTitle = form.title.trim() || selectedTemplate?.suggestedTitle || "";
+  const resolvedTheme = form.theme.trim() || selectedTemplate?.suggestedTheme || "";
+  const resolvedAudience = form.targetAudience.trim() || selectedTemplate?.targetAudience || "";
+
   const canNext = () => {
     switch (step) {
-      case 0: return form.title.trim().length > 0 && form.theme.trim().length > 0;
+      case 0: return resolvedTitle.length > 0 && resolvedTheme.length > 0;
       case 1: return form.numModules > 0;
       case 2: return true;
       case 3: return true;
@@ -413,7 +420,7 @@ export default function CourseWizard() {
                         <div className="space-y-1.5">
                           <Label className="font-medium">Título do curso <span className="text-destructive">*</span></Label>
                           <Input
-                            placeholder="Ex: Introdução ao Marketing Digital"
+                            placeholder={selectedTemplate?.suggestedTitle || "Ex: Introdução ao Marketing Digital"}
                             value={form.title}
                             onChange={(e) => updateForm("title", e.target.value)}
                             className="h-11"
@@ -424,7 +431,7 @@ export default function CourseWizard() {
                         <div className="space-y-1.5">
                           <Label className="font-medium">Tema / Assunto principal <span className="text-destructive">*</span></Label>
                           <Textarea
-                            placeholder="Explique em 1–2 frases o que o curso ensina"
+                            placeholder={selectedTemplate?.suggestedTheme || "Explique em 1–2 frases o que o curso ensina"}
                             value={form.theme}
                             onChange={(e) => updateForm("theme", e.target.value)}
                             rows={3}
@@ -436,7 +443,7 @@ export default function CourseWizard() {
                         <div className="space-y-1.5">
                           <Label className="font-medium">Público-alvo</Label>
                           <Input
-                            placeholder="Ex: iniciantes, estudantes, profissionais…"
+                            placeholder={selectedTemplate?.targetAudience || "Ex: iniciantes, estudantes, profissionais…"}
                             value={form.targetAudience}
                             onChange={(e) => updateForm("targetAudience", e.target.value)}
                             className="h-11"
@@ -828,8 +835,8 @@ export default function CourseWizard() {
                       <div className="bg-muted/40 rounded-xl p-5 border border-border/60 space-y-3">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resumo do curso</p>
                         <div className="space-y-2.5 text-sm">
-                          <ReviewRow label="Título" value={form.title} />
-                          <ReviewRow label="Público-alvo" value={form.targetAudience || "Não especificado"} />
+                          <ReviewRow label="Título" value={resolvedTitle} />
+                          <ReviewRow label="Público-alvo" value={resolvedAudience || "Não especificado"} />
                           <ReviewRow label="Idioma" value={form.language === "pt-BR" ? "Português (BR)" : form.language === "en" ? "English" : "Español"} />
                           <ReviewRow label="Tom" value={form.tone.charAt(0).toUpperCase() + form.tone.slice(1)} />
                           <ReviewRow label="Módulos" value={`${form.numModules}`} />
