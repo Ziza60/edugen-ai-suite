@@ -85,9 +85,12 @@ export default function CourseWizard() {
   // ── Prompt quality score ──
   const calcPromptScore = () => {
     let score = 0;
-    if (form.title?.trim().length >= 10) score += 25;
-    if (form.theme?.trim().length >= 15) score += 25;
-    if (form.targetAudience?.trim().length > 0) score += 20;
+    const rt = form.title.trim() || selectedTemplate?.suggestedTitle || "";
+    const rth = form.theme.trim() || selectedTemplate?.suggestedTheme || "";
+    const ra = form.targetAudience.trim() || selectedTemplate?.targetAudience || "";
+    if (rt.length >= 10) score += 25;
+    if (rth.length >= 15) score += 25;
+    if (ra.length > 0) score += 20;
     if (form.numModules >= 5) score += 10;
     if (useSources && uploadedSources.length > 0) score += 20;
     return Math.min(score, 100);
