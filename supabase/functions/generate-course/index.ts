@@ -439,12 +439,18 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-      const structureRaw = await callAI("google/gemini-2.5-flash-lite", structurePrompt);
+      const structureRaw = await callAI("google/gemini-2.5-flash", structurePrompt);
       let structure;
       try {
-        const jsonMatch = structureRaw.match(/\{[\s\S]*\}/);
-        structure = JSON.parse(jsonMatch ? jsonMatch[0] : structureRaw);
-      } catch {
+        // Strip markdown fences if present
+        const cleaned = structureRaw
+          .replace(/^```(?:json)?\s*\n?/i, "")
+          .replace(/\n?\s*```\s*$/i, "")
+          .trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        structure = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+      } catch (parseErr) {
+        console.error("[generate-course] Failed to parse structure:", structureRaw.substring(0, 500));
         throw new Error("Failed to parse AI structure response");
       }
 
