@@ -364,15 +364,9 @@ function buildImageQuery(title: string): string {
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
-  const CHUNK = 1024;
-  const parts: string[] = [];
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    const end = Math.min(i + CHUNK, bytes.length);
-    let str = "";
-    for (let j = i; j < end; j++) str += String.fromCharCode(bytes[j]);
-    parts.push(str);
-  }
-  return btoa(parts.join(""));
+  // Use Deno's built-in base64 encoding for reliability
+  const binStr = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+  return btoa(binStr);
 }
 
 async function fetchUnsplashImage(
