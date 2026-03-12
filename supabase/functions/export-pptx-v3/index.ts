@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "3.0.0-2026-03-11";
+const ENGINE_VERSION = "3.1.0-2026-03-12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -563,7 +563,10 @@ function sanitizeText(text: string): string {
   if (!text || typeof text !== "string") return "";
   return text
     .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/(\d+)\. (\d{3})/g, "$1.$2")  // fix "R$500. 000" → "R$500.000"
     .replace(/\s+/g, " ")
+    .replace(/"\.$/g, ".")  // fix artifact '". ' at end of items
+    .replace(/\."\./g, ".")  // fix double-end artifacts
     .trim();
 }
 
@@ -611,7 +614,9 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
       if (/^implementação:|implementacao:/.test(lower)) return 4;
       return 5; // unknown phases go to end
     };
-    items = [...items].sort((a, b) => getPhaseRank(a) - getPhaseRank(b));
+    items = [...items]
+      .sort((a, b) => getPhaseRank(a) - getPhaseRank(b))
+      .filter(item => getPhaseRank(item) <= 3); // remove non-canonical phases (IMPLEMENTAÇÃO etc)
   }
 
   // Objectives for module_cover
@@ -654,6 +659,8 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
     const hasItems = (plan.items?.length ?? 0) > 0;
     const hasTable = (plan.tableRows?.length ?? 0) > 0;
     if (!hasItems && !hasTable) return null; // drop empty slide
+    // Also drop slides where ALL items are empty strings or too short
+    if (hasItems && plan.items!.every(it => it.trim().length < 5)) return null;
   }
 
   return plan;
@@ -1078,8 +1085,8 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
       x: 0.65, y: 0.62, w: 8.0, h: 0.60,
       fontSize: 32, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
     });
-    addHR(slide, 0.65, 1.30, 2.00, colors.p0, 0.030);
-    const progressY = 1.50;
+    addHR(slide, 0.65, 1.42, 2.00, colors.p0, 0.030);
+    const progressY = 1.62;
     slide.addShape("rect" as any, { x: 0.65, y: progressY, w: SLIDE_W - 1.30, h: 0.04, fill: { color: colors.panelMid } });
     slide.addShape("rect" as any, {
       x: 0.65, y: progressY, w: (SLIDE_W - 1.30) * ((page + 1) / pages.length), h: 0.04, fill: { color: colors.p0 },
@@ -1207,10 +1214,10 @@ function renderModuleCover(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfi
     x: 1.10, y: 1.20, w: 5.0, h: 0.28,
     fontSize: 11, fontFace: design.fonts.body, bold: true, color: accentColor, charSpacing: 8,
   });
-  addHR(slide, 1.10, 1.62, 1.40, accentColor, 0.022);
+  addHR(slide, 1.10, 1.55, 1.40, accentColor, 0.022);
   const titleW = hasImage ? contentW * 0.75 : SLIDE_W * 0.53;
   slide.addText(plan.title, {
-    x: 1.10, y: 1.85, w: titleW, h: 2.50,
+    x: 1.10, y: 1.72, w: titleW, h: 2.50,
     fontSize: 36, fontFace: design.fonts.title, bold: true,
     color: "FFFFFF", valign: "top", lineSpacingMultiple: 1.02,
   });
@@ -1481,10 +1488,19 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
     addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.10 });
     slide.addShape("rect" as any, { x, y, w: cardW, h: 0.05, fill: { color: pal }, rectRadius: 0.10 });
-    const colonIdx = items[i].indexOf(":");
+    // Normalize item: if no colon separator, try to infer "Title: description" split
+    // Pattern: short phrase (1-4 words, title-case) followed by longer description
+    let normalizedItem = items[i];
+    if (normalizedItem.indexOf(":") < 0 || normalizedItem.indexOf(":") > 40) {
+      const inferMatch = normalizedItem.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
+      if (inferMatch && inferMatch[1].split(" ").length <= 4) {
+        normalizedItem = inferMatch[1].trim() + ": " + inferMatch[2].trim();
+      }
+    }
+    const colonIdx = normalizedItem.indexOf(":");
     if (colonIdx > 0 && colonIdx < 40) {
-      const label = items[i].substring(0, colonIdx).trim();
-      const desc = items[i].substring(colonIdx + 1).trim();
+      const label = normalizedItem.substring(0, colonIdx).trim();
+      const desc = normalizedItem.substring(colonIdx + 1).trim();
       const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
       slide.addShape("roundRect" as any, { x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge, fill: { color: pal }, rectRadius: 0.06 });
       slide.addText(String(i + 1), {
@@ -1574,7 +1590,16 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
         slide.addShape("rect" as any, { x: arrowX, y: arrowMidY - 0.02, w: arrowW - 0.06, h: 0.04, fill: { color: pal }, transparency: 25 });
         slide.addShape("rect" as any, { x: arrowX + arrowW - 0.18, y: arrowMidY - 0.06, w: 0.12, h: 0.12, fill: { color: pal }, transparency: 25, rotate: 45 });
       }
-      const colonIdx = items[i].indexOf(":");
+      // Normalize item: if no colon separator, try to infer "Title: description" split
+    // Pattern: short phrase (1-4 words, title-case) followed by longer description
+    let normalizedItem = items[i];
+    if (normalizedItem.indexOf(":") < 0 || normalizedItem.indexOf(":") > 40) {
+      const inferMatch = normalizedItem.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
+      if (inferMatch && inferMatch[1].split(" ").length <= 4) {
+        normalizedItem = inferMatch[1].trim() + ": " + inferMatch[2].trim();
+      }
+    }
+    const colonIdx = normalizedItem.indexOf(":");
       let label: string, desc: string;
       if (colonIdx > 0 && colonIdx < 40) { label = items[i].substring(0, colonIdx).trim(); desc = items[i].substring(colonIdx + 1).trim(); }
       else if (items[i].length <= 50) { label = items[i]; desc = ""; }
@@ -1614,7 +1639,16 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
       addCardShadow(slide, cardX2, y, cardW2, stepH - 0.02, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, { x: cardX2, y, w: cardW2, h: stepH - 0.02, fill: { color: colors.cardBg }, rectRadius: 0.06 });
       slide.addShape("rect" as any, { x: cardX2, y, w: 0.05, h: stepH - 0.02, fill: { color: pal }, rectRadius: 0.06 });
-      const colonIdx = items[i].indexOf(":");
+      // Normalize item: if no colon separator, try to infer "Title: description" split
+    // Pattern: short phrase (1-4 words, title-case) followed by longer description
+    let normalizedItem = items[i];
+    if (normalizedItem.indexOf(":") < 0 || normalizedItem.indexOf(":") > 40) {
+      const inferMatch = normalizedItem.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
+      if (inferMatch && inferMatch[1].split(" ").length <= 4) {
+        normalizedItem = inferMatch[1].trim() + ": " + inferMatch[2].trim();
+      }
+    }
+    const colonIdx = normalizedItem.indexOf(":");
       let label = "", desc = items[i];
       if (colonIdx > 0 && colonIdx < 40) { label = items[i].substring(0, colonIdx).trim(); desc = items[i].substring(colonIdx + 1).trim(); }
       const textX = cardX2 + 0.05 + 0.12;
@@ -1747,7 +1781,16 @@ function renderWarningCallout(pptx: PptxGenJS, plan: SlidePlan, design: DesignCo
     addCardShadow(slide, contentX, y, contentW, cardH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, { x: contentX, y, w: contentW, h: cardH, fill: { color: cardBgColor }, rectRadius: 0.08 });
     slide.addShape("rect" as any, { x: contentX, y, w: 0.06, h: cardH, fill: { color: "E74C3C" }, rectRadius: 0.08 });
-    const colonIdx = items[i].indexOf(":");
+    // Normalize item: if no colon separator, try to infer "Title: description" split
+    // Pattern: short phrase (1-4 words, title-case) followed by longer description
+    let normalizedItem = items[i];
+    if (normalizedItem.indexOf(":") < 0 || normalizedItem.indexOf(":") > 40) {
+      const inferMatch = normalizedItem.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
+      if (inferMatch && inferMatch[1].split(" ").length <= 4) {
+        normalizedItem = inferMatch[1].trim() + ": " + inferMatch[2].trim();
+      }
+    }
+    const colonIdx = normalizedItem.indexOf(":");
     const hasLabel = colonIdx > 0 && colonIdx < 40;
     const itemLabel = hasLabel ? items[i].substring(0, colonIdx).trim() : "";
     const itemDesc = hasLabel ? items[i].substring(colonIdx + 1).trim() : items[i];
