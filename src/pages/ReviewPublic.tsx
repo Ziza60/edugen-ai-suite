@@ -224,29 +224,8 @@ export default function ReviewPublic() {
               </div>
             </div>
 
-            {/* Existing comments */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[400px] lg:max-h-none">
-              {moduleComments.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-8">
-                  Nenhum comentário neste módulo ainda.
-                </p>
-              ) : (
-                moduleComments.map((c: any) => (
-                  <div key={c.id} className="rounded-lg border border-border p-3 text-sm">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-foreground text-xs">{c.reviewer_name}</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {new Date(c.created_at).toLocaleDateString("pt-BR")}
-                      </span>
-                    </div>
-                    <p className="text-muted-foreground text-xs leading-relaxed">{c.comment}</p>
-                  </div>
-                ))
-              )}
-            </div>
-
             {/* Add comment form */}
-            <div className="p-4 border-t border-border space-y-2">
+            <div className="p-4 border-b border-border space-y-2">
               <input
                 type="text"
                 placeholder="Seu nome (opcional)"
@@ -277,6 +256,27 @@ export default function ReviewPublic() {
                   )}
                 </Button>
               </div>
+            </div>
+
+            {/* Existing comments */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[400px] lg:max-h-none">
+              {moduleComments.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-8">
+                  Nenhum comentário neste módulo ainda.
+                </p>
+              ) : (
+                moduleComments.map((c: any) => (
+                  <div key={c.id} className="rounded-lg border border-border p-3 text-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-foreground text-xs">{c.reviewer_name}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {new Date(c.created_at).toLocaleDateString("pt-BR")}
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground text-xs leading-relaxed">{c.comment}</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
