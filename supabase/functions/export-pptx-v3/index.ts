@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
+import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 const ENGINE_VERSION = "3.4.1-2026-03-12";
 
@@ -363,16 +364,7 @@ function buildImageQuery(title: string): string {
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const CHUNK = 1024;
-  const parts: string[] = [];
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    const end = Math.min(i + CHUNK, bytes.length);
-    let str = "";
-    for (let j = i; j < end; j++) str += String.fromCharCode(bytes[j]);
-    parts.push(str);
-  }
-  return btoa(parts.join(""));
+  return encodeBase64(new Uint8Array(buffer));
 }
 
 async function fetchUnsplashImage(
@@ -1052,7 +1044,12 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
       console.error(`[V3-RENDER] Cover addImage FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: "000000" }, transparency: 45 });
+    // Semi-transparent dark overlay for text readability (same pattern as v2)
+    slide.addShape("rect" as any, {
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+      fill: { color: "000000" },
+      transparency: 45,
+    });
   } else {
     console.log("[V3-RENDER] Cover: no image provided");
     addSlideBackground(slide, colors.coverDark);
@@ -1994,7 +1991,12 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
       console.error(`[V3-RENDER] Closing addImage FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: "000000" }, transparency: 45 });
+    // Semi-transparent dark overlay for text readability (same pattern as v2)
+    slide.addShape("rect" as any, {
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+      fill: { color: "000000" },
+      transparency: 45,
+    });
   } else {
     console.log("[V3-RENDER] Closing: no image provided");
     addSlideBackground(slide, colors.coverDark);
