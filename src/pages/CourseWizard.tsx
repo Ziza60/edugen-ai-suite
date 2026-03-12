@@ -436,7 +436,7 @@ export default function CourseWizard() {
                         <div className="space-y-1.5">
                           <Label className="font-medium">Público-alvo</Label>
                           <Input
-                            placeholder="Ex: iniciantes, estudantes, profissionais…"
+                            placeholder={selectedTemplate?.targetAudience || "Ex: iniciantes, estudantes, profissionais…"}
                             value={form.targetAudience}
                             onChange={(e) => updateForm("targetAudience", e.target.value)}
                             className="h-11"
