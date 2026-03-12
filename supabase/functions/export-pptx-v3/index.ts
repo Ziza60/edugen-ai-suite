@@ -1027,6 +1027,23 @@ function addImageCredit(slide: any, credit: string, design: DesignConfig) {
   });
 }
 
+function addHeroTextReadabilityOverlay(slide: any) {
+  // Keep the image visible on the right while guaranteeing text contrast on the left.
+  slide.addShape("rect" as any, {
+    x: 0, y: 0, w: SLIDE_W * 0.62, h: SLIDE_H,
+    fill: { color: "000000" },
+    transparency: 25,
+  });
+
+  // Extra support behind date/credit area (bottom-right).
+  slide.addShape("roundRect" as any, {
+    x: SLIDE_W - 3.30, y: SLIDE_H - 0.82, w: 2.95, h: 0.60,
+    fill: { color: "000000" },
+    transparency: 35,
+    rectRadius: 0.05,
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 7: RENDER FUNCTIONS (visual engine — identical to v2)
 // ═══════════════════════════════════════════════════════════════════
