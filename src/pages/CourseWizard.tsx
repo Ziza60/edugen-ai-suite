@@ -122,9 +122,9 @@ export default function CourseWizard() {
     setSelectedTemplate(template);
     setForm((prev) => ({
       ...prev,
-      title: template.suggestedTitle,
-      theme: template.suggestedTheme,
-      targetAudience: template.targetAudience,
+      title: "",
+      theme: "",
+      targetAudience: "",
       tone: template.tone,
       numModules: Math.min(template.suggestedModules, limits.maxModules),
     }));
