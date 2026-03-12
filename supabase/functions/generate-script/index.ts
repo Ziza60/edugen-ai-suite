@@ -120,6 +120,7 @@ ${modulesText}`;
       },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
+        max_tokens: 16000,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
