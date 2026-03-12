@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "3.4.1-2026-03-12";
+const ENGINE_VERSION = "3.4.2-2026-03-12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -434,7 +434,27 @@ async function buildImagePlan(
     if (results[i + 1]) plan.modules.set(i, results[i + 1]!);
   }
 
-  // Fallback: if cover image failed (results[0] null), reuse first available module image
+  // Per-module fallback: if a module's image failed, use nearest available module image
+  for (let i = 0; i < modules.length; i++) {
+    if (!plan.modules.has(i)) {
+      // Search outward: try i-1, i+1, i-2, i+2, …
+      for (let d = 1; d < modules.length; d++) {
+        const prev = i - d, next = i + d;
+        if (prev >= 0 && plan.modules.has(prev)) {
+          plan.modules.set(i, plan.modules.get(prev)!);
+          console.log(`[V3-IMAGE] Module ${i + 1} fallback: reusing module ${prev + 1} image`);
+          break;
+        }
+        if (next < modules.length && plan.modules.has(next)) {
+          plan.modules.set(i, plan.modules.get(next)!);
+          console.log(`[V3-IMAGE] Module ${i + 1} fallback: reusing module ${next + 1} image`);
+          break;
+        }
+      }
+    }
+  }
+
+  // Cover/closing fallback: if cover query failed, reuse first available module image
   if (!plan.cover) {
     for (let fi = 0; fi < modules.length; fi++) {
       if (plan.modules.has(fi)) {
