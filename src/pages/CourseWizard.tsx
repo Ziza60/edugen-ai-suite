@@ -413,7 +413,7 @@ export default function CourseWizard() {
                         <div className="space-y-1.5">
                           <Label className="font-medium">Título do curso <span className="text-destructive">*</span></Label>
                           <Input
-                            placeholder="Ex: Introdução ao Marketing Digital"
+                            placeholder={selectedTemplate?.suggestedTitle || "Ex: Introdução ao Marketing Digital"}
                             value={form.title}
                             onChange={(e) => updateForm("title", e.target.value)}
                             className="h-11"
