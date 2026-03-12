@@ -226,9 +226,9 @@ export default function CourseWizard() {
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
           body: JSON.stringify({
-            title: form.title.trim(),
-            theme: form.theme,
-            target_audience: form.targetAudience,
+            title: (form.title.trim() || selectedTemplate?.suggestedTitle || "").trim(),
+            theme: form.theme.trim() || selectedTemplate?.suggestedTheme || "",
+            target_audience: form.targetAudience.trim() || selectedTemplate?.targetAudience || "",
             tone: form.tone,
             language: form.language,
             num_modules: form.numModules,
