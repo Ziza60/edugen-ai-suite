@@ -1109,18 +1109,18 @@ function addImageCredit(slide: any, credit: string, design: DesignConfig) {
 }
 
 function addHeroTextReadabilityOverlay(slide: any) {
-  // Keep the image visible on the right while guaranteeing text contrast on the left.
+  // Uniform cinematic overlay to keep the photo as full background with readable text.
   slide.addShape("rect" as any, {
-    x: 0, y: 0, w: SLIDE_W * 0.62, h: SLIDE_H,
+    x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
     fill: { color: "000000" },
-    transparency: 25,
+    transparency: 45,
   });
 
   // Extra support behind date/credit area (bottom-right).
   slide.addShape("roundRect" as any, {
-    x: SLIDE_W - 3.30, y: SLIDE_H - 0.82, w: 2.95, h: 0.60,
+    x: SLIDE_W - 3.35, y: SLIDE_H - 0.88, w: 3.05, h: 0.68,
     fill: { color: "000000" },
-    transparency: 35,
+    transparency: 30,
     rectRadius: 0.05,
   });
 }
