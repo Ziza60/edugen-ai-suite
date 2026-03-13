@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.4.2-2026-03-12";
+const ENGINE_VERSION = "3.5.0-2026-03-12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -405,7 +405,12 @@ async function buildImagePlan(
   if (!includeImages || !Deno.env.get("UNSPLASH_ACCESS_KEY")) return empty;
 
   const coverQuery = buildImageQuery(courseTitle);
-  const allQueries = [{ query: coverQuery, orientation: "landscape" as const }];
+  // Separate closing query for a different image
+  const closingQuery = buildImageQuery(courseTitle + " conclusion graduation");
+  const allQueries = [
+    { query: coverQuery, orientation: "landscape" as const },
+    { query: closingQuery, orientation: "landscape" as const },
+  ];
   for (const m of modules) {
     const rawTitle = m.title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || m.title;
     allQueries.push({ query: buildImageQuery(rawTitle), orientation: "landscape" as const });
@@ -421,23 +426,44 @@ async function buildImagePlan(
     batchResults.forEach((r, j) => { results[i + j] = r; });
   }
 
-  const plan: ImagePlan = { cover: results[0], modules: new Map(), closing: results[0] };
+  // results[0] = cover, results[1] = closing, results[2..] = modules
+  const plan: ImagePlan = { cover: results[0], modules: new Map(), closing: results[1] };
   for (let i = 0; i < modules.length; i++) {
-    if (results[i + 1]) plan.modules.set(i, results[i + 1]!);
+    if (results[i + 2]) plan.modules.set(i, results[i + 2]!);
   }
 
-  // Fallback: if cover image failed (results[0] null), reuse first available module image
+  // Fallback: fill missing module images with nearest available module image
+  for (let i = 0; i < modules.length; i++) {
+    if (!plan.modules.has(i)) {
+      // Search nearest neighbor (prefer previous, then next)
+      let fallback: SlideImage | null = null;
+      for (let d = 1; d < modules.length; d++) {
+        if (plan.modules.has(i - d)) { fallback = plan.modules.get(i - d)!; break; }
+        if (plan.modules.has(i + d)) { fallback = plan.modules.get(i + d)!; break; }
+      }
+      if (fallback) {
+        plan.modules.set(i, fallback);
+        console.log(`[V3-IMAGE] Module ${i + 1}: using neighbor fallback image`);
+      }
+    }
+  }
+
+  // Fallback: if cover failed, reuse first available module image
   if (!plan.cover) {
     for (let fi = 0; fi < modules.length; fi++) {
       if (plan.modules.has(fi)) {
-        const fallbackImg = plan.modules.get(fi)!;
-        plan.cover = fallbackImg;
-        plan.closing = fallbackImg;
-        console.log("[V3-IMAGE] Cover/closing fallback: reusing module", fi + 1, "image");
+        plan.cover = plan.modules.get(fi)!;
+        console.log("[V3-IMAGE] Cover fallback: reusing module", fi + 1, "image");
         break;
       }
     }
   }
+  // Fallback: if closing failed, reuse cover or last module image
+  if (!plan.closing) {
+    plan.closing = plan.cover || null;
+    if (plan.closing) console.log("[V3-IMAGE] Closing fallback: reusing cover image");
+  }
+
   return plan;
 }
 
@@ -1056,12 +1082,13 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
   if (image) {
     try {
       console.log(`[V3-RENDER] Cover image: base64 length=${image.base64Data.length}, starts=${image.base64Data.substring(0, 30)}`);
-      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
+      // Use slide.background for full-slide background image (not addImage which places as object)
+      slide.background = { data: image.base64Data };
     } catch (e) {
-      console.error(`[V3-RENDER] Cover addImage FAILED:`, e);
+      console.error(`[V3-RENDER] Cover background FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    // Dark panel focused on text zones (prevents full-slide black-out).
+    // Dark overlay for text readability over background image
     addHeroTextReadabilityOverlay(slide);
   } else {
     console.log("[V3-RENDER] Cover: no image provided");
@@ -1999,12 +2026,13 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
   if (image) {
     try {
       console.log(`[V3-RENDER] Closing image: base64 length=${image.base64Data.length}, starts=${image.base64Data.substring(0, 30)}`);
-      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
+      // Use slide.background for full-slide background image
+      slide.background = { data: image.base64Data };
     } catch (e) {
-      console.error(`[V3-RENDER] Closing addImage FAILED:`, e);
+      console.error(`[V3-RENDER] Closing background FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    // Dark panel focused on text zones (prevents full-slide black-out).
+    // Dark overlay for text readability over background image
     addHeroTextReadabilityOverlay(slide);
   } else {
     console.log("[V3-RENDER] Closing: no image provided");
