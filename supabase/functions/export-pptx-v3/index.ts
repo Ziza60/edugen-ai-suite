@@ -405,7 +405,12 @@ async function buildImagePlan(
   if (!includeImages || !Deno.env.get("UNSPLASH_ACCESS_KEY")) return empty;
 
   const coverQuery = buildImageQuery(courseTitle);
-  const allQueries = [{ query: coverQuery, orientation: "landscape" as const }];
+  // Separate closing query for a different image
+  const closingQuery = buildImageQuery(courseTitle + " conclusion graduation");
+  const allQueries = [
+    { query: coverQuery, orientation: "landscape" as const },
+    { query: closingQuery, orientation: "landscape" as const },
+  ];
   for (const m of modules) {
     const rawTitle = m.title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || m.title;
     allQueries.push({ query: buildImageQuery(rawTitle), orientation: "landscape" as const });
@@ -421,23 +426,44 @@ async function buildImagePlan(
     batchResults.forEach((r, j) => { results[i + j] = r; });
   }
 
-  const plan: ImagePlan = { cover: results[0], modules: new Map(), closing: results[0] };
+  // results[0] = cover, results[1] = closing, results[2..] = modules
+  const plan: ImagePlan = { cover: results[0], modules: new Map(), closing: results[1] };
   for (let i = 0; i < modules.length; i++) {
-    if (results[i + 1]) plan.modules.set(i, results[i + 1]!);
+    if (results[i + 2]) plan.modules.set(i, results[i + 2]!);
   }
 
-  // Fallback: if cover image failed (results[0] null), reuse first available module image
+  // Fallback: fill missing module images with nearest available module image
+  for (let i = 0; i < modules.length; i++) {
+    if (!plan.modules.has(i)) {
+      // Search nearest neighbor (prefer previous, then next)
+      let fallback: SlideImage | null = null;
+      for (let d = 1; d < modules.length; d++) {
+        if (plan.modules.has(i - d)) { fallback = plan.modules.get(i - d)!; break; }
+        if (plan.modules.has(i + d)) { fallback = plan.modules.get(i + d)!; break; }
+      }
+      if (fallback) {
+        plan.modules.set(i, fallback);
+        console.log(`[V3-IMAGE] Module ${i + 1}: using neighbor fallback image`);
+      }
+    }
+  }
+
+  // Fallback: if cover failed, reuse first available module image
   if (!plan.cover) {
     for (let fi = 0; fi < modules.length; fi++) {
       if (plan.modules.has(fi)) {
-        const fallbackImg = plan.modules.get(fi)!;
-        plan.cover = fallbackImg;
-        plan.closing = fallbackImg;
-        console.log("[V3-IMAGE] Cover/closing fallback: reusing module", fi + 1, "image");
+        plan.cover = plan.modules.get(fi)!;
+        console.log("[V3-IMAGE] Cover fallback: reusing module", fi + 1, "image");
         break;
       }
     }
   }
+  // Fallback: if closing failed, reuse cover or last module image
+  if (!plan.closing) {
+    plan.closing = plan.cover || null;
+    if (plan.closing) console.log("[V3-IMAGE] Closing fallback: reusing cover image");
+  }
+
   return plan;
 }
 
