@@ -371,30 +371,55 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 async function fetchUnsplashImage(
   query: string,
   orientation: "landscape" | "portrait" | "squarish" = "landscape",
+  usedPhotoIds?: Set<string>,
 ): Promise<SlideImage | null> {
   const accessKey = Deno.env.get("UNSPLASH_ACCESS_KEY");
   if (!accessKey) return null;
+
   try {
-    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=5&content_filter=high`;
+    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=12&content_filter=high`;
     const res = await fetch(url, { headers: { Authorization: `Client-ID ${accessKey}` } });
     if (!res.ok) return null;
+
     const data = await res.json();
-    if (!data.results?.length) return null;
-    const photo = data.results[Math.floor(Math.random() * data.results.length)];
+    const results = Array.isArray(data?.results) ? data.results : [];
+    if (!results.length) return null;
+
+    const validResults = results.filter((photo: any) => {
+      const imageUrl = photo?.urls?.regular || photo?.urls?.small;
+      return !!photo?.id && !!imageUrl;
+    });
+    if (!validResults.length) return null;
+
+    const uniquePool = usedPhotoIds
+      ? validResults.filter((photo: any) => !usedPhotoIds.has(String(photo.id)))
+      : validResults;
+
+    const pool = uniquePool.length ? uniquePool : validResults;
+    const photo = pool[Math.floor(Math.random() * pool.length)];
     const imageUrl = photo.urls?.regular || photo.urls?.small;
     if (!imageUrl) return null;
+
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) return null;
+
     const contentType = imgRes.headers.get("content-type") || "image/jpeg";
     const mimeType = contentType.split(";")[0].trim();
     const buf = await imgRes.arrayBuffer();
     const base64 = arrayBufferToBase64(buf);
+    const photoId = String(photo.id);
+
+    if (usedPhotoIds) usedPhotoIds.add(photoId);
+
     return {
       base64Data: `data:${mimeType};base64,${base64}`,
       credit: photo.user?.name || "Unsplash",
       creditUrl: photo.user?.links?.html || "https://unsplash.com",
+      photoId,
     };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 async function buildImagePlan(
@@ -405,51 +430,72 @@ async function buildImagePlan(
   const empty: ImagePlan = { cover: null, modules: new Map(), closing: null };
   if (!includeImages || !Deno.env.get("UNSPLASH_ACCESS_KEY")) return empty;
 
+  const usedPhotoIds = new Set<string>();
+
   const coverQuery = buildImageQuery(courseTitle);
-  // Separate closing query for a different image
-  const closingQuery = buildImageQuery(courseTitle + " conclusion graduation");
-  const allQueries = [
-    { query: coverQuery, orientation: "landscape" as const },
-    { query: closingQuery, orientation: "landscape" as const },
-  ];
-  for (const m of modules) {
-    const rawTitle = m.title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || m.title;
-    allQueries.push({ query: buildImageQuery(rawTitle), orientation: "landscape" as const });
+  const closingQuery = buildImageQuery(`${courseTitle} conclusão formatura celebração`);
+
+  const fetchUniqueWithRetries = async (queries: string[]): Promise<SlideImage | null> => {
+    for (const q of queries) {
+      const image = await fetchUnsplashImage(q, "landscape", usedPhotoIds);
+      if (image) return image;
+    }
+    return null;
+  };
+
+  let cover = await fetchUniqueWithRetries([
+    coverQuery,
+    `${coverQuery} education`,
+    `${coverQuery} classroom`,
+  ]);
+
+  let closing = await fetchUniqueWithRetries([
+    closingQuery,
+    `${closingQuery} success`,
+    `${buildImageQuery(courseTitle)} thank you audience`,
+  ]);
+
+  if (cover && closing && cover.photoId && closing.photoId && cover.photoId === closing.photoId) {
+    const replacement = await fetchUnsplashImage(`${buildImageQuery(courseTitle)} applause celebration`, "landscape", usedPhotoIds);
+    if (replacement) closing = replacement;
   }
 
-  const MAX_CONCURRENT = 4;
-  const results: (SlideImage | null)[] = new Array(allQueries.length).fill(null);
-  for (let i = 0; i < allQueries.length; i += MAX_CONCURRENT) {
-    const batch = allQueries.slice(i, i + MAX_CONCURRENT);
-    const batchResults = await Promise.all(
-      batch.map((q) => fetchUnsplashImage(q.query, q.orientation).catch(() => null))
+  const plan: ImagePlan = { cover, modules: new Map(), closing };
+  const missingModuleIndexes: number[] = [];
+
+  for (let i = 0; i < modules.length; i++) {
+    const rawTitle = modules[i].title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || modules[i].title;
+
+    const image = await fetchUniqueWithRetries([
+      buildImageQuery(rawTitle),
+      buildImageQuery(`${courseTitle} ${rawTitle}`),
+      `${buildImageQuery(rawTitle)} training`,
+    ]);
+
+    if (image) {
+      plan.modules.set(i, image);
+      continue;
+    }
+
+    missingModuleIndexes.push(i);
+  }
+
+  // Rescue pass for modules that still failed using less strict uniqueness.
+  for (const i of missingModuleIndexes) {
+    const rawTitle = modules[i].title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || modules[i].title;
+
+    const rescue = await fetchUnsplashImage(
+      `${buildImageQuery(rawTitle)} professional learning`,
+      "landscape",
     );
-    batchResults.forEach((r, j) => { results[i + j] = r; });
-  }
 
-  // results[0] = cover, results[1] = closing, results[2..] = modules
-  const plan: ImagePlan = { cover: results[0], modules: new Map(), closing: results[1] };
-  for (let i = 0; i < modules.length; i++) {
-    if (results[i + 2]) plan.modules.set(i, results[i + 2]!);
-  }
-
-  // Fallback: fill missing module images with nearest available module image
-  for (let i = 0; i < modules.length; i++) {
-    if (!plan.modules.has(i)) {
-      // Search nearest neighbor (prefer previous, then next)
-      let fallback: SlideImage | null = null;
-      for (let d = 1; d < modules.length; d++) {
-        if (plan.modules.has(i - d)) { fallback = plan.modules.get(i - d)!; break; }
-        if (plan.modules.has(i + d)) { fallback = plan.modules.get(i + d)!; break; }
-      }
-      if (fallback) {
-        plan.modules.set(i, fallback);
-        console.log(`[V3-IMAGE] Module ${i + 1}: using neighbor fallback image`);
-      }
+    if (rescue) {
+      plan.modules.set(i, rescue);
+      console.log(`[V3-IMAGE] Module ${i + 1}: rescue image selected (possible duplicate)`);
     }
   }
 
-  // Fallback: if cover failed, reuse first available module image
+  // Fallback: if cover failed, use first available module image.
   if (!plan.cover) {
     for (let fi = 0; fi < modules.length; fi++) {
       if (plan.modules.has(fi)) {
@@ -459,11 +505,19 @@ async function buildImagePlan(
       }
     }
   }
-  // Fallback: if closing failed, reuse cover or last module image
+
+  // Fallback: if closing failed, try once more before reusing cover.
   if (!plan.closing) {
-    plan.closing = plan.cover || null;
-    if (plan.closing) console.log("[V3-IMAGE] Closing fallback: reusing cover image");
+    plan.closing = await fetchUnsplashImage(`${buildImageQuery(courseTitle)} closing ceremony`, "landscape", usedPhotoIds);
+    if (!plan.closing && plan.cover) {
+      plan.closing = plan.cover;
+      console.log("[V3-IMAGE] Closing fallback: reusing cover image");
+    }
   }
+
+  console.log(
+    `[V3-IMAGE] IDs => cover=${plan.cover?.photoId ?? "none"}, closing=${plan.closing?.photoId ?? "none"}, moduleImages=${plan.modules.size}/${modules.length}`,
+  );
 
   return plan;
 }
