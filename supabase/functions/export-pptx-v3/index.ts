@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.6.6-2026-03-13";
+const ENGINE_VERSION = "3.6.7-2026-03-13";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1838,11 +1838,11 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
           const ptLabelCapped = label.length > 38 ? label.split(/\s+/).slice(0, 6).join(' ') : label;
           const ptLabelLines = Math.ceil(ptLabelCapped.length / ptCharsPerLine);
           const ptLabelH = Math.min(0.80, Math.max(0.28, ptLabelLines * 0.28 + 0.06));
-          const ptDescY = cardY + 0.55 + ptLabelH + 0.08;
-          slide.addText(ptLabelCapped, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: ptLabelH, fontSize: TYPO.BODY - 1, fontFace: design.fonts.title, bold: true, color: pal, align: "center", valign: "middle", lineSpacingMultiple: 1.08, autoFit: true } as any);
+          const ptDescY = cardY + 0.68 + ptLabelH + 0.08;
+          slide.addText(ptLabelCapped, { x: x + 0.15, y: cardY + 0.68, w: cardW - 0.30, h: ptLabelH, fontSize: TYPO.BODY - 1, fontFace: design.fonts.title, bold: true, color: pal, align: "center", valign: "middle", lineSpacingMultiple: 1.08, autoFit: true } as any);
           slide.addText(desc, { x: x + 0.15, y: ptDescY, w: cardW - 0.30, h: cardH - (ptDescY - cardY) - 0.18, fontSize: TYPO.BODY - 1, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "middle", align: "center", lineSpacingMultiple: 1.18, autoFit: true } as any);
         } else {
-          slide.addText(label, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: cardH - 0.70, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "middle", align: "center", lineSpacingMultiple: 1.25, autoFit: true } as any);
+          slide.addText(label, { x: x + 0.15, y: cardY + 0.68, w: cardW - 0.30, h: cardH - 0.83, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "middle", align: "center", lineSpacingMultiple: 1.25, autoFit: true } as any);
         }
     }
   } else {
@@ -2049,7 +2049,7 @@ function renderReflectionCallout(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   addSlideBackground(slide, colors.coverDark);
-  slide.addText("\u201C", { x: 0.30, y: -0.30, w: 2.00, h: 2.00, fontSize: 180, fontFace: design.fonts.title, color: colors.p1, transparency: 88, bold: true });
+  slide.addText("\u201C", { x: 0.30, y: 0.04, w: 2.00, h: 2.00, fontSize: 180, fontFace: design.fonts.title, color: colors.p1, transparency: 88, bold: true });
   addHR(slide, 0.65, 0.55, SLIDE_W - 1.30, colors.p1, 0.018);
   slide.addText("REFLEXÃO", { x: 0.65, y: 0.80, w: 4.0, h: 0.24, fontSize: 10, fontFace: design.fonts.body, bold: true, color: colors.p1, charSpacing: 6 });
   slide.addText(plan.title, { x: 0.65, y: 1.12, w: SLIDE_W - 1.30, h: 0.55, fontSize: 24, fontFace: design.fonts.title, bold: true, color: "FFFFFF" });
