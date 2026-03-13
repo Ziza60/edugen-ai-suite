@@ -2078,14 +2078,12 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
 
   if (image) {
     try {
-      console.log(`[V3-RENDER] Closing image: base64 length=${image.base64Data.length}, starts=${image.base64Data.substring(0, 30)}`);
-      // Use slide.background for full-slide background image
-      slide.background = { data: image.base64Data };
+      console.log(`[V3-RENDER] Closing image: photoId=${image.photoId ?? "n/a"}, base64 length=${image.base64Data.length}, starts=${image.base64Data.substring(0, 30)}`);
+      slide.addImage({ data: image.base64Data, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
     } catch (e) {
       console.error(`[V3-RENDER] Closing background FAILED:`, e);
       addSlideBackground(slide, colors.coverDark);
     }
-    // Dark overlay for text readability over background image
     addHeroTextReadabilityOverlay(slide);
   } else {
     console.log("[V3-RENDER] Closing: no image provided");
