@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.6.5-2026-03-13";
+const ENGINE_VERSION = "3.6.6-2026-03-13";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1833,13 +1833,17 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
       else if (items[i].length <= 50) { label = items[i]; desc = ""; }
       else { const words = items[i].split(/\s+/); label = words.slice(0, 6).join(" "); desc = words.slice(6).join(" "); }
       if (desc && desc.length > 0) {
-        const ptLabelH = label.length > 20 ? 0.44 : 0.28;
-        const ptDescY = cardY + 0.55 + ptLabelH + 0.06;
-        slide.addText(label, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: ptLabelH, fontSize: TYPO.BODY - 1, fontFace: design.fonts.title, bold: true, color: pal, align: "center", valign: "middle", lineSpacingMultiple: 1.08 });
-        slide.addText(desc, { x: x + 0.15, y: ptDescY, w: cardW - 0.30, h: cardH - (ptDescY - cardY) - 0.10, fontSize: TYPO.BODY - 1, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "top", align: "center", lineSpacingMultiple: 1.18, autoFit: true } as any);
-      } else {
-        slide.addText(label, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: cardH - 0.70, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "top", align: "center", lineSpacingMultiple: 1.25, autoFit: true } as any);
-      }
+          // Dynamic label height based on estimated line wrapping
+          const ptCharsPerLine = Math.max(8, Math.floor((cardW - 0.30) / 0.09));
+          const ptLabelCapped = label.length > 38 ? label.split(/\s+/).slice(0, 6).join(' ') : label;
+          const ptLabelLines = Math.ceil(ptLabelCapped.length / ptCharsPerLine);
+          const ptLabelH = Math.min(0.80, Math.max(0.28, ptLabelLines * 0.28 + 0.06));
+          const ptDescY = cardY + 0.55 + ptLabelH + 0.08;
+          slide.addText(ptLabelCapped, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: ptLabelH, fontSize: TYPO.BODY - 1, fontFace: design.fonts.title, bold: true, color: pal, align: "center", valign: "middle", lineSpacingMultiple: 1.08, autoFit: true } as any);
+          slide.addText(desc, { x: x + 0.15, y: ptDescY, w: cardW - 0.30, h: cardH - (ptDescY - cardY) - 0.18, fontSize: TYPO.BODY - 1, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "middle", align: "center", lineSpacingMultiple: 1.18, autoFit: true } as any);
+        } else {
+          slide.addText(label, { x: x + 0.15, y: cardY + 0.55, w: cardW - 0.30, h: cardH - 0.70, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "middle", align: "center", lineSpacingMultiple: 1.25, autoFit: true } as any);
+        }
     }
   } else {
     addSlideBackground(slide, colors.bg);
