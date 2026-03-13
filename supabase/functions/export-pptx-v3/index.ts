@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.7.0-2026-03-13";
+const ENGINE_VERSION = "3.6.5-2026-03-13";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -640,7 +640,7 @@ NÃO inclua preamble, saudação ou confirmação — o primeiro caractere deve 
 
 **"comparison_table"** — Tabela comparativa entre 2+ conceitos/variantes
 - Usar quando: o conteúdo compara explicitamente diferentes tipos, versões ou abordagens
-- Campos: title, sectionLabel (ex: "COMPARATIVO", "MODELOS"), tableHeaders (array de 2-4 strings), tableRows (array de MÁXIMO 4 linhas de strings, cada linha com mesmo número de colunas dos headers, máx 80 chars por célula)
+- Campos: title, sectionLabel (ex: "COMPARATIVO", "MODELOS"), tableHeaders (array de 2-4 strings), tableRows (array de arrays de strings, cada linha com mesmo número de colunas dos headers)
 
 **"example_highlight"** — Exemplo prático ou estudo de caso
 - SEMPRE usar para blocos de exemplo. NUNCA usar bullets para exemplos.
@@ -662,7 +662,7 @@ NÃO inclua preamble, saudação ou confirmação — o primeiro caractere deve 
 
 **"numbered_takeaways"** — Key Takeaways
 - SEMPRE o último slide de cada módulo
-- Campos: title ("Aprendizados-Chave"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (array de 4-5 strings, cada uma uma lição concreta e aplicável)
+- Campos: title ("Key Takeaways"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (array de 4-5 strings, cada uma uma lição concreta e aplicável)
 
 ## REGRAS DE QUALIDADE OBRIGATÓRIAS
 
@@ -702,7 +702,7 @@ ${moduleContent.substring(0, 6000)}
   {"layout":"grid_cards","title":"Título Descritivo","sectionLabel":"APLICAÇÕES REAIS","items":["Ferramenta A: Descrição da ferramenta A.","Ferramenta B: Descrição da ferramenta B.","Ferramenta C: Descrição da ferramenta C."]},
   {"layout":"example_highlight","title":"Exemplo Prático","sectionLabel":"ESTUDO DE CASO","items":["Contexto: Descrição do cenário.","Desafio: O problema a resolver.","Solução: Como foi resolvido.","Resultado: O que foi alcançado."]},
   {"layout":"summary_slide","title":"Resumo","sectionLabel":"SÍNTESE","items":["Síntese 1.","Síntese 2.","Síntese 3."]},
-  {"layout":"numbered_takeaways","title":"Aprendizados-Chave","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Lição 1.","Lição 2.","Lição 3.","Lição 4."]}
+  {"layout":"numbered_takeaways","title":"Key Takeaways","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Lição 1.","Lição 2.","Lição 3.","Lição 4."]}
 ]
 
 Retorne APENAS o array JSON. Nenhum texto antes ou depois.`;
@@ -807,8 +807,8 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
     if (Array.isArray(raw.tableRows)) {
       tableRows = raw.tableRows
         .filter((row: any) => Array.isArray(row) && row.length >= 2)
-        .map((row: any[]) => row.map((cell: any) => sanitizeText(String(cell)).substring(0, 80)))
-        .slice(0, 4);  // max 4 rows — prevents overflow and excessive density
+        .map((row: any[]) => row.map((cell: any) => sanitizeText(String(cell)).substring(0, 120)))
+        .slice(0, 8);
     }
     // If no valid table data, downgrade to bullets
     if (!tableHeaders || !tableRows || tableRows.length === 0) {
@@ -884,7 +884,7 @@ function buildFallbackSlides(
 
   slides.push({
     layout: "numbered_takeaways",
-    title: "Aprendizados-Chave",
+    title: "Key Takeaways",
     sectionLabel: "PRINCIPAIS APRENDIZADOS",
     items: sentences.slice(0, 4),
     moduleIndex,
@@ -979,7 +979,7 @@ async function generateSlidesForModule(
   if (lastSlide.layout !== "numbered_takeaways") {
     slides.push({
       layout: "numbered_takeaways",
-      title: "Aprendizados-Chave",
+      title: "Key Takeaways",
       sectionLabel: "PRINCIPAIS APRENDIZADOS",
       items: ["Revise o conteúdo do módulo para consolidar o aprendizado."],
       moduleIndex,
@@ -1913,7 +1913,12 @@ function renderComparisonTable(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
   const rows = plan.tableRows || [];
   if (headers.length === 0) { renderBullets(pptx, plan, design); return; }
   const contentX = 0.65;
-  const contentW = SLIDE_W - contentX - 0.50;
+  const contentW2_tbl = SLIDE_W - contentX - 0.50;
+  const tableY = 1.68;
+  const tableAvailH = SLIDE_H - tableY - 0.50;
+  const totalRows = rows.length + 1;
+  const dynRowH = Math.min(0.80, Math.max(0.40, tableAvailH / totalRows));
+  
   const tableData: any[][] = [];
   tableData.push(headers.map((h) => ({
     text: h, options: { fontSize: TYPO.TABLE_HEADER, fontFace: design.fonts.title, bold: true, color: "FFFFFF", fill: { color: colors.p0 }, align: "center", valign: "middle" },
@@ -1924,9 +1929,9 @@ function renderComparisonTable(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
     })));
   }
   slide.addTable(tableData, {
-    x: contentX, y: 1.68, w: contentW,
-    colW: new Array(headers.length).fill(contentW / headers.length),
-    rowH: 0.48,
+    x: contentX, y: tableY, w: contentW2_tbl,
+    colW: new Array(headers.length).fill(contentW2_tbl / headers.length),
+    rowH: dynRowH,
     border: { type: "solid", pt: 0.3, color: colors.borders },
     autoPage: false,
   });
@@ -2080,7 +2085,7 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
   const rows = Math.ceil(items.length / cols);
   const gap = 0.12;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  const cardH = Math.min(1.50, (contentHAvail - gap * (rows - 1)) / rows);
+  const cardH = Math.min(2.50, (contentHAvail - gap * (rows - 1)) / rows);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
     const x = contentX + col * (cardW + gap), y = contentY + row * (cardH + gap);
@@ -2091,7 +2096,7 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
     const numSize = 0.32;
     slide.addShape("roundRect" as any, { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fill: { color: pal }, rectRadius: 0.08 });
     slide.addText(String(i + 1), { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fontSize: 16, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
-    slide.addText(items[i], { x: x + 0.14, y: y + numSize + 0.14, w: cardW - 0.28, h: cardH - numSize - 0.24, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.text, valign: "top", lineSpacingMultiple: 1.25 });
+    slide.addText(items[i], { x: x + 0.14, y: y + numSize + 0.14, w: cardW - 0.28, h: cardH - numSize - 0.24, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
@@ -2113,7 +2118,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   const gap = 0.14;
   const cardW = (contentW - gap * (cols - 1)) / cols;
   const contentY = 1.65, contentH = SLIDE_H - contentY - 0.30;
-  const cardH = Math.min(1.80, (contentH - gap * (gridRows - 1)) / gridRows);
+  const cardH = Math.min(2.50, (contentH - gap * (gridRows - 1)) / gridRows);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
     const x = contentX + col * (cardW + gap), y = contentY + row * (cardH + gap);
@@ -2125,7 +2130,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
     slide.addShape("roundRect" as any, { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fill: { color: pal }, rectRadius: 0.08 });
     slide.addText(String(i + 1), { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fontSize: Math.min(16, tkBadge * 40), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
     const tkTextY = y + 0.14 + tkBadge + 0.10;
-    slide.addText(items[i], { x: x + 0.14, y: tkTextY, w: cardW - 0.28, h: cardH - (tkTextY - y) - 0.10, fontSize: TYPO.TAKEAWAY_BODY, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "top", lineSpacingMultiple: 1.25, autoFit: true } as any);
+    slide.addText(items[i], { x: x + 0.14, y: tkTextY, w: cardW - 0.28, h: cardH - (tkTextY - y) - 0.22, fontSize: TYPO.TAKEAWAY_BODY, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
   }
 }
 
@@ -2264,15 +2269,7 @@ async function runPipeline(
     const stripped = (m.content || "")
       .replace(/#{1,6}\s*/g, "").replace(/\*\*(.*?)\*\*/g, "$1").replace(/[*_`]/g, "")
       .replace(/^[-*]\s+/gm, "").replace(/^\d+[.)]\s+/gm, "");
-    // Filter out sentences with AI metadata artifacts (🎯, "Objetivo do Módulo", etc.)
-    const sentences = stripped.split(/[.!?]\s+/);
-    const firstSentence = sentences.find((s) =>
-      s.trim().length > 20 &&
-      !s.includes("\u{1F3AF}") && !s.includes("\u{1F4CB}") && !s.includes("\u2705") &&
-      !/objetivo\s+do\s+m[o\u00f3]dulo/i.test(s) &&
-      !/^m[o\u00f3]dulo\s+\d+/i.test(s) &&
-      !/^\s*objetivo/i.test(s)
-    )?.trim() || "";
+    const firstSentence = stripped.split(/[.!?]\s+/)[0]?.trim() || "";
     return {
       title: cleanTitle,
       description: firstSentence.length > 20 ? firstSentence.substring(0, 105) + "." : undefined,
