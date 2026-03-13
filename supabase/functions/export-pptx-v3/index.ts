@@ -1109,18 +1109,23 @@ function addImageCredit(slide: any, credit: string, design: DesignConfig) {
 }
 
 function addHeroTextReadabilityOverlay(slide: any) {
-  // Uniform cinematic overlay to keep the photo as full background with readable text.
+  // IMPORTANT: transparency must be set inside fill for stable rendering in PPT viewers.
+  // Subtle global dim to preserve full-bleed photo visibility.
   slide.addShape("rect" as any, {
     x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
-    fill: { color: "000000" },
-    transparency: 45,
+    fill: { color: "000000", transparency: 78 },
+  });
+
+  // Stronger panel only where title/body text lives.
+  slide.addShape("rect" as any, {
+    x: 0, y: 0, w: SLIDE_W * 0.64, h: SLIDE_H,
+    fill: { color: "000000", transparency: 58 },
   });
 
   // Extra support behind date/credit area (bottom-right).
   slide.addShape("roundRect" as any, {
     x: SLIDE_W - 3.35, y: SLIDE_H - 0.88, w: 3.05, h: 0.68,
-    fill: { color: "000000" },
-    transparency: 30,
+    fill: { color: "000000", transparency: 35 },
     rectRadius: 0.05,
   });
 }
