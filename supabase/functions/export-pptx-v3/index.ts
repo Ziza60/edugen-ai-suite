@@ -2277,6 +2277,7 @@ async function runPipeline(
       title: cleanTitle,
       description: firstSentence.length > 20 ? firstSentence.substring(0, 105) + "." : undefined,
     };
+  });
 
   console.log(`[V3-STAGE-2] Rendering slides...`);
 
