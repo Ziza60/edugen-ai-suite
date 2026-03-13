@@ -97,6 +97,7 @@ interface SlideImage {
   base64Data: string;
   credit: string;
   creditUrl: string;
+  photoId?: string;
 }
 
 interface ImagePlan {
