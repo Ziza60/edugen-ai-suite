@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.6.1-2026-03-13";
+const ENGINE_VERSION = "3.7.0-2026-03-13";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -640,7 +640,7 @@ NÃO inclua preamble, saudação ou confirmação — o primeiro caractere deve 
 
 **"comparison_table"** — Tabela comparativa entre 2+ conceitos/variantes
 - Usar quando: o conteúdo compara explicitamente diferentes tipos, versões ou abordagens
-- Campos: title, sectionLabel (ex: "COMPARATIVO", "MODELOS"), tableHeaders (array de 2-4 strings), tableRows (array de arrays de strings, cada linha com mesmo número de colunas dos headers)
+- Campos: title, sectionLabel (ex: "COMPARATIVO", "MODELOS"), tableHeaders (array de 2-4 strings), tableRows (array de MÁXIMO 4 linhas de strings, cada linha com mesmo número de colunas dos headers, máx 80 chars por célula)
 
 **"example_highlight"** — Exemplo prático ou estudo de caso
 - SEMPRE usar para blocos de exemplo. NUNCA usar bullets para exemplos.
@@ -662,7 +662,7 @@ NÃO inclua preamble, saudação ou confirmação — o primeiro caractere deve 
 
 **"numbered_takeaways"** — Key Takeaways
 - SEMPRE o último slide de cada módulo
-- Campos: title ("Key Takeaways"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (array de 4-5 strings, cada uma uma lição concreta e aplicável)
+- Campos: title ("Aprendizados-Chave"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (array de 4-5 strings, cada uma uma lição concreta e aplicável)
 
 ## REGRAS DE QUALIDADE OBRIGATÓRIAS
 
@@ -702,7 +702,7 @@ ${moduleContent.substring(0, 6000)}
   {"layout":"grid_cards","title":"Título Descritivo","sectionLabel":"APLICAÇÕES REAIS","items":["Ferramenta A: Descrição da ferramenta A.","Ferramenta B: Descrição da ferramenta B.","Ferramenta C: Descrição da ferramenta C."]},
   {"layout":"example_highlight","title":"Exemplo Prático","sectionLabel":"ESTUDO DE CASO","items":["Contexto: Descrição do cenário.","Desafio: O problema a resolver.","Solução: Como foi resolvido.","Resultado: O que foi alcançado."]},
   {"layout":"summary_slide","title":"Resumo","sectionLabel":"SÍNTESE","items":["Síntese 1.","Síntese 2.","Síntese 3."]},
-  {"layout":"numbered_takeaways","title":"Key Takeaways","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Lição 1.","Lição 2.","Lição 3.","Lição 4."]}
+  {"layout":"numbered_takeaways","title":"Aprendizados-Chave","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Lição 1.","Lição 2.","Lição 3.","Lição 4."]}
 ]
 
 Retorne APENAS o array JSON. Nenhum texto antes ou depois.`;
@@ -715,6 +715,12 @@ Retorne APENAS o array JSON. Nenhum texto antes ou depois.`;
 function sanitizeText(text: string): string {
   if (!text || typeof text !== "string") return "";
   return text
+        .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, c) => String.fromCharCode(Number(c)))
     .replace(/[\u0000-\u001F\u007F]/g, " ")
     .replace(/(\d+)\.\s+(\d{3})/g, "$1.$2")       // fix "R$500. 000" / "Lei nº 8. 443" → correct
     .replace(/\|\s*:?-+\s*\|?/g, " ")              // remove markdown table separators | :--- |
@@ -801,8 +807,8 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
     if (Array.isArray(raw.tableRows)) {
       tableRows = raw.tableRows
         .filter((row: any) => Array.isArray(row) && row.length >= 2)
-        .map((row: any[]) => row.map((cell: any) => sanitizeText(String(cell)).substring(0, 120)))
-        .slice(0, 8);
+        .map((row: any[]) => row.map((cell: any) => sanitizeText(String(cell)).substring(0, 80)))
+        .slice(0, 4);  // max 4 rows — prevents overflow and excessive density
     }
     // If no valid table data, downgrade to bullets
     if (!tableHeaders || !tableRows || tableRows.length === 0) {
@@ -878,7 +884,7 @@ function buildFallbackSlides(
 
   slides.push({
     layout: "numbered_takeaways",
-    title: "Key Takeaways",
+    title: "Aprendizados-Chave",
     sectionLabel: "PRINCIPAIS APRENDIZADOS",
     items: sentences.slice(0, 4),
     moduleIndex,
@@ -973,7 +979,7 @@ async function generateSlidesForModule(
   if (lastSlide.layout !== "numbered_takeaways") {
     slides.push({
       layout: "numbered_takeaways",
-      title: "Key Takeaways",
+      title: "Aprendizados-Chave",
       sectionLabel: "PRINCIPAIS APRENDIZADOS",
       items: ["Revise o conteúdo do módulo para consolidar o aprendizado."],
       moduleIndex,
@@ -1407,7 +1413,7 @@ function renderModuleCover(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfi
       fontSize: 180, fontFace: design.fonts.title, bold: true,
       color: accentColor, transparency: 90, align: "right", valign: "bottom",
     });
-    slide.addShape("ellipse" as any, { x: contentW - 2.70, y: -0.60, w: 3.00, h: 3.00, fill: { color: accentColor }, transparency: 90 });
+    slide.addShape("ellipse" as any, { x: Math.min(contentW - 2.70, SLIDE_W - 3.10), y: -0.60, w: 3.00, h: 3.00, fill: { color: accentColor }, transparency: 90 });
     slide.addShape("ellipse" as any, { x: contentW - 1.80, y: 0.65, w: 0.16, h: 0.16, fill: { color: accentColor }, transparency: 20 });
   }
 
@@ -1498,7 +1504,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       const aFontSize = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : items.length >= 4 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
       { // title:desc split rendering for bullets
         const bColonIdx = items[i].indexOf(":");
-        const bHasTitle = bColonIdx > 0 && bColonIdx < 45 && items[i].split(" ").slice(0, bColonIdx).length <= 5;
+        const bHasTitle = bColonIdx > 0 && bColonIdx < 70;
         if (bHasTitle) {
           const bTitle = items[i].substring(0, bColonIdx).trim();
           const bDesc = items[i].substring(bColonIdx + 1).trim();
@@ -2258,12 +2264,19 @@ async function runPipeline(
     const stripped = (m.content || "")
       .replace(/#{1,6}\s*/g, "").replace(/\*\*(.*?)\*\*/g, "$1").replace(/[*_`]/g, "")
       .replace(/^[-*]\s+/gm, "").replace(/^\d+[.)]\s+/gm, "");
-    const firstSentence = stripped.split(/[.!?]\s+/)[0]?.trim() || "";
+    // Filter out sentences with AI metadata artifacts (🎯, "Objetivo do Módulo", etc.)
+    const sentences = stripped.split(/[.!?]\s+/);
+    const firstSentence = sentences.find((s) =>
+      s.trim().length > 20 &&
+      !s.includes("\u{1F3AF}") && !s.includes("\u{1F4CB}") && !s.includes("\u2705") &&
+      !/objetivo\s+do\s+m[o\u00f3]dulo/i.test(s) &&
+      !/^m[o\u00f3]dulo\s+\d+/i.test(s) &&
+      !/^\s*objetivo/i.test(s)
+    )?.trim() || "";
     return {
       title: cleanTitle,
       description: firstSentence.length > 20 ? firstSentence.substring(0, 105) + "." : undefined,
     };
-  });
 
   console.log(`[V3-STAGE-2] Rendering slides...`);
 
