@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.6.2-2026-03-13";
+const ENGINE_VERSION = "3.6.3-2026-03-13";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1913,7 +1913,12 @@ function renderComparisonTable(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
   const rows = plan.tableRows || [];
   if (headers.length === 0) { renderBullets(pptx, plan, design); return; }
   const contentX = 0.65;
-  const contentW = SLIDE_W - contentX - 0.50;
+  const contentW2_tbl = SLIDE_W - contentX - 0.50;
+  const tableY = 1.68;
+  const tableAvailH = SLIDE_H - tableY - 0.50;
+  const totalRows = rows.length + 1;
+  const dynRowH = Math.min(0.80, Math.max(0.40, tableAvailH / totalRows));
+  
   const tableData: any[][] = [];
   tableData.push(headers.map((h) => ({
     text: h, options: { fontSize: TYPO.TABLE_HEADER, fontFace: design.fonts.title, bold: true, color: "FFFFFF", fill: { color: colors.p0 }, align: "center", valign: "middle" },
@@ -1924,9 +1929,9 @@ function renderComparisonTable(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
     })));
   }
   slide.addTable(tableData, {
-    x: contentX, y: 1.68, w: contentW,
-    colW: new Array(headers.length).fill(contentW / headers.length),
-    rowH: 0.48,
+    x: contentX, y: tableY, w: contentW2_tbl,
+    colW: new Array(headers.length).fill(contentW2_tbl / headers.length),
+    rowH: dynRowH,
     border: { type: "solid", pt: 0.3, color: colors.borders },
     autoPage: false,
   });
