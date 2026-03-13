@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.6.3-2026-03-13";
+const ENGINE_VERSION = "3.6.4-2026-03-13";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2085,7 +2085,7 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
   const rows = Math.ceil(items.length / cols);
   const gap = 0.12;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  const cardH = Math.min(1.50, (contentHAvail - gap * (rows - 1)) / rows);
+  const cardH = Math.min(2.50, (contentHAvail - gap * (rows - 1)) / rows);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
     const x = contentX + col * (cardW + gap), y = contentY + row * (cardH + gap);
@@ -2096,7 +2096,7 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
     const numSize = 0.32;
     slide.addShape("roundRect" as any, { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fill: { color: pal }, rectRadius: 0.08 });
     slide.addText(String(i + 1), { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fontSize: 16, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
-    slide.addText(items[i], { x: x + 0.14, y: y + numSize + 0.14, w: cardW - 0.28, h: cardH - numSize - 0.24, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.text, valign: "top", lineSpacingMultiple: 1.25 });
+    slide.addText(items[i], { x: x + 0.14, y: y + numSize + 0.14, w: cardW - 0.28, h: cardH - numSize - 0.24, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.text, valign: "top", lineSpacingMultiple: 1.25, autoFit: true } as any);
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
