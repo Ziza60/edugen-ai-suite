@@ -443,24 +443,31 @@ async function buildImagePlan(
     return null;
   };
 
-  let cover = await fetchUniqueWithRetries([
-    coverQuery,
-    `${coverQuery} education`,
-    `${coverQuery} classroom`,
-  ]);
+  // Last-resort helper when unique pool is exhausted.
+  const fetchAnyWithRetries = async (queries: string[]): Promise<SlideImage | null> => {
+    for (const q of queries) {
+      const image = await fetchUnsplashImage(q, "landscape");
+      if (image) return image;
+    }
+    return null;
+  };
 
-  let closing = await fetchUniqueWithRetries([
-    closingQuery,
-    `${closingQuery} success`,
-    `${buildImageQuery(courseTitle)} thank you audience`,
-  ]);
+  const plan: ImagePlan = {
+    cover: await fetchUniqueWithRetries([
+      coverQuery,
+      `${coverQuery} education`,
+      `${coverQuery} classroom`,
+      `${coverQuery} learning`,
+    ]),
+    modules: new Map(),
+    closing: await fetchUniqueWithRetries([
+      closingQuery,
+      `${closingQuery} success`,
+      `${buildImageQuery(courseTitle)} thank you audience`,
+      `${buildImageQuery(courseTitle)} graduation`,
+    ]),
+  };
 
-  if (cover && closing && cover.photoId && closing.photoId && cover.photoId === closing.photoId) {
-    const replacement = await fetchUnsplashImage(`${buildImageQuery(courseTitle)} applause celebration`, "landscape", usedPhotoIds);
-    if (replacement) closing = replacement;
-  }
-
-  const plan: ImagePlan = { cover, modules: new Map(), closing };
   const missingModuleIndexes: number[] = [];
 
   for (let i = 0; i < modules.length; i++) {
@@ -470,6 +477,7 @@ async function buildImagePlan(
       buildImageQuery(rawTitle),
       buildImageQuery(`${courseTitle} ${rawTitle}`),
       `${buildImageQuery(rawTitle)} training`,
+      `${buildImageQuery(rawTitle)} classroom`,
     ]);
 
     if (image) {
@@ -480,43 +488,82 @@ async function buildImagePlan(
     missingModuleIndexes.push(i);
   }
 
-  // Rescue pass for modules that still failed using less strict uniqueness.
+  // Rescue pass (still unique): broaden query before allowing duplicates.
+  const unresolved: number[] = [];
   for (const i of missingModuleIndexes) {
     const rawTitle = modules[i].title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || modules[i].title;
 
-    const rescue = await fetchUnsplashImage(
+    const rescue = await fetchUniqueWithRetries([
       `${buildImageQuery(rawTitle)} professional learning`,
-      "landscape",
-    );
+      `${buildImageQuery(courseTitle)} education`,
+      "education classroom professional",
+    ]);
 
     if (rescue) {
       plan.modules.set(i, rescue);
-      console.log(`[V3-IMAGE] Module ${i + 1}: rescue image selected (possible duplicate)`);
+      continue;
+    }
+
+    unresolved.push(i);
+  }
+
+  // Final fallback (duplicates allowed only when absolutely necessary).
+  for (const i of unresolved) {
+    const rawTitle = modules[i].title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || modules[i].title;
+    const fallback = await fetchAnyWithRetries([
+      `${buildImageQuery(rawTitle)} education`,
+      `${buildImageQuery(courseTitle)} professional training`,
+      "learning workshop education",
+    ]);
+
+    if (fallback) {
+      plan.modules.set(i, fallback);
+      console.log(`[V3-IMAGE] Module ${i + 1}: duplicate-allowed fallback used`);
     }
   }
 
-  // Fallback: if cover failed, use first available module image.
+  // Cover/closing hardening: prefer unique first, only then allow duplicates.
   if (!plan.cover) {
-    for (let fi = 0; fi < modules.length; fi++) {
-      if (plan.modules.has(fi)) {
-        plan.cover = plan.modules.get(fi)!;
-        console.log("[V3-IMAGE] Cover fallback: reusing module", fi + 1, "image");
-        break;
-      }
+    plan.cover = await fetchUniqueWithRetries([
+      `${buildImageQuery(courseTitle)} education`,
+      `${buildImageQuery(courseTitle)} classroom`,
+    ]) || await fetchAnyWithRetries([
+      `${buildImageQuery(courseTitle)} education`,
+    ]);
+  }
+
+  if (!plan.closing) {
+    plan.closing = await fetchUniqueWithRetries([
+      `${buildImageQuery(courseTitle)} conclusão celebração`,
+      `${buildImageQuery(courseTitle)} thank you audience`,
+    ]) || await fetchAnyWithRetries([
+      `${buildImageQuery(courseTitle)} closing ceremony`,
+    ]);
+  }
+
+  // Guarantee cover/closing are distinct whenever possible.
+  if (plan.cover && plan.closing && plan.cover.photoId && plan.closing.photoId && plan.cover.photoId === plan.closing.photoId) {
+    const replacement = await fetchUniqueWithRetries([
+      `${buildImageQuery(courseTitle)} celebration audience`,
+      `${buildImageQuery(courseTitle)} graduation`,
+    ]) || await fetchAnyWithRetries([
+      `${buildImageQuery(courseTitle)} celebration audience`,
+    ]);
+
+    if (replacement && replacement.photoId !== plan.cover.photoId) {
+      plan.closing = replacement;
     }
   }
 
-  // Fallback: if closing failed, try once more before reusing cover.
-  if (!plan.closing) {
-    plan.closing = await fetchUnsplashImage(`${buildImageQuery(courseTitle)} closing ceremony`, "landscape", usedPhotoIds);
-    if (!plan.closing && plan.cover) {
-      plan.closing = plan.cover;
-      console.log("[V3-IMAGE] Closing fallback: reusing cover image");
-    }
-  }
+  const allPhotoIds = [
+    plan.cover?.photoId,
+    plan.closing?.photoId,
+    ...Array.from(plan.modules.values()).map((img) => img.photoId),
+  ].filter((id): id is string => !!id);
+  const duplicatePhotos = allPhotoIds.length - new Set(allPhotoIds).size;
 
   console.log(
-    `[V3-IMAGE] IDs => cover=${plan.cover?.photoId ?? "none"}, closing=${plan.closing?.photoId ?? "none"}, moduleImages=${plan.modules.size}/${modules.length}`,
+    `[V3-IMAGE] IDs => cover=${plan.cover?.photoId ?? "none"}, closing=${plan.closing?.photoId ?? "none"}, moduleImages=${plan.modules.size}/${modules.length}, duplicates=${duplicatePhotos}`,
   );
 
   return plan;
