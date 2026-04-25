@@ -1716,7 +1716,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     }
     slide.addText(plan.title, {
       x: 0.45, y: 1.00, w: sideW - 0.90, h: 3.40,
-      fontSize: 24, fontFace: design.fonts.title, bold: true, color: "FFFFFF",
+      fontSize: MIN_FONT.TITLE, fontFace: design.fonts.title, bold: true, color: "FFFFFF",
       valign: "top", lineSpacingMultiple: 1.08,
     });
     for (let d = 0; d < Math.min(items.length, 5); d++) {
@@ -1981,18 +1981,21 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
       const estCharsPerLine = Math.max(1, Math.floor(labelW * 72 / (TYPO.CARD_TITLE * 0.55)));
       const estLines = Math.ceil(label.length / estCharsPerLine);
       const labelH = estLines > 1 ? 0.62 : 0.38;
-      slide.addText(label, {
+      const labelColor = ensureContrastOnLight(pal, colors.cardBg);
+      const labelRuns = colorizeIconRuns(label, pal, labelColor) || [{ text: label, options: { bold: true, color: labelColor } }];
+      slide.addText(labelRuns as any, {
         x: labelX, y: y + 0.12, w: labelW, h: labelH,
         fontSize: items.length >= 6 ? TYPO.CARD_TITLE - 1 : TYPO.CARD_TITLE,
-        fontFace: design.fonts.title, bold: true, color: ensureContrastOnLight(pal, colors.cardBg),
+        fontFace: design.fonts.title, bold: true,
         valign: "middle", lineSpacingMultiple: 1.10,
       });
       const sepY = y + 0.12 + labelH + 0.06;
       addHR(slide, x + 0.10, sepY, cardW - 0.20, colors.borders, 0.004);
-      slide.addText(desc, {
+      const descRuns = colorizeIconRuns(desc, pal, colors.text) || [{ text: desc, options: { color: colors.text } }];
+      slide.addText(descRuns as any, {
         x: x + 0.12, y: sepY + 0.08, w: cardW - 0.24, h: Math.max(0.30, y + cardH - sepY - 0.16),
         fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
-        fontFace: design.fonts.body, color: colors.text, valign: "top", lineSpacingMultiple: 1.18,
+        fontFace: design.fonts.body, valign: "top", lineSpacingMultiple: 1.18,
       });
     } else {
       const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
@@ -2001,10 +2004,11 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
         x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge,
         fontSize: Math.min(12, gcBadge * 34), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
       });
-      slide.addText(items[i], {
+      const itemRuns = colorizeIconRuns(items[i], pal, colors.text) || [{ text: items[i], options: { color: colors.text } }];
+      slide.addText(itemRuns as any, {
         x: x + 0.12, y: y + 0.14 + gcBadge + 0.10, w: cardW - 0.24, h: cardH - (0.14 + gcBadge + 0.18),
         fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
-        fontFace: design.fonts.body, color: colors.text, valign: "top", lineSpacingMultiple: 1.18,
+        fontFace: design.fonts.body, valign: "top", lineSpacingMultiple: 1.18,
       });
     }
   }
@@ -2331,7 +2335,7 @@ function renderReflectionCallout(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   slide.addText("\u201C", { x: 0.30, y: 0.04, w: 2.00, h: 2.00, fontSize: 180, fontFace: design.fonts.title, color: colors.p1, transparency: 88, bold: true });
   addHR(slide, 0.65, 0.55, SLIDE_W - 1.30, colors.p1, 0.018);
   slide.addText("REFLEXÃO", { x: 0.65, y: 0.80, w: 4.0, h: 0.24, fontSize: 10, fontFace: design.fonts.body, bold: true, color: colors.p1, charSpacing: 6 });
-  slide.addText(plan.title, { x: 0.65, y: 1.12, w: SLIDE_W - 1.30, h: 0.55, fontSize: 24, fontFace: design.fonts.title, bold: true, color: "FFFFFF" });
+  slide.addText(plan.title, { x: 0.65, y: 1.12, w: SLIDE_W - 1.30, h: 0.55, fontSize: MIN_FONT.TITLE, fontFace: design.fonts.title, bold: true, color: "FFFFFF" });
   const items = plan.items || [];
   const contentY = 1.90, contentH = SLIDE_H - contentY - 0.60;
   const itemGap = 0.16;
@@ -2413,7 +2417,8 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
     slide.addShape("roundRect" as any, { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fill: { color: pal }, rectRadius: 0.08 });
     slide.addText(String(i + 1), { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fontSize: Math.min(16, tkBadge * 40), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
     const tkTextY = y + 0.14 + tkBadge + 0.10;
-    slide.addText(items[i], { x: x + 0.14, y: tkTextY, w: cardW - 0.28, h: cardH - (tkTextY - y) - 0.22, fontSize: TYPO.TAKEAWAY_BODY, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
+    const tkRuns = colorizeIconRuns(items[i], pal, colors.coverSubtext) || [{ text: items[i], options: { color: colors.coverSubtext } }];
+    slide.addText(tkRuns as any, { x: x + 0.14, y: tkTextY, w: cardW - 0.28, h: cardH - (tkTextY - y) - 0.22, fontSize: TYPO.TAKEAWAY_BODY, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
   }
 }
 
