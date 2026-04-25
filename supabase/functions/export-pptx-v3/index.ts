@@ -236,34 +236,76 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   }
   if (current.length > 0) chunks.push(current);
 
+  // GEMMA v3.9.5 — Regra de agrupamento: se o último item de um chunk
+  // for um marcador de seção (🧠 ⚙️ ⚠️ etc.), mover para o início do
+  // próximo chunk para que ele acompanhe seu parágrafo.
+  for (let i = 0; i < chunks.length - 1; i++) {
+    const last = chunks[i][chunks[i].length - 1];
+    if (chunks[i].length > 1 && isSectionMarker(last)) {
+      chunks[i].pop();
+      chunks[i + 1].unshift(last);
+    }
+  }
+
   if (chunks.length <= 1) return [plan];
 
   const baseTitle = plan.title || "Slide";
-  const out: SlidePlan[] = chunks.map((chunkItems, idx) => ({
-    ...plan,
-    items: chunkItems,
-    title: idx === 0 ? baseTitle : `${baseTitle} (Continuação)`,
-    continuationOf: idx === 0 ? undefined : baseTitle,
-  }));
+  const out: SlidePlan[] = chunks
+    .filter((c) => c.length > 0)
+    .map((chunkItems, idx) => ({
+      ...plan,
+      items: chunkItems,
+      title: idx === 0 ? baseTitle : `${baseTitle} (Continuação)`,
+      continuationOf: idx === 0 ? undefined : baseTitle,
+    }));
 
   console.log(`[V3-SPLIT] "${baseTitle}" (${plan.layout}) chars=${totalChars} items=${items.length} → ${out.length} slides`);
   return out;
 }
 
 /**
- * Auto-scaling de fontes (Gemma v3.9).
- * Se o conteúdo do bloco for denso, reduz o fontSize em até 15% para
- * preservar harmonia visual dentro do card / linha.
- *
- * @param baseSize  tamanho original em pt
- * @param charCount número de chars do conteúdo a renderizar
- * @param threshold acima desse número de chars começa a reduzir (default 120)
+ * Auto-scaling de fontes (Gemma v3.9.5).
+ * Reduz o fontSize em até 15% para conteúdo denso, mas NUNCA abaixo do
+ * piso passado. O Smart Splitter assume a tarefa de quebrar slides
+ * quando o piso é atingido.
  */
-function autoScaleFont(baseSize: number, charCount: number, threshold = 120): number {
+function autoScaleFont(baseSize: number, charCount: number, threshold = 120, floor = 0): number {
   if (charCount <= threshold) return baseSize;
-  const overflow = (charCount - threshold) / threshold; // 0..n
-  const reduction = Math.min(0.15, overflow * 0.15);    // máx -15%
-  return Math.max(8, Math.round(baseSize * (1 - reduction) * 10) / 10);
+  const overflow = (charCount - threshold) / threshold;
+  const reduction = Math.min(0.15, overflow * 0.15);
+  const scaled = baseSize * (1 - reduction);
+  const finalSize = Math.max(floor || 8, scaled);
+  return Math.round(finalSize * 10) / 10;
+}
+
+/**
+ * Substitui emoji ícones de categoria (🧠 ⚙️ ⚠️ 🎯 📌 🔑 💡 ✨ 📊 🚀 etc.)
+ * por uma versão com cor accent dentro do array de runs do pptxgenjs.
+ * Retorna um array de runs `{text, options}[]` se houver substituição,
+ * ou null se não houver emoji a colorir.
+ *
+ * GEMMA v3.9.5 — Estiliza ícones para combinarem com a paleta accent
+ * em vez de "emoji soltos" sem hierarquia visual.
+ */
+const CATEGORY_ICON_REGEX = /([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])/gu;
+function colorizeIconRuns(text: string, accentColor: string, baseColor: string): { text: string; options: any }[] | null {
+  if (!text || !CATEGORY_ICON_REGEX.test(text)) return null;
+  CATEGORY_ICON_REGEX.lastIndex = 0;
+  const parts: { text: string; options: any }[] = [];
+  let lastIdx = 0;
+  let m: RegExpExecArray | null;
+  CATEGORY_ICON_REGEX.lastIndex = 0;
+  while ((m = CATEGORY_ICON_REGEX.exec(text)) !== null) {
+    if (m.index > lastIdx) {
+      parts.push({ text: text.slice(lastIdx, m.index), options: { color: baseColor } });
+    }
+    parts.push({ text: m[1], options: { color: accentColor, bold: true } });
+    lastIdx = m.index + m[1].length;
+  }
+  if (lastIdx < text.length) {
+    parts.push({ text: text.slice(lastIdx), options: { color: baseColor } });
+  }
+  return parts.length > 0 ? parts : null;
 }
 
 /**
