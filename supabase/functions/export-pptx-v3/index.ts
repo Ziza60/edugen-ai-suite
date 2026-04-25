@@ -2020,7 +2020,7 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
   const contentX = 0.55;
   const contentW = SLIDE_W - contentX - 0.40;
 
-  if (items.length <= 4) {
+  if (true) { // GEMMA v3.9.5 — sempre horizontal (timeline vertical removida)
     addSlideBackground(slide, colors.coverDark);
     if (plan.sectionLabel) {
       slide.addText(plan.sectionLabel.toUpperCase(), {
