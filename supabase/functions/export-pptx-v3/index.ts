@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.6.7-2026-03-13";
+const ENGINE_VERSION = "3.9.0-gemma-delivery1-2026-04-25";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,6 +114,159 @@ const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
 const MARGIN = 0.667;
 const SAFE_W = SLIDE_W - MARGIN * 2;
+
+// ───────────────────────────────────────────────────────────────────
+// GEMMA STANDARD (v3.9) — Geometry / Splitter / Auto-Scale
+// ───────────────────────────────────────────────────────────────────
+
+/**
+ * SAFE_ZONE — Padrão Gemma. Toda renderização principal de conteúdo
+ * deve respeitar essa caixa para garantir que nada vaze para as bordas
+ * e que sectionLabel/título/footer convivam com o conteúdo.
+ *
+ *   X: 0.80   →  margem lateral esquerda
+ *   Y: 1.60   →  abaixo do sectionLabel + título
+ *   W: 11.70  →  largura útil (SLIDE_W 13.333 - 0.80 esquerda - ~0.83 direita)
+ *   H: 5.20   →  altura útil (até ~6.80, deixando espaço para footer)
+ */
+const SAFE_ZONE = { X: 0.80, Y: 1.60, W: 11.70, H: 5.20 } as const;
+
+/**
+ * Limites para o Smart Content Splitter.
+ * Acima destes limites o slide é dividido automaticamente em
+ * "[Título Original]" + "[Título Original] (Continuação)".
+ */
+const SPLIT_LIMITS = {
+  MAX_TOTAL_CHARS: 550,        // soma de chars de todos os items
+  MAX_ITEM_CHARS_HARD: 220,    // item individual muito longo é quebrado
+} as const;
+
+/** Layouts elegíveis para split automático por excesso de itens/chars. */
+const SPLITTABLE_LAYOUTS = new Set<SlideLayoutV3>([
+  "bullets",
+  "two_column_bullets",
+  "grid_cards",
+  "numbered_takeaways",
+  "summary_slide",
+]);
+
+/**
+ * Calcula o número total de caracteres "úteis" de um slide.
+ */
+function slideCharLoad(plan: SlidePlan): number {
+  let total = 0;
+  if (plan.items) for (const it of plan.items) total += (it || "").length;
+  if (plan.objectives) for (const it of plan.objectives) total += (it || "").length;
+  if (plan.description) total += plan.description.length;
+  if (plan.subtitle) total += plan.subtitle.length;
+  return total;
+}
+
+/**
+ * Smart Content Splitter — Gemma v3.9.
+ *
+ * Recebe um SlidePlan e decide se ele deve ser quebrado em múltiplos
+ * slides para respeitar densidade visual. Retorna sempre um array
+ * (1+ slides) e nunca perde conteúdo.
+ *
+ * Regras:
+ *   1. Layouts não-splittable (callouts, módulo cover, tabelas, exemplo)
+ *      são devolvidos intactos.
+ *   2. Se total de chars > MAX_TOTAL_CHARS OU items > densidade,
+ *      os items são particionados em N slides do mesmo layout.
+ *   3. Slides 2..N recebem título "[Título] (Continuação)" e o mesmo
+ *      sectionLabel. continuationOf é preenchido com o título original.
+ */
+function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePlan[] {
+  if (!plan) return [];
+  if (!SPLITTABLE_LAYOUTS.has(plan.layout)) return [plan];
+
+  const items = plan.items ?? [];
+  const maxItems = Math.max(2, design.density.maxItemsPerSlide);
+  const totalChars = slideCharLoad(plan);
+
+  const tooManyItems = items.length > maxItems;
+  const tooDense = totalChars > SPLIT_LIMITS.MAX_TOTAL_CHARS;
+
+  if (!tooManyItems && !tooDense) return [plan];
+  if (items.length <= 1) return [plan]; // não dá para dividir
+
+  // Particiona items em chunks que respeitem AMBOS os limites
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentChars = 0;
+
+  for (const it of items) {
+    const itLen = (it || "").length;
+    const wouldExceedItems = current.length + 1 > maxItems;
+    const wouldExceedChars = currentChars + itLen > SPLIT_LIMITS.MAX_TOTAL_CHARS && current.length > 0;
+    if (wouldExceedItems || wouldExceedChars) {
+      chunks.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(it);
+    currentChars += itLen;
+  }
+  if (current.length > 0) chunks.push(current);
+
+  if (chunks.length <= 1) return [plan];
+
+  const baseTitle = plan.title || "Slide";
+  const out: SlidePlan[] = chunks.map((chunkItems, idx) => ({
+    ...plan,
+    items: chunkItems,
+    title: idx === 0 ? baseTitle : `${baseTitle} (Continuação)`,
+    continuationOf: idx === 0 ? undefined : baseTitle,
+  }));
+
+  console.log(`[V3-SPLIT] "${baseTitle}" (${plan.layout}) chars=${totalChars} items=${items.length} → ${out.length} slides`);
+  return out;
+}
+
+/**
+ * Auto-scaling de fontes (Gemma v3.9).
+ * Se o conteúdo do bloco for denso, reduz o fontSize em até 15% para
+ * preservar harmonia visual dentro do card / linha.
+ *
+ * @param baseSize  tamanho original em pt
+ * @param charCount número de chars do conteúdo a renderizar
+ * @param threshold acima desse número de chars começa a reduzir (default 120)
+ */
+function autoScaleFont(baseSize: number, charCount: number, threshold = 120): number {
+  if (charCount <= threshold) return baseSize;
+  const overflow = (charCount - threshold) / threshold; // 0..n
+  const reduction = Math.min(0.15, overflow * 0.15);    // máx -15%
+  return Math.max(8, Math.round(baseSize * (1 - reduction) * 10) / 10);
+}
+
+/**
+ * Deriva um sectionLabel automático quando o AI não fornecer.
+ * Usado no Dispatcher (renderSlide) para garantir que TODO slide
+ * de conteúdo carregue um rótulo orientativo no topo.
+ */
+function deriveSectionLabel(plan: SlidePlan): string {
+  if (plan.sectionLabel && plan.sectionLabel.trim().length > 0) {
+    return plan.sectionLabel.toUpperCase();
+  }
+  switch (plan.layout) {
+    case "module_cover":       return "MÓDULO";
+    case "toc":                return "ÍNDICE";
+    case "bullets":            return "CONTEÚDO";
+    case "two_column_bullets": return "CONTEÚDO";
+    case "definition":         return "DEFINIÇÃO";
+    case "grid_cards":         return "CONCEITOS-CHAVE";
+    case "process_timeline":   return "PROCESSO";
+    case "comparison_table":   return "COMPARATIVO";
+    case "example_highlight":  return "ESTUDO DE CASO";
+    case "warning_callout":    return "ATENÇÃO";
+    case "reflection_callout": return "REFLEXÃO";
+    case "summary_slide":      return "RESUMO";
+    case "numbered_takeaways": return "PRINCIPAIS APRENDIZADOS";
+    case "closing":            return "ENCERRAMENTO";
+    default:                   return "CONTEÚDO";
+  }
+}
 
 const THEMES = {
   light: {
@@ -1386,6 +1539,8 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
 }
 
 // ── MODULE COVER ──
+// GEMMA v3.9 — refatorado para SAFE_ZONE: faixa lateral em SAFE_ZONE.X (0.80),
+// título e bloco de objetivos contidos em SAFE_ZONE.Y..(Y+H)=1.60..6.80.
 function renderModuleCover(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig, image?: SlideImage | null) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
@@ -1460,11 +1615,15 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   const variant = _globalSlideIdx % 4;
   const accentColor = design.palette[_globalSlideIdx % design.palette.length];
   const items = plan.items || [];
-  const contentX = 0.65;
-  const contentW = SLIDE_W - contentX - 0.55;
-  const contentY = 1.65;
+
+  // GEMMA v3.9 — geometria dentro da SAFE_ZONE.
+  // SAFE_ZONE.X=0.80, Y=1.60, W=11.70, H=5.20 → conteúdo nunca vaza para a borda.
+  // Mantemos um pequeno offset (0.15) à esquerda para acomodar o "addLeftEdge".
+  const contentX = SAFE_ZONE.X;                       // 0.80 (was 0.65)
+  const contentW = SAFE_ZONE.W;                       // 11.70 (was ~12.13)
+  const contentY = SAFE_ZONE.Y + 0.05;                // 1.65 — preserva respiro abaixo do título
+  const contentH = SAFE_ZONE.H - 0.05;                // 5.15 — termina antes do footer
   const bulletGap = items.length >= 7 ? 0.04 : 0.08;
-  const contentH = SLIDE_H - contentY - 0.40;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.48, Math.min(1.30, rawItemH));
 
@@ -1501,7 +1660,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       const yPos = rightY + i * (rItemH + rBulletGap);
       const pal = design.palette[i % design.palette.length];
       slide.addShape("rect" as any, { x: rightX, y: yPos + 0.06, w: 0.045, h: rItemH - 0.16, fill: { color: pal } });
-      const aFontSize = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : items.length >= 4 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
+      const aBase = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : items.length >= 4 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
+      const aFontSize = autoScaleFont(aBase, (items[i] || "").length, 100); // GEMMA v3.9 auto-scale
       { // title:desc split rendering for bullets
         const bColonIdx = items[i].indexOf(":");
         const bHasTitle = bColonIdx > 0 && bColonIdx < 70;
@@ -1548,7 +1708,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       { // title:desc split rendering for variant 1
         const v1ColonIdx = items[i].indexOf(":");
         const v1HasTitle = v1ColonIdx > 0 && v1ColonIdx < 45;
-        const v1FontSize = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1;
+        const v1Base = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1;
+        const v1FontSize = autoScaleFont(v1Base, (items[i] || "").length, 90); // GEMMA v3.9 auto-scale
         const v1X = contentX + 0.18 + badgeSize + 0.14;
         const v1W = contentW - badgeSize - 0.42;
         if (v1HasTitle) {
@@ -2183,19 +2344,25 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
 
 // ── SLIDE DISPATCHER ──
 function renderSlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig, image?: SlideImage | null) {
-  switch (plan.layout) {
-    case "module_cover":     renderModuleCover(pptx, plan, design, image); break;
-    case "two_column_bullets": renderTwoColumnBullets(pptx, plan, design); break;
-    case "grid_cards":       renderGridCards(pptx, plan, design); break;
-    case "process_timeline": renderProcessTimeline(pptx, plan, design); break;
-    case "comparison_table": renderComparisonTable(pptx, plan, design); break;
-    case "example_highlight": renderExampleHighlight(pptx, plan, design); break;
-    case "warning_callout":  renderWarningCallout(pptx, plan, design); break;
-    case "reflection_callout": renderReflectionCallout(pptx, plan, design); break;
-    case "summary_slide":    renderSummarySlide(pptx, plan, design); break;
-    case "numbered_takeaways": renderNumberedTakeaways(pptx, plan, design); break;
+  // GEMMA v3.9 — Garante sectionLabel em CAIXA ALTA em todo slide.
+  // Não muta o plan original.
+  const planWithLabel: SlidePlan = {
+    ...plan,
+    sectionLabel: deriveSectionLabel(plan),
+  };
+  switch (planWithLabel.layout) {
+    case "module_cover":     renderModuleCover(pptx, planWithLabel, design, image); break;
+    case "two_column_bullets": renderTwoColumnBullets(pptx, planWithLabel, design); break;
+    case "grid_cards":       renderGridCards(pptx, planWithLabel, design); break;
+    case "process_timeline": renderProcessTimeline(pptx, planWithLabel, design); break;
+    case "comparison_table": renderComparisonTable(pptx, planWithLabel, design); break;
+    case "example_highlight": renderExampleHighlight(pptx, planWithLabel, design); break;
+    case "warning_callout":  renderWarningCallout(pptx, planWithLabel, design); break;
+    case "reflection_callout": renderReflectionCallout(pptx, planWithLabel, design); break;
+    case "summary_slide":    renderSummarySlide(pptx, planWithLabel, design); break;
+    case "numbered_takeaways": renderNumberedTakeaways(pptx, planWithLabel, design); break;
     case "bullets":
-    default:                 renderBullets(pptx, plan, design); break;
+    default:                 renderBullets(pptx, planWithLabel, design); break;
   }
 }
 
@@ -2288,12 +2455,24 @@ async function runPipeline(
   // Render TOC
   renderTOC(pptx, tocModules, design);
 
+  // ── GEMMA v3.9: Smart Content Splitter ──
+  // Aplica normalizeAndSplitSlide em todo plano antes da contagem,
+  // para que o footer (n/total) já reflita os slides duplicados.
+  const splitModulePlans: SlidePlan[][] = allModuleSlidePlans.map((plans) => {
+    const out: SlidePlan[] = [];
+    for (const p of plans) {
+      const split = normalizeAndSplitSlide(p, design);
+      out.push(...split);
+    }
+    return out;
+  });
+
   // Count total content slides for footer
-  _globalTotalSlides = allModuleSlidePlans.reduce((sum, plans) => sum + plans.length, 0);
+  _globalTotalSlides = splitModulePlans.reduce((sum, plans) => sum + plans.length, 0);
 
   // Render all module slides
-  for (let mi = 0; mi < allModuleSlidePlans.length; mi++) {
-    const modulePlans = allModuleSlidePlans[mi];
+  for (let mi = 0; mi < splitModulePlans.length; mi++) {
+    const modulePlans = splitModulePlans[mi];
     const moduleImage = imagePlan.modules.get(mi) || null;
     for (const plan of modulePlans) {
       const img = plan.layout === "module_cover" ? moduleImage : null;
