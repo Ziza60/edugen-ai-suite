@@ -1613,11 +1613,15 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   const variant = _globalSlideIdx % 4;
   const accentColor = design.palette[_globalSlideIdx % design.palette.length];
   const items = plan.items || [];
-  const contentX = 0.65;
-  const contentW = SLIDE_W - contentX - 0.55;
-  const contentY = 1.65;
+
+  // GEMMA v3.9 — geometria dentro da SAFE_ZONE.
+  // SAFE_ZONE.X=0.80, Y=1.60, W=11.70, H=5.20 → conteúdo nunca vaza para a borda.
+  // Mantemos um pequeno offset (0.15) à esquerda para acomodar o "addLeftEdge".
+  const contentX = SAFE_ZONE.X;                       // 0.80 (was 0.65)
+  const contentW = SAFE_ZONE.W;                       // 11.70 (was ~12.13)
+  const contentY = SAFE_ZONE.Y + 0.05;                // 1.65 — preserva respiro abaixo do título
+  const contentH = SAFE_ZONE.H - 0.05;                // 5.15 — termina antes do footer
   const bulletGap = items.length >= 7 ? 0.04 : 0.08;
-  const contentH = SLIDE_H - contentY - 0.40;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.48, Math.min(1.30, rawItemH));
 
