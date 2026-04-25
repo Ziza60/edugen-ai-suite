@@ -152,8 +152,14 @@ export default function ResetPassword() {
                 </Button>
               </form>
             ) : (
-              <div className="flex justify-center py-6">
+              <div className="flex flex-col items-center gap-4 py-6">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground text-center">
+                  Se demorar mais que alguns segundos, o link pode ter expirado.
+                </p>
+                <Button variant="outline" size="sm" onClick={() => navigate("/forgot-password")}>
+                  Solicitar novo link
+                </Button>
               </div>
             )}
           </CardContent>
