@@ -17,20 +17,57 @@ export default function ResetPassword() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Supabase processa o token de recovery automaticamente via onAuthStateChange
+    let cancelled = false;
+
+    const init = async () => {
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+        const errorDesc = url.searchParams.get("error_description") || url.hash.includes("error");
+
+        // Fluxo PKCE: troca o code por sessão
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (!cancelled) {
+            if (error) {
+              toast({ title: "Link inválido ou expirado", description: error.message, variant: "destructive" });
+            } else {
+              setReady(true);
+            }
+          }
+          return;
+        }
+
+        // Fluxo legacy (hash com access_token) — Supabase processa sozinho
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!cancelled && session) {
+          setReady(true);
+          return;
+        }
+
+        if (!cancelled && errorDesc) {
+          toast({ title: "Link inválido", description: "Solicite um novo link de redefinição.", variant: "destructive" });
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          toast({ title: "Erro", description: e?.message || "Falha ao validar o link.", variant: "destructive" });
+        }
+      }
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
         setReady(true);
       }
     });
 
-    // Se já houver sessão (ex: link clicado), liberar formulário
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setReady(true);
-    });
+    init();
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
