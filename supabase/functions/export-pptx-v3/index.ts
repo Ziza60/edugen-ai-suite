@@ -1539,6 +1539,8 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
 }
 
 // ── MODULE COVER ──
+// GEMMA v3.9 — refatorado para SAFE_ZONE: faixa lateral em SAFE_ZONE.X (0.80),
+// título e bloco de objetivos contidos em SAFE_ZONE.Y..(Y+H)=1.60..6.80.
 function renderModuleCover(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig, image?: SlideImage | null) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
