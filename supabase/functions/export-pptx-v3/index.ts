@@ -2336,19 +2336,25 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
 
 // ── SLIDE DISPATCHER ──
 function renderSlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig, image?: SlideImage | null) {
-  switch (plan.layout) {
-    case "module_cover":     renderModuleCover(pptx, plan, design, image); break;
-    case "two_column_bullets": renderTwoColumnBullets(pptx, plan, design); break;
-    case "grid_cards":       renderGridCards(pptx, plan, design); break;
-    case "process_timeline": renderProcessTimeline(pptx, plan, design); break;
-    case "comparison_table": renderComparisonTable(pptx, plan, design); break;
-    case "example_highlight": renderExampleHighlight(pptx, plan, design); break;
-    case "warning_callout":  renderWarningCallout(pptx, plan, design); break;
-    case "reflection_callout": renderReflectionCallout(pptx, plan, design); break;
-    case "summary_slide":    renderSummarySlide(pptx, plan, design); break;
-    case "numbered_takeaways": renderNumberedTakeaways(pptx, plan, design); break;
+  // GEMMA v3.9 — Garante sectionLabel em CAIXA ALTA em todo slide.
+  // Não muta o plan original.
+  const planWithLabel: SlidePlan = {
+    ...plan,
+    sectionLabel: deriveSectionLabel(plan),
+  };
+  switch (planWithLabel.layout) {
+    case "module_cover":     renderModuleCover(pptx, planWithLabel, design, image); break;
+    case "two_column_bullets": renderTwoColumnBullets(pptx, planWithLabel, design); break;
+    case "grid_cards":       renderGridCards(pptx, planWithLabel, design); break;
+    case "process_timeline": renderProcessTimeline(pptx, planWithLabel, design); break;
+    case "comparison_table": renderComparisonTable(pptx, planWithLabel, design); break;
+    case "example_highlight": renderExampleHighlight(pptx, planWithLabel, design); break;
+    case "warning_callout":  renderWarningCallout(pptx, planWithLabel, design); break;
+    case "reflection_callout": renderReflectionCallout(pptx, planWithLabel, design); break;
+    case "summary_slide":    renderSummarySlide(pptx, planWithLabel, design); break;
+    case "numbered_takeaways": renderNumberedTakeaways(pptx, planWithLabel, design); break;
     case "bullets":
-    default:                 renderBullets(pptx, plan, design); break;
+    default:                 renderBullets(pptx, planWithLabel, design); break;
   }
 }
 
