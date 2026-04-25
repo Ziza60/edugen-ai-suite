@@ -1780,19 +1780,27 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       { // title:desc split rendering for variant 1
         const v1ColonIdx = items[i].indexOf(":");
         const v1HasTitle = v1ColonIdx > 0 && v1ColonIdx < 45;
-        const v1Base = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1;
-        const v1FontSize = autoScaleFont(v1Base, (items[i] || "").length, 90); // GEMMA v3.9 auto-scale
+        const v1Base = items.length >= 6 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
+        // GEMMA v3.9.5 — piso rígido MIN_FONT.BODY (18pt). Splitter quebra slides quando atingido.
+        const v1FontSize = autoScaleFont(v1Base, (items[i] || "").length, 90, MIN_FONT.BODY);
         const v1X = contentX + 0.18 + badgeSize + 0.14;
         const v1W = contentW - badgeSize - 0.42;
         if (v1HasTitle) {
           const v1Title = items[i].substring(0, v1ColonIdx).trim();
           const v1Desc = items[i].substring(v1ColonIdx + 1).trim();
-          slide.addText([
-            { text: v1Title + ": ", options: { bold: true, color: pal } },
-            { text: v1Desc, options: { bold: false, color: colors.text } },
-          ], { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+          const titleRuns = colorizeIconRuns(v1Title + ": ", accentColor, pal) || [{ text: v1Title + ": ", options: { bold: true, color: pal } }];
+          // mark all title runs as bold
+          titleRuns.forEach(r => { r.options = { ...r.options, bold: true }; });
+          const descRuns = colorizeIconRuns(v1Desc, accentColor, colors.text) || [{ text: v1Desc, options: { bold: false, color: colors.text } }];
+          slide.addText([...titleRuns, ...descRuns] as any,
+            { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
         } else {
-          slide.addText(items[i], { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+          const runs = colorizeIconRuns(items[i], accentColor, colors.text);
+          if (runs) {
+            slide.addText(runs as any, { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+          } else {
+            slide.addText(items[i], { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+          }
         }
       }
     }
