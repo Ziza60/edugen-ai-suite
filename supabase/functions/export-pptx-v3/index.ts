@@ -2184,52 +2184,90 @@ function renderComparisonTable(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
 }
 
 // ── EXAMPLE HIGHLIGHT ──
+// GEMMA v3.9.5 — 4 raias horizontais SIMÉTRICAS para
+// "Contexto · Desafio · Solução · Resultado", cada raia com fundo
+// na cor accent da fase com 20% de transparência (80% transparency em pptxgenjs).
 function renderExampleHighlight(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   const colors = getColors(design);
   const slide = pptx.addSlide();
   _globalSlideIdx++;
   const items = (plan.items || []).filter(Boolean).map((item) => ensureSentenceEnd(sanitizeText(item)));
-  const cappedItems = items.slice(0, 4);  // max 4: Contexto → Desafio → Solução → Resultado
+  // Sempre 4 raias fixas — Contexto, Desafio, Solução, Resultado
+  const cappedItems = items.slice(0, 4);
   const defaultLabels = ["Contexto", "Desafio", "Solução", "Resultado"];
   const phaseColors = [colors.p1, colors.p3, colors.p0, colors.p4];
 
-  addSlideBackground(slide, colors.coverDark);
-  slide.addShape("rect" as any, { x: 0, y: 0, w: 0.50, h: SLIDE_H, fill: { color: colors.panelMid } });
-  for (let i = 0; i < Math.min(cappedItems.length, 5); i++) {
-    const dotY = 1.60 + i * ((SLIDE_H - 2.20) / Math.max(cappedItems.length - 1, 1));
-    slide.addShape("ellipse" as any, { x: 0.18, y: dotY - 0.05, w: 0.14, h: 0.14, fill: { color: phaseColors[i] } });
-    if (i < cappedItems.length - 1) {
-      const nextY = 1.60 + (i + 1) * ((SLIDE_H - 2.20) / Math.max(cappedItems.length - 1, 1));
-      slide.addShape("rect" as any, { x: 0.24, y: dotY + 0.10, w: 0.02, h: nextY - dotY - 0.16, fill: { color: phaseColors[i] }, transparency: 50 });
-    }
-  }
-  const badgeW = 1.50, badgeH = 0.28;
-  slide.addShape("roundRect" as any, { x: 0.80, y: 0.42, w: badgeW, h: badgeH, fill: { color: colors.p3 }, rectRadius: 0.14 });
-  slide.addText("ESTUDO DE CASO", { x: 0.80, y: 0.42, w: badgeW, h: badgeH, fontSize: 8, fontFace: design.fonts.body, bold: true, color: "FFFFFF", align: "center", valign: "middle", charSpacing: 4 });
-  slide.addText(plan.title, { x: 0.80, y: 0.80, w: SLIDE_W - 1.50, h: 0.60, fontSize: 24, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle" });
-  addHR(slide, 0.80, 1.42, 3.50, colors.p3, 0.020);
-  const contentX2 = 0.80;
-  const contentW2 = SLIDE_W - 1.50;
-  const gridStartY = 1.60;
-  const gridH = SLIDE_H - gridStartY - 0.50;
-  const bandGap = 0.10;
-  const bandH = Math.min((gridH - bandGap * Math.max(cappedItems.length - 1, 0)) / Math.max(cappedItems.length, 1), 1.35);
-  const descFontSize = cappedItems.length >= 4 ? TYPO.BODY - 1 : TYPO.BODY;
-  for (let i = 0; i < cappedItems.length; i++) {
+  addSlideBackground(slide, colors.bg);
+  addLightBgDecoration(slide, design, colors);
+  addLeftEdge(slide, colors.p3);
+
+  // Header (sectionLabel + título)
+  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p3, design.fonts.body);
+  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
+
+  // Geometria — 4 raias horizontais SIMÉTRICAS (mesma altura)
+  const contentX2 = SAFE_ZONE.X;
+  const contentW2 = SAFE_ZONE.W;
+  const gridStartY = SAFE_ZONE.Y + 0.05;
+  const gridH = SAFE_ZONE.H - 0.05;
+  const slotCount = 4; // raias fixas — garantia de simetria
+  const bandGap = 0.12;
+  const bandH = (gridH - bandGap * (slotCount - 1)) / slotCount;
+  const descFontSize = MIN_FONT.BODY; // 18pt — piso rígido
+
+  for (let i = 0; i < slotCount; i++) {
     const y = gridStartY + i * (bandH + bandGap);
-    const pal = phaseColors[i % phaseColors.length];
-    const colonIdx = cappedItems[i].indexOf(":");
-    const label = colonIdx > 0 && colonIdx < 70 ? cappedItems[i].substring(0, colonIdx).trim() : defaultLabels[i % defaultLabels.length];
-    const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
-    addCardShadow(slide, contentX2, y, contentW2, bandH, "000000");
-    slide.addShape("roundRect" as any, { x: contentX2, y, w: contentW2, h: bandH, fill: { color: colors.panelMid }, rectRadius: 0.08 });
-    slide.addShape("rect" as any, { x: contentX2, y: y + 0.04, w: 0.05, h: bandH - 0.08, fill: { color: pal }, rectRadius: 0.03 });
-    const numBadgeSize = 0.30;
-    slide.addShape("ellipse" as any, { x: contentX2 + 0.18, y: y + (bandH - numBadgeSize) / 2, w: numBadgeSize, h: numBadgeSize, fill: { color: pal }, transparency: 15 });
-    slide.addText(`${i + 1}`, { x: contentX2 + 0.18, y: y + (bandH - numBadgeSize) / 2, w: numBadgeSize, h: numBadgeSize, fontSize: 12, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
-    slide.addText(label.toUpperCase(), { x: contentX2 + 0.56, y: y + 0.04, w: 2.00, h: 0.24, fontSize: 8, fontFace: design.fonts.title, bold: true, color: pal, charSpacing: 3, valign: "middle" });
-    slide.addText(desc, { x: contentX2 + 0.56, y: y + 0.26, w: contentW2 - 0.80, h: bandH - 0.32, fontSize: descFontSize, fontFace: design.fonts.body, color: colors.coverSubtext, valign: "top", lineSpacingMultiple: 1.18 });
-    if (i < cappedItems.length - 1) { slide.addText("▼", { x: contentX2 + 0.23, y: y + bandH + bandGap / 2 - 0.08, w: 0.20, h: 0.16, fontSize: 7, color: phaseColors[i + 1] || pal, align: "center", valign: "middle", transparency: 40 }); }
+    const pal = phaseColors[i];
+    const item = cappedItems[i] || "";
+    const colonIdx = item.indexOf(":");
+    const label = (colonIdx > 0 && colonIdx < 70 ? item.substring(0, colonIdx) : defaultLabels[i]).trim();
+    const desc = colonIdx > 0 ? item.substring(colonIdx + 1).trim() : item;
+
+    // Sombra suave
+    addCardShadow(slide, contentX2, y, contentW2, bandH, colors.shadowColor, design.theme === "light");
+
+    // Fundo da raia: cor accent com 80% de transparência (20% opacidade)
+    slide.addShape("roundRect" as any, {
+      x: contentX2, y, w: contentW2, h: bandH,
+      fill: { color: pal, transparency: 80 },
+      line: { color: pal, width: 0.5, transparency: 50 },
+      rectRadius: 0.10,
+    });
+    // Borda lateral accent reforçada (0.08)
+    slide.addShape("rect" as any, { x: contentX2, y, w: 0.08, h: bandH, fill: { color: pal }, rectRadius: 0.06 });
+
+    // Badge numérico circular
+    const numBadgeSize = Math.min(0.50, bandH * 0.55);
+    slide.addShape("ellipse" as any, {
+      x: contentX2 + 0.22, y: y + (bandH - numBadgeSize) / 2,
+      w: numBadgeSize, h: numBadgeSize, fill: { color: pal },
+    });
+    slide.addText(`${i + 1}`, {
+      x: contentX2 + 0.22, y: y + (bandH - numBadgeSize) / 2,
+      w: numBadgeSize, h: numBadgeSize,
+      fontSize: 18, fontFace: design.fonts.title, bold: true,
+      color: "FFFFFF", align: "center", valign: "middle",
+    });
+
+    // Label (Contexto/Desafio/Solução/Resultado) — coluna fixa para alinhamento
+    const labelX = contentX2 + 0.22 + numBadgeSize + 0.20;
+    slide.addText(label.toUpperCase(), {
+      x: labelX, y: y + 0.10, w: 1.80, h: 0.30,
+      fontSize: 11, fontFace: design.fonts.title, bold: true,
+      color: pal, charSpacing: 4, valign: "top",
+    });
+
+    // Descrição — coluna fixa após label, ocupa o restante da raia
+    const descX = labelX + 1.90;
+    const descW = contentX2 + contentW2 - descX - 0.20;
+    if (desc) {
+      slide.addText(desc, {
+        x: descX, y: y + 0.10, w: descW, h: bandH - 0.20,
+        fontSize: descFontSize, fontFace: design.fonts.body,
+        color: colors.text, valign: "middle", lineSpacingMultiple: 1.20,
+        autoFit: true,
+      } as any);
+    }
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
