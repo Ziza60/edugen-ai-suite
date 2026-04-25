@@ -1706,7 +1706,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       { // title:desc split rendering for variant 1
         const v1ColonIdx = items[i].indexOf(":");
         const v1HasTitle = v1ColonIdx > 0 && v1ColonIdx < 45;
-        const v1FontSize = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1;
+        const v1Base = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1;
+        const v1FontSize = autoScaleFont(v1Base, (items[i] || "").length, 90); // GEMMA v3.9 auto-scale
         const v1X = contentX + 0.18 + badgeSize + 0.14;
         const v1W = contentW - badgeSize - 0.42;
         if (v1HasTitle) {
