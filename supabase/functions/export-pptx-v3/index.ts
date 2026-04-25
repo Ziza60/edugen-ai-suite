@@ -1580,7 +1580,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           x: 0.65, y: y + itemH / 2 - 0.18, w: 0.36, h: 0.36,
           fontSize: 13, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
         });
-        // GEMMA v3.9.5 — TOC: descrição limitada a 80 chars + fonte mínima 14pt
+        // GEMMA v3.9.6 — TOC: descrição limitada a 60 chars para preservar a grade
         slide.addText(mod.title, {
           x: 1.18, y, w: 5.20, h: itemH,
           fontSize: 15, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
@@ -1590,7 +1590,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          if (cleanDesc.length > 80) cleanDesc = cleanDesc.substring(0, 77).trim() + "…";
+          if (cleanDesc.length > 60) cleanDesc = cleanDesc.substring(0, 57).trim() + "...";
           if (cleanDesc) {
             slide.addText(cleanDesc, {
               x: 6.90, y, w: SLIDE_W - 7.40, h: itemH,
@@ -1644,7 +1644,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          if (rawGridDesc.length > 80) rawGridDesc = rawGridDesc.substring(0, 77).trim() + "…";
+          if (rawGridDesc.length > 60) rawGridDesc = rawGridDesc.substring(0, 57).trim() + "...";
           if (rawGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
@@ -2618,9 +2618,12 @@ async function runPipeline(
       .replace(/#{1,6}\s*/g, "").replace(/\*\*(.*?)\*\*/g, "$1").replace(/[*_`]/g, "")
       .replace(/^[-*]\s+/gm, "").replace(/^\d+[.)]\s+/gm, "");
     const firstSentence = stripped.split(/[.!?]\s+/)[0]?.trim() || "";
+    const tocDescription = firstSentence.length > 20
+      ? (firstSentence.length > 60 ? `${firstSentence.substring(0, 57).trim()}...` : firstSentence)
+      : undefined;
     return {
       title: cleanTitle,
-      description: firstSentence.length > 20 ? firstSentence.substring(0, 105) + "." : undefined,
+      description: tocDescription,
     };
   });
 
