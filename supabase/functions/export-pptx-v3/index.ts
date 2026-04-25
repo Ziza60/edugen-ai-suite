@@ -168,12 +168,65 @@ const SPLITTABLE_LAYOUTS = new Set<SlideLayoutV3>([
  */
 const SECTION_MARKER_REGEX = /^[\s-]*([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])/u;
 
+function stripSemanticDivider(text: string): string {
+  return sanitizeText(text || "").replace(/^---+\s*/u, "").trim();
+}
+
+function splitSemanticLead(text: string): { icon?: string; text: string } {
+  const cleaned = stripSemanticDivider(text);
+  const match = cleaned.match(/^([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])\s*(.+)$/u);
+  if (!match) return { text: cleaned };
+  return { icon: match[1], text: match[2].trim() };
+}
+
 function isSectionMarker(item: string): boolean {
   if (!item) return false;
-  const trimmed = item.trim();
+  const trimmed = stripSemanticDivider(item);
   if (!SECTION_MARKER_REGEX.test(trimmed)) return false;
   // Considera "marker" se for um cabeçalho curto (≤ 60 chars, geralmente "🧠 Fundamentos")
   return trimmed.length <= 60;
+}
+
+function renderSemanticRuns(text: string, accentColor: string, baseColor: string, boldText = false): { text: string; options: any }[] | null {
+  const semantic = splitSemanticLead(text);
+  if (!semantic.icon) return colorizeIconRuns(stripSemanticDivider(text), accentColor, baseColor);
+  return [
+    { text: `${semantic.icon} `, options: { color: accentColor, bold: true } },
+    { text: semantic.text, options: { color: baseColor, bold: boldText } },
+  ];
+}
+
+function getRenderableTextLength(text: string): number {
+  const semantic = splitSemanticLead(text);
+  return semantic.text.length || stripSemanticDivider(text).length;
+}
+
+function computeUnifiedSlideFontSize(items: string[], baseSize: number, threshold: number, floor = MIN_FONT.BODY): number {
+  const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
+  return autoScaleFont(baseSize, longest, threshold, floor);
+}
+
+function shouldForceContinuation(plan: SlidePlan): boolean {
+  const items = plan.items ?? [];
+  if (items.length <= 1) return false;
+  const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
+
+  switch (plan.layout) {
+    case "bullets": {
+      const unified = computeUnifiedSlideFontSize(items, 20, items.length >= 6 ? 88 : 108, MIN_FONT.BODY);
+      return unified <= MIN_FONT.BODY && longest > (items.length >= 6 ? 88 : 108);
+    }
+    case "grid_cards":
+    case "summary_slide":
+    case "numbered_takeaways": {
+      const cols = items.length <= 3 ? Math.max(items.length, 1) : items.length <= 4 ? 2 : 3;
+      const threshold = cols >= 3 ? 72 : 92;
+      const unified = computeUnifiedSlideFontSize(items, 19, threshold, MIN_FONT.BODY);
+      return unified <= MIN_FONT.BODY && longest > threshold;
+    }
+    default:
+      return false;
+  }
 }
 
 /**
@@ -213,8 +266,9 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
 
   const tooManyItems = items.length > maxItems;
   const tooDense = totalChars > SPLIT_LIMITS.MAX_TOTAL_CHARS;
+  const forcedContinuation = shouldForceContinuation(plan);
 
-  if (!tooManyItems && !tooDense) return [plan];
+  if (!tooManyItems && !tooDense && !forcedContinuation) return [plan];
   if (items.length <= 1) return [plan]; // não dá para dividir
 
   // Particiona items em chunks que respeitem AMBOS os limites
@@ -1526,7 +1580,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           x: 0.65, y: y + itemH / 2 - 0.18, w: 0.36, h: 0.36,
           fontSize: 13, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
         });
-        // GEMMA v3.9.5 — TOC: descrição limitada a 80 chars + fonte mínima 14pt
+        // GEMMA v3.9.6 — TOC: descrição limitada a 60 chars para preservar a grade
         slide.addText(mod.title, {
           x: 1.18, y, w: 5.20, h: itemH,
           fontSize: 15, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
@@ -1536,7 +1590,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          if (cleanDesc.length > 80) cleanDesc = cleanDesc.substring(0, 77).trim() + "…";
+          if (cleanDesc.length > 60) cleanDesc = cleanDesc.substring(0, 57).trim() + "...";
           if (cleanDesc) {
             slide.addText(cleanDesc, {
               x: 6.90, y, w: SLIDE_W - 7.40, h: itemH,
@@ -1590,7 +1644,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          if (rawGridDesc.length > 80) rawGridDesc = rawGridDesc.substring(0, 77).trim() + "…";
+          if (rawGridDesc.length > 60) rawGridDesc = rawGridDesc.substring(0, 57).trim() + "...";
           if (rawGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
@@ -1687,6 +1741,12 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   const variant = _globalSlideIdx % 4;
   const accentColor = design.palette[_globalSlideIdx % design.palette.length];
   const items = plan.items || [];
+  const unifiedBulletFontSize = computeUnifiedSlideFontSize(
+    items,
+    items.length >= 6 ? 19 : 20,
+    items.length >= 6 ? 88 : 108,
+    MIN_FONT.BODY,
+  );
 
   // GEMMA v3.9 — geometria dentro da SAFE_ZONE.
   // SAFE_ZONE.X=0.80, Y=1.60, W=11.70, H=5.20 → conteúdo nunca vaza para a borda.
@@ -1732,20 +1792,26 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       const yPos = rightY + i * (rItemH + rBulletGap);
       const pal = design.palette[i % design.palette.length];
       slide.addShape("rect" as any, { x: rightX, y: yPos + 0.06, w: 0.045, h: rItemH - 0.16, fill: { color: pal } });
-      const aBase = items.length >= 6 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
-      const aFontSize = autoScaleFont(aBase, (items[i] || "").length, 100, MIN_FONT.BODY);
       { // title:desc split rendering for bullets
         const bColonIdx = items[i].indexOf(":");
         const bHasTitle = bColonIdx > 0 && bColonIdx < 70;
         if (bHasTitle) {
           const bTitle = items[i].substring(0, bColonIdx).trim();
           const bDesc = items[i].substring(bColonIdx + 1).trim();
+          const titleRuns = renderSemanticRuns(bTitle + ": ", accentColor, pal, true) || [{ text: bTitle + ": ", options: { bold: true, color: pal } }];
+          titleRuns.forEach((r) => { r.options = { ...r.options, bold: true }; });
+          const descRuns = renderSemanticRuns(bDesc, accentColor, colors.text) || [{ text: bDesc, options: { bold: false, color: colors.text } }];
           slide.addText([
-            { text: bTitle + ": ", options: { bold: true, color: pal } },
-            { text: bDesc, options: { bold: false, color: colors.text } },
-          ], { x: rightX + 0.18, y: yPos, w: rightW - 0.18, h: rItemH, fontSize: aFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+            ...titleRuns,
+            ...descRuns,
+          ], { x: rightX + 0.18, y: yPos, w: rightW - 0.18, h: rItemH, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18 } as any);
         } else {
-          slide.addText(items[i], { x: rightX + 0.18, y: yPos, w: rightW - 0.18, h: rItemH, fontSize: aFontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+          const runs = renderSemanticRuns(items[i], accentColor, colors.text);
+          if (runs) {
+            slide.addText(runs as any, { x: rightX + 0.18, y: yPos, w: rightW - 0.18, h: rItemH, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18 } as any);
+          } else {
+            slide.addText(stripSemanticDivider(items[i]), { x: rightX + 0.18, y: yPos, w: rightW - 0.18, h: rItemH, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18 } as any);
+          }
         }
       }
       if (i < items.length - 1) addHR(slide, rightX + 0.18, yPos + rItemH + rBulletGap / 2 - 0.003, rightW - 0.18, colors.divider, 0.005);
@@ -1780,26 +1846,22 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       { // title:desc split rendering for variant 1
         const v1ColonIdx = items[i].indexOf(":");
         const v1HasTitle = v1ColonIdx > 0 && v1ColonIdx < 45;
-        const v1Base = items.length >= 6 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
-        // GEMMA v3.9.5 — piso rígido MIN_FONT.BODY (18pt). Splitter quebra slides quando atingido.
-        const v1FontSize = autoScaleFont(v1Base, (items[i] || "").length, 90, MIN_FONT.BODY);
         const v1X = contentX + 0.18 + badgeSize + 0.14;
         const v1W = contentW - badgeSize - 0.42;
         if (v1HasTitle) {
           const v1Title = items[i].substring(0, v1ColonIdx).trim();
           const v1Desc = items[i].substring(v1ColonIdx + 1).trim();
-          const titleRuns = colorizeIconRuns(v1Title + ": ", accentColor, pal) || [{ text: v1Title + ": ", options: { bold: true, color: pal } }];
-          // mark all title runs as bold
+          const titleRuns = renderSemanticRuns(v1Title + ": ", accentColor, pal, true) || [{ text: v1Title + ": ", options: { bold: true, color: pal } }];
           titleRuns.forEach(r => { r.options = { ...r.options, bold: true }; });
-          const descRuns = colorizeIconRuns(v1Desc, accentColor, colors.text) || [{ text: v1Desc, options: { bold: false, color: colors.text } }];
+          const descRuns = renderSemanticRuns(v1Desc, accentColor, colors.text) || [{ text: v1Desc, options: { bold: false, color: colors.text } }];
           slide.addText([...titleRuns, ...descRuns] as any,
-            { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+            { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18 } as any);
         } else {
-          const runs = colorizeIconRuns(items[i], accentColor, colors.text);
+          const runs = renderSemanticRuns(items[i], accentColor, colors.text);
           if (runs) {
-            slide.addText(runs as any, { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+            slide.addText(runs as any, { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18 } as any);
           } else {
-            slide.addText(items[i], { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: v1FontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18, autoFit: true } as any);
+            slide.addText(stripSemanticDivider(items[i]), { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18 } as any);
           }
         }
       }
@@ -1829,9 +1891,10 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         fontSize: Math.min(15, cardW > 3 ? 16 : 13), fontFace: design.fonts.title, bold: true,
         color: ensureContrastOnLight(pal, colors.cardBg), transparency: 15, align: "left",
       });
-      slide.addText(items[i], {
+      const runs = renderSemanticRuns(items[i], accentColor, colors.text);
+      slide.addText(runs ? runs as any : stripSemanticDivider(items[i]), {
         x: x + 0.14, y: y + 0.38, w: cardW - 0.28, h: cardH - 0.48,
-        fontSize: TYPO.BULLET_TEXT - 1, fontFace: design.fonts.body,
+        fontSize: unifiedBulletFontSize, fontFace: design.fonts.body,
         color: colors.text, valign: "top", lineSpacingMultiple: 1.18,
       });
     }
@@ -1851,10 +1914,11 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         x: contentX + 0.14, y: contentY + 0.14, w: 0.05, h: heroH - 0.28,
         fill: { color: accentColor },
       });
-      slide.addText(items[0], {
+      const heroRuns = renderSemanticRuns(items[0], accentColor, "FFFFFF");
+      slide.addText(heroRuns ? heroRuns as any : stripSemanticDivider(items[0]), {
         x: contentX + 0.32, y: contentY + 0.08, w: contentW - 0.48, h: heroH - 0.16,
-        fontSize: TYPO.BODY_LARGE, fontFace: design.fonts.body,
-        color: "FFFFFF", valign: "middle", lineSpacingMultiple: 1.30, italic: true, autoFit: true,
+        fontSize: unifiedBulletFontSize, fontFace: design.fonts.body,
+        color: "FFFFFF", valign: "middle", lineSpacingMultiple: 1.30, italic: true,
       } as any);
       if (items.length > 1) {
         const restY = contentY + heroH + 0.18;
@@ -1864,9 +1928,10 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
           const yPos = restY + (i - 1) * (restItemH + 0.06);
           const pal = design.palette[i % design.palette.length];
           slide.addShape("ellipse" as any, { x: contentX + 0.04, y: yPos + restItemH / 2 - 0.05, w: 0.10, h: 0.10, fill: { color: pal } });
-          slide.addText(items[i], {
+          const restRuns = renderSemanticRuns(items[i], accentColor, colors.text);
+          slide.addText(restRuns ? restRuns as any : stripSemanticDivider(items[i]), {
             x: contentX + 0.22, y: yPos, w: contentW - 0.22, h: restItemH,
-            fontSize: items.length >= 5 ? TYPO.BULLET_TEXT - 2 : TYPO.BULLET_TEXT - 1,
+            fontSize: unifiedBulletFontSize,
             fontFace: design.fonts.body, color: colors.text,
             valign: "middle", lineSpacingMultiple: 1.15,
           });
@@ -2564,9 +2629,12 @@ async function runPipeline(
       .replace(/#{1,6}\s*/g, "").replace(/\*\*(.*?)\*\*/g, "$1").replace(/[*_`]/g, "")
       .replace(/^[-*]\s+/gm, "").replace(/^\d+[.)]\s+/gm, "");
     const firstSentence = stripped.split(/[.!?]\s+/)[0]?.trim() || "";
+    const tocDescription = firstSentence.length > 20
+      ? (firstSentence.length > 60 ? `${firstSentence.substring(0, 57).trim()}...` : firstSentence)
+      : undefined;
     return {
       title: cleanTitle,
-      description: firstSentence.length > 20 ? firstSentence.substring(0, 105) + "." : undefined,
+      description: tocDescription,
     };
   });
 
