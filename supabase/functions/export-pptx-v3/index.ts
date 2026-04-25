@@ -168,12 +168,65 @@ const SPLITTABLE_LAYOUTS = new Set<SlideLayoutV3>([
  */
 const SECTION_MARKER_REGEX = /^[\s-]*([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])/u;
 
+function stripSemanticDivider(text: string): string {
+  return sanitizeText(text || "").replace(/^---+\s*/u, "").trim();
+}
+
+function splitSemanticLead(text: string): { icon?: string; text: string } {
+  const cleaned = stripSemanticDivider(text);
+  const match = cleaned.match(/^([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])\s*(.+)$/u);
+  if (!match) return { text: cleaned };
+  return { icon: match[1], text: match[2].trim() };
+}
+
 function isSectionMarker(item: string): boolean {
   if (!item) return false;
-  const trimmed = item.trim();
+  const trimmed = stripSemanticDivider(item);
   if (!SECTION_MARKER_REGEX.test(trimmed)) return false;
   // Considera "marker" se for um cabeçalho curto (≤ 60 chars, geralmente "🧠 Fundamentos")
   return trimmed.length <= 60;
+}
+
+function renderSemanticRuns(text: string, accentColor: string, baseColor: string, boldText = false): { text: string; options: any }[] | null {
+  const semantic = splitSemanticLead(text);
+  if (!semantic.icon) return colorizeIconRuns(stripSemanticDivider(text), accentColor, baseColor);
+  return [
+    { text: `${semantic.icon} `, options: { color: accentColor, bold: true } },
+    { text: semantic.text, options: { color: baseColor, bold: boldText } },
+  ];
+}
+
+function getRenderableTextLength(text: string): number {
+  const semantic = splitSemanticLead(text);
+  return semantic.text.length || stripSemanticDivider(text).length;
+}
+
+function computeUnifiedSlideFontSize(items: string[], baseSize: number, threshold: number, floor = MIN_FONT.BODY): number {
+  const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
+  return autoScaleFont(baseSize, longest, threshold, floor);
+}
+
+function shouldForceContinuation(plan: SlidePlan): boolean {
+  const items = plan.items ?? [];
+  if (items.length <= 1) return false;
+  const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
+
+  switch (plan.layout) {
+    case "bullets": {
+      const unified = computeUnifiedSlideFontSize(items, 20, items.length >= 6 ? 88 : 108, MIN_FONT.BODY);
+      return unified <= MIN_FONT.BODY && longest > (items.length >= 6 ? 88 : 108);
+    }
+    case "grid_cards":
+    case "summary_slide":
+    case "numbered_takeaways": {
+      const cols = items.length <= 3 ? Math.max(items.length, 1) : items.length <= 4 ? 2 : 3;
+      const threshold = cols >= 3 ? 72 : 92;
+      const unified = computeUnifiedSlideFontSize(items, 19, threshold, MIN_FONT.BODY);
+      return unified <= MIN_FONT.BODY && longest > threshold;
+    }
+    default:
+      return false;
+  }
 }
 
 /**
@@ -213,8 +266,9 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
 
   const tooManyItems = items.length > maxItems;
   const tooDense = totalChars > SPLIT_LIMITS.MAX_TOTAL_CHARS;
+  const forcedContinuation = shouldForceContinuation(plan);
 
-  if (!tooManyItems && !tooDense) return [plan];
+  if (!tooManyItems && !tooDense && !forcedContinuation) return [plan];
   if (items.length <= 1) return [plan]; // não dá para dividir
 
   // Particiona items em chunks que respeitem AMBOS os limites
