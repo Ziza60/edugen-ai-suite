@@ -1526,20 +1526,22 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           x: 0.65, y: y + itemH / 2 - 0.18, w: 0.36, h: 0.36,
           fontSize: 13, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
         });
+        // GEMMA v3.9.5 — TOC: descrição limitada a 80 chars + fonte mínima 14pt
         slide.addText(mod.title, {
-          x: 1.18, y, w: 5.50, h: itemH,
-          fontSize: 13, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
+          x: 1.18, y, w: 5.20, h: itemH,
+          fontSize: 15, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
         });
         if (mod.description) {
-          const cleanDesc = sanitizeText(mod.description)
+          let cleanDesc = sanitizeText(mod.description)
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
+          if (cleanDesc.length > 80) cleanDesc = cleanDesc.substring(0, 77).trim() + "…";
           if (cleanDesc) {
             slide.addText(cleanDesc, {
-              x: 7.00, y, w: SLIDE_W - 7.50, h: itemH,
-              fontSize: 10, fontFace: design.fonts.body, color: colors.coverSubtext,
-              valign: "middle", lineSpacingMultiple: 1.15,
+              x: 6.90, y, w: SLIDE_W - 7.40, h: itemH,
+              fontSize: MIN_FONT.CARD_BODY, fontFace: design.fonts.body, color: colors.coverSubtext,
+              valign: "middle", lineSpacingMultiple: 1.18,
             });
           }
         }
@@ -1548,7 +1550,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
     } else {
       const cols = pageModules.length <= 3 ? pageModules.length : pageModules.length <= 4 ? 2 : 3;
       const rows = Math.ceil(pageModules.length / cols);
-      const gap = 0.18;
+      const gap = 0.50; // GEMMA v3.9.5 — gap aumentado para 0.5 (era 0.18)
       const gridX = 0.65;
       const gridW = SLIDE_W - 1.30;
       const cardW = (gridW - gap * (cols - 1)) / cols;
@@ -1565,35 +1567,37 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         const num = String(globalOffset + i + 1);
         slide.addShape("roundRect" as any, { x: x + 0.02, y: y + 0.03, w: cardW, h: cardH, fill: { color: "000000" }, transparency: 70, rectRadius: 0.12 });
         slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.panelMid }, rectRadius: 0.12 });
-        slide.addShape("rect" as any, { x, y, w: 0.05, h: cardH, fill: { color: pal }, rectRadius: 0.12 });
+        // GEMMA v3.9.5 — borda lateral accent reforçada (0.08)
+        slide.addShape("rect" as any, { x, y, w: 0.08, h: cardH, fill: { color: pal }, rectRadius: 0.12 });
         const badgeS = Math.min(0.44, cardH * 0.25);
-        slide.addShape("roundRect" as any, { x: x + 0.14, y: y + 0.14, w: badgeS, h: badgeS, fill: { color: pal }, rectRadius: 0.08 });
+        slide.addShape("roundRect" as any, { x: x + 0.18, y: y + 0.14, w: badgeS, h: badgeS, fill: { color: pal }, rectRadius: 0.08 });
         slide.addText(num, {
-          x: x + 0.14, y: y + 0.14, w: badgeS, h: badgeS,
+          x: x + 0.18, y: y + 0.14, w: badgeS, h: badgeS,
           fontSize: Math.min(18, badgeS * 38), fontFace: design.fonts.title, bold: true,
           color: "FFFFFF", align: "center", valign: "middle",
         });
         const titleY = y + 0.14 + badgeS + 0.08;
         const titleH = Math.min(0.60, (cardH - badgeS - 0.36) * 0.50);
         slide.addText(pageModules[i].title, {
-          x: x + 0.14, y: titleY, w: cardW - 0.28, h: titleH,
-          fontSize: cardH < 1.4 ? 12 : 14, fontFace: design.fonts.title, bold: true,
+          x: x + 0.20, y: titleY, w: cardW - 0.34, h: titleH,
+          fontSize: cardH < 1.4 ? 13 : 15, fontFace: design.fonts.title, bold: true,
           color: "FFFFFF", valign: "top", lineSpacingMultiple: 1.06, autoFit: true,
-        });
+        } as any);
         const sepY = titleY + titleH + 0.04;
-        addHR(slide, x + 0.14, sepY, cardW * 0.45, pal, 0.010);
+        addHR(slide, x + 0.20, sepY, cardW * 0.45, pal, 0.010);
         if (pageModules[i].description) {
-          const rawGridDesc = sanitizeText(pageModules[i].description!)
+          let rawGridDesc = sanitizeText(pageModules[i].description!)
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
+          if (rawGridDesc.length > 80) rawGridDesc = rawGridDesc.substring(0, 77).trim() + "…";
           if (rawGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
             slide.addText(rawGridDesc, {
-              x: x + 0.14, y: descY, w: cardW - 0.28, h: descH,
-              fontSize: cardH < 1.4 ? 9 : 11, fontFace: design.fonts.body,
-              color: colors.coverSubtext, valign: "top", lineSpacingMultiple: 1.18,
+              x: x + 0.20, y: descY, w: cardW - 0.34, h: descH,
+              fontSize: MIN_FONT.CARD_BODY, fontFace: design.fonts.body,
+              color: colors.coverSubtext, valign: "top", lineSpacingMultiple: 1.20,
             });
           }
         }
