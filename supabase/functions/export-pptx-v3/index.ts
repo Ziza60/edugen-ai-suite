@@ -115,6 +115,159 @@ const SLIDE_H = 7.5;
 const MARGIN = 0.667;
 const SAFE_W = SLIDE_W - MARGIN * 2;
 
+// ───────────────────────────────────────────────────────────────────
+// GEMMA STANDARD (v3.9) — Geometry / Splitter / Auto-Scale
+// ───────────────────────────────────────────────────────────────────
+
+/**
+ * SAFE_ZONE — Padrão Gemma. Toda renderização principal de conteúdo
+ * deve respeitar essa caixa para garantir que nada vaze para as bordas
+ * e que sectionLabel/título/footer convivam com o conteúdo.
+ *
+ *   X: 0.80   →  margem lateral esquerda
+ *   Y: 1.60   →  abaixo do sectionLabel + título
+ *   W: 11.70  →  largura útil (SLIDE_W 13.333 - 0.80 esquerda - ~0.83 direita)
+ *   H: 5.20   →  altura útil (até ~6.80, deixando espaço para footer)
+ */
+const SAFE_ZONE = { X: 0.80, Y: 1.60, W: 11.70, H: 5.20 } as const;
+
+/**
+ * Limites para o Smart Content Splitter.
+ * Acima destes limites o slide é dividido automaticamente em
+ * "[Título Original]" + "[Título Original] (Continuação)".
+ */
+const SPLIT_LIMITS = {
+  MAX_TOTAL_CHARS: 550,        // soma de chars de todos os items
+  MAX_ITEM_CHARS_HARD: 220,    // item individual muito longo é quebrado
+} as const;
+
+/** Layouts elegíveis para split automático por excesso de itens/chars. */
+const SPLITTABLE_LAYOUTS = new Set<SlideLayoutV3>([
+  "bullets",
+  "two_column_bullets",
+  "grid_cards",
+  "numbered_takeaways",
+  "summary_slide",
+]);
+
+/**
+ * Calcula o número total de caracteres "úteis" de um slide.
+ */
+function slideCharLoad(plan: SlidePlan): number {
+  let total = 0;
+  if (plan.items) for (const it of plan.items) total += (it || "").length;
+  if (plan.objectives) for (const it of plan.objectives) total += (it || "").length;
+  if (plan.description) total += plan.description.length;
+  if (plan.subtitle) total += plan.subtitle.length;
+  return total;
+}
+
+/**
+ * Smart Content Splitter — Gemma v3.9.
+ *
+ * Recebe um SlidePlan e decide se ele deve ser quebrado em múltiplos
+ * slides para respeitar densidade visual. Retorna sempre um array
+ * (1+ slides) e nunca perde conteúdo.
+ *
+ * Regras:
+ *   1. Layouts não-splittable (callouts, módulo cover, tabelas, exemplo)
+ *      são devolvidos intactos.
+ *   2. Se total de chars > MAX_TOTAL_CHARS OU items > densidade,
+ *      os items são particionados em N slides do mesmo layout.
+ *   3. Slides 2..N recebem título "[Título] (Continuação)" e o mesmo
+ *      sectionLabel. continuationOf é preenchido com o título original.
+ */
+function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePlan[] {
+  if (!plan) return [];
+  if (!SPLITTABLE_LAYOUTS.has(plan.layout)) return [plan];
+
+  const items = plan.items ?? [];
+  const maxItems = Math.max(2, design.density.maxItemsPerSlide);
+  const totalChars = slideCharLoad(plan);
+
+  const tooManyItems = items.length > maxItems;
+  const tooDense = totalChars > SPLIT_LIMITS.MAX_TOTAL_CHARS;
+
+  if (!tooManyItems && !tooDense) return [plan];
+  if (items.length <= 1) return [plan]; // não dá para dividir
+
+  // Particiona items em chunks que respeitem AMBOS os limites
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentChars = 0;
+
+  for (const it of items) {
+    const itLen = (it || "").length;
+    const wouldExceedItems = current.length + 1 > maxItems;
+    const wouldExceedChars = currentChars + itLen > SPLIT_LIMITS.MAX_TOTAL_CHARS && current.length > 0;
+    if (wouldExceedItems || wouldExceedChars) {
+      chunks.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(it);
+    currentChars += itLen;
+  }
+  if (current.length > 0) chunks.push(current);
+
+  if (chunks.length <= 1) return [plan];
+
+  const baseTitle = plan.title || "Slide";
+  const out: SlidePlan[] = chunks.map((chunkItems, idx) => ({
+    ...plan,
+    items: chunkItems,
+    title: idx === 0 ? baseTitle : `${baseTitle} (Continuação)`,
+    continuationOf: idx === 0 ? undefined : baseTitle,
+  }));
+
+  console.log(`[V3-SPLIT] "${baseTitle}" (${plan.layout}) chars=${totalChars} items=${items.length} → ${out.length} slides`);
+  return out;
+}
+
+/**
+ * Auto-scaling de fontes (Gemma v3.9).
+ * Se o conteúdo do bloco for denso, reduz o fontSize em até 15% para
+ * preservar harmonia visual dentro do card / linha.
+ *
+ * @param baseSize  tamanho original em pt
+ * @param charCount número de chars do conteúdo a renderizar
+ * @param threshold acima desse número de chars começa a reduzir (default 120)
+ */
+function autoScaleFont(baseSize: number, charCount: number, threshold = 120): number {
+  if (charCount <= threshold) return baseSize;
+  const overflow = (charCount - threshold) / threshold; // 0..n
+  const reduction = Math.min(0.15, overflow * 0.15);    // máx -15%
+  return Math.max(8, Math.round(baseSize * (1 - reduction) * 10) / 10);
+}
+
+/**
+ * Deriva um sectionLabel automático quando o AI não fornecer.
+ * Usado no Dispatcher (renderSlide) para garantir que TODO slide
+ * de conteúdo carregue um rótulo orientativo no topo.
+ */
+function deriveSectionLabel(plan: SlidePlan): string {
+  if (plan.sectionLabel && plan.sectionLabel.trim().length > 0) {
+    return plan.sectionLabel.toUpperCase();
+  }
+  switch (plan.layout) {
+    case "module_cover":       return "MÓDULO";
+    case "toc":                return "ÍNDICE";
+    case "bullets":            return "CONTEÚDO";
+    case "two_column_bullets": return "CONTEÚDO";
+    case "definition":         return "DEFINIÇÃO";
+    case "grid_cards":         return "CONCEITOS-CHAVE";
+    case "process_timeline":   return "PROCESSO";
+    case "comparison_table":   return "COMPARATIVO";
+    case "example_highlight":  return "ESTUDO DE CASO";
+    case "warning_callout":    return "ATENÇÃO";
+    case "reflection_callout": return "REFLEXÃO";
+    case "summary_slide":      return "RESUMO";
+    case "numbered_takeaways": return "PRINCIPAIS APRENDIZADOS";
+    case "closing":            return "ENCERRAMENTO";
+    default:                   return "CONTEÚDO";
+  }
+}
+
 const THEMES = {
   light: {
     bg: "F0F2F8",
