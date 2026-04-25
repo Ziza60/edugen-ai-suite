@@ -132,12 +132,23 @@ const SAFE_W = SLIDE_W - MARGIN * 2;
 const SAFE_ZONE = { X: 0.80, Y: 1.60, W: 11.70, H: 5.20 } as const;
 
 /**
+ * GEMMA v3.9.5 — Pisos rígidos de fonte.
+ * Se o auto-scaling tentar descer abaixo destes valores, o Smart Splitter
+ * é forçado a quebrar o slide em vez de "espremer" o texto.
+ */
+const MIN_FONT = {
+  BODY: 18,    // corpo do texto (bullets, descrições)
+  TITLE: 26,   // títulos de slide
+  CARD_BODY: 14, // descrições internas a cards (TOC, grids densos)
+} as const;
+
+/**
  * Limites para o Smart Content Splitter.
  * Acima destes limites o slide é dividido automaticamente em
  * "[Título Original]" + "[Título Original] (Continuação)".
  */
 const SPLIT_LIMITS = {
-  MAX_TOTAL_CHARS: 550,        // soma de chars de todos os items
+  MAX_TOTAL_CHARS: 480,        // soma de chars de todos os items (mais agressivo)
   MAX_ITEM_CHARS_HARD: 220,    // item individual muito longo é quebrado
 } as const;
 
@@ -149,6 +160,21 @@ const SPLITTABLE_LAYOUTS = new Set<SlideLayoutV3>([
   "numbered_takeaways",
   "summary_slide",
 ]);
+
+/**
+ * Marcadores de seção pedagógicos (🧠 ⚙️ ⚠️ 🎯 📌 etc).
+ * Usados para detectar itens "rótulo de seção" e impedir que fiquem
+ * isolados no final de um slide (regra de agrupamento Gemma v3.9.5).
+ */
+const SECTION_MARKER_REGEX = /^[\s-]*([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])/u;
+
+function isSectionMarker(item: string): boolean {
+  if (!item) return false;
+  const trimmed = item.trim();
+  if (!SECTION_MARKER_REGEX.test(trimmed)) return false;
+  // Considera "marker" se for um cabeçalho curto (≤ 60 chars, geralmente "🧠 Fundamentos")
+  return trimmed.length <= 60;
+}
 
 /**
  * Calcula o número total de caracteres "úteis" de um slide.
