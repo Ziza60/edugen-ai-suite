@@ -1732,8 +1732,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       const yPos = rightY + i * (rItemH + rBulletGap);
       const pal = design.palette[i % design.palette.length];
       slide.addShape("rect" as any, { x: rightX, y: yPos + 0.06, w: 0.045, h: rItemH - 0.16, fill: { color: pal } });
-      const aBase = items.length >= 6 ? TYPO.BULLET_TEXT - 2 : items.length >= 4 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
-      const aFontSize = autoScaleFont(aBase, (items[i] || "").length, 100); // GEMMA v3.9 auto-scale
+      const aBase = items.length >= 6 ? TYPO.BULLET_TEXT - 1 : TYPO.BULLET_TEXT;
+      const aFontSize = autoScaleFont(aBase, (items[i] || "").length, 100, MIN_FONT.BODY);
       { // title:desc split rendering for bullets
         const bColonIdx = items[i].indexOf(":");
         const bHasTitle = bColonIdx > 0 && bColonIdx < 70;
