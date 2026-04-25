@@ -2441,12 +2441,24 @@ async function runPipeline(
   // Render TOC
   renderTOC(pptx, tocModules, design);
 
+  // ── GEMMA v3.9: Smart Content Splitter ──
+  // Aplica normalizeAndSplitSlide em todo plano antes da contagem,
+  // para que o footer (n/total) já reflita os slides duplicados.
+  const splitModulePlans: SlidePlan[][] = allModuleSlidePlans.map((plans) => {
+    const out: SlidePlan[] = [];
+    for (const p of plans) {
+      const split = normalizeAndSplitSlide(p, design);
+      out.push(...split);
+    }
+    return out;
+  });
+
   // Count total content slides for footer
-  _globalTotalSlides = allModuleSlidePlans.reduce((sum, plans) => sum + plans.length, 0);
+  _globalTotalSlides = splitModulePlans.reduce((sum, plans) => sum + plans.length, 0);
 
   // Render all module slides
-  for (let mi = 0; mi < allModuleSlidePlans.length; mi++) {
-    const modulePlans = allModuleSlidePlans[mi];
+  for (let mi = 0; mi < splitModulePlans.length; mi++) {
+    const modulePlans = splitModulePlans[mi];
     const moduleImage = imagePlan.modules.get(mi) || null;
     for (const plan of modulePlans) {
       const img = plan.layout === "module_cover" ? moduleImage : null;
