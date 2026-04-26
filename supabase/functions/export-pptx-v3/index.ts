@@ -1787,10 +1787,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         const sepY = titleY + titleH + 0.04;
         addHR(slide, x + 0.20, sepY, cardW * 0.45, pal, 0.010);
         if (pageModules[i].description) {
-          let rawGridDesc = sanitizeText(pageModules[i].description!)
-            .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
-            .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
-            .replace(/\.$/, "").trim();
+          let rawGridDesc = cleanTOCDescription(pageModules[i].description!, pageModules[i].title);
           rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT_GRID);
           if (rawGridDesc) {
             const descY = sepY + 0.06;
