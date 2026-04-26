@@ -1692,7 +1692,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          if (cleanDesc.length > 60) cleanDesc = cleanDesc.substring(0, 57).trim() + "...";
+          cleanDesc = truncateHard(cleanDesc, TOC_DESCRIPTION_LIMIT);
           if (cleanDesc) {
             slide.addText(cleanDesc, {
               x: 6.90, y, w: SLIDE_W - 7.40, h: itemH,
@@ -1737,7 +1737,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         slide.addText(pageModules[i].title, {
           x: x + 0.20, y: titleY, w: cardW - 0.34, h: titleH,
           fontSize: cardH < 1.4 ? 13 : 15, fontFace: design.fonts.title, bold: true,
-          color: "FFFFFF", valign: "top", lineSpacingMultiple: 1.06, autoFit: true,
+          color: "FFFFFF", valign: "top", lineSpacingMultiple: 1.06,
         } as any);
         const sepY = titleY + titleH + 0.04;
         addHR(slide, x + 0.20, sepY, cardW * 0.45, pal, 0.010);
@@ -1746,7 +1746,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          if (rawGridDesc.length > 60) rawGridDesc = rawGridDesc.substring(0, 57).trim() + "...";
+          rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT);
           if (rawGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
