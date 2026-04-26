@@ -185,9 +185,10 @@ const GRID_MAX_ITEMS = 5;
  * "[Título Original]" + "[Título Original] (Continuação)".
  */
 const SPLIT_LIMITS = {
-  // GEMMA v3.10.3 — Reduzido em ~10% (480 → 432) para split mais preventivo
-  // e evitar que conteúdo denso (ex: Slide 19 "Tuplas") encoste no rodapé.
-  MAX_TOTAL_CHARS: 432,        // soma de chars de todos os items (split preventivo)
+  // GEMMA v3.10.6 — Reduzido novamente (432 → 380) para forçar splits
+  // preventivos em layouts densos como two_column_bullets com 6 itens
+  // longos (slides 58, 103, 111) que ainda espremiam o conteúdo.
+  MAX_TOTAL_CHARS: 380,        // soma de chars de todos os items (split preventivo)
   MAX_ITEM_CHARS_HARD: 220,    // item individual muito longo é quebrado
 } as const;
 
