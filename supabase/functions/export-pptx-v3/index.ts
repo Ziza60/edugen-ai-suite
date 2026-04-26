@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.1-TOC-FULLTEXT-FIX";
+const ENGINE_VERSION = "3.10.2-TOC-SMART-TRUNCATE";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1685,7 +1685,20 @@ function cleanTOCDescription(rawDesc: string, moduleTitle: string): string {
 
   // Remove ponto final solitário e espaços
   s = s.replace(/^[\s.:\-–—]+/, "").replace(/\.$/, "").trim();
+  // Colapsa whitespace múltiplo (quebras de linha viram espaço único)
+  s = s.replace(/\s+/g, " ").trim();
   return s;
+}
+
+// Corte inteligente em fronteira de palavra com reticências.
+// Evita overflow visual catastrófico no PPTX quando o objetivo do módulo
+// é um parágrafo inteiro (>300 chars).
+function smartTruncate(s: string, maxChars: number): string {
+  if (s.length <= maxChars) return s;
+  const slice = s.slice(0, maxChars);
+  const lastSpace = slice.lastIndexOf(" ");
+  const cut = lastSpace > maxChars * 0.6 ? slice.slice(0, lastSpace) : slice;
+  return cut.replace(/[\s.,;:\-–—]+$/, "") + "…";
 }
 
 function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: string }[], design: DesignConfig) {
@@ -1740,12 +1753,15 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           // até a margem direita da SAFE_ZONE e quebra linha (wrap) naturalmente.
           const cleanDesc = cleanTOCDescription(mod.description, mod.title);
           if (cleanDesc) {
+            // GEMMA v3.10.2 — smartTruncate em fronteira de palavra (~180 chars)
+            // evita overflow visual no PPTX quando objetivo é parágrafo longo.
+            const safeDesc = smartTruncate(cleanDesc, 180);
             const descX = 6.90;
-            const descW = (SAFE_ZONE.X + SAFE_ZONE.W) - descX; // até a margem da SAFE_ZONE
-            slide.addText(cleanDesc, {
+            const descW = (SAFE_ZONE.X + SAFE_ZONE.W) - descX;
+            slide.addText(safeDesc, {
               x: descX, y, w: descW, h: itemH,
-              fontSize: 14, fontFace: design.fonts.body, color: colors.coverSubtext,
-              valign: "middle", wrap: true, shrinkText: false, lineSpacingMultiple: 1.18,
+              fontSize: 12, fontFace: design.fonts.body, color: colors.coverSubtext,
+              valign: "middle", wrap: true, shrinkText: false, lineSpacingMultiple: 1.15,
             } as any);
           }
         }
@@ -1790,15 +1806,17 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         const sepY = titleY + titleH + 0.04;
         addHR(slide, x + 0.20, sepY, cardW * 0.45, pal, 0.010);
         if (pageModules[i].description) {
-          // GEMMA v3.10.0-TOC-FULLTEXT: no grid, sem corte; wrap natural dentro do card.
+          // GEMMA v3.10.2 — smartTruncate adaptado ao tamanho do card.
           const rawGridDesc = cleanTOCDescription(pageModules[i].description!, pageModules[i].title);
-          if (rawGridDesc) {
+          const maxChars = cardH < 1.6 ? 110 : cardH < 2.2 ? 160 : 220;
+          const safeGridDesc = smartTruncate(rawGridDesc, maxChars);
+          if (safeGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
-            slide.addText(rawGridDesc, {
+            slide.addText(safeGridDesc, {
               x: x + 0.20, y: descY, w: cardW - 0.34, h: descH,
-              fontSize: 12, fontFace: design.fonts.body,
-              color: colors.coverSubtext, valign: "top", wrap: true, shrinkText: false, lineSpacingMultiple: 1.20,
+              fontSize: 11, fontFace: design.fonts.body,
+              color: colors.coverSubtext, valign: "top", wrap: true, shrinkText: false, lineSpacingMultiple: 1.18,
             } as any);
           }
         }
