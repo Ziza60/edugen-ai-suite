@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.9.5-GEMMA-FINAL";
+const ENGINE_VERSION = "3.9.6-GEMMA-SYMMETRY";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
