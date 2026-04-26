@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.9.5-GEMMA-FINAL";
+const ENGINE_VERSION = "3.9.6-GEMMA-SYMMETRY";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2012,7 +2012,42 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
   const gap = 0.18;
   const cardW = (contentW - gap * (cols - 1)) / cols;
   const contentArea = SLIDE_H - 1.68 - 0.45;
-  const cardH = Math.min(2.50, (contentArea - gap * (rows - 1)) / rows);
+  // GEMMA v3.9.5 — altura uniforme: TODOS os cards têm exatamente o mesmo cardH
+  const cardH = (contentArea - gap * (rows - 1)) / rows;
+
+  // Pré-cálculo: normaliza items e separa labels/descs para fonte unificada
+  type Parsed = { label: string; desc: string; hasColon: boolean; raw: string };
+  const parsed: Parsed[] = items.map((raw) => {
+    let n = raw;
+    if (n.indexOf(":") < 0 || n.indexOf(":") > 40) {
+      const m = n.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
+      if (m && m[1].split(" ").length <= 4) n = m[1].trim() + ": " + m[2].trim();
+    }
+    const ci = n.indexOf(":");
+    if (ci > 0 && ci < 70) {
+      return { label: n.substring(0, ci).trim(), desc: n.substring(ci + 1).trim(), hasColon: true, raw: n };
+    }
+    return { label: "", desc: n, hasColon: false, raw: n };
+  });
+
+  // Fonte unificada: pior caso (maior label e maior desc) determina o tamanho de TODOS os cards
+  const labelBase = items.length >= 6 ? TYPO.CARD_TITLE - 1 : TYPO.CARD_TITLE;
+  const descBase = items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY;
+  const labelThreshold = cols >= 3 ? 28 : cols === 2 ? 42 : 60;
+  const descThreshold = cols >= 3 ? 70 : cols === 2 ? 110 : 160;
+  const unifiedLabelFont = computeUnifiedSlideFontSize(
+    parsed.map((p) => p.label || ""),
+    labelBase,
+    labelThreshold,
+    Math.max(11, MIN_FONT.CARD_BODY - 2),
+  );
+  const unifiedDescFont = computeUnifiedSlideFontSize(
+    parsed.map((p) => p.desc || ""),
+    descBase,
+    descThreshold,
+    MIN_FONT.CARD_BODY,
+  );
+
   for (let i = 0; i < items.length; i++) {
     const col = i % cols;
     const row = Math.floor(i / cols);
@@ -2022,57 +2057,42 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
     addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.10 });
     slide.addShape("rect" as any, { x, y, w: cardW, h: 0.05, fill: { color: pal }, rectRadius: 0.10 });
-    // Normalize item: if no colon separator, try to infer "Title: description" split
-    // Pattern: short phrase (1-4 words, title-case) followed by longer description
-    let normalizedItem = items[i];
-    if (normalizedItem.indexOf(":") < 0 || normalizedItem.indexOf(":") > 40) {
-      const inferMatch = normalizedItem.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
-      if (inferMatch && inferMatch[1].split(" ").length <= 4) {
-        normalizedItem = inferMatch[1].trim() + ": " + inferMatch[2].trim();
-      }
-    }
-    const colonIdx = normalizedItem.indexOf(":");
-    if (colonIdx > 0 && colonIdx < 70) {
-      const label = normalizedItem.substring(0, colonIdx).trim();
-      const desc = normalizedItem.substring(colonIdx + 1).trim();
-      const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
-      slide.addShape("roundRect" as any, { x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge, fill: { color: pal }, rectRadius: 0.06 });
-      slide.addText(String(i + 1), {
-        x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge,
-        fontSize: Math.min(12, gcBadge * 34), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
-      });
+
+    const p = parsed[i];
+    const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
+    slide.addShape("roundRect" as any, { x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge, fill: { color: pal }, rectRadius: 0.06 });
+    slide.addText(String(i + 1), {
+      x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge,
+      fontSize: Math.min(12, gcBadge * 34), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
+    });
+
+    if (p.hasColon) {
       const labelX = x + 0.10 + gcBadge + 0.08;
       const labelW = x + cardW - labelX - 0.10;
-      const estCharsPerLine = Math.max(1, Math.floor(labelW * 72 / (TYPO.CARD_TITLE * 0.55)));
-      const estLines = Math.ceil(label.length / estCharsPerLine);
+      const estCharsPerLine = Math.max(1, Math.floor(labelW * 72 / (unifiedLabelFont * 0.55)));
+      const estLines = Math.ceil(p.label.length / estCharsPerLine);
       const labelH = estLines > 1 ? 0.62 : 0.38;
       const labelColor = ensureContrastOnLight(pal, colors.cardBg);
-      const labelRuns = colorizeIconRuns(label, pal, labelColor) || [{ text: label, options: { bold: true, color: labelColor } }];
+      const labelRuns = colorizeIconRuns(p.label, pal, labelColor) || [{ text: p.label, options: { bold: true, color: labelColor } }];
       slide.addText(labelRuns as any, {
         x: labelX, y: y + 0.12, w: labelW, h: labelH,
-        fontSize: items.length >= 6 ? TYPO.CARD_TITLE - 1 : TYPO.CARD_TITLE,
+        fontSize: unifiedLabelFont,
         fontFace: design.fonts.title, bold: true,
         valign: "middle", lineSpacingMultiple: 1.10,
       });
       const sepY = y + 0.12 + labelH + 0.06;
       addHR(slide, x + 0.10, sepY, cardW - 0.20, colors.borders, 0.004);
-      const descRuns = colorizeIconRuns(desc, pal, colors.text) || [{ text: desc, options: { color: colors.text } }];
+      const descRuns = colorizeIconRuns(p.desc, pal, colors.text) || [{ text: p.desc, options: { color: colors.text } }];
       slide.addText(descRuns as any, {
         x: x + 0.12, y: sepY + 0.08, w: cardW - 0.24, h: Math.max(0.30, y + cardH - sepY - 0.16),
-        fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
+        fontSize: unifiedDescFont,
         fontFace: design.fonts.body, valign: "top", lineSpacingMultiple: 1.18,
       });
     } else {
-      const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
-      slide.addShape("roundRect" as any, { x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge, fill: { color: pal }, rectRadius: 0.06 });
-      slide.addText(String(i + 1), {
-        x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge,
-        fontSize: Math.min(12, gcBadge * 34), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
-      });
-      const itemRuns = colorizeIconRuns(items[i], pal, colors.text) || [{ text: items[i], options: { color: colors.text } }];
+      const itemRuns = colorizeIconRuns(p.desc, pal, colors.text) || [{ text: p.desc, options: { color: colors.text } }];
       slide.addText(itemRuns as any, {
         x: x + 0.12, y: y + 0.14 + gcBadge + 0.10, w: cardW - 0.24, h: cardH - (0.14 + gcBadge + 0.18),
-        fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
+        fontSize: unifiedDescFont,
         fontFace: design.fonts.body, valign: "top", lineSpacingMultiple: 1.18,
       });
     }
