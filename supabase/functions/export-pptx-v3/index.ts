@@ -2197,13 +2197,15 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   const leftItems = items.slice(0, mid);
   const rightItems = items.slice(mid);
   const divX = contentX + colW + colGap / 2;
-  slide.addShape("rect" as any, { x: divX - 0.010, y: contentY, w: 0.020, h: SLIDE_H - contentY - 0.45, fill: { color: pal }, transparency: 50 });
-  slide.addShape("ellipse" as any, { x: divX - 0.05, y: contentY + (SLIDE_H - contentY - 0.45) / 2 - 0.05, w: 0.10, h: 0.10, fill: { color: pal } });
+  // GEMMA v3.10.5 — usa CONTENT_BOTTOM (6.80) para evitar invadir o footer (7.16).
+  const colHEnd = CONTENT_BOTTOM - contentY;
+  slide.addShape("rect" as any, { x: divX - 0.010, y: contentY, w: 0.020, h: colHEnd, fill: { color: pal }, transparency: 50 });
+  slide.addShape("ellipse" as any, { x: divX - 0.05, y: contentY + colHEnd / 2 - 0.05, w: 0.10, h: 0.10, fill: { color: pal } });
   for (let col = 0; col < 2; col++) {
     const colItems = col === 0 ? leftItems : rightItems;
     const colX = contentX + col * (colW + colGap);
     const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
-    const colContentH = SLIDE_H - contentY - 0.40;
+    const colContentH = colHEnd;
     const rawItemH = (colContentH - colBulletGap * Math.max(colItems.length - 1, 0)) / Math.max(colItems.length, 1);
     const itemH = Math.max(0.42, Math.min(1.10, rawItemH));
     for (let i = 0; i < colItems.length; i++) {
