@@ -1790,16 +1790,16 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         const sepY = titleY + titleH + 0.04;
         addHR(slide, x + 0.20, sepY, cardW * 0.45, pal, 0.010);
         if (pageModules[i].description) {
-          let rawGridDesc = cleanTOCDescription(pageModules[i].description!, pageModules[i].title);
-          rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT_GRID);
+          // GEMMA v3.10.0-TOC-FULLTEXT: no grid, sem corte; wrap natural dentro do card.
+          const rawGridDesc = cleanTOCDescription(pageModules[i].description!, pageModules[i].title);
           if (rawGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
             slide.addText(rawGridDesc, {
               x: x + 0.20, y: descY, w: cardW - 0.34, h: descH,
-              fontSize: MIN_FONT.CARD_BODY, fontFace: design.fonts.body,
-              color: colors.coverSubtext, valign: "top", lineSpacingMultiple: 1.20,
-            });
+              fontSize: 12, fontFace: design.fonts.body,
+              color: colors.coverSubtext, valign: "top", wrap: true, shrinkText: false, lineSpacingMultiple: 1.20,
+            } as any);
           }
         }
         slide.addShape("ellipse" as any, {
