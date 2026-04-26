@@ -5035,7 +5035,7 @@ Deno.serve(async (req: Request) => {
 
     let zipDiag: any = null;
     try {
-      const JSZip = (await import("npm:jszip@3.10.1")).default;
+      const JSZip = (await import("https://esm.sh/jszip@3.10.1")).default;
       const zip = await JSZip.loadAsync(pptxData);
       const allFiles = Object.keys(zip.files);
       const mediaFiles = allFiles.filter((f: string) => f.startsWith("ppt/media/"));
