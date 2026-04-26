@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.8-GEMMA-SPEC";
+const ENGINE_VERSION = "3.10.9-GEMMA-SPEC";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -255,7 +255,7 @@ function computeUnifiedSlideFontSize(items: string[], baseSize: number, threshol
   for (let guard = 0; guard < 10 && size > floor; guard++) {
     const totalEstimated = items.reduce((acc, item) => {
       const chars = getRenderableTextLength(item || "");
-      const h = (chars / 50) * (size / 72) * 1.4;
+      const h = (chars / 50) * (size / 72) * 1.5;
       return acc + h;
     }, 0);
     if (totalEstimated <= MAX_HEIGHT_IN) break;
@@ -426,13 +426,13 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  // GEMMA v3.10.8-GEMMA-SPEC — Regra Gemma reforçada.
-  // Se o total de caracteres < 600 e items <= 8, MANTÉM tudo no mesmo slide
-  // (evita slides "quase vazios" como 13, 75 com item único).
+  // GEMMA v3.10.9-GEMMA-SPEC — Regra Gemma definitiva.
+  // Se o total de caracteres < 700 e items <= 8, MANTÉM tudo no mesmo slide
+  // (evita slides "quase vazios" como 13, 75 com item único/órfão).
   if (
     !forcedContinuation &&
-    totalChars < 600 &&
-    items.length <= Math.max(maxItems, 8)
+    totalChars < 700 &&
+    items.length <= 8
   ) {
     return [plan];
   }
@@ -1837,11 +1837,13 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
     const useListLayout = modules.length > 5;
 
     if (useListLayout) {
-      const itemH = Math.min(0.85, (SLIDE_H - 1.80 - 0.45) / pageModules.length);
+      // GEMMA v3.10.9-GEMMA-SPEC — Espaçamento vertical reforçado (1.1)
+      // para evitar sobreposição entre linhas no slide 2 do TOC.
       for (let i = 0; i < pageModules.length; i++) {
         const mod = pageModules[i];
         const pal = design.palette[(globalOffset + i) % design.palette.length];
-        const y = 1.80 + i * (itemH + 0.08);
+        const y = 1.80 + i * 1.10 * 0.78; // 0.858 base, mantém dentro do slide para até 6 itens
+        const itemH = 0.85;
         slide.addShape("roundRect" as any, {
           x: 0.65, y: y + itemH / 2 - 0.18, w: 0.36, h: 0.36,
           fill: { color: pal }, rectRadius: 0.06,
@@ -1850,16 +1852,19 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           x: 0.65, y: y + itemH / 2 - 0.18, w: 0.36, h: 0.36,
           fontSize: 13, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
         });
-        // GEMMA v3.9.6 — TOC: descrição limitada a 60 chars para preservar a grade
         slide.addText(mod.title, {
           x: 1.18, y, w: 5.20, h: itemH,
           fontSize: 15, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
         });
         if (mod.description) {
-          // GEMMA v3.10.7-GEMINI-SPEC — Índice: SEM smartTruncate.
-          // Usa wrap: true e largura total da caixa (w: 5.5) para que o
-          // PptxGenJS quebre linhas naturalmente, ocupando o espaço vazio.
-          const cleanDesc = cleanTOCDescription(mod.description, mod.title);
+          // GEMMA v3.10.9-GEMMA-SPEC — limpeza dupla: cleanTOCDescription + remoção
+          // explícita do título redundante e marcadores residuais conforme spec.
+          let cleanDesc = cleanTOCDescription(mod.description, mod.title);
+          if (cleanDesc.startsWith(mod.title)) {
+            cleanDesc = cleanDesc.replace(mod.title, "").trim();
+          }
+          cleanDesc = cleanDesc.replace(/🎯\s*Objetivo do M[óo]dulo:?/gi, "").trim();
+          cleanDesc = cleanDesc.replace(/^[:\-\s]+/, "").trim();
           if (cleanDesc) {
             slide.addText(cleanDesc, {
               x: 6.90, y, w: 5.5, h: itemH,
