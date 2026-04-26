@@ -346,8 +346,12 @@ function estimateWrappedLines(text: string, fontSize: number, boxW: number): num
   return Math.max(1, Math.ceil(clean.length / charsPerLine));
 }
 
-function estimateTextHeightInches(text: string, fontSize: number, boxW: number, lineSpacingMultiple = 1.18): number {
-  const lines = estimateWrappedLines(text, fontSize, boxW);
+function estimateTextHeightInches(text: string, fontSize: number, boxW: number, lineSpacingMultiple = 1.6): number {
+  // GEMMA v3.11.0-GEMMA-STABLE — line-height 1.6 + fator de largura 0.013
+  // (mais conservador para Montserrat, evita transbordo nos slides longos).
+  const safeText = (text ?? "").toString();
+  const charsPerLine = Math.max(1, Math.floor(boxW / Math.max(0.0001, fontSize * 0.013)));
+  const lines = Math.max(1, Math.ceil(safeText.length / charsPerLine));
   return lines * ((fontSize * lineSpacingMultiple) / 72);
 }
 
