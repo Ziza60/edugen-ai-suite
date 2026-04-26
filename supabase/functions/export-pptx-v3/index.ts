@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.7-GEMINI-SPEC";
+const ENGINE_VERSION = "3.10.8-GEMMA-SPEC";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -243,7 +243,25 @@ function getRenderableTextLength(text: string): number {
 
 function computeUnifiedSlideFontSize(items: string[], baseSize: number, threshold: number, floor = MIN_FONT.BODY): number {
   const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
-  return autoScaleFont(baseSize, longest, threshold, floor);
+  let size = autoScaleFont(baseSize, longest, threshold, floor);
+
+  // GEMMA v3.10.8-GEMMA-SPEC — Margem de segurança contra transbordo.
+  // Estima altura ocupada (em polegadas) considerando que Montserrat ocupa
+  // mais espaço vertical do que o pptxgenjs assume. Fórmula Gemma:
+  //   estimatedHeight = (chars / 50) * (size / 72) * 1.4
+  // Reduz a fonte iterativamente até que CADA item caiba em ~3.6" (área útil
+  // de uma caixa de bullets padrão). Floor garante mínimo legível.
+  const MAX_HEIGHT_IN = 3.6;
+  for (let guard = 0; guard < 10 && size > floor; guard++) {
+    const totalEstimated = items.reduce((acc, item) => {
+      const chars = getRenderableTextLength(item || "");
+      const h = (chars / 50) * (size / 72) * 1.4;
+      return acc + h;
+    }, 0);
+    if (totalEstimated <= MAX_HEIGHT_IN) break;
+    size = Math.max(floor, Math.round((size - 0.5) * 10) / 10);
+  }
+  return size;
 }
 
 function truncateHard(text: string, limit: number): string {
@@ -408,13 +426,13 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  // GEMMA v3.10.7-GEMINI-SPEC — Cálculo de carga real.
-  // Se o conteúdo total for curto (<550 chars) e respeitar maxItems,
-  // NÃO dividimos: evita slides "quase vazios" (slides 13, 75, etc).
+  // GEMMA v3.10.8-GEMMA-SPEC — Regra Gemma reforçada.
+  // Se o total de caracteres < 600 e items <= 8, MANTÉM tudo no mesmo slide
+  // (evita slides "quase vazios" como 13, 75 com item único).
   if (
     !forcedContinuation &&
-    items.length <= maxItems &&
-    totalChars < 550
+    totalChars < 600 &&
+    items.length <= Math.max(maxItems, 8)
   ) {
     return [plan];
   }
