@@ -93,23 +93,26 @@ Deno.serve(async (req: Request) => {
     }
 
     // Fetch all modules
-    const { data: modules = [] } = await userClient
+    const { data: modulesRaw } = await userClient
       .from("course_modules")
       .select("*")
       .eq("course_id", course_id)
       .order("order_index");
+    const modules: any[] = modulesRaw ?? [];
 
     // Fetch quizzes and flashcards
     const moduleIds = modules.map((m: any) => m.id);
-    const { data: quizzes = [] } = await userClient
+    const { data: quizzesRaw } = await userClient
       .from("course_quiz_questions")
       .select("*")
       .in("module_id", moduleIds);
+    const quizzes: any[] = quizzesRaw ?? [];
 
-    const { data: flashcards = [] } = await userClient
+    const { data: flashcardsRaw } = await userClient
       .from("course_flashcards")
       .select("*")
       .in("module_id", moduleIds);
+    const flashcards: any[] = flashcardsRaw ?? [];
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {

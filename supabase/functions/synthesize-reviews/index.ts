@@ -62,12 +62,13 @@ Deno.serve(async (req: Request) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
-    const { data: comments = [] } = await adminClient
+    const { data: commentsRaw } = await adminClient
       .from("review_comments")
       .select("*, course_modules(title, order_index)")
       .eq("review_id", review_id)
       .eq("resolved", false)
       .order("created_at");
+    const comments: any[] = commentsRaw ?? [];
 
     if (comments.length === 0) {
       return new Response(JSON.stringify({

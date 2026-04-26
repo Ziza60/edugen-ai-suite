@@ -252,7 +252,7 @@ Deno.serve(async (req: Request) => {
 
   // SSE helper
   const encoder = new TextEncoder();
-  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let controller = null as ReadableStreamDefaultController<Uint8Array> | null;
 
   function sendSSE(data: Record<string, unknown>) {
     if (controller) {
@@ -263,7 +263,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const stream = new ReadableStream<Uint8Array>({
-    start(c) { controller = c; },
+    start(c) { controller = c as ReadableStreamDefaultController<Uint8Array>; },
   });
 
   const sseHeaders = {

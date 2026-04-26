@@ -11,6 +11,7 @@ const MAX_FILES_FREE = 3;
 const MAX_FILES_PRO = 20;
 const ALLOWED_TYPES = ["application/pdf", "text/plain", "text/markdown"];
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
+const MAX_TOTAL_CHARS = 500_000;
 
 // Simple text normalizer: collapse whitespace, remove repeated headers/footers
 function normalizeText(raw: string): string {
