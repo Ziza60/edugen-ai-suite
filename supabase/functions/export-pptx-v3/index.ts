@@ -2012,7 +2012,42 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
   const gap = 0.18;
   const cardW = (contentW - gap * (cols - 1)) / cols;
   const contentArea = SLIDE_H - 1.68 - 0.45;
-  const cardH = Math.min(2.50, (contentArea - gap * (rows - 1)) / rows);
+  // GEMMA v3.9.5 — altura uniforme: TODOS os cards têm exatamente o mesmo cardH
+  const cardH = (contentArea - gap * (rows - 1)) / rows;
+
+  // Pré-cálculo: normaliza items e separa labels/descs para fonte unificada
+  type Parsed = { label: string; desc: string; hasColon: boolean; raw: string };
+  const parsed: Parsed[] = items.map((raw) => {
+    let n = raw;
+    if (n.indexOf(":") < 0 || n.indexOf(":") > 40) {
+      const m = n.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
+      if (m && m[1].split(" ").length <= 4) n = m[1].trim() + ": " + m[2].trim();
+    }
+    const ci = n.indexOf(":");
+    if (ci > 0 && ci < 70) {
+      return { label: n.substring(0, ci).trim(), desc: n.substring(ci + 1).trim(), hasColon: true, raw: n };
+    }
+    return { label: "", desc: n, hasColon: false, raw: n };
+  });
+
+  // Fonte unificada: pior caso (maior label e maior desc) determina o tamanho de TODOS os cards
+  const labelBase = items.length >= 6 ? TYPO.CARD_TITLE - 1 : TYPO.CARD_TITLE;
+  const descBase = items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY;
+  const labelThreshold = cols >= 3 ? 28 : cols === 2 ? 42 : 60;
+  const descThreshold = cols >= 3 ? 70 : cols === 2 ? 110 : 160;
+  const unifiedLabelFont = computeUnifiedSlideFontSize(
+    parsed.map((p) => p.label || ""),
+    labelBase,
+    labelThreshold,
+    Math.max(11, MIN_FONT.CARD_BODY - 2),
+  );
+  const unifiedDescFont = computeUnifiedSlideFontSize(
+    parsed.map((p) => p.desc || ""),
+    descBase,
+    descThreshold,
+    MIN_FONT.CARD_BODY,
+  );
+
   for (let i = 0; i < items.length; i++) {
     const col = i % cols;
     const row = Math.floor(i / cols);
