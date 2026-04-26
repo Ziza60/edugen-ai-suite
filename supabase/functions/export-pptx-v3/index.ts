@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.5-FOOTER-SAFETY";
+const ENGINE_VERSION = "3.10.6-CONTINUATION-NUMBERING";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -83,6 +83,10 @@ interface SlidePlan {
   tableRows?: string[][];
   moduleIndex?: number;
   continuationOf?: string;
+  // GEMMA v3.10.6 — quando um slide é dividido (continuação), preserva o
+  // índice base dos badges numerados para manter a sequência (ex.: slide 5
+  // termina em "4", o slide 6 deve começar em "5", não em "1").
+  itemStartIndex?: number;
 }
 
 interface PipelineReport {
@@ -181,9 +185,10 @@ const GRID_MAX_ITEMS = 5;
  * "[Título Original]" + "[Título Original] (Continuação)".
  */
 const SPLIT_LIMITS = {
-  // GEMMA v3.10.3 — Reduzido em ~10% (480 → 432) para split mais preventivo
-  // e evitar que conteúdo denso (ex: Slide 19 "Tuplas") encoste no rodapé.
-  MAX_TOTAL_CHARS: 432,        // soma de chars de todos os items (split preventivo)
+  // GEMMA v3.10.6 — Reduzido novamente (432 → 380) para forçar splits
+  // preventivos em layouts densos como two_column_bullets com 6 itens
+  // longos (slides 58, 103, 111) que ainda espremiam o conteúdo.
+  MAX_TOTAL_CHARS: 380,        // soma de chars de todos os items (split preventivo)
   MAX_ITEM_CHARS_HARD: 220,    // item individual muito longo é quebrado
 } as const;
 
@@ -464,14 +469,21 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   if (chunks.length <= 1) return [plan];
 
   const baseTitle = plan.title || "Slide";
+  let runningOffset = 0;
   const out: SlidePlan[] = chunks
     .filter((c) => c.length > 0)
-    .map((chunkItems, idx) => ({
-      ...plan,
-      items: chunkItems,
-      title: idx === 0 ? baseTitle : `${baseTitle} (Continuação)`,
-      continuationOf: idx === 0 ? undefined : baseTitle,
-    }));
+    .map((chunkItems, idx) => {
+      const startIdx = runningOffset;
+      runningOffset += chunkItems.length;
+      return {
+        ...plan,
+        items: chunkItems,
+        title: idx === 0 ? baseTitle : `${baseTitle} (Continuação)`,
+        continuationOf: idx === 0 ? undefined : baseTitle,
+        // GEMMA v3.10.6 — preserva sequência de numeração entre slides quebrados.
+        itemStartIndex: startIdx,
+      };
+    });
 
   console.log(`[V3-SPLIT] "${baseTitle}" (${plan.layout}) chars=${totalChars} items=${items.length} → ${out.length} slides`);
 
@@ -2071,7 +2083,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize, fill: { color: pal }, rectRadius: 0.06,
       });
-      slide.addText(String(i + 1), {
+      slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
         x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize,
         fontSize: badgeSize >= 0.30 ? 13 : 10, fontFace: design.fonts.title, bold: true,
@@ -2120,7 +2132,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.10 });
       slide.addShape("rect" as any, { x, y, w: 0.06, h: cardH, fill: { color: pal }, rectRadius: 0.10 });
-      slide.addText(String(i + 1), {
+      slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
         x: x + 0.12, y: y + 0.06, w: 0.40, h: 0.34,
         fontSize: Math.min(15, cardW > 3 ? 16 : 13), fontFace: design.fonts.title, bold: true,
         color: ensureContrastOnLight(pal, colors.cardBg), transparency: 15, align: "left",
@@ -2216,7 +2228,7 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
       slide.addShape("rect" as any, { x: colX, y: yPos, w: 0.05, h: itemH - 0.02, fill: { color: palColor }, rectRadius: 0.06 });
       const badgeW = 0.30;
       slide.addShape("roundRect" as any, { x: colX + 0.14, y: yPos + (itemH - 0.02) / 2 - badgeW / 2, w: badgeW, h: badgeW, fill: { color: palColor }, rectRadius: 0.06 });
-      slide.addText(String(col * mid + i + 1), {
+      slide.addText(String((plan.itemStartIndex ?? 0) + col * mid + i + 1), {
         x: colX + 0.14, y: yPos + (itemH - 0.02) / 2 - badgeW / 2, w: badgeW, h: badgeW,
         fontSize: 11, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
       });
@@ -2261,7 +2273,7 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
       x: x + 0.14, y: y + 0.14, w: geometry.numBadge, h: geometry.numBadge,
       fill: { color: pal }, rectRadius: 0.08,
     });
-    slide.addText(String(i + 1), {
+    slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
       x: x + 0.14, y: y + 0.14, w: geometry.numBadge, h: geometry.numBadge,
       fontSize: Math.min(13, geometry.numBadge * 36), fontFace: design.fonts.title, bold: true,
       color: "FFFFFF", align: "center", valign: "middle",
@@ -2657,7 +2669,9 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
   const rows = Math.ceil(items.length / cols);
   const gap = 0.12;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  const cardH = Math.min(2.50, (contentHAvail - gap * (rows - 1)) / rows);
+  // GEMMA v3.10.6 — removido cap 2.50": cards do summary agora ocupam
+  // todo o espaço útil em vez de deixar gap morto no fundo.
+  const cardH = Math.max(1.40, (contentHAvail - gap * (rows - 1)) / rows);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
     const x = contentX + col * (cardW + gap), y = contentY + row * (cardH + gap);
@@ -2667,7 +2681,7 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
     slide.addShape("rect" as any, { x, y, w: 0.05, h: cardH, fill: { color: pal }, rectRadius: 0.10 });
     const numSize = 0.32;
     slide.addShape("roundRect" as any, { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fill: { color: pal }, rectRadius: 0.08 });
-    slide.addText(String(i + 1), { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fontSize: 16, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
+    slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fontSize: 16, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
     slide.addText(items[i], { x: x + 0.14, y: y + numSize + 0.14, w: cardW - 0.28, h: cardH - numSize - 0.24, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
@@ -2690,7 +2704,9 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   const gap = 0.14;
   const cardW = (contentW - gap * (cols - 1)) / cols;
   const contentY = 1.65, contentH = CONTENT_BOTTOM - contentY;
-  const cardH = Math.min(2.50, (contentH - gap * (gridRows - 1)) / gridRows);
+  // GEMMA v3.10.6 — removido cap rígido 2.50" que truncava textos longos
+  // (slide 27 com >3 linhas extrapolava o card). Aproveita 100% da safe-zone.
+  const cardH = Math.max(1.40, (contentH - gap * (gridRows - 1)) / gridRows);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
     const x = contentX + col * (cardW + gap), y = contentY + row * (cardH + gap);
@@ -2700,7 +2716,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
     slide.addShape("rect" as any, { x, y, w: 0.05, h: cardH, fill: { color: pal }, rectRadius: 0.12 });
     const tkBadge = Math.min(0.38, cardH * 0.28, cardW * 0.22);
     slide.addShape("roundRect" as any, { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fill: { color: pal }, rectRadius: 0.08 });
-    slide.addText(String(i + 1), { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fontSize: Math.min(16, tkBadge * 40), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
+    slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fontSize: Math.min(16, tkBadge * 40), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
     const tkTextY = y + 0.14 + tkBadge + 0.10;
     const tkRuns = colorizeIconRuns(items[i], pal, colors.coverSubtext) || [{ text: items[i], options: { color: colors.coverSubtext } }];
     slide.addText(tkRuns as any, { x: x + 0.14, y: tkTextY, w: cardW - 0.28, h: cardH - (tkTextY - y) - 0.22, fontSize: TYPO.TAKEAWAY_BODY, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
