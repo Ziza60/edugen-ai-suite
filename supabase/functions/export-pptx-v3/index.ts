@@ -2073,23 +2073,27 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+    // GEMMA v3.10.7-GEMINI-SPEC — Geometria rígida.
+    // Fonte ÚNICA por slide, calculada com base no item mais longo.
+    // shrinkText PROIBIDO: o texto é escravo da geometria, não vice-versa.
+    const unifiedFontSize = computeUnifiedSlideFontSize(items, 20, 110, 18);
     for (let i = 0; i < items.length; i++) {
       const pal = design.palette[i % design.palette.length];
       const yPos = contentY + i * (itemH + bulletGap);
-      addCardShadow(slide, contentX, yPos, contentW, itemH - 0.04, colors.shadowColor, design.theme === "light");
+      addCardShadow(slide, contentX, yPos, contentW, itemH - 0.05, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
-        x: contentX, y: yPos, w: contentW, h: itemH - 0.04,
+        x: contentX, y: yPos, w: contentW, h: itemH - 0.05,
         fill: { color: colors.cardBg }, rectRadius: 0.08,
-        line: { color: colors.borders, width: 0.3 },
+        line: { color: colors.borders, width: 0.5 },
       });
-      slide.addShape("rect" as any, { x: contentX, y: yPos, w: 0.06, h: itemH - 0.04, fill: { color: pal }, rectRadius: 0.08 });
+      slide.addShape("rect" as any, { x: contentX, y: yPos, w: 0.06, h: itemH - 0.05, fill: { color: pal }, rectRadius: 0.08 });
       const badgeSize = Math.min(0.34, itemH - 0.14);
       slide.addShape("roundRect" as any, {
-        x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
+        x: contentX + 0.18, y: yPos + (itemH - 0.05) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize, fill: { color: pal }, rectRadius: 0.06,
       });
       slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
-        x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
+        x: contentX + 0.18, y: yPos + (itemH - 0.05) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize,
         fontSize: badgeSize >= 0.30 ? 13 : 10, fontFace: design.fonts.title, bold: true,
         color: "FFFFFF", align: "center", valign: "middle",
@@ -2097,22 +2101,31 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       { // title:desc split rendering for variant 1
         const v1ColonIdx = items[i].indexOf(":");
         const v1HasTitle = v1ColonIdx > 0 && v1ColonIdx < 45;
-        const v1X = contentX + 0.18 + badgeSize + 0.14;
-        const v1W = contentW - badgeSize - 0.42;
+        // Spec Gemini: x = contentX + 0.55, w = contentW - 0.70 → texto escravo da geometria
+        const v1X = contentX + 0.55;
+        const v1W = contentW - 0.70;
+        const baseOpts = {
+          x: v1X, y: yPos, w: v1W, h: itemH - 0.05,
+          fontSize: unifiedFontSize,
+          fontFace: design.fonts.body,
+          valign: "middle",
+          wrap: true,
+          shrinkText: false,
+          lineSpacingMultiple: 1.18,
+        } as any;
         if (v1HasTitle) {
           const v1Title = items[i].substring(0, v1ColonIdx).trim();
           const v1Desc = items[i].substring(v1ColonIdx + 1).trim();
           const titleRuns = renderSemanticRuns(v1Title + ": ", accentColor, pal, true) || [{ text: v1Title + ": ", options: { bold: true, color: pal } }];
           titleRuns.forEach(r => { r.options = { ...r.options, bold: true }; });
           const descRuns = renderSemanticRuns(v1Desc, accentColor, colors.text) || [{ text: v1Desc, options: { bold: false, color: colors.text } }];
-          slide.addText([...titleRuns, ...descRuns] as any,
-            { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18 } as any);
+          slide.addText([...titleRuns, ...descRuns] as any, baseOpts);
         } else {
           const runs = renderSemanticRuns(items[i], accentColor, colors.text);
           if (runs) {
-            slide.addText(runs as any, { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18 } as any);
+            slide.addText(runs as any, baseOpts);
           } else {
-            slide.addText(stripSemanticDivider(items[i]), { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18 } as any);
+            slide.addText(stripSemanticDivider(items[i]), { ...baseOpts, color: colors.text });
           }
         }
       }
