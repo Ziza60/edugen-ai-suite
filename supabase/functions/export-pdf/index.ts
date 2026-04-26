@@ -870,11 +870,12 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data: modules = [] } = await serviceClient
+    const { data: modulesRaw } = await serviceClient
       .from("course_modules")
       .select("*")
       .eq("course_id", course_id)
       .order("order_index");
+    const modules: any[] = modulesRaw ?? [];
 
     // ── Generate PDF ──
     const pdf = new PdfRenderer();
