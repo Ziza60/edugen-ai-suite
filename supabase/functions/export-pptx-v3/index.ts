@@ -2324,7 +2324,7 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
     });
     const flowY = 1.68;
     const cardY = flowY + 0.20;
-    const cardH = SLIDE_H - cardY - 0.45;
+    const cardH = CONTENT_BOTTOM - cardY;
     const gap = 0.06;
     const arrowW = 0.40;
     const totalArrowW = arrowW * Math.max(items.length - 1, 0);
