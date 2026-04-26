@@ -1685,7 +1685,20 @@ function cleanTOCDescription(rawDesc: string, moduleTitle: string): string {
 
   // Remove ponto final solitário e espaços
   s = s.replace(/^[\s.:\-–—]+/, "").replace(/\.$/, "").trim();
+  // Colapsa whitespace múltiplo (quebras de linha viram espaço único)
+  s = s.replace(/\s+/g, " ").trim();
   return s;
+}
+
+// Corte inteligente em fronteira de palavra com reticências.
+// Evita overflow visual catastrófico no PPTX quando o objetivo do módulo
+// é um parágrafo inteiro (>300 chars).
+function smartTruncate(s: string, maxChars: number): string {
+  if (s.length <= maxChars) return s;
+  const slice = s.slice(0, maxChars);
+  const lastSpace = slice.lastIndexOf(" ");
+  const cut = lastSpace > maxChars * 0.6 ? slice.slice(0, lastSpace) : slice;
+  return cut.replace(/[\s.,;:\-–—]+$/, "") + "…";
 }
 
 function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: string }[], design: DesignConfig) {
