@@ -2679,7 +2679,7 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
     slide.addShape("rect" as any, { x, y, w: 0.05, h: cardH, fill: { color: pal }, rectRadius: 0.10 });
     const numSize = 0.32;
     slide.addShape("roundRect" as any, { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fill: { color: pal }, rectRadius: 0.08 });
-    slide.addText(String(i + 1), { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fontSize: 16, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
+    slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), { x: x + 0.14, y: y + 0.10, w: numSize, h: numSize, fontSize: 16, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
     slide.addText(items[i], { x: x + 0.14, y: y + numSize + 0.14, w: cardW - 0.28, h: cardH - numSize - 0.24, fontSize: TYPO.BODY, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
