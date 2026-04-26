@@ -1753,12 +1753,15 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           // até a margem direita da SAFE_ZONE e quebra linha (wrap) naturalmente.
           const cleanDesc = cleanTOCDescription(mod.description, mod.title);
           if (cleanDesc) {
+            // GEMMA v3.10.2 — smartTruncate em fronteira de palavra (~180 chars)
+            // evita overflow visual no PPTX quando objetivo é parágrafo longo.
+            const safeDesc = smartTruncate(cleanDesc, 180);
             const descX = 6.90;
-            const descW = (SAFE_ZONE.X + SAFE_ZONE.W) - descX; // até a margem da SAFE_ZONE
-            slide.addText(cleanDesc, {
+            const descW = (SAFE_ZONE.X + SAFE_ZONE.W) - descX;
+            slide.addText(safeDesc, {
               x: descX, y, w: descW, h: itemH,
-              fontSize: 14, fontFace: design.fonts.body, color: colors.coverSubtext,
-              valign: "middle", wrap: true, shrinkText: false, lineSpacingMultiple: 1.18,
+              fontSize: 12, fontFace: design.fonts.body, color: colors.coverSubtext,
+              valign: "middle", wrap: true, shrinkText: false, lineSpacingMultiple: 1.15,
             } as any);
           }
         }
