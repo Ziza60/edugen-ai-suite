@@ -408,13 +408,13 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  // GEMMA v3.10.7-GEMINI-SPEC — Cálculo de carga real.
-  // Se o conteúdo total for curto (<550 chars) e respeitar maxItems,
-  // NÃO dividimos: evita slides "quase vazios" (slides 13, 75, etc).
+  // GEMMA v3.10.8-GEMMA-SPEC — Regra Gemma reforçada.
+  // Se o total de caracteres < 600 e items <= 8, MANTÉM tudo no mesmo slide
+  // (evita slides "quase vazios" como 13, 75 com item único).
   if (
     !forcedContinuation &&
-    items.length <= maxItems &&
-    totalChars < 550
+    totalChars < 600 &&
+    items.length <= Math.max(maxItems, 8)
   ) {
     return [plan];
   }
