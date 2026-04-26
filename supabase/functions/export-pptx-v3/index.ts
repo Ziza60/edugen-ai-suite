@@ -2132,7 +2132,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.10 });
       slide.addShape("rect" as any, { x, y, w: 0.06, h: cardH, fill: { color: pal }, rectRadius: 0.10 });
-      slide.addText(String(i + 1), {
+      slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
         x: x + 0.12, y: y + 0.06, w: 0.40, h: 0.34,
         fontSize: Math.min(15, cardW > 3 ? 16 : 13), fontFace: design.fonts.title, bold: true,
         color: ensureContrastOnLight(pal, colors.cardBg), transparency: 15, align: "left",
