@@ -218,7 +218,11 @@ function truncateHard(text: string, limit: number): string {
   const clean = sanitizeText(text || "").trim();
   if (!clean) return "";
   if (clean.length <= limit) return clean;
-  return `${clean.substring(0, Math.max(0, limit - 3)).trim()}...`;
+  // GEMMA v3.9.8 — quebra por palavra para não cortar no meio de termos.
+  const slice = clean.substring(0, Math.max(0, limit - 1));
+  const lastSpace = slice.lastIndexOf(" ");
+  const safe = lastSpace > limit * 0.6 ? slice.substring(0, lastSpace) : slice;
+  return `${safe.replace(/[\s,;:.\-–—]+$/u, "").trim()}…`;
 }
 
 type DeterministicCardItem = {
