@@ -2057,57 +2057,42 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
     addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
     slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.10 });
     slide.addShape("rect" as any, { x, y, w: cardW, h: 0.05, fill: { color: pal }, rectRadius: 0.10 });
-    // Normalize item: if no colon separator, try to infer "Title: description" split
-    // Pattern: short phrase (1-4 words, title-case) followed by longer description
-    let normalizedItem = items[i];
-    if (normalizedItem.indexOf(":") < 0 || normalizedItem.indexOf(":") > 40) {
-      const inferMatch = normalizedItem.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
-      if (inferMatch && inferMatch[1].split(" ").length <= 4) {
-        normalizedItem = inferMatch[1].trim() + ": " + inferMatch[2].trim();
-      }
-    }
-    const colonIdx = normalizedItem.indexOf(":");
-    if (colonIdx > 0 && colonIdx < 70) {
-      const label = normalizedItem.substring(0, colonIdx).trim();
-      const desc = normalizedItem.substring(colonIdx + 1).trim();
-      const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
-      slide.addShape("roundRect" as any, { x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge, fill: { color: pal }, rectRadius: 0.06 });
-      slide.addText(String(i + 1), {
-        x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge,
-        fontSize: Math.min(12, gcBadge * 34), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
-      });
+
+    const p = parsed[i];
+    const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
+    slide.addShape("roundRect" as any, { x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge, fill: { color: pal }, rectRadius: 0.06 });
+    slide.addText(String(i + 1), {
+      x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge,
+      fontSize: Math.min(12, gcBadge * 34), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
+    });
+
+    if (p.hasColon) {
       const labelX = x + 0.10 + gcBadge + 0.08;
       const labelW = x + cardW - labelX - 0.10;
-      const estCharsPerLine = Math.max(1, Math.floor(labelW * 72 / (TYPO.CARD_TITLE * 0.55)));
-      const estLines = Math.ceil(label.length / estCharsPerLine);
+      const estCharsPerLine = Math.max(1, Math.floor(labelW * 72 / (unifiedLabelFont * 0.55)));
+      const estLines = Math.ceil(p.label.length / estCharsPerLine);
       const labelH = estLines > 1 ? 0.62 : 0.38;
       const labelColor = ensureContrastOnLight(pal, colors.cardBg);
-      const labelRuns = colorizeIconRuns(label, pal, labelColor) || [{ text: label, options: { bold: true, color: labelColor } }];
+      const labelRuns = colorizeIconRuns(p.label, pal, labelColor) || [{ text: p.label, options: { bold: true, color: labelColor } }];
       slide.addText(labelRuns as any, {
         x: labelX, y: y + 0.12, w: labelW, h: labelH,
-        fontSize: items.length >= 6 ? TYPO.CARD_TITLE - 1 : TYPO.CARD_TITLE,
+        fontSize: unifiedLabelFont,
         fontFace: design.fonts.title, bold: true,
         valign: "middle", lineSpacingMultiple: 1.10,
       });
       const sepY = y + 0.12 + labelH + 0.06;
       addHR(slide, x + 0.10, sepY, cardW - 0.20, colors.borders, 0.004);
-      const descRuns = colorizeIconRuns(desc, pal, colors.text) || [{ text: desc, options: { color: colors.text } }];
+      const descRuns = colorizeIconRuns(p.desc, pal, colors.text) || [{ text: p.desc, options: { color: colors.text } }];
       slide.addText(descRuns as any, {
         x: x + 0.12, y: sepY + 0.08, w: cardW - 0.24, h: Math.max(0.30, y + cardH - sepY - 0.16),
-        fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
+        fontSize: unifiedDescFont,
         fontFace: design.fonts.body, valign: "top", lineSpacingMultiple: 1.18,
       });
     } else {
-      const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
-      slide.addShape("roundRect" as any, { x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge, fill: { color: pal }, rectRadius: 0.06 });
-      slide.addText(String(i + 1), {
-        x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge,
-        fontSize: Math.min(12, gcBadge * 34), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
-      });
-      const itemRuns = colorizeIconRuns(items[i], pal, colors.text) || [{ text: items[i], options: { color: colors.text } }];
+      const itemRuns = colorizeIconRuns(p.desc, pal, colors.text) || [{ text: p.desc, options: { color: colors.text } }];
       slide.addText(itemRuns as any, {
         x: x + 0.12, y: y + 0.14 + gcBadge + 0.10, w: cardW - 0.24, h: cardH - (0.14 + gcBadge + 0.18),
-        fontSize: items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY,
+        fontSize: unifiedDescFont,
         fontFace: design.fonts.body, valign: "top", lineSpacingMultiple: 1.18,
       });
     }
