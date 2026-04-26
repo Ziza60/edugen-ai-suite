@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.0-TOC-FULLTEXT";
+const ENGINE_VERSION = "3.10.1-TOC-FULLTEXT-FIX";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2758,11 +2758,11 @@ async function runPipeline(
     const cleanTitle = rawTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || rawTitle;
     const stripped = (m.content || "")
       .replace(/#{1,6}\s*/g, "").replace(/\*\*(.*?)\*\*/g, "$1").replace(/[*_`]/g, "")
-      .replace(/^[-*]\s+/gm, "").replace(/^\d+[.)]\s+/gm, "");
-    const firstSentence = stripped.split(/[.!?]\s+/)[0]?.trim() || "";
-    const tocDescription = firstSentence.length > 20
-      ? truncateHard(firstSentence, TOC_DESCRIPTION_LIMIT)
-      : undefined;
+      .replace(/^[-*]\s+/gm, "").replace(/^\d+[.)]\s+/gm, "")
+      .replace(/\n{2,}/g, " ").replace(/\s+/g, " ").trim();
+    // Passa o conteúdo completo — cleanTOCDescription() em renderTOC extrai o
+    // 🎯 Objetivo do Módulo e remove redundância. Sem truncagem aqui.
+    const tocDescription = stripped.length > 20 ? stripped : undefined;
     return {
       title: cleanTitle,
       description: tocDescription,
