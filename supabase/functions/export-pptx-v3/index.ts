@@ -406,15 +406,23 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
     ? GRID_MAX_ITEMS
     : Math.max(2, design.density.maxItemsPerSlide);
   const totalChars = slideCharLoad(plan);
-
-  const tooManyItems = items.length > maxItems;
-  const tooDense = totalChars > SPLIT_LIMITS.MAX_TOTAL_CHARS;
   const forcedContinuation = shouldForceContinuation(plan);
 
-  if (!tooManyItems && !tooDense && !forcedContinuation) return [plan];
+  // GEMMA v3.10.7-GEMINI-SPEC — Cálculo de carga real.
+  // Se o conteúdo total for curto (<550 chars) e respeitar maxItems,
+  // NÃO dividimos: evita slides "quase vazios" (slides 13, 75, etc).
+  if (
+    !forcedContinuation &&
+    items.length <= maxItems &&
+    totalChars < 550
+  ) {
+    return [plan];
+  }
   if (items.length <= 1) return [plan]; // não dá para dividir
 
-  // Particiona items em chunks que respeitem AMBOS os limites
+  // Particiona items em chunks que respeitem AMBOS os limites.
+  // Teto de chars elevado para 580 (Gemini spec): só estouramos quando
+  // realmente não há mais espaço físico para acomodar o próximo item.
   const chunks: string[][] = [];
   let current: string[] = [];
   let currentChars = 0;
@@ -422,7 +430,7 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   for (const it of items) {
     const itLen = (it || "").length;
     const wouldExceedItems = current.length + 1 > maxItems;
-    const wouldExceedChars = currentChars + itLen > SPLIT_LIMITS.MAX_TOTAL_CHARS && current.length > 0;
+    const wouldExceedChars = (currentChars + itLen > 580) && current.length > 0;
     if (wouldExceedItems || wouldExceedChars) {
       dbg("SPLIT-CUT", {
         title: plan.title,
