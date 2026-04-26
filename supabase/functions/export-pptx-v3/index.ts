@@ -433,9 +433,10 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   // GEMMA v3.10.9-GEMMA-SPEC — Regra Gemma definitiva.
   // Se o total de caracteres < 700 e items <= 8, MANTÉM tudo no mesmo slide
   // (evita slides "quase vazios" como 13, 75 com item único/órfão).
+  // GEMMA v3.11.0-GEMMA-STABLE — Permite até 8 itens e 800 chars antes de dividir.
   if (
     !forcedContinuation &&
-    totalChars < 700 &&
+    totalChars < 800 &&
     items.length <= 8
   ) {
     return [plan];
