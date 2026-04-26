@@ -469,14 +469,21 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   if (chunks.length <= 1) return [plan];
 
   const baseTitle = plan.title || "Slide";
+  let runningOffset = 0;
   const out: SlidePlan[] = chunks
     .filter((c) => c.length > 0)
-    .map((chunkItems, idx) => ({
-      ...plan,
-      items: chunkItems,
-      title: idx === 0 ? baseTitle : `${baseTitle} (Continuação)`,
-      continuationOf: idx === 0 ? undefined : baseTitle,
-    }));
+    .map((chunkItems, idx) => {
+      const startIdx = runningOffset;
+      runningOffset += chunkItems.length;
+      return {
+        ...plan,
+        items: chunkItems,
+        title: idx === 0 ? baseTitle : `${baseTitle} (Continuação)`,
+        continuationOf: idx === 0 ? undefined : baseTitle,
+        // GEMMA v3.10.6 — preserva sequência de numeração entre slides quebrados.
+        itemStartIndex: startIdx,
+      };
+    });
 
   console.log(`[V3-SPLIT] "${baseTitle}" (${plan.layout}) chars=${totalChars} items=${items.length} → ${out.length} slides`);
 
