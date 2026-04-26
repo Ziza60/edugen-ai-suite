@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.9.6-GEMMA-SYMMETRY";
+const ENGINE_VERSION = "3.9.7-GEMMA-DETERMINISTIC";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,6 +142,9 @@ const MIN_FONT = {
   CARD_BODY: 14, // descrições internas a cards (TOC, grids densos)
 } as const;
 
+const TOC_DESCRIPTION_LIMIT = 65;
+const GRID_MAX_ITEMS = 5;
+
 /**
  * Limites para o Smart Content Splitter.
  * Acima destes limites o slide é dividido automaticamente em
@@ -206,6 +209,102 @@ function computeUnifiedSlideFontSize(items: string[], baseSize: number, threshol
   return autoScaleFont(baseSize, longest, threshold, floor);
 }
 
+function truncateHard(text: string, limit: number): string {
+  const clean = sanitizeText(text || "").trim();
+  if (!clean) return "";
+  if (clean.length <= limit) return clean;
+  return `${clean.substring(0, Math.max(0, limit - 3)).trim()}...`;
+}
+
+type DeterministicCardItem = {
+  icon?: string;
+  label: string;
+  desc: string;
+  hasColon: boolean;
+  cleanText: string;
+};
+
+function parseDeterministicCardItem(raw: string): DeterministicCardItem {
+  const semantic = splitSemanticLead(raw || "");
+  let clean = semantic.text;
+
+  if (clean.indexOf(":") < 0 || clean.indexOf(":") > 40) {
+    const inferMatch = clean.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
+    if (inferMatch && inferMatch[1].split(" ").length <= 4) {
+      clean = `${inferMatch[1].trim()}: ${inferMatch[2].trim()}`;
+    }
+  }
+
+  const colonIdx = clean.indexOf(":");
+  if (colonIdx > 0 && colonIdx < 70) {
+    const label = sanitizeText(clean.substring(0, colonIdx)).trim();
+    const desc = sanitizeText(clean.substring(colonIdx + 1)).trim();
+    return {
+      icon: semantic.icon,
+      label,
+      desc,
+      hasColon: true,
+      cleanText: `${label}: ${desc}`.trim(),
+    };
+  }
+
+  const desc = sanitizeText(clean).trim();
+  return {
+    icon: semantic.icon,
+    label: "",
+    desc,
+    hasColon: false,
+    cleanText: desc,
+  };
+}
+
+function getDeterministicGridLayout(itemCount: number) {
+  const count = Math.max(1, Math.min(itemCount, GRID_MAX_ITEMS));
+  const cols = count >= 4 ? 2 : 1;
+  const rows = Math.ceil(count / cols);
+  const contentX = SAFE_ZONE.X;
+  const contentY = SAFE_ZONE.Y + 0.05;
+  const contentW = SAFE_ZONE.W;
+  const contentH = SAFE_ZONE.H - 0.05;
+  const gapX = 0.24;
+  const gapY = 0.16;
+  const cardW = (contentW - gapX * (cols - 1)) / cols;
+  const cardH = (contentH - gapY * (rows - 1)) / rows;
+  const numBadge = 0.34;
+  const semanticBadge = 0.34;
+  const textXOffset = 0.14 + numBadge + 0.10 + semanticBadge + 0.12;
+  const textYOffset = 0.64;
+  const textW = cardW - textXOffset - 0.16;
+  const textH = Math.max(0.42, cardH - textYOffset - 0.16);
+
+  return { cols, rows, contentX, contentY, contentW, contentH, gapX, gapY, cardW, cardH, numBadge, semanticBadge, textXOffset, textYOffset, textW, textH };
+}
+
+function estimateWrappedLines(text: string, fontSize: number, boxW: number): number {
+  const clean = sanitizeText(text || "").trim();
+  if (!clean) return 1;
+  const charsPerLine = Math.max(10, Math.floor((boxW * 72) / Math.max(fontSize * 0.58, 1)));
+  return Math.max(1, Math.ceil(clean.length / charsPerLine));
+}
+
+function estimateTextHeightInches(text: string, fontSize: number, boxW: number, lineSpacingMultiple = 1.18): number {
+  const lines = estimateWrappedLines(text, fontSize, boxW);
+  return lines * ((fontSize * lineSpacingMultiple) / 72);
+}
+
+function computeDeterministicGridFontSize(items: string[]): number {
+  const parsed = items.map(parseDeterministicCardItem);
+  const geometry = getDeterministicGridLayout(parsed.length);
+  const base = parsed.length >= 4 ? 20 : 21;
+
+  for (let fontSize = base; fontSize >= MIN_FONT.BODY; fontSize -= 0.5) {
+    const fits = parsed.every((item) => estimateTextHeightInches(item.cleanText, fontSize, geometry.textW) <= geometry.textH);
+    if (fits) return Math.round(fontSize * 10) / 10;
+  }
+
+  return MIN_FONT.BODY - 0.5;
+}
+
 function shouldForceContinuation(plan: SlidePlan): boolean {
   const items = plan.items ?? [];
   if (items.length <= 1) return false;
@@ -217,6 +316,7 @@ function shouldForceContinuation(plan: SlidePlan): boolean {
       return unified <= MIN_FONT.BODY && longest > (items.length >= 6 ? 88 : 108);
     }
     case "grid_cards":
+      return computeDeterministicGridFontSize(items) < MIN_FONT.BODY;
     case "summary_slide":
     case "numbered_takeaways": {
       const cols = items.length <= 3 ? Math.max(items.length, 1) : items.length <= 4 ? 2 : 3;
@@ -261,7 +361,9 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   if (!SPLITTABLE_LAYOUTS.has(plan.layout)) return [plan];
 
   const items = plan.items ?? [];
-  const maxItems = Math.max(2, design.density.maxItemsPerSlide);
+  const maxItems = plan.layout === "grid_cards"
+    ? GRID_MAX_ITEMS
+    : Math.max(2, design.density.maxItemsPerSlide);
   const totalChars = slideCharLoad(plan);
 
   const tooManyItems = items.length > maxItems;
@@ -1590,7 +1692,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          if (cleanDesc.length > 60) cleanDesc = cleanDesc.substring(0, 57).trim() + "...";
+          cleanDesc = truncateHard(cleanDesc, TOC_DESCRIPTION_LIMIT);
           if (cleanDesc) {
             slide.addText(cleanDesc, {
               x: 6.90, y, w: SLIDE_W - 7.40, h: itemH,
@@ -1635,7 +1737,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         slide.addText(pageModules[i].title, {
           x: x + 0.20, y: titleY, w: cardW - 0.34, h: titleH,
           fontSize: cardH < 1.4 ? 13 : 15, fontFace: design.fonts.title, bold: true,
-          color: "FFFFFF", valign: "top", lineSpacingMultiple: 1.06, autoFit: true,
+          color: "FFFFFF", valign: "top", lineSpacingMultiple: 1.06,
         } as any);
         const sepY = titleY + titleH + 0.04;
         addHR(slide, x + 0.20, sepY, cardW * 0.45, pal, 0.010);
@@ -1644,7 +1746,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          if (rawGridDesc.length > 60) rawGridDesc = rawGridDesc.substring(0, 57).trim() + "...";
+          rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT);
           if (rawGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
@@ -2004,98 +2106,62 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
   addLeftEdge(slide, colors.p3);
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p3, design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
-  const items = plan.items || [];
-  const contentX = 0.65;
-  const contentW = SLIDE_W - contentX - 0.50;
-  const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
-  const rows = Math.ceil(items.length / cols);
-  const gap = 0.18;
-  const cardW = (contentW - gap * (cols - 1)) / cols;
-  const contentArea = SLIDE_H - 1.68 - 0.45;
-  // GEMMA v3.9.5 — altura uniforme: TODOS os cards têm exatamente o mesmo cardH
-  const cardH = (contentArea - gap * (rows - 1)) / rows;
+  const items = (plan.items || []).slice(0, GRID_MAX_ITEMS);
+  const parsed = items.map(parseDeterministicCardItem);
+  const geometry = getDeterministicGridLayout(parsed.length);
+  const unifiedFontSize = computeDeterministicGridFontSize(items);
 
-  // Pré-cálculo: normaliza items e separa labels/descs para fonte unificada
-  type Parsed = { label: string; desc: string; hasColon: boolean; raw: string };
-  const parsed: Parsed[] = items.map((raw) => {
-    let n = raw;
-    if (n.indexOf(":") < 0 || n.indexOf(":") > 40) {
-      const m = n.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
-      if (m && m[1].split(" ").length <= 4) n = m[1].trim() + ": " + m[2].trim();
-    }
-    const ci = n.indexOf(":");
-    if (ci > 0 && ci < 70) {
-      return { label: n.substring(0, ci).trim(), desc: n.substring(ci + 1).trim(), hasColon: true, raw: n };
-    }
-    return { label: "", desc: n, hasColon: false, raw: n };
-  });
-
-  // Fonte unificada: pior caso (maior label e maior desc) determina o tamanho de TODOS os cards
-  const labelBase = items.length >= 6 ? TYPO.CARD_TITLE - 1 : TYPO.CARD_TITLE;
-  const descBase = items.length >= 6 ? TYPO.CARD_BODY - 1 : TYPO.CARD_BODY;
-  const labelThreshold = cols >= 3 ? 28 : cols === 2 ? 42 : 60;
-  const descThreshold = cols >= 3 ? 70 : cols === 2 ? 110 : 160;
-  const unifiedLabelFont = computeUnifiedSlideFontSize(
-    parsed.map((p) => p.label || ""),
-    labelBase,
-    labelThreshold,
-    Math.max(11, MIN_FONT.CARD_BODY - 2),
-  );
-  const unifiedDescFont = computeUnifiedSlideFontSize(
-    parsed.map((p) => p.desc || ""),
-    descBase,
-    descThreshold,
-    MIN_FONT.CARD_BODY,
-  );
-
-  for (let i = 0; i < items.length; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = contentX + col * (cardW + gap);
-    const y = 1.68 + row * (cardH + gap);
+  for (let i = 0; i < parsed.length; i++) {
+    const col = i % geometry.cols;
+    const row = Math.floor(i / geometry.cols);
+    const x = geometry.contentX + col * (geometry.cardW + geometry.gapX);
+    const y = geometry.contentY + row * (geometry.cardH + geometry.gapY);
     const pal = design.palette[i % design.palette.length];
-    addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
-    slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.10 });
-    slide.addShape("rect" as any, { x, y, w: cardW, h: 0.05, fill: { color: pal }, rectRadius: 0.10 });
+    const item = parsed[i];
 
-    const p = parsed[i];
-    const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
-    slide.addShape("roundRect" as any, { x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge, fill: { color: pal }, rectRadius: 0.06 });
+    addCardShadow(slide, x, y, geometry.cardW, geometry.cardH, colors.shadowColor, design.theme === "light");
+    slide.addShape("roundRect" as any, { x, y, w: geometry.cardW, h: geometry.cardH, fill: { color: colors.cardBg }, rectRadius: 0.10 });
+    slide.addShape("rect" as any, { x, y, w: 0.06, h: geometry.cardH, fill: { color: pal }, rectRadius: 0.10 });
+
+    slide.addShape("roundRect" as any, {
+      x: x + 0.14, y: y + 0.14, w: geometry.numBadge, h: geometry.numBadge,
+      fill: { color: pal }, rectRadius: 0.08,
+    });
     slide.addText(String(i + 1), {
-      x: x + 0.10, y: y + 0.14, w: gcBadge, h: gcBadge,
-      fontSize: Math.min(12, gcBadge * 34), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
+      x: x + 0.14, y: y + 0.14, w: geometry.numBadge, h: geometry.numBadge,
+      fontSize: Math.min(13, geometry.numBadge * 36), fontFace: design.fonts.title, bold: true,
+      color: "FFFFFF", align: "center", valign: "middle",
     });
 
-    if (p.hasColon) {
-      const labelX = x + 0.10 + gcBadge + 0.08;
-      const labelW = x + cardW - labelX - 0.10;
-      const estCharsPerLine = Math.max(1, Math.floor(labelW * 72 / (unifiedLabelFont * 0.55)));
-      const estLines = Math.ceil(p.label.length / estCharsPerLine);
-      const labelH = estLines > 1 ? 0.62 : 0.38;
-      const labelColor = ensureContrastOnLight(pal, colors.cardBg);
-      const labelRuns = colorizeIconRuns(p.label, pal, labelColor) || [{ text: p.label, options: { bold: true, color: labelColor } }];
-      slide.addText(labelRuns as any, {
-        x: labelX, y: y + 0.12, w: labelW, h: labelH,
-        fontSize: unifiedLabelFont,
-        fontFace: design.fonts.title, bold: true,
-        valign: "middle", lineSpacingMultiple: 1.10,
+    if (item.icon) {
+      slide.addShape("ellipse" as any, {
+        x: x + 0.14 + geometry.numBadge + 0.10, y: y + 0.14, w: geometry.semanticBadge, h: geometry.semanticBadge,
+        fill: { color: pal, transparency: 82 }, line: { color: pal, width: 0.8 },
       });
-      const sepY = y + 0.12 + labelH + 0.06;
-      addHR(slide, x + 0.10, sepY, cardW - 0.20, colors.borders, 0.004);
-      const descRuns = colorizeIconRuns(p.desc, pal, colors.text) || [{ text: p.desc, options: { color: colors.text } }];
-      slide.addText(descRuns as any, {
-        x: x + 0.12, y: sepY + 0.08, w: cardW - 0.24, h: Math.max(0.30, y + cardH - sepY - 0.16),
-        fontSize: unifiedDescFont,
-        fontFace: design.fonts.body, valign: "top", lineSpacingMultiple: 1.18,
-      });
-    } else {
-      const itemRuns = colorizeIconRuns(p.desc, pal, colors.text) || [{ text: p.desc, options: { color: colors.text } }];
-      slide.addText(itemRuns as any, {
-        x: x + 0.12, y: y + 0.14 + gcBadge + 0.10, w: cardW - 0.24, h: cardH - (0.14 + gcBadge + 0.18),
-        fontSize: unifiedDescFont,
-        fontFace: design.fonts.body, valign: "top", lineSpacingMultiple: 1.18,
+      slide.addText(item.icon, {
+        x: x + 0.14 + geometry.numBadge + 0.10, y: y + 0.14, w: geometry.semanticBadge, h: geometry.semanticBadge,
+        fontSize: 14, fontFace: design.fonts.body, color: pal, align: "center", valign: "middle",
       });
     }
+
+    const textRuns = item.hasColon
+      ? [
+          { text: `${item.label}: `, options: { bold: true, color: ensureContrastOnLight(pal, colors.cardBg) } },
+          { text: item.desc, options: { color: colors.text } },
+        ]
+      : [{ text: item.desc, options: { color: colors.text } }];
+
+    slide.addText(textRuns as any, {
+      x: x + geometry.textXOffset,
+      y: y + geometry.textYOffset,
+      w: geometry.textW,
+      h: geometry.textH,
+      fontSize: unifiedFontSize,
+      fontFace: design.fonts.body,
+      valign: "top",
+      lineSpacingMultiple: 1.18,
+      margin: 0,
+    } as any);
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
@@ -2650,7 +2716,7 @@ async function runPipeline(
       .replace(/^[-*]\s+/gm, "").replace(/^\d+[.)]\s+/gm, "");
     const firstSentence = stripped.split(/[.!?]\s+/)[0]?.trim() || "";
     const tocDescription = firstSentence.length > 20
-      ? (firstSentence.length > 60 ? `${firstSentence.substring(0, 57).trim()}...` : firstSentence)
+      ? truncateHard(firstSentence, TOC_DESCRIPTION_LIMIT)
       : undefined;
     return {
       title: cleanTitle,
