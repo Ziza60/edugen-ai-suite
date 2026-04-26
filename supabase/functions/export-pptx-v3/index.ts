@@ -142,7 +142,12 @@ const MIN_FONT = {
   CARD_BODY: 14, // descrições internas a cards (TOC, grids densos)
 } as const;
 
-const TOC_DESCRIPTION_LIMIT = 65;
+// GEMMA v3.9.8 — limites por layout do TOC. List (≤5 mods): coluna larga aceita ~140 chars.
+// Grid (>5 mods): cards compactos, manter 95 chars para não quebrar a grade.
+const TOC_DESCRIPTION_LIMIT_LIST = 140;
+const TOC_DESCRIPTION_LIMIT_GRID = 95;
+// retro-compat: usado em pré-processamento (tocModules) — usa o teto maior.
+const TOC_DESCRIPTION_LIMIT = TOC_DESCRIPTION_LIMIT_LIST;
 const GRID_MAX_ITEMS = 5;
 
 /**
