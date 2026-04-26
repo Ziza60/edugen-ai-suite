@@ -2449,7 +2449,7 @@ function renderComparisonTable(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
   const contentX = 0.65;
   const contentW2_tbl = SLIDE_W - contentX - 0.50;
   const tableY = 1.68;
-  const tableAvailH = SLIDE_H - tableY - 0.50;
+  const tableAvailH = CONTENT_BOTTOM - tableY;
   const totalRows = rows.length + 1;
   const dynRowH = Math.min(0.80, Math.max(0.40, tableAvailH / totalRows));
   
