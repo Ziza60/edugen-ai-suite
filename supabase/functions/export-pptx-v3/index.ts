@@ -3,7 +3,29 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.3-SPLIT-PREVENTIVE-MARKERS";
+const ENGINE_VERSION = "3.10.4-SPLIT-DEBUG-MODE";
+
+/**
+ * GEMMA v3.10.4 — Debug Mode
+ * Ative com env var `PPTX_V3_DEBUG=1` (ou request header/body com debug=true)
+ * para emitir logs detalhados de chunks e classificação de marcadores.
+ */
+const DEBUG_SPLIT = (Deno.env.get("PPTX_V3_DEBUG") ?? "").trim() === "1";
+function dbg(tag: string, payload: unknown) {
+  if (!DEBUG_SPLIT) return;
+  try {
+    console.log(`[V3-DEBUG][${tag}] ${typeof payload === "string" ? payload : JSON.stringify(payload)}`);
+  } catch {
+    console.log(`[V3-DEBUG][${tag}] <unserializable>`);
+  }
+}
+function classifyItem(item: string): "section" | "item" {
+  return isSectionMarker(item) ? "section" : "item";
+}
+function summarizeItem(item: string, maxLen = 60): string {
+  const s = (item || "").replace(/\s+/g, " ").trim();
+  return s.length <= maxLen ? s : s.slice(0, maxLen - 1) + "…";
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
