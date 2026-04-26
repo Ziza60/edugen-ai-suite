@@ -2228,7 +2228,7 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
       slide.addShape("rect" as any, { x: colX, y: yPos, w: 0.05, h: itemH - 0.02, fill: { color: palColor }, rectRadius: 0.06 });
       const badgeW = 0.30;
       slide.addShape("roundRect" as any, { x: colX + 0.14, y: yPos + (itemH - 0.02) / 2 - badgeW / 2, w: badgeW, h: badgeW, fill: { color: palColor }, rectRadius: 0.06 });
-      slide.addText(String(col * mid + i + 1), {
+      slide.addText(String((plan.itemStartIndex ?? 0) + col * mid + i + 1), {
         x: colX + 0.14, y: yPos + (itemH - 0.02) / 2 - badgeW / 2, w: badgeW, h: badgeW,
         fontSize: 11, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle",
       });
