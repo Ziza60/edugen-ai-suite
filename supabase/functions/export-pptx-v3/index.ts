@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.9.9-TOC-CLEAN";
+const ENGINE_VERSION = "3.10.0-TOC-FULLTEXT";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1736,14 +1736,17 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           fontSize: 15, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
         });
         if (mod.description) {
-          let cleanDesc = cleanTOCDescription(mod.description, mod.title);
-          cleanDesc = truncateHard(cleanDesc, TOC_DESCRIPTION_LIMIT_LIST);
+          // GEMMA v3.10.0-TOC-FULLTEXT: sem truncamento; usa toda a largura útil
+          // até a margem direita da SAFE_ZONE e quebra linha (wrap) naturalmente.
+          const cleanDesc = cleanTOCDescription(mod.description, mod.title);
           if (cleanDesc) {
+            const descX = 6.90;
+            const descW = (SAFE_ZONE.X + SAFE_ZONE.W) - descX; // até a margem da SAFE_ZONE
             slide.addText(cleanDesc, {
-              x: 6.90, y, w: SLIDE_W - 7.40, h: itemH,
-              fontSize: MIN_FONT.CARD_BODY, fontFace: design.fonts.body, color: colors.coverSubtext,
-              valign: "middle", lineSpacingMultiple: 1.18,
-            });
+              x: descX, y, w: descW, h: itemH,
+              fontSize: 14, fontFace: design.fonts.body, color: colors.coverSubtext,
+              valign: "middle", wrap: true, shrinkText: false, lineSpacingMultiple: 1.18,
+            } as any);
           }
         }
         if (i < pageModules.length - 1) addHR(slide, 0.65, y + itemH + 0.04, SLIDE_W - 1.20, colors.divider, 0.008);
@@ -1787,16 +1790,16 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         const sepY = titleY + titleH + 0.04;
         addHR(slide, x + 0.20, sepY, cardW * 0.45, pal, 0.010);
         if (pageModules[i].description) {
-          let rawGridDesc = cleanTOCDescription(pageModules[i].description!, pageModules[i].title);
-          rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT_GRID);
+          // GEMMA v3.10.0-TOC-FULLTEXT: no grid, sem corte; wrap natural dentro do card.
+          const rawGridDesc = cleanTOCDescription(pageModules[i].description!, pageModules[i].title);
           if (rawGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
             slide.addText(rawGridDesc, {
               x: x + 0.20, y: descY, w: cardW - 0.34, h: descH,
-              fontSize: MIN_FONT.CARD_BODY, fontFace: design.fonts.body,
-              color: colors.coverSubtext, valign: "top", lineSpacingMultiple: 1.20,
-            });
+              fontSize: 12, fontFace: design.fonts.body,
+              color: colors.coverSubtext, valign: "top", wrap: true, shrinkText: false, lineSpacingMultiple: 1.20,
+            } as any);
           }
         }
         slide.addShape("ellipse" as any, {
