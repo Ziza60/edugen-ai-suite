@@ -1862,7 +1862,6 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
     }
   }
 }
-}
 
 // ── MODULE COVER ──
 // GEMMA v3.9 — refatorado para SAFE_ZONE: faixa lateral em SAFE_ZONE.X (0.80),
