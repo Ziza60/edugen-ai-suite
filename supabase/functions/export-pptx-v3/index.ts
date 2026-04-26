@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.9.6-GEMMA-SYMMETRY";
+const ENGINE_VERSION = "3.9.7-GEMMA-DETERMINISTIC";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,6 +142,9 @@ const MIN_FONT = {
   CARD_BODY: 14, // descrições internas a cards (TOC, grids densos)
 } as const;
 
+const TOC_DESCRIPTION_LIMIT = 65;
+const GRID_MAX_ITEMS = 5;
+
 /**
  * Limites para o Smart Content Splitter.
  * Acima destes limites o slide é dividido automaticamente em
@@ -206,6 +209,102 @@ function computeUnifiedSlideFontSize(items: string[], baseSize: number, threshol
   return autoScaleFont(baseSize, longest, threshold, floor);
 }
 
+function truncateHard(text: string, limit: number): string {
+  const clean = sanitizeText(text || "").trim();
+  if (!clean) return "";
+  if (clean.length <= limit) return clean;
+  return `${clean.substring(0, Math.max(0, limit - 3)).trim()}...`;
+}
+
+type DeterministicCardItem = {
+  icon?: string;
+  label: string;
+  desc: string;
+  hasColon: boolean;
+  cleanText: string;
+};
+
+function parseDeterministicCardItem(raw: string): DeterministicCardItem {
+  const semantic = splitSemanticLead(raw || "");
+  let clean = semantic.text;
+
+  if (clean.indexOf(":") < 0 || clean.indexOf(":") > 40) {
+    const inferMatch = clean.match(/^([A-ZÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÇ][\w\sàáéíóúàèìòùâêîôûãõçÀÁÉÍÓÚÂÊÎÔÛÃÕÇ]{0,35}?)\s+([A-ZÁÉÍÓÚO][a-záéíóúàèìòùâêîôûãõç].{10,})/u);
+    if (inferMatch && inferMatch[1].split(" ").length <= 4) {
+      clean = `${inferMatch[1].trim()}: ${inferMatch[2].trim()}`;
+    }
+  }
+
+  const colonIdx = clean.indexOf(":");
+  if (colonIdx > 0 && colonIdx < 70) {
+    const label = sanitizeText(clean.substring(0, colonIdx)).trim();
+    const desc = sanitizeText(clean.substring(colonIdx + 1)).trim();
+    return {
+      icon: semantic.icon,
+      label,
+      desc,
+      hasColon: true,
+      cleanText: `${label}: ${desc}`.trim(),
+    };
+  }
+
+  const desc = sanitizeText(clean).trim();
+  return {
+    icon: semantic.icon,
+    label: "",
+    desc,
+    hasColon: false,
+    cleanText: desc,
+  };
+}
+
+function getDeterministicGridLayout(itemCount: number) {
+  const count = Math.max(1, Math.min(itemCount, GRID_MAX_ITEMS));
+  const cols = count >= 4 ? 2 : 1;
+  const rows = Math.ceil(count / cols);
+  const contentX = SAFE_ZONE.X;
+  const contentY = SAFE_ZONE.Y + 0.05;
+  const contentW = SAFE_ZONE.W;
+  const contentH = SAFE_ZONE.H - 0.05;
+  const gapX = 0.24;
+  const gapY = 0.16;
+  const cardW = (contentW - gapX * (cols - 1)) / cols;
+  const cardH = (contentH - gapY * (rows - 1)) / rows;
+  const numBadge = 0.34;
+  const semanticBadge = 0.34;
+  const textXOffset = 0.14 + numBadge + 0.10 + semanticBadge + 0.12;
+  const textYOffset = 0.64;
+  const textW = cardW - textXOffset - 0.16;
+  const textH = Math.max(0.42, cardH - textYOffset - 0.16);
+
+  return { cols, rows, contentX, contentY, contentW, contentH, gapX, gapY, cardW, cardH, numBadge, semanticBadge, textXOffset, textYOffset, textW, textH };
+}
+
+function estimateWrappedLines(text: string, fontSize: number, boxW: number): number {
+  const clean = sanitizeText(text || "").trim();
+  if (!clean) return 1;
+  const charsPerLine = Math.max(10, Math.floor((boxW * 72) / Math.max(fontSize * 0.58, 1)));
+  return Math.max(1, Math.ceil(clean.length / charsPerLine));
+}
+
+function estimateTextHeightInches(text: string, fontSize: number, boxW: number, lineSpacingMultiple = 1.18): number {
+  const lines = estimateWrappedLines(text, fontSize, boxW);
+  return lines * ((fontSize * lineSpacingMultiple) / 72);
+}
+
+function computeDeterministicGridFontSize(items: string[]): number {
+  const parsed = items.map(parseDeterministicCardItem);
+  const geometry = getDeterministicGridLayout(parsed.length);
+  const base = parsed.length >= 4 ? 20 : 21;
+
+  for (let fontSize = base; fontSize >= MIN_FONT.BODY; fontSize -= 0.5) {
+    const fits = parsed.every((item) => estimateTextHeightInches(item.cleanText, fontSize, geometry.textW) <= geometry.textH);
+    if (fits) return Math.round(fontSize * 10) / 10;
+  }
+
+  return MIN_FONT.BODY - 0.5;
+}
+
 function shouldForceContinuation(plan: SlidePlan): boolean {
   const items = plan.items ?? [];
   if (items.length <= 1) return false;
@@ -217,6 +316,7 @@ function shouldForceContinuation(plan: SlidePlan): boolean {
       return unified <= MIN_FONT.BODY && longest > (items.length >= 6 ? 88 : 108);
     }
     case "grid_cards":
+      return computeDeterministicGridFontSize(items) < MIN_FONT.BODY;
     case "summary_slide":
     case "numbered_takeaways": {
       const cols = items.length <= 3 ? Math.max(items.length, 1) : items.length <= 4 ? 2 : 3;
@@ -261,7 +361,9 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   if (!SPLITTABLE_LAYOUTS.has(plan.layout)) return [plan];
 
   const items = plan.items ?? [];
-  const maxItems = Math.max(2, design.density.maxItemsPerSlide);
+  const maxItems = plan.layout === "grid_cards"
+    ? GRID_MAX_ITEMS
+    : Math.max(2, design.density.maxItemsPerSlide);
   const totalChars = slideCharLoad(plan);
 
   const tooManyItems = items.length > maxItems;
