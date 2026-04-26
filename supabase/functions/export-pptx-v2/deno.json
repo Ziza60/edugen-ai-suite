@@ -1,0 +1,7 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "pptxgenjs": "npm:pptxgenjs@3.12.0",
+    "jszip": "npm:jszip@3.10.1"
+  }
+}
