@@ -2575,7 +2575,7 @@ function renderWarningCallout(pptx: PptxGenJS, plan: SlidePlan, design: DesignCo
   slide.addText("⚠", { x: SLIDE_W - 1.50, y: 0.35, w: 0.80, h: 0.80, fontSize: 28, align: "center", valign: "middle" });
   const items = (plan.items || []).slice(0, 5);
   const contentX = 0.65, contentW = SLIDE_W - contentX - 0.50, contentY = 1.58;
-  const bulletGap = 0.10, contentH = SLIDE_H - contentY - 0.45;
+  const bulletGap = 0.10, contentH = CONTENT_BOTTOM - contentY;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.55, Math.min(1.10, rawItemH));
   const bodyFontSize = items.length >= 4 ? 12 : 14;
