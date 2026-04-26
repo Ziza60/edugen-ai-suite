@@ -1838,19 +1838,16 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           fontSize: 15, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
         });
         if (mod.description) {
-          // GEMMA v3.10.0-TOC-FULLTEXT: sem truncamento; usa toda a largura útil
-          // até a margem direita da SAFE_ZONE e quebra linha (wrap) naturalmente.
+          // GEMMA v3.10.7-GEMINI-SPEC — Índice: SEM smartTruncate.
+          // Usa wrap: true e largura total da caixa (w: 5.5) para que o
+          // PptxGenJS quebre linhas naturalmente, ocupando o espaço vazio.
           const cleanDesc = cleanTOCDescription(mod.description, mod.title);
           if (cleanDesc) {
-            // GEMMA v3.10.2 — smartTruncate em fronteira de palavra (~180 chars)
-            // evita overflow visual no PPTX quando objetivo é parágrafo longo.
-            const safeDesc = smartTruncate(cleanDesc, 180);
-            const descX = 6.90;
-            const descW = (SAFE_ZONE.X + SAFE_ZONE.W) - descX;
-            slide.addText(safeDesc, {
-              x: descX, y, w: descW, h: itemH,
+            slide.addText(cleanDesc, {
+              x: 6.90, y, w: 5.5, h: itemH,
               fontSize: 12, fontFace: design.fonts.body, color: colors.coverSubtext,
-              valign: "middle", wrap: true, shrinkText: false, lineSpacingMultiple: 1.15,
+              valign: "middle", wrap: true, breakLine: true,
+              shrinkText: false, lineSpacingMultiple: 1.15,
             } as any);
           }
         }
