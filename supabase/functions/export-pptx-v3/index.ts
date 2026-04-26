@@ -1755,7 +1755,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT);
+          rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT_GRID);
           if (rawGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
