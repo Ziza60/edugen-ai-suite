@@ -51,11 +51,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // Fetch modules for syllabus
-    const { data: modules = [] } = await serviceClient
+    const { data: modulesRaw } = await serviceClient
       .from("course_modules")
       .select("title, order_index")
       .eq("course_id", cert.course_id)
       .order("order_index");
+    const modules: any[] = modulesRaw ?? [];
 
     return new Response(
       JSON.stringify({
