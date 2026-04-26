@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.9.8-TOC-LEGIBLE";
+const ENGINE_VERSION = "3.9.9-TOC-CLEAN";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1649,6 +1649,45 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
 }
 
 // ── TOC ──
+// GEMMA v3.9.9 — limpeza inteligente da descrição do TOC:
+// 1) remove o título do módulo se a descrição começar com ele (redundância)
+// 2) extrai apenas o texto após "🎯 Objetivo do Módulo" / "🎯"
+// 3) remove marcadores de seção (---, 🧠, ⚙️, etc.) que vazam do markdown
+// 4) só então aplica o truncamento, evitando glifos quebrados
+function cleanTOCDescription(rawDesc: string, moduleTitle: string): string {
+  let s = sanitizeText(rawDesc || "").trim();
+  if (!s) return "";
+
+  // Remove separadores markdown e prefixos de marcador de seção (---, ***, etc.)
+  s = s.replace(/^[-*_]{3,}\s*/g, "").trim();
+
+  // Se houver marcador 🎯, prioriza o conteúdo após ele
+  const targetMatch = s.match(/🎯\s*(?:Objetivo\s+do\s+M[óo]dulo\s*[:\-–—]?\s*)?(.+)/iu);
+  if (targetMatch && targetMatch[1]) {
+    s = targetMatch[1].trim();
+  }
+
+  // Remove emoji/ícone líder remanescente
+  s = s.replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "").trim();
+
+  // Remove "Módulo N:" prefix
+  s = s.replace(/^M[óo]dulo\s+\w+\s*[:\-–—]\s*/i, "").trim();
+
+  // Remove título repetido no início (case-insensitive, tolerante a pontuação final)
+  if (moduleTitle) {
+    const cleanTitle = moduleTitle.replace(/^M[óo]dulo\s+\w+\s*[:\-–—]\s*/i, "").trim();
+    if (cleanTitle.length > 4) {
+      const escaped = cleanTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`^${escaped}\\s*[:\\-–—.]*\\s*`, "i");
+      s = s.replace(re, "").trim();
+    }
+  }
+
+  // Remove ponto final solitário e espaços
+  s = s.replace(/^[\s.:\-–—]+/, "").replace(/\.$/, "").trim();
+  return s;
+}
+
 function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: string }[], design: DesignConfig) {
   const colors = getColors(design);
   const MAX_PER_PAGE = 6;
@@ -1697,10 +1736,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           fontSize: 15, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
         });
         if (mod.description) {
-          let cleanDesc = sanitizeText(mod.description)
-            .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
-            .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
-            .replace(/\.$/, "").trim();
+          let cleanDesc = cleanTOCDescription(mod.description, mod.title);
           cleanDesc = truncateHard(cleanDesc, TOC_DESCRIPTION_LIMIT_LIST);
           if (cleanDesc) {
             slide.addText(cleanDesc, {
@@ -1751,10 +1787,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         const sepY = titleY + titleH + 0.04;
         addHR(slide, x + 0.20, sepY, cardW * 0.45, pal, 0.010);
         if (pageModules[i].description) {
-          let rawGridDesc = sanitizeText(pageModules[i].description!)
-            .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
-            .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
-            .replace(/\.$/, "").trim();
+          let rawGridDesc = cleanTOCDescription(pageModules[i].description!, pageModules[i].title);
           rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT_GRID);
           if (rawGridDesc) {
             const descY = sepY + 0.06;
