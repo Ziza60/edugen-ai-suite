@@ -243,7 +243,25 @@ function getRenderableTextLength(text: string): number {
 
 function computeUnifiedSlideFontSize(items: string[], baseSize: number, threshold: number, floor = MIN_FONT.BODY): number {
   const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
-  return autoScaleFont(baseSize, longest, threshold, floor);
+  let size = autoScaleFont(baseSize, longest, threshold, floor);
+
+  // GEMMA v3.10.8-GEMMA-SPEC — Margem de segurança contra transbordo.
+  // Estima altura ocupada (em polegadas) considerando que Montserrat ocupa
+  // mais espaço vertical do que o pptxgenjs assume. Fórmula Gemma:
+  //   estimatedHeight = (chars / 50) * (size / 72) * 1.4
+  // Reduz a fonte iterativamente até que CADA item caiba em ~3.6" (área útil
+  // de uma caixa de bullets padrão). Floor garante mínimo legível.
+  const MAX_HEIGHT_IN = 3.6;
+  for (let guard = 0; guard < 10 && size > floor; guard++) {
+    const totalEstimated = items.reduce((acc, item) => {
+      const chars = getRenderableTextLength(item || "");
+      const h = (chars / 50) * (size / 72) * 1.4;
+      return acc + h;
+    }, 0);
+    if (totalEstimated <= MAX_HEIGHT_IN) break;
+    size = Math.max(floor, Math.round((size - 0.5) * 10) / 10);
+  }
+  return size;
 }
 
 function truncateHard(text: string, limit: number): string {
