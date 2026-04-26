@@ -2652,7 +2652,7 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
   slide.addText(plan.title, { x: sidebarW + 0.30, y: 0.68, w: SLIDE_W - sidebarW - 0.80, h: 0.75, fontSize: TYPO.SECTION_TITLE, fontFace: design.fonts.title, bold: true, color: colors.text, valign: "middle" });
   const items = (plan.items || []).filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10);
   const contentX = sidebarW + 0.30, contentW = SLIDE_W - contentX - 0.50, contentY = 1.60;
-  const contentHAvail = SLIDE_H - contentY - 0.40;
+  const contentHAvail = CONTENT_BOTTOM - contentY;
   const cols = items.length >= 4 ? 2 : 1;
   const rows = Math.ceil(items.length / cols);
   const gap = 0.12;
