@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import PptxGenJS from "npm:pptxgenjs@3.12.0";
+import PptxGenJS from "https://esm.sh/pptxgenjs@3.12.0";
 
 const ENGINE_VERSION = "2.8.0-2026-03-09";
 
