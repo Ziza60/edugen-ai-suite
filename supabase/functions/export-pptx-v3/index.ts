@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.4-SPLIT-DEBUG-MODE";
+const ENGINE_VERSION = "3.10.5-FOOTER-SAFETY";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
