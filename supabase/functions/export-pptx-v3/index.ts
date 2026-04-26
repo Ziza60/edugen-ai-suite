@@ -1806,15 +1806,17 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         const sepY = titleY + titleH + 0.04;
         addHR(slide, x + 0.20, sepY, cardW * 0.45, pal, 0.010);
         if (pageModules[i].description) {
-          // GEMMA v3.10.0-TOC-FULLTEXT: no grid, sem corte; wrap natural dentro do card.
+          // GEMMA v3.10.2 — smartTruncate adaptado ao tamanho do card.
           const rawGridDesc = cleanTOCDescription(pageModules[i].description!, pageModules[i].title);
-          if (rawGridDesc) {
+          const maxChars = cardH < 1.6 ? 110 : cardH < 2.2 ? 160 : 220;
+          const safeGridDesc = smartTruncate(rawGridDesc, maxChars);
+          if (safeGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
-            slide.addText(rawGridDesc, {
+            slide.addText(safeGridDesc, {
               x: x + 0.20, y: descY, w: cardW - 0.34, h: descH,
-              fontSize: 12, fontFace: design.fonts.body,
-              color: colors.coverSubtext, valign: "top", wrap: true, shrinkText: false, lineSpacingMultiple: 1.20,
+              fontSize: 11, fontFace: design.fonts.body,
+              color: colors.coverSubtext, valign: "top", wrap: true, shrinkText: false, lineSpacingMultiple: 1.18,
             } as any);
           }
         }
