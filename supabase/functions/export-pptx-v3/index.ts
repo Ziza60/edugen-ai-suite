@@ -1736,10 +1736,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           fontSize: 15, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
         });
         if (mod.description) {
-          let cleanDesc = sanitizeText(mod.description)
-            .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
-            .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
-            .replace(/\.$/, "").trim();
+          let cleanDesc = cleanTOCDescription(mod.description, mod.title);
           cleanDesc = truncateHard(cleanDesc, TOC_DESCRIPTION_LIMIT_LIST);
           if (cleanDesc) {
             slide.addText(cleanDesc, {
