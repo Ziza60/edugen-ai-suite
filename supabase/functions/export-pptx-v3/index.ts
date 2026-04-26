@@ -2689,7 +2689,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   const gridRows = Math.ceil(items.length / cols);
   const gap = 0.14;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  const contentY = 1.65, contentH = SLIDE_H - contentY - 0.30;
+  const contentY = 1.65, contentH = CONTENT_BOTTOM - contentY;
   const cardH = Math.min(2.50, (contentH - gap * (gridRows - 1)) / gridRows);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
@@ -2705,6 +2705,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
     const tkRuns = colorizeIconRuns(items[i], pal, colors.coverSubtext) || [{ text: items[i], options: { color: colors.coverSubtext } }];
     slide.addText(tkRuns as any, { x: x + 0.14, y: tkTextY, w: cardW - 0.28, h: cardH - (tkTextY - y) - 0.22, fontSize: TYPO.TAKEAWAY_BODY, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
   }
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ── CLOSING ──
