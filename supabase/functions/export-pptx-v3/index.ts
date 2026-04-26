@@ -2669,7 +2669,9 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
   const rows = Math.ceil(items.length / cols);
   const gap = 0.12;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  const cardH = Math.min(2.50, (contentHAvail - gap * (rows - 1)) / rows);
+  // GEMMA v3.10.6 — removido cap 2.50": cards do summary agora ocupam
+  // todo o espaço útil em vez de deixar gap morto no fundo.
+  const cardH = Math.max(1.40, (contentHAvail - gap * (rows - 1)) / rows);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
     const x = contentX + col * (cardW + gap), y = contentY + row * (cardH + gap);
