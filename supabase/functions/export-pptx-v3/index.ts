@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.4-SPLIT-DEBUG-MODE";
+const ENGINE_VERSION = "3.10.5-FOOTER-SAFETY";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -152,6 +152,9 @@ const SAFE_W = SLIDE_W - MARGIN * 2;
  *   H: 5.20   →  altura útil (até ~6.80, deixando espaço para footer)
  */
 const SAFE_ZONE = { X: 0.80, Y: 1.60, W: 11.70, H: 5.20 } as const;
+// GEMMA v3.10.5 — Limite inferior absoluto do conteúdo. O footer começa em
+// SLIDE_H - 0.34 = 7.16. Mantemos 0.36 de respiro: conteúdo nunca passa de 6.80.
+const CONTENT_BOTTOM = SAFE_ZONE.Y + SAFE_ZONE.H; // 6.80
 
 /**
  * GEMMA v3.9.5 — Pisos rígidos de fonte.
@@ -2153,7 +2156,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       } as any);
       if (items.length > 1) {
         const restY = contentY + heroH + 0.18;
-        const restH = SLIDE_H - restY - 0.45;
+        const restH = CONTENT_BOTTOM - restY;
         const restItemH = Math.min(0.80, (restH - 0.06 * (items.length - 2)) / (items.length - 1));
         for (let i = 1; i < items.length; i++) {
           const yPos = restY + (i - 1) * (restItemH + 0.06);
@@ -2194,13 +2197,15 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   const leftItems = items.slice(0, mid);
   const rightItems = items.slice(mid);
   const divX = contentX + colW + colGap / 2;
-  slide.addShape("rect" as any, { x: divX - 0.010, y: contentY, w: 0.020, h: SLIDE_H - contentY - 0.45, fill: { color: pal }, transparency: 50 });
-  slide.addShape("ellipse" as any, { x: divX - 0.05, y: contentY + (SLIDE_H - contentY - 0.45) / 2 - 0.05, w: 0.10, h: 0.10, fill: { color: pal } });
+  // GEMMA v3.10.5 — usa CONTENT_BOTTOM (6.80) para evitar invadir o footer (7.16).
+  const colHEnd = CONTENT_BOTTOM - contentY;
+  slide.addShape("rect" as any, { x: divX - 0.010, y: contentY, w: 0.020, h: colHEnd, fill: { color: pal }, transparency: 50 });
+  slide.addShape("ellipse" as any, { x: divX - 0.05, y: contentY + colHEnd / 2 - 0.05, w: 0.10, h: 0.10, fill: { color: pal } });
   for (let col = 0; col < 2; col++) {
     const colItems = col === 0 ? leftItems : rightItems;
     const colX = contentX + col * (colW + colGap);
     const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
-    const colContentH = SLIDE_H - contentY - 0.40;
+    const colContentH = colHEnd;
     const rawItemH = (colContentH - colBulletGap * Math.max(colItems.length - 1, 0)) / Math.max(colItems.length, 1);
     const itemH = Math.max(0.42, Math.min(1.10, rawItemH));
     for (let i = 0; i < colItems.length; i++) {
@@ -2319,7 +2324,7 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
     });
     const flowY = 1.68;
     const cardY = flowY + 0.20;
-    const cardH = SLIDE_H - cardY - 0.45;
+    const cardH = CONTENT_BOTTOM - cardY;
     const gap = 0.06;
     const arrowW = 0.40;
     const totalArrowW = arrowW * Math.max(items.length - 1, 0);
@@ -2378,7 +2383,7 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
     addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
     const phaseColors = [colors.p1, colors.p3, colors.p0, colors.p2, colors.p4, colors.p1, colors.p3];
     const vContentY = 1.55;
-    const vContentH = SLIDE_H - vContentY - 0.35;
+    const vContentH = CONTENT_BOTTOM - vContentY;
     const stepGap = items.length <= 5 ? 0.06 : 0.03;
     const stepH = (vContentH - stepGap * (items.length - 1)) / items.length;
     const nodeSize = items.length <= 5 ? 0.28 : 0.22;
@@ -2444,7 +2449,7 @@ function renderComparisonTable(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
   const contentX = 0.65;
   const contentW2_tbl = SLIDE_W - contentX - 0.50;
   const tableY = 1.68;
-  const tableAvailH = SLIDE_H - tableY - 0.50;
+  const tableAvailH = CONTENT_BOTTOM - tableY;
   const totalRows = rows.length + 1;
   const dynRowH = Math.min(0.80, Math.max(0.40, tableAvailH / totalRows));
   
@@ -2570,7 +2575,7 @@ function renderWarningCallout(pptx: PptxGenJS, plan: SlidePlan, design: DesignCo
   slide.addText("⚠", { x: SLIDE_W - 1.50, y: 0.35, w: 0.80, h: 0.80, fontSize: 28, align: "center", valign: "middle" });
   const items = (plan.items || []).slice(0, 5);
   const contentX = 0.65, contentW = SLIDE_W - contentX - 0.50, contentY = 1.58;
-  const bulletGap = 0.10, contentH = SLIDE_H - contentY - 0.45;
+  const bulletGap = 0.10, contentH = CONTENT_BOTTOM - contentY;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.55, Math.min(1.10, rawItemH));
   const bodyFontSize = items.length >= 4 ? 12 : 14;
@@ -2617,7 +2622,7 @@ function renderReflectionCallout(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   slide.addText("REFLEXÃO", { x: 0.65, y: 0.80, w: 4.0, h: 0.24, fontSize: 10, fontFace: design.fonts.body, bold: true, color: colors.p1, charSpacing: 6 });
   slide.addText(plan.title, { x: 0.65, y: 1.12, w: SLIDE_W - 1.30, h: 0.55, fontSize: MIN_FONT.TITLE, fontFace: design.fonts.title, bold: true, color: "FFFFFF" });
   const items = plan.items || [];
-  const contentY = 1.90, contentH = SLIDE_H - contentY - 0.60;
+  const contentY = 1.90, contentH = CONTENT_BOTTOM - contentY;
   const itemGap = 0.16;
   const rawItemH = (contentH - itemGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.65, Math.min(1.30, rawItemH));
@@ -2647,7 +2652,7 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
   slide.addText(plan.title, { x: sidebarW + 0.30, y: 0.68, w: SLIDE_W - sidebarW - 0.80, h: 0.75, fontSize: TYPO.SECTION_TITLE, fontFace: design.fonts.title, bold: true, color: colors.text, valign: "middle" });
   const items = (plan.items || []).filter((item) => item.replace(/[.\s]+$/, "").trim().length >= 10);
   const contentX = sidebarW + 0.30, contentW = SLIDE_W - contentX - 0.50, contentY = 1.60;
-  const contentHAvail = SLIDE_H - contentY - 0.40;
+  const contentHAvail = CONTENT_BOTTOM - contentY;
   const cols = items.length >= 4 ? 2 : 1;
   const rows = Math.ceil(items.length / cols);
   const gap = 0.12;
@@ -2684,7 +2689,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   const gridRows = Math.ceil(items.length / cols);
   const gap = 0.14;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  const contentY = 1.65, contentH = SLIDE_H - contentY - 0.30;
+  const contentY = 1.65, contentH = CONTENT_BOTTOM - contentY;
   const cardH = Math.min(2.50, (contentH - gap * (gridRows - 1)) / gridRows);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
@@ -2700,6 +2705,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
     const tkRuns = colorizeIconRuns(items[i], pal, colors.coverSubtext) || [{ text: items[i], options: { color: colors.coverSubtext } }];
     slide.addText(tkRuns as any, { x: x + 0.14, y: tkTextY, w: cardW - 0.28, h: cardH - (tkTextY - y) - 0.22, fontSize: TYPO.TAKEAWAY_BODY, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
   }
+  addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
 }
 
 // ── CLOSING ──
