@@ -152,6 +152,9 @@ const SAFE_W = SLIDE_W - MARGIN * 2;
  *   H: 5.20   →  altura útil (até ~6.80, deixando espaço para footer)
  */
 const SAFE_ZONE = { X: 0.80, Y: 1.60, W: 11.70, H: 5.20 } as const;
+// GEMMA v3.10.5 — Limite inferior absoluto do conteúdo. O footer começa em
+// SLIDE_H - 0.34 = 7.16. Mantemos 0.36 de respiro: conteúdo nunca passa de 6.80.
+const CONTENT_BOTTOM = SAFE_ZONE.Y + SAFE_ZONE.H; // 6.80
 
 /**
  * GEMMA v3.9.5 — Pisos rígidos de fonte.
