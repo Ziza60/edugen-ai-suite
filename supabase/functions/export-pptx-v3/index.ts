@@ -3,7 +3,29 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.3-SPLIT-PREVENTIVE-MARKERS";
+const ENGINE_VERSION = "3.10.4-SPLIT-DEBUG-MODE";
+
+/**
+ * GEMMA v3.10.4 — Debug Mode
+ * Ative com env var `PPTX_V3_DEBUG=1` (ou request header/body com debug=true)
+ * para emitir logs detalhados de chunks e classificação de marcadores.
+ */
+const DEBUG_SPLIT = (Deno.env.get("PPTX_V3_DEBUG") ?? "").trim() === "1";
+function dbg(tag: string, payload: unknown) {
+  if (!DEBUG_SPLIT) return;
+  try {
+    console.log(`[V3-DEBUG][${tag}] ${typeof payload === "string" ? payload : JSON.stringify(payload)}`);
+  } catch {
+    console.log(`[V3-DEBUG][${tag}] <unserializable>`);
+  }
+}
+function classifyItem(item: string): "section" | "item" {
+  return isSectionMarker(item) ? "section" : "item";
+}
+function summarizeItem(item: string, maxLen = 60): string {
+  const s = (item || "").replace(/\s+/g, " ").trim();
+  return s.length <= maxLen ? s : s.slice(0, maxLen - 1) + "…";
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -394,6 +416,15 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
     const wouldExceedItems = current.length + 1 > maxItems;
     const wouldExceedChars = currentChars + itLen > SPLIT_LIMITS.MAX_TOTAL_CHARS && current.length > 0;
     if (wouldExceedItems || wouldExceedChars) {
+      dbg("SPLIT-CUT", {
+        title: plan.title,
+        reason: wouldExceedItems ? "items" : "chars",
+        currentChars,
+        currentItems: current.length,
+        nextItemLen: itLen,
+        nextItemKind: classifyItem(it),
+        nextItemPreview: summarizeItem(it),
+      });
       chunks.push(current);
       current = [];
       currentChars = 0;
@@ -412,10 +443,17 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
     while (chunks[i].length > 1 && isSectionMarker(chunks[i][chunks[i].length - 1])) {
       const last = chunks[i].pop()!;
       chunks[i + 1].unshift(last);
+      dbg("MARKER-MOVE", {
+        title: plan.title,
+        fromChunk: i,
+        toChunk: i + 1,
+        marker: summarizeItem(last),
+      });
     }
   }
   // Caso o primeiro chunk inteiro seja apenas markers (raro), funde-o ao próximo.
   if (chunks.length >= 2 && chunks[0].every(isSectionMarker)) {
+    dbg("MARKER-FUSE-HEAD", { title: plan.title, count: chunks[0].length });
     chunks[1] = [...chunks[0], ...chunks[1]];
     chunks.shift();
   }
@@ -433,6 +471,26 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
     }));
 
   console.log(`[V3-SPLIT] "${baseTitle}" (${plan.layout}) chars=${totalChars} items=${items.length} → ${out.length} slides`);
+
+  if (DEBUG_SPLIT) {
+    out.forEach((s, idx) => {
+      const classified = (s.items ?? []).map((it, i) => ({
+        i,
+        kind: classifyItem(it),
+        len: (it || "").length,
+        preview: summarizeItem(it),
+      }));
+      dbg("SPLIT-RESULT", {
+        slideIdx: idx,
+        title: s.title,
+        layout: s.layout,
+        totalChars: (s.items ?? []).reduce((a, b) => a + (b || "").length, 0),
+        itemCount: classified.length,
+        sectionCount: classified.filter((c) => c.kind === "section").length,
+        items: classified,
+      });
+    });
+  }
   return out;
 }
 
