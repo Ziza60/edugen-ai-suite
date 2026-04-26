@@ -2273,7 +2273,7 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
       x: x + 0.14, y: y + 0.14, w: geometry.numBadge, h: geometry.numBadge,
       fill: { color: pal }, rectRadius: 0.08,
     });
-    slide.addText(String(i + 1), {
+    slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
       x: x + 0.14, y: y + 0.14, w: geometry.numBadge, h: geometry.numBadge,
       fontSize: Math.min(13, geometry.numBadge * 36), fontFace: design.fonts.title, bold: true,
       color: "FFFFFF", align: "center", valign: "middle",
