@@ -255,7 +255,7 @@ function computeUnifiedSlideFontSize(items: string[], baseSize: number, threshol
   for (let guard = 0; guard < 10 && size > floor; guard++) {
     const totalEstimated = items.reduce((acc, item) => {
       const chars = getRenderableTextLength(item || "");
-      const h = (chars / 50) * (size / 72) * 1.4;
+      const h = (chars / 50) * (size / 72) * 1.5;
       return acc + h;
     }, 0);
     if (totalEstimated <= MAX_HEIGHT_IN) break;
