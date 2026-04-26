@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.9.7-GEMMA-DETERMINISTIC";
+const ENGINE_VERSION = "3.9.8-TOC-LEGIBLE";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,7 +142,12 @@ const MIN_FONT = {
   CARD_BODY: 14, // descrições internas a cards (TOC, grids densos)
 } as const;
 
-const TOC_DESCRIPTION_LIMIT = 65;
+// GEMMA v3.9.8 — limites por layout do TOC. List (≤5 mods): coluna larga aceita ~140 chars.
+// Grid (>5 mods): cards compactos, manter 95 chars para não quebrar a grade.
+const TOC_DESCRIPTION_LIMIT_LIST = 140;
+const TOC_DESCRIPTION_LIMIT_GRID = 95;
+// retro-compat: usado em pré-processamento (tocModules) — usa o teto maior.
+const TOC_DESCRIPTION_LIMIT = TOC_DESCRIPTION_LIMIT_LIST;
 const GRID_MAX_ITEMS = 5;
 
 /**
@@ -213,7 +218,11 @@ function truncateHard(text: string, limit: number): string {
   const clean = sanitizeText(text || "").trim();
   if (!clean) return "";
   if (clean.length <= limit) return clean;
-  return `${clean.substring(0, Math.max(0, limit - 3)).trim()}...`;
+  // GEMMA v3.9.8 — quebra por palavra para não cortar no meio de termos.
+  const slice = clean.substring(0, Math.max(0, limit - 1));
+  const lastSpace = slice.lastIndexOf(" ");
+  const safe = lastSpace > limit * 0.6 ? slice.substring(0, lastSpace) : slice;
+  return `${safe.replace(/[\s,;:.\-–—]+$/u, "").trim()}…`;
 }
 
 type DeterministicCardItem = {
@@ -1692,7 +1701,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          cleanDesc = truncateHard(cleanDesc, TOC_DESCRIPTION_LIMIT);
+          cleanDesc = truncateHard(cleanDesc, TOC_DESCRIPTION_LIMIT_LIST);
           if (cleanDesc) {
             slide.addText(cleanDesc, {
               x: 6.90, y, w: SLIDE_W - 7.40, h: itemH,
@@ -1746,7 +1755,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             .replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "")
             .replace(/^M\u00f3dulo\s+\w+:\s*/i, "")
             .replace(/\.$/, "").trim();
-          rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT);
+          rawGridDesc = truncateHard(rawGridDesc, TOC_DESCRIPTION_LIMIT_GRID);
           if (rawGridDesc) {
             const descY = sepY + 0.06;
             const descH = Math.max(0.20, y + cardH - descY - 0.12);
