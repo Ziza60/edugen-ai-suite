@@ -2622,7 +2622,7 @@ function renderReflectionCallout(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   slide.addText("REFLEXÃO", { x: 0.65, y: 0.80, w: 4.0, h: 0.24, fontSize: 10, fontFace: design.fonts.body, bold: true, color: colors.p1, charSpacing: 6 });
   slide.addText(plan.title, { x: 0.65, y: 1.12, w: SLIDE_W - 1.30, h: 0.55, fontSize: MIN_FONT.TITLE, fontFace: design.fonts.title, bold: true, color: "FFFFFF" });
   const items = plan.items || [];
-  const contentY = 1.90, contentH = SLIDE_H - contentY - 0.60;
+  const contentY = 1.90, contentH = CONTENT_BOTTOM - contentY;
   const itemGap = 0.16;
   const rawItemH = (contentH - itemGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
   const itemH = Math.max(0.65, Math.min(1.30, rawItemH));
