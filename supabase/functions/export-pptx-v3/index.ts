@@ -1649,6 +1649,45 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
 }
 
 // ── TOC ──
+// GEMMA v3.9.9 — limpeza inteligente da descrição do TOC:
+// 1) remove o título do módulo se a descrição começar com ele (redundância)
+// 2) extrai apenas o texto após "🎯 Objetivo do Módulo" / "🎯"
+// 3) remove marcadores de seção (---, 🧠, ⚙️, etc.) que vazam do markdown
+// 4) só então aplica o truncamento, evitando glifos quebrados
+function cleanTOCDescription(rawDesc: string, moduleTitle: string): string {
+  let s = sanitizeText(rawDesc || "").trim();
+  if (!s) return "";
+
+  // Remove separadores markdown e prefixos de marcador de seção (---, ***, etc.)
+  s = s.replace(/^[-*_]{3,}\s*/g, "").trim();
+
+  // Se houver marcador 🎯, prioriza o conteúdo após ele
+  const targetMatch = s.match(/🎯\s*(?:Objetivo\s+do\s+M[óo]dulo\s*[:\-–—]?\s*)?(.+)/iu);
+  if (targetMatch && targetMatch[1]) {
+    s = targetMatch[1].trim();
+  }
+
+  // Remove emoji/ícone líder remanescente
+  s = s.replace(/^[\u{1F300}-\u{1FFFF}\u2600-\u27FF]\s*/u, "").trim();
+
+  // Remove "Módulo N:" prefix
+  s = s.replace(/^M[óo]dulo\s+\w+\s*[:\-–—]\s*/i, "").trim();
+
+  // Remove título repetido no início (case-insensitive, tolerante a pontuação final)
+  if (moduleTitle) {
+    const cleanTitle = moduleTitle.replace(/^M[óo]dulo\s+\w+\s*[:\-–—]\s*/i, "").trim();
+    if (cleanTitle.length > 4) {
+      const escaped = cleanTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`^${escaped}\\s*[:\\-–—.]*\\s*`, "i");
+      s = s.replace(re, "").trim();
+    }
+  }
+
+  // Remove ponto final solitário e espaços
+  s = s.replace(/^[\s.:\-–—]+/, "").replace(/\.$/, "").trim();
+  return s;
+}
+
 function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: string }[], design: DesignConfig) {
   const colors = getColors(design);
   const MAX_PER_PAGE = 6;
