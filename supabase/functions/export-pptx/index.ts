@@ -2235,11 +2235,12 @@ function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): Sl
 
   for (const slidePlan of plan.slides) {
     const layout = LAYOUT_MAP[slidePlan.layout] || "bullets";
-    const blockType = slidePlan.layout === "example" ? "example"
-      : slidePlan.layout === "reflection" ? "reflection"
-      : slidePlan.layout === "takeaways" ? "conclusion"
-      : slidePlan.layout === "warning" ? "warning"
-      : slidePlan.layout === "summary" ? "summary"
+    const layoutAny = slidePlan.layout as any;
+    const blockType = layoutAny === "example" ? "example"
+      : layoutAny === "reflection" ? "reflection"
+      : layoutAny === "takeaways" ? "conclusion"
+      : layoutAny === "warning" ? "warning"
+      : layoutAny === "summary" ? "summary"
       : "normal";
 
     // ── STRUCTURAL REDISTRIBUTION for long bullet items (v7) ──
@@ -6583,7 +6584,7 @@ Deno.serve(async (req: Request) => {
               defectives.push({ slideIdx: si, field: "item", itemIdx: ii, original: item, reason: "bullet truncado" });
             }
             // Extremely long single-sentence bullets that will definitely overflow
-            if (item.length > 250 && !(item.match(/[.!?]/g)?.length >= 2)) {
+            if (item.length > 250 && !((item.match(/[.!?]/g)?.length ?? 0) >= 2)) {
               defectives.push({ slideIdx: si, field: "item", itemIdx: ii, original: item, reason: "bullet excessivamente longo sem quebra de sentença" });
             }
           }
@@ -7099,10 +7100,11 @@ Idioma: pt-BR`
         const maxChars = activeDensity.maxCharsPerBullet;
         const newItems: string[] = [];
         let didRedistribute = false;
-        const protectedNoCompression = s.layout === "summary_slide"
-          || s.layout === "example_highlight"
-          || s.layout === "bullets"
-          || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
+        const layoutStr = s.layout as string;
+        const protectedNoCompression = layoutStr === "summary_slide"
+          || layoutStr === "example_highlight"
+          || layoutStr === "bullets"
+          || (layoutStr === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
 
         for (let itemIdx = 0; itemIdx < s.items.length; itemIdx++) {
           const item = s.items[itemIdx];

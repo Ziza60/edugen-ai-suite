@@ -263,7 +263,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const stream = new ReadableStream<Uint8Array>({
-    start(c) { controller = c; },
+    start(c) { controller = c as ReadableStreamDefaultController<Uint8Array>; },
   });
 
   const sseHeaders = {
