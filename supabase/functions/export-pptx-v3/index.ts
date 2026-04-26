@@ -2716,7 +2716,7 @@ async function runPipeline(
       .replace(/^[-*]\s+/gm, "").replace(/^\d+[.)]\s+/gm, "");
     const firstSentence = stripped.split(/[.!?]\s+/)[0]?.trim() || "";
     const tocDescription = firstSentence.length > 20
-      ? (firstSentence.length > 60 ? `${firstSentence.substring(0, 57).trim()}...` : firstSentence)
+      ? truncateHard(firstSentence, TOC_DESCRIPTION_LIMIT)
       : undefined;
     return {
       title: cleanTitle,
