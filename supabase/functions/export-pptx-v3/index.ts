@@ -83,6 +83,10 @@ interface SlidePlan {
   tableRows?: string[][];
   moduleIndex?: number;
   continuationOf?: string;
+  // GEMMA v3.10.6 — quando um slide é dividido (continuação), preserva o
+  // índice base dos badges numerados para manter a sequência (ex.: slide 5
+  // termina em "4", o slide 6 deve começar em "5", não em "1").
+  itemStartIndex?: number;
 }
 
 interface PipelineReport {
