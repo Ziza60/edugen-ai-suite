@@ -2702,7 +2702,9 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   const gap = 0.14;
   const cardW = (contentW - gap * (cols - 1)) / cols;
   const contentY = 1.65, contentH = CONTENT_BOTTOM - contentY;
-  const cardH = Math.min(2.50, (contentH - gap * (gridRows - 1)) / gridRows);
+  // GEMMA v3.10.6 — removido cap rígido 2.50" que truncava textos longos
+  // (slide 27 com >3 linhas extrapolava o card). Aproveita 100% da safe-zone.
+  const cardH = Math.max(1.40, (contentH - gap * (gridRows - 1)) / gridRows);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
     const x = contentX + col * (cardW + gap), y = contentY + row * (cardH + gap);
