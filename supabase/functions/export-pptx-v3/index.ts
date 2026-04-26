@@ -2712,7 +2712,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
     slide.addShape("rect" as any, { x, y, w: 0.05, h: cardH, fill: { color: pal }, rectRadius: 0.12 });
     const tkBadge = Math.min(0.38, cardH * 0.28, cardW * 0.22);
     slide.addShape("roundRect" as any, { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fill: { color: pal }, rectRadius: 0.08 });
-    slide.addText(String(i + 1), { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fontSize: Math.min(16, tkBadge * 40), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
+    slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), { x: x + 0.14, y: y + 0.14, w: tkBadge, h: tkBadge, fontSize: Math.min(16, tkBadge * 40), fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
     const tkTextY = y + 0.14 + tkBadge + 0.10;
     const tkRuns = colorizeIconRuns(items[i], pal, colors.coverSubtext) || [{ text: items[i], options: { color: colors.coverSubtext } }];
     slide.addText(tkRuns as any, { x: x + 0.14, y: tkTextY, w: cardW - 0.28, h: cardH - (tkTextY - y) - 0.22, fontSize: TYPO.TAKEAWAY_BODY, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.25, autoFit: true } as any);
