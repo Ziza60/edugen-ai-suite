@@ -2383,7 +2383,7 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
     addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
     const phaseColors = [colors.p1, colors.p3, colors.p0, colors.p2, colors.p4, colors.p1, colors.p3];
     const vContentY = 1.55;
-    const vContentH = SLIDE_H - vContentY - 0.35;
+    const vContentH = CONTENT_BOTTOM - vContentY;
     const stepGap = items.length <= 5 ? 0.06 : 0.03;
     const stepH = (vContentH - stepGap * (items.length - 1)) / items.length;
     const nodeSize = items.length <= 5 ? 0.28 : 0.22;
