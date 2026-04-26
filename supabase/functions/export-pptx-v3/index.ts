@@ -426,13 +426,13 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  // GEMMA v3.10.8-GEMMA-SPEC — Regra Gemma reforçada.
-  // Se o total de caracteres < 600 e items <= 8, MANTÉM tudo no mesmo slide
-  // (evita slides "quase vazios" como 13, 75 com item único).
+  // GEMMA v3.10.9-GEMMA-SPEC — Regra Gemma definitiva.
+  // Se o total de caracteres < 700 e items <= 8, MANTÉM tudo no mesmo slide
+  // (evita slides "quase vazios" como 13, 75 com item único/órfão).
   if (
     !forcedContinuation &&
-    totalChars < 600 &&
-    items.length <= Math.max(maxItems, 8)
+    totalChars < 700 &&
+    items.length <= 8
   ) {
     return [plan];
   }
