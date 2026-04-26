@@ -2156,7 +2156,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       } as any);
       if (items.length > 1) {
         const restY = contentY + heroH + 0.18;
-        const restH = SLIDE_H - restY - 0.45;
+        const restH = CONTENT_BOTTOM - restY;
         const restItemH = Math.min(0.80, (restH - 0.06 * (items.length - 2)) / (items.length - 1));
         for (let i = 1; i < items.length; i++) {
           const yPos = restY + (i - 1) * (restItemH + 0.06);
