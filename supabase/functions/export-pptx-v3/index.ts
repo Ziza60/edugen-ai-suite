@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.2-TOC-SMART-TRUNCATE";
+const ENGINE_VERSION = "3.10.3-SPLIT-PREVENTIVE-MARKERS";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -156,7 +156,9 @@ const GRID_MAX_ITEMS = 5;
  * "[Título Original]" + "[Título Original] (Continuação)".
  */
 const SPLIT_LIMITS = {
-  MAX_TOTAL_CHARS: 480,        // soma de chars de todos os items (mais agressivo)
+  // GEMMA v3.10.3 — Reduzido em ~10% (480 → 432) para split mais preventivo
+  // e evitar que conteúdo denso (ex: Slide 19 "Tuplas") encoste no rodapé.
+  MAX_TOTAL_CHARS: 432,        // soma de chars de todos os items (split preventivo)
   MAX_ITEM_CHARS_HARD: 220,    // item individual muito longo é quebrado
 } as const;
 
@@ -401,15 +403,21 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   }
   if (current.length > 0) chunks.push(current);
 
-  // GEMMA v3.9.5 — Regra de agrupamento: se o último item de um chunk
-  // for um marcador de seção (🧠 ⚙️ ⚠️ etc.), mover para o início do
-  // próximo chunk para que ele acompanhe seu parágrafo.
+  // GEMMA v3.10.3 — Regra de agrupamento de marcadores de seção:
+  // Se QUALQUER item-marker (🧠 ⚙️ ⚠️ 🎯 etc.) estiver no final de um chunk
+  // OU isolado entre dois chunks, ele deve viajar com o parágrafo seguinte
+  // para que o ícone funcione como cabeçalho da próxima seção, não como
+  // sobra órfã no slide anterior.
   for (let i = 0; i < chunks.length - 1; i++) {
-    const last = chunks[i][chunks[i].length - 1];
-    if (chunks[i].length > 1 && isSectionMarker(last)) {
-      chunks[i].pop();
+    while (chunks[i].length > 1 && isSectionMarker(chunks[i][chunks[i].length - 1])) {
+      const last = chunks[i].pop()!;
       chunks[i + 1].unshift(last);
     }
+  }
+  // Caso o primeiro chunk inteiro seja apenas markers (raro), funde-o ao próximo.
+  if (chunks.length >= 2 && chunks[0].every(isSectionMarker)) {
+    chunks[1] = [...chunks[0], ...chunks[1]];
+    chunks.shift();
   }
 
   if (chunks.length <= 1) return [plan];
