@@ -2083,7 +2083,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize, fill: { color: pal }, rectRadius: 0.06,
       });
-      slide.addText(String(i + 1), {
+      slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
         x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize,
         fontSize: badgeSize >= 0.30 ? 13 : 10, fontFace: design.fonts.title, bold: true,
