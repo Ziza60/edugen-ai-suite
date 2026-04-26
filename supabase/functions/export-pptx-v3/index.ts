@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.10.6-CONTINUATION-NUMBERING";
+const ENGINE_VERSION = "3.10.7-GEMINI-SPEC";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -185,10 +185,10 @@ const GRID_MAX_ITEMS = 5;
  * "[Título Original]" + "[Título Original] (Continuação)".
  */
 const SPLIT_LIMITS = {
-  // GEMMA v3.10.6 — Reduzido novamente (432 → 380) para forçar splits
-  // preventivos em layouts densos como two_column_bullets com 6 itens
-  // longos (slides 58, 103, 111) que ainda espremiam o conteúdo.
-  MAX_TOTAL_CHARS: 380,        // soma de chars de todos os items (split preventivo)
+  // GEMMA v3.10.7-GEMINI-SPEC — Teto elevado para 580 conforme especificação
+  // do Gemini: evitar slides "quase vazios" (1 item só). O splitter agora
+  // mantém itens juntos sempre que a fonte mínima (18pt) couber na geometria.
+  MAX_TOTAL_CHARS: 580,        // soma de chars de todos os items (split preventivo)
   MAX_ITEM_CHARS_HARD: 220,    // item individual muito longo é quebrado
 } as const;
 
@@ -406,15 +406,23 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
     ? GRID_MAX_ITEMS
     : Math.max(2, design.density.maxItemsPerSlide);
   const totalChars = slideCharLoad(plan);
-
-  const tooManyItems = items.length > maxItems;
-  const tooDense = totalChars > SPLIT_LIMITS.MAX_TOTAL_CHARS;
   const forcedContinuation = shouldForceContinuation(plan);
 
-  if (!tooManyItems && !tooDense && !forcedContinuation) return [plan];
+  // GEMMA v3.10.7-GEMINI-SPEC — Cálculo de carga real.
+  // Se o conteúdo total for curto (<550 chars) e respeitar maxItems,
+  // NÃO dividimos: evita slides "quase vazios" (slides 13, 75, etc).
+  if (
+    !forcedContinuation &&
+    items.length <= maxItems &&
+    totalChars < 550
+  ) {
+    return [plan];
+  }
   if (items.length <= 1) return [plan]; // não dá para dividir
 
-  // Particiona items em chunks que respeitem AMBOS os limites
+  // Particiona items em chunks que respeitem AMBOS os limites.
+  // Teto de chars elevado para 580 (Gemini spec): só estouramos quando
+  // realmente não há mais espaço físico para acomodar o próximo item.
   const chunks: string[][] = [];
   let current: string[] = [];
   let currentChars = 0;
@@ -422,7 +430,7 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   for (const it of items) {
     const itLen = (it || "").length;
     const wouldExceedItems = current.length + 1 > maxItems;
-    const wouldExceedChars = currentChars + itLen > SPLIT_LIMITS.MAX_TOTAL_CHARS && current.length > 0;
+    const wouldExceedChars = (currentChars + itLen > 580) && current.length > 0;
     if (wouldExceedItems || wouldExceedChars) {
       dbg("SPLIT-CUT", {
         title: plan.title,
@@ -1830,19 +1838,16 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
           fontSize: 15, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle",
         });
         if (mod.description) {
-          // GEMMA v3.10.0-TOC-FULLTEXT: sem truncamento; usa toda a largura útil
-          // até a margem direita da SAFE_ZONE e quebra linha (wrap) naturalmente.
+          // GEMMA v3.10.7-GEMINI-SPEC — Índice: SEM smartTruncate.
+          // Usa wrap: true e largura total da caixa (w: 5.5) para que o
+          // PptxGenJS quebre linhas naturalmente, ocupando o espaço vazio.
           const cleanDesc = cleanTOCDescription(mod.description, mod.title);
           if (cleanDesc) {
-            // GEMMA v3.10.2 — smartTruncate em fronteira de palavra (~180 chars)
-            // evita overflow visual no PPTX quando objetivo é parágrafo longo.
-            const safeDesc = smartTruncate(cleanDesc, 180);
-            const descX = 6.90;
-            const descW = (SAFE_ZONE.X + SAFE_ZONE.W) - descX;
-            slide.addText(safeDesc, {
-              x: descX, y, w: descW, h: itemH,
+            slide.addText(cleanDesc, {
+              x: 6.90, y, w: 5.5, h: itemH,
               fontSize: 12, fontFace: design.fonts.body, color: colors.coverSubtext,
-              valign: "middle", wrap: true, shrinkText: false, lineSpacingMultiple: 1.15,
+              valign: "middle", wrap: true, breakLine: true,
+              shrinkText: false, lineSpacingMultiple: 1.15,
             } as any);
           }
         }
@@ -2068,23 +2073,27 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+    // GEMMA v3.10.7-GEMINI-SPEC — Geometria rígida.
+    // Fonte ÚNICA por slide, calculada com base no item mais longo.
+    // shrinkText PROIBIDO: o texto é escravo da geometria, não vice-versa.
+    const unifiedFontSize = computeUnifiedSlideFontSize(items, 20, 110, 18);
     for (let i = 0; i < items.length; i++) {
       const pal = design.palette[i % design.palette.length];
       const yPos = contentY + i * (itemH + bulletGap);
-      addCardShadow(slide, contentX, yPos, contentW, itemH - 0.04, colors.shadowColor, design.theme === "light");
+      addCardShadow(slide, contentX, yPos, contentW, itemH - 0.05, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
-        x: contentX, y: yPos, w: contentW, h: itemH - 0.04,
+        x: contentX, y: yPos, w: contentW, h: itemH - 0.05,
         fill: { color: colors.cardBg }, rectRadius: 0.08,
-        line: { color: colors.borders, width: 0.3 },
+        line: { color: colors.borders, width: 0.5 },
       });
-      slide.addShape("rect" as any, { x: contentX, y: yPos, w: 0.06, h: itemH - 0.04, fill: { color: pal }, rectRadius: 0.08 });
+      slide.addShape("rect" as any, { x: contentX, y: yPos, w: 0.06, h: itemH - 0.05, fill: { color: pal }, rectRadius: 0.08 });
       const badgeSize = Math.min(0.34, itemH - 0.14);
       slide.addShape("roundRect" as any, {
-        x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
+        x: contentX + 0.18, y: yPos + (itemH - 0.05) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize, fill: { color: pal }, rectRadius: 0.06,
       });
       slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
-        x: contentX + 0.18, y: yPos + (itemH - 0.04) / 2 - badgeSize / 2,
+        x: contentX + 0.18, y: yPos + (itemH - 0.05) / 2 - badgeSize / 2,
         w: badgeSize, h: badgeSize,
         fontSize: badgeSize >= 0.30 ? 13 : 10, fontFace: design.fonts.title, bold: true,
         color: "FFFFFF", align: "center", valign: "middle",
@@ -2092,22 +2101,31 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       { // title:desc split rendering for variant 1
         const v1ColonIdx = items[i].indexOf(":");
         const v1HasTitle = v1ColonIdx > 0 && v1ColonIdx < 45;
-        const v1X = contentX + 0.18 + badgeSize + 0.14;
-        const v1W = contentW - badgeSize - 0.42;
+        // Spec Gemini: x = contentX + 0.55, w = contentW - 0.70 → texto escravo da geometria
+        const v1X = contentX + 0.55;
+        const v1W = contentW - 0.70;
+        const baseOpts = {
+          x: v1X, y: yPos, w: v1W, h: itemH - 0.05,
+          fontSize: unifiedFontSize,
+          fontFace: design.fonts.body,
+          valign: "middle",
+          wrap: true,
+          shrinkText: false,
+          lineSpacingMultiple: 1.18,
+        } as any;
         if (v1HasTitle) {
           const v1Title = items[i].substring(0, v1ColonIdx).trim();
           const v1Desc = items[i].substring(v1ColonIdx + 1).trim();
           const titleRuns = renderSemanticRuns(v1Title + ": ", accentColor, pal, true) || [{ text: v1Title + ": ", options: { bold: true, color: pal } }];
           titleRuns.forEach(r => { r.options = { ...r.options, bold: true }; });
           const descRuns = renderSemanticRuns(v1Desc, accentColor, colors.text) || [{ text: v1Desc, options: { bold: false, color: colors.text } }];
-          slide.addText([...titleRuns, ...descRuns] as any,
-            { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18 } as any);
+          slide.addText([...titleRuns, ...descRuns] as any, baseOpts);
         } else {
           const runs = renderSemanticRuns(items[i], accentColor, colors.text);
           if (runs) {
-            slide.addText(runs as any, { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, valign: "middle", lineSpacingMultiple: 1.18 } as any);
+            slide.addText(runs as any, baseOpts);
           } else {
-            slide.addText(stripSemanticDivider(items[i]), { x: v1X, y: yPos + 0.03, w: v1W, h: itemH - 0.10, fontSize: unifiedBulletFontSize, fontFace: design.fonts.body, color: colors.text, valign: "middle", lineSpacingMultiple: 1.18 } as any);
+            slide.addText(stripSemanticDivider(items[i]), { ...baseOpts, color: colors.text });
           }
         }
       }
