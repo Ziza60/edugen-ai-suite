@@ -1631,6 +1631,30 @@ function sanitizeText(text: string): string {
     .trim();
 }
 
+async function repairPptxPackage(pptxData: Uint8Array): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(pptxData);
+  const fileNames = new Set(Object.keys(zip.files));
+  const contentTypesFile = zip.file("[Content_Types].xml");
+  if (!contentTypesFile) return pptxData;
+
+  const contentTypesXml = await contentTypesFile.async("string");
+  let removedOverrides = 0;
+  const repairedContentTypes = contentTypesXml.replace(/<Override\b[^>]*PartName="([^"]+)"[^>]*\/>/g, (full, partName) => {
+    const normalizedPartName = String(partName || "").replace(/^\//, "");
+    if (normalizedPartName && !fileNames.has(normalizedPartName)) {
+      removedOverrides += 1;
+      return "";
+    }
+    return full;
+  });
+
+  if (!removedOverrides) return pptxData;
+
+  zip.file("[Content_Types].xml", repairedContentTypes);
+  console.warn(`[V3-PACKAGE-REPAIR] Removed ${removedOverrides} dangling [Content_Types] overrides`);
+  return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+}
+
 function ensureSentenceEnd(text: string): string {
   const t = sanitizeText(text);
   if (!t) return t;
