@@ -256,17 +256,25 @@ function computeUnifiedSlideFontSize(
 ): number {
   const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
   let size = autoScaleFont(baseSize, longest, threshold, floor);
+  const totalChars = items.reduce((a, it) => a + getRenderableTextLength(it || ""), 0);
 
   // GEMMA v3.11.2 — Usa agora o estimador preciso (estimateTextHeightInches)
   const MAX_HEIGHT_IN = 3.6;
+  let finalEstimated = 0;
+  let iterations = 0;
   for (let guard = 0; guard < 12 && size > floor; guard++) {
     const totalEstimated = items.reduce((acc, item) => {
       const h = estimateTextHeightInches(item || "", size, SAFE_ZONE.W - 1.2); // mais margem real
       return acc + h;
     }, 0);
-
+    finalEstimated = totalEstimated;
+    iterations = guard;
     if (totalEstimated <= MAX_HEIGHT_IN) break;
     size = Math.max(floor, Math.round((size - 0.5) * 10) / 10);
+  }
+  if (DEBUG_OVERFLOW) {
+    const status = finalEstimated > MAX_HEIGHT_IN ? "OVERFLOW" : "OK";
+    console.log(`[V3-FIT][${status}] items=${items.length} chars=${totalChars} longest=${longest} → fontSize=${size}pt estH=${finalEstimated.toFixed(2)}in (max=${MAX_HEIGHT_IN}in) iters=${iterations}`);
   }
   return size;
 }
