@@ -1477,9 +1477,9 @@ async function generateSlidesForModule(
   if (lastSlide.layout !== "numbered_takeaways") {
     slides.push({
       layout: "numbered_takeaways",
-      title: "Key Takeaways",
-      sectionLabel: "PRINCIPAIS APRENDIZADOS",
-      items: ["Revise o conteúdo do módulo para consolidar o aprendizado."],
+      title: language.includes("Port") ? "Principais Aprendizados" : language.includes("Span") ? "Principales Aprendizajes" : "Key Takeaways",
+      sectionLabel: language.includes("Port") ? "PRINCIPAIS APRENDIZADOS" : language.includes("Span") ? "PRINCIPALES APRENDIZAJES" : "KEY TAKEAWAYS",
+      items: [language.includes("Port") ? "Revise o conteúdo do módulo para consolidar o aprendizado." : "Review the module content to consolidate your learning."],
       moduleIndex,
     });
     report.warnings.push(`[V3-GUARD] Added missing numbered_takeaways for module ${moduleIndex + 1}`);
