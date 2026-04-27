@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.11.6-GEMMA-FLOOR-MEASURE-FIX";
+const ENGINE_VERSION = "3.11.7-GEMMA-TWOCOL-SEMANTIC-FIX";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -246,6 +246,14 @@ function renderSemanticRuns(
 function getRenderableTextLength(text: string): number {
   const semantic = splitSemanticLead(text);
   return semantic.text.length || stripSemanticDivider(text).length;
+}
+
+function normalizeRenderableBulletText(text: string): string {
+  const semantic = splitSemanticLead(text || "");
+  return sanitizeText(semantic.text || text || "")
+    .replace(/`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function computeUnifiedSlideFontSize(
@@ -769,11 +777,13 @@ function measureTextHeight(
   boxWidthInches: number,
   lineSpacing: number = 1.18
 ): number {
+  const safeText = normalizeRenderableBulletText(text);
+  if (!safeText) return 0.3;
   let factor = FONT_WIDTH_FACTOR[fontFace] ?? FONT_WIDTH_FACTOR["default"];
   if (fontFace === "Times New Roman" && fontSizePt < 14) factor *= 0.96;
   const charWidthInches = (fontSizePt / 72) * factor;
   const charsPerLine = Math.max(1, Math.floor(boxWidthInches / charWidthInches));
-  const words = text.split(" ");
+  const words = safeText.split(/\s+/);
   let lines = 1, currentLineChars = 0;
   for (const word of words) {
     if (currentLineChars > 0 && currentLineChars + word.length + 1 > charsPerLine) {
