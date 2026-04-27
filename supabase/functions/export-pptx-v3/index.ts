@@ -384,16 +384,16 @@ function estimateTextHeightInches(
   text: string,
   fontSize: number,
   boxW: number,
-  lineSpacingMultiple = 1.6,
+  lineSpacingMultiple = 1.25,
 ): number {
-  // GEMMA v3.11.1 — Fator empírico mais realista para Montserrat/Open Sans em PPTX.
-  // charWidthFactor 0.0198 (era 0.013) + multiplicador 1.24 cobre bold/runs/wrapping real.
+  // GEMMA v3.11.5 — Calibrado para Montserrat/Open Sans reais em PPTX.
+  // charWidthFactor 0.0115 (antes 0.0198 era ~70% inflado) + spacing 1.25 (antes 1.6) + bold buffer 1.10.
   const safeText = sanitizeText(text || "").trim();
-  if (!safeText) return 0.4;
-  const charWidthFactor = 0.0198;
+  if (!safeText) return 0.3;
+  const charWidthFactor = 0.0115;
   const charsPerLine = Math.max(8, Math.floor(boxW / (fontSize * charWidthFactor)));
   const lines = Math.max(1, Math.ceil(safeText.length / charsPerLine));
-  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.24);
+  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.10);
 }
 
 function computeDeterministicGridFontSize(items: string[]): number {
