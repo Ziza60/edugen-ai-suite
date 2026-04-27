@@ -3067,9 +3067,6 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
       const palColor = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + colBulletGap);
       const bulletText = normalizeRenderableBulletText(colItems[i]);
-      const bulletRuns = renderSemanticRuns(colItems[i], palColor, colors.text) || [
-        { text: bulletText, options: { color: colors.text } },
-      ];
       addCardShadow(slide, colX, yPos, colW, itemH - 0.02, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x: colX,
@@ -3108,7 +3105,7 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
         align: "center",
         valign: "middle",
       });
-      slide.addText(bulletRuns as any, {
+      slide.addText(bulletText, {
         x: colX + 0.52,
         y: yPos + 0.10,
         w: colW - 0.68,
