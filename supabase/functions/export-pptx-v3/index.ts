@@ -377,13 +377,20 @@ function estimateWrappedLines(text: string, fontSize: number, boxW: number): num
   return Math.max(1, Math.ceil(clean.length / charsPerLine));
 }
 
-function estimateTextHeightInches(text: string, fontSize: number, boxW: number, lineSpacingMultiple = 1.6): number {
-  // GEMMA v3.11.0-GEMMA-STABLE — line-height 1.6 + fator de largura 0.013
-  // (mais conservador para Montserrat, evita transbordo nos slides longos).
-  const safeText = (text ?? "").toString();
-  const charsPerLine = Math.max(1, Math.floor(boxW / Math.max(0.0001, fontSize * 0.013)));
+function estimateTextHeightInches(
+  text: string,
+  fontSize: number,
+  boxW: number,
+  lineSpacingMultiple = 1.6,
+): number {
+  // GEMMA v3.11.1 — Fator empírico mais realista para Montserrat/Open Sans em PPTX.
+  // charWidthFactor 0.0198 (era 0.013) + multiplicador 1.24 cobre bold/runs/wrapping real.
+  const safeText = sanitizeText(text || "").trim();
+  if (!safeText) return 0.4;
+  const charWidthFactor = 0.0198;
+  const charsPerLine = Math.max(8, Math.floor(boxW / (fontSize * charWidthFactor)));
   const lines = Math.max(1, Math.ceil(safeText.length / charsPerLine));
-  return lines * ((fontSize * lineSpacingMultiple) / 72);
+  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.24);
 }
 
 function computeDeterministicGridFontSize(items: string[]): number {
@@ -408,17 +415,16 @@ function shouldForceContinuation(plan: SlidePlan): boolean {
 
   switch (plan.layout) {
     case "bullets": {
-      const unified = computeUnifiedSlideFontSize(items, 20, items.length >= 6 ? 88 : 108, MIN_FONT.BODY);
-      return unified <= MIN_FONT.BODY && longest > (items.length >= 6 ? 88 : 108);
+      // GEMMA v3.11.1 — thresholds mais rigorosos para evitar overflow.
+      const unified = computeUnifiedSlideFontSize(items, 20, 92, MIN_FONT.BODY);
+      return unified <= 18.5 || longest > 105;
     }
     case "grid_cards":
-      return computeDeterministicGridFontSize(items) < MIN_FONT.BODY;
+      return computeDeterministicGridFontSize(items) < MIN_FONT.BODY + 0.5;
     case "summary_slide":
     case "numbered_takeaways": {
-      const cols = items.length <= 3 ? Math.max(items.length, 1) : items.length <= 4 ? 2 : 3;
-      const threshold = cols >= 3 ? 72 : 92;
-      const unified = computeUnifiedSlideFontSize(items, 19, threshold, MIN_FONT.BODY);
-      return unified <= MIN_FONT.BODY && longest > threshold;
+      const unified = computeUnifiedSlideFontSize(items, 19, 85, MIN_FONT.BODY);
+      return unified <= 18 || longest > 95;
     }
     default:
       return false;
@@ -461,11 +467,8 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  // GEMMA v3.10.9-GEMMA-SPEC — Regra Gemma definitiva.
-  // Se o total de caracteres < 700 e items <= 8, MANTÉM tudo no mesmo slide
-  // (evita slides "quase vazios" como 13, 75 com item único/órfão).
-  // GEMMA v3.11.0-GEMMA-STABLE — Permite até 8 itens e 800 chars antes de dividir.
-  if (!forcedContinuation && totalChars < 800 && items.length <= 8) {
+  // GEMMA v3.11.1 — split mais cedo (650 chars / 7 itens) para evitar slides lotados.
+  if (!forcedContinuation && totalChars < 650 && items.length <= 7) {
     return [plan];
   }
   if (items.length <= 1) return [plan]; // não dá para dividir
@@ -480,7 +483,7 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   for (const it of items) {
     const itLen = (it || "").length;
     const wouldExceedItems = current.length + 1 > maxItems;
-    const wouldExceedChars = currentChars + itLen > 580 && current.length > 0;
+    const wouldExceedChars = currentChars + itLen > 520 && current.length > 0;
     if (wouldExceedItems || wouldExceedChars) {
       dbg("SPLIT-CUT", {
         title: plan.title,
@@ -2823,9 +2826,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         // title:desc split rendering for variant 1
         const v1ColonIdx = items[i].indexOf(":");
         const v1HasTitle = v1ColonIdx > 0 && v1ColonIdx < 45;
-        // Spec Gemini: x = contentX + 0.55, w = contentW - 0.70 → texto escravo da geometria
-        const v1X = contentX + 0.55;
-        const v1W = contentW - 0.7;
+        // GEMMA v3.11.1 — padding lateral maior + shrinkText controlado.
+        const v1X = contentX + 0.68;
+        const v1W = contentW - 0.88;
         const baseOpts = {
           x: v1X,
           y: yPos,
@@ -2835,7 +2838,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
           fontFace: design.fonts.body,
           valign: "middle",
           wrap: true,
-          shrinkText: false,
+          shrinkText: true,
+          maxFontSize: 19,
+          minFontSize: 13,
           lineSpacingMultiple: 1.18,
         } as any;
         if (v1HasTitle) {
@@ -3163,17 +3168,22 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
         ]
       : [{ text: item.desc, options: { color: colors.text } }];
 
+    // GEMMA v3.11.1 — padding lateral extra + shrinkText.
+    const textW = geometry.cardW - geometry.textXOffset - 0.32;
+    const textH = geometry.cardH - geometry.textYOffset - 0.26;
     slide.addText(
       textRuns as any,
       {
         x: x + geometry.textXOffset,
         y: y + geometry.textYOffset,
-        w: geometry.textW,
-        h: geometry.textH,
+        w: textW,
+        h: textH,
         fontSize: unifiedFontSize,
         fontFace: design.fonts.body,
         valign: "top",
-        lineSpacingMultiple: 1.18,
+        lineSpacingMultiple: 1.22,
+        shrinkText: true,
+        minFontSize: 12,
         margin: 0,
       } as any,
     );
@@ -3915,9 +3925,8 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
   const rows = Math.ceil(items.length / cols);
   const gap = 0.12;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  // GEMMA v3.10.6 — removido cap 2.50": cards do summary agora ocupam
-  // todo o espaço útil em vez de deixar gap morto no fundo.
-  const cardH = Math.max(1.4, (contentHAvail - gap * (rows - 1)) / rows);
+  // GEMMA v3.11.1 — card ligeiramente menor para reduzir overflow.
+  const cardH = Math.max(1.35, (contentHAvail - gap * (rows - 1)) / rows - 0.08);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols,
       row = Math.floor(i / cols);
@@ -3958,7 +3967,8 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
       color: colors.text,
       valign: "middle",
       lineSpacingMultiple: 1.25,
-      autoFit: true,
+      shrinkText: true,
+      minFontSize: 12,
     } as any);
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
@@ -4007,7 +4017,8 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   // GEMMA v3.10.6 — removido cap rígido 2.50" que truncava textos longos
   // (slide 27 com >3 linhas extrapolava o card). Aproveita 100% da safe-zone.
   const rawCardH = (contentH - gap * (gridRows - 1)) / gridRows;
-  const cardH = Math.min(1.85, Math.max(1.4, rawCardH));
+  // GEMMA v3.11.1 — leve redução para evitar overflow do texto.
+  const cardH = Math.min(1.85, Math.max(1.35, rawCardH - 0.08));
   for (let i = 0; i < items.length; i++) {
     const col = i % cols,
       row = Math.floor(i / cols);
@@ -4068,7 +4079,8 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
         fontFace: design.fonts.body,
         valign: "middle",
         lineSpacingMultiple: 1.25,
-        autoFit: true,
+        shrinkText: true,
+        minFontSize: 12,
       } as any,
     );
   }
