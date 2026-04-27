@@ -206,7 +206,7 @@ const SPLITTABLE_LAYOUTS = new Set<SlideLayoutV3>([
  * Usados para detectar itens "rótulo de seção" e impedir que fiquem
  * isolados no final de um slide (regra de agrupamento Gemma v3.9.5).
  */
-const SECTION_MARKER_REGEX = /^[\s-]*([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])/u;
+const SECTION_MARKER_REGEX = /^[\s-]*([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])\uFE0F?/u;
 
 function stripSemanticDivider(text: string): string {
   return sanitizeText(text || "")
@@ -216,7 +216,7 @@ function stripSemanticDivider(text: string): string {
 
 function splitSemanticLead(text: string): { icon?: string; text: string } {
   const cleaned = stripSemanticDivider(text);
-  const match = cleaned.match(/^([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])\s*(.+)$/u);
+  const match = cleaned.match(/^([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])\uFE0F?\s*(.+)$/u);
   if (!match) return { text: cleaned };
   return { icon: match[1], text: match[2].trim() };
 }
@@ -251,6 +251,7 @@ function getRenderableTextLength(text: string): number {
 function normalizeRenderableBulletText(text: string): string {
   const semantic = splitSemanticLead(text || "");
   return sanitizeText(semantic.text || text || "")
+    .replace(/\uFE0F/g, "")
     .replace(/`/g, "")
     .replace(/\s+/g, " ")
     .trim();
