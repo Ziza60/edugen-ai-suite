@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.11.2-GEMMA-OVERFLOW-FIXED";
+const ENGINE_VERSION = "3.11.3-GEMMA-OVERFLOW-FINAL";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -2627,7 +2627,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   const unifiedBulletFontSize = computeUnifiedSlideFontSize(
     items,
     items.length >= 6 ? 19 : 20,
-    items.length >= 6 ? 88 : 108,
+    items.length >= 6 ? 82 : 98,
     MIN_FONT.BODY,
   );
 
@@ -3084,13 +3084,16 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
       slide.addText(colItems[i], {
         x: colX + 0.52,
         y: yPos + 0.12,
-        w: colW - 0.6,
+        w: colW - 0.68,
         h: itemH - 0.22,
         fontSize: TYPO.BULLET_TEXT - 1,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
         lineSpacingMultiple: 1.15,
+        shrinkText: true,
+        maxFontSize: 18,
+        minFontSize: 12,
       } as any);
     }
   }
