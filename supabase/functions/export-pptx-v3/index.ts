@@ -3018,8 +3018,10 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
     const colX = contentX + col * (colW + colGap);
     const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
     const colContentH = colHEnd;
-    const rawItemH = (colContentH - colBulletGap * Math.max(colItems.length - 1, 0)) / Math.max(colItems.length, 1);
-    const itemH = Math.max(0.55, Math.min(1.65, rawItemH));
+    const measuredHeights = colItems.map(item =>
+      measureTextHeight(item, TYPO.BULLET_TEXT - 1, design.fonts.body, colW - 0.60) + 0.30
+    );
+    const itemH = Math.max(0.55, Math.min(1.80, Math.max(...measuredHeights)));
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + colBulletGap);
