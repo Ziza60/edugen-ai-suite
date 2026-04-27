@@ -1607,10 +1607,9 @@ function addLeftEdge(slide: any, color: string) {
 
 function addSectionLabel(slide: any, label: string, accentColor: string, fontBody: string) {
   slide.addText(label.toUpperCase(), {
-    x: 0.55, y: 0.28, w: 6.0, h: 0.24,
+    x: 0.55, y: 0.32, w: 6.0, h: 0.24,
     fontSize: 9, fontFace: fontBody, bold: true, color: accentColor, charSpacing: 5.5,
   });
-  addHR(slide, 0.55, 0.54, 0.70, accentColor, 0.024);
 }
 
 function addSlideTitle(slide: any, title: string, colors: ReturnType<typeof getColors>, fontTitle: string, accentColor?: string) {
