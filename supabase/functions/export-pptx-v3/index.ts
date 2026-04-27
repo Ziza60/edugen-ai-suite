@@ -4481,7 +4481,8 @@ Deno.serve(async (req: Request) => {
 
     const { pptx, report } = await runPipeline(courseTitle, moduleData, design, exportLanguage);
 
-    const pptxData = await pptx.write({ outputType: "uint8array" });
+    const rawPptxData = await pptx.write({ outputType: "uint8array" });
+    const pptxData = await repairPptxPackage(rawPptxData);
 
     const dateStr = new Date().toISOString().slice(0, 10);
     const safeName = (course.title || "curso")
