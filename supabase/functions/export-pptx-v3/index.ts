@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.11.7-GEMMA-TWOCOL-SEMANTIC-FIX";
+const ENGINE_VERSION = "3.11.5-GEMMA-OVERFLOW-FIXED";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -2646,8 +2646,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   const items = plan.items || [];
   const unifiedBulletFontSize = computeUnifiedSlideFontSize(
     items,
-    items.length >= 6 ? 19 : 20,
-    items.length >= 6 ? 82 : 98,
+    items.length >= 6 ? 18 : 19,
+    items.length >= 6 ? 78 : 92,
     MIN_FONT.BODY,
   );
 
