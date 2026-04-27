@@ -1259,6 +1259,7 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
     items = raw.items
       .filter((i: any) => typeof i === "string" && i.trim().length > 5)
       .map((i: string) => ensureSentenceEnd(sanitizeText(i).substring(0, itemCharLimit)))
+      .filter((i: string) => !isSectionMarker(i))
       .slice(0, maxItems + 2);
   }
 
@@ -1351,6 +1352,7 @@ function buildFallbackSlides(
     .map((s) => s.trim())
     .filter((s) => s.length > 20 && s.length < 160)
     .map((s) => ensureSentenceEnd(s))
+    .filter((s) => !isSectionMarker(s))
     .slice(0, 12);
 
   const slides: SlidePlan[] = [
@@ -2327,7 +2329,7 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
     const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
     const colContentH = colHEnd;
     const rawItemH = (colContentH - colBulletGap * Math.max(colItems.length - 1, 0)) / Math.max(colItems.length, 1);
-    const itemH = Math.max(0.42, Math.min(1.10, rawItemH));
+    const itemH = Math.max(0.55, Math.min(1.65, rawItemH));
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + colBulletGap);
@@ -2804,7 +2806,6 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   addHR(slide, 0, 0.04, SLIDE_W, colors.p4, 0.045);
   if (plan.sectionLabel) { slide.addText(plan.sectionLabel.toUpperCase(), { x: 0.65, y: 0.28, w: 6.0, h: 0.24, fontSize: 10, fontFace: design.fonts.body, bold: true, color: colors.p4, charSpacing: 6 }); }
   slide.addText(plan.title, { x: 0.65, y: 0.58, w: SLIDE_W - 1.30, h: 0.70, fontSize: 28, fontFace: design.fonts.title, bold: true, color: "FFFFFF", valign: "middle" });
-  addHR(slide, 0.65, 1.35, 1.80, colors.p4, 0.025);
   const items = plan.items || [];
   const contentX = 0.65, contentW = SLIDE_W - contentX - 0.50;
   const cols = items.length <= 3 ? items.length : items.length <= 4 ? 2 : 3;
