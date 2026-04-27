@@ -4,7 +4,7 @@ import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.11.6-ULTRA-SAFE-ZOD";
+const ENGINE_VERSION = "3.11.7-XML-SAFE";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
