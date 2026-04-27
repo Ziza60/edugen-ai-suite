@@ -2730,6 +2730,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
             fontFace: design.fonts.body,
             valign: "middle",
             lineSpacingMultiple: 1.18,
+            shrinkText: true,
+            maxFontSize: 19,
+            minFontSize: 13,
           } as any);
         } else {
           const runs = renderSemanticRuns(items[i], accentColor, colors.text);
@@ -2745,6 +2748,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
                 fontFace: design.fonts.body,
                 valign: "middle",
                 lineSpacingMultiple: 1.18,
+                shrinkText: true,
+                maxFontSize: 19,
+                minFontSize: 13,
               } as any,
             );
           } else {
@@ -2758,6 +2764,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
               color: colors.text,
               valign: "middle",
               lineSpacingMultiple: 1.18,
+              shrinkText: true,
+              maxFontSize: 19,
+              minFontSize: 13,
             } as any);
           }
         }
@@ -2904,7 +2913,10 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         color: colors.text,
         valign: "top",
         lineSpacingMultiple: 1.18,
-      });
+        shrinkText: true,
+        maxFontSize: 19,
+        minFontSize: 13,
+      } as any);
     }
   } else {
     addSlideBackground(slide, colors.bg);
@@ -2941,6 +2953,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         valign: "middle",
         lineSpacingMultiple: 1.3,
         italic: true,
+        shrinkText: true,
+        maxFontSize: 19,
+        minFontSize: 13,
       } as any);
       if (items.length > 1) {
         const restY = contentY + heroH + 0.18;
@@ -2967,7 +2982,10 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
             color: colors.text,
             valign: "middle",
             lineSpacingMultiple: 1.15,
-          });
+            shrinkText: true,
+            maxFontSize: 19,
+            minFontSize: 13,
+          } as any);
         }
       }
     }
