@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.11.6-GEMMA-FLOOR-MEASURE-FIX";
+const ENGINE_VERSION = "3.11.7-GEMMA-TWOCOL-SEMANTIC-FIX";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -206,7 +206,7 @@ const SPLITTABLE_LAYOUTS = new Set<SlideLayoutV3>([
  * Usados para detectar itens "rótulo de seção" e impedir que fiquem
  * isolados no final de um slide (regra de agrupamento Gemma v3.9.5).
  */
-const SECTION_MARKER_REGEX = /^[\s-]*([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])/u;
+const SECTION_MARKER_REGEX = /^[\s-]*([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])\uFE0F?/u;
 
 function stripSemanticDivider(text: string): string {
   return sanitizeText(text || "")
@@ -216,7 +216,7 @@ function stripSemanticDivider(text: string): string {
 
 function splitSemanticLead(text: string): { icon?: string; text: string } {
   const cleaned = stripSemanticDivider(text);
-  const match = cleaned.match(/^([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])\s*(.+)$/u);
+  const match = cleaned.match(/^([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])\uFE0F?\s*(.+)$/u);
   if (!match) return { text: cleaned };
   return { icon: match[1], text: match[2].trim() };
 }
@@ -246,6 +246,15 @@ function renderSemanticRuns(
 function getRenderableTextLength(text: string): number {
   const semantic = splitSemanticLead(text);
   return semantic.text.length || stripSemanticDivider(text).length;
+}
+
+function normalizeRenderableBulletText(text: string): string {
+  const semantic = splitSemanticLead(text || "");
+  return sanitizeText(semantic.text || text || "")
+    .replace(/\uFE0F/g, "")
+    .replace(/`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function computeUnifiedSlideFontSize(
@@ -769,11 +778,13 @@ function measureTextHeight(
   boxWidthInches: number,
   lineSpacing: number = 1.18
 ): number {
+  const safeText = normalizeRenderableBulletText(text);
+  if (!safeText) return 0.3;
   let factor = FONT_WIDTH_FACTOR[fontFace] ?? FONT_WIDTH_FACTOR["default"];
   if (fontFace === "Times New Roman" && fontSizePt < 14) factor *= 0.96;
   const charWidthInches = (fontSizePt / 72) * factor;
   const charsPerLine = Math.max(1, Math.floor(boxWidthInches / charWidthInches));
-  const words = text.split(" ");
+  const words = safeText.split(/\s+/);
   let lines = 1, currentLineChars = 0;
   for (const word of words) {
     if (currentLineChars > 0 && currentLineChars + word.length + 1 > charsPerLine) {
@@ -3045,13 +3056,17 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
     const colX = contentX + col * (colW + colGap);
     const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
     const colContentH = colHEnd;
-    const measuredHeights = colItems.map(item =>
-      measureTextHeight(item, TYPO.BULLET_TEXT - 1, design.fonts.body, colW - 0.60) + 0.30
+    const measuredHeights = colItems.map((item) =>
+      measureTextHeight(item, TYPO.BULLET_TEXT - 1, design.fonts.body, colW - 0.68, 1.15) + 0.34
     );
-    const itemH = Math.max(0.55, Math.min(1.80, Math.max(...measuredHeights)));
+    const rawItemH = colItems.length > 0
+      ? (colContentH - colBulletGap * Math.max(colItems.length - 1, 0)) / colItems.length
+      : colContentH;
+    const itemH = Math.max(0.72, Math.min(1.80, Math.max(rawItemH, ...measuredHeights)));
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + colBulletGap);
+      const bulletText = normalizeRenderableBulletText(colItems[i]);
       addCardShadow(slide, colX, yPos, colW, itemH - 0.02, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x: colX,
@@ -3090,19 +3105,22 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
         align: "center",
         valign: "middle",
       });
-      slide.addText(colItems[i], {
+      slide.addText(bulletText, {
         x: colX + 0.52,
-        y: yPos + 0.12,
+        y: yPos + 0.10,
         w: colW - 0.68,
-        h: itemH - 0.22,
+        h: itemH - 0.18,
         fontSize: TYPO.BULLET_TEXT - 1,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.15,
+        margin: 0,
+        breakLine: false,
+        fit: "shrink",
+        lineSpacingMultiple: 1.12,
         shrinkText: true,
-        maxFontSize: 18,
-        minFontSize: 12,
+        maxFontSize: 17,
+        minFontSize: 11,
       } as any);
     }
   }
