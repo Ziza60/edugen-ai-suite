@@ -3055,13 +3055,20 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
     const colX = contentX + col * (colW + colGap);
     const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
     const colContentH = colHEnd;
-    const measuredHeights = colItems.map(item =>
-      measureTextHeight(item, TYPO.BULLET_TEXT - 1, design.fonts.body, colW - 0.60) + 0.30
+    const measuredHeights = colItems.map((item) =>
+      measureTextHeight(item, TYPO.BULLET_TEXT - 1, design.fonts.body, colW - 0.68, 1.15) + 0.34
     );
-    const itemH = Math.max(0.55, Math.min(1.80, Math.max(...measuredHeights)));
+    const rawItemH = colItems.length > 0
+      ? (colContentH - colBulletGap * Math.max(colItems.length - 1, 0)) / colItems.length
+      : colContentH;
+    const itemH = Math.max(0.72, Math.min(1.80, Math.max(rawItemH, ...measuredHeights)));
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + colBulletGap);
+      const bulletText = normalizeRenderableBulletText(colItems[i]);
+      const bulletRuns = renderSemanticRuns(colItems[i], palColor, colors.text) || [
+        { text: bulletText, options: { color: colors.text } },
+      ];
       addCardShadow(slide, colX, yPos, colW, itemH - 0.02, colors.shadowColor, design.theme === "light");
       slide.addShape("roundRect" as any, {
         x: colX,
@@ -3100,19 +3107,22 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
         align: "center",
         valign: "middle",
       });
-      slide.addText(colItems[i], {
+      slide.addText(bulletRuns as any, {
         x: colX + 0.52,
-        y: yPos + 0.12,
+        y: yPos + 0.10,
         w: colW - 0.68,
-        h: itemH - 0.22,
+        h: itemH - 0.18,
         fontSize: TYPO.BULLET_TEXT - 1,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.15,
+        margin: 0,
+        breakLine: false,
+        fit: "shrink",
+        lineSpacingMultiple: 1.12,
         shrinkText: true,
-        maxFontSize: 18,
-        minFontSize: 12,
+        maxFontSize: 17,
+        minFontSize: 11,
       } as any);
     }
   }
