@@ -2343,8 +2343,8 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
       slide.addText(colItems[i], {
         x: colX + 0.52, y: yPos + 0.03, w: colW - 0.60, h: itemH - 0.08,
         fontSize: TYPO.BULLET_TEXT - 1, fontFace: design.fonts.body, color: colors.text,
-        valign: "middle", lineSpacingMultiple: 1.18,
-      });
+        valign: "middle", lineSpacingMultiple: 1.18, autoFit: true, shrinkText: true,
+      } as any);
     }
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
