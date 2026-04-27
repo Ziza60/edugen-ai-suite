@@ -314,23 +314,24 @@ function computeUnifiedSlideFontSize(
   threshold: number,
   floor = MIN_FONT.BODY,
 ): number {
-  const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
+  const safeItems = (items || []).map((item) => normalizeRenderableBulletText(item || "")).filter(Boolean);
+  if (safeItems.length === 0) return baseSize;
+  const longest = safeItems.reduce((max, item) => Math.max(max, item.length), 0);
+  const totalChars = safeItems.reduce((a, it) => a + it.length, 0);
   let size = autoScaleFont(baseSize, longest, threshold, floor);
-  const totalChars = items.reduce((a, it) => a + getRenderableTextLength(it || ""), 0);
-
-  // GEMMA v3.11.6 — Sempre mede pelo menos 1x, mesmo no piso, para detectar overflow real.
-  const MAX_HEIGHT_IN = 5.0;
+  const MAX_HEIGHT_IN = 4.92;
   let finalEstimated = 0;
   let iterations = 0;
-  for (let guard = 0; guard < 12; guard++) {
-    const totalEstimated = items.reduce((acc, item) => {
-      const h = estimateTextHeightInches(item || "", size, SAFE_ZONE.W - 1.2);
-      return acc + h;
+  for (let guard = 0; guard < 18; guard++) {
+    const perItemPadding = safeItems.length >= 5 ? 0.1 : 0.08;
+    const totalEstimated = safeItems.reduce((acc, item) => {
+      const h = estimateTextHeightInches(item, size, SAFE_ZONE.W - 1.45, 1.26);
+      return acc + h + perItemPadding;
     }, 0);
     finalEstimated = totalEstimated;
-    iterations = guard;
+    iterations = guard + 1;
     if (totalEstimated <= MAX_HEIGHT_IN) break;
-    if (size <= floor) break; // já no piso, não dá para reduzir mais
+    if (size <= floor) break;
     size = Math.max(floor, Math.round((size - 0.5) * 10) / 10);
   }
   if (DEBUG_OVERFLOW) {
@@ -531,8 +532,7 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  // GEMMA v3.11.1 — split mais cedo (650 chars / 7 itens) para evitar slides lotados.
-  if (!forcedContinuation && totalChars < 650 && items.length <= 7) {
+  if (!forcedContinuation && totalChars < 560 && items.length <= 5) {
     return [plan];
   }
   if (items.length <= 1) return [plan]; // não dá para dividir
@@ -547,11 +547,28 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   for (const it of items) {
     const itLen = (it || "").length;
     const wouldExceedItems = current.length + 1 > maxItems;
-    const wouldExceedChars = currentChars + itLen > 520 && current.length > 0;
+    const wouldExceedChars = currentChars + itLen > 440 && current.length > 0;
+    const wouldExceedMeasure =
+      current.length > 0 &&
+      computeUnifiedSlideFontSize([...current, it], items.length >= 6 ? 18 : 19, items.length >= 6 ? 78 : 92, MIN_FONT.BODY) <= MIN_FONT.BODY;
     if (wouldExceedItems || wouldExceedChars) {
       dbg("SPLIT-CUT", {
         title: plan.title,
         reason: wouldExceedItems ? "items" : "chars",
+        currentChars,
+        currentItems: current.length,
+        nextItemLen: itLen,
+        nextItemKind: classifyItem(it),
+        nextItemPreview: summarizeItem(it),
+      });
+      chunks.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    if (wouldExceedMeasure && current.length > 0) {
+      dbg("SPLIT-CUT", {
+        title: plan.title,
+        reason: "measure",
         currentChars,
         currentItems: current.length,
         nextItemLen: itLen,
