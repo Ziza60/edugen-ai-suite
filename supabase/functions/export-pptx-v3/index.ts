@@ -1357,7 +1357,7 @@ function buildFallbackSlides(
     {
       layout: "module_cover",
       title: moduleTitle,
-      objectives: sentences.slice(0, 3).map((s) => s.substring(0, 100)),
+      objectives: sentences.slice(0, 3).map((s) => s.replace(/^---+\s*/u, "").trim().substring(0, 100)),
       items: [],
       moduleIndex,
     },
@@ -1382,9 +1382,9 @@ function buildFallbackSlides(
 
   slides.push({
     layout: "numbered_takeaways",
-    title: "Key Takeaways",
+    title: "Principais Aprendizados",
     sectionLabel: "PRINCIPAIS APRENDIZADOS",
-    items: sentences.slice(0, 4),
+    items: sentences.slice(0, 4).map((s) => s.replace(/^---+\s*/u, "").trim()),
     moduleIndex,
   });
 
@@ -1477,9 +1477,9 @@ async function generateSlidesForModule(
   if (lastSlide.layout !== "numbered_takeaways") {
     slides.push({
       layout: "numbered_takeaways",
-      title: "Key Takeaways",
-      sectionLabel: "PRINCIPAIS APRENDIZADOS",
-      items: ["Revise o conteúdo do módulo para consolidar o aprendizado."],
+      title: language.includes("Port") ? "Principais Aprendizados" : language.includes("Span") ? "Principales Aprendizajes" : "Key Takeaways",
+      sectionLabel: language.includes("Port") ? "PRINCIPAIS APRENDIZADOS" : language.includes("Span") ? "PRINCIPALES APRENDIZAJES" : "KEY TAKEAWAYS",
+      items: [language.includes("Port") ? "Revise o conteúdo do módulo para consolidar o aprendizado." : "Review the module content to consolidate your learning."],
       moduleIndex,
     });
     report.warnings.push(`[V3-GUARD] Added missing numbered_takeaways for module ${moduleIndex + 1}`);
@@ -1607,10 +1607,9 @@ function addLeftEdge(slide: any, color: string) {
 
 function addSectionLabel(slide: any, label: string, accentColor: string, fontBody: string) {
   slide.addText(label.toUpperCase(), {
-    x: 0.55, y: 0.28, w: 6.0, h: 0.24,
+    x: 0.55, y: 0.32, w: 6.0, h: 0.24,
     fontSize: 9, fontFace: fontBody, bold: true, color: accentColor, charSpacing: 5.5,
   });
-  addHR(slide, 0.55, 0.54, 0.70, accentColor, 0.024);
 }
 
 function addSlideTitle(slide: any, title: string, colors: ReturnType<typeof getColors>, fontTitle: string, accentColor?: string) {
@@ -1619,10 +1618,6 @@ function addSlideTitle(slide: any, title: string, colors: ReturnType<typeof getC
     fontSize: TYPO.SECTION_TITLE, fontFace: fontTitle, bold: true,
     color: colors.text, valign: "middle", lineSpacingMultiple: 1.05,
   });
-  if (accentColor) {
-    addHR(slide, 0.55, 1.52, SLIDE_W - 1.10, accentColor, 0.008);
-    addHR(slide, 0.55, 1.54, SLIDE_W - 1.10, colors.divider, 0.004);
-  }
 }
 
 function addFooter(
@@ -2348,8 +2343,8 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
       slide.addText(colItems[i], {
         x: colX + 0.52, y: yPos + 0.03, w: colW - 0.60, h: itemH - 0.08,
         fontSize: TYPO.BULLET_TEXT - 1, fontFace: design.fonts.body, color: colors.text,
-        valign: "middle", lineSpacingMultiple: 1.18,
-      });
+        valign: "middle", lineSpacingMultiple: 1.18, autoFit: true, shrinkText: true,
+      } as any);
     }
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
@@ -2819,7 +2814,8 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   const contentY = 1.65, contentH = CONTENT_BOTTOM - contentY;
   // GEMMA v3.10.6 — removido cap rígido 2.50" que truncava textos longos
   // (slide 27 com >3 linhas extrapolava o card). Aproveita 100% da safe-zone.
-  const cardH = Math.max(1.40, (contentH - gap * (gridRows - 1)) / gridRows);
+  const rawCardH = (contentH - gap * (gridRows - 1)) / gridRows;
+  const cardH = Math.min(1.85, Math.max(1.40, rawCardH));
   for (let i = 0; i < items.length; i++) {
     const col = i % cols, row = Math.floor(i / cols);
     const x = contentX + col * (cardW + gap), y = contentY + row * (cardH + gap);
