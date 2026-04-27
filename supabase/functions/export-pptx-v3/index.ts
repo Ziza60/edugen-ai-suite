@@ -3,14 +3,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.11.3-GEMMA-OVERFLOW-FINAL";
+const ENGINE_VERSION = "3.11.4-GEMMA-DEBUG-ON";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
- * Ative com env var `PPTX_V3_DEBUG=1` (ou request header/body com debug=true)
- * para emitir logs detalhados de chunks e classificação de marcadores.
+ * FORÇADO em true para coletar logs de overflow.
  */
-const DEBUG_SPLIT = (Deno.env.get("PPTX_V3_DEBUG") ?? "").trim() === "1";
+const DEBUG_SPLIT = true;
+const DEBUG_OVERFLOW = true;
 function dbg(tag: string, payload: unknown) {
   if (!DEBUG_SPLIT) return;
   try {
@@ -256,17 +256,25 @@ function computeUnifiedSlideFontSize(
 ): number {
   const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
   let size = autoScaleFont(baseSize, longest, threshold, floor);
+  const totalChars = items.reduce((a, it) => a + getRenderableTextLength(it || ""), 0);
 
   // GEMMA v3.11.2 — Usa agora o estimador preciso (estimateTextHeightInches)
   const MAX_HEIGHT_IN = 3.6;
+  let finalEstimated = 0;
+  let iterations = 0;
   for (let guard = 0; guard < 12 && size > floor; guard++) {
     const totalEstimated = items.reduce((acc, item) => {
       const h = estimateTextHeightInches(item || "", size, SAFE_ZONE.W - 1.2); // mais margem real
       return acc + h;
     }, 0);
-
+    finalEstimated = totalEstimated;
+    iterations = guard;
     if (totalEstimated <= MAX_HEIGHT_IN) break;
     size = Math.max(floor, Math.round((size - 0.5) * 10) / 10);
+  }
+  if (DEBUG_OVERFLOW) {
+    const status = finalEstimated > MAX_HEIGHT_IN ? "OVERFLOW" : "OK";
+    console.log(`[V3-FIT][${status}] items=${items.length} chars=${totalChars} longest=${longest} → fontSize=${size}pt estH=${finalEstimated.toFixed(2)}in (max=${MAX_HEIGHT_IN}in) iters=${iterations}`);
   }
   return size;
 }
