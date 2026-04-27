@@ -1601,11 +1601,13 @@ function ensureSentenceEnd(text: string): string {
 }
 
 function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): SlidePlan | null {
+  raw = sanitizeAndValidate(raw)[0];
   if (!raw || typeof raw !== "object" || !raw.layout) return null;
 
   const layout = String(raw.layout) as SlideLayoutV3;
   const validLayouts: SlideLayoutV3[] = [
     "module_cover",
+    "toc",
     "bullets",
     "two_column_bullets",
     "definition",
@@ -1617,6 +1619,7 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
     "reflection_callout",
     "summary_slide",
     "numbered_takeaways",
+    "closing",
   ];
   if (!validLayouts.includes(layout)) return null;
 
@@ -1695,7 +1698,7 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
   if (tableRows) plan.tableRows = tableRows;
 
   // Guard: skip slides with no content (except structural slides)
-  const structuralLayouts: SlideLayoutV3[] = ["module_cover", "summary_slide", "numbered_takeaways"];
+  const structuralLayouts: SlideLayoutV3[] = ["module_cover", "toc", "summary_slide", "numbered_takeaways", "closing"];
   if (!structuralLayouts.includes(layout)) {
     const hasItems = (plan.items?.length ?? 0) > 0;
     const hasTable = (plan.tableRows?.length ?? 0) > 0;
@@ -1828,7 +1831,7 @@ async function generateSlidesForModule(
   }
 
   // Normalize each slide
-  const slides: SlidePlan[] = parsed
+  const slides: SlidePlan[] = sanitizeAndValidate(parsed)
     .map((raw) => normalizeSlide(raw, moduleIndex, design))
     .filter((s): s is SlidePlan => s !== null);
 
