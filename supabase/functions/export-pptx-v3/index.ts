@@ -4,7 +4,7 @@ import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.11.6-ULTRA-SAFE-ZOD";
+const ENGINE_VERSION = "3.11.7-XML-SAFE";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -1573,23 +1573,60 @@ Retorne APENAS o array JSON. Nenhum texto antes ou depois.`;
 // SECTION 5: JSON PARSING & VALIDATION
 // ═══════════════════════════════════════════════════════════════════
 
+function stripInvalidXmlChars(input: string): string {
+  // XML 1.0 valid chars: #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+  // Remove unpaired surrogates and invalid codepoints that corrupt OOXML and trigger
+  // PowerPoint's "needs repair" dialog.
+  let out = "";
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i);
+    // High surrogate → must be followed by low surrogate
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = i + 1 < input.length ? input.charCodeAt(i + 1) : 0;
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        out += input[i] + input[i + 1];
+        i++;
+        continue;
+      }
+      // orphan high surrogate → drop
+      continue;
+    }
+    // Lone low surrogate → drop
+    if (code >= 0xdc00 && code <= 0xdfff) continue;
+    // Forbidden control chars (keep \t \n \r)
+    if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) continue;
+    if (code === 0x7f) continue;
+    // Non-characters
+    if (code === 0xfffe || code === 0xffff) continue;
+    out += input[i];
+  }
+  return out;
+}
+
 function sanitizeText(text: string): string {
   if (!text || typeof text !== "string") return "";
-  return text
+  let out = text
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (_, c) => String.fromCharCode(Number(c)))
+    .replace(/&#(\d+);/g, (_, c) => {
+      const n = Number(c);
+      if (!Number.isFinite(n) || n < 0 || n > 0x10ffff) return "";
+      try { return String.fromCodePoint(n); } catch { return ""; }
+    });
+  // Strip XML-invalid chars BEFORE further processing
+  out = stripInvalidXmlChars(out);
+  return out
     .replace(/[\u0000-\u001F\u007F]/g, " ")
-    .replace(/(\d+)\.\s+(\d{3})/g, "$1.$2") // fix "R$500. 000" / "Lei nº 8. 443" → correct
-    .replace(/\|\s*:?-+\s*\|?/g, " ") // remove markdown table separators | :--- |
-    .replace(/\|/g, " ") // remove any remaining pipe chars
+    .replace(/(\d+)\.\s+(\d{3})/g, "$1.$2")
+    .replace(/\|\s*:?-+\s*\|?/g, " ")
+    .replace(/\|/g, " ")
     .replace(/\s+/g, " ")
-    .replace(/\s*\"\s*\.\s*$/g, ".") // fix trailing artifact ". at end
-    .replace(/\.\s*\"\s*\./g, ".") // fix mid-artifact ."."
-    .replace(/\"\s*\.$/g, ".") // fix trailing ".
+    .replace(/\s*\"\s*\.\s*$/g, ".")
+    .replace(/\.\s*\"\s*\./g, ".")
+    .replace(/\"\s*\.$/g, ".")
     .trim();
 }
 
