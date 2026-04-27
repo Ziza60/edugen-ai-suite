@@ -745,6 +745,41 @@ const TYPO = {
   TOC_DESC: 12,
 };
 
+const FONT_WIDTH_FACTOR: Record<string, number> = {
+  "Montserrat":       0.62,
+  "Open Sans":        0.60,
+  "Lato":             0.59,
+  "Times New Roman":  0.58,
+  "Arial":            0.61,
+  "Playfair Display": 0.67,
+  "default":          0.61,
+};
+
+function measureTextHeight(
+  text: string,
+  fontSizePt: number,
+  fontFace: string,
+  boxWidthInches: number,
+  lineSpacing: number = 1.18
+): number {
+  let factor = FONT_WIDTH_FACTOR[fontFace] ?? FONT_WIDTH_FACTOR["default"];
+  if (fontFace === "Times New Roman" && fontSizePt < 14) factor *= 0.96;
+  const charWidthInches = (fontSizePt / 72) * factor;
+  const charsPerLine = Math.max(1, Math.floor(boxWidthInches / charWidthInches));
+  const words = text.split(" ");
+  let lines = 1, currentLineChars = 0;
+  for (const word of words) {
+    if (currentLineChars > 0 && currentLineChars + word.length + 1 > charsPerLine) {
+      lines++;
+      currentLineChars = word.length;
+    } else {
+      currentLineChars += (currentLineChars > 0 ? 1 : 0) + word.length;
+    }
+  }
+  const lineHeightInches = (fontSizePt / 72) * lineSpacing * 1.2;
+  return lines * lineHeightInches;
+}
+
 const TEMPLATE_FONTS: Record<string, { title: string; body: string }> = {
   default: { title: "Montserrat", body: "Open Sans" },
   academic: { title: "Times New Roman", body: "Arial" },
