@@ -1357,7 +1357,7 @@ function buildFallbackSlides(
     {
       layout: "module_cover",
       title: moduleTitle,
-      objectives: sentences.slice(0, 3).map((s) => s.substring(0, 100)),
+      objectives: sentences.slice(0, 3).map((s) => s.replace(/^---+\s*/u, "").trim().substring(0, 100)),
       items: [],
       moduleIndex,
     },
