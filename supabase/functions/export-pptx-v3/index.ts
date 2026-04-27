@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.11.7-GEMMA-TWOCOL-SEMANTIC-FIX";
+const ENGINE_VERSION = "3.11.5-GEMMA-OVERFLOW-FIXED";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -2646,8 +2646,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   const items = plan.items || [];
   const unifiedBulletFontSize = computeUnifiedSlideFontSize(
     items,
-    items.length >= 6 ? 19 : 20,
-    items.length >= 6 ? 82 : 98,
+    items.length >= 6 ? 18 : 19,
+    items.length >= 6 ? 78 : 92,
     MIN_FONT.BODY,
   );
 
@@ -3024,103 +3024,58 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   addLeftEdge(slide, pal);
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, pal, design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, pal);
+
   const items = plan.items || [];
   const contentX = 0.65;
-  const totalW = SLIDE_W - contentX - 0.55;
-  const colGap = 0.35;
+  const totalW = SLIDE_W - contentX - 0.68;
+  const colGap = 0.38;
   const colW = (totalW - colGap) / 2;
   const contentY = 1.68;
   const mid = Math.ceil(items.length / 2);
   const leftItems = items.slice(0, mid);
   const rightItems = items.slice(mid);
   const divX = contentX + colW + colGap / 2;
-  // GEMMA v3.10.5 — usa CONTENT_BOTTOM (6.80) para evitar invadir o footer (7.16).
   const colHEnd = CONTENT_BOTTOM - contentY;
-  slide.addShape("rect" as any, {
-    x: divX - 0.01,
-    y: contentY,
-    w: 0.02,
-    h: colHEnd,
-    fill: { color: pal },
-    transparency: 50,
-  });
-  slide.addShape("ellipse" as any, {
-    x: divX - 0.05,
-    y: contentY + colHEnd / 2 - 0.05,
-    w: 0.1,
-    h: 0.1,
-    fill: { color: pal },
-  });
+
+  slide.addShape("rect" as any, { x: divX - 0.01, y: contentY, w: 0.02, h: colHEnd, fill: { color: pal }, transparency: 50 });
+
   for (let col = 0; col < 2; col++) {
     const colItems = col === 0 ? leftItems : rightItems;
     const colX = contentX + col * (colW + colGap);
     const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
-    const colContentH = colHEnd;
-    const measuredHeights = colItems.map((item) =>
-      measureTextHeight(item, TYPO.BULLET_TEXT - 1, design.fonts.body, colW - 0.68, 1.15) + 0.34
-    );
-    const rawItemH = colItems.length > 0
-      ? (colContentH - colBulletGap * Math.max(colItems.length - 1, 0)) / colItems.length
-      : colContentH;
-    const itemH = Math.max(0.72, Math.min(1.80, Math.max(rawItemH, ...measuredHeights)));
+
+    const itemH = Math.max(0.58, Math.min(1.55,
+      Math.max(...colItems.map(item => estimateTextHeightInches(item, 16.5, colW - 0.8) + 0.4))
+    ));
+
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
       const yPos = contentY + i * (itemH + colBulletGap);
-      const bulletText = normalizeRenderableBulletText(colItems[i]);
-      addCardShadow(slide, colX, yPos, colW, itemH - 0.02, colors.shadowColor, design.theme === "light");
-      slide.addShape("roundRect" as any, {
-        x: colX,
-        y: yPos,
-        w: colW,
-        h: itemH - 0.02,
-        fill: { color: colors.cardBg },
-        rectRadius: 0.06,
-      });
-      slide.addShape("rect" as any, {
-        x: colX,
-        y: yPos,
-        w: 0.05,
-        h: itemH - 0.02,
-        fill: { color: palColor },
-        rectRadius: 0.06,
-      });
+
+      addCardShadow(slide, colX, yPos, colW, itemH - 0.03, colors.shadowColor, design.theme === "light");
+      slide.addShape("roundRect" as any, { x: colX, y: yPos, w: colW, h: itemH - 0.03, fill: { color: colors.cardBg }, rectRadius: 0.06 });
+      slide.addShape("rect" as any, { x: colX, y: yPos, w: 0.05, h: itemH - 0.03, fill: { color: palColor }, rectRadius: 0.06 });
+
       const badgeW = 0.3;
-      slide.addShape("roundRect" as any, {
-        x: colX + 0.14,
-        y: yPos + (itemH - 0.02) / 2 - badgeW / 2,
-        w: badgeW,
-        h: badgeW,
-        fill: { color: palColor },
-        rectRadius: 0.06,
-      });
+      slide.addShape("roundRect" as any, { x: colX + 0.14, y: yPos + (itemH - 0.03)/2 - badgeW/2, w: badgeW, h: badgeW, fill: { color: palColor }, rectRadius: 0.06 });
       slide.addText(String((plan.itemStartIndex ?? 0) + col * mid + i + 1), {
-        x: colX + 0.14,
-        y: yPos + (itemH - 0.02) / 2 - badgeW / 2,
-        w: badgeW,
-        h: badgeW,
-        fontSize: 11,
-        fontFace: design.fonts.title,
-        bold: true,
-        color: "FFFFFF",
-        align: "center",
-        valign: "middle",
+        x: colX + 0.14, y: yPos + (itemH - 0.03)/2 - badgeW/2, w: badgeW, h: badgeW,
+        fontSize: 11, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle"
       });
-      slide.addText(bulletText, {
-        x: colX + 0.52,
-        y: yPos + 0.10,
-        w: colW - 0.68,
-        h: itemH - 0.18,
-        fontSize: TYPO.BULLET_TEXT - 1,
+
+      slide.addText(colItems[i], {
+        x: colX + 0.55,
+        y: yPos + 0.12,
+        w: colW - 0.72,
+        h: itemH - 0.28,
+        fontSize: 15.5,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        margin: 0,
-        breakLine: false,
-        fit: "shrink",
-        lineSpacingMultiple: 1.12,
+        lineSpacingMultiple: 1.16,
         shrinkText: true,
         maxFontSize: 17,
-        minFontSize: 11,
+        minFontSize: 12,
       } as any);
     }
   }
