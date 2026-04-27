@@ -2,8 +2,59 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
+import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.11.5-GEMMA-OVERFLOW-FIXED";
+const ENGINE_VERSION = "3.11.6-ULTRA-SAFE-ZOD";
+
+const SlidePlanSchema = z.object({
+  layout: z.enum([
+    "module_cover",
+    "toc",
+    "bullets",
+    "two_column_bullets",
+    "grid_cards",
+    "process_timeline",
+    "comparison_table",
+    "example_highlight",
+    "warning_callout",
+    "reflection_callout",
+    "summary_slide",
+    "numbered_takeaways",
+    "closing",
+    // Preserva compatibilidade com layouts já existentes no motor atual.
+    "definition",
+  ]),
+  title: z.string().max(80),
+  sectionLabel: z.string().max(50).optional(),
+  items: z.array(z.string().max(170)).max(6).optional(),
+  objectives: z.array(z.string().max(160)).max(3).optional(),
+  tableHeaders: z.array(z.string().max(40)).optional(),
+  tableRows: z.array(z.array(z.string().max(120))).optional(),
+  moduleIndex: z.number().optional(),
+  continuationOf: z.string().optional(),
+  itemStartIndex: z.number().optional(),
+}).passthrough();
+
+function sanitizeAndValidate(raw: any): any[] {
+  try {
+    const array = Array.isArray(raw) ? raw : [raw];
+    return array.map((item) => {
+      const result = SlidePlanSchema.safeParse(item);
+      if (!result.success) {
+        console.warn("[ZOD] Slide inválido → fallback sanitizado");
+        return {
+          layout: "bullets",
+          title: String(item?.title || "Slide"),
+          sectionLabel: "CONTEÚDO",
+          items: (item?.items || []).slice(0, 5).map((s: any) => String(s).slice(0, 140)),
+        };
+      }
+      return result.data;
+    });
+  } catch {
+    return [];
+  }
+}
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -263,23 +314,24 @@ function computeUnifiedSlideFontSize(
   threshold: number,
   floor = MIN_FONT.BODY,
 ): number {
-  const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
+  const safeItems = (items || []).map((item) => normalizeRenderableBulletText(item || "")).filter(Boolean);
+  if (safeItems.length === 0) return baseSize;
+  const longest = safeItems.reduce((max, item) => Math.max(max, item.length), 0);
+  const totalChars = safeItems.reduce((a, it) => a + it.length, 0);
   let size = autoScaleFont(baseSize, longest, threshold, floor);
-  const totalChars = items.reduce((a, it) => a + getRenderableTextLength(it || ""), 0);
-
-  // GEMMA v3.11.6 — Sempre mede pelo menos 1x, mesmo no piso, para detectar overflow real.
-  const MAX_HEIGHT_IN = 5.0;
+  const MAX_HEIGHT_IN = 4.92;
   let finalEstimated = 0;
   let iterations = 0;
-  for (let guard = 0; guard < 12; guard++) {
-    const totalEstimated = items.reduce((acc, item) => {
-      const h = estimateTextHeightInches(item || "", size, SAFE_ZONE.W - 1.2);
-      return acc + h;
+  for (let guard = 0; guard < 18; guard++) {
+    const perItemPadding = safeItems.length >= 5 ? 0.1 : 0.08;
+    const totalEstimated = safeItems.reduce((acc, item) => {
+      const h = estimateTextHeightInches(item, size, SAFE_ZONE.W - 1.45, 1.26);
+      return acc + h + perItemPadding;
     }, 0);
     finalEstimated = totalEstimated;
-    iterations = guard;
+    iterations = guard + 1;
     if (totalEstimated <= MAX_HEIGHT_IN) break;
-    if (size <= floor) break; // já no piso, não dá para reduzir mais
+    if (size <= floor) break;
     size = Math.max(floor, Math.round((size - 0.5) * 10) / 10);
   }
   if (DEBUG_OVERFLOW) {
@@ -480,8 +532,7 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  // GEMMA v3.11.1 — split mais cedo (650 chars / 7 itens) para evitar slides lotados.
-  if (!forcedContinuation && totalChars < 650 && items.length <= 7) {
+  if (!forcedContinuation && totalChars < 560 && items.length <= 5) {
     return [plan];
   }
   if (items.length <= 1) return [plan]; // não dá para dividir
@@ -496,11 +547,28 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   for (const it of items) {
     const itLen = (it || "").length;
     const wouldExceedItems = current.length + 1 > maxItems;
-    const wouldExceedChars = currentChars + itLen > 520 && current.length > 0;
+    const wouldExceedChars = currentChars + itLen > 440 && current.length > 0;
+    const wouldExceedMeasure =
+      current.length > 0 &&
+      computeUnifiedSlideFontSize([...current, it], items.length >= 6 ? 18 : 19, items.length >= 6 ? 78 : 92, MIN_FONT.BODY) <= MIN_FONT.BODY;
     if (wouldExceedItems || wouldExceedChars) {
       dbg("SPLIT-CUT", {
         title: plan.title,
         reason: wouldExceedItems ? "items" : "chars",
+        currentChars,
+        currentItems: current.length,
+        nextItemLen: itLen,
+        nextItemKind: classifyItem(it),
+        nextItemPreview: summarizeItem(it),
+      });
+      chunks.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    if (wouldExceedMeasure && current.length > 0) {
+      dbg("SPLIT-CUT", {
+        title: plan.title,
+        reason: "measure",
         currentChars,
         currentItems: current.length,
         nextItemLen: itLen,
@@ -1533,11 +1601,13 @@ function ensureSentenceEnd(text: string): string {
 }
 
 function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): SlidePlan | null {
+  raw = sanitizeAndValidate(raw)[0];
   if (!raw || typeof raw !== "object" || !raw.layout) return null;
 
   const layout = String(raw.layout) as SlideLayoutV3;
   const validLayouts: SlideLayoutV3[] = [
     "module_cover",
+    "toc",
     "bullets",
     "two_column_bullets",
     "definition",
@@ -1549,6 +1619,7 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
     "reflection_callout",
     "summary_slide",
     "numbered_takeaways",
+    "closing",
   ];
   if (!validLayouts.includes(layout)) return null;
 
@@ -1627,7 +1698,7 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
   if (tableRows) plan.tableRows = tableRows;
 
   // Guard: skip slides with no content (except structural slides)
-  const structuralLayouts: SlideLayoutV3[] = ["module_cover", "summary_slide", "numbered_takeaways"];
+  const structuralLayouts: SlideLayoutV3[] = ["module_cover", "toc", "summary_slide", "numbered_takeaways", "closing"];
   if (!structuralLayouts.includes(layout)) {
     const hasItems = (plan.items?.length ?? 0) > 0;
     const hasTable = (plan.tableRows?.length ?? 0) > 0;
@@ -1760,7 +1831,7 @@ async function generateSlidesForModule(
   }
 
   // Normalize each slide
-  const slides: SlidePlan[] = parsed
+  const slides: SlidePlan[] = sanitizeAndValidate(parsed)
     .map((raw) => normalizeSlide(raw, moduleIndex, design))
     .filter((s): s is SlidePlan => s !== null);
 
@@ -2643,7 +2714,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   _globalSlideIdx++;
   const variant = _globalSlideIdx % 4;
   const accentColor = design.palette[_globalSlideIdx % design.palette.length];
-  const items = plan.items || [];
+  const rawItems = plan.items || [];
+  const items = rawItems.map((item) => normalizeRenderableBulletText(item)).filter(Boolean);
   const unifiedBulletFontSize = computeUnifiedSlideFontSize(
     items,
     items.length >= 6 ? 18 : 19,
@@ -2651,16 +2723,50 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     MIN_FONT.BODY,
   );
 
-  // GEMMA v3.9 — geometria dentro da SAFE_ZONE.
-  // SAFE_ZONE.X=0.80, Y=1.60, W=11.70, H=5.20 → conteúdo nunca vaza para a borda.
-  // Mantemos um pequeno offset (0.15) à esquerda para acomodar o "addLeftEdge".
-  const contentX = SAFE_ZONE.X; // 0.80 (was 0.65)
-  const contentW = SAFE_ZONE.W; // 11.70 (was ~12.13)
-  const contentY = SAFE_ZONE.Y + 0.05; // 1.65 — preserva respiro abaixo do título
-  const contentH = SAFE_ZONE.H - 0.05; // 5.15 — termina antes do footer
-  const bulletGap = items.length >= 7 ? 0.04 : 0.08;
+  const contentX = SAFE_ZONE.X;
+  const contentW = SAFE_ZONE.W;
+  const contentY = SAFE_ZONE.Y + 0.05;
+  const contentH = SAFE_ZONE.H - 0.05;
+  const bulletGap = items.length >= 6 ? 0.04 : 0.07;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
-  const itemH = Math.max(0.48, Math.min(1.3, rawItemH));
+  const itemH = Math.max(0.5, Math.min(1.28, rawItemH));
+
+  const strongTextOpts = (x: number, y: number, w: number, h: number, color = colors.text, valign: "top" | "middle" = "middle") => ({
+    x,
+    y,
+    w,
+    h,
+    fontSize: unifiedBulletFontSize,
+    fontFace: design.fonts.body,
+    color,
+    valign,
+    wrap: true,
+    fit: "shrink",
+    shrinkText: true,
+    maxFontSize: Math.min(19, unifiedBulletFontSize + 1),
+    minFontSize: 12,
+    lineSpacingMultiple: 1.14,
+    margin: 0.02,
+  } as any);
+
+  const addBulletText = (text: string, x: number, y: number, w: number, h: number, pal: string, color = colors.text, valign: "top" | "middle" = "middle") => {
+    const cleaned = normalizeRenderableBulletText(text);
+    const colonIdx = cleaned.indexOf(":");
+    const hasTitle = colonIdx > 0 && colonIdx < 48;
+    if (hasTitle) {
+      const title = cleaned.substring(0, colonIdx).trim();
+      const desc = cleaned.substring(colonIdx + 1).trim();
+      slide.addText(
+        [
+          { text: `${title}: `, options: { bold: true, color: pal } },
+          { text: desc, options: { color } },
+        ] as any,
+        strongTextOpts(x, y, w, h, color, valign),
+      );
+      return;
+    }
+    slide.addText(cleaned, strongTextOpts(x, y, w, h, color, valign));
+  };
 
   if (variant === 0) {
     addSlideBackground(slide, colors.bg);
@@ -2693,7 +2799,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     }
     slide.addText(plan.title, {
       x: 0.45,
-      y: 1.0,
+      y: 1,
       w: sideW - 0.9,
       h: 3.4,
       fontSize: MIN_FONT.TITLE,
@@ -2703,96 +2809,18 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       valign: "top",
       lineSpacingMultiple: 1.08,
     });
-    for (let d = 0; d < Math.min(items.length, 5); d++) {
-      slide.addShape("ellipse" as any, {
-        x: 0.45,
-        y: 4.8 + d * 0.4,
-        w: 0.1,
-        h: 0.1,
-        fill: { color: design.palette[d % design.palette.length] },
-      });
-    }
     const rightX = sideW + 0.35;
     const rightW = SLIDE_W - rightX - 0.45;
     const rightY = 0.5;
     const rightH = SLIDE_H - rightY - 0.7;
-    const rBulletGap = items.length >= 7 ? 0.03 : bulletGap;
-    const rItemH = Math.max(
-      0.42,
-      Math.min(1.1, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1)),
-    );
+    const rBulletGap = items.length >= 6 ? 0.03 : 0.05;
+    const rItemH = Math.max(0.46, Math.min(1.05, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1)));
     for (let i = 0; i < items.length; i++) {
       const yPos = rightY + i * (rItemH + rBulletGap);
       const pal = design.palette[i % design.palette.length];
-      slide.addShape("rect" as any, { x: rightX, y: yPos + 0.06, w: 0.045, h: rItemH - 0.16, fill: { color: pal } });
-      {
-        // title:desc split rendering for bullets
-        const bColonIdx = items[i].indexOf(":");
-        const bHasTitle = bColonIdx > 0 && bColonIdx < 70;
-        if (bHasTitle) {
-          const bTitle = items[i].substring(0, bColonIdx).trim();
-          const bDesc = items[i].substring(bColonIdx + 1).trim();
-          const titleRuns = renderSemanticRuns(bTitle + ": ", accentColor, pal, true) || [
-            { text: bTitle + ": ", options: { bold: true, color: pal } },
-          ];
-          titleRuns.forEach((r) => {
-            r.options = { ...r.options, bold: true };
-          });
-          const descRuns = renderSemanticRuns(bDesc, accentColor, colors.text) || [
-            { text: bDesc, options: { bold: false, color: colors.text } },
-          ];
-          slide.addText([...titleRuns, ...descRuns], {
-            x: rightX + 0.18,
-            y: yPos,
-            w: rightW - 0.18,
-            h: rItemH,
-            fontSize: unifiedBulletFontSize,
-            fontFace: design.fonts.body,
-            valign: "middle",
-            lineSpacingMultiple: 1.18,
-            shrinkText: true,
-            maxFontSize: 19,
-            minFontSize: 13,
-          } as any);
-        } else {
-          const runs = renderSemanticRuns(items[i], accentColor, colors.text);
-          if (runs) {
-            slide.addText(
-              runs as any,
-              {
-                x: rightX + 0.18,
-                y: yPos,
-                w: rightW - 0.18,
-                h: rItemH,
-                fontSize: unifiedBulletFontSize,
-                fontFace: design.fonts.body,
-                valign: "middle",
-                lineSpacingMultiple: 1.18,
-                shrinkText: true,
-                maxFontSize: 19,
-                minFontSize: 13,
-              } as any,
-            );
-          } else {
-            slide.addText(stripSemanticDivider(items[i]), {
-              x: rightX + 0.18,
-              y: yPos,
-              w: rightW - 0.18,
-              h: rItemH,
-              fontSize: unifiedBulletFontSize,
-              fontFace: design.fonts.body,
-              color: colors.text,
-              valign: "middle",
-              lineSpacingMultiple: 1.18,
-              shrinkText: true,
-              maxFontSize: 19,
-              minFontSize: 13,
-            } as any);
-          }
-        }
-      }
-      if (i < items.length - 1)
-        addHR(slide, rightX + 0.18, yPos + rItemH + rBulletGap / 2 - 0.003, rightW - 0.18, colors.divider, 0.005);
+      slide.addShape("rect" as any, { x: rightX, y: yPos + 0.08, w: 0.045, h: rItemH - 0.18, fill: { color: pal } });
+      addBulletText(rawItems[i] || items[i], rightX + 0.2, yPos + 0.01, rightW - 0.24, rItemH - 0.02, pal);
+      if (i < items.length - 1) addHR(slide, rightX + 0.2, yPos + rItemH + rBulletGap / 2 - 0.003, rightW - 0.24, colors.divider, 0.005);
     }
   } else if (variant === 1) {
     addSlideBackground(slide, colors.bg);
@@ -2800,10 +2828,6 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     addLeftEdge(slide, accentColor);
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
-    // GEMMA v3.10.7-GEMINI-SPEC — Geometria rígida.
-    // Fonte ÚNICA por slide, calculada com base no item mais longo.
-    // shrinkText PROIBIDO: o texto é escravo da geometria, não vice-versa.
-    const unifiedFontSize = computeUnifiedSlideFontSize(items, 20, 110, 18);
     for (let i = 0; i < items.length; i++) {
       const pal = design.palette[i % design.palette.length];
       const yPos = contentY + i * (itemH + bulletGap);
@@ -2817,14 +2841,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         rectRadius: 0.08,
         line: { color: colors.borders, width: 0.5 },
       });
-      slide.addShape("rect" as any, {
-        x: contentX,
-        y: yPos,
-        w: 0.06,
-        h: itemH - 0.05,
-        fill: { color: pal },
-        rectRadius: 0.08,
-      });
+      slide.addShape("rect" as any, { x: contentX, y: yPos, w: 0.06, h: itemH - 0.05, fill: { color: pal }, rectRadius: 0.08 });
       const badgeSize = Math.min(0.34, itemH - 0.14);
       slide.addShape("roundRect" as any, {
         x: contentX + 0.18,
@@ -2846,49 +2863,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         align: "center",
         valign: "middle",
       });
-      {
-        // title:desc split rendering for variant 1
-        const v1ColonIdx = items[i].indexOf(":");
-        const v1HasTitle = v1ColonIdx > 0 && v1ColonIdx < 45;
-        // GEMMA v3.11.1 — padding lateral maior + shrinkText controlado.
-        const v1X = contentX + 0.68;
-        const v1W = contentW - 0.88;
-        const baseOpts = {
-          x: v1X,
-          y: yPos,
-          w: v1W,
-          h: itemH - 0.05,
-          fontSize: unifiedFontSize,
-          fontFace: design.fonts.body,
-          valign: "middle",
-          wrap: true,
-          shrinkText: true,
-          maxFontSize: 19,
-          minFontSize: 13,
-          lineSpacingMultiple: 1.18,
-        } as any;
-        if (v1HasTitle) {
-          const v1Title = items[i].substring(0, v1ColonIdx).trim();
-          const v1Desc = items[i].substring(v1ColonIdx + 1).trim();
-          const titleRuns = renderSemanticRuns(v1Title + ": ", accentColor, pal, true) || [
-            { text: v1Title + ": ", options: { bold: true, color: pal } },
-          ];
-          titleRuns.forEach((r) => {
-            r.options = { ...r.options, bold: true };
-          });
-          const descRuns = renderSemanticRuns(v1Desc, accentColor, colors.text) || [
-            { text: v1Desc, options: { bold: false, color: colors.text } },
-          ];
-          slide.addText([...titleRuns, ...descRuns] as any, baseOpts);
-        } else {
-          const runs = renderSemanticRuns(items[i], accentColor, colors.text);
-          if (runs) {
-            slide.addText(runs as any, baseOpts);
-          } else {
-            slide.addText(stripSemanticDivider(items[i]), { ...baseOpts, color: colors.text });
-          }
-        }
-      }
+      addBulletText(rawItems[i] || items[i], contentX + 0.68, yPos + 0.02, contentW - 0.88, itemH - 0.09, pal);
     }
   } else if (variant === 2) {
     addSlideBackground(slide, colors.bg);
@@ -2897,10 +2872,10 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
     const cols = items.length >= 4 ? 2 : 1;
-    const gap = 0.18;
+    const gap = 0.2;
     const cardW = cols === 2 ? (contentW - gap) / 2 : contentW;
     const rows = Math.ceil(items.length / cols);
-    const cardH = Math.min(1.5, (contentH - gap * (rows - 1)) / rows);
+    const cardH = Math.max(1.08, Math.min(1.42, (contentH - gap * (rows - 1)) / rows - 0.04));
     for (let i = 0; i < items.length; i++) {
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -2911,32 +2886,18 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.1 });
       slide.addShape("rect" as any, { x, y, w: 0.06, h: cardH, fill: { color: pal }, rectRadius: 0.1 });
       slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
-        x: x + 0.12,
-        y: y + 0.06,
-        w: 0.4,
-        h: 0.34,
-        fontSize: Math.min(15, cardW > 3 ? 16 : 13),
+        x: x + 0.14,
+        y: y + 0.08,
+        w: 0.38,
+        h: 0.3,
+        fontSize: Math.min(14, cardW > 3 ? 15 : 12),
         fontFace: design.fonts.title,
         bold: true,
         color: ensureContrastOnLight(pal, colors.cardBg),
         transparency: 15,
         align: "left",
       });
-      const runs = renderSemanticRuns(items[i], accentColor, colors.text);
-      slide.addText(runs ? (runs as any) : stripSemanticDivider(items[i]), {
-        x: x + 0.14,
-        y: y + 0.38,
-        w: cardW - 0.28,
-        h: cardH - 0.48,
-        fontSize: unifiedBulletFontSize,
-        fontFace: design.fonts.body,
-        color: colors.text,
-        valign: "top",
-        lineSpacingMultiple: 1.18,
-        shrinkText: true,
-        maxFontSize: 19,
-        minFontSize: 13,
-      } as any);
+      addBulletText(rawItems[i] || items[i], x + 0.18, y + 0.4, cardW - 0.36, cardH - 0.56, pal, colors.text, "top");
     }
   } else {
     addSlideBackground(slide, colors.bg);
@@ -2945,7 +2906,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
     addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
     if (items.length > 0) {
-      const heroH = items.length === 1 ? contentH : Math.min(1.6, contentH * 0.4);
+      const heroH = items.length === 1 ? contentH : Math.min(1.5, contentH * 0.38);
       slide.addShape("roundRect" as any, {
         x: contentX,
         y: contentY,
@@ -2954,58 +2915,33 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         fill: { color: colors.coverDark },
         rectRadius: 0.1,
       });
-      slide.addShape("rect" as any, {
-        x: contentX + 0.14,
-        y: contentY + 0.14,
-        w: 0.05,
-        h: heroH - 0.28,
-        fill: { color: accentColor },
-      });
-      const heroRuns = renderSemanticRuns(items[0], accentColor, "FFFFFF");
-      slide.addText(heroRuns ? (heroRuns as any) : stripSemanticDivider(items[0]), {
-        x: contentX + 0.32,
-        y: contentY + 0.08,
-        w: contentW - 0.48,
-        h: heroH - 0.16,
+      slide.addShape("rect" as any, { x: contentX + 0.16, y: contentY + 0.14, w: 0.05, h: heroH - 0.28, fill: { color: accentColor } });
+      slide.addText(normalizeRenderableBulletText(rawItems[0] || items[0]), {
+        x: contentX + 0.36,
+        y: contentY + 0.12,
+        w: contentW - 0.6,
+        h: heroH - 0.24,
         fontSize: unifiedBulletFontSize,
         fontFace: design.fonts.body,
         color: "FFFFFF",
         valign: "middle",
-        lineSpacingMultiple: 1.3,
+        lineSpacingMultiple: 1.2,
         italic: true,
+        wrap: true,
+        fit: "shrink",
         shrinkText: true,
         maxFontSize: 19,
-        minFontSize: 13,
+        minFontSize: 12,
       } as any);
       if (items.length > 1) {
-        const restY = contentY + heroH + 0.18;
+        const restY = contentY + heroH + 0.2;
         const restH = CONTENT_BOTTOM - restY;
-        const restItemH = Math.min(0.8, (restH - 0.06 * (items.length - 2)) / (items.length - 1));
+        const restItemH = Math.max(0.46, Math.min(0.74, (restH - 0.07 * (items.length - 2)) / Math.max(items.length - 1, 1)));
         for (let i = 1; i < items.length; i++) {
-          const yPos = restY + (i - 1) * (restItemH + 0.06);
+          const yPos = restY + (i - 1) * (restItemH + 0.07);
           const pal = design.palette[i % design.palette.length];
-          slide.addShape("ellipse" as any, {
-            x: contentX + 0.04,
-            y: yPos + restItemH / 2 - 0.05,
-            w: 0.1,
-            h: 0.1,
-            fill: { color: pal },
-          });
-          const restRuns = renderSemanticRuns(items[i], accentColor, colors.text);
-          slide.addText(restRuns ? (restRuns as any) : stripSemanticDivider(items[i]), {
-            x: contentX + 0.22,
-            y: yPos,
-            w: contentW - 0.22,
-            h: restItemH,
-            fontSize: unifiedBulletFontSize,
-            fontFace: design.fonts.body,
-            color: colors.text,
-            valign: "middle",
-            lineSpacingMultiple: 1.15,
-            shrinkText: true,
-            maxFontSize: 19,
-            minFontSize: 13,
-          } as any);
+          slide.addShape("ellipse" as any, { x: contentX + 0.05, y: yPos + restItemH / 2 - 0.05, w: 0.1, h: 0.1, fill: { color: pal } });
+          addBulletText(rawItems[i] || items[i], contentX + 0.24, yPos, contentW - 0.3, restItemH, pal);
         }
       }
     }
@@ -3025,12 +2961,13 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, pal, design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, pal);
 
-  const items = plan.items || [];
-  const contentX = 0.65;
-  const totalW = SLIDE_W - contentX - 0.68;
-  const colGap = 0.38;
+  const rawItems = plan.items || [];
+  const items = rawItems.map((item) => normalizeRenderableBulletText(item)).filter(Boolean);
+  const contentX = SAFE_ZONE.X;
+  const totalW = SAFE_ZONE.W;
+  const colGap = 0.4;
   const colW = (totalW - colGap) / 2;
-  const contentY = 1.68;
+  const contentY = SAFE_ZONE.Y + 0.08;
   const mid = Math.ceil(items.length / 2);
   const leftItems = items.slice(0, mid);
   const rightItems = items.slice(mid);
@@ -3042,11 +2979,9 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   for (let col = 0; col < 2; col++) {
     const colItems = col === 0 ? leftItems : rightItems;
     const colX = contentX + col * (colW + colGap);
-    const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
-
-    const itemH = Math.max(0.58, Math.min(1.55,
-      Math.max(...colItems.map(item => estimateTextHeightInches(item, 16.5, colW - 0.8) + 0.4))
-    ));
+    const colBulletGap = colItems.length >= 3 ? 0.05 : 0.08;
+    const usableHeight = colHEnd - colBulletGap * Math.max(colItems.length - 1, 0);
+    const itemH = Math.max(0.74, Math.min(1.45, usableHeight / Math.max(colItems.length, 1)));
 
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
@@ -3063,19 +2998,22 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
         fontSize: 11, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle"
       });
 
-      slide.addText(colItems[i], {
-        x: colX + 0.55,
+      slide.addText(normalizeRenderableBulletText(rawItems[col * mid + i] || colItems[i]), {
+        x: colX + 0.58,
         y: yPos + 0.12,
-        w: colW - 0.72,
-        h: itemH - 0.28,
-        fontSize: 15.5,
+        w: colW - 0.78,
+        h: itemH - 0.3,
+        fontSize: 15,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.16,
+        wrap: true,
+        fit: "shrink",
+        lineSpacingMultiple: 1.14,
         shrinkText: true,
         maxFontSize: 17,
         minFontSize: 12,
+        margin: 0.02,
       } as any);
     }
   }
@@ -3166,7 +3104,6 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
         ]
       : [{ text: item.desc, options: { color: colors.text } }];
 
-    // GEMMA v3.11.1 — padding lateral extra + shrinkText.
     const textW = geometry.cardW - geometry.textXOffset - 0.32;
     const textH = geometry.cardH - geometry.textYOffset - 0.26;
     slide.addText(
@@ -3180,6 +3117,7 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
         fontFace: design.fonts.body,
         valign: "top",
         lineSpacingMultiple: 1.22,
+        fit: "shrink",
         shrinkText: true,
         minFontSize: 12,
         margin: 0,
@@ -3923,7 +3861,6 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
   const rows = Math.ceil(items.length / cols);
   const gap = 0.12;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  // GEMMA v3.11.1 — card ligeiramente menor para reduzir overflow.
   const cardH = Math.max(1.35, (contentHAvail - gap * (rows - 1)) / rows - 0.08);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols,
@@ -3956,17 +3893,19 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
       valign: "middle",
     });
     slide.addText(items[i], {
-      x: x + 0.14,
+      x: x + 0.18,
       y: y + numSize + 0.14,
-      w: cardW - 0.28,
-      h: cardH - numSize - 0.24,
+      w: cardW - 0.36,
+      h: cardH - numSize - 0.28,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "middle",
       lineSpacingMultiple: 1.25,
+      fit: "shrink",
       shrinkText: true,
       minFontSize: 12,
+      margin: 0.02,
     } as any);
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
@@ -4012,10 +3951,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   const cardW = (contentW - gap * (cols - 1)) / cols;
   const contentY = 1.65,
     contentH = CONTENT_BOTTOM - contentY;
-  // GEMMA v3.10.6 — removido cap rígido 2.50" que truncava textos longos
-  // (slide 27 com >3 linhas extrapolava o card). Aproveita 100% da safe-zone.
   const rawCardH = (contentH - gap * (gridRows - 1)) / gridRows;
-  // GEMMA v3.11.1 — leve redução para evitar overflow do texto.
   const cardH = Math.min(1.85, Math.max(1.35, rawCardH - 0.08));
   for (let i = 0; i < items.length; i++) {
     const col = i % cols,
@@ -4069,16 +4005,18 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
     slide.addText(
       tkRuns as any,
       {
-        x: x + 0.14,
+        x: x + 0.18,
         y: tkTextY,
-        w: cardW - 0.28,
-        h: cardH - (tkTextY - y) - 0.22,
+        w: cardW - 0.36,
+        h: cardH - (tkTextY - y) - 0.26,
         fontSize: TYPO.TAKEAWAY_BODY,
         fontFace: design.fonts.body,
         valign: "middle",
         lineSpacingMultiple: 1.25,
+        fit: "shrink",
         shrinkText: true,
         minFontSize: 12,
+        margin: 0.02,
       } as any,
     );
   }
