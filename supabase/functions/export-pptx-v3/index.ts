@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.11.5-GEMMA-CALIBRATED";
+const ENGINE_VERSION = "3.11.6-GEMMA-FLOOR-MEASURE-FIX";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -258,18 +258,19 @@ function computeUnifiedSlideFontSize(
   let size = autoScaleFont(baseSize, longest, threshold, floor);
   const totalChars = items.reduce((a, it) => a + getRenderableTextLength(it || ""), 0);
 
-  // GEMMA v3.11.5 — Estimador recalibrado, MAX = altura útil real da área de bullets.
+  // GEMMA v3.11.6 — Sempre mede pelo menos 1x, mesmo no piso, para detectar overflow real.
   const MAX_HEIGHT_IN = 5.0;
   let finalEstimated = 0;
   let iterations = 0;
-  for (let guard = 0; guard < 12 && size > floor; guard++) {
+  for (let guard = 0; guard < 12; guard++) {
     const totalEstimated = items.reduce((acc, item) => {
-      const h = estimateTextHeightInches(item || "", size, SAFE_ZONE.W - 1.2); // mais margem real
+      const h = estimateTextHeightInches(item || "", size, SAFE_ZONE.W - 1.2);
       return acc + h;
     }, 0);
     finalEstimated = totalEstimated;
     iterations = guard;
     if (totalEstimated <= MAX_HEIGHT_IN) break;
+    if (size <= floor) break; // já no piso, não dá para reduzir mais
     size = Math.max(floor, Math.round((size - 0.5) * 10) / 10);
   }
   if (DEBUG_OVERFLOW) {
