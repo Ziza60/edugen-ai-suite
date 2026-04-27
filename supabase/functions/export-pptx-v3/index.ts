@@ -485,7 +485,9 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   // Se o total de caracteres < 700 e items <= 8, MANTÉM tudo no mesmo slide
   // (evita slides "quase vazios" como 13, 75 com item único/órfão).
   // GEMMA v3.11.0-GEMMA-STABLE — Permite até 8 itens e 800 chars antes de dividir.
-  if (!forcedContinuation && totalChars < 800 && items.length <= 8) {
+  if (!forcedContinuation && totalChars <= Math.min(800, maxChars + 80) &&
+    items.length <= Math.min(8, maxItems + 1)
+  ) {
     return [plan];
   }
   if (items.length <= 1) return [plan]; // não dá para dividir
@@ -500,7 +502,7 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   for (const it of items) {
     const itLen = (it || "").length;
     const wouldExceedItems = current.length + 1 > maxItems;
-    const wouldExceedChars = currentChars + itLen > 580 && current.length > 0;
+    const wouldExceedChars = (currentChars + itLen > maxChars) && current.length > 0;
     if (wouldExceedItems || wouldExceedChars) {
       dbg("SPLIT-CUT", {
         title: plan.title,
@@ -3276,18 +3278,11 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
           normalizedItem = inferMatch[1].trim() + ": " + inferMatch[2].trim();
         }
       }
-      const colonIdx = normalizedItem.indexOf(":");
-      let label: string, desc: string;
-      if (colonIdx > 0 && colonIdx < 70) {
-        label = items[i].substring(0, colonIdx).trim();
-        desc = items[i].substring(colonIdx + 1).trim();
-      } else if (items[i].length <= 50) {
-        label = items[i];
-        desc = "";
-      } else {
-        const words = items[i].split(/\s+/);
-        label = words.slice(0, 6).join(" ");
-        desc = words.slice(6).join(" ");
+      const colonIdx = normalizedItem.indexOf(":");␊
+      let label: string, desc: string;␊
+      if (colonIdx > 0 && colonIdx < 70) { label = normalizedItem.substring(0, colonIdx).trim(); desc = normalizedItem.substring(colonIdx + 1).trim(); }
+      else if (normalizedItem.length <= 50) { label = normalizedItem; desc = ""; }
+      else { const words = normalizedItem.split(/\s+/); label = words.slice(0, 6).join(" "); desc = words.slice(6).join(" "); }
       }
       if (desc && desc.length > 0) {
         // Dynamic label height based on estimated line wrapping
@@ -3406,13 +3401,9 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
           normalizedItem = inferMatch[1].trim() + ": " + inferMatch[2].trim();
         }
       }
-      const colonIdx = normalizedItem.indexOf(":");
-      let label = "",
-        desc = items[i];
-      if (colonIdx > 0 && colonIdx < 70) {
-        label = items[i].substring(0, colonIdx).trim();
-        desc = items[i].substring(colonIdx + 1).trim();
-      }
+      const colonIdx = normalizedItem.indexOf(":");␊
+      let label = "", desc = normalizedItem;
+      if (colonIdx > 0 && colonIdx < 70) { label = normalizedItem.substring(0, colonIdx).trim(); desc = normalizedItem.substring(colonIdx + 1).trim(); }
       const textX = cardX2 + 0.05 + 0.12;
       const textW = cardW2 - 0.05 - 0.22;
       const fontSize = items.length <= 5 ? TYPO.BULLET_TEXT : TYPO.BULLET_TEXT - 1;
