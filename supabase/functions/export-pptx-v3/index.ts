@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.11.0-GEMMA-STABLE";
+const ENGINE_VERSION = "3.11.2-GEMMA-OVERFLOW-FIXED";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
@@ -257,19 +257,14 @@ function computeUnifiedSlideFontSize(
   const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
   let size = autoScaleFont(baseSize, longest, threshold, floor);
 
-  // GEMMA v3.10.8-GEMMA-SPEC — Margem de segurança contra transbordo.
-  // Estima altura ocupada (em polegadas) considerando que Montserrat ocupa
-  // mais espaço vertical do que o pptxgenjs assume. Fórmula Gemma:
-  //   estimatedHeight = (chars / 50) * (size / 72) * 1.4
-  // Reduz a fonte iterativamente até que CADA item caiba em ~3.6" (área útil
-  // de uma caixa de bullets padrão). Floor garante mínimo legível.
+  // GEMMA v3.11.2 — Usa agora o estimador preciso (estimateTextHeightInches)
   const MAX_HEIGHT_IN = 3.6;
-  for (let guard = 0; guard < 10 && size > floor; guard++) {
+  for (let guard = 0; guard < 12 && size > floor; guard++) {
     const totalEstimated = items.reduce((acc, item) => {
-      const chars = getRenderableTextLength(item || "");
-      const h = (chars / 50) * (size / 72) * 1.5;
+      const h = estimateTextHeightInches(item || "", size, SAFE_ZONE.W - 1.2); // mais margem real
       return acc + h;
     }, 0);
+
     if (totalEstimated <= MAX_HEIGHT_IN) break;
     size = Math.max(floor, Math.round((size - 0.5) * 10) / 10);
   }
@@ -2735,6 +2730,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
             fontFace: design.fonts.body,
             valign: "middle",
             lineSpacingMultiple: 1.18,
+            shrinkText: true,
+            maxFontSize: 19,
+            minFontSize: 13,
           } as any);
         } else {
           const runs = renderSemanticRuns(items[i], accentColor, colors.text);
@@ -2750,6 +2748,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
                 fontFace: design.fonts.body,
                 valign: "middle",
                 lineSpacingMultiple: 1.18,
+                shrinkText: true,
+                maxFontSize: 19,
+                minFontSize: 13,
               } as any,
             );
           } else {
@@ -2763,6 +2764,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
               color: colors.text,
               valign: "middle",
               lineSpacingMultiple: 1.18,
+              shrinkText: true,
+              maxFontSize: 19,
+              minFontSize: 13,
             } as any);
           }
         }
@@ -2909,7 +2913,10 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         color: colors.text,
         valign: "top",
         lineSpacingMultiple: 1.18,
-      });
+        shrinkText: true,
+        maxFontSize: 19,
+        minFontSize: 13,
+      } as any);
     }
   } else {
     addSlideBackground(slide, colors.bg);
@@ -2946,6 +2953,9 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
         valign: "middle",
         lineSpacingMultiple: 1.3,
         italic: true,
+        shrinkText: true,
+        maxFontSize: 19,
+        minFontSize: 13,
       } as any);
       if (items.length > 1) {
         const restY = contentY + heroH + 0.18;
@@ -2972,7 +2982,10 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
             color: colors.text,
             valign: "middle",
             lineSpacingMultiple: 1.15,
-          });
+            shrinkText: true,
+            maxFontSize: 19,
+            minFontSize: 13,
+          } as any);
         }
       }
     }
