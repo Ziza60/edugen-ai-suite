@@ -1618,10 +1618,6 @@ function addSlideTitle(slide: any, title: string, colors: ReturnType<typeof getC
     fontSize: TYPO.SECTION_TITLE, fontFace: fontTitle, bold: true,
     color: colors.text, valign: "middle", lineSpacingMultiple: 1.05,
   });
-  if (accentColor) {
-    addHR(slide, 0.55, 1.52, SLIDE_W - 1.10, accentColor, 0.008);
-    addHR(slide, 0.55, 1.54, SLIDE_W - 1.10, colors.divider, 0.004);
-  }
 }
 
 function addFooter(
