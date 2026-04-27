@@ -3,14 +3,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
-const ENGINE_VERSION = "3.11.3-GEMMA-OVERFLOW-FINAL";
+const ENGINE_VERSION = "3.11.4-GEMMA-DEBUG-ON";
 
 /**
  * GEMMA v3.10.4 — Debug Mode
- * Ative com env var `PPTX_V3_DEBUG=1` (ou request header/body com debug=true)
- * para emitir logs detalhados de chunks e classificação de marcadores.
+ * FORÇADO em true para coletar logs de overflow.
  */
-const DEBUG_SPLIT = (Deno.env.get("PPTX_V3_DEBUG") ?? "").trim() === "1";
+const DEBUG_SPLIT = true;
+const DEBUG_OVERFLOW = true;
 function dbg(tag: string, payload: unknown) {
   if (!DEBUG_SPLIT) return;
   try {
