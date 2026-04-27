@@ -2961,12 +2961,13 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, pal, design.fonts.body);
   addSlideTitle(slide, plan.title, colors, design.fonts.title, pal);
 
-  const items = plan.items || [];
-  const contentX = 0.65;
-  const totalW = SLIDE_W - contentX - 0.68;
-  const colGap = 0.38;
+  const rawItems = plan.items || [];
+  const items = rawItems.map((item) => normalizeRenderableBulletText(item)).filter(Boolean);
+  const contentX = SAFE_ZONE.X;
+  const totalW = SAFE_ZONE.W;
+  const colGap = 0.4;
   const colW = (totalW - colGap) / 2;
-  const contentY = 1.68;
+  const contentY = SAFE_ZONE.Y + 0.08;
   const mid = Math.ceil(items.length / 2);
   const leftItems = items.slice(0, mid);
   const rightItems = items.slice(mid);
@@ -2978,11 +2979,9 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   for (let col = 0; col < 2; col++) {
     const colItems = col === 0 ? leftItems : rightItems;
     const colX = contentX + col * (colW + colGap);
-    const colBulletGap = colItems.length >= 5 ? 0.04 : 0.06;
-
-    const itemH = Math.max(0.58, Math.min(1.55,
-      Math.max(...colItems.map(item => estimateTextHeightInches(item, 16.5, colW - 0.8) + 0.4))
-    ));
+    const colBulletGap = colItems.length >= 3 ? 0.05 : 0.08;
+    const usableHeight = colHEnd - colBulletGap * Math.max(colItems.length - 1, 0);
+    const itemH = Math.max(0.74, Math.min(1.45, usableHeight / Math.max(colItems.length, 1)));
 
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
@@ -2999,19 +2998,22 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
         fontSize: 11, fontFace: design.fonts.title, bold: true, color: "FFFFFF", align: "center", valign: "middle"
       });
 
-      slide.addText(colItems[i], {
-        x: colX + 0.55,
+      slide.addText(normalizeRenderableBulletText(rawItems[col * mid + i] || colItems[i]), {
+        x: colX + 0.58,
         y: yPos + 0.12,
-        w: colW - 0.72,
-        h: itemH - 0.28,
-        fontSize: 15.5,
+        w: colW - 0.78,
+        h: itemH - 0.3,
+        fontSize: 15,
         fontFace: design.fonts.body,
         color: colors.text,
         valign: "top",
-        lineSpacingMultiple: 1.16,
+        wrap: true,
+        fit: "shrink",
+        lineSpacingMultiple: 1.14,
         shrinkText: true,
         maxFontSize: 17,
         minFontSize: 12,
+        margin: 0.02,
       } as any);
     }
   }
@@ -3102,7 +3104,6 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
         ]
       : [{ text: item.desc, options: { color: colors.text } }];
 
-    // GEMMA v3.11.1 — padding lateral extra + shrinkText.
     const textW = geometry.cardW - geometry.textXOffset - 0.32;
     const textH = geometry.cardH - geometry.textYOffset - 0.26;
     slide.addText(
@@ -3116,6 +3117,7 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
         fontFace: design.fonts.body,
         valign: "top",
         lineSpacingMultiple: 1.22,
+        fit: "shrink",
         shrinkText: true,
         minFontSize: 12,
         margin: 0,
@@ -3859,7 +3861,6 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
   const rows = Math.ceil(items.length / cols);
   const gap = 0.12;
   const cardW = (contentW - gap * (cols - 1)) / cols;
-  // GEMMA v3.11.1 — card ligeiramente menor para reduzir overflow.
   const cardH = Math.max(1.35, (contentHAvail - gap * (rows - 1)) / rows - 0.08);
   for (let i = 0; i < items.length; i++) {
     const col = i % cols,
@@ -3892,17 +3893,19 @@ function renderSummarySlide(pptx: PptxGenJS, plan: SlidePlan, design: DesignConf
       valign: "middle",
     });
     slide.addText(items[i], {
-      x: x + 0.14,
+      x: x + 0.18,
       y: y + numSize + 0.14,
-      w: cardW - 0.28,
-      h: cardH - numSize - 0.24,
+      w: cardW - 0.36,
+      h: cardH - numSize - 0.28,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
       valign: "middle",
       lineSpacingMultiple: 1.25,
+      fit: "shrink",
       shrinkText: true,
       minFontSize: 12,
+      margin: 0.02,
     } as any);
   }
   addFooter(slide, colors, design.fonts.body, ++_globalSlideNumber, _globalTotalSlides, _globalFooterBrand);
@@ -3948,10 +3951,7 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
   const cardW = (contentW - gap * (cols - 1)) / cols;
   const contentY = 1.65,
     contentH = CONTENT_BOTTOM - contentY;
-  // GEMMA v3.10.6 — removido cap rígido 2.50" que truncava textos longos
-  // (slide 27 com >3 linhas extrapolava o card). Aproveita 100% da safe-zone.
   const rawCardH = (contentH - gap * (gridRows - 1)) / gridRows;
-  // GEMMA v3.11.1 — leve redução para evitar overflow do texto.
   const cardH = Math.min(1.85, Math.max(1.35, rawCardH - 0.08));
   for (let i = 0; i < items.length; i++) {
     const col = i % cols,
@@ -4005,16 +4005,18 @@ function renderNumberedTakeaways(pptx: PptxGenJS, plan: SlidePlan, design: Desig
     slide.addText(
       tkRuns as any,
       {
-        x: x + 0.14,
+        x: x + 0.18,
         y: tkTextY,
-        w: cardW - 0.28,
-        h: cardH - (tkTextY - y) - 0.22,
+        w: cardW - 0.36,
+        h: cardH - (tkTextY - y) - 0.26,
         fontSize: TYPO.TAKEAWAY_BODY,
         fontFace: design.fonts.body,
         valign: "middle",
         lineSpacingMultiple: 1.25,
+        fit: "shrink",
         shrinkText: true,
         minFontSize: 12,
+        margin: 0.02,
       } as any,
     );
   }
