@@ -258,8 +258,8 @@ function computeUnifiedSlideFontSize(
   let size = autoScaleFont(baseSize, longest, threshold, floor);
   const totalChars = items.reduce((a, it) => a + getRenderableTextLength(it || ""), 0);
 
-  // GEMMA v3.11.2 — Usa agora o estimador preciso (estimateTextHeightInches)
-  const MAX_HEIGHT_IN = 3.6;
+  // GEMMA v3.11.5 — Estimador recalibrado, MAX = altura útil real da área de bullets.
+  const MAX_HEIGHT_IN = 5.0;
   let finalEstimated = 0;
   let iterations = 0;
   for (let guard = 0; guard < 12 && size > floor; guard++) {
