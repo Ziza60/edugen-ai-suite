@@ -2,8 +2,59 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
+import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.11.5-GEMMA-OVERFLOW-FIXED";
+const ENGINE_VERSION = "3.11.6-ULTRA-SAFE-ZOD";
+
+const SlidePlanSchema = z.object({
+  layout: z.enum([
+    "module_cover",
+    "toc",
+    "bullets",
+    "two_column_bullets",
+    "grid_cards",
+    "process_timeline",
+    "comparison_table",
+    "example_highlight",
+    "warning_callout",
+    "reflection_callout",
+    "summary_slide",
+    "numbered_takeaways",
+    "closing",
+    // Preserva compatibilidade com layouts já existentes no motor atual.
+    "definition",
+  ]),
+  title: z.string().max(80),
+  sectionLabel: z.string().max(50).optional(),
+  items: z.array(z.string().max(170)).max(6).optional(),
+  objectives: z.array(z.string().max(160)).max(3).optional(),
+  tableHeaders: z.array(z.string().max(40)).optional(),
+  tableRows: z.array(z.array(z.string().max(120))).optional(),
+  moduleIndex: z.number().optional(),
+  continuationOf: z.string().optional(),
+  itemStartIndex: z.number().optional(),
+}).passthrough();
+
+function sanitizeAndValidate(raw: any): any[] {
+  try {
+    const array = Array.isArray(raw) ? raw : [raw];
+    return array.map((item) => {
+      const result = SlidePlanSchema.safeParse(item);
+      if (!result.success) {
+        console.warn("[ZOD] Slide inválido → fallback sanitizado");
+        return {
+          layout: "bullets",
+          title: String(item?.title || "Slide"),
+          sectionLabel: "CONTEÚDO",
+          items: (item?.items || []).slice(0, 5).map((s: any) => String(s).slice(0, 140)),
+        };
+      }
+      return result.data;
+    });
+  } catch {
+    return [];
+  }
+}
 
 /**
  * GEMMA v3.10.4 — Debug Mode
