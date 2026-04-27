@@ -1382,9 +1382,9 @@ function buildFallbackSlides(
 
   slides.push({
     layout: "numbered_takeaways",
-    title: "Key Takeaways",
+    title: "Principais Aprendizados",
     sectionLabel: "PRINCIPAIS APRENDIZADOS",
-    items: sentences.slice(0, 4),
+    items: sentences.slice(0, 4).map((s) => s.replace(/^---+\s*/u, "").trim()),
     moduleIndex,
   });
 
