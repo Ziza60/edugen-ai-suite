@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.11.7-BALANCED-DENSITY";
+const ENGINE_VERSION = "3.12.0-QUALITY-PHASE-1";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -34,6 +34,7 @@ const SlidePlanSchema = z.object({
   moduleIndex: z.number().optional(),
   continuationOf: z.string().optional(),
   itemStartIndex: z.number().optional(),
+  coverQuery: z.string().max(100).optional(),
 }).passthrough();
 
 function sanitizeAndValidate(raw: any): any[] {
@@ -139,6 +140,7 @@ interface SlidePlan {
   // índice base dos badges numerados para manter a sequência (ex.: slide 5
   // termina em "4", o slide 6 deve começar em "5", não em "1").
   itemStartIndex?: number;
+  coverQuery?: string;
 }
 
 interface PipelineReport {
@@ -237,11 +239,9 @@ const GRID_MAX_ITEMS = 5;
  * "[Título Original]" + "[Título Original] (Continuação)".
  */
 const SPLIT_LIMITS = {
-  // GEMMA v3.10.7-GEMINI-SPEC — Teto elevado para 580 conforme especificação
-  // do Gemini: evitar slides "quase vazios" (1 item só). O splitter agora
-  // mantém itens juntos sempre que a fonte mínima (18pt) couber na geometria.
-  MAX_TOTAL_CHARS: 580, // soma de chars de todos os items (split preventivo)
-  MAX_ITEM_CHARS_HARD: 220, // item individual muito longo é quebrado
+  // QUALITY-PHASE-1 — Split mais preventivo: quebra antes da fonte cair ao piso.
+  MAX_TOTAL_CHARS: 500, // soma de chars de todos os items (split preventivo)
+  MAX_ITEM_CHARS_HARD: 180, // item individual muito longo é quebrado
 } as const;
 
 /** Layouts elegíveis para split automático por excesso de itens/chars. */
@@ -481,16 +481,16 @@ function shouldForceContinuation(plan: SlidePlan): boolean {
 
   switch (plan.layout) {
     case "bullets": {
-      // BALANCED-DENSITY — thresholds equilibrados (densidade x overflow).
+      // QUALITY-PHASE-1 — thresholds mais preventivos para densidade saudável.
       const unified = computeUnifiedSlideFontSize(items, 20, 92, MIN_FONT.BODY);
-      return unified <= 17.5 || longest > 110;
+      return unified <= 18.5 || longest > 100;
     }
     case "grid_cards":
       return computeDeterministicGridFontSize(items) < MIN_FONT.BODY + 0.5;
     case "summary_slide":
     case "numbered_takeaways": {
       const unified = computeUnifiedSlideFontSize(items, 19, 85, MIN_FONT.BODY);
-      return unified <= 17 || longest > 100;
+      return unified <= 18 || longest > 90;
     }
     default:
       return false;
@@ -1184,6 +1184,112 @@ const PT_STOP_WORDS = new Set([
   "sem",
 ]);
 
+// Dicionário de termos técnicos para busca de imagens contextuais
+const TECH_IMAGE_QUERIES: Record<string, string> = {
+  // Linguagens de programação
+  python: "python programming code",
+  java: "java programming",
+  javascript: "javascript code",
+  typescript: "typescript code",
+  "c++": "cpp programming",
+  "c#": "csharp programming",
+  ruby: "ruby programming",
+  go: "golang programming",
+  rust: "rust programming",
+  php: "php programming",
+  swift: "swift programming",
+  kotlin: "kotlin programming",
+  // Áreas técnicas
+  "inteligência artificial": "artificial intelligence technology",
+  "machine learning": "machine learning ai",
+  "deep learning": "deep learning neural network",
+  "data science": "data science analytics",
+  "big data": "big data technology",
+  cloud: "cloud computing",
+  aws: "amazon web services cloud",
+  azure: "microsoft azure cloud",
+  docker: "docker containers",
+  kubernetes: "kubernetes cluster",
+  devops: "devops ci cd",
+  api: "api development",
+  rest: "rest api",
+  graphql: "graphql api",
+  frontend: "frontend web development",
+  backend: "backend server",
+  "full stack": "full stack development",
+  mobile: "mobile app development",
+  ios: "ios development",
+  android: "android development",
+  // Bancos de dados
+  sql: "sql database",
+  postgresql: "postgresql database",
+  mysql: "mysql database",
+  mongodb: "mongodb nosql",
+  nosql: "nosql database",
+  redis: "redis cache",
+  // Ferramentas
+  git: "git version control",
+  github: "github repository",
+  linux: "linux terminal server",
+  "linha de comando": "command line terminal",
+  terminal: "computer terminal",
+  vscode: "visual studio code",
+  // Áreas de negócio/gestão
+  "gestão de projetos": "project management",
+  scrum: "scrum agile",
+  agile: "agile methodology",
+  kanban: "kanban board",
+  produtividade: "productivity workspace",
+  liderança: "leadership team",
+  empreendedorismo: "entrepreneurship startup",
+  marketing: "marketing digital",
+  finanças: "finance business",
+  contabilidade: "accounting business",
+  rh: "human resources",
+  "recursos humanos": "human resources team",
+  design: "design creative",
+  "ux design": "user experience design",
+  "ui design": "user interface design",
+  fotografia: "photography camera",
+  edição: "video editing",
+  "edição de vídeo": "video editing suite",
+  // Áreas acadêmicas
+  matemática: "mathematics education",
+  estatística: "statistics data",
+  física: "physics science",
+  química: "chemistry lab",
+  biologia: "biology science",
+  história: "history education",
+  geografia: "geography education",
+  filosofia: "philosophy thinking",
+  psicologia: "psychology mind",
+  medicina: "medicine healthcare",
+  enfermagem: "nursing healthcare",
+  direito: "law legal",
+  engenharia: "engineering technology",
+  arquitetura: "architecture design",
+  // Soft skills
+  comunicação: "communication skills",
+  oratória: "public speaking",
+  "falar em público": "public speaking presentation",
+  negociação: "business negotiation",
+  "inteligência emocional": "emotional intelligence",
+  criatividade: "creativity innovation",
+  inovação: "innovation technology",
+  sustentabilidade: "sustainability environment",
+  esg: "sustainability esg",
+  // Domínios específicos
+  segurança: "cybersecurity",
+  "cyber security": "cybersecurity",
+  redes: "computer networking",
+  iot: "internet of things",
+  blockchain: "blockchain technology",
+  web3: "web3 blockchain",
+  metaverso: "metaverse virtual reality",
+  games: "game development",
+  jogos: "game development",
+};
+
 function buildImageQuery(title: string): string {
   const normalized = title
     .toLowerCase()
@@ -1192,6 +1298,19 @@ function buildImageQuery(title: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  // 1. Match exato de frases técnicas (prioridade máxima)
+  for (const [key, query] of Object.entries(TECH_IMAGE_QUERIES)) {
+    const keyNorm = key
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    if (normalized.includes(keyNorm)) {
+      return query;
+    }
+  }
+
+  // 2. Fallback: processamento palavra-a-palavra
   const words = normalized.split(" ").filter((w) => w.length > 2 && !PT_STOP_WORDS.has(w));
   const translated = words.map((w) => {
     const wNorm = w
@@ -1208,20 +1327,12 @@ function buildImageQuery(title: string): string {
     return w;
   });
   const unique = [...new Set(translated)].slice(0, 3);
-  // Add visual context anchor so Unsplash returns workplace/business photos, not random results
-  const VISUAL_ANCHORS = new Set([
-    "technology",
-    "design",
-    "art",
-    "music",
-    "sport",
-    "nature",
-    "medicine",
-    "architecture",
-    "cooking",
-  ]);
-  const hasVisualAnchor = unique.some((w) => VISUAL_ANCHORS.has(w));
-  const suffix = hasVisualAnchor ? " professional" : " workplace professional";
+
+  // 3. Âncora visual melhorada: prioriza educação/tecnologia
+  const hasVisualAnchor = translated.some((w) =>
+    ["technology", "programming", "code", "design", "art", "science", "education", "business"].includes(w),
+  );
+  const suffix = hasVisualAnchor ? " education professional" : " learning education";
   return unique.join(" ") + suffix;
 }
 
@@ -1475,82 +1586,91 @@ function buildSlidePrompt(
 ): string {
   const itemsPerSlide = density === "compact" ? "3-4" : density === "detailed" ? "5-6" : "4-5";
 
-  return `Você é um designer instrucional especializado em apresentações PowerPoint para cursos online.
+  return `Você é um designer instrucional sênior especializado em criar slides de cursos online profissionais.
 
-Sua tarefa: converter o conteúdo do Módulo ${moduleIndex + 1} abaixo em uma sequência de slides para PowerPoint.
+Sua tarefa: converter o conteúdo do Módulo ${moduleIndex + 1} abaixo em uma sequência de slides PowerPoint de ALTA QUALIDADE.
 
 ## REGRA FUNDAMENTAL
 Retorne APENAS um array JSON válido. ZERO texto fora do JSON. ZERO explicações. ZERO markdown.
-NÃO inclua preamble, saudação ou confirmação — o primeiro caractere deve ser [ e o último ].
+O primeiro caractere deve ser [ e o último ].
+
+## REGRAS DE QUALIDADE (VIOLAÇÃO = SLIDE INVÁLIDO)
+
+### Densidade e Hierarquia Visual
+- Todo slide de conteúdo DEVE ter exatamente ${itemsPerSlide} itens.
+- Slides com 1-2 itens são AUTOMATICAMENTE REJEITADOS.
+- Cada item DEVE seguir o padrão "Conceito: Explicação completa com ponto final."
+  Exemplo BOM: "Variáveis (int): São espaços na memória que armazenam números inteiros, como idade ou contador."
+  Exemplo RUIM: "Variáveis" ou "São espaços na memória."
+
+### Takeaways = Síntese, NÃO Repetição
+- O slide "numbered_takeaways" DEVE conter frases que SINTETIZAM o aprendizado.
+- Use padrões como "Agora você sabe...", "Lembre-se: ...", "Você é capaz de...".
+- NUNCA repita frases literais que já apareceram nos slides de conteúdo.
+  Exemplo BOM: "Agora você sabe diferenciar listas de tuplas e escolher a estrutura ideal para cada cenário."
+  Exemplo RUIM: "Listas são mutáveis e tuplas são imutáveis." (se isso já foi dito antes)
+
+### Exemplo Prático Obrigatório
+- Todo módulo DEVE ter pelo menos 1 slide "example_highlight".
+- Se o conteúdo não tiver exemplo explícito, CRIE UM REALISTA baseado no tema.
+- O slide example_highlight DEVE ter 4 itens exatamente: Contexto → Desafio → Solução → Resultado.
+
+### Variedade de Layouts
+- Nunca use o mesmo layout mais de 2 vezes seguidas.
+- Alterne entre: bullets, grid_cards, process_timeline, example_highlight, two_column_bullets.
 
 ## LAYOUTS DISPONÍVEIS
 
 **"module_cover"** — Capa do módulo (SEMPRE o primeiro slide)
-- Campos: title (string), objectives (array de 3 strings — o que o aluno vai aprender)
+- Campos: title (string), objectives (array de 3 strings — o que o aluno vai aprender, começando com verbo no infinitivo)
 
 **"bullets"** — Conteúdo expositivo (fundamentos, conceitos, como funciona)
-- Campos: title (string, máx 55 chars), sectionLabel (string em MAIÚSCULAS, máx 3 palavras), items (array de ${itemsPerSlide} strings, cada uma frase completa com ponto final, máx 160 chars)
+- Campos: title (string, máx 55 chars, DESCRITIVO — nunca só "Fundamentos"), sectionLabel (string em MAIÚSCULAS, máx 3 palavras), items (array de ${itemsPerSlide} strings no formato "Conceito: Explicação completa com ponto final.", máx 160 chars cada)
 
-**"two_column_bullets"** — Conteúdo extenso em duas colunas (usar quando bullets tiver 6+ itens)
-- Campos: title, sectionLabel, items (array de 6-10 strings)
+**"two_column_bullets"** — Conteúdo extenso em duas colunas (usar quando naturalmente houver 6+ conceitos)
+- Campos: title, sectionLabel, items (array de 6-10 strings no formato "Conceito: Explicação.")
 
-**"grid_cards"** — Lista de itens com título e descrição (aplicações, ferramentas, tipos)
-- Usar quando: 3-6 itens com estrutura "Nome: descrição"
-- Campos: title, sectionLabel (ex: "APLICAÇÕES REAIS", "FERRAMENTAS"), items (array de 3-6 strings no formato "Título do Card: Descrição em uma frase completa")
+**"grid_cards"** — Cards visuais para tópicos independentes (ferramentas, tipos, aplicações)
+- Usar quando: 3-5 itens com estrutura clara de "Nome: descrição"
+- Campos: title, sectionLabel (ex: "FERRAMENTAS", "TIPOS DE DADOS"), items (array de 3-5 strings no formato "Nome do Card: Descrição em uma frase completa.")
 
-**"process_timeline"** — Sequência de passos ou etapas (processos, fluxos, como fazer)
-- Usar quando: o conteúdo descreve um processo sequencial
-- Campos: title, sectionLabel (ex: "COMO FUNCIONA", "PASSO A PASSO"), items (array de 3-6 strings, cada uma no formato "Passo: descrição" ou texto direto)
+**"process_timeline"** — Sequência de passos (processos, fluxos, metodologias)
+- Usar quando: o conteúdo descreve um passo a passo sequencial
+- Campos: title, sectionLabel (ex: "PASSO A PASSO", "COMO FUNCIONA"), items (array de 3-6 strings, cada uma descrevendo uma etapa)
 
-**"comparison_table"** — Tabela comparativa entre 2+ conceitos/variantes
-- Usar quando: o conteúdo compara explicitamente diferentes tipos, versões ou abordagens
-- Campos: title, sectionLabel (ex: "COMPARATIVO", "MODELOS"), tableHeaders (array de 2-4 strings), tableRows (array de arrays de strings, cada linha com mesmo número de colunas dos headers)
+**"comparison_table"** — Tabela comparativa entre conceitos
+- Usar quando: o conteúdo compara explicitamente diferentes abordagens, tipos ou versões
+- Campos: title, sectionLabel ("COMPARATIVO"), tableHeaders (array de 2-4 strings), tableRows (array de arrays de strings)
 
-**"example_highlight"** — Exemplo prático ou estudo de caso
+**"example_highlight"** — Exemplo prático ou caso de uso real
 - SEMPRE usar para blocos de exemplo. NUNCA usar bullets para exemplos.
-- Campos: title (ex: "Exemplo Prático"), sectionLabel ("ESTUDO DE CASO"), items (array de 3-5 strings, cada uma no formato "Rótulo: descrição")
-- ORDEM OBRIGATÓRIA E IMUTÁVEL dos rótulos: Contexto → Desafio → Solução → Resultado
-- PROIBIDO usar outro rótulo inicial que não seja Contexto ou Cenário
-- PROIBIDO colocar Resultado antes de Solução ou Desafio
-- CRÍTICO: cada item deve ter conteúdo único — PROIBIDO repetir a mesma informação
+- Campos: title (ex: "Exemplo Prático: Calculadora de Média"), sectionLabel ("ESTUDO DE CASO"), items (array de EXATAMENTE 4 strings no formato "Contexto: ...", "Desafio: ...", "Solução: ...", "Resultado: ...")
+- ORDEM OBRIGATÓRIA: Contexto → Desafio → Solução → Resultado
 
-**"warning_callout"** — Desafios, riscos, limitações, erros comuns
-- Campos: title (ex: "Desafios e Cuidados"), sectionLabel ("PONTOS DE ATENÇÃO"), items (array de 3-4 strings, cada uma frase completa)
+**"warning_callout"** — Armadilhas, erros comuns, pontos de atenção
+- Campos: title (ex: "Cuidados e Erros Comuns"), sectionLabel ("PONTOS DE ATENÇÃO"), items (array de 3-4 strings)
 
-**"reflection_callout"** — Pergunta de reflexão ou provocação para o aluno
-- Campos: title (ex: "Para Refletir"), sectionLabel ("REFLEXÃO"), items (array com 1-2 strings — perguntas completas)
+**"reflection_callout"** — Pergunta para reflexão do aluno
+- Campos: title (ex: "Para Refletir"), sectionLabel ("REFLEXÃO"), items (array com 1-2 perguntas completas)
 
-**"summary_slide"** — Resumo do módulo
-- SEMPRE o penúltimo slide (antes dos takeaways)
-- Campos: title ("Resumo"), sectionLabel ("SÍNTESE"), items (array de 2-4 strings resumindo o módulo)
+**"summary_slide"** — Resumo do módulo (SEMPRE o penúltimo slide)
+- Campos: title ("Resumo do Módulo"), sectionLabel ("SÍNTESE"), items (array de 2-4 strings resumindo os pontos mais importantes)
 
-**"numbered_takeaways"** — Key Takeaways
-- SEMPRE o último slide de cada módulo
-- Campos: title ("Key Takeaways"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (array de 4-5 strings, cada uma uma lição concreta e aplicável)
+**"numbered_takeaways"** — Key Takeaways (SEMPRE o último slide de cada módulo)
+- Campos: title ("Key Takeaways"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (array de 4-5 strings, cada uma SINTETIZANDO uma lição — use "Agora você...", "Lembre-se: ...", "Você é capaz de...")
 
-## REGRAS DE QUALIDADE OBRIGATÓRIAS
+## SEQUÊNCIA OBRIGATÓRIA DE CADA MÓDULO
+1. module_cover (SEMPRE primeiro)
+2. Slides de conteúdo variado (2 a N-2)
+3. summary_slide (penúltimo)
+4. numbered_takeaways (último)
 
-1. **Sequência obrigatória de cada módulo:**
-   - Slide 1: module_cover (SEMPRE)
-   - Slides 2 a N-2: conteúdo variado (bullets, grid_cards, process_timeline, example_highlight, etc.)
-   - Slide N-1: summary_slide
-   - Slide N: numbered_takeaways
-
-2. **Variedade de layouts:** Nunca use o mesmo layout mais de 2 vezes seguidas. O ideal é alternar entre bullets, grid_cards, process_timeline, example_highlight ao longo do módulo.
-
-3. **Densidade:** ${itemsPerSlide} itens por slide (exceto module_cover, summary, takeaways). Nunca 1 item isolado — incorpore no slide anterior.
-
-4. **Frases completas:** Todo item deve ser uma frase completa com ponto final. Máximo 160 chars por item.
-
-5. **Títulos de slide descritivos:** Não use só "Fundamentos" — use "Fundamentos da Inteligência Artificial". Máx 55 chars.
-
-6. **sectionLabel em MAIÚSCULAS:** Máx 3 palavras. Ex: "FUNDAMENTOS", "COMO FUNCIONA", "APLICAÇÕES REAIS".
-
-7. **Sem duplicação:** Nenhum item pode repetir informação de outro item no mesmo slide.
-
-8. **Exemplo obrigatório:** Todo módulo deve ter pelo menos 1 slide "example_highlight". Se o conteúdo não tiver exemplo explícito, criar um realista baseado no tema.
-
-9. **Idioma:** Gere todo o conteúdo em ${language}.
+## REGRAS ADICIONAIS
+- Títulos descritivos: "Tipos de Dados em Python", não apenas "Tipos de Dados"
+- Frases completas com ponto final em todos os itens
+- sectionLabel em MAIÚSCULAS, máx 3 palavras
+- Nenhum item pode repetir informação de outro no mesmo slide
+- Idioma: ${language}
 
 ## CONTEÚDO DO MÓDULO
 
@@ -1559,14 +1679,14 @@ NÃO inclua preamble, saudação ou confirmação — o primeiro caractere deve 
 **Conteúdo:**
 ${moduleContent.substring(0, 6000)}
 
-## FORMATO DE SAÍDA (exemplo mínimo de estrutura):
+## EXEMPLO DE SAÍDA DE QUALIDADE:
 [
-  {"layout":"module_cover","title":"${moduleTitle}","objectives":["Objetivo 1.","Objetivo 2.","Objetivo 3."]},
-  {"layout":"bullets","title":"Título Descritivo","sectionLabel":"FUNDAMENTOS","items":["Item 1.","Item 2.","Item 3.","Item 4."]},
-  {"layout":"grid_cards","title":"Título Descritivo","sectionLabel":"APLICAÇÕES REAIS","items":["Ferramenta A: Descrição da ferramenta A.","Ferramenta B: Descrição da ferramenta B.","Ferramenta C: Descrição da ferramenta C."]},
-  {"layout":"example_highlight","title":"Exemplo Prático","sectionLabel":"ESTUDO DE CASO","items":["Contexto: Descrição do cenário.","Desafio: O problema a resolver.","Solução: Como foi resolvido.","Resultado: O que foi alcançado."]},
-  {"layout":"summary_slide","title":"Resumo","sectionLabel":"SÍNTESE","items":["Síntese 1.","Síntese 2.","Síntese 3."]},
-  {"layout":"numbered_takeaways","title":"Key Takeaways","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Lição 1.","Lição 2.","Lição 3.","Lição 4."]}
+  {"layout":"module_cover","title":"${moduleTitle}","objectives":["Compreender os conceitos fundamentais e aplicá-los em cenários reais.","Desenvolver a capacidade de implementar soluções usando as ferramentas aprendidas.","Identificar e evitar os erros mais comuns na prática profissional."]},
+  {"layout":"bullets","title":"Fundamentos e Conceitos-Chave","sectionLabel":"FUNDAMENTOS","items":["Conceito Principal: Explicação completa sobre o que é e por que é importante no contexto do módulo.","Segundo Elemento: Descrição detalhada deste componente e como ele se relaciona com o anterior.","Terceiro Pilar: Explicação abrangente deste terceiro fundamento e sua aplicação prática.","Quarto Aspecto: Detalhamento deste conceito complementar com exemplos de uso real."]},
+  {"layout":"grid_cards","title":"Ferramentas e Aplicações","sectionLabel":"APLICAÇÕES","items":["Ferramenta A: Descrição concisa do que faz e quando usar esta ferramenta no dia a dia.","Ferramenta B: Explicação do propósito desta segunda ferramenta e seus benefícios.","Abordagem C: Detalhamento desta abordagem e os problemas que ela resolve."]},
+  {"layout":"example_highlight","title":"Exemplo Prático: Cenário Real","sectionLabel":"ESTUDO DE CASO","items":["Contexto: Descrição clara da situação inicial e do ambiente onde o problema ocorre.","Desafio: Explicação específica do problema a ser resolvido e suas consequências.","Solução: Detalhamento de como o problema foi abordado e quais técnicas foram aplicadas.","Resultado: Descrição objetiva do que foi alcançado e dos benefícios obtidos."]},
+  {"layout":"summary_slide","title":"Resumo do Módulo","sectionLabel":"SÍNTESE","items":["Os fundamentos apresentados fornecem a base teórica necessária para aplicação prática.","As ferramentas exploradas permitem implementar soluções eficientes para problemas reais.","O exemplo prático demonstrou a aplicação dos conceitos em um cenário autêntico."]},
+  {"layout":"numbered_takeaways","title":"Key Takeaways","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Agora você sabe identificar qual abordagem utilizar para cada tipo de problema.","Lembre-se: a prática consistente é essencial para dominar estas técnicas.","Você é capaz de implementar soluções completas usando as ferramentas aprendidas.","Evite os erros comuns revisando sempre os pontos de atenção antes de implementar."]}
 ]
 
 Retorne APENAS o array JSON. Nenhum texto antes ou depois.`;
@@ -1821,14 +1941,26 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
   if (tableHeaders) plan.tableHeaders = tableHeaders;
   if (tableRows) plan.tableRows = tableRows;
 
-  // Guard: skip slides with no content (except structural slides)
+  // Guard: skip slides with insufficient content (except structural slides)
   const structuralLayouts: SlideLayoutV3[] = ["module_cover", "toc", "summary_slide", "numbered_takeaways", "closing"];
   if (!structuralLayouts.includes(layout)) {
     const hasItems = (plan.items?.length ?? 0) > 0;
-    const hasTable = (plan.tableRows?.length ?? 0) > 0;
-    if (!hasItems && !hasTable) return null; // drop empty slide
-    // Also drop slides where ALL items are empty strings or too short
+    const hasTable = (plan.tableRows?.length ?? 0) >= 2;
+
+    // Drop slides with no content
+    if (!hasItems && !hasTable) return null;
+
+    // Drop slides where ALL items are empty strings or too short
     if (hasItems && plan.items!.every((it) => it.trim().length < 5)) return null;
+
+    // QUALITY-PHASE-1: requisito mínimo de densidade — pelo menos 2 itens substanciais
+    if (hasItems && !hasTable) {
+      const substantialItems = plan.items!.filter((it) => it.trim().length >= 20);
+      if (substantialItems.length < 2) return null;
+      if (substantialItems.length !== plan.items!.length) {
+        plan.items = substantialItems.slice(0, 6);
+      }
+    }
   }
 
   return plan;

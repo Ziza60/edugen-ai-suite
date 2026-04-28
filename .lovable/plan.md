@@ -1,77 +1,61 @@
-## Objetivo
+# Fase 1 — Melhorias de Qualidade no PPTX v3
 
-Aplicar GEMMA v3.11.1 no `export-pptx-v3/index.ts` para resolver overflow nos slides com bullets, grid_cards, summary_slide e numbered_takeaways. As mudanças combinam: (1) estimador de altura mais realista, (2) splitter mais agressivo, (3) `shouldForceContinuation` mais rigoroso, (4) padding/shrinkText nos layouts críticos.
+Todas as alterações são no arquivo único `supabase/functions/export-pptx-v3/index.ts`. Após o deploy da Edge Function, basta gerar um PPTX para validar.
 
-## Mudanças (exatamente 7 edições no arquivo `supabase/functions/export-pptx-v3/index.ts`)
+## Mudanças
 
-### 1. `estimateTextHeightInches` — fator empírico realista (L380-387)
+### 1. Bump de versão
+- `ENGINE_VERSION` (linha 8): `"3.11.7-BALANCED-DENSITY"` → `"3.12.0-QUALITY-PHASE-1"`.
 
-Substituir o corpo da função para usar `charWidthFactor = 0.0198`, `lineSpacingMultiple = 1.6` por padrão e multiplicador 1.24 para cobrir bold/runs/wrapping real do PowerPoint:
+### 2. Reescrita do `buildSlidePrompt()` (linha ~1469)
+Substituir a função inteira pela nova versão fornecida, que:
+- Força densidade mínima por slide (3-4 / 4-5 / 5-6 itens conforme densidade).
+- Padrão obrigatório `Conceito: Explicação completa.` em cada item.
+- Takeaways como **síntese** (`Agora você sabe...`, `Lembre-se: ...`), nunca repetição literal.
+- Slide `example_highlight` obrigatório por módulo, com 4 fases canônicas.
+- Variedade de layouts (no máx. 2x o mesmo seguidos).
+- Catálogo completo de layouts disponíveis com regras claras.
+- Exemplo dourado de saída JSON ao final.
 
-```ts
-function estimateTextHeightInches(
-  text: string, fontSize: number, boxW: number, lineSpacingMultiple = 1.6
-): number {
-  const safeText = sanitizeText(text || "").trim();
-  if (!safeText) return 0.4;
-  const charWidthFactor = 0.0198;
-  const charsPerLine = Math.max(8, Math.floor(boxW / (fontSize * charWidthFactor)));
-  const lines = Math.max(1, Math.ceil(safeText.length / charsPerLine));
-  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.24);
-}
-```
+### 3. Reforço dos guards em `normalizeSlide()` (linhas 1824-1832)
+Substituir o bloco atual pelo novo guard reforçado:
+- Mantém o drop de slides vazios.
+- Exige `tableRows.length >= 2` para considerar tabela válida.
+- **Novo requisito mínimo de densidade**: slides de conteúdo precisam de ≥2 itens com ≥20 caracteres; caso contrário são descartados.
+- Filtra itens muito curtos (<20 chars) automaticamente, mantendo até 6.
 
-### 2. `shouldForceContinuation` — mais rigoroso (L404-426)
+### 4. Ajuste de `SPLIT_LIMITS` (linha 239)
+- `MAX_TOTAL_CHARS`: 580 → **500** (split preventivo antes de cair no piso de fonte).
+- `MAX_ITEM_CHARS_HARD`: 220 → **180** (itens longos são quebrados mais cedo).
 
-Substituir thresholds: bullets força continuação se `unified ≤ 18.5` ou `longest > 105`; grid_cards se `< MIN_FONT.BODY + 0.5`; summary/takeaways se `unified ≤ 18` ou `longest > 95`:
+### 5. Ajuste de `shouldForceContinuation()` (linha 477)
+- `bullets`: thresholds passam de `unified <= 17.5 || longest > 110` para **`<= 18.5 || > 100`**.
+- `summary_slide` / `numbered_takeaways`: de `<= 17 || > 100` para **`<= 18 || > 90`**.
+- `grid_cards`: inalterado.
 
-```ts
-case "bullets": {
-  const unified = computeUnifiedSlideFontSize(items, 20, 92, MIN_FONT.BODY);
-  return unified <= 18.5 || longest > 105;
-}
-case "grid_cards":
-  return computeDeterministicGridFontSize(items) < MIN_FONT.BODY + 0.5;
-case "summary_slide":
-case "numbered_takeaways": {
-  const unified = computeUnifiedSlideFontSize(items, 19, 85, MIN_FONT.BODY);
-  return unified <= 18 || longest > 95;
-}
-```
+### 6. Dicionário técnico + nova `buildImageQuery()` (linha ~1187)
+- Adicionar a constante `TECH_IMAGE_QUERIES` (Record completo: linguagens, áreas técnicas, bancos, ferramentas, negócios, áreas acadêmicas, soft skills, domínios) **antes** da função.
+- Substituir `buildImageQuery` pela nova versão que:
+  1. Faz match exato de termos no dicionário (prioridade máxima).
+  2. Cai no fluxo atual `PT_EN_MAP` + `PT_STOP_WORDS` se nada bater.
+  3. Sufixo melhorado: `education professional` se houver âncora visual técnica, senão `learning education` (substitui o genérico anterior).
 
-### 3. `normalizeAndSplitSlide` — split mais cedo (L468 e L483)
+### 7. Campo opcional `coverQuery` no SlidePlan
+- `SlidePlanSchema` (linha 10): adicionar `coverQuery: z.string().max(100).optional()`.
+- `interface SlidePlan` (linha 126): adicionar `coverQuery?: string;`.
+- Não há uso ainda — apenas reserva o campo para a IA poder sugerir queries customizadas em fases futuras.
 
-- L468: trocar `totalChars < 800 && items.length <= 8` por `totalChars < 650 && items.length <= 7`.
-- L483: trocar limite de chars de `> 580` para `> 520`.
+## O que NÃO será alterado
+- `MIN_FONT`, `computeUnifiedSlideFontSize`, `estimateTextHeightInches` e demais constantes de geometria — calibradas para evitar overflow.
+- Restante do `repairPptxPackage` (já validado em iterações anteriores).
+- Layouts de renderização (`renderBullets`, etc.) — mantidos como estão.
 
-### 4. `renderBullets` variant 1 — padding e shrinkText (L2826-2840)
+## Plano de rollback
+Se aparecer overflow após o deploy, reverter **apenas** `SPLIT_LIMITS.MAX_TOTAL_CHARS` para 580; demais mudanças permanecem.
 
-- `v1X = contentX + 0.68` (era +0.55)
-- `v1W = contentW - 0.88` (era −0.70)
-- `h: itemH - 0.05` mantido
-- `shrinkText: true`, adicionar `maxFontSize: 19`, `minFontSize: 13`
-
-### 5. `renderGridCards` — padding lateral + shrinkText (L3171-3179)
-
-- Calcular localmente `textW = geometry.cardW - geometry.textXOffset - 0.32` e `textH = geometry.cardH - geometry.textYOffset - 0.26` (em vez de usar `geometry.textW/textH`).
-- No `addText`: `lineSpacingMultiple: 1.22`, `shrinkText: true`, `minFontSize: 12`.
-
-### 6. `renderSummarySlide` — card menor + shrinkText (L3920 e L3951-3962)
-
-- L3920: `cardH = Math.max(1.35, (contentHAvail - gap*(rows-1))/rows - 0.08)`.
-- No `addText` final do item: remover `autoFit: true`, adicionar `shrinkText: true`, `minFontSize: 12`.
-
-### 7. `renderNumberedTakeaways` — card menor + shrinkText (L4010 e L4060-4073)
-
-- L4010: trocar `cardH = Math.min(1.85, Math.max(1.4, rawCardH))` por `cardH = Math.max(1.35, rawCardH - 0.08)` mantendo o teto seguro `Math.min(1.85, ...)`.
-- No `addText` final: remover `autoFit: true`, adicionar `shrinkText: true`, `minFontSize: 12`.
-
-## Deploy e verificação
-
-- `supabase--deploy_edge_functions(["export-pptx-v3"])`.
-- Confirmar números de linha exatos das edições no resumo final.
-
-## Fora de escopo
-
-- Nenhuma outra função, layout ou arquivo é tocado.
-- `measureTextHeight` (calibração de fontes) permanece como está; o ajuste atual é no `estimateTextHeightInches` usado pelo planner.
+## Validação pós-deploy
+Gerar 1 curso de teste (ex.: Python) e verificar:
+- Nenhum slide com 1-2 itens de conteúdo.
+- Takeaways usando expressões de síntese.
+- Imagens de capa contextualmente relevantes (ex.: Python → "python programming code").
+- Zero transbordo visual.
