@@ -1,58 +1,56 @@
-# Fase 3.12.2 — Fix do Fallback + Diagnóstico de Parsing no PPTX v3
+# Fase 3.12.3 — Diagnóstico de Erro da Chamada IA (PPTX v3)
 
-Único arquivo: `supabase/functions/export-pptx-v3/index.ts`. Bump para `3.12.2-FALLBACK-FIX`. Deploy ao final.
+Patch cirúrgico em `supabase/functions/export-pptx-v3/index.ts`. Bump para `3.12.3-AI-ERR-DIAG`. Deploy ao final.
 
 ## Diagnóstico
 
-Os logs mostram slides com 1–2 itens mesmo após Fase 1.1, e takeaways copiando o conteúdo literalmente (ex.: takeaway "🧠 Fundamentos A programação eficaz…"). A causa: os módulos estão caindo no `buildFallbackSlides` (linha 2010), que:
+A v3.12.2 mostrou que **todos os 8 módulos caem no fallback em ~2s** (`[V3-FALLBACK] Module N: generated 6 slides...` aparece imediatamente após `[V3-STAGE-1]`). Isso significa que `callAI()` está lançando exceção antes mesmo de chegar ao `JSON.parse` — portanto os logs `[V3-AI-DIAG]` e `[V3-PARSE-ERR]` nunca disparam.
 
-1. Gera chunks finais com 1–2 sentenças.
-2. Reaproveita as mesmas sentenças como takeaways.
-3. Não passa pelo guard de densidade nem pelo detector anti-cópia (esses vivem em `normalizeSlide` / etapa 6 do `generateSlidesForModule`, mas o fallback retorna direto, sem ser revalidado).
-4. Não temos visibilidade do motivo pelo qual o `JSON.parse` da IA falha (catch atual é vazio).
+O catch atual em `generateSlidesForModule` (~linha 2120) registra o erro apenas em `report.warnings` (JSON de resposta), mas **não** em `console.error`, então o motivo real (402, 429, timeout, fetch error) fica invisível nos logs da Edge Function.
 
 ## Mudanças
 
 ### 1. Bump de versão (linha 8)
-`"3.12.1-QUALITY-PHASE-1-1"` → `"3.12.2-FALLBACK-FIX"`.
+`"3.12.2-FALLBACK-FIX"` → `"3.12.3-AI-ERR-DIAG"`.
 
-### 2. Reescrever `buildFallbackSlides` (linha 2010)
-Substituir a função inteira pela versão proposta no pedido:
-- Extrai sentenças (25–160 chars), descarta marcadores de seção.
-- Capa de módulo com até 3 objetivos.
-- **Agrupa sentenças em chunks de 4**; chunks finais com <3 itens são fundidos com o anterior (e re-divididos se passarem de 6).
-- Limita a 4 slides de conteúdo (`bullets`), com `sectionLabel: "CONTEÚDO"` e `itemStartIndex` correto.
-- Slide final `numbered_takeaways` usando 4 frases sintéticas fixas ("Agora você domina…", "Lembre-se…", etc.) — nunca cópia do conteúdo.
-- Log `[V3-FALLBACK] Module N: generated X slides from Y sentences in Z chunks`.
+### 2. Catch detalhado em `generateSlidesForModule` (~linha 2120)
 
-### 3. Diagnóstico de parsing (antes da linha 2108)
-Inserir 3 logs `[V3-AI-DIAG]` com:
-- Primeiros 300 chars de `rawText`.
-- Primeiros 300 chars de `clean`.
-- Length de `clean`, e se começa com `[` / termina com `]`.
+Substituir:
+```typescript
+} catch (err: any) {
+  report.aiCallsFailed++;
+  report.fallbacksUsed++;
+  report.warnings.push(`[V3-AI] Module ${moduleIndex + 1} AI call failed: ${err.message}. Using fallback.`);
+  return buildFallbackSlides(moduleTitle, moduleContent, moduleIndex);
+}
+```
 
-### 4. Catch detalhado do `JSON.parse` (linhas ~2109–2127)
-Substituir o `} catch {` vazio por `} catch (parseErr: any) {` com:
-- `console.error [V3-PARSE-ERR]` com mensagem do erro, primeiros 500 chars e últimos 100 chars de `clean`.
-- Mantém a tentativa via regex `match(/\[[\s\S]*\]/)`.
-- Se o regex parse também falhar: log `[V3-PARSE-ERR] regex extraction also failed`, incrementa `aiCallsFailed` / `fallbacksUsed`, push warning e retorna `buildFallbackSlides`.
-- Se não houver match: log `no JSON array found`, mesmo tratamento.
-- Sucesso do regex: log `[V3-PARSE-OK]` com tamanho.
+Por:
+```typescript
+} catch (err: any) {
+  // PARSE-FIX-DIAG: Expor o erro real nos logs para diagnóstico
+  console.error(`[V3-AI-ERR] Module ${moduleIndex + 1} "${moduleTitle}": ${err.message}`);
+  console.error(`[V3-AI-ERR] Module ${moduleIndex + 1} error type: ${err.name || 'unknown'}, code: ${err.code || 'none'}`);
+  if (err.stack) {
+    console.error(`[V3-AI-ERR] Module ${moduleIndex + 1} stack first 300: ${err.stack.substring(0, 300)}`);
+  }
+  report.aiCallsFailed++;
+  report.fallbacksUsed++;
+  report.warnings.push(`[V3-AI] Module ${moduleIndex + 1} AI call failed: ${err.message}. Using fallback.`);
+  return buildFallbackSlides(moduleTitle, moduleContent, moduleIndex);
+}
+```
 
-### 5. Indicador de fallback no log final (linha 2321)
-Substituir o `console.log [V3-MODULE]` para detectar se o módulo usou fallback (procura warning contendo `Module N` + `Using fallback`) e anexa ` (FALLBACK)` ou ` (AI)` ao log.
-
-### 6. Deploy
+### 3. Deploy
 `supabase--deploy_edge_functions` para `export-pptx-v3`.
 
 ## NÃO alterar
-`MIN_FONT`, `SPLIT_LIMITS`, `computeUnifiedSlideFontSize`, `estimateTextHeightInches`, `normalizeSlide`, `normalizeAndSplitSlide`, detector de takeaways, `TECH_IMAGE_QUERIES`, prompts, schemas, render functions.
+`robustJSONParse`, prompt da IA, `buildFallbackSlides`, `normalizeSlide`, `normalizeAndSplitSlide`, render functions, `MIN_FONT`, `SPLIT_LIMITS`, `TECH_IMAGE_QUERIES`, ou qualquer outra função.
 
 ## Validação pós-deploy
-Gerar o PPTX do curso de Python e nos logs verificar:
-- Quantos módulos aparecem como `(FALLBACK)` vs `(AI)`.
-- Se houver fallback, ver `[V3-PARSE-ERR]` para entender o motivo (markdown fence, vírgula trailing, JSON cortado por max_tokens, etc.).
-- Slides do fallback agora com ≥3 itens e takeaways genéricos ("Agora você domina…").
+1. Exportar PPTX do curso de Python.
+2. Filtrar logs por prefixo `[V3-AI-ERR]`.
+3. As linhas vão revelar a causa raiz: `402 Payment Required`, `429 Rate Limit`, `fetch failed`, `timeout`, etc.
 
 ## Rollback
-Se algo regredir, reverter apenas a mudança 2 (manter o `buildFallbackSlides` antigo) e manter os diagnósticos (mudanças 3–5) para continuar investigando.
+Reverter o bloco do catch para a versão anterior (3 linhas). Risco zero — mudança é apenas log adicional.

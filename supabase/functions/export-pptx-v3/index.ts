@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.2-FALLBACK-FIX";
+const ENGINE_VERSION = "3.12.3-AI-ERR-DIAG";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -2118,6 +2118,12 @@ async function generateSlidesForModule(
     );
     console.log(`[V3-AI] Module ${moduleIndex + 1} "${moduleTitle}": response length=${rawText.length}`);
   } catch (err: any) {
+    // PARSE-FIX-DIAG: Expor o erro real nos logs para diagnóstico
+    console.error(`[V3-AI-ERR] Module ${moduleIndex + 1} "${moduleTitle}": ${err.message}`);
+    console.error(`[V3-AI-ERR] Module ${moduleIndex + 1} error type: ${err.name || 'unknown'}, code: ${err.code || 'none'}`);
+    if (err.stack) {
+      console.error(`[V3-AI-ERR] Module ${moduleIndex + 1} stack first 300: ${err.stack.substring(0, 300)}`);
+    }
     report.aiCallsFailed++;
     report.fallbacksUsed++;
     report.warnings.push(`[V3-AI] Module ${moduleIndex + 1} AI call failed: ${err.message}. Using fallback.`);
