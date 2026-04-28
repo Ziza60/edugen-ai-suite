@@ -239,11 +239,9 @@ const GRID_MAX_ITEMS = 5;
  * "[Título Original]" + "[Título Original] (Continuação)".
  */
 const SPLIT_LIMITS = {
-  // GEMMA v3.10.7-GEMINI-SPEC — Teto elevado para 580 conforme especificação
-  // do Gemini: evitar slides "quase vazios" (1 item só). O splitter agora
-  // mantém itens juntos sempre que a fonte mínima (18pt) couber na geometria.
-  MAX_TOTAL_CHARS: 580, // soma de chars de todos os items (split preventivo)
-  MAX_ITEM_CHARS_HARD: 220, // item individual muito longo é quebrado
+  // QUALITY-PHASE-1 — Split mais preventivo: quebra antes da fonte cair ao piso.
+  MAX_TOTAL_CHARS: 500, // soma de chars de todos os items (split preventivo)
+  MAX_ITEM_CHARS_HARD: 180, // item individual muito longo é quebrado
 } as const;
 
 /** Layouts elegíveis para split automático por excesso de itens/chars. */
