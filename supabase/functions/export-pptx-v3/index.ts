@@ -1932,14 +1932,26 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
   if (tableHeaders) plan.tableHeaders = tableHeaders;
   if (tableRows) plan.tableRows = tableRows;
 
-  // Guard: skip slides with no content (except structural slides)
+  // Guard: skip slides with insufficient content (except structural slides)
   const structuralLayouts: SlideLayoutV3[] = ["module_cover", "toc", "summary_slide", "numbered_takeaways", "closing"];
   if (!structuralLayouts.includes(layout)) {
     const hasItems = (plan.items?.length ?? 0) > 0;
-    const hasTable = (plan.tableRows?.length ?? 0) > 0;
-    if (!hasItems && !hasTable) return null; // drop empty slide
-    // Also drop slides where ALL items are empty strings or too short
+    const hasTable = (plan.tableRows?.length ?? 0) >= 2;
+
+    // Drop slides with no content
+    if (!hasItems && !hasTable) return null;
+
+    // Drop slides where ALL items are empty strings or too short
     if (hasItems && plan.items!.every((it) => it.trim().length < 5)) return null;
+
+    // QUALITY-PHASE-1: requisito mínimo de densidade — pelo menos 2 itens substanciais
+    if (hasItems && !hasTable) {
+      const substantialItems = plan.items!.filter((it) => it.trim().length >= 20);
+      if (substantialItems.length < 2) return null;
+      if (substantialItems.length !== plan.items!.length) {
+        plan.items = substantialItems.slice(0, 6);
+      }
+    }
   }
 
   return plan;
