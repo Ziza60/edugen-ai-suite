@@ -1184,6 +1184,112 @@ const PT_STOP_WORDS = new Set([
   "sem",
 ]);
 
+// Dicionário de termos técnicos para busca de imagens contextuais
+const TECH_IMAGE_QUERIES: Record<string, string> = {
+  // Linguagens de programação
+  python: "python programming code",
+  java: "java programming",
+  javascript: "javascript code",
+  typescript: "typescript code",
+  "c++": "cpp programming",
+  "c#": "csharp programming",
+  ruby: "ruby programming",
+  go: "golang programming",
+  rust: "rust programming",
+  php: "php programming",
+  swift: "swift programming",
+  kotlin: "kotlin programming",
+  // Áreas técnicas
+  "inteligência artificial": "artificial intelligence technology",
+  "machine learning": "machine learning ai",
+  "deep learning": "deep learning neural network",
+  "data science": "data science analytics",
+  "big data": "big data technology",
+  cloud: "cloud computing",
+  aws: "amazon web services cloud",
+  azure: "microsoft azure cloud",
+  docker: "docker containers",
+  kubernetes: "kubernetes cluster",
+  devops: "devops ci cd",
+  api: "api development",
+  rest: "rest api",
+  graphql: "graphql api",
+  frontend: "frontend web development",
+  backend: "backend server",
+  "full stack": "full stack development",
+  mobile: "mobile app development",
+  ios: "ios development",
+  android: "android development",
+  // Bancos de dados
+  sql: "sql database",
+  postgresql: "postgresql database",
+  mysql: "mysql database",
+  mongodb: "mongodb nosql",
+  nosql: "nosql database",
+  redis: "redis cache",
+  // Ferramentas
+  git: "git version control",
+  github: "github repository",
+  linux: "linux terminal server",
+  "linha de comando": "command line terminal",
+  terminal: "computer terminal",
+  vscode: "visual studio code",
+  // Áreas de negócio/gestão
+  "gestão de projetos": "project management",
+  scrum: "scrum agile",
+  agile: "agile methodology",
+  kanban: "kanban board",
+  produtividade: "productivity workspace",
+  liderança: "leadership team",
+  empreendedorismo: "entrepreneurship startup",
+  marketing: "marketing digital",
+  finanças: "finance business",
+  contabilidade: "accounting business",
+  rh: "human resources",
+  "recursos humanos": "human resources team",
+  design: "design creative",
+  "ux design": "user experience design",
+  "ui design": "user interface design",
+  fotografia: "photography camera",
+  edição: "video editing",
+  "edição de vídeo": "video editing suite",
+  // Áreas acadêmicas
+  matemática: "mathematics education",
+  estatística: "statistics data",
+  física: "physics science",
+  química: "chemistry lab",
+  biologia: "biology science",
+  história: "history education",
+  geografia: "geography education",
+  filosofia: "philosophy thinking",
+  psicologia: "psychology mind",
+  medicina: "medicine healthcare",
+  enfermagem: "nursing healthcare",
+  direito: "law legal",
+  engenharia: "engineering technology",
+  arquitetura: "architecture design",
+  // Soft skills
+  comunicação: "communication skills",
+  oratória: "public speaking",
+  "falar em público": "public speaking presentation",
+  negociação: "business negotiation",
+  "inteligência emocional": "emotional intelligence",
+  criatividade: "creativity innovation",
+  inovação: "innovation technology",
+  sustentabilidade: "sustainability environment",
+  esg: "sustainability esg",
+  // Domínios específicos
+  segurança: "cybersecurity",
+  "cyber security": "cybersecurity",
+  redes: "computer networking",
+  iot: "internet of things",
+  blockchain: "blockchain technology",
+  web3: "web3 blockchain",
+  metaverso: "metaverse virtual reality",
+  games: "game development",
+  jogos: "game development",
+};
+
 function buildImageQuery(title: string): string {
   const normalized = title
     .toLowerCase()
@@ -1192,6 +1298,19 @@ function buildImageQuery(title: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  // 1. Match exato de frases técnicas (prioridade máxima)
+  for (const [key, query] of Object.entries(TECH_IMAGE_QUERIES)) {
+    const keyNorm = key
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    if (normalized.includes(keyNorm)) {
+      return query;
+    }
+  }
+
+  // 2. Fallback: processamento palavra-a-palavra
   const words = normalized.split(" ").filter((w) => w.length > 2 && !PT_STOP_WORDS.has(w));
   const translated = words.map((w) => {
     const wNorm = w
@@ -1208,20 +1327,12 @@ function buildImageQuery(title: string): string {
     return w;
   });
   const unique = [...new Set(translated)].slice(0, 3);
-  // Add visual context anchor so Unsplash returns workplace/business photos, not random results
-  const VISUAL_ANCHORS = new Set([
-    "technology",
-    "design",
-    "art",
-    "music",
-    "sport",
-    "nature",
-    "medicine",
-    "architecture",
-    "cooking",
-  ]);
-  const hasVisualAnchor = unique.some((w) => VISUAL_ANCHORS.has(w));
-  const suffix = hasVisualAnchor ? " professional" : " workplace professional";
+
+  // 3. Âncora visual melhorada: prioriza educação/tecnologia
+  const hasVisualAnchor = translated.some((w) =>
+    ["technology", "programming", "code", "design", "art", "science", "education", "business"].includes(w),
+  );
+  const suffix = hasVisualAnchor ? " education professional" : " learning education";
   return unique.join(" ") + suffix;
 }
 
