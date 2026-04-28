@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.6-HEIGHT-GATE";
+const ENGINE_VERSION = "3.12.7-ZOD-PARITY";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -556,8 +556,16 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  // BALANCED-DENSITY — só divide se realmente houver muito conteúdo.
-  if (!forcedContinuation && totalChars <= 720 && items.length <= 8) {
+  // ZOD-PARITY v3.12.7 — early-return alinhado ao MAX_TOTAL_CHARS=580 da era Zod
+  // (3.11.6) que eliminava overflow. Adiciona gate por longest-item (>150) já que
+  // os logs mostram OVERFLOW com 4 items mas longest=164-170.
+  const longestItem = items.reduce((m, it) => Math.max(m, (it || "").length), 0);
+  const earlyPass =
+    !forcedContinuation &&
+    totalChars <= 500 &&
+    items.length <= 5 &&
+    longestItem <= 150;
+  if (earlyPass) {
     return [plan];
   }
   if (items.length <= 1) return [plan]; // não dá para dividir
@@ -574,7 +582,8 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
     const wouldExceedItems = current.length + 1 > maxItems;
     // MEASURE-FIX v3.12.4 — chunk-cap alinhado ao early-return (720); measure só dispara
     // quando chunk já tem 3+ items E acumulou 400+ chars (evita slides com 1 bullet).
-    const wouldExceedChars = currentChars + itLen > 720 && current.length > 0;
+    // ZOD-PARITY v3.12.7 — chunk-cap de 440 (era Zod) substitui o 720 que permitia overflow.
+    const wouldExceedChars = currentChars + itLen > 440 && current.length > 0;
     const wouldExceedMeasure =
       current.length >= 3 &&
       currentChars + itLen > 400 &&
