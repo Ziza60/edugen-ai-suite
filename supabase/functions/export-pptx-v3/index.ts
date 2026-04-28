@@ -1586,82 +1586,91 @@ function buildSlidePrompt(
 ): string {
   const itemsPerSlide = density === "compact" ? "3-4" : density === "detailed" ? "5-6" : "4-5";
 
-  return `Você é um designer instrucional especializado em apresentações PowerPoint para cursos online.
+  return `Você é um designer instrucional sênior especializado em criar slides de cursos online profissionais.
 
-Sua tarefa: converter o conteúdo do Módulo ${moduleIndex + 1} abaixo em uma sequência de slides para PowerPoint.
+Sua tarefa: converter o conteúdo do Módulo ${moduleIndex + 1} abaixo em uma sequência de slides PowerPoint de ALTA QUALIDADE.
 
 ## REGRA FUNDAMENTAL
 Retorne APENAS um array JSON válido. ZERO texto fora do JSON. ZERO explicações. ZERO markdown.
-NÃO inclua preamble, saudação ou confirmação — o primeiro caractere deve ser [ e o último ].
+O primeiro caractere deve ser [ e o último ].
+
+## REGRAS DE QUALIDADE (VIOLAÇÃO = SLIDE INVÁLIDO)
+
+### Densidade e Hierarquia Visual
+- Todo slide de conteúdo DEVE ter exatamente ${itemsPerSlide} itens.
+- Slides com 1-2 itens são AUTOMATICAMENTE REJEITADOS.
+- Cada item DEVE seguir o padrão "Conceito: Explicação completa com ponto final."
+  Exemplo BOM: "Variáveis (int): São espaços na memória que armazenam números inteiros, como idade ou contador."
+  Exemplo RUIM: "Variáveis" ou "São espaços na memória."
+
+### Takeaways = Síntese, NÃO Repetição
+- O slide "numbered_takeaways" DEVE conter frases que SINTETIZAM o aprendizado.
+- Use padrões como "Agora você sabe...", "Lembre-se: ...", "Você é capaz de...".
+- NUNCA repita frases literais que já apareceram nos slides de conteúdo.
+  Exemplo BOM: "Agora você sabe diferenciar listas de tuplas e escolher a estrutura ideal para cada cenário."
+  Exemplo RUIM: "Listas são mutáveis e tuplas são imutáveis." (se isso já foi dito antes)
+
+### Exemplo Prático Obrigatório
+- Todo módulo DEVE ter pelo menos 1 slide "example_highlight".
+- Se o conteúdo não tiver exemplo explícito, CRIE UM REALISTA baseado no tema.
+- O slide example_highlight DEVE ter 4 itens exatamente: Contexto → Desafio → Solução → Resultado.
+
+### Variedade de Layouts
+- Nunca use o mesmo layout mais de 2 vezes seguidas.
+- Alterne entre: bullets, grid_cards, process_timeline, example_highlight, two_column_bullets.
 
 ## LAYOUTS DISPONÍVEIS
 
 **"module_cover"** — Capa do módulo (SEMPRE o primeiro slide)
-- Campos: title (string), objectives (array de 3 strings — o que o aluno vai aprender)
+- Campos: title (string), objectives (array de 3 strings — o que o aluno vai aprender, começando com verbo no infinitivo)
 
 **"bullets"** — Conteúdo expositivo (fundamentos, conceitos, como funciona)
-- Campos: title (string, máx 55 chars), sectionLabel (string em MAIÚSCULAS, máx 3 palavras), items (array de ${itemsPerSlide} strings, cada uma frase completa com ponto final, máx 160 chars)
+- Campos: title (string, máx 55 chars, DESCRITIVO — nunca só "Fundamentos"), sectionLabel (string em MAIÚSCULAS, máx 3 palavras), items (array de ${itemsPerSlide} strings no formato "Conceito: Explicação completa com ponto final.", máx 160 chars cada)
 
-**"two_column_bullets"** — Conteúdo extenso em duas colunas (usar quando bullets tiver 6+ itens)
-- Campos: title, sectionLabel, items (array de 6-10 strings)
+**"two_column_bullets"** — Conteúdo extenso em duas colunas (usar quando naturalmente houver 6+ conceitos)
+- Campos: title, sectionLabel, items (array de 6-10 strings no formato "Conceito: Explicação.")
 
-**"grid_cards"** — Lista de itens com título e descrição (aplicações, ferramentas, tipos)
-- Usar quando: 3-6 itens com estrutura "Nome: descrição"
-- Campos: title, sectionLabel (ex: "APLICAÇÕES REAIS", "FERRAMENTAS"), items (array de 3-6 strings no formato "Título do Card: Descrição em uma frase completa")
+**"grid_cards"** — Cards visuais para tópicos independentes (ferramentas, tipos, aplicações)
+- Usar quando: 3-5 itens com estrutura clara de "Nome: descrição"
+- Campos: title, sectionLabel (ex: "FERRAMENTAS", "TIPOS DE DADOS"), items (array de 3-5 strings no formato "Nome do Card: Descrição em uma frase completa.")
 
-**"process_timeline"** — Sequência de passos ou etapas (processos, fluxos, como fazer)
-- Usar quando: o conteúdo descreve um processo sequencial
-- Campos: title, sectionLabel (ex: "COMO FUNCIONA", "PASSO A PASSO"), items (array de 3-6 strings, cada uma no formato "Passo: descrição" ou texto direto)
+**"process_timeline"** — Sequência de passos (processos, fluxos, metodologias)
+- Usar quando: o conteúdo descreve um passo a passo sequencial
+- Campos: title, sectionLabel (ex: "PASSO A PASSO", "COMO FUNCIONA"), items (array de 3-6 strings, cada uma descrevendo uma etapa)
 
-**"comparison_table"** — Tabela comparativa entre 2+ conceitos/variantes
-- Usar quando: o conteúdo compara explicitamente diferentes tipos, versões ou abordagens
-- Campos: title, sectionLabel (ex: "COMPARATIVO", "MODELOS"), tableHeaders (array de 2-4 strings), tableRows (array de arrays de strings, cada linha com mesmo número de colunas dos headers)
+**"comparison_table"** — Tabela comparativa entre conceitos
+- Usar quando: o conteúdo compara explicitamente diferentes abordagens, tipos ou versões
+- Campos: title, sectionLabel ("COMPARATIVO"), tableHeaders (array de 2-4 strings), tableRows (array de arrays de strings)
 
-**"example_highlight"** — Exemplo prático ou estudo de caso
+**"example_highlight"** — Exemplo prático ou caso de uso real
 - SEMPRE usar para blocos de exemplo. NUNCA usar bullets para exemplos.
-- Campos: title (ex: "Exemplo Prático"), sectionLabel ("ESTUDO DE CASO"), items (array de 3-5 strings, cada uma no formato "Rótulo: descrição")
-- ORDEM OBRIGATÓRIA E IMUTÁVEL dos rótulos: Contexto → Desafio → Solução → Resultado
-- PROIBIDO usar outro rótulo inicial que não seja Contexto ou Cenário
-- PROIBIDO colocar Resultado antes de Solução ou Desafio
-- CRÍTICO: cada item deve ter conteúdo único — PROIBIDO repetir a mesma informação
+- Campos: title (ex: "Exemplo Prático: Calculadora de Média"), sectionLabel ("ESTUDO DE CASO"), items (array de EXATAMENTE 4 strings no formato "Contexto: ...", "Desafio: ...", "Solução: ...", "Resultado: ...")
+- ORDEM OBRIGATÓRIA: Contexto → Desafio → Solução → Resultado
 
-**"warning_callout"** — Desafios, riscos, limitações, erros comuns
-- Campos: title (ex: "Desafios e Cuidados"), sectionLabel ("PONTOS DE ATENÇÃO"), items (array de 3-4 strings, cada uma frase completa)
+**"warning_callout"** — Armadilhas, erros comuns, pontos de atenção
+- Campos: title (ex: "Cuidados e Erros Comuns"), sectionLabel ("PONTOS DE ATENÇÃO"), items (array de 3-4 strings)
 
-**"reflection_callout"** — Pergunta de reflexão ou provocação para o aluno
-- Campos: title (ex: "Para Refletir"), sectionLabel ("REFLEXÃO"), items (array com 1-2 strings — perguntas completas)
+**"reflection_callout"** — Pergunta para reflexão do aluno
+- Campos: title (ex: "Para Refletir"), sectionLabel ("REFLEXÃO"), items (array com 1-2 perguntas completas)
 
-**"summary_slide"** — Resumo do módulo
-- SEMPRE o penúltimo slide (antes dos takeaways)
-- Campos: title ("Resumo"), sectionLabel ("SÍNTESE"), items (array de 2-4 strings resumindo o módulo)
+**"summary_slide"** — Resumo do módulo (SEMPRE o penúltimo slide)
+- Campos: title ("Resumo do Módulo"), sectionLabel ("SÍNTESE"), items (array de 2-4 strings resumindo os pontos mais importantes)
 
-**"numbered_takeaways"** — Key Takeaways
-- SEMPRE o último slide de cada módulo
-- Campos: title ("Key Takeaways"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (array de 4-5 strings, cada uma uma lição concreta e aplicável)
+**"numbered_takeaways"** — Key Takeaways (SEMPRE o último slide de cada módulo)
+- Campos: title ("Key Takeaways"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (array de 4-5 strings, cada uma SINTETIZANDO uma lição — use "Agora você...", "Lembre-se: ...", "Você é capaz de...")
 
-## REGRAS DE QUALIDADE OBRIGATÓRIAS
+## SEQUÊNCIA OBRIGATÓRIA DE CADA MÓDULO
+1. module_cover (SEMPRE primeiro)
+2. Slides de conteúdo variado (2 a N-2)
+3. summary_slide (penúltimo)
+4. numbered_takeaways (último)
 
-1. **Sequência obrigatória de cada módulo:**
-   - Slide 1: module_cover (SEMPRE)
-   - Slides 2 a N-2: conteúdo variado (bullets, grid_cards, process_timeline, example_highlight, etc.)
-   - Slide N-1: summary_slide
-   - Slide N: numbered_takeaways
-
-2. **Variedade de layouts:** Nunca use o mesmo layout mais de 2 vezes seguidas. O ideal é alternar entre bullets, grid_cards, process_timeline, example_highlight ao longo do módulo.
-
-3. **Densidade:** ${itemsPerSlide} itens por slide (exceto module_cover, summary, takeaways). Nunca 1 item isolado — incorpore no slide anterior.
-
-4. **Frases completas:** Todo item deve ser uma frase completa com ponto final. Máximo 160 chars por item.
-
-5. **Títulos de slide descritivos:** Não use só "Fundamentos" — use "Fundamentos da Inteligência Artificial". Máx 55 chars.
-
-6. **sectionLabel em MAIÚSCULAS:** Máx 3 palavras. Ex: "FUNDAMENTOS", "COMO FUNCIONA", "APLICAÇÕES REAIS".
-
-7. **Sem duplicação:** Nenhum item pode repetir informação de outro item no mesmo slide.
-
-8. **Exemplo obrigatório:** Todo módulo deve ter pelo menos 1 slide "example_highlight". Se o conteúdo não tiver exemplo explícito, criar um realista baseado no tema.
-
-9. **Idioma:** Gere todo o conteúdo em ${language}.
+## REGRAS ADICIONAIS
+- Títulos descritivos: "Tipos de Dados em Python", não apenas "Tipos de Dados"
+- Frases completas com ponto final em todos os itens
+- sectionLabel em MAIÚSCULAS, máx 3 palavras
+- Nenhum item pode repetir informação de outro no mesmo slide
+- Idioma: ${language}
 
 ## CONTEÚDO DO MÓDULO
 
@@ -1670,14 +1679,14 @@ NÃO inclua preamble, saudação ou confirmação — o primeiro caractere deve 
 **Conteúdo:**
 ${moduleContent.substring(0, 6000)}
 
-## FORMATO DE SAÍDA (exemplo mínimo de estrutura):
+## EXEMPLO DE SAÍDA DE QUALIDADE:
 [
-  {"layout":"module_cover","title":"${moduleTitle}","objectives":["Objetivo 1.","Objetivo 2.","Objetivo 3."]},
-  {"layout":"bullets","title":"Título Descritivo","sectionLabel":"FUNDAMENTOS","items":["Item 1.","Item 2.","Item 3.","Item 4."]},
-  {"layout":"grid_cards","title":"Título Descritivo","sectionLabel":"APLICAÇÕES REAIS","items":["Ferramenta A: Descrição da ferramenta A.","Ferramenta B: Descrição da ferramenta B.","Ferramenta C: Descrição da ferramenta C."]},
-  {"layout":"example_highlight","title":"Exemplo Prático","sectionLabel":"ESTUDO DE CASO","items":["Contexto: Descrição do cenário.","Desafio: O problema a resolver.","Solução: Como foi resolvido.","Resultado: O que foi alcançado."]},
-  {"layout":"summary_slide","title":"Resumo","sectionLabel":"SÍNTESE","items":["Síntese 1.","Síntese 2.","Síntese 3."]},
-  {"layout":"numbered_takeaways","title":"Key Takeaways","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Lição 1.","Lição 2.","Lição 3.","Lição 4."]}
+  {"layout":"module_cover","title":"${moduleTitle}","objectives":["Compreender os conceitos fundamentais e aplicá-los em cenários reais.","Desenvolver a capacidade de implementar soluções usando as ferramentas aprendidas.","Identificar e evitar os erros mais comuns na prática profissional."]},
+  {"layout":"bullets","title":"Fundamentos e Conceitos-Chave","sectionLabel":"FUNDAMENTOS","items":["Conceito Principal: Explicação completa sobre o que é e por que é importante no contexto do módulo.","Segundo Elemento: Descrição detalhada deste componente e como ele se relaciona com o anterior.","Terceiro Pilar: Explicação abrangente deste terceiro fundamento e sua aplicação prática.","Quarto Aspecto: Detalhamento deste conceito complementar com exemplos de uso real."]},
+  {"layout":"grid_cards","title":"Ferramentas e Aplicações","sectionLabel":"APLICAÇÕES","items":["Ferramenta A: Descrição concisa do que faz e quando usar esta ferramenta no dia a dia.","Ferramenta B: Explicação do propósito desta segunda ferramenta e seus benefícios.","Abordagem C: Detalhamento desta abordagem e os problemas que ela resolve."]},
+  {"layout":"example_highlight","title":"Exemplo Prático: Cenário Real","sectionLabel":"ESTUDO DE CASO","items":["Contexto: Descrição clara da situação inicial e do ambiente onde o problema ocorre.","Desafio: Explicação específica do problema a ser resolvido e suas consequências.","Solução: Detalhamento de como o problema foi abordado e quais técnicas foram aplicadas.","Resultado: Descrição objetiva do que foi alcançado e dos benefícios obtidos."]},
+  {"layout":"summary_slide","title":"Resumo do Módulo","sectionLabel":"SÍNTESE","items":["Os fundamentos apresentados fornecem a base teórica necessária para aplicação prática.","As ferramentas exploradas permitem implementar soluções eficientes para problemas reais.","O exemplo prático demonstrou a aplicação dos conceitos em um cenário autêntico."]},
+  {"layout":"numbered_takeaways","title":"Key Takeaways","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Agora você sabe identificar qual abordagem utilizar para cada tipo de problema.","Lembre-se: a prática consistente é essencial para dominar estas técnicas.","Você é capaz de implementar soluções completas usando as ferramentas aprendidas.","Evite os erros comuns revisando sempre os pontos de atenção antes de implementar."]}
 ]
 
 Retorne APENAS o array JSON. Nenhum texto antes ou depois.`;
