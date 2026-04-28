@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.11.10-NOTES-METADATA-FIX";
+const ENGINE_VERSION = "3.11.7-BALANCED-DENSITY";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -320,7 +320,7 @@ function computeUnifiedSlideFontSize(
   const longest = safeItems.reduce((max, item) => Math.max(max, item.length), 0);
   const totalChars = safeItems.reduce((a, it) => a + it.length, 0);
   let size = autoScaleFont(baseSize, longest, threshold, floor);
-  const MAX_HEIGHT_IN = 4.92;
+  const MAX_HEIGHT_IN = 4.95;
   let finalEstimated = 0;
   let iterations = 0;
   for (let guard = 0; guard < 18; guard++) {
@@ -481,16 +481,16 @@ function shouldForceContinuation(plan: SlidePlan): boolean {
 
   switch (plan.layout) {
     case "bullets": {
-      // GEMMA v3.11.1 — thresholds mais rigorosos para evitar overflow.
+      // BALANCED-DENSITY — thresholds equilibrados (densidade x overflow).
       const unified = computeUnifiedSlideFontSize(items, 20, 92, MIN_FONT.BODY);
-      return unified <= 18.5 || longest > 105;
+      return unified <= 17.5 || longest > 110;
     }
     case "grid_cards":
       return computeDeterministicGridFontSize(items) < MIN_FONT.BODY + 0.5;
     case "summary_slide":
     case "numbered_takeaways": {
       const unified = computeUnifiedSlideFontSize(items, 19, 85, MIN_FONT.BODY);
-      return unified <= 18 || longest > 95;
+      return unified <= 17 || longest > 100;
     }
     default:
       return false;
@@ -533,7 +533,8 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  if (!forcedContinuation && totalChars < 560 && items.length <= 5) {
+  // BALANCED-DENSITY — só divide se realmente houver muito conteúdo.
+  if (!forcedContinuation && totalChars <= 720 && items.length <= 8) {
     return [plan];
   }
   if (items.length <= 1) return [plan]; // não dá para dividir
@@ -548,7 +549,8 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   for (const it of items) {
     const itLen = (it || "").length;
     const wouldExceedItems = current.length + 1 > maxItems;
-    const wouldExceedChars = currentChars + itLen > 440 && current.length > 0;
+    // BALANCED-DENSITY — limite por chunk elevado para 590 (densidade boa sem transbordo).
+    const wouldExceedChars = currentChars + itLen > 590 && current.length > 0;
     const wouldExceedMeasure =
       current.length > 0 &&
       computeUnifiedSlideFontSize([...current, it], items.length >= 6 ? 18 : 19, items.length >= 6 ? 78 : 92, MIN_FONT.BODY) <= MIN_FONT.BODY;
@@ -2865,10 +2867,10 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     wrap: true,
     fit: "shrink",
     shrinkText: true,
-    maxFontSize: Math.min(19, unifiedBulletFontSize + 1),
+    maxFontSize: Math.min(20, unifiedBulletFontSize + 1.5),
     minFontSize: 12,
-    lineSpacingMultiple: 1.14,
-    margin: 0.02,
+    lineSpacingMultiple: 1.16,
+    margin: 0.06,
   } as any);
 
   const addBulletText = (text: string, x: number, y: number, w: number, h: number, pal: string, color = colors.text, valign: "top" | "middle" = "middle") => {
@@ -3121,9 +3123,9 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
       });
 
       slide.addText(normalizeRenderableBulletText(rawItems[col * mid + i] || colItems[i]), {
-        x: colX + 0.58,
+        x: colX + 0.62,
         y: yPos + 0.12,
-        w: colW - 0.78,
+        w: colW - 0.86,
         h: itemH - 0.3,
         fontSize: 15,
         fontFace: design.fonts.body,
@@ -3131,11 +3133,11 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
         valign: "top",
         wrap: true,
         fit: "shrink",
-        lineSpacingMultiple: 1.14,
+        lineSpacingMultiple: 1.16,
         shrinkText: true,
-        maxFontSize: 17,
+        maxFontSize: 18,
         minFontSize: 12,
-        margin: 0.02,
+        margin: 0.06,
       } as any);
     }
   }
