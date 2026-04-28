@@ -556,8 +556,16 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   const totalChars = slideCharLoad(plan);
   const forcedContinuation = shouldForceContinuation(plan);
 
-  // BALANCED-DENSITY — só divide se realmente houver muito conteúdo.
-  if (!forcedContinuation && totalChars <= 720 && items.length <= 8) {
+  // ZOD-PARITY v3.12.7 — early-return alinhado ao MAX_TOTAL_CHARS=580 da era Zod
+  // (3.11.6) que eliminava overflow. Adiciona gate por longest-item (>150) já que
+  // os logs mostram OVERFLOW com 4 items mas longest=164-170.
+  const longestItem = items.reduce((m, it) => Math.max(m, (it || "").length), 0);
+  const earlyPass =
+    !forcedContinuation &&
+    totalChars <= 500 &&
+    items.length <= 5 &&
+    longestItem <= 150;
+  if (earlyPass) {
     return [plan];
   }
   if (items.length <= 1) return [plan]; // não dá para dividir
