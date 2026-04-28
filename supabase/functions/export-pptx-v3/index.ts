@@ -1,10 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
+import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.11.7-XML-SAFE";
+const ENGINE_VERSION = "3.11.8-PACKAGE-REPAIR";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -1628,6 +1629,30 @@ function sanitizeText(text: string): string {
     .replace(/\.\s*\"\s*\./g, ".")
     .replace(/\"\s*\.$/g, ".")
     .trim();
+}
+
+async function repairPptxPackage(pptxData: Uint8Array): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(pptxData);
+  const fileNames = new Set(Object.keys(zip.files));
+  const contentTypesFile = zip.file("[Content_Types].xml");
+  if (!contentTypesFile) return pptxData;
+
+  const contentTypesXml = await contentTypesFile.async("string");
+  let removedOverrides = 0;
+  const repairedContentTypes = contentTypesXml.replace(/<Override\b[^>]*PartName="([^"]+)"[^>]*\/>/g, (full, partName) => {
+    const normalizedPartName = String(partName || "").replace(/^\//, "");
+    if (normalizedPartName && !fileNames.has(normalizedPartName)) {
+      removedOverrides += 1;
+      return "";
+    }
+    return full;
+  });
+
+  if (!removedOverrides) return pptxData;
+
+  zip.file("[Content_Types].xml", repairedContentTypes);
+  console.warn(`[V3-PACKAGE-REPAIR] Removed ${removedOverrides} dangling [Content_Types] overrides`);
+  return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
 }
 
 function ensureSentenceEnd(text: string): string {
@@ -4456,7 +4481,8 @@ Deno.serve(async (req: Request) => {
 
     const { pptx, report } = await runPipeline(courseTitle, moduleData, design, exportLanguage);
 
-    const pptxData = await pptx.write({ outputType: "uint8array" });
+    const rawPptxData = await pptx.write({ outputType: "uint8array" });
+    const pptxData = await repairPptxPackage(rawPptxData);
 
     const dateStr = new Date().toISOString().slice(0, 10);
     const safeName = (course.title || "curso")
