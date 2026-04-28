@@ -1,54 +1,58 @@
-# Fase 1.1 — Correções de Qualidade no PPTX v3
+# Fase 3.12.2 — Fix do Fallback + Diagnóstico de Parsing no PPTX v3
 
-Arquivo único: `supabase/functions/export-pptx-v3/index.ts`. Bump de versão para `3.12.1-QUALITY-PHASE-1-1`. Após editar, fazer deploy da Edge Function.
+Único arquivo: `supabase/functions/export-pptx-v3/index.ts`. Bump para `3.12.2-FALLBACK-FIX`. Deploy ao final.
+
+## Diagnóstico
+
+Os logs mostram slides com 1–2 itens mesmo após Fase 1.1, e takeaways copiando o conteúdo literalmente (ex.: takeaway "🧠 Fundamentos A programação eficaz…"). A causa: os módulos estão caindo no `buildFallbackSlides` (linha 2010), que:
+
+1. Gera chunks finais com 1–2 sentenças.
+2. Reaproveita as mesmas sentenças como takeaways.
+3. Não passa pelo guard de densidade nem pelo detector anti-cópia (esses vivem em `normalizeSlide` / etapa 6 do `generateSlidesForModule`, mas o fallback retorna direto, sem ser revalidado).
+4. Não temos visibilidade do motivo pelo qual o `JSON.parse` da IA falha (catch atual é vazio).
 
 ## Mudanças
 
 ### 1. Bump de versão (linha 8)
-`"3.12.0-QUALITY-PHASE-1"` → `"3.12.1-QUALITY-PHASE-1-1"`.
+`"3.12.1-QUALITY-PHASE-1-1"` → `"3.12.2-FALLBACK-FIX"`.
 
-### 2. Reforçar guard de densidade em `normalizeSlide()` (linhas 1956–1963)
-Substituir o bloco atual pelo novo guard:
-- Itens substanciais agora exigem ≥25 chars (antes 20).
-- Drop se houver <2 itens substanciais (com log `[V3-GUARD-DROP]`).
-- **Novo**: drop se soma total de chars dos itens substanciais < 120.
-- Mantém o corte para ≤6 itens.
+### 2. Reescrever `buildFallbackSlides` (linha 2010)
+Substituir a função inteira pela versão proposta no pedido:
+- Extrai sentenças (25–160 chars), descarta marcadores de seção.
+- Capa de módulo com até 3 objetivos.
+- **Agrupa sentenças em chunks de 4**; chunks finais com <3 itens são fundidos com o anterior (e re-divididos se passarem de 6).
+- Limita a 4 slides de conteúdo (`bullets`), com `sectionLabel: "CONTEÚDO"` e `itemStartIndex` correto.
+- Slide final `numbered_takeaways` usando 4 frases sintéticas fixas ("Agora você domina…", "Lembre-se…", etc.) — nunca cópia do conteúdo.
+- Log `[V3-FALLBACK] Module N: generated X slides from Y sentences in Z chunks`.
 
-### 3. Detector de takeaways copiados em `generateSlidesForModule()`
-Inserir novo bloco `// 6. QUALITY-PHASE-1.1` logo após a etapa 5 (anti-repetição) e antes do `console.log` final do módulo (entre linhas 2201 e 2203).
+### 3. Diagnóstico de parsing (antes da linha 2108)
+Inserir 3 logs `[V3-AI-DIAG]` com:
+- Primeiros 300 chars de `rawText`.
+- Primeiros 300 chars de `clean`.
+- Length de `clean`, e se começa com `[` / termina com `]`.
 
-Lógica:
-- Localiza o slide `numbered_takeaways` em `compacted`.
-- Coleta frases normalizadas (lowercase, sem pontuação final, espaços normalizados, >15 chars) de todos os outros slides do módulo (exceto `module_cover`).
-- Marca takeaway como duplicado se `normalized === prev`, `includes(prev)` ou `prev.includes(normalized)`.
-- Se houver duplicados:
-  - Adiciona warning `[V3-TAKEAWAYS-DUP]`.
-  - Se restarem <2 únicos: substitui por fallback bilíngue (PT/ES/EN, 4 frases) + warning `[V3-TAKEAWAYS-FALLBACK]`.
-  - Senão: mantém os únicos e completa com 1 frase genérica se total <4.
-- Detecção de idioma via prefixo de `language` (`Port` → pt, `Span` → es, default en).
+### 4. Catch detalhado do `JSON.parse` (linhas ~2109–2127)
+Substituir o `} catch {` vazio por `} catch (parseErr: any) {` com:
+- `console.error [V3-PARSE-ERR]` com mensagem do erro, primeiros 500 chars e últimos 100 chars de `clean`.
+- Mantém a tentativa via regex `match(/\[[\s\S]*\]/)`.
+- Se o regex parse também falhar: log `[V3-PARSE-ERR] regex extraction also failed`, incrementa `aiCallsFailed` / `fallbacksUsed`, push warning e retorna `buildFallbackSlides`.
+- Se não houver match: log `no JSON array found`, mesmo tratamento.
+- Sucesso do regex: log `[V3-PARSE-OK]` com tamanho.
 
-### 4. Expandir `TECH_IMAGE_QUERIES` (antes do `};` na linha 1291)
-Adicionar **apenas as chaves que ainda não existem** no dicionário (várias da lista proposta já estão presentes — docker, kubernetes, devops, ML/AI, finanças, marketing, etc., serão omitidas para não duplicar):
+### 5. Indicador de fallback no log final (linha 2321)
+Substituir o `console.log [V3-MODULE]` para detectar se o módulo usou fallback (procura warning contendo `Module N` + `Using fallback`) e anexa ` (FALLBACK)` ou ` (AI)` ao log.
 
-Novas entradas a inserir:
-- Estruturas/programação: `estruturas de dados`, `programação orientada a objetos`, `orientação a objetos`, `manipulação de arquivos`, `tratamento de exceções`, `testes automatizados`, `testes unitários`, `unittest`, `projeto final`, `primeiros passos`, `fundamentos`, `funções e módulos`, `organização de código`, `boas práticas`, `csv e json`, `ambiente de desenvolvimento`, `depuração`, `pypi`, `utilitário`.
-- Técnicas faltantes: `criptografia`, `autenticação`, `microsserviços`, `serverless`.
-- Domínios faltantes: `realidade virtual`, `realidade aumentada`.
-
-(Chaves duplicadas como `devops`, `docker`, `kubernetes`, `machine learning`, `inteligência artificial`, `data science`, `gestão de projetos`, `liderança`, `empreendedorismo`, `produtividade`, `finanças`, `marketing`, `recursos humanos`, `matemática`, `estatística`, `medicina`, `direito`, `psicologia`, `engenharia`, `arquitetura`, `comunicação`, `oratória`, `negociação`, `criatividade`, `sustentabilidade`, `segurança`, `cyber security`, `blockchain`, `iot`, `games`, `fotografia`, `edição de vídeo` já existem e serão preservadas.)
-
-### 5. Deploy
-Executar `supabase--deploy_edge_functions` para `export-pptx-v3`.
+### 6. Deploy
+`supabase--deploy_edge_functions` para `export-pptx-v3`.
 
 ## NÃO alterar
-`MIN_FONT`, `SPLIT_LIMITS`, `computeUnifiedSlideFontSize`, `estimateTextHeightInches`, prompt, schemas, ou qualquer função de renderização.
+`MIN_FONT`, `SPLIT_LIMITS`, `computeUnifiedSlideFontSize`, `estimateTextHeightInches`, `normalizeSlide`, `normalizeAndSplitSlide`, detector de takeaways, `TECH_IMAGE_QUERIES`, prompts, schemas, render functions.
 
 ## Validação pós-deploy
-Gerar curso de teste (Python) e checar:
-- Nenhum slide de conteúdo com 1–2 itens.
-- Slide "Principais Aprendizados" com frases sintéticas (não cópia literal).
-- Imagens de módulos como "Estruturas de Dados", "POO", "Tratamento de Exceções" mais técnicas.
-- Logs com `[V3-GUARD-DROP]` e/ou `[V3-TAKEAWAYS-DUP]` quando aplicável.
+Gerar o PPTX do curso de Python e nos logs verificar:
+- Quantos módulos aparecem como `(FALLBACK)` vs `(AI)`.
+- Se houver fallback, ver `[V3-PARSE-ERR]` para entender o motivo (markdown fence, vírgula trailing, JSON cortado por max_tokens, etc.).
+- Slides do fallback agora com ≥3 itens e takeaways genéricos ("Agora você domina…").
 
 ## Rollback
-Se aparecer overflow ou perda excessiva de slides, reverter apenas a mudança 2 (manter threshold antigo de 20 chars e remover regra de 120 chars totais).
+Se algo regredir, reverter apenas a mudança 2 (manter o `buildFallbackSlides` antigo) e manter os diagnósticos (mudanças 3–5) para continuar investigando.
