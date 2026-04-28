@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.0-QUALITY-PHASE-1";
+const ENGINE_VERSION = "3.12.1-QUALITY-PHASE-1-1";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -1288,6 +1288,34 @@ const TECH_IMAGE_QUERIES: Record<string, string> = {
   metaverso: "metaverse virtual reality",
   games: "game development",
   jogos: "game development",
+  // QUALITY-PHASE-1.1: estruturas de cursos e programação (alta recorrência)
+  "estruturas de dados": "data structures computer science",
+  "programação orientada a objetos": "object oriented programming code",
+  "orientação a objetos": "object oriented programming",
+  "manipulação de arquivos": "file handling code",
+  "tratamento de exceções": "error handling debugging",
+  "testes automatizados": "automated testing software",
+  "testes unitários": "unit testing code",
+  unittest: "unit testing code",
+  "projeto final": "capstone project development",
+  "primeiros passos": "getting started learning",
+  fundamentos: "programming fundamentals",
+  "funções e módulos": "modular programming code",
+  "organização de código": "clean code structure",
+  "boas práticas": "best practices coding standards",
+  "csv e json": "data exchange formats",
+  "ambiente de desenvolvimento": "development environment ide",
+  depuração: "debugging code",
+  pypi: "python package index",
+  utilitário: "utility tool software",
+  // Técnicas adicionais
+  criptografia: "encryption cryptography security",
+  autenticação: "authentication security",
+  microsserviços: "microservices architecture",
+  serverless: "serverless cloud computing",
+  // Domínios adicionais
+  "realidade virtual": "virtual reality headset",
+  "realidade aumentada": "augmented reality",
 };
 
 function buildImageQuery(title: string): string {
@@ -1953,10 +1981,23 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
     // Drop slides where ALL items are empty strings or too short
     if (hasItems && plan.items!.every((it) => it.trim().length < 5)) return null;
 
-    // QUALITY-PHASE-1: requisito mínimo de densidade — pelo menos 2 itens substanciais
+    // QUALITY-PHASE-1.1: requisito mínimo de densidade reforçado
     if (hasItems && !hasTable) {
-      const substantialItems = plan.items!.filter((it) => it.trim().length >= 20);
-      if (substantialItems.length < 2) return null;
+      const substantialItems = plan.items!.filter((it) => it.trim().length >= 25);
+      const totalChars = substantialItems.reduce((sum, it) => sum + it.length, 0);
+
+      // Drop se menos de 2 itens substanciais
+      if (substantialItems.length < 2) {
+        console.log(`[V3-GUARD-DROP] Slide "${plan.title}" dropped: only ${substantialItems.length} substantial items (need ≥2). Total chars: ${totalChars}.`);
+        return null;
+      }
+
+      // Drop se conteúdo muito ralo (< 120 chars totais)
+      if (totalChars < 120) {
+        console.log(`[V3-GUARD-DROP] Slide "${plan.title}" dropped: total substantial chars ${totalChars} < 120 minimum.`);
+        return null;
+      }
+
       if (substantialItems.length !== plan.items!.length) {
         plan.items = substantialItems.slice(0, 6);
       }
@@ -2197,6 +2238,83 @@ async function generateSlidesForModule(
       report.warnings.push(`[V3-ANTI-REP] Swapped "${curr.layout}" → "${alt}" for "${curr.title}"`);
       compacted[i] = { ...curr, layout: alt };
       consecutive = 0;
+    }
+  }
+
+  // 6. QUALITY-PHASE-1.1: Detectar e corrigir takeaways copiados do conteúdo
+  const takeawaysSlide = compacted.find((s) => s.layout === "numbered_takeaways");
+  if (takeawaysSlide && takeawaysSlide.items) {
+    const allPreviousPhrases = new Set<string>();
+    for (const s of compacted) {
+      if (s === takeawaysSlide || s.layout === "module_cover") continue;
+      for (const item of s.items || []) {
+        const normalized = item.toLowerCase().replace(/[.!?;:]+$/g, "").replace(/\s+/g, " ").trim();
+        if (normalized.length > 15) allPreviousPhrases.add(normalized);
+      }
+    }
+
+    const originalTakeaways = [...takeawaysSlide.items];
+    const uniqueTakeaways: string[] = [];
+    const duplicateTakeaways: string[] = [];
+
+    for (const item of originalTakeaways) {
+      const normalized = item.toLowerCase().replace(/[.!?;:]+$/g, "").replace(/\s+/g, " ").trim();
+      let isDuplicate = false;
+      for (const prev of allPreviousPhrases) {
+        if (normalized === prev || normalized.includes(prev) || prev.includes(normalized)) {
+          isDuplicate = true;
+          break;
+        }
+      }
+      if (isDuplicate) duplicateTakeaways.push(item);
+      else uniqueTakeaways.push(item);
+    }
+
+    if (duplicateTakeaways.length > 0) {
+      report.warnings.push(
+        `[V3-TAKEAWAYS-DUP] Module ${moduleIndex + 1}: ${duplicateTakeaways.length}/${originalTakeaways.length} takeaways are copies. Unique: ${uniqueTakeaways.length}`,
+      );
+
+      const langPrefix = language.includes("Port") ? "pt" : language.includes("Span") ? "es" : "en";
+
+      if (uniqueTakeaways.length < 2) {
+        const fallbackTakeaways =
+          langPrefix === "pt"
+            ? [
+                "Agora você domina os conceitos fundamentais deste módulo e pode aplicá-los na prática.",
+                "Lembre-se de revisar os pontos principais antes de avançar para o próximo módulo.",
+                "Você é capaz de explicar estes conceitos com suas próprias palavras.",
+                "Continue praticando: a maestria vem com a aplicação consistente do conhecimento.",
+              ]
+            : langPrefix === "es"
+              ? [
+                  "Ahora dominas los conceptos fundamentales de este módulo y puedes aplicarlos en la práctica.",
+                  "Recuerda revisar los puntos principales antes de avanzar al siguiente módulo.",
+                  "Eres capaz de explicar estos conceptos con tus propias palabras.",
+                  "Sigue practicando: la maestría viene con la aplicación consistente del conocimiento.",
+                ]
+              : [
+                  "You now master the fundamental concepts of this module and can apply them in practice.",
+                  "Remember to review the key points before advancing to the next module.",
+                  "You can explain these concepts in your own words and use them in real projects.",
+                  "Keep practicing: mastery comes with consistent application of the knowledge gained.",
+                ];
+
+        takeawaysSlide.items = [...uniqueTakeaways, ...fallbackTakeaways].slice(0, 5);
+        report.warnings.push(`[V3-TAKEAWAYS-FALLBACK] Module ${moduleIndex + 1}: replaced ${duplicateTakeaways.length} duplicates with fallback.`);
+      } else {
+        const genericFallback =
+          langPrefix === "pt"
+            ? "Continue praticando para consolidar seu aprendizado."
+            : langPrefix === "es"
+              ? "Sigue practicando para consolidar tu aprendizaje."
+              : "Keep practicing to consolidate your learning.";
+
+        takeawaysSlide.items = [...uniqueTakeaways];
+        if (takeawaysSlide.items.length < 4) {
+          takeawaysSlide.items.push(genericFallback);
+        }
+      }
     }
   }
 
