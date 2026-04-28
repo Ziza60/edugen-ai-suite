@@ -140,6 +140,7 @@ interface SlidePlan {
   // índice base dos badges numerados para manter a sequência (ex.: slide 5
   // termina em "4", o slide 6 deve começar em "5", não em "1").
   itemStartIndex?: number;
+  coverQuery?: string;
 }
 
 interface PipelineReport {
