@@ -481,18 +481,27 @@ function shouldForceContinuation(plan: SlidePlan): boolean {
 
   switch (plan.layout) {
     case "bullets": {
-      // QUALITY-PHASE-1 — thresholds mais preventivos para densidade saudável.
+      // OVERFLOW-GUARD: força split quando a fonte atinge o piso mínimo
       const unified = computeUnifiedSlideFontSize(items, 20, 92, MIN_FONT.BODY);
-      return unified <= 18.5 || longest > 100;
+      const atMinFloor = unified <= MIN_FONT.BODY + 0.5; // 18.5 ou menos = sem margem
+      return unified <= 18.5 || atMinFloor || longest > 100;
     }
     case "grid_cards":
       return computeDeterministicGridFontSize(items) < MIN_FONT.BODY + 0.5;
     case "summary_slide":
     case "numbered_takeaways": {
       const unified = computeUnifiedSlideFontSize(items, 19, 85, MIN_FONT.BODY);
-      return unified <= 18 || longest > 90;
+      const atMinFloor = unified <= MIN_FONT.BODY + 0.5;
+      return unified <= 18 || atMinFloor || longest > 90;
     }
     default:
+      // OVERFLOW-GUARD: log para diagnóstico de slides densos
+      if (items.length >= 5) {
+        const totalChars = items.reduce((sum, it) => sum + (it || "").length, 0);
+        if (totalChars > 450) {
+          console.log(`[V3-SPLIT-PASS] "${plan.title}" layout=${plan.layout} items=${items.length} chars=${totalChars} — NOT splitting (non-splittable layout)`);
+        }
+      }
       return false;
   }
 }
