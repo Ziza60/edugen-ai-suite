@@ -582,7 +582,8 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
     const wouldExceedItems = current.length + 1 > maxItems;
     // MEASURE-FIX v3.12.4 — chunk-cap alinhado ao early-return (720); measure só dispara
     // quando chunk já tem 3+ items E acumulou 400+ chars (evita slides com 1 bullet).
-    const wouldExceedChars = currentChars + itLen > 720 && current.length > 0;
+    // ZOD-PARITY v3.12.7 — chunk-cap de 440 (era Zod) substitui o 720 que permitia overflow.
+    const wouldExceedChars = currentChars + itLen > 440 && current.length > 0;
     const wouldExceedMeasure =
       current.length >= 3 &&
       currentChars + itLen > 400 &&
