@@ -34,6 +34,7 @@ const SlidePlanSchema = z.object({
   moduleIndex: z.number().optional(),
   continuationOf: z.string().optional(),
   itemStartIndex: z.number().optional(),
+  coverQuery: z.string().max(100).optional(),
 }).passthrough();
 
 function sanitizeAndValidate(raw: any): any[] {
