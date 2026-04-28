@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.5-OVERFLOW-GUARD";
+const ENGINE_VERSION = "3.12.6-HEIGHT-GATE";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -478,29 +478,43 @@ function shouldForceContinuation(plan: SlidePlan): boolean {
   const items = plan.items ?? [];
   if (items.length <= 1) return false;
   const longest = items.reduce((max, item) => Math.max(max, getRenderableTextLength(item || "")), 0);
+  const totalChars = items.reduce((sum, it) => sum + (it || "").length, 0);
+
+  // HEIGHT-GATE (3.12.6): proxy direto de altura para layouts splittable.
+  // Disparado ANTES das heurísticas de fonte porque o estimador de altura
+  // do pptxgenjs estoura mesmo quando computeUnifiedSlideFontSize retorna >18pt.
+  const heightGate =
+    (items.length >= 5 && (totalChars > 600 || longest > 140)) ||
+    (items.length >= 4 && totalChars > 580 && longest > 150) ||
+    (items.length >= 6); // 6+ items densos sempre dividem
 
   switch (plan.layout) {
     case "bullets": {
-      // OVERFLOW-GUARD: força split quando a fonte atinge o piso mínimo
+      if (heightGate) return true;
       const unified = computeUnifiedSlideFontSize(items, 20, 92, MIN_FONT.BODY);
-      const atMinFloor = unified <= MIN_FONT.BODY + 0.5; // 18.5 ou menos = sem margem
+      const atMinFloor = unified <= MIN_FONT.BODY + 0.5;
       return unified <= 18.5 || atMinFloor || longest > 100;
+    }
+    case "two_column_bullets": {
+      // 3.12.6: agora splittable por altura. Two-column tolera mais itens
+      // (≈10 visualmente) mas estoura igual quando items são longos.
+      if (items.length >= 6 && totalChars > 700) return true;
+      if (items.length >= 5 && (totalChars > 650 || longest > 145)) return true;
+      if (items.length >= 4 && totalChars > 580 && longest > 150) return true;
+      return false;
     }
     case "grid_cards":
       return computeDeterministicGridFontSize(items) < MIN_FONT.BODY + 0.5;
     case "summary_slide":
     case "numbered_takeaways": {
+      if (heightGate) return true;
       const unified = computeUnifiedSlideFontSize(items, 19, 85, MIN_FONT.BODY);
       const atMinFloor = unified <= MIN_FONT.BODY + 0.5;
       return unified <= 18 || atMinFloor || longest > 90;
     }
     default:
-      // OVERFLOW-GUARD: log para diagnóstico de slides densos
-      if (items.length >= 5) {
-        const totalChars = items.reduce((sum, it) => sum + (it || "").length, 0);
-        if (totalChars > 450) {
-          console.log(`[V3-SPLIT-PASS] "${plan.title}" layout=${plan.layout} items=${items.length} chars=${totalChars} — NOT splitting (non-splittable layout)`);
-        }
+      if (items.length >= 5 && totalChars > 450) {
+        console.log(`[V3-SPLIT-SKIP] "${plan.title}" layout=${plan.layout} items=${items.length} chars=${totalChars} — layout não-splittable`);
       }
       return false;
   }
