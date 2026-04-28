@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.1-QUALITY-PHASE-1-1";
+const ENGINE_VERSION = "3.12.2-FALLBACK-FIX";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -2008,7 +2008,7 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
 }
 
 function buildFallbackSlides(moduleTitle: string, moduleContent: string, moduleIndex: number): SlidePlan[] {
-  // Extract sentences from content as bullet items
+  // Extrair sentenças do conteúdo
   const stripped = moduleContent
     .replace(/#{1,6}\s*/g, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
@@ -2019,51 +2019,81 @@ function buildFallbackSlides(moduleTitle: string, moduleContent: string, moduleI
   const sentences = stripped
     .split(/[.!?]\s+/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 20 && s.length < 160)
+    .filter((s) => s.length > 25 && s.length < 160)
     .map((s) => ensureSentenceEnd(s))
     .filter((s) => !isSectionMarker(s))
-    .slice(0, 12);
+    .slice(0, 16);
 
   const slides: SlidePlan[] = [
     {
       layout: "module_cover",
       title: moduleTitle,
       objectives: sentences.slice(0, 3).map((s) =>
-        s
-          .replace(/^---+\s*/u, "")
-          .trim()
-          .substring(0, 100),
+        s.replace(/^---+\s*/u, "").trim().substring(0, 100),
       ),
       items: [],
       moduleIndex,
     },
   ];
 
-  // Split sentences into bullet slides
+  // FALLBACK-FIX: Agrupar sentenças em chunks de 3-4 itens, NUNCA menos de 3
   const chunks: string[][] = [];
   for (let i = 0; i < sentences.length; i += 4) {
-    chunks.push(sentences.slice(i, i + 4));
+    const chunk = sentences.slice(i, i + 4);
+    if (chunk.length >= 3) {
+      chunks.push(chunk);
+    } else if (chunks.length > 0) {
+      // Fundir chunk pequeno com o anterior para evitar slides com 1-2 itens
+      const prev = chunks[chunks.length - 1];
+      const merged = [...prev, ...chunk];
+      // Se a fusão ficar muito grande (>6 itens), divide em 2
+      if (merged.length > 6) {
+        const half = Math.ceil(merged.length / 2);
+        chunks[chunks.length - 1] = merged.slice(0, half);
+        chunks.push(merged.slice(half));
+      } else {
+        chunks[chunks.length - 1] = merged;
+      }
+    } else if (chunk.length > 0) {
+      // Se for o primeiro chunk e tiver < 3, mantém mesmo assim (mínimo possível)
+      chunks.push(chunk);
+    }
   }
-  for (const chunk of chunks.slice(0, 3)) {
+
+  // Criar slides de conteúdo a partir dos chunks
+  for (let ci = 0; ci < Math.min(chunks.length, 4); ci++) {
+    const chunk = chunks[ci];
     if (chunk.length > 0) {
       slides.push({
         layout: "bullets",
-        title: moduleTitle,
+        title: ci === 0 ? moduleTitle : `${moduleTitle} (Continuação)`,
         sectionLabel: "CONTEÚDO",
-        items: chunk,
+        items: chunk.map((s) => {
+          const colonIdx = s.indexOf(":");
+          if (colonIdx > 0 && colonIdx < 50) return s;
+          return s.charAt(0).toUpperCase() + s.slice(1);
+        }),
         moduleIndex,
+        itemStartIndex: ci * 4,
       });
     }
   }
 
+  // FALLBACK-FIX: Takeaways genéricos de qualidade, NUNCA cópias do conteúdo
   slides.push({
     layout: "numbered_takeaways",
     title: "Principais Aprendizados",
     sectionLabel: "PRINCIPAIS APRENDIZADOS",
-    items: sentences.slice(0, 4).map((s) => s.replace(/^---+\s*/u, "").trim()),
+    items: [
+      "Agora você domina os conceitos fundamentais deste módulo e pode aplicá-los na prática.",
+      "Lembre-se de revisar os pontos principais antes de avançar para o próximo módulo.",
+      "Você é capaz de explicar estes conceitos com suas próprias palavras e usá-los em projetos reais.",
+      "Continue praticando: a maestria vem com a aplicação consistente do conhecimento adquirido.",
+    ],
     moduleIndex,
   });
 
+  console.log(`[V3-FALLBACK] Module ${moduleIndex + 1}: generated ${slides.length} slides from ${sentences.length} sentences in ${chunks.length} chunks`);
   return slides;
 }
 
@@ -2102,24 +2132,37 @@ async function generateSlidesForModule(
     .replace(/```\s*$/i, "")
     .trim();
 
+  // FALLBACK-FIX: Diagnóstico para investigar falhas de parsing
+  console.log(`[V3-AI-DIAG] Module ${moduleIndex + 1} raw first 300 chars: ${rawText.substring(0, 300).replace(/\n/g, '\\n')}`);
+  console.log(`[V3-AI-DIAG] Module ${moduleIndex + 1} clean first 300 chars: ${clean.substring(0, 300).replace(/\n/g, '\\n')}`);
+  console.log(`[V3-AI-DIAG] Module ${moduleIndex + 1} clean length: ${clean.length}, starts with '[': ${clean.startsWith('[')}, ends with ']': ${clean.endsWith(']')}`);
+
   // Try to extract JSON array
   let parsed: any[];
   try {
     parsed = JSON.parse(clean);
     if (!Array.isArray(parsed)) throw new Error("Response is not an array");
-  } catch {
+  } catch (parseErr: any) {
+    // FALLBACK-FIX: Log detalhado do erro de parsing
+    console.error(`[V3-PARSE-ERR] Module ${moduleIndex + 1} JSON.parse failed: ${parseErr.message}`);
+    console.error(`[V3-PARSE-ERR] Module ${moduleIndex + 1} clean first 500 chars: ${clean.substring(0, 500)}`);
+    console.error(`[V3-PARSE-ERR] Module ${moduleIndex + 1} clean last 100 chars: ${clean.substring(Math.max(0, clean.length - 100))}`);
+
     // Fallback: try to extract JSON array from anywhere in the response
     const match = clean.match(/\[[\s\S]*\]/);
     if (match) {
       try {
         parsed = JSON.parse(match[0]);
-      } catch {
+        console.log(`[V3-PARSE-OK] Module ${moduleIndex + 1} extracted JSON from regex match, length: ${match[0].length}`);
+      } catch (regexParseErr: any) {
+        console.error(`[V3-PARSE-ERR] Module ${moduleIndex + 1} regex extraction also failed: ${regexParseErr.message}`);
         report.aiCallsFailed++;
         report.fallbacksUsed++;
-        report.warnings.push(`[V3-PARSE] Module ${moduleIndex + 1} JSON parse failed. Using fallback.`);
+        report.warnings.push(`[V3-PARSE] Module ${moduleIndex + 1} JSON parse failed: ${parseErr.message}. Using fallback.`);
         return buildFallbackSlides(moduleTitle, moduleContent, moduleIndex);
       }
     } else {
+      console.error(`[V3-PARSE-ERR] Module ${moduleIndex + 1} no JSON array found in response`);
       report.aiCallsFailed++;
       report.fallbacksUsed++;
       report.warnings.push(`[V3-PARSE] Module ${moduleIndex + 1} no JSON array found. Using fallback.`);
@@ -2318,7 +2361,8 @@ async function generateSlidesForModule(
     }
   }
 
-  console.log(`[V3-MODULE] Module ${moduleIndex + 1} "${moduleTitle}": ${compacted.length} slides generated`);
+  const usedFallback = report.warnings.some(w => w.includes(`Module ${moduleIndex + 1}`) && w.includes("Using fallback"));
+  console.log(`[V3-MODULE] Module ${moduleIndex + 1} "${moduleTitle}": ${compacted.length} slides generated${usedFallback ? ' (FALLBACK)' : ' (AI)'}`);
   return compacted;
 }
 
