@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.11.8-PACKAGE-REPAIR";
+const ENGINE_VERSION = "3.11.9-NOTES-STRIPPED";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -1633,25 +1633,67 @@ function sanitizeText(text: string): string {
 
 async function repairPptxPackage(pptxData: Uint8Array): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(pptxData);
-  const fileNames = new Set(Object.keys(zip.files));
+
+  const allFileNames = Object.keys(zip.files);
+  const noteFiles = allFileNames.filter((name) =>
+    name.startsWith("ppt/notesSlides/") ||
+    name.startsWith("ppt/notesMasters/")
+  );
+
+  for (const name of noteFiles) {
+    zip.remove(name);
+  }
+
+  const presentationFile = zip.file("ppt/presentation.xml");
+  if (presentationFile) {
+    const presentationXml = await presentationFile.async("string");
+    const repairedPresentationXml = presentationXml
+      .replace(/<p:notesMasterIdLst>[\s\S]*?<\/p:notesMasterIdLst>/g, "")
+      .replace(/\s+xmlns:mc="[^"]+"/g, (m) => m)
+      .replace(/\s{2,}/g, " ");
+    zip.file("ppt/presentation.xml", repairedPresentationXml);
+  }
+
+  const presentationRelsFile = zip.file("ppt/_rels/presentation.xml.rels");
+  if (presentationRelsFile) {
+    const presentationRelsXml = await presentationRelsFile.async("string");
+    const repairedPresentationRelsXml = presentationRelsXml
+      .replace(/<Relationship[^>]*Type="[^"]*\/notesMaster"[^>]*\/>/g, "")
+      .replace(/\s{2,}/g, " ");
+    zip.file("ppt/_rels/presentation.xml.rels", repairedPresentationRelsXml);
+  }
+
+  for (const name of allFileNames.filter((fileName) => /^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/.test(fileName))) {
+    const slideRelsFile = zip.file(name);
+    if (!slideRelsFile) continue;
+    const slideRelsXml = await slideRelsFile.async("string");
+    const repairedSlideRelsXml = slideRelsXml
+      .replace(/<Relationship[^>]*Type="[^"]*\/notesSlide"[^>]*\/>/g, "")
+      .replace(/\s{2,}/g, " ");
+    zip.file(name, repairedSlideRelsXml);
+  }
+
+  const refreshedFileNames = new Set(Object.keys(zip.files));
   const contentTypesFile = zip.file("[Content_Types].xml");
-  if (!contentTypesFile) return pptxData;
+  if (!contentTypesFile) {
+    return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  }
 
   const contentTypesXml = await contentTypesFile.async("string");
   let removedOverrides = 0;
   const repairedContentTypes = contentTypesXml.replace(/<Override\b[^>]*PartName="([^"]+)"[^>]*\/>/g, (full, partName) => {
     const normalizedPartName = String(partName || "").replace(/^\//, "");
-    if (normalizedPartName && !fileNames.has(normalizedPartName)) {
+    if (normalizedPartName && !refreshedFileNames.has(normalizedPartName)) {
       removedOverrides += 1;
       return "";
     }
     return full;
   });
 
-  if (!removedOverrides) return pptxData;
-
   zip.file("[Content_Types].xml", repairedContentTypes);
-  console.warn(`[V3-PACKAGE-REPAIR] Removed ${removedOverrides} dangling [Content_Types] overrides`);
+  console.warn(
+    `[V3-PACKAGE-REPAIR] Removed notes infra (${noteFiles.length} files) and ${removedOverrides} dangling [Content_Types] overrides`,
+  );
   return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
 }
 
