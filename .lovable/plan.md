@@ -1,56 +1,110 @@
-# Fase 3.12.3 — Diagnóstico de Erro da Chamada IA (PPTX v3)
+# Diagnóstico v3.12.3 — Causa Raiz da Explosão de Slides
 
-Patch cirúrgico em `supabase/functions/export-pptx-v3/index.ts`. Bump para `3.12.3-AI-ERR-DIAG`. Deploy ao final.
+## O que os logs mostram (run 1777356191xxx, módulo "Configurando Ambiente")
 
-## Diagnóstico
+Coletei 100+ entradas `[V3-SPLIT]`, `[V3-FIT]` e `[V3-DEBUG][SPLIT-CUT/RESULT]`. Padrão consistente em TODOS os módulos:
 
-A v3.12.2 mostrou que **todos os 8 módulos caem no fallback em ~2s** (`[V3-FALLBACK] Module N: generated 6 slides...` aparece imediatamente após `[V3-STAGE-1]`). Isso significa que `callAI()` está lançando exceção antes mesmo de chegar ao `JSON.parse` — portanto os logs `[V3-AI-DIAG]` e `[V3-PARSE-ERR]` nunca disparam.
+| Slide original (IA) | chars | items | Virou | Por quê |
+|---|---|---|---|---|
+| "VS Code: Editor Ideal" (grid_cards) | 688 | 5 | **5 slides de 1 item** | Cada item tem ~130-146 chars; o `wouldExceedMeasure` corta a cada 2 |
+| "Python: Vantagens" (grid_cards) | 673 | 5 | **5 slides de 1 item** | Mesma causa |
+| "Configurando Ambiente" (bullets) | 561 | 4 | **4 slides de 1 item** | Mesma causa |
+| "Exemplo Prático" (bullets) | 534 | 4 | **4 slides de 1 item** | Mesma causa |
+| "Key Takeaways" (numbered) | 488 | 4 | **4 slides de 1 item** | Mesma causa |
+| "Instalação Python" (bullets) | 534 | 5 | **2 slides** (4+1) | Único caso saudável |
 
-O catch atual em `generateSlidesForModule` (~linha 2120) registra o erro apenas em `report.warnings` (JSON de resposta), mas **não** em `console.error`, então o motivo real (402, 429, timeout, fetch error) fica invisível nos logs da Edge Function.
+**Resultado**: 8 módulos x ~25 slides/módulo = **~200 slides**, sendo a maioria com **1 único bullet**.
 
-## Mudanças
+Um exemplo gritante:
+```
+[SPLIT-RESULT] slideIdx:0 title:"Key Takeaways" totalChars:111 itemCount:1
+[SPLIT-RESULT] slideIdx:1 title:"Key Takeaways (Continuação)" totalChars:133 itemCount:1
+[SPLIT-RESULT] slideIdx:2 title:"Key Takeaways (Continuação)" totalChars:118 itemCount:1
+[SPLIT-RESULT] slideIdx:3 title:"Key Takeaways (Continuação)" totalChars:126 itemCount:1
+```
+4 slides, cada um com 1 item de ~120 chars. Cabem todos juntos no mesmo slide (488 chars total, bem abaixo do limite de 720).
 
-### 1. Bump de versão (linha 8)
-`"3.12.2-FALLBACK-FIX"` → `"3.12.3-AI-ERR-DIAG"`.
+---
 
-### 2. Catch detalhado em `generateSlidesForModule` (~linha 2120)
+## Causa raiz (linhas 549-587 de `export-pptx-v3/index.ts`)
 
-Substituir:
-```typescript
-} catch (err: any) {
-  report.aiCallsFailed++;
-  report.fallbacksUsed++;
-  report.warnings.push(`[V3-AI] Module ${moduleIndex + 1} AI call failed: ${err.message}. Using fallback.`);
-  return buildFallbackSlides(moduleTitle, moduleContent, moduleIndex);
-}
+O loop tem TRÊS gates de corte avaliados em ordem:
+
+1. `wouldExceedItems` — passa do `maxItems` (5)
+2. `wouldExceedChars` — passa de 590 chars no chunk
+3. `wouldExceedMeasure` — `computeUnifiedSlideFontSize(...) <= MIN_FONT.BODY`
+
+**O gate #3 (`measure`) está disparando em quase todos os pares de items**, mesmo quando o chunk tem só 2 items totalizando 250-290 chars. Os logs comprovam: TODOS os `SPLIT-CUT` mostram `reason:"measure"` com `currentChars:111-146` e `currentItems:1`.
+
+Por quê: a função `computeUnifiedSlideFontSize` é chamada com **`items.length`** original (5) como base de tier (`>=6 ? 18 : 19`), mas calcula altura para o **chunk acumulado + próximo item**. O cálculo está retornando `<= MIN_FONT.BODY` na 2ª iteração porque o estimador de altura é pessimista para items longos (~140 chars cada).
+
+Confirmando pelos logs `[V3-FIT]`: depois do split, slides com **2 items de 250-280 chars** rodam tranquilamente em `fontSize=18pt estH=2.24in (max=4.95in)` — sobra **2.7 polegadas vazias**. Ou seja, o `measure` está super-cortando.
+
+---
+
+## Correção (1 arquivo, ~15 linhas)
+
+`supabase/functions/export-pptx-v3/index.ts` — função `normalizeAndSplitSlide` + bump de versão para `3.12.4-MEASURE-FIX`.
+
+### Mudança 1 — Tornar o gate `measure` muito mais conservador (linha 554-556)
+
+```ts
+// ANTES (corta cedo demais):
+const wouldExceedMeasure =
+  current.length > 0 &&
+  computeUnifiedSlideFontSize([...current, it], items.length >= 6 ? 18 : 19, items.length >= 6 ? 78 : 92, MIN_FONT.BODY) <= MIN_FONT.BODY;
+
+// DEPOIS — só corta por measure se chunk já tem >=3 items E acumulou >=400 chars:
+const wouldExceedMeasure =
+  current.length >= 3 &&
+  currentChars + itLen > 400 &&
+  computeUnifiedSlideFontSize([...current, it], 16, 70, MIN_FONT.BODY) < MIN_FONT.BODY;
 ```
 
-Por:
-```typescript
-} catch (err: any) {
-  // PARSE-FIX-DIAG: Expor o erro real nos logs para diagnóstico
-  console.error(`[V3-AI-ERR] Module ${moduleIndex + 1} "${moduleTitle}": ${err.message}`);
-  console.error(`[V3-AI-ERR] Module ${moduleIndex + 1} error type: ${err.name || 'unknown'}, code: ${err.code || 'none'}`);
-  if (err.stack) {
-    console.error(`[V3-AI-ERR] Module ${moduleIndex + 1} stack first 300: ${err.stack.substring(0, 300)}`);
-  }
-  report.aiCallsFailed++;
-  report.fallbacksUsed++;
-  report.warnings.push(`[V3-AI] Module ${moduleIndex + 1} AI call failed: ${err.message}. Using fallback.`);
-  return buildFallbackSlides(moduleTitle, moduleContent, moduleIndex);
-}
+Justificativa: o estimador é uma heurística; o motor real (`[V3-FIT]`) prova depois que 4 items de 130 chars cabem em 4.5 in. Só faz sentido cortar por measure quando estamos verdadeiramente saturados.
+
+### Mudança 2 — Elevar o limite de char por chunk (linha 553)
+
+```ts
+// ANTES: const wouldExceedChars = currentChars + itLen > 590 && current.length > 0;
+// DEPOIS:
+const wouldExceedChars = currentChars + itLen > 720 && current.length > 0;
 ```
 
-### 3. Deploy
-`supabase--deploy_edge_functions` para `export-pptx-v3`.
+Alinha com o limite `<= 720` do early-return na linha 537 (o slide só entra no splitter se passar de 720; faz sentido o chunk-cap ser igual).
 
-## NÃO alterar
-`robustJSONParse`, prompt da IA, `buildFallbackSlides`, `normalizeSlide`, `normalizeAndSplitSlide`, render functions, `MIN_FONT`, `SPLIT_LIMITS`, `TECH_IMAGE_QUERIES`, ou qualquer outra função.
+### Mudança 3 — Bump de versão e log
 
-## Validação pós-deploy
-1. Exportar PPTX do curso de Python.
-2. Filtrar logs por prefixo `[V3-AI-ERR]`.
-3. As linhas vão revelar a causa raiz: `402 Payment Required`, `429 Rate Limit`, `fetch failed`, `timeout`, etc.
+```ts
+const ENGINE_VERSION = "3.12.4-MEASURE-FIX";
+```
 
-## Rollback
-Reverter o bloco do catch para a versão anterior (3 linhas). Risco zero — mudança é apenas log adicional.
+E adicionar `console.log("[V3-SPLIT-CFG] measure-min-items=3 char-cap=720")` no início do split do primeiro slide para confirmar a versão em produção.
+
+### Mudança 4 — Remover/silenciar logs verbosos
+
+Após confirmar o fix, transformar `[V3-DEBUG][SPLIT-CUT]` e `[V3-DEBUG][SPLIT-RESULT]` em condicionais `if (DEBUG_SPLIT_VERBOSE)` (flag default `false`). Mantém `[V3-SPLIT]` resumo e `[V3-FIT]` para auditoria futura.
+
+---
+
+## Resultado esperado
+
+| Antes | Depois |
+|---|---|
+| ~200 slides totais | ~70-90 slides (8 módulos x 8-11 slides) |
+| Slides com 1 bullet | Slides com 3-5 bullets |
+| 4-5 "(Continuação)" por seção | 0-1 "(Continuação)" |
+| Espaço vazio (estH 2.24 / max 4.95) | Densidade saudável (estH 3.5-4.5) |
+
+Os outros sintomas (texto truncado "com frameworks como Django e bibli.", "(Continuação) (Continuação)" duplicado) **derivam da mesma causa** — eles aparecem porque o splitter está agressivo demais e renomeando títulos repetidamente. Com o fix, somem naturalmente.
+
+---
+
+## Não vou tocar
+
+- `computeUnifiedSlideFontSize` — heurística complexa; mexer ali quebra outros engines
+- Prompt da IA — JSON está perfeito (logs `[V3-AI-DIAG]` confirmam)
+- `[V3-FIT]` — funciona corretamente
+- `buildFallbackSlides` — não está sendo usado (zero `[V3-AI-ERR]` nos logs)
+
+Aprove para eu aplicar o patch e fazer redeploy.

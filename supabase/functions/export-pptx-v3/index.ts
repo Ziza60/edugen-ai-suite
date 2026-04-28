@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.3-AI-ERR-DIAG";
+const ENGINE_VERSION = "3.12.4-MEASURE-FIX";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -549,11 +549,13 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   for (const it of items) {
     const itLen = (it || "").length;
     const wouldExceedItems = current.length + 1 > maxItems;
-    // BALANCED-DENSITY — limite por chunk elevado para 590 (densidade boa sem transbordo).
-    const wouldExceedChars = currentChars + itLen > 590 && current.length > 0;
+    // MEASURE-FIX v3.12.4 — chunk-cap alinhado ao early-return (720); measure só dispara
+    // quando chunk já tem 3+ items E acumulou 400+ chars (evita slides com 1 bullet).
+    const wouldExceedChars = currentChars + itLen > 720 && current.length > 0;
     const wouldExceedMeasure =
-      current.length > 0 &&
-      computeUnifiedSlideFontSize([...current, it], items.length >= 6 ? 18 : 19, items.length >= 6 ? 78 : 92, MIN_FONT.BODY) <= MIN_FONT.BODY;
+      current.length >= 3 &&
+      currentChars + itLen > 400 &&
+      computeUnifiedSlideFontSize([...current, it], 16, 70, MIN_FONT.BODY) < MIN_FONT.BODY;
     if (wouldExceedItems || wouldExceedChars) {
       dbg("SPLIT-CUT", {
         title: plan.title,
