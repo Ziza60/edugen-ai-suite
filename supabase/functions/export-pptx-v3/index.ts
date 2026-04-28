@@ -481,16 +481,16 @@ function shouldForceContinuation(plan: SlidePlan): boolean {
 
   switch (plan.layout) {
     case "bullets": {
-      // BALANCED-DENSITY — thresholds equilibrados (densidade x overflow).
+      // QUALITY-PHASE-1 — thresholds mais preventivos para densidade saudável.
       const unified = computeUnifiedSlideFontSize(items, 20, 92, MIN_FONT.BODY);
-      return unified <= 17.5 || longest > 110;
+      return unified <= 18.5 || longest > 100;
     }
     case "grid_cards":
       return computeDeterministicGridFontSize(items) < MIN_FONT.BODY + 0.5;
     case "summary_slide":
     case "numbered_takeaways": {
       const unified = computeUnifiedSlideFontSize(items, 19, 85, MIN_FONT.BODY);
-      return unified <= 17 || longest > 100;
+      return unified <= 18 || longest > 90;
     }
     default:
       return false;
