@@ -122,96 +122,132 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               if (!session?.access_token) {
                 throw new Error("Sessão expirada. Faça login novamente.");
               }
-              const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx";
-              const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
-              console.log(`[PPTX] Starting export to: ${url} (engine: ${options.useV2 ? "v2" : "v1"})`);
-              const EXPORT_TIMEOUT_MS = 480000;
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
-              let res: Response;
-              try {
-                res = await fetch(url, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${session.access_token}`,
-                    "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-                  },
-                  body: JSON.stringify({ course_id: courseId, palette: options.palette, density: options.density, includeImages: options.includeImages, theme: options.theme, template: options.template }),
-                  signal: controller.signal,
-                });
-              } finally {
-                clearTimeout(timeoutId);
+
+              let data: any = null;
+              let engineUsed = "v3-native";
+
+              // ── MAGICSLIDES PRO (Try first if enabled) ──
+              if (options.useMagicSlides) {
+                console.log("[PPTX] Attempting MagicSlides Pro export...");
+                try {
+                  const magicRes = await supabase.functions.invoke("export-pptx-v3-magicslides", {
+                    body: { 
+                      course_id: courseId, 
+                      template: options.template,
+                      language: "Português (Brasil)" // Default or from context
+                    },
+                  });
+
+                  if (magicRes.data?.url && !magicRes.error) {
+                    data = magicRes.data;
+                    engineUsed = "magicslides";
+                    console.log("[PPTX] MagicSlides Pro successful!");
+                  } else {
+                    console.warn("[PPTX] MagicSlides failed, falling back to native engine...", magicRes.error);
+                    toast({ 
+                      title: "MagicSlides (Beta) indisponível", 
+                      description: "Usando motor nativo EduGen v3 como fallback automático.",
+                      duration: 4000
+                    });
+                  }
+                } catch (magicErr) {
+                  console.error("[PPTX] MagicSlides crash:", magicErr);
+                }
               }
 
-              console.log("[PPTX] Response status:", res.status);
-              const responseText = await res.text();
-              let data: any = {};
-              try {
-                data = responseText ? JSON.parse(responseText) : {};
-              } catch {
+              // ── NATIVE ENGINE (If MagicSlides failed or wasn't requested) ──
+              if (!data?.url) {
+                const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx";
+                const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
+                console.log(`[PPTX] Starting native export to: ${url} (engine: ${functionName})`);
+                
+                const EXPORT_TIMEOUT_MS = 480000;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
+                
+                let res: Response;
+                try {
+                  res = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${session.access_token}`,
+                      "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                    },
+                    body: JSON.stringify({ 
+                      course_id: courseId, 
+                      palette: options.palette, 
+                      density: options.density, 
+                      includeImages: options.includeImages, 
+                      theme: options.theme, 
+                      template: options.template 
+                    }),
+                    signal: controller.signal,
+                  });
+                } finally {
+                  clearTimeout(timeoutId);
+                }
+
+                const responseText = await res.text();
+                try {
+                  data = responseText ? JSON.parse(responseText) : {};
+                } catch {
+                  throw new Error(!res.ok ? `Erro na exportação (HTTP ${res.status}).` : "Resposta inválida.");
+                }
+
                 if (!res.ok) {
-                  throw new Error(`Erro na exportação (HTTP ${res.status}).`);
+                  if (data?.quality_report && !data?.quality_report?.passed) {
+                    setQualityReport(data.quality_report);
+                    setReportOpen(true);
+                    return;
+                  }
+                  throw new Error(data?.error || `Erro na exportação (HTTP ${res.status})`);
                 }
-                throw new Error("Resposta inválida da exportação.");
+                engineUsed = options.useV3 ? "v3-native" : "v2-legacy";
               }
 
-              console.log("[PPTX] Response data keys:", Object.keys(data || {}), "engine_version:", data?.engine_version);
-              if (data?.quality_report?.image_diagnostics) {
-                console.log("[PPTX] IMAGE DIAGNOSTICS:", JSON.stringify(data.quality_report.image_diagnostics, null, 2));
-              }
-              if (data?.quality_report?.zip_diagnostics) {
-                console.log("[PPTX] ZIP DIAGNOSTICS:", JSON.stringify(data.quality_report.zip_diagnostics, null, 2));
-              }
-
-              // Store quality report for display
-              if (data?.quality_report) {
-                setQualityReport(data.quality_report);
-              }
-
-              if (!res.ok) {
-                // If blocked with quality report, show the report dialog
-                if (data?.quality_report && !data?.quality_report?.passed) {
-                  setReportOpen(true);
-                  return;
-                }
-                throw new Error(data?.error || `Erro na exportação (HTTP ${res.status})`);
-              }
-
+              // ── FINAL DOWNLOAD ──
               if (!data?.url) {
                 throw new Error("Exportação concluída sem URL de download.");
               }
 
+              console.log(`[PPTX] Downloading from ${engineUsed}:`, data.url);
               const DOWNLOAD_TIMEOUT_MS = 240000;
               const downloadController = new AbortController();
               const downloadTimeoutId = setTimeout(() => downloadController.abort(), DOWNLOAD_TIMEOUT_MS);
+              
               let fileRes: Response;
               try {
                 fileRes = await fetch(data.url, { signal: downloadController.signal });
               } finally {
                 clearTimeout(downloadTimeoutId);
               }
-              if (!fileRes.ok) throw new Error("Não foi possível baixar o PowerPoint.");
+
+              if (!fileRes.ok) throw new Error("Não foi possível baixar o arquivo final.");
+              
               const blob = await fileRes.blob();
               const blobUrl = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = blobUrl;
-              a.download = formatFileName(courseTitle, "PPTX", "pptx");
+              a.download = formatFileName(courseTitle, engineUsed === "magicslides" ? "PPTX-PRO" : "PPTX", "pptx");
               a.rel = "noopener";
               document.body.appendChild(a);
               a.click();
               document.body.removeChild(a);
               URL.revokeObjectURL(blobUrl);
 
-              const qr = data.quality_report;
+              if (data?.quality_report) {
+                setQualityReport(data.quality_report);
+              }
+
               toast({
-                title: "PowerPoint gerado!",
-                description: qr
-                  ? `Score: ${qr.quality_score}/100 — Clique em "Ver Relatório" para detalhes`
-                  : undefined,
-                action: qr ? (
+                title: engineUsed === "magicslides" ? "PowerPoint Pro gerado!" : "PowerPoint gerado!",
+                description: data.quality_report 
+                  ? `Score: ${data.quality_report.quality_score}/100` 
+                  : (engineUsed === "magicslides" ? "Design premium aplicado com sucesso." : undefined),
+                action: data.quality_report ? (
                   <Button variant="outline" size="sm" onClick={() => setReportOpen(true)}>
-                    Ver Relatório
+                    Ver Detalhes
                   </Button>
                 ) : undefined,
               });

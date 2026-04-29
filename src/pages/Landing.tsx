@@ -71,40 +71,40 @@ export default function Landing() {
       <div className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")", backgroundRepeat: "repeat" }} />
 
       {/* ======= SEÇÃO 1 — NAV ======= */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-[#0A0A0F]/70 border-b border-white/5">
-        <div className="container mx-auto flex items-center justify-between h-16 px-4">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-              <Sparkles className="h-5 w-5 text-white" />
+      <header className="sticky top-0 z-50 w-full border-b bg-[#0A0A0F]/95 backdrop-blur supports-[backdrop-filter]:bg-[#0A0A0F]/60 border-white/5">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+          <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 shadow-elegant">
+              <GraduationCap className="h-6 w-6 text-indigo-400" />
             </div>
-            <span className="font-display-sora text-xl font-bold tracking-tight">EduGen AI</span>
-          </Link>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                const url = window.location.href;
-                navigator.clipboard.writeText(url).then(() => {
-                  toast.success("URL copiada! Cole em uma nova aba do navegador.");
-                }).catch(() => {
-                  // Fallback: show URL in a prompt
-                  window.prompt("Copie esta URL e cole em uma nova aba:", url);
-                });
-              }}
-              className="text-white/60 hover:text-white hover:bg-white/5"
-              title="Copiar URL do app"
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
+                EduGen AI
+              </span>
+              <span className="text-[10px] text-indigo-400/60 font-medium tracking-widest uppercase -mt-1">
+                Motor Pedagógico
+              </span>
+            </div>
+          </div>
+
+          <nav className="hidden md:flex items-center gap-6">
+            <Link to="/auth" className="text-sm font-medium text-white/60 transition-colors hover:text-white">
+              Dashboard
+            </Link>
+            <Link to="/auth" className="text-sm font-medium text-white/60 transition-colors hover:text-white">
+              Planos
+            </Link>
+          </nav>
+
+          <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-white/60 hover:text-white hover:bg-white/5">
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
-            <Button variant="ghost" className="text-white/60 hover:text-white hover:bg-white/5" asChild>
+            <Button variant="ghost" className="text-white/60 hover:text-white hover:bg-white/5 hidden sm:flex" asChild>
               <Link to="/auth">Entrar</Link>
             </Button>
-            <Button className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white border-0" asChild>
-              <Link to="/auth">Começar grátis</Link>
+            <Button className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white border-0 shadow-lg shadow-indigo-500/20" asChild>
+              <Link to="/auth">Começar agora</Link>
             </Button>
           </div>
         </div>
@@ -134,17 +134,17 @@ export default function Landing() {
             variants={fadeUp}
             className="font-display-sora text-[44px] md:text-[72px] font-extrabold leading-[1.05] mb-6 max-w-4xl mx-auto tracking-tight"
           >
-            Crie, publique e venda{" "}
+            Transforme seu conhecimento em{" "}
             <br className="hidden md:block" />
-            <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">cursos com IA</span>
+            <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">cursos profissionais validados por IA</span>
           </motion.h1>
 
           <motion.p
             variants={fadeUp}
-            className="text-lg md:text-xl text-white/50 max-w-xl mx-auto mb-10 leading-relaxed"
+            className="text-lg md:text-xl text-white/50 max-w-2xl mx-auto mb-10 leading-relaxed"
           >
-            Do tema ao curso completo em minutos. Com exportação profissional,
-            tutor IA para seus alunos e analytics de engajamento.
+            Da estrutura pedagógica ao design premium em PPTX. 
+            Com EduScore™, Tutor IA e exportação nativa para Moodle, Notion e SCORM.
           </motion.p>
 
           <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10">
