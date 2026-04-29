@@ -134,14 +134,11 @@ Conteúdo dos módulos:
 
 ${modulesText}`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch(url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model,
         max_tokens: 16000,
         messages: [
           { role: "system", content: systemPrompt },
