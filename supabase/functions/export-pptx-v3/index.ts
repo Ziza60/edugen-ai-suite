@@ -1612,43 +1612,25 @@ async function buildImagePlan(
 
 async function callAI(model: string, prompt: string): Promise<string> {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  const openaiKey = Deno.env.get("OPENAI_API_KEY");
-  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
-  let url = "https://ai.gateway.lovable.dev/v1/chat/completions";
-  let apiKey = lovableKey;
-  let headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
   let aiModel = model;
 
-  if (geminiKey) {
-    url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    apiKey = geminiKey;
-    // Map models
-    if (aiModel.includes("gemini")) {
-      aiModel = aiModel.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
-      if (aiModel === "gemini-flash-preview") aiModel = "gemini-1.5-flash";
-    } else {
-      aiModel = "gemini-1.5-flash";
-    }
-  } else if (openaiKey) {
-    url = "https://api.openai.com/v1/chat/completions";
-    apiKey = openaiKey;
-    if (aiModel.includes("gpt")) {
-      aiModel = aiModel.replace("openai/", "").replace("gpt-5", "gpt-4o");
-    } else {
-      aiModel = "gpt-4o-mini";
-    }
+  // Map models
+  if (aiModel.includes("gemini")) {
+    aiModel = aiModel.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
+    if (aiModel === "gemini-flash-preview") aiModel = "gemini-1.5-flash";
+  } else {
+    aiModel = "gemini-1.5-flash";
   }
-
-  if (!apiKey) throw new Error("AI credentials not configured");
-
-  headers["Authorization"] = `Bearer ${apiKey}`;
 
   const res = await fetch(url, {
     method: "POST",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${geminiKey}`,
+    },
     body: JSON.stringify({
       model: aiModel,
       messages: [{ role: "user", content: prompt }],
