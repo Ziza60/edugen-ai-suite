@@ -6,6 +6,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Helper for hashing
+async function hashInput(input: string): Promise<string> {
+  const msgUint8 = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -39,6 +47,22 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "Tutor não encontrado ou desativado" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // ── CACHE CHECK ──
+    const cacheKey = await hashInput(`tutor:${course.id}:${question.trim().toLowerCase()}`);
+    const { data: cached } = await supabase
+      .from("ai_cache")
+      .select("response_text")
+      .eq("input_hash", cacheKey)
+      .maybeSingle();
+
+    if (cached) {
+      console.log(`[Cache Hit] tutor-chat: ${course.title}`);
+      return new Response(JSON.stringify({ answer: cached.response_text, cached: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Fetch all module content
@@ -90,6 +114,7 @@ ${truncatedContent}
       throw new Error("LOVABLE_API_KEY not configured");
     }
 
+    const model = "google/gemini-2.5-flash"; // Mantemos flash para tutor pela complexidade do RAG
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -97,13 +122,13 @@ ${truncatedContent}
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           ...conversationMessages,
           { role: "user", content: question },
         ],
-        max_tokens: 2000,
+        max_tokens: 1500, // Reduzido de 2000 para economia
         temperature: 0.3,
       }),
     });
@@ -116,6 +141,17 @@ ${truncatedContent}
 
     const aiData = await aiResponse.json();
     const answer = aiData.choices?.[0]?.message?.content || "Desculpe, não consegui gerar uma resposta.";
+
+    // ── SAVE TO CACHE ──
+    if (answer && answer.length > 20) {
+      await supabase.from("ai_cache").insert({
+        input_hash: cacheKey,
+        model,
+        action_type: "tutor",
+        prompt_preview: question.substring(0, 100),
+        response_text: answer,
+      });
+    }
 
     // Log session anonymously
     await supabase.from("tutor_sessions").insert({

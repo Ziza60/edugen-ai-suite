@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_cache: {
+        Row: {
+          action_type: string | null
+          created_at: string | null
+          id: string
+          input_hash: string
+          model: string
+          prompt_preview: string | null
+          response_text: string
+        }
+        Insert: {
+          action_type?: string | null
+          created_at?: string | null
+          id?: string
+          input_hash: string
+          model: string
+          prompt_preview?: string | null
+          response_text: string
+        }
+        Update: {
+          action_type?: string | null
+          created_at?: string | null
+          id?: string
+          input_hash?: string
+          model?: string
+          prompt_preview?: string | null
+          response_text?: string
+        }
+        Relationships: []
+      }
       certificates: {
         Row: {
           course_id: string

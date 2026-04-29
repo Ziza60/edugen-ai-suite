@@ -7,6 +7,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Helper for hashing
+async function hashInput(input: string): Promise<string> {
+  const msgUint8 = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -22,10 +30,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    
+    // User client for auth check
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
+    // Service client for cache access
+    const serviceClient = createClient(supabaseUrl, supabaseKey);
 
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userError } = await userClient.auth.getUser(token);
@@ -41,6 +54,22 @@ Deno.serve(async (req: Request) => {
     if (!text || text.trim().length < 5) {
       return new Response(JSON.stringify({ error: "Text too short" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── CACHE CHECK ──
+    const cacheKey = await hashInput(`enhance:${action}:${language}:${text}`);
+    const { data: cached } = await serviceClient
+      .from("ai_cache")
+      .select("response_text")
+      .eq("input_hash", cacheKey)
+      .maybeSingle();
+
+    if (cached) {
+      console.log(`[Cache Hit] enhance-paragraph: ${action}`);
+      return new Response(JSON.stringify({ enhanced: cached.response_text, cached: true }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -61,6 +90,11 @@ Deno.serve(async (req: Request) => {
     };
 
     const systemPrompt = systemPrompts[action] || systemPrompts.improve;
+    
+    // Model selection based on complexity
+    const model = (action === "fix" || action === "simplify") 
+      ? "google/gemini-2.5-flash-lite" 
+      : "google/gemini-2.5-flash";
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -69,12 +103,13 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model,
         messages: [
           { role: "system", content: `${systemPrompt} Idioma: ${language}.` },
           { role: "user", content: text },
         ],
         stream: false,
+        max_tokens: 800, // Limite de segurança para parágrafos
       }),
     });
 
@@ -102,6 +137,17 @@ Deno.serve(async (req: Request) => {
 
     const result = await response.json();
     const enhanced = result.choices?.[0]?.message?.content || text;
+
+    // ── SAVE TO CACHE ──
+    if (enhanced && enhanced !== text) {
+      await serviceClient.from("ai_cache").insert({
+        input_hash: cacheKey,
+        model,
+        action_type: action,
+        prompt_preview: text.substring(0, 100),
+        response_text: enhanced,
+      });
+    }
 
     return new Response(JSON.stringify({ enhanced }), {
       status: 200,

@@ -13,7 +13,7 @@ const PLAN_LIMITS = {
 };
 
 // Call Lovable AI Gateway
-async function callAI(model: string, prompt: string) {
+async function callAI(model: string, prompt: string, maxTokens = 2000) {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
 
@@ -26,6 +26,7 @@ async function callAI(model: string, prompt: string) {
     body: JSON.stringify({
       model,
       messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens,
     }),
   });
 
@@ -465,7 +466,7 @@ ${include_quiz ? "Include 3 quiz questions per module." : ""}
 ${include_flashcards ? "Include 5 flashcards per module." : ""}
 Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
 
-        const retryRaw = await callAI("google/gemini-2.5-flash", retryPrompt);
+        const retryRaw = await callAI("google/gemini-2.5-flash-lite", retryPrompt, 1000);
         try {
           const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
           structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
@@ -538,7 +539,7 @@ Write 800-1200 words. Be thorough and educational.`;
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          const refinedContent = await callAI("google/gemini-2.5-flash", refinementPrompt);
+          const refinedContent = await callAI("google/gemini-2.5-flash-lite", refinementPrompt, 1500);
 
           // Step C: Quality Elevation
           let elevatedContent = refinedContent;
@@ -548,7 +549,7 @@ Write 800-1200 words. Be thorough and educational.`;
               mod.title, refinedContent, title,
               target_audience || "profissionais da área", language || "pt-BR",
             );
-            const qualityResult = await callAI("google/gemini-2.5-flash", qualityPrompt);
+            const qualityResult = await callAI("google/gemini-2.5-flash", qualityPrompt, 2000);
             // Strip markdown fences AND any preamble before the first ## heading
             const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
@@ -619,6 +620,7 @@ STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstra
                   model: "google/gemini-2.5-flash-image",
                   messages: [{ role: "user", content: imagePrompt }],
                   modalities: ["image", "text"],
+                  max_tokens: 500, // Limite para geração de imagem
                 }),
               });
 

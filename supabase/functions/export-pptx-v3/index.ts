@@ -1623,6 +1623,7 @@ async function callAI(model: string, prompt: string): Promise<string> {
     body: JSON.stringify({
       model,
       messages: [{ role: "user", content: prompt }],
+      max_tokens: 1500, // Limite para planejamento de slides
     }),
   });
 
