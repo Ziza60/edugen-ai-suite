@@ -112,14 +112,15 @@ async function fetchWebArticle(url: string, apiKey: string): Promise<{ text: str
   }
   
   // Use AI to extract clean text from HTML
-  const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const urlAI = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  const aiRes = await fetch(urlAI, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash-lite",
+      model: "gemini-1.5-flash",
       messages: [
         {
           role: "system",
@@ -234,9 +235,9 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "AI not configured" }), {
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiKey) {
+      return new Response(JSON.stringify({ error: "GEMINI_API_KEY não configurada nos Secrets." }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -260,7 +261,7 @@ Deno.serve(async (req: Request) => {
       contentType = "text/plain";
     } else {
       // Web article
-      const article = await fetchWebArticle(url, LOVABLE_API_KEY);
+      const article = await fetchWebArticle(url, geminiKey);
       extractedText = article.text;
       filename = `web-${new URL(url).hostname}.md`;
       contentType = "text/markdown";
