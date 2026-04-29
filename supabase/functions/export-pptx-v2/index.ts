@@ -3,7 +3,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "2.8.0-2026-03-09";
+const ENGINE_VERSION = "3.12.1-LANDING-PAGE-STRUCTURE";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

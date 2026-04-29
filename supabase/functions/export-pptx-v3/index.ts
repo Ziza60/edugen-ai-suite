@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.7-ZOD-PARITY";
+const ENGINE_VERSION = "3.12.1-LANDING-PAGE-STRUCTURE";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
