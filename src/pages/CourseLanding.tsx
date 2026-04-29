@@ -62,19 +62,35 @@ export default function CourseLanding() {
 
   const benefits = Array.isArray(landing.benefits) ? landing.benefits : [];
   const courseTitle = landing.courses?.title || "Curso";
+  const colors = (landing.custom_colors as unknown as LandingColors) || { primary: '#7c3aed' };
+  const primaryColor = colors.primary;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={{ "--primary": primaryColor } as any}>
+      <style>
+        {`
+          .btn-custom { background-color: ${primaryColor} !important; color: white !important; }
+          .text-custom { color: ${primaryColor} !important; }
+          .bg-custom-light { background-color: ${primaryColor}15 !important; }
+          .border-custom { border-color: ${primaryColor}40 !important; }
+        `}
+      </style>
       {/* Header bar */}
       <header className="border-b border-border/50 bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <Sparkles className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="font-display text-lg font-bold">EduGen AI</span>
+            {landing.logo_url ? (
+              <img src={landing.logo_url} alt="Logo" className="h-8 w-auto" />
+            ) : (
+              <>
+                <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: primaryColor }}>
+                  <Sparkles className="h-4 w-4 text-white" />
+                </div>
+                <span className="font-display text-lg font-bold">EduGen AI</span>
+              </>
+            )}
           </div>
-          <Button size="sm">{landing.cta_text || "Quero me inscrever"}</Button>
+          <Button size="sm" className="btn-custom">{landing.cta_text || "Quero me inscrever"}</Button>
         </div>
       </header>
 
