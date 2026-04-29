@@ -186,21 +186,21 @@ export default function LandingPageEditor() {
               </TabsList>
 
               <TabsContent value="content" className="space-y-6">
-                {plan === "free" && (
+                {(plan as string) === "free" && (
                   <FreeEditor 
                     landing={landing} 
                     onChange={(updates) => saveLanding.mutate(updates)} 
                     onUpgrade={() => handleUpgradeClick("Starter")}
                   />
                 )}
-                {plan === "starter" && (
+                {(plan as string) === "starter" && (
                   <StarterEditor 
                     landing={landing} 
                     onChange={(updates) => saveLanding.mutate(updates)} 
                     onUpgrade={() => handleUpgradeClick("Pro")}
                   />
                 )}
-                {plan === "pro" && (
+                {(plan as string) === "pro" && (
                   <ProEditor 
                     landing={landing} 
                     onChange={(updates) => saveLanding.mutate(updates)} 
