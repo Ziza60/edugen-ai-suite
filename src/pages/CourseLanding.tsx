@@ -5,6 +5,10 @@ import { Loader2, Sparkles, CheckCircle, BookOpen, Quote, ArrowRight } from "luc
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 
+interface LandingColors {
+  primary: string;
+}
+
 export default function CourseLanding() {
   const { slug } = useParams<{ slug: string }>();
 
@@ -82,7 +86,7 @@ export default function CourseLanding() {
           transition={{ duration: 0.6 }}
           className="max-w-3xl mx-auto"
         >
-          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-1.5 rounded-full text-sm font-medium mb-6">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium mb-6 bg-custom-light text-custom">
             <BookOpen className="h-4 w-4" />
             Curso Online
           </div>
@@ -92,7 +96,7 @@ export default function CourseLanding() {
           <p className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-8">
             {landing.subtitle}
           </p>
-          <Button size="lg" className="text-base px-8">
+          <Button size="lg" className="text-base px-8 btn-custom">
             {landing.cta_text || "Quero me inscrever"}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
@@ -119,9 +123,9 @@ export default function CourseLanding() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.4, delay: 0.3 + i * 0.1 }}
-                    className="flex items-start gap-3 bg-card border border-border rounded-xl p-4"
+                    className="flex items-start gap-3 bg-card border border-border rounded-xl p-4 border-custom"
                   >
-                    <CheckCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <CheckCircle className="h-5 w-5 shrink-0 mt-0.5 text-custom" />
                     <span className="text-foreground">{b}</span>
                   </motion.div>
                 ))}
@@ -157,7 +161,7 @@ export default function CourseLanding() {
               <div className="space-y-2">
                 {modules.map((m: any, i: number) => (
                   <div key={i} className="flex items-center gap-3 text-sm">
-                    <span className="h-6 w-6 rounded-md bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+                    <span className="h-6 w-6 rounded-md flex items-center justify-center text-xs font-bold shrink-0 bg-custom-light text-custom">
                       {i + 1}
                     </span>
                     <span className="text-foreground">{m.title}</span>
@@ -179,7 +183,7 @@ export default function CourseLanding() {
               transition={{ duration: 0.5, delay: 0.5 }}
               className="max-w-2xl mx-auto text-center"
             >
-              <Quote className="h-10 w-10 text-primary/30 mx-auto mb-4" />
+              <Quote className="h-10 w-10 mx-auto mb-4 opacity-30 text-custom" />
               <blockquote className="text-lg italic text-foreground mb-4 leading-relaxed">
                 "{landing.testimonial_text}"
               </blockquote>
@@ -207,7 +211,7 @@ export default function CourseLanding() {
           <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
             Inscreva-se agora e tenha acesso imediato a todo o conteúdo do curso.
           </p>
-          <Button size="lg" className="text-base px-10">
+          <Button size="lg" className="text-base px-10 btn-custom">
             {landing.cta_text || "Quero me inscrever"}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
@@ -217,7 +221,9 @@ export default function CourseLanding() {
       {/* Footer */}
       <footer className="border-t border-border py-6">
         <div className="container mx-auto px-4 text-center text-xs text-muted-foreground">
-          Criado com <span className="font-semibold">EduGen AI</span> · © {new Date().getFullYear()}
+          {landing.show_branding !== false && (
+            <span>Criado com <span className="font-semibold">EduGen AI</span> · </span>
+          )} © {new Date().getFullYear()}
         </div>
       </footer>
     </div>
