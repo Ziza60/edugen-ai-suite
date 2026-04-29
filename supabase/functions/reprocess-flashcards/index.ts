@@ -152,7 +152,7 @@ Retorne APENAS um JSON válido (sem markdown, sem explicações):
 Use os IDs originais na resposta. Aqui estão os IDs:
 ${flashcards.map((fc: any, i: number) => `${i + 1}. ${fc.id}`).join("\n")}`;
 
-    const aiResponse = await callAI("google/gemini-2.5-flash", prompt);
+    const aiResponse = await callAI("google/gemini-2.5-flash-lite", prompt);
 
     let rewritten;
     try {
