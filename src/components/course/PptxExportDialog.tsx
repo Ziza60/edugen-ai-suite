@@ -99,7 +99,8 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [footerBrandEnabled, setFooterBrandEnabled] = useState(true);
   const [footerBrandValue, setFooterBrandValue]     = useState("EduGenAI");
   const [useV2] = useState(true);
-  const [useV3, setUseV3] = useState(false);
+  const [useV3, setUseV3] = useState(true);
+  const [useMagicSlides, setUseMagicSlides] = useState(isPro); // Default true for Pro as requested
 
   // Estimate slide count based on density + module count
   const slideEstimates: Record<string, [number, number]> = {
