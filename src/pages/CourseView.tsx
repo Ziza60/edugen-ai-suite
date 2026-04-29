@@ -386,6 +386,15 @@ export default function CourseView() {
                 isPro={isPro}
                 modules={modules}
               />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 bg-primary/5 border-primary/20 text-primary"
+                onClick={() => navigate(`/app/courses/${id}/landing-page`)}
+              >
+                <Globe className="h-4 w-4 mr-1.5" />
+                Landing Page
+              </Button>
               <ScriptGeneratorButton
                 courseId={id!}
                 courseTitle={course.title}
