@@ -790,7 +790,7 @@ export type Database = {
     }
     Enums: {
       course_status: "draft" | "published"
-      subscription_plan: "free" | "pro"
+      subscription_plan: "free" | "pro" | "starter"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -919,7 +919,7 @@ export const Constants = {
   public: {
     Enums: {
       course_status: ["draft", "published"],
-      subscription_plan: ["free", "pro"],
+      subscription_plan: ["free", "pro", "starter"],
     },
   },
 } as const
