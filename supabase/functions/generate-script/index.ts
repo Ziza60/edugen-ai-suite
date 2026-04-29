@@ -117,7 +117,10 @@ ${modulesText}`;
 
     const aiResponse = await fetch(url, {
       method: "POST",
-      headers,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${geminiKey}`,
+      },
       body: JSON.stringify({
         model,
         max_tokens: 16000,
