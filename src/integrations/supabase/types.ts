@@ -155,12 +155,19 @@ export type Database = {
           course_id: string
           created_at: string
           cta_text: string
+          custom_colors: Json | null
+          custom_css: string | null
+          custom_domain: string | null
           headline: string
           id: string
           is_published: boolean
+          layout_blocks: Json | null
+          logo_url: string | null
+          show_branding: boolean | null
           slug: string
           subtitle: string
           summary: string
+          template_id: string | null
           testimonial_name: string
           testimonial_text: string
           updated_at: string
@@ -171,12 +178,19 @@ export type Database = {
           course_id: string
           created_at?: string
           cta_text?: string
+          custom_colors?: Json | null
+          custom_css?: string | null
+          custom_domain?: string | null
           headline?: string
           id?: string
           is_published?: boolean
+          layout_blocks?: Json | null
+          logo_url?: string | null
+          show_branding?: boolean | null
           slug: string
           subtitle?: string
           summary?: string
+          template_id?: string | null
           testimonial_name?: string
           testimonial_text?: string
           updated_at?: string
@@ -187,12 +201,19 @@ export type Database = {
           course_id?: string
           created_at?: string
           cta_text?: string
+          custom_colors?: Json | null
+          custom_css?: string | null
+          custom_domain?: string | null
           headline?: string
           id?: string
           is_published?: boolean
+          layout_blocks?: Json | null
+          logo_url?: string | null
+          show_branding?: boolean | null
           slug?: string
           subtitle?: string
           summary?: string
+          template_id?: string | null
           testimonial_name?: string
           testimonial_text?: string
           updated_at?: string
@@ -436,6 +457,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      landing_page_permissions: {
+        Row: {
+          can_add_custom_blocks: boolean | null
+          can_change_layout: boolean | null
+          can_remove_branding: boolean | null
+          can_use_custom_css: boolean | null
+          can_use_custom_domain: boolean | null
+          can_use_drag_drop: boolean | null
+          created_at: string | null
+          id: string
+          plan: Database["public"]["Enums"]["subscription_plan"]
+        }
+        Insert: {
+          can_add_custom_blocks?: boolean | null
+          can_change_layout?: boolean | null
+          can_remove_branding?: boolean | null
+          can_use_custom_css?: boolean | null
+          can_use_custom_domain?: boolean | null
+          can_use_drag_drop?: boolean | null
+          created_at?: string | null
+          id?: string
+          plan: Database["public"]["Enums"]["subscription_plan"]
+        }
+        Update: {
+          can_add_custom_blocks?: boolean | null
+          can_change_layout?: boolean | null
+          can_remove_branding?: boolean | null
+          can_use_custom_css?: boolean | null
+          can_use_custom_domain?: boolean | null
+          can_use_drag_drop?: boolean | null
+          created_at?: string | null
+          id?: string
+          plan?: Database["public"]["Enums"]["subscription_plan"]
+        }
+        Relationships: []
       }
       pptx_export_reports: {
         Row: {
@@ -790,7 +847,7 @@ export type Database = {
     }
     Enums: {
       course_status: "draft" | "published"
-      subscription_plan: "free" | "pro"
+      subscription_plan: "free" | "pro" | "starter"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -919,7 +976,7 @@ export const Constants = {
   public: {
     Enums: {
       course_status: ["draft", "published"],
-      subscription_plan: ["free", "pro"],
+      subscription_plan: ["free", "pro", "starter"],
     },
   },
 } as const

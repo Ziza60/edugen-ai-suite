@@ -22,6 +22,7 @@ import Analytics from "@/pages/Analytics";
 import NotFound from "@/pages/NotFound";
 import TutorPublic from "@/pages/TutorPublic";
 import CourseLanding from "@/pages/CourseLanding";
+import LandingPageEditor from "@/pages/LandingPageEditor";
 import ReviewPublic from "@/pages/ReviewPublic";
 
 const queryClient = new QueryClient();
@@ -51,6 +52,7 @@ const App = () => (
                 <Route path="courses" element={<Courses />} />
                 <Route path="courses/new" element={<CourseWizard />} />
                 <Route path="courses/:id" element={<CourseView />} />
+                <Route path="courses/:id/landing-page" element={<LandingPageEditor />} />
                 <Route path="certificates" element={<Certificates />} />
                 <Route path="planos" element={<Plans />} />
                 <Route path="analytics" element={<Analytics />} />
