@@ -75,40 +75,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    const lovableKey = Deno.env.get("LOVABLE_API_KEY");
-
-    let url = "https://ai.gateway.lovable.dev/v1/chat/completions";
-    let apiKey = lovableKey;
-    let headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    
-    // Model selection based on complexity
-    const originalModel = (action === "fix" || action === "simplify") 
-      ? "google/gemini-2.5-flash-lite" 
-      : "google/gemini-2.5-flash";
-    
-    let model = originalModel;
-
-    if (geminiKey) {
-      url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-      apiKey = geminiKey;
-      model = (action === "fix" || action === "simplify") ? "gemini-1.5-flash" : "gemini-1.5-flash"; 
-    } else if (openaiKey) {
-      url = "https://api.openai.com/v1/chat/completions";
-      apiKey = openaiKey;
-      model = "gpt-4o-mini";
-    }
-
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: "AI not configured" }), {
+    if (!geminiKey) {
+      return new Response(JSON.stringify({ error: "GEMINI_API_KEY não configurada" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    headers["Authorization"] = `Bearer ${apiKey}`;
+    const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    const model = "gemini-1.5-flash"; 
 
     const systemPrompts: Record<string, string> = {
       improve: `Você é um editor pedagógico especialista. Melhore o texto fornecido mantendo o mesmo significado mas tornando-o mais claro, conciso e profissional. Mantenha o formato markdown. Responda APENAS com o texto melhorado, sem explicações.`,
@@ -121,7 +96,10 @@ Deno.serve(async (req: Request) => {
 
     const response = await fetch(url, {
       method: "POST",
-      headers,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${geminiKey}`,
+      },
       body: JSON.stringify({
         model,
         messages: [
