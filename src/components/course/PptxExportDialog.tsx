@@ -121,7 +121,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme, template, useV2, useV3, courseType, footerBrand });
+    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useMagicSlides, courseType, footerBrand });
   };
 
   return (
