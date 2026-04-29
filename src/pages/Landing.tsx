@@ -134,9 +134,7 @@ export default function Landing() {
             variants={fadeUp}
             className="font-display-sora text-[44px] md:text-[72px] font-extrabold leading-[1.05] mb-6 max-w-4xl mx-auto tracking-tight"
           >
-            Transforme qualquer idéia em um{" "}
-            <br className="hidden md:block" />
-            <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">curso completo e pronto para vender</span>
+            Transforme qualquer idéia em um <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">curso completo e pronto para vender</span>
           </motion.h1>
 
           <motion.p
