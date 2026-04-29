@@ -134,17 +134,17 @@ export default function Landing() {
             variants={fadeUp}
             className="font-display-sora text-[44px] md:text-[72px] font-extrabold leading-[1.05] mb-6 max-w-4xl mx-auto tracking-tight"
           >
-            Crie, publique e venda{" "}
+            Transforme seu conhecimento em{" "}
             <br className="hidden md:block" />
-            <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">cursos com IA</span>
+            <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">cursos profissionais validados por IA</span>
           </motion.h1>
 
           <motion.p
             variants={fadeUp}
-            className="text-lg md:text-xl text-white/50 max-w-xl mx-auto mb-10 leading-relaxed"
+            className="text-lg md:text-xl text-white/50 max-w-2xl mx-auto mb-10 leading-relaxed"
           >
-            Do tema ao curso completo em minutos. Com exportação profissional,
-            tutor IA para seus alunos e analytics de engajamento.
+            Da estrutura pedagógica ao design premium em PPTX. 
+            Com EduScore™, Tutor IA e exportação nativa para Moodle, Notion e SCORM.
           </motion.p>
 
           <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10">
