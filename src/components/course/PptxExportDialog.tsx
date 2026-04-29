@@ -18,6 +18,7 @@ export interface PptxExportOptions {
   template: "default" | "academic" | "corporate" | "creative";
   useV2: boolean;
   useV3: boolean;
+  useMagicSlides: boolean;
   courseType: string;
   footerBrand: string | null;
 }
