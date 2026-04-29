@@ -12,52 +12,35 @@ const PLAN_LIMITS = {
   pro: { maxCourses: 5, maxModules: 10, images: true },
 };
 
-// Centralized AI Call Logic (Bypasses Lovable credits if personal keys are present)
+// Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
 async function callAI(model: string, prompt: string, maxTokens = 2000) {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  const openaiKey = Deno.env.get("OPENAI_API_KEY");
-  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
 
-  let url = "https://ai.gateway.lovable.dev/v1/chat/completions";
-  let apiKey = lovableKey;
-  let headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  // 1. Prioritize personal Gemini Key (Cheapest/Fastest)
-  if (geminiKey) {
-    url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    apiKey = geminiKey;
-    // Map Lovable models to native Gemini models
-    if (model.includes("gemini")) {
-      model = model.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
-      if (model === "gemini-flash-preview") model = "gemini-1.5-flash";
-    } else {
-      model = "gemini-1.5-flash"; // Default to flash for cost savings
-    }
-  } 
-  // 2. Secondary: personal OpenAI Key
-  else if (openaiKey) {
-    url = "https://api.openai.com/v1/chat/completions";
-    apiKey = openaiKey;
-    if (model.includes("gpt")) {
-      model = model.replace("openai/", "").replace("gpt-5", "gpt-4o");
-    } else {
-      model = "gpt-4o-mini";
-    }
+  if (!geminiKey) {
+    throw new Error("GEMINI_API_KEY não configurada. Por favor, adicione sua chave do Google Gemini nos Secrets.");
   }
 
-  if (!apiKey) throw new Error("Nenhuma chave de API (Gemini, OpenAI ou Lovable) configurada.");
+  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  
+  // Map Lovable models to native Gemini models
+  let aiModel = model;
+  if (aiModel.includes("gemini")) {
+    aiModel = aiModel.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
+    if (aiModel === "gemini-flash-preview") aiModel = "gemini-1.5-flash";
+  } else {
+    aiModel = "gemini-1.5-flash"; // Default for maximum economy
+  }
 
-  headers["Authorization"] = `Bearer ${apiKey}`;
-
-  console.log(`Calling AI (${url}) with model: ${model}`);
+  console.log(`Calling Gemini API directly with model: ${aiModel}`);
 
   const res = await fetch(url, {
     method: "POST",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${geminiKey}`,
+    },
     body: JSON.stringify({
-      model,
+      model: aiModel,
       messages: [{ role: "user", content: prompt }],
       max_tokens: maxTokens,
       temperature: 0.7,
@@ -66,10 +49,8 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error(`AI call failed: ${errText}`);
-    // If personal key fails, we don't fallback to Lovable automatically to avoid unexpected charges
-    // unless the user specifically asked for it. 
-    throw new Error(`Erro na chamada de IA (${res.status}): ${errText}`);
+    console.error(`Gemini call failed: ${errText}`);
+    throw new Error(`Erro na API do Gemini (${res.status}): ${errText}`);
   }
 
   const data = await res.json();
