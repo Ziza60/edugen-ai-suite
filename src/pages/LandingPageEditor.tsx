@@ -5,9 +5,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, ArrowLeft, Globe, Layout, Palette, List, Settings, Eye, Save, Sparkles, AlertCircle } from "lucide-react";
+import { Loader2, ArrowLeft, Layout, Palette, Settings, Eye, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FreeEditor } from "@/components/course/landing/FreeEditor";
 import { StarterEditor } from "@/components/course/landing/StarterEditor";
@@ -15,6 +15,10 @@ import { ProEditor } from "@/components/course/landing/ProEditor";
 import { LandingPreview } from "@/components/course/landing/LandingPreview";
 import { UpgradeModal } from "@/components/course/landing/UpgradeModal";
 import { Badge } from "@/components/ui/badge";
+
+interface LandingColors {
+  primary: string;
+}
 
 export default function LandingPageEditor() {
   const { id } = useParams<{ id: string }>();
@@ -214,14 +218,17 @@ export default function LandingPageEditor() {
                     <div className="space-y-2">
                       <label className="text-xs font-medium">Cor Primária</label>
                       <div className="flex gap-2">
-                        {['#7c3aed', '#f97316', '#0ea5e9', '#10b981', '#ef4444'].map(color => (
-                          <button
-                            key={color}
-                            className={`w-8 h-8 rounded-full border-2 ${landing.custom_colors?.primary === color ? 'border-foreground' : 'border-transparent'}`}
-                            style={{ backgroundColor: color }}
-                            onClick={() => saveLanding.mutate({ custom_colors: { ...landing.custom_colors, primary: color } })}
-                          />
-                        ))}
+                        {['#7c3aed', '#f97316', '#0ea5e9', '#10b981', '#ef4444'].map(color => {
+                          const colors = (landing.custom_colors as unknown as LandingColors) || { primary: '#7c3aed' };
+                          return (
+                            <button
+                              key={color}
+                              className={`w-8 h-8 rounded-full border-2 ${colors.primary === color ? 'border-foreground' : 'border-transparent'}`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => saveLanding.mutate({ custom_colors: { ...colors, primary: color } })}
+                            />
+                          );
+                        })}
                       </div>
                     </div>
 

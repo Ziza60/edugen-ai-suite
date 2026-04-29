@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 
-export type PlanType = "free" | "pro";
+export type PlanType = "free" | "starter" | "pro";
 
 export interface PlanLimits {
   maxCourses: number;
@@ -19,6 +19,13 @@ const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
     images: false,
     pdfExport: false,
     customCertificate: false,
+  },
+  starter: {
+    maxCourses: 5,
+    maxModules: 10,
+    images: true,
+    pdfExport: true,
+    customCertificate: true,
   },
   pro: {
     maxCourses: 5,
