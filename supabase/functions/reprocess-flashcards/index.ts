@@ -8,17 +8,20 @@ const corsHeaders = {
 };
 
 async function callAI(model: string, prompt: string) {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  let aiModel = model.replace("google/", "").replace("2.5", "1.5");
+
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${geminiKey}`,
     },
     body: JSON.stringify({
-      model,
+      model: aiModel,
       messages: [{ role: "user", content: prompt }],
     }),
   });

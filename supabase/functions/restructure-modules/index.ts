@@ -224,17 +224,20 @@ function validateModuleMarkdown(content: string, moduleIndex: number, title: str
 }
 
 async function callLLM(prompt: string, content: string): Promise<string> {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  const model = "gemini-1.5-flash"; 
+
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
+      "Authorization": `Bearer ${geminiKey}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model,
       messages: [
         { role: "system", content: prompt },
         { role: "user", content: `Reestruture este módulo:\n\n${content}` },

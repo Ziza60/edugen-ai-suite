@@ -97,22 +97,25 @@ Deno.serve(async (req: Request) => {
       .map(([, mod]) => `## ${mod.title}\n${mod.comments.join("\n")}`)
       .join("\n\n");
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "AI not configured" }), {
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiKey) {
+      return new Response(JSON.stringify({ error: "GEMINI_API_KEY não configurada nos Secrets." }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    const aiModel = "gemini-1.5-flash"; 
+
+    const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${geminiKey}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: aiModel,
         messages: [
           {
             role: "system",
@@ -135,18 +138,9 @@ Responda APENAS o JSON, sem markdown code blocks.`,
     });
 
     if (!response.ok) {
-      const status = response.status;
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error("AI processing failed");
+      const errText = await response.text();
+      console.error("Gemini API error:", errText);
+      throw new Error(`Erro na API do Gemini (${response.status})`);
     }
 
     const result = await response.json();

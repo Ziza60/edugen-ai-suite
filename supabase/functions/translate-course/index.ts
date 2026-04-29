@@ -114,9 +114,9 @@ Deno.serve(async (req: Request) => {
       .in("module_id", moduleIds);
     const flashcards: any[] = flashcardsRaw ?? [];
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "AI not configured" }), {
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiKey) {
+      return new Response(JSON.stringify({ error: "GEMINI_API_KEY não configurada" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
 
     // Create the new translated course
     const translatedTitle = await translateText(
-      LOVABLE_API_KEY,
+      geminiKey,
       course.title,
       target_language,
       adaptationPrompt,
@@ -134,7 +134,7 @@ Deno.serve(async (req: Request) => {
     );
 
     const translatedDesc = course.description
-      ? await translateText(LOVABLE_API_KEY, course.description, target_language, adaptationPrompt, "course description")
+      ? await translateText(geminiKey, course.description, target_language, adaptationPrompt, "course description")
       : null;
 
     const { data: newCourse, error: newCourseErr } = await adminClient
@@ -165,14 +165,14 @@ Deno.serve(async (req: Request) => {
       const batch = modules.slice(i, i + BATCH_SIZE);
       const translationPromises = batch.map(async (mod: any) => {
         const translatedContent = await translateText(
-          LOVABLE_API_KEY,
+          geminiKey,
           mod.content || "",
           target_language,
           adaptationPrompt,
           "educational module content in markdown format"
         );
         const translatedModTitle = await translateText(
-          LOVABLE_API_KEY,
+          geminiKey,
           mod.title,
           target_language,
           adaptationPrompt,
@@ -196,13 +196,13 @@ Deno.serve(async (req: Request) => {
         // Translate quizzes for this module
         const moduleQuizzes = quizzes.filter((q: any) => q.module_id === mod.id);
         for (const q of moduleQuizzes) {
-          const tQuestion = await translateText(LOVABLE_API_KEY, q.question, target_language, adaptationPrompt, "quiz question");
+          const tQuestion = await translateText(geminiKey, q.question, target_language, adaptationPrompt, "quiz question");
           const tOptions = [];
           for (const opt of (q.options as string[])) {
-            tOptions.push(await translateText(LOVABLE_API_KEY, opt, target_language, adaptationPrompt, "quiz option"));
+            tOptions.push(await translateText(geminiKey, opt, target_language, adaptationPrompt, "quiz option"));
           }
           const tExplanation = q.explanation
-            ? await translateText(LOVABLE_API_KEY, q.explanation, target_language, adaptationPrompt, "quiz explanation")
+            ? await translateText(geminiKey, q.explanation, target_language, adaptationPrompt, "quiz explanation")
             : null;
 
           await adminClient.from("course_quiz_questions").insert({
@@ -217,8 +217,8 @@ Deno.serve(async (req: Request) => {
         // Translate flashcards for this module
         const moduleFlashcards = flashcards.filter((f: any) => f.module_id === mod.id);
         for (const fc of moduleFlashcards) {
-          const tFront = await translateText(LOVABLE_API_KEY, fc.front, target_language, adaptationPrompt, "flashcard front");
-          const tBack = await translateText(LOVABLE_API_KEY, fc.back, target_language, adaptationPrompt, "flashcard back");
+          const tFront = await translateText(geminiKey, fc.front, target_language, adaptationPrompt, "flashcard front");
+          const tBack = await translateText(geminiKey, fc.back, target_language, adaptationPrompt, "flashcard back");
 
           await adminClient.from("course_flashcards").insert({
             module_id: newModule.id,
@@ -274,14 +274,17 @@ async function translateText(
 ): Promise<string> {
   if (!text || text.trim().length < 2) return text;
 
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  const model = "gemini-1.5-flash";
+
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
+      model,
       messages: [
         {
           role: "system",
