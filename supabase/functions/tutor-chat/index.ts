@@ -108,27 +108,43 @@ REGRAS ESTRITAS:
 ${truncatedContent}
 </CONTEÚDO_DO_CURSO>`;
 
-    // Call AI via Lovable AI Gateway
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!apiKey) {
-      throw new Error("LOVABLE_API_KEY not configured");
+    // Centralized AI Call Logic (Bypasses Lovable credits if personal keys are present)
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+
+    let url = "https://ai.gateway.lovable.dev/v1/chat/completions";
+    let apiKey = lovableKey;
+    let headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    let aiModel = model;
+
+    if (geminiKey) {
+      url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+      apiKey = geminiKey;
+      aiModel = "gemini-1.5-flash"; // Optimized for tutor speed/cost
+    } else if (openaiKey) {
+      url = "https://api.openai.com/v1/chat/completions";
+      apiKey = openaiKey;
+      aiModel = "gpt-4o-mini";
     }
 
-    const model = "google/gemini-2.5-flash"; // Mantemos flash para tutor pela complexidade do RAG
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    if (!apiKey) throw new Error("AI credentials not configured");
+
+    headers["Authorization"] = `Bearer ${apiKey}`;
+
+    const aiResponse = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
-        model,
+        model: aiModel,
         messages: [
           { role: "system", content: systemPrompt },
           ...conversationMessages,
           { role: "user", content: question },
         ],
-        max_tokens: 1500, // Reduzido de 2000 para economia
+        max_tokens: 1500,
         temperature: 0.3,
       }),
     });
