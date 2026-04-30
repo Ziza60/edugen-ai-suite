@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    const model = "gemini-1.5-flash"; 
+    const model = "gemini-2.0-flash"; 
 
     const systemPrompts: Record<string, string> = {
       improve: `Você é um editor pedagógico especialista. Melhore o texto fornecido mantendo o mesmo significado mas tornando-o mais claro, conciso e profissional. Mantenha o formato markdown. Responda APENAS com o texto melhorado, sem explicações.`,
