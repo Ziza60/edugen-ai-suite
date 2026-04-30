@@ -4946,11 +4946,35 @@ Deno.serve(async (req: Request) => {
       .substring(0, 80);
     const fileName = `${userId}/${safeName}-PPTX-v3-${dateStr}.pptx`;
 
-    const { error: uploadErr } = await serviceClient.storage.from("course-exports").upload(fileName, pptxData, {
-      contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      upsert: true,
-    });
-    if (uploadErr) throw uploadErr;
+    // Upload with retry + exponential backoff (storage 504 Gateway Timeout protection)
+    const fileSizeMB = (pptxData.byteLength / 1024 / 1024).toFixed(2);
+    console.log(`[V3-UPLOAD] File size: ${fileSizeMB}MB, starting upload with retry...`);
+    let uploadErr: any = null;
+    const MAX_UPLOAD_ATTEMPTS = 4;
+    for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
+      const t0 = Date.now();
+      const { error } = await serviceClient.storage.from("course-exports").upload(fileName, pptxData, {
+        contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        upsert: true,
+      });
+      const dt = Date.now() - t0;
+      if (!error) {
+        console.log(`[V3-UPLOAD] Success on attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS} in ${dt}ms`);
+        uploadErr = null;
+        break;
+      }
+      uploadErr = error;
+      const status = (error as any)?.status || (error as any)?.statusCode;
+      const isRetryable = !status || status === 504 || status === 503 || status === 502 || status === 408 || status >= 500;
+      console.warn(`[V3-UPLOAD] Attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS} failed in ${dt}ms (status=${status}, retryable=${isRetryable}): ${error.message}`);
+      if (!isRetryable || attempt === MAX_UPLOAD_ATTEMPTS) break;
+      const backoff = Math.min(2000 * Math.pow(2, attempt - 1), 15000);
+      await new Promise((r) => setTimeout(r, backoff));
+    }
+    if (uploadErr) {
+      console.error(`[V3-UPLOAD] All ${MAX_UPLOAD_ATTEMPTS} attempts failed. Final error:`, uploadErr);
+      throw uploadErr;
+    }
 
     const { data: signedUrl, error: signErr } = await serviceClient.storage
       .from("course-exports")
