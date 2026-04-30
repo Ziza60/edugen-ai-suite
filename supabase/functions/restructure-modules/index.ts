@@ -228,7 +228,7 @@ async function callLLM(prompt: string, content: string): Promise<string> {
   if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  const model = "gemini-3-flash"; 
+  const model = "gemini-3-flash-preview"; 
 
   const response = await fetch(url, {
     method: "POST",

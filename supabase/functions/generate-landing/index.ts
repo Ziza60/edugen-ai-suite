@@ -82,7 +82,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    const model = "gemini-3-flash"; 
+    const model = "gemini-3-flash-preview"; 
 
     // Call AI with tool calling for structured output
     const response = await fetch(url, {
