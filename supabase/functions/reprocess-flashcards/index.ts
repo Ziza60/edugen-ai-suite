@@ -12,7 +12,7 @@ async function callAI(model: string, prompt: string) {
   if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  let aiModel = model.replace("google/", "").replace("2.5", "1.5");
+  let aiModel = model.includes("-lite") ? "gemini-2.0-flash-lite-preview-02-05" : "gemini-2.0-flash";
 
   const res = await fetch(url, {
     method: "POST",
@@ -155,7 +155,7 @@ Retorne APENAS um JSON válido (sem markdown, sem explicações):
 Use os IDs originais na resposta. Aqui estão os IDs:
 ${flashcards.map((fc: any, i: number) => `${i + 1}. ${fc.id}`).join("\n")}`;
 
-    const aiResponse = await callAI("google/gemini-2.5-flash-lite", prompt);
+    const aiResponse = await callAI("google/gemini-2.0-flash", prompt);
 
     let rewritten;
     try {
