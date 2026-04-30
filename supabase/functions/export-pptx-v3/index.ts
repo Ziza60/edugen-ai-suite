@@ -1620,13 +1620,16 @@ async function callAI(model: string, prompt: string): Promise<string> {
     let aiModel = model;
     if (aiModel.includes("gemini")) {
       aiModel = aiModel.replace("google/", "");
-      if (aiModel.includes("-lite")) {
-        aiModel = "gemini-2.5-flash-lite";
-      } else {
-        aiModel = "gemini-2.5-flash";
+      // Mapeamento estratégico: Correção de 2.5 (inexistente) para 2.0
+      if (aiModel.includes("2.5")) {
+        aiModel = aiModel.replace("2.5", "2.0");
+      }
+      // Se ainda assim for um modelo vazio ou inválido, fallback para 2.0-flash
+      if (!aiModel || aiModel === "gemini") {
+        aiModel = "gemini-2.0-flash";
       }
     } else {
-      aiModel = "gemini-2.5-flash";
+      aiModel = "gemini-2.0-flash";
     }
 
     console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
