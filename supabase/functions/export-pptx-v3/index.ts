@@ -1628,10 +1628,10 @@ async function callAI(model: string, prompt: string): Promise<string> {
       }
       // Se ainda assim for um modelo vazio ou inválido, fallback para 2.0-flash
       if (!aiModel || aiModel === "gemini") {
-        aiModel = "gemini-2.0-flash";
+        aiModel = "gemini-2.0-flash-exp";
       }
     } else {
-      aiModel = "gemini-2.0-flash";
+      aiModel = "gemini-2.0-flash-exp";
     }
 
     console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
@@ -2177,7 +2177,7 @@ async function generateSlidesForModule(
   try {
     report.aiCallsTotal++;
     rawText = await callAI(
-      "google/gemini-2.0-flash",
+      "google/gemini-2.0-flash-exp",
       buildSlidePrompt(moduleTitle, moduleContent, moduleIndex, density, language),
     );
     console.log(`[V3-AI] Module ${moduleIndex + 1} "${moduleTitle}": response length=${rawText.length}`);
