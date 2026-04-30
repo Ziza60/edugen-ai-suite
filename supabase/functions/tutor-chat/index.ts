@@ -146,7 +146,7 @@ ${truncatedContent}
     if (answer && answer.length > 20) {
       await supabase.from("ai_cache").insert({
         input_hash: cacheKey,
-        model,
+        model: aiModel,
         action_type: "tutor",
         prompt_preview: question.substring(0, 100),
         response_text: answer,
