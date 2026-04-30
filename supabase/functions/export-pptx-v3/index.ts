@@ -4960,9 +4960,9 @@ function _afpClassifyRole(el: any, slideMaxY: number): "title" | "subtitle" | "b
 }
 
 function applyAutoFixPipeline(pres: any) {
-  console.log(`[V3-FIX] === applyAutoFixPipeline ENTERED === pres type: ${typeof pres}, keys: ${pres ? Object.keys(pres).slice(0, 10).join(",") : "null"}`);
+  console.error(`[V3-FIX] === applyAutoFixPipeline STARTING ===`);
   const slides = (pres && (pres._slides || pres.slides)) || [];
-  console.log(`[V3-FIX] AutoFixPipeline v2 iniciando em ${slides.length} slides...`);
+  console.info(`[V3-FIX] Target: ${slides.length} slides found in PptxGenJS object.`);
 
   let overflowCount = 0;
   let compressedCount = 0;
@@ -4970,13 +4970,17 @@ function applyAutoFixPipeline(pres: any) {
   let harmonizedCount = 0;
   let collisionCount = 0;
 
-  const SLIDE_H = 5.625; // 16:9 padrão
+  const SLIDE_HEIGHT_IN = 7.5; 
   const MIN_BODY = 12;
   const MIN_TITLE = 18;
 
   slides.forEach((slide: any, slideIdx: number) => {
+    // PptxGenJS v3 uses _slideObjects
     const elements = slide._slideObjects || slide.elements || [];
-    if (!elements.length) return;
+    if (!elements || elements.length === 0) {
+      console.info(`[V3-FIX] Slide ${slideIdx + 1} has no objects to fix.`);
+      return;
+    }
 
     // === PASSO 1+2+3: Overflow → Compressão → Shrink gradual ===
     elements.forEach((el: any) => {
@@ -4984,33 +4988,36 @@ function applyAutoFixPipeline(pres: any) {
       const text = _afpReadText(el);
       if (!text.trim()) return;
 
-      const opts = el.options || {};
+      const opts = el.options || el; // Tenta acessar options ou o próprio elemento (fallback v3)
       const w = opts.w || SAFE_ZONE.W;
       const h = opts.h || 0;
-      if (h <= 0) return; // auto-expand: sem caixa fixa, sem overflow
+      
+      // Ignora se não tiver altura definida ou se for muito pequena (provavelmente decoração)
+      if (h <= 0.1) return; 
 
       let fontSize = opts.fontSize || 18;
-      const role = _afpClassifyRole(el, SLIDE_H);
+      const role = _afpClassifyRole(el, SLIDE_HEIGHT_IN);
       const minFs = role === "title" || role === "subtitle" ? MIN_TITLE : MIN_BODY;
 
+      // Estimativa mais rigorosa para detectar transbordos
       let estH = estimateTextHeightInches(text, fontSize, w);
-      if (estH <= h + 0.05) return; // cabe
+      if (estH <= h + 0.05) return; // Cabe perfeitamente
 
       overflowCount++;
 
-      // 2) Compressão inteligente PRIMEIRO (preserva legibilidade)
+      // 2) Compressão inteligente (remove redundâncias)
       const { out: compressed, changed } = _afpCompressText(text);
       if (changed && compressed.length > 0) {
         _afpWriteText(el, compressed);
         compressedCount++;
         estH = estimateTextHeightInches(compressed, fontSize, w);
         if (estH <= h + 0.05) {
-          console.log(`[V3-FIX][slide ${slideIdx + 1}] compress ok: ${text.length}→${compressed.length} chars`);
+          console.info(`[V3-FIX][slide ${slideIdx + 1}] Fix via compression: ${text.length} -> ${compressed.length} chars`);
           return;
         }
       }
 
-      // 3) Shrink gradual de 1pt por vez (não proporcional bruto)
+      // 3) Shrink gradual de 1pt por vez
       const startFs = fontSize;
       const currentText = _afpReadText(el);
       while (fontSize > minFs) {
@@ -5018,33 +5025,35 @@ function applyAutoFixPipeline(pres: any) {
         estH = estimateTextHeightInches(currentText, fontSize, w);
         if (estH <= h + 0.05) break;
       }
+      
       if (fontSize < startFs) {
         opts.fontSize = fontSize;
         shrinkCount++;
-        console.log(
-          `[V3-FIX][slide ${slideIdx + 1}] shrink ${role}: ${startFs}pt → ${fontSize}pt (estH=${estH.toFixed(2)}in / h=${h}in)`,
-        );
+        console.info(`[V3-FIX][slide ${slideIdx + 1}] Fix via shrink (${role}): ${startFs}pt -> ${fontSize}pt`);
       }
     });
 
-    // === PASSO 4: Harmonização peer-level de fontes ===
+    // === PASSO 4: Harmonização peer-level (mesma fonte para elementos iguais) ===
     const roleBuckets: Record<string, any[]> = { title: [], subtitle: [], body: [], caption: [] };
     elements.forEach((el: any) => {
-      if (!el || el.text == null || !el.options) return;
-      const role = _afpClassifyRole(el, SLIDE_H);
+      if (!el || el.text == null) return;
+      const role = _afpClassifyRole(el, SLIDE_HEIGHT_IN);
       if (roleBuckets[role]) roleBuckets[role].push(el);
     });
 
     for (const role of Object.keys(roleBuckets)) {
       const bucket = roleBuckets[role];
       if (bucket.length < 2) continue;
-      // Usa o MENOR fontSize do peer-group (já considera shrinks acima)
-      const sizes = bucket.map((e) => e.options.fontSize || 0).filter((s) => s > 0);
+      
+      const sizes = bucket.map((e) => (e.options?.fontSize || e.fontSize || 0)).filter((s) => s > 0);
       if (!sizes.length) continue;
+      
       const target = Math.min(...sizes);
       bucket.forEach((el: any) => {
-        if ((el.options.fontSize || 0) !== target) {
-          el.options.fontSize = target;
+        const currentFs = el.options?.fontSize || el.fontSize || 0;
+        if (currentFs !== target && currentFs > 0) {
+          if (el.options) el.options.fontSize = target;
+          else el.fontSize = target;
           harmonizedCount++;
         }
       });
