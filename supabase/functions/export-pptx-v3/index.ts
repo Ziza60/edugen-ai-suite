@@ -4830,7 +4830,6 @@ function applyAutoFixPipeline(pres: any) {
   let collisionCount = 0;
 
   // Acessa o array interno de slides do PptxGenJS (pres._slides no v3.x)
-  const slides = pres._slides || pres.slides || [];
 
   slides.forEach((slide: any) => {
     const elements = slide._slideObjects || slide.elements || [];
