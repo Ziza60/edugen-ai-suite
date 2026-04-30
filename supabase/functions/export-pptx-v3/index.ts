@@ -4857,9 +4857,11 @@ function applyAutoFixPipeline(pres: any) {
             // Overflow detectado! Reduzimos a fonte proporcionalmente.
             const ratio = h / estH;
             const newFontSize = Math.max(MIN_FONT.BODY - 4, Math.floor(fontSize * ratio));
+            if (newFontSize < fontSize) {
               console.log(`[V3-FIX] Reduzindo fonte: ${fontSize}pt -> ${newFontSize}pt (estH=${estH.toFixed(2)}in, maxH=${h}in)`);
               opts.fontSize = newFontSize;
               overflowCount++;
+            }
             }
           }
         }
