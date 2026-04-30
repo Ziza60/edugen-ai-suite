@@ -1624,10 +1624,10 @@ async function callAI(model: string, prompt: string): Promise<string> {
       aiModel = aiModel.replace("google/", "");
       // Mapeamento estratégico: Correção para os modelos GA (estáveis) do Google
       // O Google desativou o modelo "gemini-3-flash" original.
-      // O modelo estável atual é "gemini-3-flash-001".
-      aiModel = "gemini-3-flash-001"; 
+      // O modelo estável atual é "gemini-3-flash-preview".
+      aiModel = "gemini-3-flash-preview"; 
     } else {
-      aiModel = "gemini-3-flash-001";
+      aiModel = "gemini-3-flash-preview";
     }
 
     console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
