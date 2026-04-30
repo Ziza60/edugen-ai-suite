@@ -1631,7 +1631,7 @@ async function callAI(model: string, prompt: string): Promise<string> {
         aiModel = "gemini-2.0-flash";
       }
     } else {
-      aiModel = "gemini-2.0-flash-exp";
+      aiModel = "gemini-2.0-flash";
     }
 
     console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
@@ -2177,7 +2177,7 @@ async function generateSlidesForModule(
   try {
     report.aiCallsTotal++;
     rawText = await callAI(
-      "google/gemini-2.0-flash-exp",
+      "google/gemini-2.0-flash",
       buildSlidePrompt(moduleTitle, moduleContent, moduleIndex, density, language),
     );
     console.log(`[V3-AI] Module ${moduleIndex + 1} "${moduleTitle}": response length=${rawText.length}`);
