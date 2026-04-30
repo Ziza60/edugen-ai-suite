@@ -447,16 +447,18 @@ function estimateTextHeightInches(
   text: string,
   fontSize: number,
   boxW: number,
-  lineSpacingMultiple = 1.25,
+  lineSpacingMultiple = 1.3, // Aumentado para 1.3 para maior segurança
 ): number {
-  // GEMMA v3.11.5 — Calibrado para Montserrat/Open Sans reais em PPTX.
-  // charWidthFactor 0.0115 (antes 0.0198 era ~70% inflado) + spacing 1.25 (antes 1.6) + bold buffer 1.10.
   const safeText = sanitizeText(text || "").trim();
-  if (!safeText) return 0.3;
-  const charWidthFactor = 0.0125; // Aumentado de 0.0115 para dar mais margem de segurança
-  const charsPerLine = Math.max(8, Math.floor(boxW / (fontSize * charWidthFactor)));
+  if (!safeText) return 0.2;
+  
+  // Fator de largura calibrado: mais conservador para evitar falsos negativos de transbordo
+  const charWidthFactor = 0.015; 
+  const charsPerLine = Math.max(6, Math.floor(boxW / (fontSize * charWidthFactor)));
   const lines = Math.max(1, Math.ceil(safeText.length / charsPerLine));
-  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.15); // Buffer de linha aumentado de 1.10 para 1.15
+  
+  // Retorna altura em polegadas: (fontSize / 72) é a altura base de 1pt em polegadas
+  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.2); 
 }
 
 function computeDeterministicGridFontSize(items: string[]): number {
@@ -5087,11 +5089,12 @@ function applyAutoFixPipeline(pres: any) {
     }
   });
 
-  console.log(
-    `[V3-FIX] AutoFixPipeline: ${overflowCount} overflows corrigidos | ${compressedCount} frases comprimidas | ${shrinkCount} shrinks | ${harmonizedCount} fontes harmonizadas | ${collisionCount} colisões resolvidas`,
-  );
+  const logSummary = `[V3-FIX] AutoFixPipeline SUCCESS: ${overflowCount} overflows detected | ${compressedCount} compressed | ${shrinkCount} fonts shrunk | ${harmonizedCount} harmonized | ${collisionCount} collisions resolved`;
+  console.log("********************************************************************************");
+  console.log(logSummary);
+  console.log("********************************************************************************");
 
-  return { overflowCount, compressedCount, shrinkCount, harmonizedCount, collisionCount };
+  return { overflowCount, compressedCount, shrinkCount, harmonizedCount, collisionCount, logSummary };
 }
 
 // ═══════════════════════════════════════════════════════════════════
