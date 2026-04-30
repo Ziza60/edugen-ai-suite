@@ -453,10 +453,10 @@ function estimateTextHeightInches(
   // charWidthFactor 0.0115 (antes 0.0198 era ~70% inflado) + spacing 1.25 (antes 1.6) + bold buffer 1.10.
   const safeText = sanitizeText(text || "").trim();
   if (!safeText) return 0.3;
-  const charWidthFactor = 0.0115;
+  const charWidthFactor = 0.0125; // Aumentado de 0.0115 para dar mais margem de segurança
   const charsPerLine = Math.max(8, Math.floor(boxW / (fontSize * charWidthFactor)));
   const lines = Math.max(1, Math.ceil(safeText.length / charsPerLine));
-  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.10);
+  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.15); // Buffer de linha aumentado de 1.10 para 1.15
 }
 
 function computeDeterministicGridFontSize(items: string[]): number {
@@ -582,8 +582,8 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
     const wouldExceedItems = current.length + 1 > maxItems;
     // MEASURE-FIX v3.12.4 — chunk-cap alinhado ao early-return (720); measure só dispara
     // quando chunk já tem 3+ items E acumulou 400+ chars (evita slides com 1 bullet).
-    // ZOD-PARITY v3.12.7 — chunk-cap de 440 (era Zod) substitui o 720 que permitia overflow.
-    const wouldExceedChars = currentChars + itLen > 440 && current.length > 0;
+    // ZOD-PARITY v3.12.7 — Reduzi o chunk-cap de 440 para 380 para ser mais agressivo contra transbordo.
+    const wouldExceedChars = currentChars + itLen > 380 && current.length > 0;
     const wouldExceedMeasure =
       current.length >= 3 &&
       currentChars + itLen > 400 &&
