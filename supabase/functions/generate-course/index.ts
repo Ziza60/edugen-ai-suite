@@ -14,33 +14,60 @@ const PLAN_LIMITS = {
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
 async function callAI(model: string, prompt: string, maxTokens = 2000) {
-  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!lovableKey) {
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiKey) {
+      throw new Error("LOVABLE_API_KEY ou GEMINI_API_KEY não configurada.");
+    }
 
-  if (!geminiKey) {
-    throw new Error("GEMINI_API_KEY não configurada. Por favor, adicione sua chave do Google Gemini nos Secrets.");
+    const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    let aiModel = model;
+    if (aiModel.includes("gemini")) {
+      aiModel = aiModel.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
+      if (aiModel === "gemini-flash-preview") aiModel = "gemini-1.5-flash";
+    } else {
+      aiModel = "gemini-1.5-flash";
+    }
+
+    console.log(`Calling Gemini API directly with model: ${aiModel}`);
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${geminiKey}`,
+      },
+      body: JSON.stringify({
+        model: aiModel,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxTokens,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`Gemini call failed: ${errText}`);
+      throw new Error(`Erro na API do Gemini (${res.status}): ${errText}`);
+    }
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || JSON.stringify(data);
   }
 
-  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  // Use Lovable AI Gateway (Standard)
+  const url = "https://ai.gateway.lovable.dev/v1/chat/completions";
+  console.log(`Calling Lovable AI Gateway with model: ${model}`);
   
-  // Map Lovable models to native Gemini models
-  let aiModel = model;
-  if (aiModel.includes("gemini")) {
-    aiModel = aiModel.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
-    if (aiModel === "gemini-flash-preview") aiModel = "gemini-1.5-flash";
-  } else {
-    aiModel = "gemini-1.5-flash"; // Default for maximum economy
-  }
-
-  console.log(`Calling Gemini API directly with model: ${aiModel}`);
-
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${geminiKey}`,
+      "Authorization": `Bearer ${lovableKey}`,
     },
     body: JSON.stringify({
-      model: aiModel,
+      model: model || "google/gemini-2.5-flash",
       messages: [{ role: "user", content: prompt }],
       max_tokens: maxTokens,
       temperature: 0.7,
@@ -49,12 +76,12 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error(`Gemini call failed: ${errText}`);
-    throw new Error(`Erro na API do Gemini (${res.status}): ${errText}`);
+    console.error(`AI Gateway failed: ${errText}`);
+    throw new Error(`Erro no AI Gateway (${res.status}): ${errText}`);
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || JSON.stringify(data);
+  return data.choices?.[0]?.message?.content || "";
 }
 
 // PROMPT MESTRE v2: Official Pedagogical Template
