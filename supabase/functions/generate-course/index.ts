@@ -64,37 +64,10 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
     return data.choices?.[0]?.message?.content || JSON.stringify(data);
   }
 
-  if (!lovableKey) {
-    throw new Error("Nenhuma chave de API (GEMINI_API_KEY ou LOVABLE_API_KEY) configurada.");
-  }
-
-  // Use Lovable AI Gateway as fallback
-  const url = "https://ai.gateway.lovable.dev/v1/chat/completions";
-  console.log(`Calling Lovable AI Gateway with model: ${model}`);
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${lovableKey}`,
-    },
-    body: JSON.stringify({
-      model: model || "google/gemini-2.0-flash",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens,
-      temperature: 0.7,
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error(`AI Gateway failed: ${errText}`);
-    throw new Error(`Erro no AI Gateway (${res.status}): ${errText}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  // FALLBACK REMOVIDO POR SOLICITAÇÃO DO USUÁRIO
+  throw new Error("Falha na chamada direta ao Gemini (ou chave GEMINI_API_KEY não configurada). Fallback Lovable desativado.");
 }
+
 
 // PROMPT MESTRE v2: Official Pedagogical Template
 function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {

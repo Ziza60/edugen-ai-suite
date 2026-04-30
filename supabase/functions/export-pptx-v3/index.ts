@@ -1659,35 +1659,11 @@ async function callAI(model: string, prompt: string): Promise<string> {
     return data.choices?.[0]?.message?.content || "";
   }
 
-  if (!lovableKey) {
-    throw new Error("Nenhuma chave de API (GEMINI_API_KEY ou LOVABLE_API_KEY) configurada.");
-  }
-
-  // Use Lovable AI Gateway as fallback
-  const url = "https://ai.gateway.lovable.dev/v1/chat/completions";
-  console.log(`[V3-AI] Calling Lovable AI Gateway with model: ${model}`);
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${lovableKey}`,
-    },
-    body: JSON.stringify({
-      model: model || "google/gemini-2.0-flash-lite",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1500,
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`AI Gateway failed (${res.status}): ${errText}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  // FALLBACK REMOVIDO POR SOLICITAÇÃO DO USUÁRIO
+  // O sistema agora deve falhar explicitamente se a GEMINI_API_KEY não funcionar
+  throw new Error("Falha na chamada direta ao Gemini (ou chave GEMINI_API_KEY não configurada). Fallback Lovable desativado.");
 }
+
 
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 4: SLIDE GENERATION PROMPT
