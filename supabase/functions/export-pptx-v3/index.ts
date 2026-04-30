@@ -453,10 +453,10 @@ function estimateTextHeightInches(
   // charWidthFactor 0.0115 (antes 0.0198 era ~70% inflado) + spacing 1.25 (antes 1.6) + bold buffer 1.10.
   const safeText = sanitizeText(text || "").trim();
   if (!safeText) return 0.3;
-  const charWidthFactor = 0.0115;
+  const charWidthFactor = 0.0125; // Aumentado de 0.0115 para dar mais margem de segurança
   const charsPerLine = Math.max(8, Math.floor(boxW / (fontSize * charWidthFactor)));
   const lines = Math.max(1, Math.ceil(safeText.length / charsPerLine));
-  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.10);
+  return lines * ((fontSize / 72) * lineSpacingMultiple * 1.15); // Buffer de linha aumentado de 1.10 para 1.15
 }
 
 function computeDeterministicGridFontSize(items: string[]): number {
