@@ -1,9 +1,8 @@
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
-const pres = new PptxGenJS();
-const slide = pres.addSlide();
-slide.addText("Hello World", { x: 1, y: 1, w: 5, h: 1 });
-console.log("Slide keys:", Object.keys(slide));
-// @ts-ignore
-console.log("Slide elements:", slide.elements);
-// @ts-ignore
-console.log("Slide _slideObjects:", slide._slideObjects);
+const pptx = new PptxGenJS();
+pptx.addSlide();
+console.log("Keys:", Object.keys(pptx));
+console.log("Slides property (slides):", !!(pptx as any).slides);
+console.log("Slides property (_slides):", !!(pptx as any)._slides);
+if ((pptx as any).slides) console.log("slides length:", (pptx as any).slides.length);
+if ((pptx as any)._slides) console.log("_slides length:", (pptx as any)._slides.length);
