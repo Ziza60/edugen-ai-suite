@@ -4918,6 +4918,8 @@ function applyAutoFixPipeline(pres: any) {
 // SECTION 9: HTTP HANDLER
 // ═══════════════════════════════════════════════════════════════════
 
+Deno.serve(async (req: Request) => {
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
