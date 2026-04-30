@@ -1672,7 +1672,7 @@ async function callAI(model: string, prompt: string): Promise<string> {
       "Authorization": `Bearer ${lovableKey}`,
     },
     body: JSON.stringify({
-      model: model || "google/gemini-2.5-flash-lite",
+      model: model || "google/gemini-2.0-flash-lite",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 1500,
     }),
