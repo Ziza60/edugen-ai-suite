@@ -4816,10 +4816,108 @@ async function runPipeline(
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// SECTION 8.5: AUTO-FIX PIPELINE (v3.12.1)
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * AutoFixPipeline — Camada de pós-processamento para garantir a integridade visual do PPTX.
+ * Corrige transbordos de texto, colisões de elementos e harmoniza tamanhos de fonte.
+ */
+function applyAutoFixPipeline(pres: any) {
+  let overflowCount = 0;
+  let collisionCount = 0;
+
+  // Acessa o array interno de slides do PptxGenJS (pres.slides)
+  const slides = pres.slides || [];
+
+  slides.forEach((slide: any) => {
+    const elements = slide.elements || [];
+
+    // 1. Detectar e Corrigir Overflow de Texto
+    elements.forEach((el: any) => {
+      // PptxGenJS elements have a 'type' (often via internal property or inferred)
+      // Aqui usamos duck-typing para detectar caixas de texto com conteúdo
+      if (el.text && (typeof el.text === "string" || Array.isArray(el.text))) {
+        const textStr = Array.isArray(el.text)
+          ? el.text.map((t: any) => t.text || "").join("")
+          : String(el.text);
+
+        if (!textStr.trim()) return;
+
+        const opts = el.options || {};
+        const fontSize = opts.fontSize || 18;
+        const w = opts.w || SAFE_ZONE.W;
+        const h = opts.h || 0.5;
+
+        // Se o elemento tem uma altura definida (não é auto-expand), verificamos overflow
+        if (h > 0) {
+          const estH = estimateTextHeightInches(textStr, fontSize, w);
+          if (estH > h + 0.05) {
+            // Overflow detectado! Reduzimos a fonte proporcionalmente.
+            const ratio = h / estH;
+            const newFontSize = Math.max(MIN_FONT.BODY - 4, Math.floor(fontSize * ratio));
+            if (newFontSize < fontSize) {
+              opts.fontSize = newFontSize;
+              overflowCount++;
+            }
+          }
+        }
+      }
+    });
+
+    // 2. Corrigir Colisões Básicas (Sobreposição de shapes)
+    for (let i = 0; i < elements.length; i++) {
+      for (let j = i + 1; j < elements.length; j++) {
+        const el1 = elements[i];
+        const el2 = elements[j];
+
+        if (el1.options && el2.options) {
+          const r1 = {
+            x: el1.options.x || 0,
+            y: el1.options.y || 0,
+            w: el1.options.w || 0,
+            h: el1.options.h || 0,
+          };
+          const r2 = {
+            x: el2.options.x || 0,
+            y: el2.options.y || 0,
+            w: el2.options.w || 0,
+            h: el2.options.h || 0,
+          };
+
+          // Detecção de intersecção Retângulo-Retângulo
+          const intersects = r1.x < r2.x + r2.w &&
+            r1.x + r1.w > r2.x &&
+            r1.y < r2.y + r2.h &&
+            r1.y + r1.h > r2.y;
+
+          if (intersects) {
+            // Se colidirem verticalmente e el2 estiver levemente abaixo de el1, empurra el2
+            if (r2.y >= r1.y && r2.y < r1.y + r1.h) {
+              const overlapY = (r1.y + r1.h) - r2.y;
+              if (overlapY < 0.5) {
+                // Só ajusta se for um overlap pequeno (evita estragar layouts intencionais)
+                el2.options.y += overlapY + 0.05;
+                collisionCount++;
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (overflowCount > 0 || collisionCount > 0) {
+    console.log(`[V3-FIX] AutoFixPipeline aplicado: ${overflowCount} overflows corrigidos, ${collisionCount} colisões resolvidas.`);
+  } else {
+    console.log(`[V3-FIX] AutoFixPipeline executado: Nenhum problema detectado.`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // SECTION 9: HTTP HANDLER
 // ═══════════════════════════════════════════════════════════════════
 
-Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
