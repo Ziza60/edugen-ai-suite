@@ -275,7 +275,7 @@ async function translateText(
   if (!text || text.trim().length < 2) return text;
 
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  const model = "gemini-2.0-flash";
+  const model = "gemini-3-flash";
 
   const response = await fetch(url, {
     method: "POST",

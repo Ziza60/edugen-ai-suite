@@ -2008,7 +2008,7 @@ ${truncatedContent}`;
       ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
       : "https://ai.gateway.lovable.dev/v1/chat/completions";
     const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
-    const model = "gemini-2.0-flash";
+    const model = "gemini-3-flash";
 
     const response = await fetch(url, {
       method: "POST",
@@ -2435,7 +2435,7 @@ REGRAS CRÍTICAS:
           ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
           : "https://ai.gateway.lovable.dev/v1/chat/completions";
         const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
-        const model = "gemini-2.0-flash";
+        const model = "gemini-3-flash";
 
         response = await fetch(url, {
           method: "POST",
@@ -6638,7 +6638,7 @@ Deno.serve(async (req: Request) => {
                 ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
                 : "https://ai.gateway.lovable.dev/v1/chat/completions";
               const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
-              const model = "gemini-2.0-flash";
+              const model = "gemini-3-flash";
 
               const regenResponse = await fetch(url, {
                 method: "POST",

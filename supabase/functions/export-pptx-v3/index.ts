@@ -1623,11 +1623,11 @@ async function callAI(model: string, prompt: string): Promise<string> {
     if (aiModel.includes("gemini")) {
       aiModel = aiModel.replace("google/", "");
       // Mapeamento estratégico: Correção para os modelos GA (estáveis) do Google
-      // O Google desativou o modelo "gemini-2.0-flash" original.
-      // O modelo estável atual é "gemini-2.0-flash-001".
-      aiModel = "gemini-2.0-flash-001"; 
+      // O Google desativou o modelo "gemini-3-flash" original.
+      // O modelo estável atual é "gemini-3-flash-001".
+      aiModel = "gemini-3-flash-001"; 
     } else {
-      aiModel = "gemini-2.0-flash-001";
+      aiModel = "gemini-3-flash-001";
     }
 
     console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
@@ -2173,7 +2173,7 @@ async function generateSlidesForModule(
   try {
     report.aiCallsTotal++;
     rawText = await callAI(
-      "google/gemini-2.0-flash",
+      "google/gemini-3-flash",
       buildSlidePrompt(moduleTitle, moduleContent, moduleIndex, density, language),
     );
     console.log(`[V3-AI] Module ${moduleIndex + 1} "${moduleTitle}": response length=${rawText.length}`);
