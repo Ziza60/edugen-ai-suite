@@ -67,21 +67,7 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
   // FALLBACK REMOVIDO POR SOLICITAÇÃO DO USUÁRIO
   throw new Error("Falha na chamada direta ao Gemini (ou chave GEMINI_API_KEY não configurada). Fallback Lovable desativado.");
 }
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens,
-      temperature: 0.7,
-    }),
-  });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error(`AI Gateway failed: ${errText}`);
-    throw new Error(`Erro no AI Gateway (${res.status}): ${errText}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
-}
 
 // PROMPT MESTRE v2: Official Pedagogical Template
 function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {
