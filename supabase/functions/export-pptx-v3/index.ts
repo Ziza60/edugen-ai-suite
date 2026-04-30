@@ -1611,28 +1611,53 @@ async function buildImagePlan(
 // ═══════════════════════════════════════════════════════════════════
 
 async function callAI(model: string, prompt: string): Promise<string> {
-  const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!lovableKey) {
+    // Fallback to GEMINI_API_KEY if LOVABLE_API_KEY is not set (legacy)
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiKey) throw new Error("LOVABLE_API_KEY ou GEMINI_API_KEY não configurada.");
+    
+    const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    let aiModel = model;
+    if (aiModel.includes("gemini")) {
+      aiModel = aiModel.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
+      if (aiModel === "gemini-flash-preview") aiModel = "gemini-1.5-flash";
+    } else {
+      aiModel = "gemini-1.5-flash";
+    }
 
-  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  let aiModel = model;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${geminiKey}`,
+      },
+      body: JSON.stringify({
+        model: aiModel,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1500,
+      }),
+    });
 
-  // Map models
-  if (aiModel.includes("gemini")) {
-    aiModel = aiModel.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
-    if (aiModel === "gemini-flash-preview") aiModel = "gemini-1.5-flash";
-  } else {
-    aiModel = "gemini-1.5-flash";
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`AI call failed (${res.status}): ${errText}`);
+    }
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || "";
   }
 
+  // Use Lovable AI Gateway (Standard)
+  const url = "https://ai.gateway.lovable.dev/v1/chat/completions";
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${geminiKey}`,
+      "Authorization": `Bearer ${lovableKey}`,
     },
     body: JSON.stringify({
-      model: aiModel,
+      model: model || "google/gemini-2.5-flash",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 1500,
     }),
@@ -1640,7 +1665,7 @@ async function callAI(model: string, prompt: string): Promise<string> {
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`AI call failed (${res.status}): ${errText}`);
+    throw new Error(`AI Gateway failed (${res.status}): ${errText}`);
   }
 
   const data = await res.json();
