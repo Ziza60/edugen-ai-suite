@@ -22,10 +22,13 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     let aiModel = model;
     if (aiModel.includes("gemini")) {
-      aiModel = aiModel.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
-      if (aiModel === "gemini-flash-preview") aiModel = "gemini-1.5-flash";
+      aiModel = aiModel.replace("google/", "");
+      // Atualiza para o modelo 2.0 Flash Lite conforme acesso do usuário
+      if (aiModel.includes("1.5") || aiModel.includes("2.5") || aiModel === "gemini-flash-preview" || aiModel === "gemini-1.5-flash") {
+        aiModel = "gemini-2.0-flash-lite-preview-02-05";
+      }
     } else {
-      aiModel = "gemini-1.5-flash";
+      aiModel = "gemini-2.0-flash-lite-preview-02-05";
     }
 
     console.log(`Calling Gemini API directly with model: ${aiModel}`);
@@ -69,7 +72,7 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
       "Authorization": `Bearer ${lovableKey}`,
     },
     body: JSON.stringify({
-      model: model || "google/gemini-2.5-flash",
+      model: model || "google/gemini-2.0-flash-lite-preview-02-05",
       messages: [{ role: "user", content: prompt }],
       max_tokens: maxTokens,
       temperature: 0.7,

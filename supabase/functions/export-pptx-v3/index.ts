@@ -1618,11 +1618,16 @@ async function callAI(model: string, prompt: string): Promise<string> {
   if (geminiKey) {
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     let aiModel = model;
+    
+    // Configuração para usar Gemini 2.0 Flash Lite conforme solicitado pelo usuário
     if (aiModel.includes("gemini")) {
-      aiModel = aiModel.replace("google/", "").replace("2.5", "1.5").replace("3-", "1.5-");
-      if (aiModel === "gemini-flash-preview") aiModel = "gemini-1.5-flash";
+      aiModel = aiModel.replace("google/", "");
+      // Atualiza para o modelo 2.0 Flash Lite que o usuário confirmou possuir acesso
+      if (aiModel.includes("1.5") || aiModel.includes("2.5") || aiModel === "gemini-flash-preview" || aiModel === "gemini-1.5-flash") {
+        aiModel = "gemini-2.0-flash-lite-preview-02-05";
+      }
     } else {
-      aiModel = "gemini-1.5-flash";
+      aiModel = "gemini-2.0-flash-lite-preview-02-05";
     }
 
     console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
@@ -1665,7 +1670,7 @@ async function callAI(model: string, prompt: string): Promise<string> {
       "Authorization": `Bearer ${lovableKey}`,
     },
     body: JSON.stringify({
-      model: model || "google/gemini-2.5-flash",
+      model: model || "google/gemini-2.0-flash-lite-preview-02-05",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 1500,
     }),
@@ -2192,7 +2197,7 @@ async function generateSlidesForModule(
   try {
     report.aiCallsTotal++;
     rawText = await callAI(
-      "google/gemini-2.5-flash",
+      "google/gemini-2.0-flash-lite-preview-02-05",
       buildSlidePrompt(moduleTitle, moduleContent, moduleIndex, density, language),
     );
     console.log(`[V3-AI] Module ${moduleIndex + 1} "${moduleTitle}": response length=${rawText.length}`);
