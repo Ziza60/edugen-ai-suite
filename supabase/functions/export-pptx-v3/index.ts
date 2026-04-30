@@ -1623,15 +1623,11 @@ async function callAI(model: string, prompt: string): Promise<string> {
     if (aiModel.includes("gemini")) {
       aiModel = aiModel.replace("google/", "");
       // Mapeamento estratégico: Correção para os modelos GA (estáveis) do Google
-      if (aiModel.includes("2.5") || aiModel.includes("2.0")) {
-        aiModel = "gemini-2.0-flash"; 
-      }
-      // Se ainda assim for um modelo vazio ou inválido, fallback para 2.0-flash
-      if (!aiModel || aiModel === "gemini") {
-        aiModel = "gemini-2.0-flash";
-      }
+      // O Google desativou o modelo "gemini-2.0-flash" original.
+      // O modelo estável atual é "gemini-2.0-flash-001".
+      aiModel = "gemini-2.0-flash-001"; 
     } else {
-      aiModel = "gemini-2.0-flash";
+      aiModel = "gemini-2.0-flash-001";
     }
 
     console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
