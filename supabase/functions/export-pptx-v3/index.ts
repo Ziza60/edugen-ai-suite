@@ -2196,7 +2196,7 @@ async function generateSlidesForModule(
   try {
     report.aiCallsTotal++;
     rawText = await callAI(
-      "google/gemini-2.0-flash-lite-preview-02-05",
+      "google/gemini-2.0-flash",
       buildSlidePrompt(moduleTitle, moduleContent, moduleIndex, density, language),
     );
     console.log(`[V3-AI] Module ${moduleIndex + 1} "${moduleTitle}": response length=${rawText.length}`);
