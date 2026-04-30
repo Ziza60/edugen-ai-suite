@@ -76,7 +76,7 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
       "Authorization": `Bearer ${lovableKey}`,
     },
     body: JSON.stringify({
-      model: model || "google/gemini-2.0-flash-lite-preview-02-05",
+      model: model || "google/gemini-2.0-flash",
       messages: [{ role: "user", content: prompt }],
       max_tokens: maxTokens,
       temperature: 0.7,
