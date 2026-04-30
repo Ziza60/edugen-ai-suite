@@ -1663,21 +1663,7 @@ async function callAI(model: string, prompt: string): Promise<string> {
   // O sistema agora deve falhar explicitamente se a GEMINI_API_KEY não funcionar
   throw new Error("Falha na chamada direta ao Gemini (ou chave GEMINI_API_KEY não configurada). Fallback Lovable desativado.");
 }
-    body: JSON.stringify({
-      model: model || "google/gemini-2.0-flash-lite",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1500,
-    }),
-  });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`AI Gateway failed (${res.status}): ${errText}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 4: SLIDE GENERATION PROMPT
