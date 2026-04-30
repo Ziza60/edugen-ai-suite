@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.1-LANDING-PAGE-STRUCTURE";
+const ENGINE_VERSION = "3.12.1-AUTOFIX-PIPELINE";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -4924,7 +4924,14 @@ Deno.serve(async (req: Request) => {
       `[V3] ENGINE_VERSION=${ENGINE_VERSION} | Starting: "${courseTitle}", ${moduleData.length} modules, theme=${design.theme}, density=${density}, language=${exportLanguage}`,
     );
 
-    const { pptx, report } = await runPipeline(courseTitle, moduleData, design, exportLanguage);
+    let { pptx, report } = await runPipeline(courseTitle, moduleData, design, exportLanguage);
+    
+    // AutoFixPipeline Applied after render
+    try {
+      applyAutoFixPipeline(pptx);
+    } catch (fixErr) {
+      console.warn("[V3-FIX] AutoFixPipeline failed:", fixErr);
+    }
 
     const rawPptxData = await pptx.write({ outputType: "uint8array" });
     const pptxData = await repairPptxPackage(rawPptxData);
