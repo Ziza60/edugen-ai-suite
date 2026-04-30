@@ -113,7 +113,7 @@ ${truncatedContent}
     if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    const aiModel = "gemini-2.0-flash-exp"; 
+    const aiModel = "gemini-2.0-flash"; 
 
     const aiResponse = await fetch(url, {
       method: "POST",
