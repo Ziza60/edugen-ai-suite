@@ -2356,9 +2356,10 @@ interface LLMValidationResult {
 }
 
 async function llmValidateSlideContent(allSlides: SlideData[]): Promise<LLMValidationResult> {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    console.warn("[LLM-NLP] LOVABLE_API_KEY not available, skipping LLM validation");
+  if (!GEMINI_API_KEY && !LOVABLE_API_KEY) {
+    console.warn("[LLM-NLP] No API keys available, skipping LLM validation");
     return { slides: [], totalGrammarFixes: 0, totalTruncationFixes: 0, totalNonsenseDropped: 0, totalRelevanceDropped: 0 };
   }
 
