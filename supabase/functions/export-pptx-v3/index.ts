@@ -1622,9 +1622,9 @@ async function callAI(model: string, prompt: string): Promise<string> {
     let aiModel = model;
     if (aiModel.includes("gemini")) {
       aiModel = aiModel.replace("google/", "");
-      // Mapeamento estratégico: Correção de 2.5 (inexistente) para 2.0
-      if (aiModel.includes("2.5")) {
-        aiModel = aiModel.replace("2.5", "2.0");
+      // Mapeamento estratégico: Correção para os modelos GA (estáveis) do Google
+      if (aiModel.includes("2.5") || aiModel.includes("2.0")) {
+        aiModel = "gemini-2.0-flash"; 
       }
       // Se ainda assim for um modelo vazio ou inválido, fallback para 2.0-flash
       if (!aiModel || aiModel === "gemini") {
