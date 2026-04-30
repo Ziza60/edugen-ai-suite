@@ -28,8 +28,12 @@ Deno.serve(async (req: Request) => {
     const magicSlidesApiKey = Deno.env.get("MAGICSLIDES_API_KEY");
 
     if (!magicSlidesApiKey) {
-      return new Response(JSON.stringify({ error: "MAGICSLIDES_API_KEY not configured" }), {
-        status: 500,
+      console.warn("[MAGICSLIDES] MAGICSLIDES_API_KEY not configured. Please add it to your Secrets.");
+      return new Response(JSON.stringify({ 
+        error: "MAGICSLIDES_API_KEY_MISSING",
+        message: "O motor MagicSlides requer uma chave de API para funcionar. Usando motor nativo como fallback."
+      }), {
+        status: 200, // Return 200 so the frontend can handle the logic-level error gracefully
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
