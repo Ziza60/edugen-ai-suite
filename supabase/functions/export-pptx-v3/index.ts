@@ -4862,7 +4862,6 @@ function applyAutoFixPipeline(pres: any) {
               opts.fontSize = newFontSize;
               overflowCount++;
             }
-            }
           }
         }
       }
