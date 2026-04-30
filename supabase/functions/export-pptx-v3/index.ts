@@ -4827,11 +4827,11 @@ function applyAutoFixPipeline(pres: any) {
   let overflowCount = 0;
   let collisionCount = 0;
 
-  // Acessa o array interno de slides do PptxGenJS (pres.slides)
-  const slides = pres.slides || [];
+  // Acessa o array interno de slides do PptxGenJS (pres._slides no v3.x)
+  const slides = pres._slides || pres.slides || [];
 
   slides.forEach((slide: any) => {
-    const elements = slide.elements || [];
+    const elements = slide._slideObjects || slide.elements || [];
 
     // 1. Detectar e Corrigir Overflow de Texto
     elements.forEach((el: any) => {
