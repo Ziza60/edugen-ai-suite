@@ -4898,6 +4898,7 @@ function applyAutoFixPipeline(pres: any) {
               const overlapY = (r1.y + r1.h) - r2.y;
               if (overlapY < 0.5) {
                 // Só ajusta se for um overlap pequeno (evita estragar layouts intencionais)
+                console.log(`[V3-FIX] Colisão detectada em y=${r2.y.toFixed(2)}. Empurrando elemento para y=${(r2.y + overlapY + 0.05).toFixed(2)}`);
                 el2.options.y += overlapY + 0.05;
                 collisionCount++;
               }
