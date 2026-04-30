@@ -5204,12 +5204,13 @@ Deno.serve(async (req: Request) => {
     let { pptx, report } = await runPipeline(courseTitle, moduleData, design, exportLanguage);
 
     // AutoFixPipeline Applied after render
-    console.log(`[V3-FIX] >>> Pre-call check: pptx defined=${!!pptx}, has _slides=${!!(pptx as any)?._slides}, slides count=${((pptx as any)?._slides || (pptx as any)?.slides || []).length}`);
+    console.info(`[V3-FIX] >>> Starting AutoFixPipeline on ${courseTitle}...`);
     try {
       const fixResult = applyAutoFixPipeline(pptx);
-      console.log(`[V3-FIX] <<< Post-call result: ${JSON.stringify(fixResult)}`);
+      console.info(`[V3-FIX] <<< Finished AutoFixPipeline: ${JSON.stringify(fixResult)}`);
     } catch (fixErr: any) {
-      console.error("[V3-FIX] AutoFixPipeline THREW:", fixErr?.message || String(fixErr), fixErr?.stack);
+      console.error("[V3-FIX] CRITICAL ERROR in AutoFixPipeline:", fixErr?.message || String(fixErr));
+      console.error(fixErr?.stack);
     }
 
     const rawPptxData = await pptx.write({ outputType: "uint8array" });
