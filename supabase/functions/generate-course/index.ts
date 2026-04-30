@@ -22,9 +22,9 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     let aiModel = model;
     if (aiModel.includes("gemini")) {
-      aiModel = "gemini-3-flash";
+      aiModel = "gemini-3-flash-preview";
     } else {
-      aiModel = "gemini-3-flash";
+      aiModel = "gemini-3-flash-preview";
     }
 
     console.log(`Calling Gemini API directly with model: ${aiModel}`);
@@ -459,7 +459,7 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-      const structureRaw = await callAI("google/gemini-3-flash", structurePrompt);
+      const structureRaw = await callAI("google/gemini-3-flash-preview", structurePrompt);
       let structure;
       try {
         // Strip markdown fences if present
@@ -554,7 +554,7 @@ ${sourceContentInstruction}
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
 Write 800-1200 words. Be thorough and educational.`;
 
-          const rawContent = await callAI("google/gemini-3-flash", contentPrompt);
+          const rawContent = await callAI("google/gemini-3-flash-preview", contentPrompt);
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
@@ -568,7 +568,7 @@ Write 800-1200 words. Be thorough and educational.`;
               mod.title, refinedContent, title,
               target_audience || "profissionais da área", language || "pt-BR",
             );
-            const qualityResult = await callAI("google/gemini-3-flash", qualityPrompt, 2000);
+            const qualityResult = await callAI("google/gemini-3-flash-preview", qualityPrompt, 2000);
             // Strip markdown fences AND any preamble before the first ## heading
             const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
