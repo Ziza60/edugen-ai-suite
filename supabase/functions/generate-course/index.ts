@@ -24,15 +24,18 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
     if (aiModel.includes("gemini")) {
       aiModel = aiModel.replace("google/", "");
       
-      // Mapeamento estratégico: Heavy vs Light
-      if (aiModel.includes("-lite")) {
-        aiModel = "gemini-2.5-flash-lite";
-      } else {
-        // Todo o resto (flash, pro, preview) vai para o Gemini 2.5 Flash
-        aiModel = "gemini-2.5-flash";
+      // Mapeamento estratégico: Correção de 2.5 (inexistente) para 2.0
+      if (aiModel.includes("2.5")) {
+        aiModel = aiModel.replace("2.5", "2.0");
+      }
+      
+      if (aiModel.includes("-lite") && !aiModel.includes("2.0")) {
+        aiModel = "gemini-2.0-flash-lite-preview-02-05"; // Exemplo de lite se necessário, mas 2.0 flash é melhor
+      } else if (!aiModel.includes("2.0") && !aiModel.includes("1.5")) {
+        aiModel = "gemini-2.0-flash";
       }
     } else {
-      aiModel = "gemini-2.5-flash";
+      aiModel = "gemini-2.0-flash";
     }
 
     console.log(`Calling Gemini API directly with model: ${aiModel}`);
