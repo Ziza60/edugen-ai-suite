@@ -4824,14 +4824,15 @@ async function runPipeline(
  * Corrige transbordos de texto, colisões de elementos e harmoniza tamanhos de fonte.
  */
 function applyAutoFixPipeline(pres: any) {
+  const slides = pres._slides || pres.slides || [];
+  console.log(`[V3-FIX] Iniciando AutoFixPipeline em ${slides.length} slides...`);
   let overflowCount = 0;
   let collisionCount = 0;
 
-  // Acessa o array interno de slides do PptxGenJS (pres.slides)
-  const slides = pres.slides || [];
+  // Acessa o array interno de slides do PptxGenJS (pres._slides no v3.x)
 
   slides.forEach((slide: any) => {
-    const elements = slide.elements || [];
+    const elements = slide._slideObjects || slide.elements || [];
 
     // 1. Detectar e Corrigir Overflow de Texto
     elements.forEach((el: any) => {
@@ -4857,6 +4858,7 @@ function applyAutoFixPipeline(pres: any) {
             const ratio = h / estH;
             const newFontSize = Math.max(MIN_FONT.BODY - 4, Math.floor(fontSize * ratio));
             if (newFontSize < fontSize) {
+              console.log(`[V3-FIX] Reduzindo fonte: ${fontSize}pt -> ${newFontSize}pt (estH=${estH.toFixed(2)}in, maxH=${h}in)`);
               opts.fontSize = newFontSize;
               overflowCount++;
             }
@@ -4897,6 +4899,7 @@ function applyAutoFixPipeline(pres: any) {
               const overlapY = (r1.y + r1.h) - r2.y;
               if (overlapY < 0.5) {
                 // Só ajusta se for um overlap pequeno (evita estragar layouts intencionais)
+                console.log(`[V3-FIX] Colisão detectada em y=${r2.y.toFixed(2)}. Empurrando elemento para y=${(r2.y + overlapY + 0.05).toFixed(2)}`);
                 el2.options.y += overlapY + 0.05;
                 collisionCount++;
               }
