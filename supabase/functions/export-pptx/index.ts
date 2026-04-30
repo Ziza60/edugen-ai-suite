@@ -1936,9 +1936,10 @@ interface SemanticModulePlan {
 }
 
 async function llmPlanModuleSlides(moduleTitle: string, moduleContent: string, moduleIndex: number, language: string, preParsedSummary?: string): Promise<SemanticModulePlan | null> {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    console.warn("[SEMANTIC-PLANNER] LOVABLE_API_KEY not available, falling back to regex parser");
+  if (!GEMINI_API_KEY && !LOVABLE_API_KEY) {
+    console.warn("[SEMANTIC-PLANNER] No API keys available, falling back to regex parser");
     return null;
   }
 
@@ -2003,14 +2004,20 @@ ${contentLabel}
 ${truncatedContent}`;
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const url = GEMINI_API_KEY 
+      ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+      : "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
+    const model = "gemini-2.0-flash-lite-preview-02-05";
+
+    const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: GEMINI_API_KEY ? model : `google/${model}`,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -2423,14 +2430,20 @@ REGRAS CRÍTICAS:
       const timeoutId = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
       let response: Response;
       try {
-        response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const url = GEMINI_API_KEY 
+          ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+          : "https://ai.gateway.lovable.dev/v1/chat/completions";
+        const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
+        const model = "gemini-2.0-flash-lite-preview-02-05";
+
+        response = await fetch(url, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash-lite",
+            model: GEMINI_API_KEY ? model : `google/${model}`,
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -6604,6 +6617,7 @@ Deno.serve(async (req: Request) => {
         console.log("[STAGE-0.5] Found " + uniqueDefectives.length + " defective items, attempting selective regeneration...");
 
         // 2. Batch defective items and send to LLM for rewrite
+        const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
         const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
         if (LOVABLE_API_KEY) {
           const REGEN_BATCH_SIZE = 15;
@@ -6619,14 +6633,20 @@ Deno.serve(async (req: Request) => {
             }).join("\n\n");
 
             try {
-              const regenResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              const url = GEMINI_API_KEY 
+                ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+                : "https://ai.gateway.lovable.dev/v1/chat/completions";
+              const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
+              const model = "gemini-2.0-flash-lite-preview-02-05";
+
+              const regenResponse = await fetch(url, {
                 method: "POST",
                 headers: {
-                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                  Authorization: `Bearer ${apiKey}`,
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  model: "google/gemini-2.5-flash-lite",
+                  model: GEMINI_API_KEY ? model : `google/${model}`,
                   messages: [
                     {
                       role: "system",
