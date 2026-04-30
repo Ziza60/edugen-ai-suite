@@ -1611,12 +1611,11 @@ async function buildImagePlan(
 // ═══════════════════════════════════════════════════════════════════
 
 async function callAI(model: string, prompt: string): Promise<string> {
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!lovableKey) {
-    // Fallback to GEMINI_API_KEY if LOVABLE_API_KEY is not set (legacy)
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiKey) throw new Error("LOVABLE_API_KEY ou GEMINI_API_KEY não configurada.");
-    
+
+  // Prioritize personal Gemini Key if present (Bypasses Lovable Gateway per user request)
+  if (geminiKey) {
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     let aiModel = model;
     if (aiModel.includes("gemini")) {
@@ -1625,6 +1624,8 @@ async function callAI(model: string, prompt: string): Promise<string> {
     } else {
       aiModel = "gemini-1.5-flash";
     }
+
+    console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
 
     const res = await fetch(url, {
       method: "POST",
@@ -1641,15 +1642,22 @@ async function callAI(model: string, prompt: string): Promise<string> {
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`AI call failed (${res.status}): ${errText}`);
+      console.error(`[V3-AI] Direct Gemini call failed: ${errText}`);
+      throw new Error(`Erro na API do Gemini (${res.status}): ${errText}`);
     }
 
     const data = await res.json();
     return data.choices?.[0]?.message?.content || "";
   }
 
-  // Use Lovable AI Gateway (Standard)
+  if (!lovableKey) {
+    throw new Error("Nenhuma chave de API (GEMINI_API_KEY ou LOVABLE_API_KEY) configurada.");
+  }
+
+  // Use Lovable AI Gateway as fallback
   const url = "https://ai.gateway.lovable.dev/v1/chat/completions";
+  console.log(`[V3-AI] Calling Lovable AI Gateway with model: ${model}`);
+  
   const res = await fetch(url, {
     method: "POST",
     headers: {

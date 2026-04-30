@@ -14,13 +14,11 @@ const PLAN_LIMITS = {
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
 async function callAI(model: string, prompt: string, maxTokens = 2000) {
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!lovableKey) {
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiKey) {
-      throw new Error("LOVABLE_API_KEY ou GEMINI_API_KEY não configurada.");
-    }
 
+  // Prioritize personal Gemini Key if present (Bypasses Lovable Gateway per user request)
+  if (geminiKey) {
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     let aiModel = model;
     if (aiModel.includes("gemini")) {
@@ -56,7 +54,11 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
     return data.choices?.[0]?.message?.content || JSON.stringify(data);
   }
 
-  // Use Lovable AI Gateway (Standard)
+  if (!lovableKey) {
+    throw new Error("Nenhuma chave de API (GEMINI_API_KEY ou LOVABLE_API_KEY) configurada.");
+  }
+
+  // Use Lovable AI Gateway as fallback
   const url = "https://ai.gateway.lovable.dev/v1/chat/completions";
   console.log(`Calling Lovable AI Gateway with model: ${model}`);
   
