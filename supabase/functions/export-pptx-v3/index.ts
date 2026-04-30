@@ -2877,7 +2877,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
     });
 
     const globalOffset = page * MAX_PER_PAGE;
-    const useListLayout = modules.length >= 6;
+    const useListLayout = modules.length >= 5; // GEMMA v3.9.10: Mudar de 6 para 5 melhora legibilidade de cursos médios
 
     if (useListLayout) {
       const itemH = Math.min(0.85, (SLIDE_H - 1.8 - 0.45) / pageModules.length);
@@ -2945,7 +2945,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
       const cardW = (gridW - gap * (cols - 1)) / cols;
       const gridY = 1.8;
       const gridH = SLIDE_H - gridY - 0.3;
-      const cardH = Math.min(2.5, (gridH - gap * (rows - 1)) / rows);
+      const cardH = Math.min(2.9, (gridH - gap * (rows - 1)) / rows); // Aumentado de 2.5 para 2.9 para evitar transbordo
 
       for (let i = 0; i < pageModules.length; i++) {
         const col = i % cols;
@@ -2957,7 +2957,7 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
         const cleaned = pageModules[i].description
           ? cleanTOCDescription(pageModules[i].description!, pageModules[i].title)
           : "";
-        const maxChars = cardW < 2.35 || cardH < 1.55 ? 110 : cardW < 3.45 || cardH < 1.95 ? 160 : 220;
+        const maxChars = cardW < 2.35 || cardH < 1.55 ? 85 : cardW < 3.45 || cardH < 1.95 ? 125 : 165; // Reduzido para caber fisicamente nos cards
         const desc = cleaned ? smartTruncate(cleaned, maxChars) : "";
 
         slide.addShape("roundRect" as any, {
@@ -3039,7 +3039,8 @@ function renderTOC(pptx: PptxGenJS, modules: { title: string; description?: stri
             fontFace: design.fonts.body,
             color: colors.coverSubtext,
             valign: "top",
-            lineSpacingMultiple: 1.18,
+            lineSpacingMultiple: 1.12,
+            autoFit: true, // Reduz fonte se necessário para não transbordar
           });
         }
 
