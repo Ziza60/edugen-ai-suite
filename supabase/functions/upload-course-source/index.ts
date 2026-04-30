@@ -52,7 +52,7 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash-lite",
+      model: "google/gemini-2.0-flash-lite-preview-02-05",
       messages: [
         {
           role: "user",
