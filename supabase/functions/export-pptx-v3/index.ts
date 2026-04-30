@@ -1621,12 +1621,12 @@ async function callAI(model: string, prompt: string): Promise<string> {
     if (aiModel.includes("gemini")) {
       aiModel = aiModel.replace("google/", "");
       if (aiModel.includes("-lite")) {
-        aiModel = "gemini-2.0-flash-lite-preview-02-05";
+        aiModel = "gemini-2.5-flash-lite";
       } else {
-        aiModel = "gemini-2.0-flash";
+        aiModel = "gemini-2.5-flash";
       }
     } else {
-      aiModel = "gemini-2.0-flash";
+      aiModel = "gemini-2.5-flash";
     }
 
     console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
