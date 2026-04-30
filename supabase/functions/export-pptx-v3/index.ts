@@ -4960,7 +4960,8 @@ function _afpClassifyRole(el: any, slideMaxY: number): "title" | "subtitle" | "b
 }
 
 function applyAutoFixPipeline(pres: any) {
-  const slides = pres._slides || pres.slides || [];
+  console.log(`[V3-FIX] === applyAutoFixPipeline ENTERED === pres type: ${typeof pres}, keys: ${pres ? Object.keys(pres).slice(0, 10).join(",") : "null"}`);
+  const slides = (pres && (pres._slides || pres.slides)) || [];
   console.log(`[V3-FIX] AutoFixPipeline v2 iniciando em ${slides.length} slides...`);
 
   let overflowCount = 0;
