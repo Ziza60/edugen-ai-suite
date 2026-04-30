@@ -4960,7 +4960,8 @@ function _afpClassifyRole(el: any, slideMaxY: number): "title" | "subtitle" | "b
 }
 
 function applyAutoFixPipeline(pres: any) {
-  const slides = pres._slides || pres.slides || [];
+  console.log(`[V3-FIX] === applyAutoFixPipeline ENTERED === pres type: ${typeof pres}, keys: ${pres ? Object.keys(pres).slice(0, 10).join(",") : "null"}`);
+  const slides = (pres && (pres._slides || pres.slides)) || [];
   console.log(`[V3-FIX] AutoFixPipeline v2 iniciando em ${slides.length} slides...`);
 
   let overflowCount = 0;
@@ -5192,12 +5193,14 @@ Deno.serve(async (req: Request) => {
     );
 
     let { pptx, report } = await runPipeline(courseTitle, moduleData, design, exportLanguage);
-    
+
     // AutoFixPipeline Applied after render
+    console.log(`[V3-FIX] >>> Pre-call check: pptx defined=${!!pptx}, has _slides=${!!(pptx as any)?._slides}, slides count=${((pptx as any)?._slides || (pptx as any)?.slides || []).length}`);
     try {
-      applyAutoFixPipeline(pptx);
-    } catch (fixErr) {
-      console.warn("[V3-FIX] AutoFixPipeline failed:", fixErr);
+      const fixResult = applyAutoFixPipeline(pptx);
+      console.log(`[V3-FIX] <<< Post-call result: ${JSON.stringify(fixResult)}`);
+    } catch (fixErr: any) {
+      console.error("[V3-FIX] AutoFixPipeline THREW:", fixErr?.message || String(fixErr), fixErr?.stack);
     }
 
     const rawPptxData = await pptx.write({ outputType: "uint8array" });
