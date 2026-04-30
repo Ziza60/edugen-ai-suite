@@ -12,7 +12,7 @@ async function callAI(model: string, prompt: string) {
   if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  let aiModel = model.includes("-lite") ? "gemini-3-flash-lite-preview-02-05" : "gemini-3-flash";
+  let aiModel = model.includes("-lite") ? "gemini-3-flash-lite" : "gemini-3-flash";
 
   const res = await fetch(url, {
     method: "POST",
