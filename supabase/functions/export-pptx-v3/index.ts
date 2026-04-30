@@ -4824,6 +4824,8 @@ async function runPipeline(
  * Corrige transbordos de texto, colisões de elementos e harmoniza tamanhos de fonte.
  */
 function applyAutoFixPipeline(pres: any) {
+  const slides = pres._slides || pres.slides || [];
+  console.log(`[V3-FIX] Iniciando AutoFixPipeline em ${slides.length} slides...`);
   let overflowCount = 0;
   let collisionCount = 0;
 
