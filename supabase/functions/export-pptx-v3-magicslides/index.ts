@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ENGINE_VERSION = "3.12.1-LANDING-PAGE-STRUCTURE";
+const ENGINE_VERSION = "3.12.2-AUTOFIX-V2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,6 +115,10 @@ Deno.serve(async (req: Request) => {
     console.log("[MAGICSLIDES] API Response:", JSON.stringify(result));
 
     if (result.success && result.url) {
+      // NOTE: MagicSlides retorna apenas uma URL hospedada — não temos o objeto pres em memória,
+      // portanto o AutoFixPipeline não pode rodar sobre este artefato remoto.
+      // O pipeline continua ativo no motor nativo v3 (export-pptx-v3).
+      console.log("[V3-FIX] AutoFixPipeline v2: SKIPPED (motor remoto MagicSlides — objeto PPTX não disponível localmente)");
       // Record usage
       await serviceClient.from("usage_events").insert({
         user_id: user.id,

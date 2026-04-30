@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.1-AUTOFIX-PIPELINE";
+const ENGINE_VERSION = "3.12.2-AUTOFIX-V2";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -4820,101 +4820,265 @@ async function runPipeline(
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * AutoFixPipeline — Camada de pós-processamento para garantir a integridade visual do PPTX.
- * Corrige transbordos de texto, colisões de elementos e harmoniza tamanhos de fonte.
+ * AutoFixPipeline v2 — Camada robusta de pós-processamento de PPTX.
+ *
+ * Inspirado em likaku/Mck-ppt-design-skill. Executa, em ordem:
+ *   1. Detecção de overflow real (estimateTextHeightInches)
+ *   2. Compressão inteligente de texto (remove redundâncias, encurta frases, limpa emojis órfãos)
+ *   3. ShrinkText gradual (1pt por vez, mínimo 12pt)
+ *   4. Harmonização peer-level de fontes (títulos iguais, bullets iguais)
+ *   5. Correção de colisões verticais
+ *
+ * O motor original NÃO é alterado; esta é uma camada aditiva sobre o objeto pres.
  */
+
+// --- Helpers de extração/escrita de texto em elementos do PptxGenJS ---
+function _afpReadText(el: any): string {
+  if (!el || el.text == null) return "";
+  if (typeof el.text === "string") return el.text;
+  if (Array.isArray(el.text)) {
+    return el.text.map((t: any) => (t && typeof t === "object" ? (t.text ?? "") : String(t ?? ""))).join("");
+  }
+  return String(el.text);
+}
+
+function _afpWriteText(el: any, newText: string): void {
+  if (typeof el.text === "string") {
+    el.text = newText;
+    return;
+  }
+  if (Array.isArray(el.text)) {
+    // Concentra todo o texto comprimido no primeiro run, zera os demais para preservar formatação base
+    let written = false;
+    for (let i = 0; i < el.text.length; i++) {
+      const run = el.text[i];
+      if (run && typeof run === "object") {
+        if (!written) {
+          run.text = newText;
+          written = true;
+        } else {
+          run.text = "";
+        }
+      }
+    }
+    if (!written) el.text = newText;
+    return;
+  }
+  el.text = newText;
+}
+
+// --- Compressão semântica leve (preserva sentido, reduz comprimento) ---
+const _AFP_REDUNDANCY_PATTERNS: Array<[RegExp, string]> = [
+  [/\bagora você (já )?(sabe|entende|aprendeu|viu) que\b/gi, "você sabe que"],
+  [/\bé importante (notar|destacar|ressaltar|lembrar|frisar) que\b/gi, "note que"],
+  [/\bvale (a pena )?(notar|destacar|ressaltar|lembrar|mencionar) que\b/gi, "note que"],
+  [/\bcomo (você )?pode (ver|perceber|notar|observar)\b/gi, "veja que"],
+  [/\bem outras palavras,?\s*/gi, ""],
+  [/\bbasicamente,?\s*/gi, ""],
+  [/\bessencialmente,?\s*/gi, ""],
+  [/\bna verdade,?\s*/gi, ""],
+  [/\bde (uma )?(forma|maneira) (geral|simples|simplificada|resumida)\b,?/gi, "em resumo"],
+  [/\bde (uma )?(forma|maneira) (mais )?(prática|objetiva|direta)\b,?/gi, ""],
+  [/\bao (longo do|decorrer do) (tempo|processo)\b/gi, "com o tempo"],
+  [/\bcom (o )?(intuito|objetivo|propósito) de\b/gi, "para"],
+  [/\bcom (a )?finalidade de\b/gi, "para"],
+  [/\bno (sentido|contexto) de\b/gi, "para"],
+  [/\bdevido ao (fato de )?que\b/gi, "porque"],
+  [/\bem (função|virtude|razão) (de|do|da)\b/gi, "por"],
+  [/\bpor (intermédio|meio) (de|do|da)\b/gi, "via"],
+  [/\bcada (um|uma) (de|do|da|dos|das)\b/gi, "cada"],
+  [/\b(uma )?(grande )?quantidade de\b/gi, "vários"],
+  [/\bnão é nada (mais )?do que\b/gi, "é"],
+  [/\b(é|são) (capaz|capazes) de\b/gi, "pode"],
+  [/\btem a (capacidade|possibilidade) de\b/gi, "pode"],
+  [/\bfaz com que\b/gi, "faz"],
+  [/\bcom (relação|respeito) (a|ao|à)\b/gi, "sobre"],
+  [/\bno que (diz respeito|se refere) (a|ao|à)\b/gi, "sobre"],
+  [/\s{2,}/g, " "],
+  [/\s+([,.;:!?])/g, "$1"],
+];
+
+function _afpCompressText(text: string): { out: string; changed: boolean } {
+  if (!text) return { out: text, changed: false };
+  const original = text;
+  let out = text;
+
+  // 1) Padrões de redundância
+  for (const [re, sub] of _AFP_REDUNDANCY_PATTERNS) {
+    out = out.replace(re, sub);
+  }
+
+  // 2) Remove emojis isolados (espaço-emoji-espaço/borda) e marcadores órfãos
+  // Emojis: ranges pictográficos comuns
+  out = out.replace(
+    /(^|\s)([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2700}-\u{27BF}])(\s|$)/gu,
+    (_m, p1, _e, p3) => (p1 === "" ? "" : " ") + (p3 === "" ? "" : ""),
+  );
+  // Marcadores órfãos no início ("•", "- ", "* ", "→ ") quando duplicados
+  out = out.replace(/^[\s]*[•·▪▫◦‣⁃►▶→]+\s*/g, "");
+  out = out.replace(/\s[•·▪▫◦‣⁃]\s(?=[•·▪▫◦‣⁃])/g, " ");
+
+  // 3) Encurta frases longas: se uma frase passa de 180 chars, tenta cortar na última vírgula antes de 160
+  out = out
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => {
+      const s = sentence.trim();
+      if (s.length <= 180) return s;
+      const cut = s.lastIndexOf(",", 160);
+      if (cut > 80) return s.slice(0, cut).trim() + ".";
+      // fallback: corta na última palavra antes de 160 chars
+      const hardCut = s.lastIndexOf(" ", 160);
+      return (hardCut > 60 ? s.slice(0, hardCut).trim() : s.slice(0, 160).trim()) + ".";
+    })
+    .join(" ");
+
+  out = out.replace(/\s{2,}/g, " ").trim();
+
+  // Capitaliza início se virou minúsculo após remoções
+  if (out.length > 0 && /[a-záéíóúâêôãõç]/.test(out[0])) {
+    out = out[0].toUpperCase() + out.slice(1);
+  }
+
+  return { out, changed: out !== original && out.length < original.length };
+}
+
+// --- Classificação peer-level (título vs bullet) por slide ---
+function _afpClassifyRole(el: any, slideMaxY: number): "title" | "subtitle" | "body" | "caption" | "other" {
+  const opts = el.options || {};
+  const fs = opts.fontSize || 0;
+  const y = opts.y || 0;
+  const isBold = !!opts.bold;
+  const text = _afpReadText(el);
+  if (!text.trim()) return "other";
+
+  if (y < 1.0 && fs >= 28) return "title";
+  if (y < 1.6 && fs >= 20 && fs < 28) return "subtitle";
+  if (fs <= 12 && y > slideMaxY - 1.0) return "caption";
+  if (fs >= 13 && fs <= 22) return "body";
+  if (isBold && fs >= 24) return "title";
+  return "other";
+}
+
 function applyAutoFixPipeline(pres: any) {
   const slides = pres._slides || pres.slides || [];
-  console.log(`[V3-FIX] Iniciando AutoFixPipeline em ${slides.length} slides...`);
+  console.log(`[V3-FIX] AutoFixPipeline v2 iniciando em ${slides.length} slides...`);
+
   let overflowCount = 0;
+  let compressedCount = 0;
+  let shrinkCount = 0;
+  let harmonizedCount = 0;
   let collisionCount = 0;
 
-  // Acessa o array interno de slides do PptxGenJS (pres._slides no v3.x)
+  const SLIDE_H = 5.625; // 16:9 padrão
+  const MIN_BODY = 12;
+  const MIN_TITLE = 18;
 
-  slides.forEach((slide: any) => {
+  slides.forEach((slide: any, slideIdx: number) => {
     const elements = slide._slideObjects || slide.elements || [];
+    if (!elements.length) return;
 
-    // 1. Detectar e Corrigir Overflow de Texto
+    // === PASSO 1+2+3: Overflow → Compressão → Shrink gradual ===
     elements.forEach((el: any) => {
-      // PptxGenJS elements have a 'type' (often via internal property or inferred)
-      // Aqui usamos duck-typing para detectar caixas de texto com conteúdo
-      if (el.text && (typeof el.text === "string" || Array.isArray(el.text))) {
-        const textStr = Array.isArray(el.text)
-          ? el.text.map((t: any) => t.text || "").join("")
-          : String(el.text);
+      if (!el || el.text == null) return;
+      const text = _afpReadText(el);
+      if (!text.trim()) return;
 
-        if (!textStr.trim()) return;
+      const opts = el.options || {};
+      const w = opts.w || SAFE_ZONE.W;
+      const h = opts.h || 0;
+      if (h <= 0) return; // auto-expand: sem caixa fixa, sem overflow
 
-        const opts = el.options || {};
-        const fontSize = opts.fontSize || 18;
-        const w = opts.w || SAFE_ZONE.W;
-        const h = opts.h || 0.5;
+      let fontSize = opts.fontSize || 18;
+      const role = _afpClassifyRole(el, SLIDE_H);
+      const minFs = role === "title" || role === "subtitle" ? MIN_TITLE : MIN_BODY;
 
-        // Se o elemento tem uma altura definida (não é auto-expand), verificamos overflow
-        if (h > 0) {
-          const estH = estimateTextHeightInches(textStr, fontSize, w);
-          if (estH > h + 0.05) {
-            // Overflow detectado! Reduzimos a fonte proporcionalmente.
-            const ratio = h / estH;
-            const newFontSize = Math.max(MIN_FONT.BODY - 4, Math.floor(fontSize * ratio));
-            if (newFontSize < fontSize) {
-              console.log(`[V3-FIX] Reduzindo fonte: ${fontSize}pt -> ${newFontSize}pt (estH=${estH.toFixed(2)}in, maxH=${h}in)`);
-              opts.fontSize = newFontSize;
-              overflowCount++;
-            }
-          }
+      let estH = estimateTextHeightInches(text, fontSize, w);
+      if (estH <= h + 0.05) return; // cabe
+
+      overflowCount++;
+
+      // 2) Compressão inteligente PRIMEIRO (preserva legibilidade)
+      const { out: compressed, changed } = _afpCompressText(text);
+      if (changed && compressed.length > 0) {
+        _afpWriteText(el, compressed);
+        compressedCount++;
+        estH = estimateTextHeightInches(compressed, fontSize, w);
+        if (estH <= h + 0.05) {
+          console.log(`[V3-FIX][slide ${slideIdx + 1}] compress ok: ${text.length}→${compressed.length} chars`);
+          return;
         }
+      }
+
+      // 3) Shrink gradual de 1pt por vez (não proporcional bruto)
+      const startFs = fontSize;
+      const currentText = _afpReadText(el);
+      while (fontSize > minFs) {
+        fontSize -= 1;
+        estH = estimateTextHeightInches(currentText, fontSize, w);
+        if (estH <= h + 0.05) break;
+      }
+      if (fontSize < startFs) {
+        opts.fontSize = fontSize;
+        shrinkCount++;
+        console.log(
+          `[V3-FIX][slide ${slideIdx + 1}] shrink ${role}: ${startFs}pt → ${fontSize}pt (estH=${estH.toFixed(2)}in / h=${h}in)`,
+        );
       }
     });
 
-    // 2. Corrigir Colisões Básicas (Sobreposição de shapes)
+    // === PASSO 4: Harmonização peer-level de fontes ===
+    const roleBuckets: Record<string, any[]> = { title: [], subtitle: [], body: [], caption: [] };
+    elements.forEach((el: any) => {
+      if (!el || el.text == null || !el.options) return;
+      const role = _afpClassifyRole(el, SLIDE_H);
+      if (roleBuckets[role]) roleBuckets[role].push(el);
+    });
+
+    for (const role of Object.keys(roleBuckets)) {
+      const bucket = roleBuckets[role];
+      if (bucket.length < 2) continue;
+      // Usa o MENOR fontSize do peer-group (já considera shrinks acima)
+      const sizes = bucket.map((e) => e.options.fontSize || 0).filter((s) => s > 0);
+      if (!sizes.length) continue;
+      const target = Math.min(...sizes);
+      bucket.forEach((el: any) => {
+        if ((el.options.fontSize || 0) !== target) {
+          el.options.fontSize = target;
+          harmonizedCount++;
+        }
+      });
+    }
+
+    // === PASSO 5: Colisões verticais ===
     for (let i = 0; i < elements.length; i++) {
       for (let j = i + 1; j < elements.length; j++) {
-        const el1 = elements[i];
-        const el2 = elements[j];
-
-        if (el1.options && el2.options) {
-          const r1 = {
-            x: el1.options.x || 0,
-            y: el1.options.y || 0,
-            w: el1.options.w || 0,
-            h: el1.options.h || 0,
-          };
-          const r2 = {
-            x: el2.options.x || 0,
-            y: el2.options.y || 0,
-            w: el2.options.w || 0,
-            h: el2.options.h || 0,
-          };
-
-          // Detecção de intersecção Retângulo-Retângulo
-          const intersects = r1.x < r2.x + r2.w &&
-            r1.x + r1.w > r2.x &&
-            r1.y < r2.y + r2.h &&
-            r1.y + r1.h > r2.y;
-
-          if (intersects) {
-            // Se colidirem verticalmente e el2 estiver levemente abaixo de el1, empurra el2
-            if (r2.y >= r1.y && r2.y < r1.y + r1.h) {
-              const overlapY = (r1.y + r1.h) - r2.y;
-              if (overlapY < 0.5) {
-                // Só ajusta se for um overlap pequeno (evita estragar layouts intencionais)
-                console.log(`[V3-FIX] Colisão detectada em y=${r2.y.toFixed(2)}. Empurrando elemento para y=${(r2.y + overlapY + 0.05).toFixed(2)}`);
-                el2.options.y += overlapY + 0.05;
-                collisionCount++;
-              }
-            }
+        const a = elements[i];
+        const b = elements[j];
+        if (!a?.options || !b?.options) continue;
+        const r1 = { x: a.options.x || 0, y: a.options.y || 0, w: a.options.w || 0, h: a.options.h || 0 };
+        const r2 = { x: b.options.x || 0, y: b.options.y || 0, w: b.options.w || 0, h: b.options.h || 0 };
+        const intersects =
+          r1.x < r2.x + r2.w && r1.x + r1.w > r2.x && r1.y < r2.y + r2.h && r1.y + r1.h > r2.y;
+        if (!intersects) continue;
+        if (r2.y >= r1.y && r2.y < r1.y + r1.h) {
+          const overlapY = r1.y + r1.h - r2.y;
+          if (overlapY > 0 && overlapY < 0.6) {
+            b.options.y = +(r2.y + overlapY + 0.05).toFixed(3);
+            collisionCount++;
+            console.log(
+              `[V3-FIX][slide ${slideIdx + 1}] colisão resolvida: y ${r2.y.toFixed(2)} → ${b.options.y}`,
+            );
           }
         }
       }
     }
   });
 
-  if (overflowCount > 0 || collisionCount > 0) {
-    console.log(`[V3-FIX] AutoFixPipeline aplicado: ${overflowCount} overflows corrigidos, ${collisionCount} colisões resolvidas.`);
-  } else {
-    console.log(`[V3-FIX] AutoFixPipeline executado: Nenhum problema detectado.`);
-  }
+  console.log(
+    `[V3-FIX] AutoFixPipeline: ${overflowCount} overflows corrigidos | ${compressedCount} frases comprimidas | ${shrinkCount} shrinks | ${harmonizedCount} fontes harmonizadas | ${collisionCount} colisões resolvidas`,
+  );
+
+  return { overflowCount, compressedCount, shrinkCount, harmonizedCount, collisionCount };
 }
 
 // ═══════════════════════════════════════════════════════════════════
