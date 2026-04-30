@@ -26,13 +26,13 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
       
       // Mapeamento estratégico: Heavy vs Light
       if (aiModel.includes("-lite")) {
-        aiModel = "gemini-2.0-flash-lite-preview-02-05";
+        aiModel = "gemini-2.5-flash-lite";
       } else {
-        // Todo o resto (flash, pro, preview) vai para o Gemini 2.0 Flash (Pesado)
-        aiModel = "gemini-2.0-flash";
+        // Todo o resto (flash, pro, preview) vai para o Gemini 2.5 Flash
+        aiModel = "gemini-2.5-flash";
       }
     } else {
-      aiModel = "gemini-2.0-flash";
+      aiModel = "gemini-2.5-flash";
     }
 
     console.log(`Calling Gemini API directly with model: ${aiModel}`);
