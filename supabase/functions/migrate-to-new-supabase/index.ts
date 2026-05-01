@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
     if (phase === "all" || phase === "storage") {
       const targetBuckets = body.bucket ? [body.bucket] : BUCKETS;
       for (const b of targetBuckets) {
-        await copyBucket(oldDb, newDb, b, log);
+        await copyBucket(oldDb, newDb, b, log, body.maxFiles || 9999);
       }
     }
 
