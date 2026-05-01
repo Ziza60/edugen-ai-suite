@@ -26,20 +26,20 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
     throw new Error("GEMINI_API_KEY não configurada.");
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${geminiKey}`,
-    },
-    body: JSON.stringify({
-      model: aiModel,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens,
-      temperature: 0.3, // Reduced temperature for more consistent JSON structure
-      response_format: { type: "json_object" } // Requesting JSON format explicitly
-    }),
-  });
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${geminiKey}`,
+      },
+      body: JSON.stringify({
+        model: aiModel,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxTokens,
+        temperature: 0.1, // Even lower temperature for more predictable structure
+        response_format: { type: "json_object" }
+      }),
+    });
 
   if (!res.ok) {
     const errText = await res.text();
@@ -419,10 +419,15 @@ ${sourcesBlock}
         : "";
 
       const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
-
-CRITICAL HARD CONSTRAINT — MODULE COUNT:
-- You MUST generate EXACTLY ${actualModules} modules. Not fewer, not more.
-- The "modules" array MUST contain exactly ${actualModules} items.
+      
+      STRICT JSON RULE:
+      - Return ONLY the JSON object. 
+      - Do NOT include any markdown formatting like \`\`\`json.
+      - Ensure the JSON is valid and NOT truncated.
+      
+      CRITICAL HARD CONSTRAINT — MODULE COUNT:
+      - You MUST generate EXACTLY ${actualModules} modules. Not fewer, not more.
+      - The "modules" array MUST contain exactly ${actualModules} items.
 
 CRITICAL QUALITY RULES:
 - All text must have PERFECT spelling and grammar in ${language || "pt-BR"}.
