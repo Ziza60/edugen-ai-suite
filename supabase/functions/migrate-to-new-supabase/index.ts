@@ -60,38 +60,58 @@ async function copyTable(oldDb: any, newDb: any, table: string, log: string[]) {
   return total;
 }
 
-async function copyBucket(oldDb: any, newDb: any, bucket: string, log: string[]) {
-  // Garante bucket no destino
+async function copyBucket(oldDb: any, newDb: any, bucket: string, log: string[], maxFiles = 9999) {
   const { data: existing } = await newDb.storage.getBucket(bucket);
   if (!existing) {
     const isPublic = ["avatars", "course-images", "certificates"].includes(bucket);
     await newDb.storage.createBucket(bucket, { public: isPublic });
   }
 
-  let copied = 0;
+  // Coletar todos os paths
+  const allFiles: { path: string; mime: string }[] = [];
   async function walk(prefix: string) {
     const { data: items, error } = await oldDb.storage.from(bucket).list(prefix, { limit: 1000 });
     if (error) { log.push(`❌ list ${bucket}/${prefix}: ${error.message}`); return; }
     if (!items) return;
     for (const it of items) {
       const fullPath = prefix ? `${prefix}/${it.name}` : it.name;
-      if (!it.id) {
-        // pasta
-        await walk(fullPath);
-      } else {
-        const { data: blob, error: dErr } = await oldDb.storage.from(bucket).download(fullPath);
-        if (dErr || !blob) { log.push(`❌ download ${bucket}/${fullPath}: ${dErr?.message}`); continue; }
-        const { error: uErr } = await newDb.storage.from(bucket).upload(fullPath, blob, {
-          upsert: true,
-          contentType: it.metadata?.mimetype || "application/octet-stream",
-        });
-        if (uErr) log.push(`❌ upload ${bucket}/${fullPath}: ${uErr.message}`);
-        else copied++;
-      }
+      if (!it.id) await walk(fullPath);
+      else allFiles.push({ path: fullPath, mime: it.metadata?.mimetype || "application/octet-stream" });
     }
   }
   await walk("");
-  log.push(`📦 bucket ${bucket}: ${copied} arquivos`);
+  log.push(`📋 ${bucket}: ${allFiles.length} arquivos na origem`);
+
+  // Verificar quais já existem no destino (lista raiz e subpastas dos paths que vamos copiar)
+  const existingPaths = new Set<string>();
+  async function listDest(prefix: string) {
+    const { data } = await newDb.storage.from(bucket).list(prefix, { limit: 1000 });
+    if (!data) return;
+    for (const it of data) {
+      const full = prefix ? `${prefix}/${it.name}` : it.name;
+      if (!it.id) await listDest(full);
+      else existingPaths.add(full);
+    }
+  }
+  await listDest("");
+  log.push(`📋 ${bucket}: ${existingPaths.size} já existem no destino`);
+
+  const todo = allFiles.filter((f) => !existingPaths.has(f.path)).slice(0, maxFiles);
+  log.push(`📋 ${bucket}: copiando ${todo.length} arquivos`);
+
+  let copied = 0, failed = 0;
+  // Paralelo em chunks de 5
+  for (let i = 0; i < todo.length; i += 5) {
+    const batch = todo.slice(i, i + 5);
+    await Promise.all(batch.map(async ({ path, mime }) => {
+      const { data: blob, error: dErr } = await oldDb.storage.from(bucket).download(path);
+      if (dErr || !blob) { log.push(`❌ dl ${path}: ${dErr?.message}`); failed++; return; }
+      const { error: uErr } = await newDb.storage.from(bucket).upload(path, blob, { upsert: true, contentType: mime });
+      if (uErr) { log.push(`❌ up ${path}: ${uErr.message}`); failed++; }
+      else copied++;
+    }));
+  }
+  log.push(`📦 bucket ${bucket}: +${copied} copiados, ${failed} falharam`);
 }
 
 Deno.serve(async (req) => {
