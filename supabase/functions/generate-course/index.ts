@@ -15,46 +15,40 @@ const PLAN_LIMITS = {
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
 async function callAI(model: string, prompt: string, maxTokens = 2000) {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  
+  // Use gemini-1.5-flash which is more stable and has higher rate limits than preview models
+  const aiModel = "gemini-1.5-flash";
 
-  // Prioritize personal Gemini Key if present (Bypasses Lovable Gateway per user request)
-  if (geminiKey) {
-    const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    let aiModel = model;
-    if (aiModel.includes("gemini")) {
-      aiModel = "gemini-3-flash-preview";
-    } else {
-      aiModel = "gemini-3-flash-preview";
-    }
+  console.log(`Calling Gemini API directly with model: ${aiModel}`);
 
-    console.log(`Calling Gemini API directly with model: ${aiModel}`);
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${geminiKey}`,
-      },
-      body: JSON.stringify({
-        model: aiModel,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-        temperature: 0.7,
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`Gemini call failed: ${errText}`);
-      throw new Error(`Erro na API do Gemini (${res.status}): ${errText}`);
-    }
-
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content || JSON.stringify(data);
+  if (!geminiKey) {
+    throw new Error("GEMINI_API_KEY não configurada.");
   }
 
-  // FALLBACK REMOVIDO POR SOLICITAÇÃO DO USUÁRIO
-  throw new Error("Falha na chamada direta ao Gemini (ou chave GEMINI_API_KEY não configurada). Fallback Lovable desativado.");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${geminiKey}`,
+    },
+    body: JSON.stringify({
+      model: aiModel,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens,
+      temperature: 0.3, // Reduced temperature for more consistent JSON structure
+      response_format: { type: "json_object" } // Requesting JSON format explicitly
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error(`Gemini call failed: ${errText}`);
+    throw new Error(`Erro na API do Gemini (${res.status}): ${errText}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
 }
 
 
@@ -459,19 +453,17 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-      const structureRaw = await callAI("google/gemini-3-flash-preview", structurePrompt);
+      const structureRaw = await callAI("gemini-1.5-flash", structurePrompt, 4000);
       let structure;
       try {
-        // Strip markdown fences if present
-        const cleaned = structureRaw
-          .replace(/^```(?:json)?\s*\n?/i, "")
-          .replace(/\n?\s*```\s*$/i, "")
-          .trim();
+        const cleaned = structureRaw.trim();
         const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-        structure = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+        const jsonString = jsonMatch ? jsonMatch[0] : cleaned;
+        structure = JSON.parse(jsonString);
       } catch (parseErr) {
-        console.error("[generate-course] Failed to parse structure:", structureRaw.substring(0, 500));
-        throw new Error("Failed to parse AI structure response");
+        console.error("[generate-course] Failed to parse structure. Raw response length:", structureRaw.length);
+        console.error("[generate-course] Start of response:", structureRaw.substring(0, 500));
+        throw new Error("Falha ao processar a estrutura do curso gerada pela IA. Por favor, tente novamente.");
       }
 
       // Hard validation: enforce exact module count
