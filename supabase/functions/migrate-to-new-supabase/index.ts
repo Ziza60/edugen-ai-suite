@@ -153,7 +153,8 @@ Deno.serve(async (req) => {
 
     // 3) STORAGE
     if (phase === "all" || phase === "storage") {
-      for (const b of BUCKETS) {
+      const targetBuckets = body.bucket ? [body.bucket] : BUCKETS;
+      for (const b of targetBuckets) {
         await copyBucket(oldDb, newDb, b, log);
       }
     }
