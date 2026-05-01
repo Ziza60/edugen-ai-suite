@@ -17,8 +17,8 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
   
-  // Use gemini-2.0-flash-exp (or gemini-2.0-flash when available)
-  const aiModel = "gemini-2.0-flash";
+  // Use gemini-2.5-flash as requested
+  const aiModel = "gemini-2.5-flash";
 
   console.log(`Calling Gemini API directly with model: ${aiModel}`);
 
@@ -453,7 +453,7 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-      const structureRaw = await callAI("gemini-2.0-flash", structurePrompt, 4000);
+      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 4000);
       let structure;
       try {
         const cleaned = structureRaw.trim();
