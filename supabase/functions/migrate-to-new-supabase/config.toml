@@ -1,0 +1,2 @@
+[functions.migrate-to-new-supabase]
+verify_jwt = false
