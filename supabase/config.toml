@@ -59,3 +59,6 @@ verify_jwt = false
 
 [functions.export-moodle]
 verify_jwt = false
+
+[functions.migrate-to-new-supabase]
+verify_jwt = false
