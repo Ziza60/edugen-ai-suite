@@ -802,6 +802,7 @@ export type Database = {
           owner_id: string
           plan: string
           slug: string
+          updated_at: string | null
         }
         Insert: {
           created_at?: string
@@ -811,6 +812,7 @@ export type Database = {
           owner_id: string
           plan?: string
           slug: string
+          updated_at?: string | null
         }
         Update: {
           created_at?: string
@@ -820,6 +822,7 @@ export type Database = {
           owner_id?: string
           plan?: string
           slug?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
