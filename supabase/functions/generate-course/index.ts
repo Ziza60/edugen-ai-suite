@@ -13,7 +13,7 @@ const PLAN_LIMITS = {
 };
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
-async function callAI(model: string, prompt: string, maxTokens = 2000) {
+async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false) {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
   
@@ -37,7 +37,7 @@ async function callAI(model: string, prompt: string, maxTokens = 2000) {
         messages: [{ role: "user", content: prompt }],
         max_tokens: maxTokens,
         temperature: 0.1, // Even lower temperature for more predictable structure
-        response_format: { type: "json_object" }
+        ...(isJson ? { response_format: { type: "json_object" } } : {})
       }),
     });
 
@@ -458,7 +458,7 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 4000);
+      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 4000, true);
       let structure;
       try {
         const cleaned = structureRaw.trim();
@@ -482,7 +482,7 @@ ${include_quiz ? "Include 3 quiz questions per module." : ""}
 ${include_flashcards ? "Include 5 flashcards per module." : ""}
 Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
 
-        const retryRaw = await callAI("google/gemini-3-flash-lite", retryPrompt, 1000);
+        const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 1000, true);
         try {
           const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
           structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
