@@ -3477,84 +3477,82 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       if (i < items.length - 1) addHR(slide, rightX + 0.2, yPos + rItemH + rBulletGap / 2 - 0.003, rightW - 0.24, colors.divider, 0.005);
     }
   } else if (variant === 1) {
+    // "Index Tab" cards — wide left panel with big number + text area on right
     addSlideBackground(slide, colors.bg);
     addLightBgDecoration(slide, design, colors);
-    addLeftEdge(slide, accentColor);
+    if (design.visualStyle !== "minimal") addLeftEdge(slide, accentColor);
     renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, accentColor);
+    const tabW = Math.min(0.72, itemH * 0.7);
     for (let i = 0; i < items.length; i++) {
       const pal = design.palette[i % design.palette.length];
       const yPos = contentY + i * (itemH + bulletGap);
-      addCardShadow(slide, contentX, yPos, contentW, itemH - 0.05, colors.shadowColor, design.theme === "light");
+      const cardH = itemH - 0.05;
+      // Shadow
+      addCardShadow(slide, contentX, yPos, contentW, cardH, colors.shadowColor, design.theme === "light");
+      // Full card bg
       slide.addShape("roundRect" as any, {
-        x: contentX,
-        y: yPos,
-        w: contentW,
-        h: itemH - 0.05,
+        x: contentX, y: yPos, w: contentW, h: cardH,
         fill: { color: colors.cardBg },
-        rectRadius: 0.08,
+        rectRadius: 0.1,
         line: { color: colors.borders, width: 0.5 },
       });
-      slide.addShape("rect" as any, { x: contentX, y: yPos, w: 0.06, h: itemH - 0.05, fill: { color: pal }, rectRadius: 0.08 });
-      const badgeSize = Math.min(0.34, itemH - 0.14);
-      slide.addShape("roundRect" as any, {
-        x: contentX + 0.18,
-        y: yPos + (itemH - 0.05) / 2 - badgeSize / 2,
-        w: badgeSize,
-        h: badgeSize,
-        fill: { color: pal },
-        rectRadius: 0.06,
+      // Colored left panel — rounded only on left side: draw roundRect + mask right rounded corners
+      slide.addShape("roundRect" as any, { x: contentX, y: yPos, w: tabW + 0.1, h: cardH, fill: { color: pal }, rectRadius: 0.1 });
+      slide.addShape("rect" as any, { x: contentX + tabW, y: yPos, w: 0.1, h: cardH, fill: { color: pal } });
+      // Number in panel
+      const numStr = String(((plan.itemStartIndex ?? 0) + i + 1)).padStart(2, "0");
+      slide.addText(numStr, {
+        x: contentX, y: yPos, w: tabW, h: cardH,
+        fontSize: Math.min(28, Math.max(16, cardH * 55)),
+        fontFace: design.fonts.title, bold: true,
+        color: "FFFFFF", align: "center", valign: "middle",
+        transparency: 5,
       });
-      slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
-        x: contentX + 0.18,
-        y: yPos + (itemH - 0.05) / 2 - badgeSize / 2,
-        w: badgeSize,
-        h: badgeSize,
-        fontSize: badgeSize >= 0.3 ? 13 : 10,
-        fontFace: design.fonts.title,
-        bold: true,
-        color: "FFFFFF",
-        align: "center",
-        valign: "middle",
-      });
-      addBulletText(rawItems[i] || items[i], contentX + 0.68, yPos + 0.02, contentW - 0.88, itemH - 0.09, pal);
+      // Thin separator line between panel and text
+      slide.addShape("rect" as any, { x: contentX + tabW + 0.1, y: yPos + cardH * 0.2, w: 0.008, h: cardH * 0.6, fill: { color: pal }, transparency: 55 });
+      // Text area
+      addBulletText(rawItems[i] || items[i], contentX + tabW + 0.22, yPos + 0.03, contentW - tabW - 0.32, cardH - 0.06, pal);
     }
   } else if (variant === 2) {
+    // "Cap Cards" — colored header band at top of each card with big number, text below
     addSlideBackground(slide, colors.bg);
     addLightBgDecoration(slide, design, colors);
-    addLeftEdge(slide, accentColor);
+    if (design.visualStyle !== "minimal") addLeftEdge(slide, accentColor);
     renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, accentColor);
     const cols = items.length >= 4 ? 2 : 1;
-    const gap = 0.2;
+    const gap = 0.18;
     const cardW = cols === 2 ? (contentW - gap) / 2 : contentW;
     const rows = Math.ceil(items.length / cols);
-    const cardH = Math.max(1.08, Math.min(1.42, (contentH - gap * (rows - 1)) / rows - 0.04));
+    const cardH = Math.max(1.08, Math.min(1.46, (contentH - gap * (rows - 1)) / rows - 0.04));
+    const capH = Math.min(0.44, cardH * 0.33);
     for (let i = 0; i < items.length; i++) {
       const col = i % cols;
       const row = Math.floor(i / cols);
       const x = contentX + col * (cardW + gap);
       const y = contentY + row * (cardH + gap);
       const pal = design.palette[i % design.palette.length];
+      // Shadow
       addCardShadow(slide, x, y, cardW, cardH, colors.shadowColor, design.theme === "light");
-      slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.1 });
-      slide.addShape("rect" as any, { x, y, w: 0.06, h: cardH, fill: { color: pal }, rectRadius: 0.1 });
-      slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
-        x: x + 0.14,
-        y: y + 0.08,
-        w: 0.38,
-        h: 0.3,
-        fontSize: Math.min(14, cardW > 3 ? 15 : 12),
-        fontFace: design.fonts.title,
-        bold: true,
-        color: ensureContrastOnLight(pal, colors.cardBg),
-        transparency: 15,
-        align: "left",
+      // Card body (full)
+      slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.12 });
+      // Colored cap — roundRect for top corners, rect to square off bottom of cap
+      slide.addShape("roundRect" as any, { x, y, w: cardW, h: capH + 0.12, fill: { color: pal }, rectRadius: 0.12 });
+      slide.addShape("rect" as any, { x, y: y + capH, w: cardW, h: 0.12, fill: { color: pal } });
+      // Number in cap
+      const numStr = String(((plan.itemStartIndex ?? 0) + i + 1)).padStart(2, "0");
+      slide.addText(numStr, {
+        x: x + 0.12, y, w: 0.5, h: capH,
+        fontSize: Math.min(22, capH * 52),
+        fontFace: design.fonts.title, bold: true,
+        color: "FFFFFF", align: "left", valign: "middle",
       });
-      addBulletText(rawItems[i] || items[i], x + 0.18, y + 0.4, cardW - 0.36, cardH - 0.56, pal, colors.text, "top");
+      // Text below cap
+      addBulletText(rawItems[i] || items[i], x + 0.15, y + capH + 0.12, cardW - 0.28, cardH - capH - 0.2, pal, colors.text, "top");
     }
   } else {
     addSlideBackground(slide, colors.bg);
     addLightBgDecoration(slide, design, colors);
-    addLeftEdge(slide, accentColor);
+    if (design.visualStyle !== "minimal") addLeftEdge(slide, accentColor);
     renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, accentColor);
     if (items.length > 0) {
       const heroH = items.length === 1 ? contentH : Math.min(1.5, contentH * 0.38);
@@ -3608,7 +3606,7 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
   const pal = design.palette[_globalSlideIdx % design.palette.length];
-  addLeftEdge(slide, pal);
+  if (design.visualStyle !== "minimal") addLeftEdge(slide, pal);
   renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, pal);
 
   const rawItems = plan.items || [];
@@ -3677,7 +3675,7 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
-  addLeftEdge(slide, colors.p3);
+  if (design.visualStyle !== "minimal") addLeftEdge(slide, colors.p3);
   renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, colors.p3);
   const items = (plan.items || []).slice(0, GRID_MAX_ITEMS);
   const parsed = items.map(parseDeterministicCardItem);
@@ -3693,59 +3691,47 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
     const item = parsed[i];
 
     addCardShadow(slide, x, y, geometry.cardW, geometry.cardH, colors.shadowColor, design.theme === "light");
+    // Card background
     slide.addShape("roundRect" as any, {
-      x,
-      y,
-      w: geometry.cardW,
-      h: geometry.cardH,
+      x, y, w: geometry.cardW, h: geometry.cardH,
       fill: { color: colors.cardBg },
-      rectRadius: 0.1,
+      rectRadius: 0.12,
+      line: { color: colors.borders, width: 0.5 },
     });
-    slide.addShape("rect" as any, { x, y, w: 0.06, h: geometry.cardH, fill: { color: pal }, rectRadius: 0.1 });
 
-    slide.addShape("roundRect" as any, {
-      x: x + 0.14,
-      y: y + 0.14,
-      w: geometry.numBadge,
-      h: geometry.numBadge,
+    // Large circle badge centered at top of card
+    const circleSz = Math.min(0.58, geometry.cardW * 0.28, geometry.cardH * 0.38);
+    const circleX = x + geometry.cardW / 2 - circleSz / 2;
+    const circleY = y + 0.14;
+    slide.addShape("ellipse" as any, {
+      x: circleX, y: circleY, w: circleSz, h: circleSz,
       fill: { color: pal },
-      rectRadius: 0.08,
     });
+    // Inner highlight ring
+    slide.addShape("ellipse" as any, {
+      x: circleX + 0.03, y: circleY + 0.02, w: circleSz - 0.06, h: circleSz - 0.06,
+      fill: { color: "FFFFFF", transparency: 88 },
+    });
+    // Number in circle
     slide.addText(String((plan.itemStartIndex ?? 0) + i + 1), {
-      x: x + 0.14,
-      y: y + 0.14,
-      w: geometry.numBadge,
-      h: geometry.numBadge,
-      fontSize: Math.min(13, geometry.numBadge * 36),
-      fontFace: design.fonts.title,
-      bold: true,
-      color: "FFFFFF",
-      align: "center",
-      valign: "middle",
+      x: circleX, y: circleY, w: circleSz, h: circleSz,
+      fontSize: Math.max(12, Math.min(20, circleSz * 34)),
+      fontFace: design.fonts.title, bold: true,
+      color: "FFFFFF", align: "center", valign: "middle",
     });
 
+    // Semantic icon (emoji) below circle if available
+    const iconY = circleY + circleSz + 0.06;
     if (item.icon) {
-      slide.addShape("ellipse" as any, {
-        x: x + 0.14 + geometry.numBadge + 0.1,
-        y: y + 0.14,
-        w: geometry.semanticBadge,
-        h: geometry.semanticBadge,
-        fill: { color: pal, transparency: 82 },
-        line: { color: pal, width: 0.8 },
-      });
       slide.addText(item.icon, {
-        x: x + 0.14 + geometry.numBadge + 0.1,
-        y: y + 0.14,
-        w: geometry.semanticBadge,
-        h: geometry.semanticBadge,
-        fontSize: 14,
-        fontFace: design.fonts.body,
-        color: pal,
-        align: "center",
-        valign: "middle",
+        x: x + 0.1, y: iconY, w: geometry.cardW - 0.2, h: 0.26,
+        fontSize: 14, fontFace: design.fonts.body,
+        color: pal, align: "center", valign: "middle",
       });
     }
 
+    // Text block below circle
+    const textTopY = item.icon ? iconY + 0.28 : circleY + circleSz + 0.12;
     const textRuns = item.hasColon
       ? [
           { text: `${item.label}: `, options: { bold: true, color: ensureContrastOnLight(pal, colors.cardBg) } },
@@ -3753,23 +3739,18 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
         ]
       : [{ text: item.desc, options: { color: colors.text } }];
 
-    const textW = geometry.cardW - geometry.textXOffset - 0.32;
-    const textH = geometry.cardH - geometry.textYOffset - 0.26;
+    const textW = geometry.cardW - 0.28;
+    const textH = y + geometry.cardH - 0.14 - textTopY;
     slide.addText(
       textRuns as any,
       {
-        x: x + geometry.textXOffset,
-        y: y + geometry.textYOffset,
-        w: textW,
-        h: textH,
+        x: x + 0.14, y: textTopY, w: textW, h: Math.max(0.3, textH),
         fontSize: unifiedFontSize,
         fontFace: design.fonts.body,
-        valign: "top",
+        align: "center", valign: "top",
         lineSpacingMultiple: 1.22,
-        fit: "shrink",
-        shrinkText: true,
-        minFontSize: 12,
-        margin: 0,
+        fit: "shrink", shrinkText: true,
+        minFontSize: 11, margin: 0,
       } as any,
     );
   }
@@ -3968,7 +3949,7 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
   } else {
     addSlideBackground(slide, colors.bg);
     addLightBgDecoration(slide, design, colors);
-    addLeftEdge(slide, colors.p2);
+    if (design.visualStyle !== "minimal") addLeftEdge(slide, colors.p2);
     renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, colors.p2);
     const phaseColors = [colors.p1, colors.p3, colors.p0, colors.p2, colors.p4, colors.p1, colors.p3];
     const vContentY = 1.55;
@@ -4103,7 +4084,7 @@ function renderComparisonTable(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
-  addLeftEdge(slide, colors.p0);
+  if (design.visualStyle !== "minimal") addLeftEdge(slide, colors.p0);
   renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, colors.p0);
   const headers = plan.tableHeaders || [];
   const rows = plan.tableRows || [];
@@ -4175,7 +4156,7 @@ function renderExampleHighlight(pptx: PptxGenJS, plan: SlidePlan, design: Design
 
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
-  addLeftEdge(slide, colors.p3);
+  if (design.visualStyle !== "minimal") addLeftEdge(slide, colors.p3);
 
   // Header
   renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, colors.p3);
@@ -4279,7 +4260,7 @@ function renderWarningCallout(pptx: PptxGenJS, plan: SlidePlan, design: DesignCo
   _globalSlideIdx++;
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
-  addLeftEdge(slide, "C0392B");
+  if (design.visualStyle !== "minimal") addLeftEdge(slide, "C0392B");
   renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, "C0392B");
   slide.addShape("roundRect" as any, {
     x: SLIDE_W - 1.5,
