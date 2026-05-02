@@ -3499,11 +3499,13 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     addLightBgDecoration(slide, design, colors);
     if (design.visualStyle !== "minimal") addLeftEdge(slide, accentColor);
     renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, accentColor);
-    const tabW = Math.min(0.72, itemH * 0.7);
+    const singleItem = items.length === 1;
+    const effectiveItemH = singleItem ? contentH : itemH;
+    const tabW = Math.min(0.72, effectiveItemH * 0.7);
     for (let i = 0; i < items.length; i++) {
       const pal = design.palette[i % design.palette.length];
-      const yPos = contentY + i * (itemH + bulletGap);
-      const cardH = itemH - 0.05;
+      const yPos = contentY + i * (effectiveItemH + bulletGap);
+      const cardH = effectiveItemH - 0.05;
       // Shadow
       addCardShadow(slide, contentX, yPos, contentW, cardH, colors.shadowColor, design.theme === "light");
       // Full card bg
@@ -3540,8 +3542,11 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     const gap = 0.18;
     const cardW = cols === 2 ? (contentW - gap) / 2 : contentW;
     const rows = Math.ceil(items.length / cols);
-    const cardH = Math.max(1.12, Math.min(1.52, (contentH - gap * (rows - 1)) / rows - 0.04));
-    const capH = Math.min(0.54, cardH * 0.40);
+    const singleCard = rows === 1 && cols === 1;
+    const cardH = singleCard
+      ? contentH - 0.02
+      : Math.max(1.12, Math.min(1.52, (contentH - gap * (rows - 1)) / rows - 0.04));
+    const capH = Math.min(0.54, cardH * (singleCard ? 0.30 : 0.40));
     for (let i = 0; i < items.length; i++) {
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -3581,10 +3586,15 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       const heroH = items.length === 1 ? contentH : Math.min(1.56, contentH * 0.40);
       const spotTabW = Math.min(0.92, heroH * 0.62);
 
-      // Shadow for spotlight card
-      addCardShadow(slide, contentX, contentY, contentW, heroH, colors.shadowColor, design.theme === "light");
-      // Spotlight card body
-      slide.addShape("roundRect" as any, { x: contentX, y: contentY, w: contentW, h: heroH, fill: { color: colors.coverDark }, rectRadius: 0.12 });
+      // Shadow for spotlight card (light theme only — dark theme has no shadow against dark bg)
+      if (design.theme === "light") addCardShadow(slide, contentX, contentY, contentW, heroH, colors.shadowColor, true);
+      // Spotlight card body — on dark theme use panelMid (slightly lighter) so card is distinguishable
+      const heroBg = design.theme === "dark" ? colors.panelMid : colors.coverDark;
+      slide.addShape("roundRect" as any, {
+        x: contentX, y: contentY, w: contentW, h: heroH,
+        fill: { color: heroBg }, rectRadius: 0.12,
+        line: { color: accentColor, width: 1.2, transparency: 40 },
+      });
       // Large decorative watermark number
       slide.addText("01", {
         x: contentX + contentW - 1.4, y: contentY, w: 1.3, h: heroH,
