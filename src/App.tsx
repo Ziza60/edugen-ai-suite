@@ -9,6 +9,8 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/AppLayout";
 import Landing from "@/pages/Landing";
 import Auth from "@/pages/Auth";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import CourseWizard from "@/pages/CourseWizard";
 import CourseView from "@/pages/CourseView";
@@ -16,7 +18,12 @@ import Courses from "@/pages/Courses";
 import Certificates from "@/pages/Certificates";
 import CertificateValidation from "@/pages/CertificateValidation";
 import Plans from "@/pages/Plans";
+import Analytics from "@/pages/Analytics";
 import NotFound from "@/pages/NotFound";
+import TutorPublic from "@/pages/TutorPublic";
+import CourseLanding from "@/pages/CourseLanding";
+import LandingPageEditor from "@/pages/LandingPageEditor";
+import ReviewPublic from "@/pages/ReviewPublic";
 
 const queryClient = new QueryClient();
 
@@ -31,6 +38,8 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route
                 path="/app"
                 element={
@@ -43,10 +52,15 @@ const App = () => (
                 <Route path="courses" element={<Courses />} />
                 <Route path="courses/new" element={<CourseWizard />} />
                 <Route path="courses/:id" element={<CourseView />} />
+                <Route path="courses/:id/landing-page" element={<LandingPageEditor />} />
                 <Route path="certificates" element={<Certificates />} />
                 <Route path="planos" element={<Plans />} />
+                <Route path="analytics" element={<Analytics />} />
               </Route>
               <Route path="/certificate/:token" element={<CertificateValidation />} />
+              <Route path="/tutor/:slug" element={<TutorPublic />} />
+              <Route path="/c/:slug" element={<CourseLanding />} />
+              <Route path="/review/:token" element={<ReviewPublic />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

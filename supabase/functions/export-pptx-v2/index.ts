@@ -1,8 +1,9 @@
+// @ts-nocheck
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
-const ENGINE_VERSION = "2.8.1-2026-03-12";
+const ENGINE_VERSION = "3.12.1-LANDING-PAGE-STRUCTURE";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -468,7 +469,7 @@ async function fetchUnsplashImage(
   console.log(`[V2-IMAGE] Using key: ${keyPreview} (length=${accessKey.length})`);
 
   try {
-    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=5&content_filter=high`;
+    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=1&content_filter=high`;
     const res = await fetch(url, {
       headers: { Authorization: `Client-ID ${accessKey}` },
     });
@@ -486,7 +487,7 @@ async function fetchUnsplashImage(
       return null;
     }
 
-    const photo = data.results[Math.floor(Math.random() * data.results.length)];
+    const photo = data.results[0];
     const imageUrl = photo.urls?.regular || photo.urls?.small;
     if (!imageUrl) return null;
 
@@ -567,18 +568,6 @@ async function buildImagePlan(
   const closingResult = results[results.length - 1];
   if (closingResult.status === "fulfilled" && closingResult.value) {
     plan.closing = closingResult.value;
-  }
-
-  // Fallback: if cover or closing failed, reuse first/last available module image
-  if (!plan.cover) {
-    for (let fi = 0; fi < modules.length; fi++) {
-      if (plan.modules.has(fi)) { plan.cover = plan.modules.get(fi)!; console.log("[V2-IMAGE] Cover fallback: reusing module", fi + 1, "image"); break; }
-    }
-  }
-  if (!plan.closing) {
-    for (let fi = modules.length - 1; fi >= 0; fi--) {
-      if (plan.modules.has(fi)) { plan.closing = plan.modules.get(fi)!; console.log("[V2-IMAGE] Closing fallback: reusing module", fi + 1, "image"); break; }
-    }
   }
 
   const fetched = (plan.cover ? 1 : 0) + plan.modules.size + (plan.closing ? 1 : 0);
@@ -2286,7 +2275,7 @@ function visuallyFitsPlan(plan: SlidePlan): boolean {
 
       return items.every((item) => {
         const colonIdx = item.indexOf(":");
-        if (colonIdx > 0 && colonIdx < 70) {
+        if (colonIdx > 0 && colonIdx < 40) {
           const label = item.substring(0, colonIdx).trim();
           const desc = item.substring(colonIdx + 1).trim();
           return (
@@ -2311,7 +2300,7 @@ function visuallyFitsPlan(plan: SlidePlan): boolean {
       const capped = items.slice(0, 5);
       return capped.every((item, i) => {
         const colonIdx = item.indexOf(":");
-        const label = colonIdx > 0 && colonIdx < 70
+        const label = colonIdx > 0 && colonIdx < 35
           ? item.substring(0, colonIdx).trim()
           : ["Contexto", "Desafio", "Solução", "Implementação", "Resultado"][i] || `Fase ${i + 1}`;
         const desc = colonIdx > 0 ? item.substring(colonIdx + 1).trim() : item;
@@ -2484,7 +2473,7 @@ function renderCoverSlide(
 
   // Only add large decorative gradient/ellipse when there's no image (they obscure the photo)
   if (!image) {
-    addGradientBar(slide, SLIDE_W * 0.50, 0, SLIDE_W * 0.50, SLIDE_H, colors.p0, "down");
+    addGradientBar(slide, SLIDE_W * 0.50, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
 
     slide.addShape("ellipse" as any, {
       x: SLIDE_W * 0.55, y: -SLIDE_H * 0.35,
@@ -2838,7 +2827,7 @@ function renderModuleCover(
     addImageCredit(slide, image!.credit, design);
   }
 
-  addGradientBar(slide, contentW * 0.60, 0, contentW * 0.40, SLIDE_H, accentColor, "down");
+  addGradientBar(slide, contentW * 0.60, 0, contentW * 0.45, SLIDE_H, accentColor, "down");
 
   if (!hasImage) {
     slide.addText(modNum, {
@@ -2919,7 +2908,7 @@ function renderModuleCover(
     });
 
     for (let i = 0; i < Math.min(plan.objectives.length, 3); i++) {
-      const objY = objStartY + 0.30 + i * 0.50;
+      const objY = objStartY + 0.32 + i * 0.44;
       slide.addShape("roundRect" as any, {
         x: 1.10, y: objY + 0.05,
         w: 0.12, h: 0.12,
@@ -2928,7 +2917,7 @@ function renderModuleCover(
       });
       slide.addText(plan.objectives[i], {
         x: 1.35, y: objY,
-        w: objW, h: 0.45,
+        w: objW, h: 0.38,
         fontSize: 11,
         fontFace: design.fonts.body,
         color: colors.coverSubtext,
@@ -3495,7 +3484,7 @@ function renderGridCards(
     });
 
     const colonIdx = items[i].indexOf(":");
-    if (colonIdx > 0 && colonIdx < 70) {
+    if (colonIdx > 0 && colonIdx < 40) {
       const label = items[i].substring(0, colonIdx).trim();
       const desc = items[i].substring(colonIdx + 1).trim();
       const gcBadge = Math.min(0.32, cardW * 0.15, cardH * 0.20);
@@ -3693,15 +3682,15 @@ function renderProcessTimeline(
       // Label + description — detect if label and body are fragments of the same sentence
       const colonIdx = items[i].indexOf(":");
       let label: string, desc: string;
-      if (colonIdx > 0 && colonIdx < 70) {
+      if (colonIdx > 0 && colonIdx < 40) {
         label = items[i].substring(0, colonIdx).trim();
         desc = items[i].substring(colonIdx + 1).trim();
       } else if (items[i].length <= 50) {
         label = items[i]; desc = "";
       } else {
         const words = items[i].split(/\s+/);
-        label = words.slice(0, 6).join(" ");
-        desc = words.slice(6).join(" ");
+        label = words.slice(0, 4).join(" ");
+        desc = words.slice(4).join(" ");
       }
 
       // Unify label+body into single text when they're fragments of the same sentence
@@ -3780,7 +3769,7 @@ function renderProcessTimeline(
 
       const colonIdx = items[i].indexOf(":");
       let label: string, desc: string;
-      if (colonIdx > 0 && colonIdx < 70) {
+      if (colonIdx > 0 && colonIdx < 40) {
         label = items[i].substring(0, colonIdx).trim();
         desc = items[i].substring(colonIdx + 1).trim();
       } else {
@@ -3980,7 +3969,7 @@ function renderExampleHighlight(
     const y = gridStartY + i * (bandH + bandGap);
     const pal = phaseColors[i % phaseColors.length];
     const colonIdx = cappedItems[i].indexOf(":");
-    const label = colonIdx > 0 && colonIdx < 70
+    const label = colonIdx > 0 && colonIdx < 35
       ? cappedItems[i].substring(0, colonIdx).trim()
       : defaultLabels[i % defaultLabels.length];
     const desc = colonIdx > 0 ? cappedItems[i].substring(colonIdx + 1).trim() : cappedItems[i];
@@ -4125,7 +4114,7 @@ function renderWarningCallout(
     });
 
     const colonIdx = items[i].indexOf(":");
-    const hasLabel = colonIdx > 0 && colonIdx < 70;
+    const hasLabel = colonIdx > 0 && colonIdx < 40;
     const itemLabel = hasLabel ? items[i].substring(0, colonIdx).trim() : "";
     const itemDesc = hasLabel ? items[i].substring(colonIdx + 1).trim() : items[i];
 
@@ -4342,15 +4331,15 @@ function renderSummarySlide(
       rectRadius: 0.10,
     });
 
-    const numSize = 0.32;
+    const numSize = 0.40;
     slide.addShape("roundRect" as any, {
-      x: x + 0.14, y: y + 0.10,
+      x: x + 0.14, y: y + 0.12,
       w: numSize, h: numSize,
       fill: { color: pal },
       rectRadius: 0.08,
     });
     slide.addText(String(i + 1), {
-      x: x + 0.14, y: y + 0.10,
+      x: x + 0.14, y: y + 0.12,
       w: numSize, h: numSize,
       fontSize: 16,
       fontFace: design.fonts.title,
@@ -4361,8 +4350,8 @@ function renderSummarySlide(
     });
 
     slide.addText(items[i], {
-      x: x + 0.14, y: y + numSize + 0.14,
-      w: cardW - 0.28, h: cardH - numSize - 0.24,
+      x: x + 0.14, y: y + numSize + 0.18,
+      w: cardW - 0.28, h: cardH - numSize - 0.30,
       fontSize: TYPO.BODY,
       fontFace: design.fonts.body,
       color: colors.text,
@@ -4516,7 +4505,7 @@ function renderClosingSlide(
 
   // Only add large decorative gradient/ellipse when there's no image (they obscure the photo)
   if (!image) {
-    addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
+    addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.60, SLIDE_H, colors.p0, "down");
 
     slide.addShape("ellipse" as any, {
       x: SLIDE_W - 4.00, y: -1.20,

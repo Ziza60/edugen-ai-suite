@@ -12,31 +12,45 @@ const PLAN_LIMITS = {
   pro: { maxCourses: 5, maxModules: 10, images: true },
 };
 
-// Call Lovable AI Gateway
-async function callAI(model: string, prompt: string) {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+// Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
+async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false) {
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  
+  // Use gemini-2.5-flash as requested
+  const aiModel = "gemini-2.5-flash";
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
+  console.log(`Calling Gemini API directly with model: ${aiModel}`);
+
+  if (!geminiKey) {
+    throw new Error("GEMINI_API_KEY não configurada.");
+  }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${geminiKey}`,
+      },
+      body: JSON.stringify({
+        model: aiModel,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxTokens,
+        temperature: 0.1, // Even lower temperature for more predictable structure
+        ...(isJson ? { response_format: { type: "json_object" } } : {})
+      }),
+    });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`AI call failed (${res.status}): ${errText}`);
+    console.error(`Gemini call failed: ${errText}`);
+    throw new Error(`Erro na API do Gemini (${res.status}): ${errText}`);
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || JSON.stringify(data);
+  return data.choices?.[0]?.message?.content || "";
 }
+
 
 // PROMPT MESTRE v2: Official Pedagogical Template
 function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {
@@ -71,13 +85,24 @@ Organize o conteúdo do módulo usando os seguintes blocos, NA ORDEM em que fize
 - Mecanismos, processos, etapas
 
 #### 🧩 Modelos / Tipos
-- Categorias, classificações, variantes (usar tabela Markdown quando comparar 2+ itens)
+- REGRA CRÍTICA: Só inclua esta seção se houver PELO MENOS 2 modelos, tipos ou categorias DISTINTOS para comparar.
+- Se não houver comparação real, OMITA completamente esta seção — não crie título sem conteúdo.
+- Quando existir: use tabela Markdown com 2-4 colunas e 2-5 linhas de dados reais e distintos.
+- PROIBIDO: criar esta seção com texto genérico, repetindo o que já foi dito em Fundamentos.
 
 #### 💡 Exemplo prático
-- Caso concreto, cenário aplicado, demonstração
+- REGRA CRÍTICA DE ORDEM — sempre nesta sequência exata, sem exceção:
+  **Contexto:** [situação inicial — quem, onde, qual problema]
+  **Desafio:** [obstáculo específico que precisava ser superado]
+  **Solução:** [o que foi feito, qual abordagem ou técnica aplicada]
+  **Resultado:** [o que mudou, com número ou indicador concreto quando possível]
+- O exemplo deve ser ancorado num setor ou perfil de empresa específico (não "uma empresa").
+- PROIBIDO inverter ou embaralhar essa ordem.
 
 #### 🛠️ Aplicações reais
-- Usos no mercado, indústria, cotidiano
+- REGRA CRÍTICA: Mínimo 4 aplicações distintas, cada uma com 1 frase objetiva.
+- Se o conteúdo original tiver menos de 4, sintetize e complemente com base no tema.
+- PROIBIDO criar esta seção com 1 ou 2 itens apenas.
 
 #### ⚠️ Desafios e cuidados
 - Limitações, erros comuns, armadilhas, considerações éticas
@@ -96,11 +121,12 @@ Todo módulo DEVE terminar com:
 [1 parágrafo curto — máximo 3 frases — sintetizando o essencial]
 
 ### 📌 Key Takeaways
-- [takeaway 1]
-- [takeaway 2]
-- [takeaway 3]
-- [takeaway 4]
-(mínimo 4, máximo 6 bullets)
+- [takeaway 1 — começa com verbo, contém ação específica]
+- [takeaway 2 — começa com verbo, contém ação específica]
+- [takeaway 3 — começa com verbo, contém ação específica]
+- [takeaway 4 — começa com verbo, contém ação específica]
+- [takeaway 5 — começa com verbo, contém ação específica]
+(mínimo 5, máximo 6 bullets — cada um UMA única ideia, NUNCA duas frases colapsadas com ponto e vírgula ou " e ")
 
 ---
 
@@ -154,6 +180,7 @@ Todo módulo DEVE terminar com:
 - Se uma ideia precisar de mais de 180 caracteres, divida em dois bullets completos e independentes.
 - PROIBIDO: bullets que começam com letra minúscula (exceto artigos após ponto).
 - PROIBIDO: bullets que terminam sem pontuação.
+- PROIBIDO: um bullet com duas ideias separadas por ponto e vírgula ou " e ".
 - Cada bullet deve ser compreensível isoladamente, sem depender do anterior.
 
 ---
@@ -168,197 +195,243 @@ ${rawContent}
 Retorne APENAS o conteúdo reescrito em Markdown seguindo o template acima, sem explicações adicionais.`;
 }
 
+function buildQualityElevationPrompt(
+  moduleTitle: string,
+  structuredContent: string,
+  courseTitle: string,
+  targetAudience: string,
+  language: string,
+): string {
+  return `Você é um supervisor sênior de qualidade de cursos online com 15 anos de experiência avaliando e elevando material didático para plataformas de e-learning B2B e corporativas.
+
+Você recebeu o módulo abaixo, que já passou por revisão estrutural e está pedagogicamente formatado. Sua tarefa NÃO é reformatar — a estrutura já está correta. Sua tarefa é identificar os trechos que falham nos 5 Critérios de Qualidade de Conteúdo e reescrevê-los com maior profundidade e especificidade.
+
+## CONTEXTO DO CURSO
+- Curso: "${courseTitle}"
+- Módulo: "${moduleTitle}"
+- Público-alvo: ${targetAudience}
+- Idioma: ${language}
+
+## OS 5 CRITÉRIOS DE QUALIDADE DE CONTEÚDO
+
+### Critério 1 — ESPECIFICIDADE
+Reprovado: conteúdo genérico que poderia estar em qualquer curso de qualquer área.
+Aprovado: conteúdo que menciona técnicas, ferramentas, números ou contextos concretos do tema.
+
+### Critério 2 — ADEQUAÇÃO AO PÚBLICO
+O público é: ${targetAudience}
+Reprovado: explicar o que já é óbvio para esse público (condescendente).
+Aprovado: assumir o que o público já sabe e ir direto ao que ele ainda não domina.
+
+### Critério 3 — EXEMPLO ANCORADO NA REALIDADE
+Reprovado: "Uma empresa de médio porte que vende software para outra empresa..."
+Aprovado: "Uma SaaS de automação de RH tentando vender para o CHRO de uma indústria com 2.000 funcionários..."
+
+### Critério 4 — TAKEAWAYS ACIONÁVEIS
+Reprovado (platitude): "Construir confiança através de credibilidade e empatia."
+Aprovado (acionável): "Antes de cada reunião com o Economic Buyer, prepare 3 métricas do setor dele."
+
+### Critério 5 — DENSIDADE DE CONTEÚDO
+Reprovado: bullets curtos que apenas nomeiam conceitos sem explicar.
+Aprovado: bullets que nomeiam E explicam o porquê ou como aplicar.
+
+## COMO PROCEDER
+1. Leia o módulo completo abaixo.
+2. Para cada seção, avalie internamente os 5 critérios.
+3. Reescreva APENAS os trechos que reprovam em pelo menos 1 critério.
+4. Mantenha INTACTO o que já está aprovado.
+5. Retorne o módulo COMPLETO com as melhorias aplicadas.
+
+## RESTRIÇÕES ABSOLUTAS
+- NÃO altere títulos de seções, emojis ou separadores (---)
+- NÃO adicione seções novas nem remova seções existentes
+- NÃO aumente o número de bullets de nenhuma seção — substitua bullets fracos por versões mais específicas, mantendo a mesma quantidade
+- NÃO adicione subseções ou subtítulos novos que não existiam no original
+- O volume total de texto deve ser similar ao original (±20%) — eleve qualidade, não quantidade
+- Comece DIRETAMENTE com ## [título do módulo] — ZERO preamble, saudação ou explicação antes do conteúdo
+- Mantenha o idioma: ${language}
+- Retorne APENAS o markdown melhorado, sem comentários
+
+---
+
+## MÓDULO PARA REVISÃO:
+
+${structuredContent}`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Not authenticated" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+  // SSE helper
+  const encoder = new TextEncoder();
+  let controller = null as ReadableStreamDefaultController<Uint8Array> | null;
+
+  function sendSSE(data: Record<string, unknown>) {
+    if (controller) {
+      try {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      } catch { /* stream closed */ }
+    }
+  }
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) { controller = c as ReadableStreamDefaultController<Uint8Array>; },
+  });
+
+  const sseHeaders = {
+    ...corsHeaders,
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+  };
+
+  // Start processing in background, return stream immediately
+  (async () => {
+    try {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) {
+        sendSSE({ type: "error", message: "Not authenticated" });
+        controller?.close();
+        return;
+      }
+
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
       });
-    }
+      const serviceClient = createClient(supabaseUrl, supabaseKey);
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const serviceClient = createClient(supabaseUrl, supabaseKey);
-
-    // Validate token using getClaims
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const userId = claimsData.claims.sub as string;
-
-    const body = await req.json();
-    const {
-      title: rawTitle,
-      theme,
-      target_audience,
-      tone,
-      language,
-      num_modules,
-      include_quiz,
-      include_flashcards,
-      include_images,
-      use_sources,
-    } = body;
-
-    // Sanitize title: trim whitespace, collapse multiple spaces, ensure non-empty
-    const title = (rawTitle || "").trim().replace(/\s{2,}/g, " ");
-    if (!title || title.length < 3) {
-      return new Response(
-        JSON.stringify({ error: "O título do curso deve ter pelo menos 3 caracteres." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // 1. Get subscription
-    const { data: sub } = await serviceClient
-      .from("subscriptions")
-      .select("plan")
-      .eq("user_id", userId)
-      .single();
-
-    const plan = (sub?.plan || "free") as "free" | "pro";
-    const limits = PLAN_LIMITS[plan];
-
-    // 1b. Check if user is a dev (unlimited generation)
-    const { data: profile, error: profileError } = await serviceClient
-      .from("profiles")
-      .select("is_dev")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    // Defensive fallback: if lookup by user_id fails, try id = auth user id
-    let isDev = profile?.is_dev === true;
-    if (!isDev && profileError) {
-      const { data: profileById } = await serviceClient
-        .from("profiles")
-        .select("is_dev")
-        .eq("id", userId)
-        .maybeSingle();
-      isDev = profileById?.is_dev === true;
-    }
-
-    // 2. Check monthly usage (skip for dev users)
-    if (!isDev) {
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const { count: usageCount } = await serviceClient
-        .from("usage_events")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("event_type", "COURSE_GENERATED")
-        .gte("created_at", startOfMonth);
-
-      if ((usageCount ?? 0) >= limits.maxCourses) {
-        return new Response(
-          JSON.stringify({ error: "Monthly course limit reached. Upgrade your plan." }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
-
-    const actualModules = Math.min(num_modules || 3, limits.maxModules);
-
-    // 2b. Validate image gate (Pro only, dev bypasses)
-    if (include_images && !limits.images && !isDev) {
-      return new Response(
-        JSON.stringify({ error: "AI images are available only on Pro plan." }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // 2c. Validate sources gate (Pro only, dev bypasses)
-    if (use_sources && plan !== "pro" && !isDev) {
-      return new Response(
-        JSON.stringify({ error: "Fontes próprias estão disponíveis apenas no plano Pro." }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // 2d. If using sources, retrieve all extracted texts
-    let sourcesBlock = "";
-    if (use_sources) {
-      // Sources are stored with a temporary course_id created by frontend
-      // We need to get them by user_id and the temp course_id passed
-      const tempCourseId = body.temp_course_id;
-      if (!tempCourseId) {
-        return new Response(
-          JSON.stringify({ error: "temp_course_id é obrigatório para cursos com fontes." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      const token = authHeader.replace("Bearer ", "");
+      const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+      if (claimsError || !claimsData?.claims) {
+        sendSSE({ type: "error", message: "Invalid token" });
+        controller?.close();
+        return;
       }
 
-      const { data: sources, error: srcError } = await serviceClient
-        .from("course_sources")
-        .select("filename, extracted_text")
-        .eq("course_id", tempCourseId)
-        .eq("user_id", userId);
+      const userId = claimsData.claims.sub as string;
+      const body = await req.json();
+      const {
+        title: rawTitle, theme, target_audience, tone, language,
+        num_modules, include_quiz, include_flashcards, include_images,
+        use_sources,
+      } = body;
 
-      if (srcError) throw srcError;
-
-      if (!sources || sources.length === 0) {
-        return new Response(
-          JSON.stringify({ error: "Nenhuma fonte encontrada. Faça upload de pelo menos um documento." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      const title = (rawTitle || "").trim().replace(/\s{2,}/g, " ");
+      if (!title || title.length < 3) {
+        sendSSE({ type: "error", message: "O título do curso deve ter pelo menos 3 caracteres." });
+        controller?.close();
+        return;
       }
 
-      const allText = sources
-        .map((s: any) => `--- Fonte: ${s.filename} ---\n${s.extracted_text}`)
-        .join("\n\n");
+      sendSSE({ type: "status", message: "Verificando permissões..." });
 
-      if (allText.length < 200) {
-        return new Response(
-          JSON.stringify({ error: "As fontes fornecidas não contêm conteúdo suficiente para gerar um curso." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      // Get subscription
+      const { data: sub } = await serviceClient
+        .from("subscriptions").select("plan").eq("user_id", userId).single();
+      const plan = (sub?.plan || "free") as "free" | "pro";
+      const limits = PLAN_LIMITS[plan];
+
+      // Check dev status
+      const { data: profile, error: profileError } = await serviceClient
+        .from("profiles").select("is_dev").eq("user_id", userId).maybeSingle();
+      let isDev = profile?.is_dev === true;
+      if (!isDev && profileError) {
+        const { data: profileById } = await serviceClient
+          .from("profiles").select("is_dev").eq("id", userId).maybeSingle();
+        isDev = profileById?.is_dev === true;
       }
 
-      sourcesBlock = allText;
-    }
+      // Check monthly usage
+      if (!isDev) {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const { count: usageCount } = await serviceClient
+          .from("usage_events").select("*", { count: "exact", head: true })
+          .eq("user_id", userId).eq("event_type", "COURSE_GENERATED").gte("created_at", startOfMonth);
+        if ((usageCount ?? 0) >= limits.maxCourses) {
+          sendSSE({ type: "error", message: "Limite mensal de cursos atingido. Faça upgrade do plano." });
+          controller?.close();
+          return;
+        }
+      }
 
-    // 3. Generate course structure
-    const sourcesInstruction = use_sources
-      ? `\n\nCRITICAL SOURCE RULES:
+      const actualModules = Math.min(num_modules || 3, limits.maxModules);
+
+      if (include_images && !limits.images && !isDev) {
+        sendSSE({ type: "error", message: "Imagens IA disponíveis apenas no plano Pro." });
+        controller?.close();
+        return;
+      }
+
+      if (use_sources && plan !== "pro" && !isDev) {
+        sendSSE({ type: "error", message: "Fontes próprias disponíveis apenas no plano Pro." });
+        controller?.close();
+        return;
+      }
+
+      // Retrieve sources if needed
+      let sourcesBlock = "";
+      if (use_sources) {
+        const tempCourseId = body.temp_course_id;
+        if (!tempCourseId) {
+          sendSSE({ type: "error", message: "temp_course_id é obrigatório para cursos com fontes." });
+          controller?.close();
+          return;
+        }
+
+        const { data: sources, error: srcError } = await serviceClient
+          .from("course_sources").select("filename, extracted_text")
+          .eq("course_id", tempCourseId).eq("user_id", userId);
+        if (srcError) throw srcError;
+        if (!sources || sources.length === 0) {
+          sendSSE({ type: "error", message: "Nenhuma fonte encontrada." });
+          controller?.close();
+          return;
+        }
+
+        const allText = sources.map((s: any) => `--- Fonte: ${s.filename} ---\n${s.extracted_text}`).join("\n\n");
+        if (allText.length < 200) {
+          sendSSE({ type: "error", message: "As fontes não contêm conteúdo suficiente." });
+          controller?.close();
+          return;
+        }
+        sourcesBlock = allText;
+      }
+
+      // ── STAGE 1: Generate structure ──
+      sendSSE({ type: "status", message: "Criando estrutura do curso..." });
+
+      const sourcesInstruction = use_sources
+        ? `\n\nCRITICAL SOURCE RULES:
 - You MUST use ONLY the content provided in <SOURCES> below.
-- Do NOT add any external knowledge, facts, or information not present in the sources.
-- If the sources don't contain enough information for a topic, explicitly state: "Informação não disponível nas fontes fornecidas."
+- Do NOT add any external knowledge not present in the sources.
 - Module titles and content must be derived exclusively from the provided documents.
 
 <SOURCES>
 ${sourcesBlock}
 </SOURCES>`
-      : "";
+        : "";
 
-    const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
-
-CRITICAL HARD CONSTRAINT — MODULE COUNT:
-- You MUST generate EXACTLY ${actualModules} modules. Not fewer, not more.
-- The "modules" array in your JSON response MUST contain exactly ${actualModules} items.
-- This is a non-negotiable requirement. Generating a different number is a critical failure.
+      const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
+      
+      STRICT JSON RULE:
+      - Return ONLY the JSON object. 
+      - Do NOT include any markdown formatting like \`\`\`json.
+      - Ensure the JSON is valid and NOT truncated.
+      
+      CRITICAL HARD CONSTRAINT — MODULE COUNT:
+      - You MUST generate EXACTLY ${actualModules} modules. Not fewer, not more.
+      - The "modules" array MUST contain exactly ${actualModules} items.
 
 CRITICAL QUALITY RULES:
-- All text (titles, descriptions, questions) must have PERFECT spelling and grammar in ${language || "pt-BR"}.
-- Double-check every title and sentence for missing letters, typos, or truncated words.
+- All text must have PERFECT spelling and grammar in ${language || "pt-BR"}.
 - Module titles must be complete, grammatically correct phrases.
-- The course description must be a well-formed paragraph with no spelling errors.
 ${sourcesInstruction}
 
 Course details:
@@ -367,8 +440,8 @@ Course details:
 - Target audience: ${target_audience || "general"}
 - Tone: ${tone || "professional"}
 - Language: ${language || "pt-BR"}
-- EXACTLY ${actualModules} modules (mandatory — no more, no less)
-${use_sources ? "- IMPORTANT: Base the course structure EXCLUSIVELY on the content in <SOURCES>" : ""}
+- EXACTLY ${actualModules} modules
+${use_sources ? "- Base the course structure EXCLUSIVELY on the content in <SOURCES>" : ""}
 ${include_quiz ? "- Include 3 quiz questions per module" : ""}
 ${include_flashcards ? "- Include 5 flashcards per module" : ""}
 
@@ -380,97 +453,93 @@ Return ONLY valid JSON with this structure:
       "title": "Module title",
       "summary": "brief summary for content generation"
       ${include_quiz ? ',"quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "..."}]' : ""}
-      ${include_flashcards ? ',"flashcards": [{"front": "Pergunta EXPLÍCITA com verbo e ponto de interrogação (?). PROIBIDO: títulos nominais, glossário ou definições soltas. CORRETO: Qual é a função do X no contexto Y? / Como o mecanismo Z contribui para W?", "back": "Resposta completa, objetiva e pedagogicamente clara"}]' : ""}
+      ${include_flashcards ? ',"flashcards": [{"front": "Pergunta EXPLÍCITA com verbo e ponto de interrogação (?)", "back": "Resposta completa e pedagógica"}]' : ""}
     }
   ]
 }`;
 
-    const structureRaw = await callAI("google/gemini-2.5-flash-lite", structurePrompt);
+      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 4000, true);
+      let structure;
+      try {
+        const cleaned = structureRaw.trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        const jsonString = jsonMatch ? jsonMatch[0] : cleaned;
+        structure = JSON.parse(jsonString);
+      } catch (parseErr) {
+        console.error("[generate-course] Failed to parse structure. Raw response length:", structureRaw.length);
+        console.error("[generate-course] Start of response:", structureRaw.substring(0, 500));
+        throw new Error("Falha ao processar a estrutura do curso gerada pela IA. Por favor, tente novamente.");
+      }
 
-    let structure;
-    try {
-      const jsonMatch = structureRaw.match(/\{[\s\S]*\}/);
-      structure = JSON.parse(jsonMatch ? jsonMatch[0] : structureRaw);
-    } catch {
-      throw new Error("Failed to parse AI structure response");
-    }
+      // Hard validation: enforce exact module count
+      if (!structure.modules || structure.modules.length !== actualModules) {
+        console.warn(`Module count mismatch: got ${structure.modules?.length ?? 0}, expected ${actualModules}. Retrying...`);
+        sendSSE({ type: "status", message: "Ajustando estrutura..." });
 
-    // HARD VALIDATION: enforce exact module count
-    if (!structure.modules || structure.modules.length !== actualModules) {
-      console.warn(`Module count mismatch: got ${structure.modules?.length ?? 0}, expected ${actualModules}. Retrying...`);
-      
-      const retryPrompt = `You previously generated ${structure.modules?.length ?? 0} modules, but EXACTLY ${actualModules} are required.
-
-Generate a complete course structure with EXACTLY ${actualModules} modules for the course "${title}" (${theme}).
+        const retryPrompt = `Generate a course structure with EXACTLY ${actualModules} modules for "${title}" (${theme}).
 Language: ${language || "pt-BR"}. Target audience: ${target_audience || "general"}. Tone: ${tone || "professional"}.
 ${include_quiz ? "Include 3 quiz questions per module." : ""}
 ${include_flashcards ? "Include 5 flashcards per module." : ""}
-
 Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
 
-      const retryRaw = await callAI("google/gemini-2.5-flash", retryPrompt);
-      try {
-        const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
-        structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
-      } catch {
-        throw new Error("Failed to parse AI retry response");
+        const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 1000, true);
+        try {
+          const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
+          structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
+        } catch {
+          throw new Error("Failed to parse AI retry response");
+        }
+
+        if (!structure.modules || structure.modules.length !== actualModules) {
+          throw new Error(`Failed to generate exactly ${actualModules} modules after retry.`);
+        }
       }
 
-      if (!structure.modules || structure.modules.length !== actualModules) {
-        console.error(`Retry failed: got ${structure.modules?.length ?? 0}, expected ${actualModules}`);
-        throw new Error(`Failed to generate exactly ${actualModules} modules after retry. Got ${structure.modules?.length ?? 0}.`);
+      sendSSE({ type: "structure_done", modules: actualModules });
+
+      // ── STAGE 2: Create course in DB ──
+      const { data: course, error: courseError } = await serviceClient
+        .from("courses")
+        .insert({
+          user_id: userId, title,
+          description: structure.description || "",
+          theme, target_audience: target_audience || null,
+          tone: tone || null, language: language || "pt-BR",
+          include_quiz: !!include_quiz, include_flashcards: !!include_flashcards,
+          include_images: !!include_images, use_sources: !!use_sources,
+        })
+        .select().single();
+
+      if (courseError) throw courseError;
+
+      // Reassign sources
+      if (use_sources && body.temp_course_id) {
+        await serviceClient.from("course_sources")
+          .update({ course_id: course.id })
+          .eq("course_id", body.temp_course_id).eq("user_id", userId);
       }
-    }
 
-    // 4. Create course in DB
-    const { data: course, error: courseError } = await serviceClient
-      .from("courses")
-      .insert({
-        user_id: userId,
-        title,
-        description: structure.description || "",
-        theme,
-        target_audience: target_audience || null,
-        tone: tone || null,
-        language: language || "pt-BR",
-        include_quiz: !!include_quiz,
-        include_flashcards: !!include_flashcards,
-        include_images: !!include_images,
-        use_sources: !!use_sources,
-      })
-      .select()
-      .single();
+      // ── STAGE 3: Generate content per module (parallel batches of 3) ──
+      const BATCH_SIZE = 3;
+      for (let batchStart = 0; batchStart < structure.modules.length; batchStart += BATCH_SIZE) {
+        const batch = structure.modules.slice(batchStart, batchStart + BATCH_SIZE);
 
-    if (courseError) throw courseError;
+        await Promise.all(batch.map(async (mod: any, batchIdx: number) => {
+          const i = batchStart + batchIdx;
 
-    // 4b. If using sources, reassign source records from temp course_id to real course_id
-    if (use_sources && body.temp_course_id) {
-      await serviceClient
-        .from("course_sources")
-        .update({ course_id: course.id })
-        .eq("course_id", body.temp_course_id)
-        .eq("user_id", userId);
-    }
+          sendSSE({
+            type: "module_start",
+            module: i + 1,
+            total: actualModules,
+            title: mod.title,
+          });
 
-    // 5. Generate content for each module IN PARALLEL (batches of 3)
-    const BATCH_SIZE = 3;
-    for (let batchStart = 0; batchStart < structure.modules.length; batchStart += BATCH_SIZE) {
-      const batch = structure.modules.slice(batchStart, batchStart + BATCH_SIZE);
-      
-      await Promise.all(batch.map(async (mod: any, batchIdx: number) => {
-        const i = batchStart + batchIdx;
+          // Step A: Generate raw content
+          const sourceContentInstruction = use_sources
+            ? `\n\nCRITICAL: Use ONLY the content in <SOURCES> below.\n<SOURCES>\n${sourcesBlock}\n</SOURCES>`
+            : "";
 
-        // Step A: Generate raw content
-        const sourceContentInstruction = use_sources
-          ? `\n\nCRITICAL: Use ONLY the content provided in <SOURCES> below. Do NOT add any external knowledge.
-If there is insufficient information in the sources for this module, write: "⚠️ Não há conteúdo suficiente nas fontes para este módulo. Considere adicionar mais material sobre este tema."
-
-<SOURCES>
-${sourcesBlock}
-</SOURCES>`
-          : "";
-
-        const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
+          const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
 
 Course: ${title}
 Module ${i + 1}: ${mod.title}
@@ -479,185 +548,182 @@ Target audience: ${target_audience || "general"}
 Tone: ${tone || "professional"}
 ${sourceContentInstruction}
 
-Write in Markdown format. Include:
-- Clear introduction
-- Main concepts with explanations
-- Examples when relevant
-- Key takeaways
-
-REGRA CRÍTICA PARA BULLETS E FRASES:
-- Cada bullet DEVE ser uma frase completa, terminando com ponto final.
-- NUNCA corte uma frase no meio de uma palavra. Se o bullet ficar longo, reescreva-o de forma mais concisa.
-- Máximo de 180 caracteres por bullet.
-- Se uma ideia precisar de mais de 180 caracteres, divida em dois bullets completos e independentes.
-- PROIBIDO: bullets que começam com letra minúscula (exceto artigos após ponto).
-- PROIBIDO: bullets que terminam sem pontuação.
-- Cada bullet deve ser compreensível isoladamente, sem depender do anterior.
-
+Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
 Write 800-1200 words. Be thorough and educational.`;
 
-        const rawContent = await callAI("google/gemini-2.5-flash", contentPrompt);
+          const rawContent = await callAI("google/gemini-3-flash-preview", contentPrompt);
 
-        // Step B: PROMPT MESTRE — Pedagogical refinement post-processing
-        const refinementPrompt = buildRefinementPrompt(
-          mod.title,
-          rawContent,
-          language || "pt-BR"
-        );
-        const refinedContent = await callAI("google/gemini-2.5-flash", refinementPrompt);
+          // Step B: Pedagogical refinement
+          const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
+          const refinedContent = await callAI("google/gemini-3-flash-lite", refinementPrompt, 1500);
 
-        // Step C: Save the REFINED content
-        const { data: moduleData, error: moduleError } = await serviceClient
-          .from("course_modules")
-          .insert({
-            course_id: course.id,
-            title: mod.title,
-            content: refinedContent,
-            order_index: i,
-          })
-          .select()
-          .single();
-
-        if (moduleError) throw moduleError;
-
-        // Insert quiz questions
-        if (include_quiz && mod.quiz?.length > 0) {
-          const quizInserts = mod.quiz.map((q: any) => ({
-            module_id: moduleData.id,
-            question: q.question,
-            options: q.options,
-            correct_answer: q.correct ?? 0,
-            explanation: q.explanation || null,
-          }));
-          await serviceClient.from("course_quiz_questions").insert(quizInserts);
-        }
-
-        // Insert flashcards
-        if (include_flashcards && mod.flashcards?.length > 0) {
-          const fcInserts = mod.flashcards.map((fc: any) => ({
-            module_id: moduleData.id,
-            front: fc.front,
-            back: fc.back,
-          }));
-          await serviceClient.from("course_flashcards").insert(fcInserts);
-        }
-
-        // Generate AI image (non-blocking within the module)
-        if (include_images) {
+          // Step C: Quality Elevation
+          let elevatedContent = refinedContent;
           try {
-            const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
+            console.log(`[generate-course] Quality Elevation: module ${i + 1} "${mod.title}"`);
+            const qualityPrompt = buildQualityElevationPrompt(
+              mod.title, refinedContent, title,
+              target_audience || "profissionais da área", language || "pt-BR",
+            );
+            const qualityResult = await callAI("google/gemini-3-flash-preview", qualityPrompt, 2000);
+            // Strip markdown fences AND any preamble before the first ## heading
+            const strippedFences = qualityResult
+              .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
+            const firstHeading = strippedFences.indexOf("\n## ");
+            const cleanedQuality = firstHeading > 0
+              ? strippedFences.slice(firstHeading).trim()
+              : strippedFences.startsWith("## ")
+                ? strippedFences
+                : strippedFences;
+            // Additional preamble guard: if result starts with a conversational line
+            // (no ##), extract from first ## occurrence
+            const preambleGuard = (s: string) => {
+              const idx = s.search(/^## /m);
+              return idx > 0 ? s.slice(idx).trim() : s;
+            };
+            const finalQuality = preambleGuard(cleanedQuality);
+            if (finalQuality.length >= refinedContent.length * 0.75) {
+              elevatedContent = finalQuality;
+              console.log(`[generate-course] Quality Elevation OK: ${refinedContent.length} → ${elevatedContent.length} chars`);
+            } else {
+              console.warn(`[generate-course] Quality Elevation result too short, keeping refined content`);
+            }
+          } catch (elevationErr: any) {
+            console.warn(`[generate-course] Quality Elevation failed (non-blocking): ${elevationErr.message}`);
+          }
 
-STRICT RULES:
-- Do NOT include any readable text, letters, words, numbers, labels, captions, or typography anywhere in the image.
-- No watermarks, no signatures, no written annotations.
-- Use ONLY: abstract shapes, icons, conceptual diagrams, visual metaphors, gradients, geometric patterns, and symbolic illustrations.
-- The image must be purely visual/illustrative — all text will be added separately by the application.
-- Style: modern, minimalist, soft colors, professional e-learning aesthetic.
-- Aspect ratio: 16:9.`;
+          // Step D: Save
+          const { data: moduleData, error: moduleError } = await serviceClient
+            .from("course_modules")
+            .insert({
+              course_id: course.id, title: mod.title,
+              content: elevatedContent, order_index: i,
+            })
+            .select().single();
+          if (moduleError) throw moduleError;
 
-            const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
-              },
-              body: JSON.stringify({
-                model: "google/gemini-2.5-flash-image",
-                messages: [{ role: "user", content: imagePrompt }],
-                modalities: ["image", "text"],
-              }),
-            });
+          // Insert quiz questions
+          if (include_quiz && mod.quiz?.length > 0) {
+            const quizInserts = mod.quiz.map((q: any) => ({
+              module_id: moduleData.id, question: q.question,
+              options: q.options, correct_answer: q.correct ?? 0,
+              explanation: q.explanation || null,
+            }));
+            await serviceClient.from("course_quiz_questions").insert(quizInserts);
+          }
 
-            if (imgRes.ok) {
-              const imgData = await imgRes.json();
-              const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+          // Insert flashcards
+          if (include_flashcards && mod.flashcards?.length > 0) {
+            const fcInserts = mod.flashcards.map((fc: any) => ({
+              module_id: moduleData.id, front: fc.front, back: fc.back,
+            }));
+            await serviceClient.from("course_flashcards").insert(fcInserts);
+          }
 
-              if (imageUrl && imageUrl.startsWith("data:image")) {
-                const base64Data = imageUrl.split(",")[1];
-                const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-                const ext = imageUrl.includes("png") ? "png" : "jpg";
-                const storagePath = `${userId}/module-${moduleData.id}.${ext}`;
+          // Generate AI image (non-blocking)
+          if (include_images) {
+            try {
+              const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
+STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstract shapes, icons, conceptual diagrams, visual metaphors. Style: modern, minimalist, soft colors, 16:9.`;
 
-                const { error: uploadErr } = await serviceClient.storage
-                  .from("course-exports")
-                  .upload(storagePath, binaryData, {
-                    contentType: `image/${ext}`,
-                    upsert: true,
-                  });
+              const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-3-flash-image",
+                  messages: [{ role: "user", content: imagePrompt }],
+                  modalities: ["image", "text"],
+                  max_tokens: 500, // Limite para geração de imagem
+                }),
+              });
 
-                if (!uploadErr) {
-                  const { data: signedData } = await serviceClient.storage
+              if (imgRes.ok) {
+                const imgData = await imgRes.json();
+                const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+                if (imageUrl && imageUrl.startsWith("data:image")) {
+                  const base64Data = imageUrl.split(",")[1];
+                  const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+                  const ext = imageUrl.includes("png") ? "png" : "jpg";
+                  const storagePath = `${userId}/module-${moduleData.id}.${ext}`;
+
+                  const { error: uploadErr } = await serviceClient.storage
                     .from("course-exports")
-                    .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+                    .upload(storagePath, binaryData, { contentType: `image/${ext}`, upsert: true });
 
-                  if (signedData?.signedUrl) {
-                    await serviceClient.from("course_images").insert({
-                      module_id: moduleData.id,
-                      url: signedData.signedUrl,
-                      alt_text: `Ilustração: ${mod.title}`,
-                    });
+                  if (!uploadErr) {
+                    const { data: signedData } = await serviceClient.storage
+                      .from("course-exports")
+                      .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+                    if (signedData?.signedUrl) {
+                      await serviceClient.from("course_images").insert({
+                        module_id: moduleData.id,
+                        url: signedData.signedUrl,
+                        alt_text: `Ilustração: ${mod.title}`,
+                      });
+                    }
                   }
                 }
               }
+            } catch (imgErr) {
+              console.error("Image generation failed for module", mod.title, imgErr);
             }
-          } catch (imgErr) {
-            console.error("Image generation failed for module", mod.title, imgErr);
           }
-        }
-      }));
-    }
 
-    // 6. Log usage events
-    const usageInserts = [
-      { user_id: userId, event_type: "COURSE_GENERATED", metadata: { course_id: course.id, plan } },
-    ];
-    if (use_sources) {
-      usageInserts.push({
-        user_id: userId,
-        event_type: "COURSE_WITH_SOURCES",
-        metadata: { course_id: course.id, plan },
-      });
-    }
-    await serviceClient.from("usage_events").insert(usageInserts);
-
-    // 7. AUTO-STANDARDIZE: Call restructure-modules automatically
-    let qualityReport = null;
-    try {
-      console.log("[generate-course] Auto-invoking restructure-modules...");
-      const restructureUrl = `${supabaseUrl}/functions/v1/restructure-modules`;
-      const restructureRes = await fetch(restructureUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": authHeader,
-          "apikey": anonKey,
-        },
-        body: JSON.stringify({ course_id: course.id }),
-      });
-      if (restructureRes.ok) {
-        const restructureData = await restructureRes.json();
-        qualityReport = restructureData.markdown_quality_report || null;
-        console.log("[generate-course] Auto-restructure complete:", restructureData.message);
-      } else {
-        console.warn("[generate-course] Auto-restructure failed:", await restructureRes.text());
+          sendSSE({ type: "module_done", module: i + 1, total: actualModules });
+        }));
       }
-    } catch (restructureErr: any) {
-      console.warn("[generate-course] Auto-restructure error (non-blocking):", restructureErr.message);
-    }
 
-    return new Response(
-      JSON.stringify({
-        course_id: course.id,
-        message: "Course generated successfully",
-        quality_report: qualityReport,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (error: any) {
-    console.error("Generate course error:", error);
-    return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
+      // ── STAGE 4: Log usage ──
+      const usageInserts = [
+        { user_id: userId, event_type: "COURSE_GENERATED", metadata: { course_id: course.id, plan } },
+      ];
+      if (use_sources) {
+        usageInserts.push({
+          user_id: userId, event_type: "COURSE_WITH_SOURCES",
+          metadata: { course_id: course.id, plan },
+        });
+      }
+      await serviceClient.from("usage_events").insert(usageInserts);
+
+      // ── STAGE 5: Auto-restructure (non-blocking, don't wait for SSE) ──
+      try {
+        console.log("[generate-course] Auto-invoking restructure-modules...");
+        const restructureUrl = `${supabaseUrl}/functions/v1/restructure-modules`;
+        fetch(restructureUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": authHeader,
+            "apikey": anonKey,
+          },
+          body: JSON.stringify({ course_id: course.id }),
+        }).then(async (res) => {
+          if (res.ok) {
+            const data = await res.json();
+            console.log("[generate-course] Auto-restructure complete:", data.message);
+          } else {
+            console.warn("[generate-course] Auto-restructure failed:", await res.text());
+          }
+        }).catch((err) => {
+          console.warn("[generate-course] Auto-restructure error:", err.message);
+        });
+      } catch (e: any) {
+        console.warn("[generate-course] Auto-restructure error (non-blocking):", e.message);
+      }
+
+      // Send completion event
+      sendSSE({ type: "complete", courseId: course.id });
+      controller?.close();
+
+    } catch (error: any) {
+      console.error("Generate course error:", error);
+      sendSSE({ type: "error", message: error.message || "Erro interno ao gerar curso" });
+      controller?.close();
+    }
+  })();
+
+  return new Response(stream, { headers: sseHeaders });
 });

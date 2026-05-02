@@ -9,20 +9,28 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
   RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
-  Pencil, Share2, GraduationCap, CheckCircle2, XCircle
+  Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2,
+  BarChart3, Globe, Rocket, Languages, Save, Cloud, CloudOff
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { ExportButtons } from "@/components/course/ExportButtons";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useMarkdownTableComponents } from "@/components/course/MarkdownTable";
 import { motion } from "framer-motion";
-import { useEffect, useState, useRef } from "react";
-import { Textarea } from "@/components/ui/textarea";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { BlockEditor } from "@/components/course/BlockEditor";
 import { CertificateDialog } from "@/components/course/CertificateDialog";
+import { ScriptGeneratorButton } from "@/components/course/ScriptGeneratorButton";
 import { FlashcardsFlipView } from "@/components/course/FlashcardsFlipView";
 import { FlashcardsListView } from "@/components/course/FlashcardsListView";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { EduScorePanel } from "@/components/course/EduScorePanel";
+import { TranslateDialog } from "@/components/course/TranslateDialog";
+import { ReviewPanel } from "@/components/course/ReviewPanel";
+import { ModuleSidebar } from "@/components/course/ModuleSidebar";
+import { RestructureDiffDialog } from "@/components/course/RestructureDiffDialog";
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
@@ -46,7 +54,22 @@ export default function CourseView() {
   const [showFlashcardsModal, setShowFlashcardsModal] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizRevealed, setQuizRevealed] = useState<Record<string, boolean>>({});
+  const [togglingTutor, setTogglingTutor] = useState(false);
+  const [eduScore, setEduScore] = useState<any>(null);
+  const [calculatingScore, setCalculatingScore] = useState(false);
+  const [generatingLanding, setGeneratingLanding] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // ── Auto-save state ──
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  // ── Restructure diff state ──
+  const [diffDialogOpen, setDiffDialogOpen] = useState(false);
+  const [restructuredModules, setRestructuredModules] = useState<any[]>([]);
+  const [applyingRestructure, setApplyingRestructure] = useState(false);
 
   const isPro = plan === "pro";
 
@@ -122,6 +145,36 @@ export default function CourseView() {
     enabled: modules.length > 0,
   });
 
+  // Tutor stats: questions in last 7 days
+  const { data: tutorStats } = useQuery({
+    queryKey: ["tutor-stats", id],
+    queryFn: async () => {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { count, error } = await (supabase
+        .from("tutor_sessions") as any)
+        .select("id", { count: "exact", head: true })
+        .eq("course_id", id!)
+        .gte("created_at", sevenDaysAgo);
+      if (error) return 0;
+      return count || 0;
+    },
+    enabled: !!id && !!(course as any)?.tutor_enabled,
+  });
+
+  // Landing page data
+  const { data: landing, refetch: refetchLanding } = useQuery({
+    queryKey: ["course-landing", id],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("course_landings") as any)
+        .select("*")
+        .eq("course_id", id!)
+        .single();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!id,
+  });
+
   useQuery({
     queryKey: ["flip-entitlement", user?.id, plan],
     queryFn: async () => {
@@ -146,6 +199,8 @@ export default function CourseView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
       setEditingModuleId(null);
+      setSaveStatus("saved");
+      setLastSavedAt(new Date());
       toast({ title: "Módulo atualizado!" });
     },
   });
@@ -161,6 +216,85 @@ export default function CourseView() {
       toast({ title: course?.status === "published" ? "Curso despublicado" : "Curso publicado!" });
     },
   });
+
+  // ── Auto-save handler ──
+  const handleContentChange = useCallback((newContent: string) => {
+    setEditContent(newContent);
+    setSaveStatus("unsaved");
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      const activeModule = modules[activeModuleIndex];
+      if (!activeModule || !editingModuleId) return;
+      setSaveStatus("saving");
+      try {
+        const { error } = await supabase.from("course_modules")
+          .update({ content: newContent })
+          .eq("id", activeModule.id);
+        if (error) throw error;
+        setSaveStatus("saved");
+        setLastSavedAt(new Date());
+        queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
+      } catch {
+        setSaveStatus("unsaved");
+      }
+    }, 3000);
+  }, [modules, activeModuleIndex, editingModuleId, id, queryClient]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(saveTimerRef.current);
+  }, []);
+
+  // ── Restructure with diff preview ──
+  const handleRestructureWithDiff = async () => {
+    setRestructuring(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("restructure-modules", {
+        body: { course_id: id },
+      });
+      if (error) throw error;
+
+      // Store restructured data for diff preview
+      if (data?.restructured_modules) {
+        setRestructuredModules(data.restructured_modules);
+      } else {
+        // Fallback: refetch after save
+        setQualityReport(data?.markdown_quality_report || null);
+        toast({
+          title: "Módulos reestruturados!",
+          description: data?.message || "Conteúdo padronizado com sucesso.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
+        setRestructuring(false);
+        return;
+      }
+
+      setQualityReport(data?.markdown_quality_report || null);
+      setDiffDialogOpen(true);
+    } catch (err: any) {
+      toast({ title: "Erro ao reestruturar", description: err.message, variant: "destructive" });
+    } finally {
+      setRestructuring(false);
+    }
+  };
+
+  const handleApplyRestructure = async () => {
+    setApplyingRestructure(true);
+    try {
+      await Promise.all(
+        restructuredModules.map((mod: any) =>
+          supabase.from("course_modules").update({ content: mod.content }).eq("id", mod.id)
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
+      toast({ title: "Módulos reestruturados!", description: "Mudanças aplicadas com sucesso." });
+      setDiffDialogOpen(false);
+    } catch (err: any) {
+      toast({ title: "Erro ao aplicar", description: err.message, variant: "destructive" });
+    } finally {
+      setApplyingRestructure(false);
+    }
+  };
 
   if (loadingCourse || loadingModules) {
     return (
@@ -191,6 +325,14 @@ export default function CourseView() {
     flashcards.length > 0 && "flashcards",
     "certificado",
   ].filter(Boolean);
+
+  const saveStatusLabel = saveStatus === "saved"
+    ? lastSavedAt
+      ? `Salvo há ${Math.max(1, Math.round((Date.now() - lastSavedAt.getTime()) / 1000))}s`
+      : "Salvo"
+    : saveStatus === "saving"
+    ? "Salvando..."
+    : "Alterações não salvas";
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -244,9 +386,57 @@ export default function CourseView() {
                 isPro={isPro}
                 modules={modules}
               />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 bg-primary/5 border-primary/20 text-primary"
+                onClick={() => navigate(`/app/courses/${id}/landing-page`)}
+              >
+                <Globe className="h-4 w-4 mr-1.5" />
+                Landing Page
+              </Button>
+              <ScriptGeneratorButton
+                courseId={id!}
+                courseTitle={course.title}
+                isPro={isPro}
+                disabled={!isPublished}
+              />
               <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)} className="h-9">
                 <GraduationCap className="h-4 w-4 mr-1.5" />
                 Certificado
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                disabled={calculatingScore || modules.length === 0}
+                onClick={async () => {
+                  setCalculatingScore(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("calculate-eduscore", {
+                      body: { course_id: id },
+                    });
+                    if (error) throw error;
+                    setEduScore(data);
+                  } catch (err: any) {
+                    toast({ title: "Erro ao calcular EduScore", description: err.message, variant: "destructive" });
+                  } finally {
+                    setCalculatingScore(false);
+                  }
+                }}
+              >
+                {calculatingScore ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <BarChart3 className="h-4 w-4 mr-1.5" />}
+                EduScore™
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                disabled={modules.length === 0}
+                onClick={() => setTranslateOpen(true)}
+              >
+                <Languages className="h-4 w-4 mr-1.5" />
+                Traduzir
               </Button>
               <Button
                 variant="outline"
@@ -261,7 +451,6 @@ export default function CourseView() {
                     });
                     if (error) throw error;
                     setQualityReport(data?.markdown_quality_report || null);
-                    console.log("[Quality Report]", JSON.stringify(data?.markdown_quality_report, null, 2));
                     const summary = data?.markdown_quality_report?.summary;
                     toast({
                       title: `Validação: ${summary?.modules_passed || 0}/${summary?.modules_passed + summary?.modules_failed || 0} PASS`,
@@ -283,34 +472,198 @@ export default function CourseView() {
                 size="sm"
                 className="h-9"
                 disabled={restructuring}
-                onClick={async () => {
-                  setRestructuring(true);
-                  try {
-                    const { data, error } = await supabase.functions.invoke("restructure-modules", {
-                      body: { course_id: id },
-                    });
-                    if (error) throw error;
-                    setQualityReport(data?.markdown_quality_report || null);
-                    console.log("[Quality Report]", JSON.stringify(data?.markdown_quality_report, null, 2));
-                    toast({
-                      title: "Módulos reestruturados!",
-                      description: data?.message || "Conteúdo padronizado com sucesso.",
-                    });
-                    queryClient.invalidateQueries({ queryKey: ["course-modules", id] });
-                  } catch (err: any) {
-                    toast({ title: "Erro ao reestruturar", description: err.message, variant: "destructive" });
-                  } finally {
-                    setRestructuring(false);
-                  }
-                }}
+                onClick={handleRestructureWithDiff}
               >
                 {restructuring ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <RefreshCw className="h-4 w-4 mr-1.5" />}
                 Padronizar
               </Button>
             </div>
           </div>
+
+          {/* ── Tutor IA Toggle ── */}
+          {isPublished && (
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={!!(course as any)?.tutor_enabled}
+                  disabled={togglingTutor}
+                  onCheckedChange={async (enabled) => {
+                    setTogglingTutor(true);
+                    try {
+                      const updates: any = { tutor_enabled: enabled };
+                      if (enabled && !(course as any)?.tutor_slug) {
+                        updates.tutor_slug = id!.slice(0, 8);
+                      }
+                      const { error } = await (supabase.from("courses") as any)
+                        .update(updates)
+                        .eq("id", id!);
+                      if (error) throw error;
+                      queryClient.invalidateQueries({ queryKey: ["course", id] });
+                      toast({
+                        title: enabled ? "Tutor IA ativado!" : "Tutor IA desativado",
+                        description: enabled
+                          ? "Alunos podem acessar o tutor pelo link público."
+                          : "O link público do tutor foi desativado.",
+                      });
+                    } catch (err: any) {
+                      toast({ title: "Erro", description: err.message, variant: "destructive" });
+                    } finally {
+                      setTogglingTutor(false);
+                    }
+                  }}
+                />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <BrainCircuit className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold text-foreground">Tutor IA</span>
+                    <Badge variant="outline" className="text-[10px]">PRO</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Alunos consultam a IA sobre o conteúdo do curso
+                  </p>
+                </div>
+              </div>
+
+              {(course as any)?.tutor_enabled && (course as any)?.tutor_slug && (
+                <div className="ml-auto flex items-center gap-3">
+                  {typeof tutorStats === "number" && (
+                    <span className="text-xs text-muted-foreground">
+                      <MessageSquare className="h-3 w-3 inline mr-1" />
+                      {tutorStats} pergunta{tutorStats !== 1 ? "s" : ""} nos últimos 7 dias
+                    </span>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      const url = `${window.location.origin}/tutor/${(course as any).tutor_slug}`;
+                      navigator.clipboard.writeText(url);
+                      toast({ title: "Link copiado!", description: url });
+                    }}
+                  >
+                    <Copy className="h-3 w-3 mr-1.5" />
+                    Copiar link
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      window.open(`/tutor/${(course as any).tutor_slug}`, "_blank");
+                    }}
+                  >
+                    <Link2 className="h-3 w-3 mr-1.5" />
+                    Abrir
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Landing Page Controls ── */}
+          {isPublished && (
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border">
+              <div className="flex items-center gap-3">
+                <Globe className="h-5 w-5 text-primary" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Landing Page</span>
+                    {landing && (
+                      <Badge variant={landing.is_published ? "default" : "outline"} className="text-[10px]">
+                        {landing.is_published ? "Publicada" : "Rascunho"}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {landing ? "Página de vendas gerada por IA" : "Gere uma página de vendas com IA"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={generatingLanding || modules.length === 0}
+                  onClick={async () => {
+                    setGeneratingLanding(true);
+                    try {
+                      const { data, error } = await supabase.functions.invoke("generate-landing", {
+                        body: { course_id: id },
+                      });
+                      if (error) throw error;
+                      refetchLanding();
+                      toast({
+                        title: "Landing page gerada!",
+                        description: "O copy foi criado por IA a partir do conteúdo do curso.",
+                      });
+                    } catch (err: any) {
+                      toast({ title: "Erro ao gerar landing", description: err.message, variant: "destructive" });
+                    } finally {
+                      setGeneratingLanding(false);
+                    }
+                  }}
+                >
+                  {generatingLanding ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <Rocket className="h-3 w-3 mr-1.5" />}
+                  {landing ? "Regenerar" : "Gerar Landing"}
+                </Button>
+
+                {landing && (
+                  <>
+                    <Switch
+                      checked={!!landing.is_published}
+                      onCheckedChange={async (pub) => {
+                        try {
+                          const { error } = await (supabase.from("course_landings") as any)
+                            .update({ is_published: pub })
+                            .eq("id", landing.id);
+                          if (error) throw error;
+                          refetchLanding();
+                          toast({ title: pub ? "Landing publicada!" : "Landing despublicada" });
+                        } catch (err: any) {
+                          toast({ title: "Erro", description: err.message, variant: "destructive" });
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        const url = `${window.location.origin}/c/${landing.slug}`;
+                        navigator.clipboard.writeText(url);
+                        toast({ title: "Link copiado!", description: url });
+                      }}
+                    >
+                      <Copy className="h-3 w-3 mr-1.5" />
+                      Copiar link
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => window.open(`/c/${landing.slug}`, "_blank")}
+                    >
+                      <Link2 className="h-3 w-3 mr-1.5" />
+                      Abrir
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Review Panel ── */}
+          <ReviewPanel courseId={id!} isPublished={isPublished} />
         </div>
       </div>
+
+      {/* ═══════════ EDUSCORE PANEL ═══════════ */}
+      {eduScore && (
+        <EduScorePanel data={eduScore} onClose={() => setEduScore(null)} />
+      )}
 
       {/* ═══════════ QUALITY REPORT PANEL ═══════════ */}
       {qualityReport && (
@@ -371,33 +724,19 @@ export default function CourseView() {
 
       {/* ═══════════ TWO-PANEL LAYOUT ═══════════ */}
       <div className="flex-1 flex max-w-[1400px] mx-auto w-full">
-        {/* ── Left: Module sidebar ── */}
+        {/* ── Left: Module sidebar with DnD ── */}
         <aside className="hidden lg:block w-72 border-r border-border bg-card shrink-0">
           <ScrollArea className="h-[calc(100vh-160px)] sticky top-0">
             <div className="p-4">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
                 Módulos ({modules.length})
               </p>
-              <nav className="space-y-1">
-                {modules.map((mod, i) => (
-                  <button
-                    key={mod.id}
-                    onClick={() => setActiveModuleIndex(i)}
-                    className={`w-full text-left rounded-xl px-3 py-2.5 text-sm transition-all flex items-start gap-3 ${
-                      i === activeModuleIndex
-                        ? "bg-primary/10 text-primary font-semibold border border-primary/20"
-                        : "text-foreground/70 hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    <span className={`shrink-0 h-6 w-6 rounded-md flex items-center justify-center text-xs font-bold mt-0.5 ${
-                      i === activeModuleIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    }`}>
-                      {i + 1}
-                    </span>
-                    <span className="line-clamp-2 leading-snug">{mod.title}</span>
-                  </button>
-                ))}
-              </nav>
+              <ModuleSidebar
+                modules={modules as any}
+                activeModuleIndex={activeModuleIndex}
+                onSelectModule={setActiveModuleIndex}
+                courseId={id!}
+              />
             </div>
           </ScrollArea>
         </aside>
@@ -433,41 +772,54 @@ export default function CourseView() {
                   </p>
                   <h2 className="font-display text-2xl font-bold text-foreground">{activeModule.title}</h2>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 h-9"
-                  onClick={() => {
-                    if (editingModuleId === activeModule.id) {
-                      updateModule.mutate({ moduleId: activeModule.id, content: editContent });
-                    } else {
-                      setEditingModuleId(activeModule.id);
-                      setEditContent(activeModule.content || "");
-                    }
-                  }}
-                >
-                  {editingModuleId === activeModule.id ? (
-                    <><CheckCircle2 className="h-4 w-4 mr-1.5" />Salvar</>
-                  ) : (
-                    <><Pencil className="h-4 w-4 mr-1.5" />Editar</>
+                <div className="flex items-center gap-2">
+                  {/* Auto-save indicator */}
+                  {editingModuleId === activeModule.id && (
+                    <span className={`text-xs flex items-center gap-1 ${
+                      saveStatus === "saved" ? "text-secondary" : saveStatus === "saving" ? "text-primary" : "text-destructive"
+                    }`}>
+                      {saveStatus === "saved" ? <Cloud className="h-3 w-3" /> :
+                       saveStatus === "saving" ? <Loader2 className="h-3 w-3 animate-spin" /> :
+                       <CloudOff className="h-3 w-3" />}
+                      {saveStatusLabel}
+                    </span>
                   )}
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 h-9"
+                    onClick={() => {
+                      if (editingModuleId === activeModule.id) {
+                        updateModule.mutate({ moduleId: activeModule.id, content: editContent });
+                      } else {
+                        setEditingModuleId(activeModule.id);
+                        setEditContent(activeModule.content || "");
+                        setSaveStatus("saved");
+                      }
+                    }}
+                  >
+                    {editingModuleId === activeModule.id ? (
+                      <><CheckCircle2 className="h-4 w-4 mr-1.5" />Salvar</>
+                    ) : (
+                      <><Pencil className="h-4 w-4 mr-1.5" />Editar</>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {/* Module content */}
               {editingModuleId === activeModule.id ? (
                 <div className="space-y-3">
-                  <Textarea
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    rows={20}
-                    className="font-mono text-sm resize-y"
+                  <BlockEditor
+                    content={editContent}
+                    onChange={handleContentChange}
+                    isPro={isPro}
                   />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent })}>
                       Salvar alterações
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setEditingModuleId(null)}>
+                    <Button variant="ghost" size="sm" onClick={() => { setEditingModuleId(null); setSaveStatus("saved"); }}>
                       Cancelar
                     </Button>
                   </div>
@@ -482,7 +834,6 @@ export default function CourseView() {
                         className="w-full h-auto object-cover max-h-[360px]"
                         loading="lazy"
                       />
-                      {/* Text overlay — all visible text is real HTML, never baked into the image */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-6">
                         <p className="text-xs font-semibold text-white/80 uppercase tracking-wider mb-1">
                           Módulo {activeModuleIndex + 1}
@@ -635,12 +986,10 @@ export default function CourseView() {
                   </div>
 
                   {isPro && flipEntitled ? (
-                    /* PRO: render FlipView directly inline — no static cards, no modal button */
                     <div className="rounded-xl border border-border bg-card p-4 min-h-[320px]">
                       <FlashcardsFlipView flashcards={moduleFlashcards} />
                     </div>
                   ) : (
-                    /* FREE: static preview + button to open modal */
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                         {moduleFlashcards.slice(0, 4).map((fc) => (
@@ -746,6 +1095,27 @@ export default function CourseView() {
         courseId={id!}
         courseTitle={course.title}
         courseStatus={course.status}
+      />
+
+      {/* Translate Dialog */}
+      <TranslateDialog
+        open={translateOpen}
+        onOpenChange={setTranslateOpen}
+        courseId={id!}
+        courseTitle={course.title}
+        currentLanguage={course.language}
+        isPro={isPro}
+        modulesCount={modules.length}
+      />
+
+      {/* Restructure Diff Dialog */}
+      <RestructureDiffDialog
+        open={diffDialogOpen}
+        onOpenChange={setDiffDialogOpen}
+        beforeModules={modules.map((m) => ({ id: m.id, title: m.title, content: m.content }))}
+        afterModules={restructuredModules}
+        onApply={handleApplyRestructure}
+        applying={applyingRestructure}
       />
     </div>
   );

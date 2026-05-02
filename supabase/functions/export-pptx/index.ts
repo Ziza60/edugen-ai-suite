@@ -1936,9 +1936,10 @@ interface SemanticModulePlan {
 }
 
 async function llmPlanModuleSlides(moduleTitle: string, moduleContent: string, moduleIndex: number, language: string, preParsedSummary?: string): Promise<SemanticModulePlan | null> {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    console.warn("[SEMANTIC-PLANNER] LOVABLE_API_KEY not available, falling back to regex parser");
+  if (!GEMINI_API_KEY && !LOVABLE_API_KEY) {
+    console.warn("[SEMANTIC-PLANNER] No API keys available, falling back to regex parser");
     return null;
   }
 
@@ -2003,14 +2004,20 @@ ${contentLabel}
 ${truncatedContent}`;
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const url = GEMINI_API_KEY 
+      ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+      : "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
+    const model = "gemini-3-flash-preview";
+
+    const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: GEMINI_API_KEY ? model : `google/${model}`,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -2235,11 +2242,12 @@ function semanticPlanToSlides(plan: SemanticModulePlan, moduleIndex: number): Sl
 
   for (const slidePlan of plan.slides) {
     const layout = LAYOUT_MAP[slidePlan.layout] || "bullets";
-    const blockType = slidePlan.layout === "example" ? "example"
-      : slidePlan.layout === "reflection" ? "reflection"
-      : slidePlan.layout === "takeaways" ? "conclusion"
-      : slidePlan.layout === "warning" ? "warning"
-      : slidePlan.layout === "summary" ? "summary"
+    const layoutAny = slidePlan.layout as any;
+    const blockType = layoutAny === "example" ? "example"
+      : layoutAny === "reflection" ? "reflection"
+      : layoutAny === "takeaways" ? "conclusion"
+      : layoutAny === "warning" ? "warning"
+      : layoutAny === "summary" ? "summary"
       : "normal";
 
     // ── STRUCTURAL REDISTRIBUTION for long bullet items (v7) ──
@@ -2348,9 +2356,10 @@ interface LLMValidationResult {
 }
 
 async function llmValidateSlideContent(allSlides: SlideData[]): Promise<LLMValidationResult> {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    console.warn("[LLM-NLP] LOVABLE_API_KEY not available, skipping LLM validation");
+  if (!GEMINI_API_KEY && !LOVABLE_API_KEY) {
+    console.warn("[LLM-NLP] No API keys available, skipping LLM validation");
     return { slides: [], totalGrammarFixes: 0, totalTruncationFixes: 0, totalNonsenseDropped: 0, totalRelevanceDropped: 0 };
   }
 
@@ -2422,14 +2431,20 @@ REGRAS CRÍTICAS:
       const timeoutId = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
       let response: Response;
       try {
-        response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const url = GEMINI_API_KEY 
+          ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+          : "https://ai.gateway.lovable.dev/v1/chat/completions";
+        const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
+        const model = "gemini-3-flash-preview";
+
+        response = await fetch(url, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash-lite",
+            model: GEMINI_API_KEY ? model : `google/${model}`,
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -6361,8 +6376,9 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data: modules = [] } = await serviceClient
+    const { data: modulesRaw } = await serviceClient
       .from("course_modules").select("*").eq("course_id", course_id).order("order_index");
+    const modules: any[] = modulesRaw ?? [];
 
     // ═══════════════════════════════════════════════════════
     // MULTI-STAGE VALIDATION PIPELINE v3
@@ -6582,7 +6598,7 @@ Deno.serve(async (req: Request) => {
               defectives.push({ slideIdx: si, field: "item", itemIdx: ii, original: item, reason: "bullet truncado" });
             }
             // Extremely long single-sentence bullets that will definitely overflow
-            if (item.length > 250 && !(item.match(/[.!?]/g)?.length >= 2)) {
+            if (item.length > 250 && !((item.match(/[.!?]/g)?.length ?? 0) >= 2)) {
               defectives.push({ slideIdx: si, field: "item", itemIdx: ii, original: item, reason: "bullet excessivamente longo sem quebra de sentença" });
             }
           }
@@ -6602,6 +6618,7 @@ Deno.serve(async (req: Request) => {
         console.log("[STAGE-0.5] Found " + uniqueDefectives.length + " defective items, attempting selective regeneration...");
 
         // 2. Batch defective items and send to LLM for rewrite
+        const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
         const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
         if (LOVABLE_API_KEY) {
           const REGEN_BATCH_SIZE = 15;
@@ -6617,14 +6634,20 @@ Deno.serve(async (req: Request) => {
             }).join("\n\n");
 
             try {
-              const regenResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              const url = GEMINI_API_KEY 
+                ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+                : "https://ai.gateway.lovable.dev/v1/chat/completions";
+              const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
+              const model = "gemini-3-flash-preview";
+
+              const regenResponse = await fetch(url, {
                 method: "POST",
                 headers: {
-                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                  Authorization: `Bearer ${apiKey}`,
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  model: "google/gemini-2.5-flash-lite",
+                  model: GEMINI_API_KEY ? model : `google/${model}`,
                   messages: [
                     {
                       role: "system",
@@ -7098,10 +7121,11 @@ Idioma: pt-BR`
         const maxChars = activeDensity.maxCharsPerBullet;
         const newItems: string[] = [];
         let didRedistribute = false;
-        const protectedNoCompression = s.layout === "summary_slide"
-          || s.layout === "example_highlight"
-          || s.layout === "bullets"
-          || (s.layout === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
+        const layoutStr = s.layout as string;
+        const protectedNoCompression = layoutStr === "summary_slide"
+          || layoutStr === "example_highlight"
+          || layoutStr === "bullets"
+          || (layoutStr === "bullets" && /OBJETIVOS DO MÓDULO|VISÃO GERAL/i.test(s.sectionLabel || ""));
 
         for (let itemIdx = 0; itemIdx < s.items.length; itemIdx++) {
           const item = s.items[itemIdx];

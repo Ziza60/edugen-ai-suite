@@ -7,10 +7,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const MAX_FILES = 3;
-const MAX_TOTAL_CHARS = 150_000;
+const MAX_FILES_FREE = 3;
+const MAX_FILES_PRO = 20;
 const ALLOWED_TYPES = ["application/pdf", "text/plain", "text/markdown"];
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
+const MAX_TOTAL_CHARS = 500_000;
 
 // Simple text normalizer: collapse whitespace, remove repeated headers/footers
 function normalizeText(raw: string): string {
@@ -30,20 +31,28 @@ function normalizeText(raw: string): string {
 
 // Extract text from PDF using pdf-parse
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
-  // Use Gemini to extract text from PDF (multimodal)
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+
+  // Prioritize personal Gemini Key if present
+  const apiKey = geminiKey || lovableKey;
+  if (!apiKey) throw new Error("GEMINI_API_KEY ou LOVABLE_API_KEY não configurada");
 
   const base64 = btoa(String.fromCharCode(...bytes));
+  const url = geminiKey 
+    ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    : "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  console.log(`[PDF-EXTRACTION] Calling AI ${geminiKey ? "directly" : "via Gateway"}`);
+
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash-lite",
+      model: "google/gemini-3-flash-lite",
       messages: [
         {
           role: "user",
@@ -153,15 +162,16 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check existing sources count for this course
+    const maxFiles = plan === "pro" || isDev ? MAX_FILES_PRO : MAX_FILES_FREE;
     const { count: existingCount } = await serviceClient
       .from("course_sources")
       .select("*", { count: "exact", head: true })
       .eq("course_id", courseId)
       .eq("user_id", userId);
 
-    if ((existingCount ?? 0) >= MAX_FILES) {
+    if ((existingCount ?? 0) >= maxFiles) {
       return new Response(
-        JSON.stringify({ error: `Limite de ${MAX_FILES} arquivos por curso atingido.` }),
+        JSON.stringify({ error: `Limite de ${maxFiles} fontes por curso atingido.` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

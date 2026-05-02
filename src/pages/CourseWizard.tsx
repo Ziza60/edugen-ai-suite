@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
+import { useDevMode } from "@/hooks/useDevMode";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,10 +17,12 @@ import { Slider } from "@/components/ui/slider";
 import {
   ArrowLeft, ArrowRight, Loader2, Sparkles, BookOpen, Brain, Image,
   CheckCircle2, Upload, FileText, X, AlertCircle, Award, Zap,
-  Check, Circle, MessageSquare, GraduationCap, FileDown
+  Check, Circle, MessageSquare, GraduationCap, FileDown, Globe, Youtube,
+  Clock, Gauge
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
+import { TemplateSelector, CourseTemplate } from "@/components/course/TemplateSelector";
 
 const STEPS = [
   { label: "Sobre o curso", num: 1 },
@@ -28,7 +31,8 @@ const STEPS = [
   { label: "Revisão", num: 4 },
 ];
 
-const MAX_FILES = 3;
+const MAX_FILES_FREE = 3;
+const MAX_FILES_PRO = 20;
 const MAX_TOTAL_CHARS = 150_000;
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
 
@@ -39,9 +43,13 @@ interface UploadedSource {
 }
 
 export default function CourseWizard() {
+  const [showTemplates, setShowTemplates] = useState(true);
+  const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null);
+
   const { user } = useAuth();
   const { plan, limits } = useSubscription();
   const { usage } = useMonthlyUsage();
+  const { isDev } = useDevMode();
   const navigate = useNavigate();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +58,12 @@ export default function CourseWizard() {
   const [generating, setGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState("");
+  const [generationMessage, setGenerationMessage] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [importingUrl, setImportingUrl] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const [useSources, setUseSources] = useState(false);
   const [tempCourseId] = useState(() => crypto.randomUUID());
@@ -66,20 +79,76 @@ export default function CourseWizard() {
     includeQuiz: true,
     includeFlashcards: true,
     includeImages: false,
+    density: "standard" as "compact" | "standard" | "detailed",
   });
 
-  const canCreate = usage < limits.maxCourses;
+  // ── Prompt quality score ──
+  const calcPromptScore = () => {
+    let score = 0;
+    const rt = form.title.trim() || selectedTemplate?.suggestedTitle || "";
+    const rth = form.theme.trim() || selectedTemplate?.suggestedTheme || "";
+    const ra = form.targetAudience.trim() || selectedTemplate?.targetAudience || "";
+    if (rt.length >= 10) score += 25;
+    if (rth.length >= 15) score += 25;
+    if (ra.length > 0) score += 20;
+    if (form.numModules >= 5) score += 10;
+    if (useSources && uploadedSources.length > 0) score += 20;
+    return Math.min(score, 100);
+  };
+
+  const promptScore = calcPromptScore();
+  const promptScoreColor = promptScore < 40 ? "bg-destructive" : promptScore < 75 ? "bg-yellow-500" : "bg-green-500";
+  const promptScoreLabel = promptScore < 40
+    ? "Adicione mais detalhes para gerar um curso de qualidade"
+    : promptScore < 75
+    ? "Bom começo — defina o público-alvo para melhorar"
+    : "Ótimo! Seu curso está pronto para ser gerado";
+
+  // ── Reading time estimate ──
+  const calcReadingTime = () => {
+    const wordsPerModule = { compact: 400, standard: 700, detailed: 1100 };
+    const wpm = 200;
+    const totalMinutes = Math.round((form.numModules * wordsPerModule[form.density]) / wpm);
+    if (totalMinutes < 60) return `~${totalMinutes} min de conteúdo`;
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return m > 0 ? `~${h}h ${m}min de conteúdo` : `~${h}h de conteúdo`;
+  };
+
+  const canCreate = isDev || usage < limits.maxCourses;
   const canUseImages = limits.images;
   const canUseSources = plan === "pro";
+  const maxFiles = plan === "pro" ? MAX_FILES_PRO : MAX_FILES_FREE;
   const totalChars = uploadedSources.reduce((sum, s) => sum + s.char_count, 0);
+
+  const handleTemplateSelect = (template: CourseTemplate) => {
+    setSelectedTemplate(template);
+    setForm((prev) => ({
+      ...prev,
+      title: "",
+      theme: "",
+      targetAudience: "",
+      tone: template.tone,
+      numModules: Math.min(template.suggestedModules, limits.maxModules),
+    }));
+    setShowTemplates(false);
+  };
+
+  const handleSkipTemplates = () => {
+    setShowTemplates(false);
+  };
+
+  if (showTemplates) {
+    return <TemplateSelector onSelect={handleTemplateSelect} onSkip={handleSkipTemplates} />;
+  }
 
   const updateForm = (key: string, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleFileUpload = async (file: File) => {
-    if (uploadedSources.length >= MAX_FILES) {
-      toast({ title: "Limite atingido", description: `Máximo de ${MAX_FILES} arquivos por curso.`, variant: "destructive" });
+    if (uploadedSources.length >= maxFiles) {
+      toast({ title: "Limite atingido", description: `Máximo de ${maxFiles} fontes por curso.`, variant: "destructive" });
       return;
     }
 
@@ -144,43 +213,89 @@ export default function CourseWizard() {
     }
 
     setGenerating(true);
-    setGenerationProgress(10);
+    setGenerationProgress(5);
     setGenerationStep("Preparando geração…");
+    setGenerationMessage("");
 
     try {
-      let moduleProgress = 0;
-      const progressInterval = setInterval(() => {
-        moduleProgress++;
-        const pct = Math.min(10 + moduleProgress * 8, 85);
-        setGenerationProgress(pct);
-        const currentMod = Math.min(Math.ceil(moduleProgress / 2), form.numModules);
-        setGenerationStep(`Gerando módulo ${currentMod}/${form.numModules}…`);
-      }, 2000);
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-course`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            title: (form.title.trim() || selectedTemplate?.suggestedTitle || "").trim(),
+            theme: form.theme.trim() || selectedTemplate?.suggestedTheme || "",
+            target_audience: form.targetAudience.trim() || selectedTemplate?.targetAudience || "",
+            tone: form.tone,
+            language: form.language,
+            num_modules: form.numModules,
+            include_quiz: form.includeQuiz,
+            include_flashcards: form.includeFlashcards,
+            include_images: form.includeImages,
+            use_sources: useSources,
+            temp_course_id: useSources ? tempCourseId : undefined,
+          }),
+        }
+      );
 
-      const { data, error } = await supabase.functions.invoke("generate-course", {
-        body: {
-          title: form.title.trim(),
-          theme: form.theme,
-          target_audience: form.targetAudience,
-          tone: form.tone,
-          language: form.language,
-          num_modules: form.numModules,
-          include_quiz: form.includeQuiz,
-          include_flashcards: form.includeFlashcards,
-          include_images: form.includeImages,
-          use_sources: useSources,
-          temp_course_id: useSources ? tempCourseId : undefined,
-        },
-      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Erro ao gerar curso");
+      }
 
-      clearInterval(progressInterval);
-      setGenerationProgress(100);
-      setGenerationStep("Finalizando…");
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      if (error) throw error;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
-      toast({ title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." });
-      setTimeout(() => navigate(`/app/courses/${data.course_id}`), 1000);
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.replace("data: ", ""));
+            if (event.type === "status") {
+              setGenerationStep(event.message);
+            }
+            if (event.type === "structure_done") {
+              setGenerationProgress(15);
+              setGenerationStep("Estrutura criada!");
+            }
+            if (event.type === "module_start") {
+              const pct = 15 + Math.round((event.module / event.total) * 70);
+              setGenerationProgress(pct);
+              setGenerationMessage(`Gerando Módulo ${event.module} de ${event.total}: ${event.title}...`);
+              setGenerationStep(`Módulo ${event.module}/${event.total}`);
+            }
+            if (event.type === "module_done") {
+              const pct = 15 + Math.round((event.module / event.total) * 75);
+              setGenerationProgress(pct);
+            }
+            if (event.type === "complete") {
+              setGenerationProgress(100);
+              setGenerationStep("Concluído!");
+              setGenerationMessage("");
+              toast({ title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." });
+              setTimeout(() => navigate(`/app/courses/${event.courseId}`), 1000);
+            }
+            if (event.type === "error") {
+              throw new Error(event.message);
+            }
+          } catch (parseErr: any) {
+            if (parseErr.message && !parseErr.message.includes("JSON")) throw parseErr;
+          }
+        }
+      }
     } catch (error: any) {
       toast({
         title: "Erro ao gerar curso",
@@ -192,9 +307,13 @@ export default function CourseWizard() {
     }
   };
 
+  const resolvedTitle = form.title.trim() || selectedTemplate?.suggestedTitle || "";
+  const resolvedTheme = form.theme.trim() || selectedTemplate?.suggestedTheme || "";
+  const resolvedAudience = form.targetAudience.trim() || selectedTemplate?.targetAudience || "";
+
   const canNext = () => {
     switch (step) {
-      case 0: return form.title.trim().length > 0 && form.theme.trim().length > 0;
+      case 0: return resolvedTitle.length > 0 && resolvedTheme.length > 0;
       case 1: return form.numModules > 0;
       case 2: return true;
       case 3: return true;
@@ -215,6 +334,11 @@ export default function CourseWizard() {
           </Button>
           <div className="h-5 w-px bg-border" />
           <h1 className="font-display text-lg font-bold text-foreground">Criar novo curso</h1>
+          {selectedTemplate && (
+            <Badge variant="secondary" className="text-xs">
+              Template: {selectedTemplate.name}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -261,7 +385,10 @@ export default function CourseWizard() {
                   ? "A IA está analisando suas fontes e criando o conteúdo."
                   : "A IA está criando o conteúdo do seu curso."}
               </p>
-              <p className="text-sm font-medium text-primary mb-6">{generationStep}</p>
+              <p className="text-sm font-medium text-primary mb-2">{generationStep}</p>
+              {generationMessage && (
+                <p className="text-xs text-muted-foreground mb-4">{generationMessage}</p>
+              )}
               <Progress value={generationProgress} className="max-w-sm mx-auto h-2.5" />
               <p className="text-xs text-muted-foreground mt-3">{generationProgress}% concluído</p>
             </CardContent>
@@ -293,7 +420,7 @@ export default function CourseWizard() {
                         <div className="space-y-1.5">
                           <Label className="font-medium">Título do curso <span className="text-destructive">*</span></Label>
                           <Input
-                            placeholder="Ex: Introdução ao Marketing Digital"
+                            placeholder={selectedTemplate?.suggestedTitle || "Ex: Introdução ao Marketing Digital"}
                             value={form.title}
                             onChange={(e) => updateForm("title", e.target.value)}
                             className="h-11"
@@ -304,7 +431,7 @@ export default function CourseWizard() {
                         <div className="space-y-1.5">
                           <Label className="font-medium">Tema / Assunto principal <span className="text-destructive">*</span></Label>
                           <Textarea
-                            placeholder="Explique em 1–2 frases o que o curso ensina"
+                            placeholder={selectedTemplate?.suggestedTheme || "Explique em 1–2 frases o que o curso ensina"}
                             value={form.theme}
                             onChange={(e) => updateForm("theme", e.target.value)}
                             rows={3}
@@ -316,7 +443,7 @@ export default function CourseWizard() {
                         <div className="space-y-1.5">
                           <Label className="font-medium">Público-alvo</Label>
                           <Input
-                            placeholder="Ex: iniciantes, estudantes, profissionais…"
+                            placeholder={selectedTemplate?.targetAudience || "Ex: iniciantes, estudantes, profissionais…"}
                             value={form.targetAudience}
                             onChange={(e) => updateForm("targetAudience", e.target.value)}
                             className="h-11"
@@ -411,26 +538,120 @@ export default function CourseWizard() {
                                   </div>
                                 ))}
                                 <p className="text-xs text-muted-foreground">
-                                  {totalChars.toLocaleString()} / {MAX_TOTAL_CHARS.toLocaleString()} chars · {uploadedSources.length}/{MAX_FILES} arquivos
+                                  {totalChars.toLocaleString()} / {MAX_TOTAL_CHARS.toLocaleString()} chars · {uploadedSources.length}/{maxFiles} fontes
                                 </p>
                               </div>
                             )}
 
-                            {uploadedSources.length < MAX_FILES && (
+                            {uploadedSources.length < maxFiles && (
                               <>
+                                <div
+                                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                                  onDragLeave={() => setDragging(false)}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragging(false);
+                                    const file = e.dataTransfer.files[0];
+                                    if (file) handleFileUpload(file);
+                                  }}
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
+                                    dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                                  }`}
+                                >
+                                  {uploading ? (
+                                    <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin text-primary" />
+                                  ) : (
+                                    <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                                  )}
+                                  <p className="text-sm text-muted-foreground">
+                                    {uploading ? "Processando…" : <>Arraste um arquivo aqui ou <span className="text-primary font-medium">clique para selecionar</span></>}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">PDF, TXT, MD — máx. 10MB</p>
+                                </div>
+                                {uploading && (
+                                  <Progress value={uploadProgress} className="h-1.5" />
+                                )}
                                 <input
                                   ref={fileInputRef} type="file" accept=".pdf,.txt,.md" className="hidden"
                                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ""; }}
                                 />
-                                <Button variant="outline" className="w-full h-10" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                                  {uploading
-                                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processando…</>
-                                    : <><Upload className="h-4 w-4 mr-2" />Enviar arquivo (PDF, TXT ou MD)</>}
-                                </Button>
+
+                                {/* URL Import */}
+                                <div className="flex items-center gap-2 pt-2 border-t border-border/40">
+                                  <div className="relative flex-1">
+                                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                    <Input
+                                      placeholder="Cole URL do YouTube ou artigo web"
+                                      value={urlInput}
+                                      onChange={(e) => setUrlInput(e.target.value)}
+                                      className="h-10 pl-9 text-sm"
+                                      disabled={importingUrl || uploading}
+                                    />
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-10 shrink-0"
+                                    disabled={!urlInput.trim() || importingUrl || uploading}
+                                    onClick={async () => {
+                                      setImportingUrl(true);
+                                      try {
+                                        const { data: { session } } = await supabase.auth.getSession();
+                                        const { data, error } = await supabase.functions.invoke("import-url-source", {
+                                          body: { url: urlInput.trim(), course_id: tempCourseId },
+                                        });
+                                        if (error) throw error;
+                                        setUploadedSources((prev) => [
+                                          ...prev,
+                                          { id: data.id, filename: data.filename, char_count: data.char_count },
+                                        ]);
+                                        setUrlInput("");
+                                        toast({
+                                          title: data.source_type === "youtube" ? "Vídeo importado!" : "Artigo importado!",
+                                          description: `${data.filename} — ${data.char_count.toLocaleString()} caracteres extraídos.`,
+                                        });
+                                      } catch (err: any) {
+                                        toast({ title: "Erro na importação", description: err.message, variant: "destructive" });
+                                      } finally {
+                                        setImportingUrl(false);
+                                      }
+                                    }}
+                                  >
+                                    {importingUrl ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : urlInput.includes("youtu") ? (
+                                      <><Youtube className="h-4 w-4 mr-1" />Importar</>
+                                    ) : (
+                                      <><Globe className="h-4 w-4 mr-1" />Importar</>
+                                    )}
+                                  </Button>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">
+                                  YouTube (transcrição automática) · Artigos e blogs · Páginas web
+                                </p>
                               </>
                             )}
                           </div>
                         )}
+                      </div>
+
+                      {/* Prompt quality indicator */}
+                      <div className="rounded-xl border border-border/60 bg-muted/40 p-4 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Gauge className="h-4 w-4 text-muted-foreground" />
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Qualidade do prompt</p>
+                          </div>
+                          <span className="text-xs font-bold text-foreground">{promptScore}%</span>
+                        </div>
+                        <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${promptScoreColor}`}
+                            style={{ width: `${promptScore}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">{promptScoreLabel}</p>
                       </div>
                     </div>
                   )}
@@ -472,9 +693,30 @@ export default function CourseWizard() {
                               }}
                               className="w-20 h-10 text-center font-bold text-lg"
                             />
-                          </div>
+                        </div>
+
+                        {/* Density selector */}
+                        <div className="space-y-1.5 pt-2 border-t border-border/40">
+                          <Label className="font-medium">Densidade do conteúdo</Label>
+                          <Select value={form.density} onValueChange={(v) => updateForm("density", v)}>
+                            <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="compact">Compacto — resumos objetivos</SelectItem>
+                              <SelectItem value="standard">Padrão — equilíbrio ideal</SelectItem>
+                              <SelectItem value="detailed">Detalhado — explicações aprofundadas</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Reading time badge */}
+                        <div className="flex items-center gap-2 pt-2">
+                          <Badge variant="secondary" className="text-xs font-medium gap-1.5 py-1 px-2.5">
+                            <Clock className="h-3.5 w-3.5" />
+                            {calcReadingTime()}
+                          </Badge>
                         </div>
                       </div>
+                    </div>
 
                       {/* Module preview cards */}
                       <div className="space-y-3">
@@ -593,8 +835,8 @@ export default function CourseWizard() {
                       <div className="bg-muted/40 rounded-xl p-5 border border-border/60 space-y-3">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resumo do curso</p>
                         <div className="space-y-2.5 text-sm">
-                          <ReviewRow label="Título" value={form.title} />
-                          <ReviewRow label="Público-alvo" value={form.targetAudience || "Não especificado"} />
+                          <ReviewRow label="Título" value={resolvedTitle} />
+                          <ReviewRow label="Público-alvo" value={resolvedAudience || "Não especificado"} />
                           <ReviewRow label="Idioma" value={form.language === "pt-BR" ? "Português (BR)" : form.language === "en" ? "English" : "Español"} />
                           <ReviewRow label="Tom" value={form.tone.charAt(0).toUpperCase() + form.tone.slice(1)} />
                           <ReviewRow label="Módulos" value={`${form.numModules}`} />

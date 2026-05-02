@@ -12,6 +12,9 @@ verify_jwt = false
 [functions.export-pptx]
 verify_jwt = false
 
+[functions.export-pptx-v2]
+verify_jwt = false
+
 [functions.export-notion]
 verify_jwt = false
 
@@ -31,4 +34,31 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.check-entitlements]
+verify_jwt = false
+
+[functions.generate-script]
+verify_jwt = false
+
+[functions.tutor-chat]
+verify_jwt = false
+
+[functions.calculate-eduscore]
+verify_jwt = false
+
+[functions.generate-landing]
+verify_jwt = false
+
+[functions.translate-course]
+verify_jwt = false
+
+[functions.synthesize-reviews]
+verify_jwt = false
+
+[functions.import-url-source]
+verify_jwt = false
+
+[functions.export-moodle]
+verify_jwt = false
+
+[functions.migrate-to-new-supabase]
 verify_jwt = false

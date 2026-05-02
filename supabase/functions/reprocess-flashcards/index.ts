@@ -8,17 +8,20 @@ const corsHeaders = {
 };
 
 async function callAI(model: string, prompt: string) {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  let aiModel = model.includes("-lite") ? "gemini-3-flash-lite" : "gemini-3-flash-preview";
+
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${geminiKey}`,
     },
     body: JSON.stringify({
-      model,
+      model: aiModel,
       messages: [{ role: "user", content: prompt }],
     }),
   });
@@ -152,7 +155,7 @@ Retorne APENAS um JSON válido (sem markdown, sem explicações):
 Use os IDs originais na resposta. Aqui estão os IDs:
 ${flashcards.map((fc: any, i: number) => `${i + 1}. ${fc.id}`).join("\n")}`;
 
-    const aiResponse = await callAI("google/gemini-2.5-flash", prompt);
+    const aiResponse = await callAI("google/gemini-3-flash-preview", prompt);
 
     let rewritten;
     try {
