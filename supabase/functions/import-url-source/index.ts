@@ -192,27 +192,6 @@ Deno.serve(async (req: Request) => {
 
     const userId = userData.user.id;
 
-    // Check Pro
-    const { data: sub } = await serviceClient
-      .from("subscriptions")
-      .select("plan")
-      .eq("user_id", userId)
-      .single();
-
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("is_dev")
-      .eq("user_id", userId)
-      .single();
-
-    const isPro = sub?.plan === "pro" || profile?.is_dev === true;
-    if (!isPro) {
-      return new Response(JSON.stringify({ error: "Importação de URL é exclusiva do plano Pro." }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const { url, course_id } = await req.json();
     if (!url || !course_id) {
       return new Response(JSON.stringify({ error: "url and course_id required" }), {

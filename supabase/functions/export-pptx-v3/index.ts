@@ -5116,23 +5116,6 @@ Deno.serve(async (req: Request) => {
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
-    // Check subscription
-    const { data: sub } = await serviceClient.from("subscriptions").select("plan").eq("user_id", userId).single();
-    const userPlan = sub?.plan || "free";
-    if (userPlan !== "pro") {
-      const { data: profile } = await serviceClient
-        .from("profiles")
-        .select("is_dev")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (!profile?.is_dev) {
-        return new Response(
-          JSON.stringify({ error: "PowerPoint export requires a Pro plan.", feature: "export_pptx" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-    }
-
     // Fetch course
     const { data: course, error: courseErr } = await serviceClient
       .from("courses")

@@ -116,30 +116,6 @@ Deno.serve(async (req: Request) => {
     }
     const userId = claimsData.claims.sub as string;
 
-    // Check Pro plan
-    const { data: sub } = await serviceClient
-      .from("subscriptions")
-      .select("plan")
-      .eq("user_id", userId)
-      .single();
-
-    const plan = sub?.plan || "free";
-
-    // Check dev bypass
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("is_dev")
-      .eq("user_id", userId)
-      .maybeSingle();
-    const isDev = profile?.is_dev === true;
-
-    if (plan !== "pro" && !isDev) {
-      return new Response(
-        JSON.stringify({ error: "Fontes próprias estão disponíveis apenas no plano Pro." }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // Parse multipart form data
     const formData = await req.formData();
     const courseId = formData.get("course_id") as string;

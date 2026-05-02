@@ -48,27 +48,6 @@ Deno.serve(async (req: Request) => {
 
     const userId = userData.user.id;
 
-    // Check PRO entitlement
-    const { data: sub } = await userClient
-      .from("subscriptions")
-      .select("plan")
-      .eq("user_id", userId)
-      .single();
-
-    const { data: profile } = await userClient
-      .from("profiles")
-      .select("is_dev")
-      .eq("user_id", userId)
-      .single();
-
-    const isPro = sub?.plan === "pro" || profile?.is_dev === true;
-    if (!isPro) {
-      return new Response(JSON.stringify({ error: "Feature exclusiva do plano Pro" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const { course_id, target_language, adaptation = "adapted" } = await req.json();
     if (!course_id || !target_language) {
       return new Response(JSON.stringify({ error: "course_id and target_language required" }), {

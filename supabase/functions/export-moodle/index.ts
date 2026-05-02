@@ -164,20 +164,6 @@ Deno.serve(async (req: Request) => {
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
-    // Pro plan gate
-    const { data: sub } = await serviceClient.from("subscriptions").select("plan").eq("user_id", userId).single();
-    const plan = sub?.plan || "free";
-
-    if (plan !== "pro" && plan !== "business") {
-      const { data: profile } = await serviceClient.from("profiles").select("is_dev").eq("user_id", userId).maybeSingle();
-      if (!profile?.is_dev) {
-        return new Response(
-          JSON.stringify({ error: "Moodle export requires a Pro plan.", feature: "export_moodle" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
-
     // Fetch course
     const { data: course, error: courseErr } = await serviceClient
       .from("courses").select("*").eq("id", course_id).eq("user_id", userId).single();
