@@ -1033,43 +1033,60 @@ function getColors(design: DesignConfig) {
 
 function addLightBgDecoration(slide: any, design: DesignConfig, colors: ReturnType<typeof getColors>) {
   if (design.theme === "light") {
-    // Top-right large circle accent
+    // Top-right large bleed circle
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W - 3.2,
-      y: -1.8,
-      w: 4.2,
-      h: 4.2,
-      fill: { color: colors.p0 },
-      transparency: 94,
+      x: SLIDE_W - 2.8, y: -1.5, w: 4.0, h: 4.0,
+      fill: { color: colors.p0 }, transparency: 91,
     });
-    // Bottom-left subtle circle
+    // Bottom-left bleed circle
     slide.addShape("ellipse" as any, {
-      x: -1.2,
-      y: SLIDE_H - 2.2,
-      w: 3.2,
-      h: 3.2,
-      fill: { color: colors.p1 },
-      transparency: 96,
+      x: -1.0, y: SLIDE_H - 1.8, w: 3.0, h: 3.0,
+      fill: { color: colors.p1 }, transparency: 93,
     });
-    // Thin top accent bar (the "brand stripe")
+    // Thin top accent bar
     slide.addShape("rect" as any, {
-      x: 0,
-      y: 0,
-      w: SLIDE_W,
-      h: 0.028,
-      fill: { color: colors.p0 },
-      transparency: 50,
+      x: 0, y: 0, w: SLIDE_W, h: 0.032,
+      fill: { color: colors.p0 }, transparency: 40,
     });
-    // Small dot cluster top-right
-    for (let i = 0; i < 3; i++) {
-      slide.addShape("ellipse" as any, {
-        x: SLIDE_W - 1.2 + i * 0.26,
-        y: 0.22 + i * 0.14,
-        w: 0.07,
-        h: 0.07,
-        fill: { color: colors.p0 },
-        transparency: 60,
-      });
+    // Dot grid pattern — top-right corner (4×4 grid)
+    const dotSz = 0.055, dotGap = 0.19;
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        slide.addShape("ellipse" as any, {
+          x: SLIDE_W - 1.55 + col * dotGap,
+          y: 0.18 + row * dotGap,
+          w: dotSz, h: dotSz,
+          fill: { color: colors.p0 }, transparency: 55,
+        });
+      }
+    }
+    // Corner accent — bottom-right small triangle-ish shape
+    slide.addShape("rect" as any, {
+      x: SLIDE_W - 0.5, y: SLIDE_H - 0.5, w: 0.5, h: 0.5,
+      fill: { color: colors.p2 }, transparency: 80,
+    });
+  } else {
+    // Dark theme: large soft circle glow bottom-right
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W - 2.4, y: SLIDE_H - 2.2, w: 3.8, h: 3.8,
+      fill: { color: colors.p0 }, transparency: 90,
+    });
+    // Top-left subtle glow
+    slide.addShape("ellipse" as any, {
+      x: -1.0, y: -1.2, w: 3.2, h: 3.2,
+      fill: { color: colors.p1 }, transparency: 92,
+    });
+    // Dot grid top-right (dark)
+    const dotSz = 0.05, dotGap = 0.18;
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        slide.addShape("ellipse" as any, {
+          x: SLIDE_W - 1.3 + col * dotGap,
+          y: 0.16 + row * dotGap,
+          w: dotSz, h: dotSz,
+          fill: { color: colors.p0 }, transparency: 65,
+        });
+      }
     }
   }
 }
@@ -3523,8 +3540,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     const gap = 0.18;
     const cardW = cols === 2 ? (contentW - gap) / 2 : contentW;
     const rows = Math.ceil(items.length / cols);
-    const cardH = Math.max(1.08, Math.min(1.46, (contentH - gap * (rows - 1)) / rows - 0.04));
-    const capH = Math.min(0.44, cardH * 0.33);
+    const cardH = Math.max(1.12, Math.min(1.52, (contentH - gap * (rows - 1)) / rows - 0.04));
+    const capH = Math.min(0.54, cardH * 0.40);
     for (let i = 0; i < items.length; i++) {
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -3537,60 +3554,82 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       slide.addShape("roundRect" as any, { x, y, w: cardW, h: cardH, fill: { color: colors.cardBg }, rectRadius: 0.12 });
       // Colored cap — roundRect for top corners, rect to square off bottom of cap
       slide.addShape("roundRect" as any, { x, y, w: cardW, h: capH + 0.12, fill: { color: pal }, rectRadius: 0.12 });
-      slide.addShape("rect" as any, { x, y: y + capH, w: cardW, h: 0.12, fill: { color: pal } });
-      // Number in cap
+      slide.addShape("rect" as any, { x, y: y + capH, w: cardW, h: 0.13, fill: { color: pal } });
+      // Decorative watermark number (large, transparent, right-aligned in cap)
       const numStr = String(((plan.itemStartIndex ?? 0) + i + 1)).padStart(2, "0");
       slide.addText(numStr, {
-        x: x + 0.12, y, w: 0.5, h: capH,
-        fontSize: Math.min(22, capH * 52),
-        fontFace: design.fonts.title, bold: true,
+        x: x + cardW * 0.45, y, w: cardW * 0.5, h: capH,
+        fontSize: Math.min(36, capH * 68), fontFace: design.fonts.title, bold: true,
+        color: "FFFFFF", align: "right", valign: "middle", transparency: 22,
+      });
+      // Number small left-aligned
+      slide.addText(numStr, {
+        x: x + 0.14, y, w: 0.6, h: capH,
+        fontSize: Math.min(24, capH * 46), fontFace: design.fonts.title, bold: true,
         color: "FFFFFF", align: "left", valign: "middle",
       });
       // Text below cap
-      addBulletText(rawItems[i] || items[i], x + 0.15, y + capH + 0.12, cardW - 0.28, cardH - capH - 0.2, pal, colors.text, "top");
+      addBulletText(rawItems[i] || items[i], x + 0.14, y + capH + 0.14, cardW - 0.26, cardH - capH - 0.22, pal, colors.text, "top");
     }
   } else {
+    // "Spotlight" layout — featured first item + mini Index-Tab rows below
     addSlideBackground(slide, colors.bg);
     addLightBgDecoration(slide, design, colors);
     if (design.visualStyle !== "minimal") addLeftEdge(slide, accentColor);
     renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, accentColor);
     if (items.length > 0) {
-      const heroH = items.length === 1 ? contentH : Math.min(1.5, contentH * 0.38);
-      slide.addShape("roundRect" as any, {
-        x: contentX,
-        y: contentY,
-        w: contentW,
-        h: heroH,
-        fill: { color: colors.coverDark },
-        rectRadius: 0.1,
+      const heroH = items.length === 1 ? contentH : Math.min(1.56, contentH * 0.40);
+      const spotTabW = Math.min(0.92, heroH * 0.62);
+
+      // Shadow for spotlight card
+      addCardShadow(slide, contentX, contentY, contentW, heroH, colors.shadowColor, design.theme === "light");
+      // Spotlight card body
+      slide.addShape("roundRect" as any, { x: contentX, y: contentY, w: contentW, h: heroH, fill: { color: colors.coverDark }, rectRadius: 0.12 });
+      // Large decorative watermark number
+      slide.addText("01", {
+        x: contentX + contentW - 1.4, y: contentY, w: 1.3, h: heroH,
+        fontSize: Math.min(60, heroH * 110), fontFace: design.fonts.title, bold: true,
+        color: "FFFFFF", align: "right", valign: "middle", transparency: 88,
       });
-      slide.addShape("rect" as any, { x: contentX + 0.16, y: contentY + 0.14, w: 0.05, h: heroH - 0.28, fill: { color: accentColor } });
-      slide.addText(normalizeRenderableBulletText(rawItems[0] || items[0]), {
-        x: contentX + 0.36,
-        y: contentY + 0.12,
-        w: contentW - 0.6,
-        h: heroH - 0.24,
-        fontSize: unifiedBulletFontSize,
-        fontFace: design.fonts.body,
-        color: "FFFFFF",
-        valign: "middle",
-        lineSpacingMultiple: 1.2,
-        italic: true,
-        wrap: true,
-        fit: "shrink",
-        shrinkText: true,
-        maxFontSize: 19,
-        minFontSize: 12,
-      } as any);
+      // Colored left accent panel — rounded left corners
+      slide.addShape("roundRect" as any, { x: contentX, y: contentY, w: spotTabW + 0.1, h: heroH, fill: { color: accentColor }, rectRadius: 0.12 });
+      slide.addShape("rect" as any, { x: contentX + spotTabW, y: contentY, w: 0.1, h: heroH, fill: { color: accentColor } });
+      // "01" in accent panel
+      slide.addText("01", {
+        x: contentX, y: contentY, w: spotTabW, h: heroH,
+        fontSize: Math.min(38, heroH * 70), fontFace: design.fonts.title, bold: true,
+        color: "FFFFFF", align: "center", valign: "middle", transparency: 12,
+      });
+      // First item text (right side)
+      addBulletText(rawItems[0] || items[0], contentX + spotTabW + 0.2, contentY + 0.1, contentW - spotTabW - 0.32, heroH - 0.2, accentColor, "FFFFFF");
+
       if (items.length > 1) {
-        const restY = contentY + heroH + 0.2;
+        const restGap = 0.08;
+        const restY = contentY + heroH + 0.16;
         const restH = CONTENT_BOTTOM - restY;
-        const restItemH = Math.max(0.46, Math.min(0.74, (restH - 0.07 * (items.length - 2)) / Math.max(items.length - 1, 1)));
+        const restCount = items.length - 1;
+        const restItemH = Math.max(0.44, Math.min(0.72, (restH - restGap * (restCount - 1)) / restCount));
+        const miniTabW = Math.min(0.62, restItemH * 0.64);
         for (let i = 1; i < items.length; i++) {
-          const yPos = restY + (i - 1) * (restItemH + 0.07);
+          const yPos = restY + (i - 1) * (restItemH + restGap);
           const pal = design.palette[i % design.palette.length];
-          slide.addShape("ellipse" as any, { x: contentX + 0.05, y: yPos + restItemH / 2 - 0.05, w: 0.1, h: 0.1, fill: { color: pal } });
-          addBulletText(rawItems[i] || items[i], contentX + 0.24, yPos, contentW - 0.3, restItemH, pal);
+          const cardH2 = restItemH - 0.02;
+          // Shadow
+          addCardShadow(slide, contentX, yPos, contentW, cardH2, colors.shadowColor, design.theme === "light");
+          // Card bg
+          slide.addShape("roundRect" as any, { x: contentX, y: yPos, w: contentW, h: cardH2, fill: { color: colors.cardBg }, rectRadius: 0.1, line: { color: colors.borders, width: 0.5 } });
+          // Mini colored tab
+          slide.addShape("roundRect" as any, { x: contentX, y: yPos, w: miniTabW + 0.1, h: cardH2, fill: { color: pal }, rectRadius: 0.1 });
+          slide.addShape("rect" as any, { x: contentX + miniTabW, y: yPos, w: 0.1, h: cardH2, fill: { color: pal } });
+          // Number in tab
+          const numStr = String((plan.itemStartIndex ?? 0) + i + 1).padStart(2, "0");
+          slide.addText(numStr, {
+            x: contentX, y: yPos, w: miniTabW, h: cardH2,
+            fontSize: Math.min(22, Math.max(13, cardH2 * 50)), fontFace: design.fonts.title, bold: true,
+            color: "FFFFFF", align: "center", valign: "middle",
+          });
+          // Text
+          addBulletText(rawItems[i] || items[i], contentX + miniTabW + 0.2, yPos + 0.02, contentW - miniTabW - 0.3, cardH2 - 0.04, pal);
         }
       }
     }
