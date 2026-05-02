@@ -171,7 +171,8 @@ interface DesignConfig {
   fonts: { title: string; body: string };
   density: { maxItemsPerSlide: number; maxCharsPerItem: number };
   includeImages: boolean;
-  template: "default" | "academic" | "corporate" | "creative";
+  template: string;
+  visualStyle: "classic" | "band" | "minimal";
   courseType: string;
   footerBrand: string | null;
 }
@@ -910,23 +911,57 @@ function measureTextHeight(
 }
 
 const TEMPLATE_FONTS: Record<string, { title: string; body: string }> = {
-  default: { title: "Montserrat", body: "Open Sans" },
-  academic: { title: "Times New Roman", body: "Arial" },
-  corporate: { title: "Montserrat", body: "Open Sans" },
-  creative: { title: "Playfair Display", body: "Lato" },
+  default:   { title: "Montserrat",       body: "Open Sans" },
+  academic:  { title: "Times New Roman",  body: "Arial" },
+  corporate: { title: "Montserrat",       body: "Open Sans" },
+  creative:  { title: "Playfair Display", body: "Lato" },
+  modern:    { title: "Montserrat",       body: "Open Sans" },
+  band:      { title: "Montserrat",       body: "Open Sans" },
+  minimal:   { title: "Montserrat",       body: "Open Sans" },
+  tech:      { title: "Montserrat",       body: "Open Sans" },
+  executive: { title: "Montserrat",       body: "Open Sans" },
 };
 
 const TEMPLATE_DEFAULT_PALETTES: Record<string, string[]> = {
-  default: PALETTES.default,
-  academic: ["1D4ED8", "1E40AF", "7C3AED", "0F766E", "B45309"],
+  default:   PALETTES.default,
+  academic:  ["1D4ED8", "1E40AF", "7C3AED", "0F766E", "B45309"],
   corporate: ["0F3460", "1A56DB", "7E3AF2", "0694A2", "C27803"],
-  creative: ["7C3AED", "DB2777", "D97706", "059669", "0284C7"],
+  creative:  ["7C3AED", "DB2777", "D97706", "059669", "0284C7"],
+  modern:    ["4F46E5", "7C3AED", "0891B2", "059669", "D97706"],
+  band:      ["4F46E5", "E11D48", "0891B2", "059669", "F59E0B"],
+  minimal:   ["1E293B", "475569", "64748B", "94A3B8", "CBD5E1"],
+  tech:      ["2563EB", "06B6D4", "10B981", "F59E0B", "6366F1"],
+  executive: ["1E3A5F", "2563EB", "475569", "1D4ED8", "0891B2"],
 };
 
 const DENSITY_CONFIG: Record<string, { maxItemsPerSlide: number; maxCharsPerItem: number }> = {
   compact: { maxItemsPerSlide: 4, maxCharsPerItem: 130 },
   standard: { maxItemsPerSlide: 5, maxCharsPerItem: 160 },
   detailed: { maxItemsPerSlide: 6, maxCharsPerItem: 200 },
+};
+
+const TEMPLATE_VISUAL_STYLES: Record<string, "classic" | "band" | "minimal"> = {
+  default:   "classic",
+  academic:  "classic",
+  corporate: "classic",
+  creative:  "classic",
+  modern:    "classic",
+  band:      "band",
+  minimal:   "minimal",
+  tech:      "classic",
+  executive: "band",
+};
+
+const TEMPLATE_DEFAULT_THEMES: Record<string, "light" | "dark"> = {
+  default:   "light",
+  academic:  "light",
+  corporate: "dark",
+  creative:  "light",
+  modern:    "dark",
+  band:      "light",
+  minimal:   "light",
+  tech:      "dark",
+  executive: "light",
 };
 
 function buildDesignConfig(
@@ -938,7 +973,11 @@ function buildDesignConfig(
   courseType = "CURSO COMPLETO",
   footerBrand: string | null = "EduGenAI",
 ): DesignConfig {
-  const theme = (themeKey === "dark" ? "dark" : "light") as "light" | "dark";
+  // Template determines default theme; explicit theme param overrides only if provided
+  const resolvedThemeKey = (themeKey === "dark" || themeKey === "light")
+    ? themeKey
+    : TEMPLATE_DEFAULT_THEMES[templateKey] || "light";
+  const theme = resolvedThemeKey as "light" | "dark";
   const palette =
     paletteKey === "default"
       ? TEMPLATE_DEFAULT_PALETTES[templateKey] || PALETTES.default
@@ -949,7 +988,8 @@ function buildDesignConfig(
     fonts: TEMPLATE_FONTS[templateKey] || TEMPLATE_FONTS.default,
     density: DENSITY_CONFIG[densityKey] || DENSITY_CONFIG.standard,
     includeImages,
-    template: (templateKey as DesignConfig["template"]) || "default",
+    template: templateKey || "default",
+    visualStyle: TEMPLATE_VISUAL_STYLES[templateKey] || "classic",
     courseType: courseType || "CURSO COMPLETO",
     footerBrand: footerBrand !== undefined ? footerBrand : "EduGenAI",
   };
@@ -2593,6 +2633,83 @@ function addSlideTitle(
   });
 }
 
+/**
+ * renderSlideHeader — unified header renderer for all content slides.
+ * Replaces the addSectionLabel + addSlideTitle pattern.
+ * Renders differently based on design.visualStyle:
+ *   "classic" — floating label above floating title (current behavior)
+ *   "band"    — full-width colored band with title inside (McKinsey style)
+ *   "minimal" — thin accent line + large title, label below
+ */
+function renderSlideHeader(
+  slide: any,
+  title: string,
+  sectionLabel: string,
+  design: DesignConfig,
+  colors: ReturnType<typeof getColors>,
+  accentColor?: string,
+): void {
+  const accent = accentColor || design.palette[0];
+  const label = (sectionLabel || "").toUpperCase();
+
+  if (design.visualStyle === "band") {
+    const bandH = 1.44;
+    // Full-width color band
+    slide.addShape("rect" as any, {
+      x: 0, y: 0, w: SLIDE_W, h: bandH,
+      fill: { color: accent },
+    });
+    // Bottom shadow of band
+    slide.addShape("rect" as any, {
+      x: 0, y: bandH - 0.022, w: SLIDE_W, h: 0.022,
+      fill: { color: "000000" },
+      transparency: 72,
+    });
+    // Section label inside band
+    if (label) {
+      slide.addText(label, {
+        x: 0.55, y: 0.11, w: SLIDE_W - 1.1, h: 0.27,
+        fontSize: 9, fontFace: design.fonts.body, bold: true,
+        color: "FFFFFF", charSpacing: 6, transparency: 22,
+      });
+    }
+    // Title inside band
+    slide.addText(title, {
+      x: 0.55, y: 0.40, w: SLIDE_W - 1.1, h: 0.96,
+      fontSize: 27, fontFace: design.fonts.title, bold: true,
+      color: "FFFFFF", valign: "middle", lineSpacingMultiple: 1.04,
+      autoFit: true,
+    });
+
+  } else if (design.visualStyle === "minimal") {
+    // Short accent line before title
+    slide.addShape("rect" as any, {
+      x: 0.55, y: 0.22, w: 0.28, h: 0.016,
+      fill: { color: accent },
+    });
+    // Title — large, positioned high
+    slide.addText(title, {
+      x: 0.55, y: 0.28, w: SLIDE_W - 1.1, h: 1.0,
+      fontSize: 36, fontFace: design.fonts.title, bold: true,
+      color: colors.text, valign: "top", lineSpacingMultiple: 1.04,
+      autoFit: true,
+    });
+    // Section label below title
+    if (label) {
+      slide.addText(label, {
+        x: 0.55, y: 1.34, w: 4.5, h: 0.24,
+        fontSize: 9, fontFace: design.fonts.body, bold: true,
+        color: accent, charSpacing: 5, transparency: 10,
+      });
+    }
+
+  } else {
+    // "classic" — original floating style
+    if (label) addSectionLabel(slide, label, accent, design.fonts.body);
+    addSlideTitle(slide, title, colors, design.fonts.title, accent);
+  }
+}
+
 function addFooter(
   slide: any,
   colors: ReturnType<typeof getColors>,
@@ -3363,8 +3480,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     addSlideBackground(slide, colors.bg);
     addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, accentColor);
-    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
-    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+    renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, accentColor);
     for (let i = 0; i < items.length; i++) {
       const pal = design.palette[i % design.palette.length];
       const yPos = contentY + i * (itemH + bulletGap);
@@ -3406,8 +3522,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     addSlideBackground(slide, colors.bg);
     addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, accentColor);
-    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
-    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+    renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, accentColor);
     const cols = items.length >= 4 ? 2 : 1;
     const gap = 0.2;
     const cardW = cols === 2 ? (contentW - gap) / 2 : contentW;
@@ -3440,8 +3555,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     addSlideBackground(slide, colors.bg);
     addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, accentColor);
-    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, accentColor, design.fonts.body);
-    addSlideTitle(slide, plan.title, colors, design.fonts.title, accentColor);
+    renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, accentColor);
     if (items.length > 0) {
       const heroH = items.length === 1 ? contentH : Math.min(1.5, contentH * 0.38);
       slide.addShape("roundRect" as any, {
@@ -3495,8 +3609,7 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   addLightBgDecoration(slide, design, colors);
   const pal = design.palette[_globalSlideIdx % design.palette.length];
   addLeftEdge(slide, pal);
-  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, pal, design.fonts.body);
-  addSlideTitle(slide, plan.title, colors, design.fonts.title, pal);
+  renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, pal);
 
   const rawItems = plan.items || [];
   const items = rawItems.map((item) => normalizeRenderableBulletText(item)).filter(Boolean);
@@ -3565,8 +3678,7 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
   addLeftEdge(slide, colors.p3);
-  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p3, design.fonts.body);
-  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
+  renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, colors.p3);
   const items = (plan.items || []).slice(0, GRID_MAX_ITEMS);
   const parsed = items.map(parseDeterministicCardItem);
   const geometry = getDeterministicGridLayout(parsed.length);
@@ -3857,8 +3969,7 @@ function renderProcessTimeline(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
     addSlideBackground(slide, colors.bg);
     addLightBgDecoration(slide, design, colors);
     addLeftEdge(slide, colors.p2);
-    if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p2, design.fonts.body);
-    addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p2);
+    renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, colors.p2);
     const phaseColors = [colors.p1, colors.p3, colors.p0, colors.p2, colors.p4, colors.p1, colors.p3];
     const vContentY = 1.55;
     const vContentH = CONTENT_BOTTOM - vContentY;
@@ -3993,8 +4104,7 @@ function renderComparisonTable(pptx: PptxGenJS, plan: SlidePlan, design: DesignC
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
   addLeftEdge(slide, colors.p0);
-  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p0, design.fonts.body);
-  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p0);
+  renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, colors.p0);
   const headers = plan.tableHeaders || [];
   const rows = plan.tableRows || [];
   if (headers.length === 0) {
@@ -4067,9 +4177,8 @@ function renderExampleHighlight(pptx: PptxGenJS, plan: SlidePlan, design: Design
   addLightBgDecoration(slide, design, colors);
   addLeftEdge(slide, colors.p3);
 
-  // Header (sectionLabel + título)
-  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, colors.p3, design.fonts.body);
-  addSlideTitle(slide, plan.title, colors, design.fonts.title, colors.p3);
+  // Header
+  renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, colors.p3);
 
   // Geometria — 4 raias horizontais SIMÉTRICAS (mesma altura)
   const contentX2 = SAFE_ZONE.X;
@@ -4171,8 +4280,7 @@ function renderWarningCallout(pptx: PptxGenJS, plan: SlidePlan, design: DesignCo
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
   addLeftEdge(slide, "C0392B");
-  if (plan.sectionLabel) addSectionLabel(slide, plan.sectionLabel, "C0392B", design.fonts.body);
-  addSlideTitle(slide, plan.title, colors, design.fonts.title, "C0392B");
+  renderSlideHeader(slide, plan.title, plan.sectionLabel || "", design, colors, "C0392B");
   slide.addShape("roundRect" as any, {
     x: SLIDE_W - 1.5,
     y: 0.35,
@@ -4690,8 +4798,7 @@ function renderCodeBlock(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
   const slide = pptx.addSlide();
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
-  addSectionLabel(slide, plan.sectionLabel || "CÓDIGO", colors, design, design.palette[0]);
-  addSlideTitle(slide, plan.title, colors, design.fonts.title);
+  renderSlideHeader(slide, plan.title, plan.sectionLabel || "CÓDIGO", design, colors, design.palette[0]);
 
   const lines: string[] = (plan as any).codeLines || plan.items || [];
   const language: string = ((plan as any).codeLanguage || "CODE").toUpperCase();
