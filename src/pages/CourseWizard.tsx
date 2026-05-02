@@ -288,7 +288,11 @@ export default function CourseWizard() {
               toast({ title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." });
               setTimeout(() => navigate(`/app/courses/${event.courseId}`), 1000);
             }
+            if (event.type === "debug") {
+              console.warn("[CourseGen DEBUG]", event);
+            }
             if (event.type === "error") {
+              console.error("[CourseGen ERROR]", event.message, event);
               throw new Error(event.message);
             }
           } catch (parseErr: any) {

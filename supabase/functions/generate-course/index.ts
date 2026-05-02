@@ -428,42 +428,102 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
+      sendSSE({ type: "status", message: "Aguardando resposta da IA..." });
       const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 8000, true);
-      let structure;
-      try {
-        const cleaned = structureRaw.trim();
-        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-        const jsonString = jsonMatch ? jsonMatch[0] : cleaned;
-        structure = JSON.parse(jsonString);
-      } catch (parseErr) {
-        console.error("[generate-course] Failed to parse structure. Raw response length:", structureRaw.length);
-        console.error("[generate-course] Start of response:", structureRaw.substring(0, 500));
-        throw new Error("Falha ao processar a estrutura do curso gerada pela IA. Por favor, tente novamente.");
+      console.log("[generate-course] structureRaw length:", structureRaw.length);
+      console.log("[generate-course] structureRaw preview:", structureRaw.substring(0, 300));
+
+      // Robust JSON parser: handles objects, arrays, and markdown-wrapped responses
+      function parseStructureJSON(raw: string): { description?: string; modules: any[] } | null {
+        const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+        // Try direct parse first
+        try {
+          const parsed = JSON.parse(cleaned);
+          if (Array.isArray(parsed)) {
+            // Gemini returned an array of modules directly
+            return { description: "", modules: parsed };
+          }
+          if (parsed && typeof parsed === "object") {
+            // Has modules key → perfect
+            if (Array.isArray(parsed.modules)) return parsed;
+            // Has some array value → find it
+            const arrVal = Object.values(parsed).find((v) => Array.isArray(v));
+            if (arrVal) return { description: parsed.description || "", modules: arrVal as any[] };
+          }
+        } catch { /* fall through */ }
+
+        // Try extracting the outermost JSON array
+        const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+        if (arrMatch) {
+          try {
+            const arr = JSON.parse(arrMatch[0]);
+            if (Array.isArray(arr) && arr.length > 0) return { description: "", modules: arr };
+          } catch { /* fall through */ }
+        }
+
+        // Try extracting the outermost JSON object
+        const objMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (objMatch) {
+          try {
+            const obj = JSON.parse(objMatch[0]);
+            if (obj && typeof obj === "object") {
+              if (Array.isArray(obj.modules)) return obj;
+              const arrVal = Object.values(obj).find((v) => Array.isArray(v));
+              if (arrVal) return { description: obj.description || "", modules: arrVal as any[] };
+            }
+          } catch { /* fall through */ }
+        }
+
+        return null;
       }
+
+      let structure = parseStructureJSON(structureRaw);
+      if (!structure) {
+        console.error("[generate-course] PARSE FAILED. Raw start:", structureRaw.substring(0, 400));
+        sendSSE({ type: "debug", raw_preview: structureRaw.substring(0, 200), raw_length: structureRaw.length });
+        throw new Error(`Falha ao processar a estrutura do curso (resposta inválida da IA). Tente novamente.`);
+      }
+
+      console.log("[generate-course] Parsed modules:", structure.modules?.length);
+
+      // Normalize module fields (Gemini sometimes uses 'description' instead of 'summary')
+      structure.modules = structure.modules.map((m: any) => ({
+        ...m,
+        title: m.title || m.name || "Módulo",
+        summary: m.summary || m.description || m.content || m.title || "",
+        quiz: m.quiz || [],
+        flashcards: m.flashcards || [],
+      }));
 
       // Hard validation: enforce exact module count
-      if (!structure.modules || structure.modules.length !== actualModules) {
-        console.warn(`Module count mismatch: got ${structure.modules?.length ?? 0}, expected ${actualModules}. Retrying...`);
-        sendSSE({ type: "status", message: "Ajustando estrutura..." });
+      if (structure.modules.length !== actualModules) {
+        console.warn(`[generate-course] Module count mismatch: got ${structure.modules.length}, expected ${actualModules}. Retrying...`);
+        sendSSE({ type: "status", message: "Ajustando número de módulos..." });
 
-        const retryPrompt = `Generate a course structure with EXACTLY ${actualModules} modules for "${title}" (${theme}).
-Language: ${language || "pt-BR"}. Target audience: ${target_audience || "general"}. Tone: ${tone || "professional"}.
-${include_quiz ? "Include 3 quiz questions per module." : ""}
-${include_flashcards ? "Include 5 flashcards per module." : ""}
-Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
+        const retryPrompt = `Create a course structure in JSON format.
+CRITICAL: Return EXACTLY ${actualModules} modules, no more, no less.
+Course: "${title}" | Theme: ${theme} | Language: ${language || "pt-BR"}
+Return ONLY this JSON structure (no markdown, no explanation):
+{"description":"brief course description","modules":[{"title":"Module Title","summary":"1-2 sentence summary"}]}
+The modules array MUST have EXACTLY ${actualModules} items.`;
 
         const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 8000, true);
-        try {
-          const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
-          structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
-        } catch {
-          throw new Error("Failed to parse AI retry response");
+        console.log("[generate-course] retryRaw length:", retryRaw.length, "preview:", retryRaw.substring(0, 200));
+        const retryStructure = parseStructureJSON(retryRaw);
+        if (!retryStructure || retryStructure.modules.length === 0) {
+          throw new Error("Não foi possível gerar a estrutura do curso após segunda tentativa. Tente novamente.");
         }
-
-        if (!structure.modules || structure.modules.length !== actualModules) {
-          throw new Error(`Failed to generate exactly ${actualModules} modules after retry.`);
-        }
+        // Accept retry even if count differs (trim or extend)
+        structure = retryStructure;
       }
+
+      // Final: ensure we have exactly actualModules (trim excess, repeat if too few)
+      while (structure.modules.length < actualModules) {
+        const last = structure.modules[structure.modules.length - 1];
+        structure.modules.push({ title: `Módulo ${structure.modules.length + 1}`, summary: last?.summary || "" });
+      }
+      structure.modules = structure.modules.slice(0, actualModules);
 
       sendSSE({ type: "structure_done", modules: actualModules });
 
