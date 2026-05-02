@@ -1622,8 +1622,8 @@ async function callAI(model: string, prompt: string): Promise<string> {
     let aiModel = model.replace("google/", "");
     const MODEL_MAP: Record<string, string> = {
       "gemini-3-flash-preview": "gemini-2.5-flash",
-      "gemini-3-flash-lite": "gemini-2.0-flash-lite",
-      "gemini-2.5-flash-lite": "gemini-2.0-flash-lite",
+      "gemini-3-flash-lite": "gemini-2.5-flash",
+      "gemini-2.5-flash-lite": "gemini-2.5-flash",
     };
     aiModel = MODEL_MAP[aiModel] ?? aiModel;
     if (!aiModel.startsWith("gemini-")) aiModel = "gemini-2.5-flash";

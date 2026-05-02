@@ -17,9 +17,9 @@ async function callAI(model: string, prompt: string, maxTokens = 4000, isJson = 
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
-  // For JSON structure calls use gemini-2.0-flash (fast, no thinking overhead, reliable JSON).
-  // For content/quality calls keep gemini-2.5-flash (richer prose).
-  const aiModel = isJson ? "gemini-2.0-flash" : "gemini-2.5-flash";
+  // gemini-2.5-flash for all calls (gemini-2.0 not available for new API keys).
+  // High max_tokens ensures thinking tokens don't crowd out output for JSON calls.
+  const aiModel = "gemini-2.5-flash";
 
   console.log(`[callAI] model=${aiModel} maxTokens=${maxTokens} isJson=${isJson}`);
 
@@ -428,7 +428,7 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-      const structureRaw = await callAI("gemini-2.0-flash", structurePrompt, 8000, true);
+      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 8000, true);
       let structure;
       try {
         const cleaned = structureRaw.trim();
@@ -452,7 +452,7 @@ ${include_quiz ? "Include 3 quiz questions per module." : ""}
 ${include_flashcards ? "Include 5 flashcards per module." : ""}
 Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
 
-        const retryRaw = await callAI("gemini-2.0-flash", retryPrompt, 8000, true);
+        const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 8000, true);
         try {
           const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
           structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
@@ -525,7 +525,7 @@ Write 800-1200 words. Be thorough and educational.`;
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          const refinedContent = await callAI("gemini-2.0-flash-lite", refinementPrompt, 6000);
+          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 6000);
 
           // Step C: Quality Elevation
           let elevatedContent = refinedContent;
