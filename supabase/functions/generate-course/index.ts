@@ -13,37 +13,38 @@ const PLAN_LIMITS = {
 };
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
-async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false) {
+async function callAI(model: string, prompt: string, maxTokens = 4000, isJson = false) {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  
-  // Use gemini-2.5-flash as requested
-  const aiModel = "gemini-2.5-flash";
 
-  console.log(`Calling Gemini API directly with model: ${aiModel}`);
+  // For JSON structure calls use gemini-2.0-flash (fast, no thinking overhead, reliable JSON).
+  // For content/quality calls keep gemini-2.5-flash (richer prose).
+  const aiModel = isJson ? "gemini-2.0-flash" : "gemini-2.5-flash";
+
+  console.log(`[callAI] model=${aiModel} maxTokens=${maxTokens} isJson=${isJson}`);
 
   if (!geminiKey) {
     throw new Error("GEMINI_API_KEY não configurada.");
   }
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${geminiKey}`,
-      },
-      body: JSON.stringify({
-        model: aiModel,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-        temperature: 0.1, // Even lower temperature for more predictable structure
-        ...(isJson ? { response_format: { type: "json_object" } } : {})
-      }),
-    });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${geminiKey}`,
+    },
+    body: JSON.stringify({
+      model: aiModel,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens,
+      temperature: 0.1,
+      ...(isJson ? { response_format: { type: "json_object" } } : {}),
+    }),
+  });
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error(`Gemini call failed: ${errText}`);
+    console.error(`Gemini call failed (${aiModel}): ${errText}`);
     throw new Error(`Erro na API do Gemini (${res.status}): ${errText}`);
   }
 
@@ -427,7 +428,7 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 4000, true);
+      const structureRaw = await callAI("gemini-2.0-flash", structurePrompt, 8000, true);
       let structure;
       try {
         const cleaned = structureRaw.trim();
@@ -451,7 +452,7 @@ ${include_quiz ? "Include 3 quiz questions per module." : ""}
 ${include_flashcards ? "Include 5 flashcards per module." : ""}
 Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
 
-        const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 1000, true);
+        const retryRaw = await callAI("gemini-2.0-flash", retryPrompt, 8000, true);
         try {
           const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
           structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
@@ -520,11 +521,11 @@ ${sourceContentInstruction}
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
 Write 800-1200 words. Be thorough and educational.`;
 
-          const rawContent = await callAI("gemini-2.5-flash", contentPrompt);
+          const rawContent = await callAI("gemini-2.5-flash", contentPrompt, 6000);
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          const refinedContent = await callAI("gemini-2.0-flash-lite", refinementPrompt, 1500);
+          const refinedContent = await callAI("gemini-2.0-flash-lite", refinementPrompt, 6000);
 
           // Step C: Quality Elevation
           let elevatedContent = refinedContent;
@@ -534,7 +535,7 @@ Write 800-1200 words. Be thorough and educational.`;
               mod.title, refinedContent, title,
               target_audience || "profissionais da área", language || "pt-BR",
             );
-            const qualityResult = await callAI("gemini-2.5-flash", qualityPrompt, 2000);
+            const qualityResult = await callAI("gemini-2.5-flash", qualityPrompt, 6000);
             // Strip markdown fences AND any preamble before the first ## heading
             const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
