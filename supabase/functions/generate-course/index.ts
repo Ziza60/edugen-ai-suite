@@ -527,214 +527,113 @@ The modules array MUST have EXACTLY ${actualModules} items.`;
           .eq("course_id", body.temp_course_id).eq("user_id", userId);
       }
 
-      // ── STAGE 3: Generate content per module (parallel batches of 3) ──
-      const BATCH_SIZE = 3;
-      for (let batchStart = 0; batchStart < structure.modules.length; batchStart += BATCH_SIZE) {
-        const batch = structure.modules.slice(batchStart, batchStart + BATCH_SIZE);
+      // ── STAGE 3: Generate all modules fully in parallel (1 AI call each) ──
+      const sourceContentInstruction = use_sources
+        ? `\n\nCRITICAL: Use ONLY the content in <SOURCES> below.\n<SOURCES>\n${sourcesBlock}\n</SOURCES>`
+        : "";
 
-        await Promise.all(batch.map(async (mod: any, batchIdx: number) => {
-          const i = batchStart + batchIdx;
+      await Promise.all(structure.modules.map(async (mod: any, i: number) => {
+        sendSSE({ type: "module_start", module: i + 1, total: actualModules, title: mod.title });
 
-          sendSSE({
-            type: "module_start",
-            module: i + 1,
-            total: actualModules,
-            title: mod.title,
-          });
+        // Single combined prompt: content + quiz + flashcards in one JSON call
+        const combinedPrompt = `You are an expert educational content creator.
 
-          // Step A: Generate raw content
-          const sourceContentInstruction = use_sources
-            ? `\n\nCRITICAL: Use ONLY the content in <SOURCES> below.\n<SOURCES>\n${sourcesBlock}\n</SOURCES>`
-            : "";
+Generate complete content for module ${i + 1} of ${actualModules} in the course "${title}".
 
-          const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
-
-Course: ${title}
-Module ${i + 1}: ${mod.title}
+Module: "${mod.title}"
 Summary: ${mod.summary || mod.title}
-Target audience: ${target_audience || "general"}
+Course theme: ${theme}
+Target audience: ${target_audience || "profissionais da área"}
 Tone: ${tone || "professional"}
+Language: ${language || "pt-BR"}
 ${sourceContentInstruction}
 
-Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
-Write 800-1200 words. Be thorough and educational.`;
+Return ONLY valid JSON (no markdown fences, no explanation):
+{
+  "content": "<800-1200 word educational markdown content with ## headings, bullet points, examples>",
+  "quiz": ${include_quiz ? '[{"question":"...","options":["A) ...","B) ...","C) ...","D) ..."],"correct":0,"explanation":"..."},{"question":"...","options":["A) ...","B) ...","C) ...","D) ..."],"correct":1,"explanation":"..."},{"question":"...","options":["A) ...","B) ...","C) ...","D) ..."],"correct":2,"explanation":"..."}]' : "[]"},
+  "flashcards": ${include_flashcards ? '[{"front":"Question?","back":"Answer."},{"front":"Question?","back":"Answer."},{"front":"Question?","back":"Answer."},{"front":"Question?","back":"Answer."},{"front":"Question?","back":"Answer."}]' : "[]"}
+}
 
-          const rawContent = await callAI("gemini-2.5-flash", contentPrompt, 6000);
+Rules for content:
+- Start with ## ${mod.title}
+- Then ### 🎯 Objetivo do Módulo (3 bullets)
+- Then sections: ### 🧠 Fundamentos, ### ⚙️ Como funciona, ### 💡 Exemplo prático, ### 🚀 Aplicação, ### ✅ Resumo
+- Write in ${language || "pt-BR"}
+- Be thorough and educational (800-1200 words)
+${include_quiz ? `Rules for quiz: 3 questions testing real understanding. "correct" is 0-based index. Write in ${language || "pt-BR"}` : ""}
+${include_flashcards ? `Rules for flashcards: 5 cards. "front" ends with "?". "back" is 2-3 sentence answer. Write in ${language || "pt-BR"}` : ""}`;
 
-          // Step B: Pedagogical refinement
-          const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 6000);
+        let moduleContent = "";
+        let quizData: any[] = [];
+        let flashcardData: any[] = [];
 
-          // Step C: Quality Elevation
-          let elevatedContent = refinedContent;
-          try {
-            console.log(`[generate-course] Quality Elevation: module ${i + 1} "${mod.title}"`);
-            const qualityPrompt = buildQualityElevationPrompt(
-              mod.title, refinedContent, title,
-              target_audience || "profissionais da área", language || "pt-BR",
-            );
-            const qualityResult = await callAI("gemini-2.5-flash", qualityPrompt, 6000);
-            // Strip markdown fences AND any preamble before the first ## heading
-            const strippedFences = qualityResult
-              .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
-            const firstHeading = strippedFences.indexOf("\n## ");
-            const cleanedQuality = firstHeading > 0
-              ? strippedFences.slice(firstHeading).trim()
-              : strippedFences.startsWith("## ")
-                ? strippedFences
-                : strippedFences;
-            // Additional preamble guard: if result starts with a conversational line
-            // (no ##), extract from first ## occurrence
-            const preambleGuard = (s: string) => {
-              const idx = s.search(/^## /m);
-              return idx > 0 ? s.slice(idx).trim() : s;
-            };
-            const finalQuality = preambleGuard(cleanedQuality);
-            if (finalQuality.length >= refinedContent.length * 0.75) {
-              elevatedContent = finalQuality;
-              console.log(`[generate-course] Quality Elevation OK: ${refinedContent.length} → ${elevatedContent.length} chars`);
-            } else {
-              console.warn(`[generate-course] Quality Elevation result too short, keeping refined content`);
-            }
-          } catch (elevationErr: any) {
-            console.warn(`[generate-course] Quality Elevation failed (non-blocking): ${elevationErr.message}`);
+        try {
+          const combinedRaw = await callAI("gemini-2.5-flash", combinedPrompt, 8000, true);
+          const cleaned = combinedRaw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+          // Extract JSON — try direct parse first, then extract object
+          let parsed: any = null;
+          try { parsed = JSON.parse(cleaned); } catch { /* fall through */ }
+          if (!parsed) {
+            const objMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (objMatch) { try { parsed = JSON.parse(objMatch[0]); } catch { /* ignore */ } }
           }
 
-          // Step D: Save
-          const { data: moduleData, error: moduleError } = await serviceClient
-            .from("course_modules")
-            .insert({
-              course_id: course.id, title: mod.title,
-              content: elevatedContent, order_index: i,
-            })
-            .select().single();
-          if (moduleError) throw moduleError;
-
-          // Generate & insert quiz questions via separate AI call
-          if (include_quiz) {
-            try {
-              const quizPrompt = `Generate exactly 3 quiz questions for this educational module.
-Module: "${mod.title}"
-Course: "${title}" | Language: ${language || "pt-BR"}
-Content summary: ${mod.summary}
-
-Return ONLY valid JSON array (no markdown, no explanation):
-[{"question":"...","options":["A) ...","B) ...","C) ...","D) ..."],"correct":0,"explanation":"..."}]
-Rules:
-- "correct" is the 0-based index of the correct option (0=A, 1=B, 2=C, 3=D)
-- Questions must test real understanding, not trivia
-- Write in ${language || "pt-BR"}`;
-              const quizRaw = await callAI("gemini-2.5-flash", quizPrompt, 3000, true);
-              const quizCleaned = quizRaw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-              let quizData: any[] = [];
-              try {
-                const arrMatch = quizCleaned.match(/\[[\s\S]*\]/);
-                quizData = JSON.parse(arrMatch ? arrMatch[0] : quizCleaned);
-              } catch { /* skip quiz if parse fails */ }
-              if (Array.isArray(quizData) && quizData.length > 0) {
-                const quizInserts = quizData.map((q: any) => ({
-                  module_id: moduleData.id,
-                  question: q.question || "",
-                  options: q.options || [],
-                  correct_answer: q.correct ?? q.correct_answer ?? 0,
-                  explanation: q.explanation || null,
-                }));
-                await serviceClient.from("course_quiz_questions").insert(quizInserts);
-              }
-            } catch (quizErr: any) {
-              console.warn(`[generate-course] Quiz generation failed (non-blocking): ${quizErr.message}`);
-            }
+          if (parsed?.content) {
+            moduleContent = parsed.content;
+            quizData = Array.isArray(parsed.quiz) ? parsed.quiz : [];
+            flashcardData = Array.isArray(parsed.flashcards) ? parsed.flashcards : [];
+          } else {
+            // Fallback: treat whole response as plain markdown content
+            moduleContent = combinedRaw.replace(/^```(?:markdown)?\s*/i, "").replace(/\s*```$/i, "").trim();
           }
+        } catch (contentErr: any) {
+          console.error(`[generate-course] Module ${i + 1} generation failed:`, contentErr.message);
+          moduleContent = `## ${mod.title}\n\nConteúdo em processamento. Por favor, edite este módulo.`;
+        }
 
-          // Generate & insert flashcards via separate AI call
-          if (include_flashcards) {
-            try {
-              const flashcardPrompt = `Generate exactly 5 flashcards for this educational module.
-Module: "${mod.title}"
-Course: "${title}" | Language: ${language || "pt-BR"}
-Content summary: ${mod.summary}
+        // Ensure content starts with the module heading
+        if (moduleContent && !moduleContent.startsWith(`## ${mod.title}`)) {
+          const idx = moduleContent.search(/^## /m);
+          moduleContent = idx > 0 ? moduleContent.slice(idx).trim() : `## ${mod.title}\n\n${moduleContent}`;
+        }
 
-Return ONLY valid JSON array (no markdown, no explanation):
-[{"front":"Question ending with ?","back":"Complete pedagogical answer"}]
-Rules:
-- "front" must be a complete question with a "?" at the end
-- "back" must be a clear, educational answer (2-3 sentences)
-- Write in ${language || "pt-BR"}`;
-              const fcRaw = await callAI("gemini-2.5-flash", flashcardPrompt, 3000, true);
-              const fcCleaned = fcRaw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-              let fcData: any[] = [];
-              try {
-                const arrMatch = fcCleaned.match(/\[[\s\S]*\]/);
-                fcData = JSON.parse(arrMatch ? arrMatch[0] : fcCleaned);
-              } catch { /* skip flashcards if parse fails */ }
-              if (Array.isArray(fcData) && fcData.length > 0) {
-                const fcInserts = fcData.map((fc: any) => ({
-                  module_id: moduleData.id,
-                  front: fc.front || fc.question || "",
-                  back: fc.back || fc.answer || "",
-                }));
-                await serviceClient.from("course_flashcards").insert(fcInserts);
-              }
-            } catch (fcErr: any) {
-              console.warn(`[generate-course] Flashcard generation failed (non-blocking): ${fcErr.message}`);
-            }
-          }
+        // Save module
+        const { data: moduleData, error: moduleError } = await serviceClient
+          .from("course_modules")
+          .insert({ course_id: course.id, title: mod.title, content: moduleContent, order_index: i })
+          .select().single();
+        if (moduleError) throw moduleError;
 
-          // Generate AI image (non-blocking)
-          if (include_images) {
-            try {
-              const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
-STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstract shapes, icons, conceptual diagrams, visual metaphors. Style: modern, minimalist, soft colors, 16:9.`;
+        // Save quiz
+        if (include_quiz && quizData.length > 0) {
+          const quizInserts = quizData.map((q: any) => ({
+            module_id: moduleData.id,
+            question: q.question || "",
+            options: q.options || [],
+            correct_answer: q.correct ?? q.correct_answer ?? 0,
+            explanation: q.explanation || null,
+          }));
+          await serviceClient.from("course_quiz_questions").insert(quizInserts).catch((e: any) =>
+            console.warn("[generate-course] Quiz insert error:", e.message)
+          );
+        }
 
-              const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
-                },
-                body: JSON.stringify({
-                  model: "gemini-2.0-flash-exp",
-                  messages: [{ role: "user", content: imagePrompt }],
-                  modalities: ["image", "text"],
-                  max_tokens: 500, // Limite para geração de imagem
-                }),
-              });
+        // Save flashcards
+        if (include_flashcards && flashcardData.length > 0) {
+          const fcInserts = flashcardData.map((fc: any) => ({
+            module_id: moduleData.id,
+            front: fc.front || fc.question || "",
+            back: fc.back || fc.answer || "",
+          }));
+          await serviceClient.from("course_flashcards").insert(fcInserts).catch((e: any) =>
+            console.warn("[generate-course] Flashcard insert error:", e.message)
+          );
+        }
 
-              if (imgRes.ok) {
-                const imgData = await imgRes.json();
-                const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-                if (imageUrl && imageUrl.startsWith("data:image")) {
-                  const base64Data = imageUrl.split(",")[1];
-                  const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-                  const ext = imageUrl.includes("png") ? "png" : "jpg";
-                  const storagePath = `${userId}/module-${moduleData.id}.${ext}`;
-
-                  const { error: uploadErr } = await serviceClient.storage
-                    .from("course-exports")
-                    .upload(storagePath, binaryData, { contentType: `image/${ext}`, upsert: true });
-
-                  if (!uploadErr) {
-                    const { data: signedData } = await serviceClient.storage
-                      .from("course-exports")
-                      .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
-                    if (signedData?.signedUrl) {
-                      await serviceClient.from("course_images").insert({
-                        module_id: moduleData.id,
-                        url: signedData.signedUrl,
-                        alt_text: `Ilustração: ${mod.title}`,
-                      });
-                    }
-                  }
-                }
-              }
-            } catch (imgErr) {
-              console.error("Image generation failed for module", mod.title, imgErr);
-            }
-          }
-
-          sendSSE({ type: "module_done", module: i + 1, total: actualModules });
-        }));
-      }
+        sendSSE({ type: "module_done", module: i + 1, total: actualModules });
+      }));
 
       // ── STAGE 4: Log usage ──
       const usageInserts = [
