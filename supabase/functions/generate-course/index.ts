@@ -615,9 +615,8 @@ ${include_flashcards ? `Rules for flashcards: 5 cards. "front" ends with "?". "b
             correct_answer: q.correct ?? q.correct_answer ?? 0,
             explanation: q.explanation || null,
           }));
-          await serviceClient.from("course_quiz_questions").insert(quizInserts).catch((e: any) =>
-            console.warn("[generate-course] Quiz insert error:", e.message)
-          );
+          const { error: quizInsertErr } = await serviceClient.from("course_quiz_questions").insert(quizInserts);
+          if (quizInsertErr) console.warn("[generate-course] Quiz insert error:", quizInsertErr.message);
         }
 
         // Save flashcards
@@ -627,9 +626,8 @@ ${include_flashcards ? `Rules for flashcards: 5 cards. "front" ends with "?". "b
             front: fc.front || fc.question || "",
             back: fc.back || fc.answer || "",
           }));
-          await serviceClient.from("course_flashcards").insert(fcInserts).catch((e: any) =>
-            console.warn("[generate-course] Flashcard insert error:", e.message)
-          );
+          const { error: fcInsertErr } = await serviceClient.from("course_flashcards").insert(fcInserts);
+          if (fcInsertErr) console.warn("[generate-course] Flashcard insert error:", fcInsertErr.message);
         }
 
         sendSSE({ type: "module_done", module: i + 1, total: actualModules });
