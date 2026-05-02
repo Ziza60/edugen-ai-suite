@@ -5,7 +5,7 @@ import JSZip from "npm:jszip@3.10.1";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { z } from "https://esm.sh/zod@3.23.8";
 
-const ENGINE_VERSION = "3.12.4-AUTOFIX-DEBUG";
+const ENGINE_VERSION = "4.0.0-COMMERCIAL";
 
 const SlidePlanSchema = z.object({
   layout: z.enum([
@@ -786,73 +786,74 @@ function deriveSectionLabel(plan: SlidePlan): string {
 
 const THEMES = {
   light: {
-    bg: "F0F2F8",
-    bgAlt: "E4E8F2",
-    bgAccent: "D6DCF0",
+    bg: "FFFFFF",
+    bgAlt: "F0F4FF",
+    bgAccent: "DDE5FF",
     text: "0F172A",
-    textSecondary: "4A5568",
-    accent: "6C63FF",
-    accentMuted: "EEEDFF",
-    borders: "C8CEDF",
+    textSecondary: "374151",
+    accent: "4F46E5",
+    accentMuted: "EEF2FF",
+    borders: "C7D2FE",
     cardBg: "FFFFFF",
-    cardBgAlt: "EEF1FA",
+    cardBgAlt: "F0F4FF",
     tableHeaderBg: "0F172A",
     tableRowOdd: "FFFFFF",
-    tableRowEven: "EEF1FA",
-    insightBg: "FFF8ED",
-    reflectionBg: "EDF0FA",
-    coverBg: "0F1C3F",
+    tableRowEven: "F0F4FF",
+    insightBg: "FFFBEB",
+    reflectionBg: "EEF2FF",
+    coverBg: "080F2A",
     coverText: "FFFFFF",
-    coverSubtext: "A0AEC0",
-    divider: "C8CEDF",
-    coverDark: "0F1C3F",
-    panelDark: "162040",
-    panelMid: "1E2D55",
-    shadowColor: "8896B0",
+    coverSubtext: "94A3B8",
+    divider: "E0E7FF",
+    coverDark: "080F2A",
+    panelDark: "0C1530",
+    panelMid: "172244",
+    shadowColor: "8196C8",
   },
   dark: {
-    bg: "0C1322",
-    bgAlt: "141E34",
-    bgAccent: "1A2848",
+    bg: "070C1C",
+    bgAlt: "0F1629",
+    bgAccent: "141F3A",
     text: "E8EDF5",
-    textSecondary: "94A3C0",
-    accent: "6C63FF",
-    accentMuted: "1C1A3A",
-    borders: "222E48",
-    cardBg: "141E34",
-    cardBgAlt: "1A2848",
-    tableHeaderBg: "080D1A",
-    tableRowOdd: "141E34",
-    tableRowEven: "1A2848",
-    insightBg: "2A1F0F",
+    textSecondary: "94A3B8",
+    accent: "6366F1",
+    accentMuted: "1E1B4B",
+    borders: "1E2D4A",
+    cardBg: "0F1629",
+    cardBgAlt: "141F3A",
+    tableHeaderBg: "060B16",
+    tableRowOdd: "0F1629",
+    tableRowEven: "141F3A",
+    insightBg: "271A05",
     reflectionBg: "0D1830",
-    coverBg: "050A18",
+    coverBg: "040810",
     coverText: "FFFFFF",
-    coverSubtext: "94A3C0",
-    divider: "222E48",
-    coverDark: "050A18",
-    panelDark: "0A1228",
-    panelMid: "111D38",
+    coverSubtext: "64748B",
+    divider: "1E2D4A",
+    coverDark: "040810",
+    panelDark: "080D1C",
+    panelMid: "0F1A30",
     shadowColor: "000000",
   },
 };
 
 const PALETTES: Record<string, string[]> = {
-  default: ["6C63FF", "3B82F6", "10B981", "F59E0B", "06B6D4"],
+  default: ["4F46E5", "7C3AED", "0891B2", "059669", "D97706"],
   ocean: ["0369A1", "0284C7", "0891B2", "0D9488", "1D4ED8"],
   forest: ["15803D", "16A34A", "0D9488", "047857", "166534"],
   sunset: ["DC2626", "EA580C", "D97706", "B91C1C", "C2410C"],
   monochrome: ["1E293B", "334155", "475569", "64748B", "94A3B8"],
+  premium: ["1A56DB", "7E3AF2", "0694A2", "057A55", "C27803"],
 };
 
 const TYPO = {
-  COVER_TITLE: 48,
-  MODULE_NUMBER: 120,
-  MODULE_TITLE: 34,
-  SECTION_TITLE: 28,
-  SUBTITLE: 20,
+  COVER_TITLE: 56,
+  MODULE_NUMBER: 160,
+  MODULE_TITLE: 40,
+  SECTION_TITLE: 32,
+  SUBTITLE: 22,
   BODY: 17,
-  BODY_LARGE: 19,
+  BODY_LARGE: 20,
   SUPPORT: 13,
   LABEL: 11,
   TABLE_HEADER: 13,
@@ -860,11 +861,11 @@ const TYPO = {
   CARD_TITLE: 15,
   CARD_BODY: 13,
   BULLET_TEXT: 16,
-  TAKEAWAY_NUM: 52,
+  TAKEAWAY_NUM: 60,
   TAKEAWAY_BODY: 14,
   FOOTER: 11,
-  TOC_NUMBER: 42,
-  TOC_TITLE: 17,
+  TOC_NUMBER: 46,
+  TOC_TITLE: 18,
   TOC_DESC: 12,
 };
 
@@ -914,9 +915,9 @@ const TEMPLATE_FONTS: Record<string, { title: string; body: string }> = {
 
 const TEMPLATE_DEFAULT_PALETTES: Record<string, string[]> = {
   default: PALETTES.default,
-  academic: ["003366", "336699", "FF6600", "006633", "660033"],
-  corporate: ["1A1A2E", "16213E", "0F3460", "533483", "E94560"],
-  creative: ["2C3E50", "E74C3C", "F39C12", "8E44AD", "16A085"],
+  academic: ["1D4ED8", "1E40AF", "7C3AED", "0F766E", "B45309"],
+  corporate: ["0F3460", "1A56DB", "7E3AF2", "0694A2", "C27803"],
+  creative: ["7C3AED", "DB2777", "D97706", "059669", "0284C7"],
 };
 
 const DENSITY_CONFIG: Record<string, { maxItemsPerSlide: number; maxCharsPerItem: number }> = {
@@ -989,22 +990,44 @@ function getColors(design: DesignConfig) {
 
 function addLightBgDecoration(slide: any, design: DesignConfig, colors: ReturnType<typeof getColors>) {
   if (design.theme === "light") {
+    // Top-right large circle accent
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W - 1.6,
-      y: -0.6,
-      w: 1.8,
-      h: 1.8,
+      x: SLIDE_W - 3.2,
+      y: -1.8,
+      w: 4.2,
+      h: 4.2,
       fill: { color: colors.p0 },
-      transparency: 92,
+      transparency: 94,
     });
+    // Bottom-left subtle circle
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W - 0.8,
-      y: 0.5,
-      w: 0.8,
-      h: 0.8,
+      x: -1.2,
+      y: SLIDE_H - 2.2,
+      w: 3.2,
+      h: 3.2,
       fill: { color: colors.p1 },
-      transparency: 88,
+      transparency: 96,
     });
+    // Thin top accent bar (the "brand stripe")
+    slide.addShape("rect" as any, {
+      x: 0,
+      y: 0,
+      w: SLIDE_W,
+      h: 0.028,
+      fill: { color: colors.p0 },
+      transparency: 50,
+    });
+    // Small dot cluster top-right
+    for (let i = 0; i < 3; i++) {
+      slide.addShape("ellipse" as any, {
+        x: SLIDE_W - 1.2 + i * 0.26,
+        y: 0.22 + i * 0.14,
+        w: 0.07,
+        h: 0.07,
+        fill: { color: colors.p0 },
+        transparency: 60,
+      });
+    }
   }
 }
 
@@ -1672,90 +1695,91 @@ function buildSlidePrompt(
 ): string {
   const itemsPerSlide = density === "compact" ? "3-4" : density === "detailed" ? "5-6" : "4-5";
 
-  return `Você é um designer instrucional sênior especializado em criar slides de cursos online profissionais.
+  return `Você é um designer instrucional sênior e especialista no tema do módulo, responsável por criar materiais de apresentação de ALTO VALOR COMERCIAL para cursos online premium.
 
-Sua tarefa: converter o conteúdo do Módulo ${moduleIndex + 1} abaixo em uma sequência de slides PowerPoint de ALTA QUALIDADE.
+Sua tarefa: transformar o conteúdo do Módulo ${moduleIndex + 1} em uma sequência de slides PowerPoint profissionais, densos em conhecimento e visualmente ricos.
 
 ## REGRA FUNDAMENTAL
-Retorne APENAS um array JSON válido. ZERO texto fora do JSON. ZERO explicações. ZERO markdown.
-O primeiro caractere deve ser [ e o último ].
+Retorne APENAS um array JSON válido. ZERO texto fora do JSON. ZERO markdown. Primeiro char: [  Último char: ]
 
-## REGRAS DE QUALIDADE (VIOLAÇÃO = SLIDE INVÁLIDO)
+## PADRÃO DE QUALIDADE COMERCIAL
 
-### Densidade e Hierarquia Visual
+### Conteúdo Rico e Específico (OBRIGATÓRIO)
+Cada item deve ser SUBSTANCIAL — não genérico. Inclua:
+- Números e dados concretos quando aplicável ("reduz em 40% o tempo de desenvolvimento", "usado por +70% das empresas Fortune 500")
+- Exemplos reais com nomes de ferramentas, empresas, casos de uso reais
+- Explicações que mostram domínio profundo, não definições de dicionário
+- Conexões entre conceitos ("isso permite que...", "diferente de X, aqui Y...")
+
+Exemplo BOM: "List Comprehension (Python): Cria listas em uma linha reduzindo 60% do código vs for loops — ex: [x**2 for x in range(10)] gera os quadrados de 0 a 9."
+Exemplo RUIM: "List Comprehension: É uma forma de criar listas em Python."
+
+### Densidade por Slide
 - Todo slide de conteúdo DEVE ter exatamente ${itemsPerSlide} itens.
-- Slides com 1-2 itens são AUTOMATICAMENTE REJEITADOS.
-- Cada item DEVE seguir o padrão "Conceito: Explicação completa com ponto final."
-  Exemplo BOM: "Variáveis (int): São espaços na memória que armazenam números inteiros, como idade ou contador."
-  Exemplo RUIM: "Variáveis" ou "São espaços na memória."
+- Itens com menos de 60 caracteres são REJEITADOS por serem rasos demais.
+- Máximo 160 chars por item — seja denso, não prolixo.
 
-### Takeaways = Síntese, NÃO Repetição
-- O slide "numbered_takeaways" DEVE conter frases que SINTETIZAM o aprendizado.
-- Use padrões como "Agora você sabe...", "Lembre-se: ...", "Você é capaz de...".
-- NUNCA repita frases literais que já apareceram nos slides de conteúdo.
-  Exemplo BOM: "Agora você sabe diferenciar listas de tuplas e escolher a estrutura ideal para cada cenário."
-  Exemplo RUIM: "Listas são mutáveis e tuplas são imutáveis." (se isso já foi dito antes)
+### Exemplo Prático = Estudo de Caso Real
+- Todo módulo DEVE ter 1+ slide "example_highlight" com cenário concreto.
+- Use empresas/projetos/tecnologias reais quando possível.
+- ORDEM OBRIGATÓRIA dos 4 itens: Contexto → Desafio → Solução → Resultado
+- O Resultado DEVE incluir um dado mensurável.
 
-### Exemplo Prático Obrigatório
-- Todo módulo DEVE ter pelo menos 1 slide "example_highlight".
-- Se o conteúdo não tiver exemplo explícito, CRIE UM REALISTA baseado no tema.
-- O slide example_highlight DEVE ter 4 itens exatamente: Contexto → Desafio → Solução → Resultado.
+### Variedade Obrigatória de Layouts
+Nunca use o mesmo layout 2 vezes seguidas. Sequência recomendada:
+module_cover → bullets → grid_cards/process_timeline → example_highlight → two_column_bullets/comparison_table → warning_callout → summary_slide → numbered_takeaways
 
-### Variedade de Layouts
-- Nunca use o mesmo layout mais de 2 vezes seguidas.
-- Alterne entre: bullets, grid_cards, process_timeline, example_highlight, two_column_bullets.
+### Key Takeaways = Síntese Transformadora
+- Os takeaways NÃO repetem conteúdo já dito — sintetizam o que o aluno SABE FAZER agora.
+- Use: "Agora você domina...", "Você é capaz de...", "A partir de hoje..."
+- Cada takeaway deve ter peso profissional — algo que o aluno vai lembrar 1 ano depois.
 
 ## LAYOUTS DISPONÍVEIS
 
 **"module_cover"** — Capa do módulo (SEMPRE o primeiro slide)
-- Campos: title (string), objectives (array de 3 strings — o que o aluno vai aprender, começando com verbo no infinitivo)
+- Campos: title (string), objectives (array de 3 strings — habilidades concretas que o aluno vai desenvolver, começando com verbo de ação forte: "Implementar", "Construir", "Analisar", "Dominar")
 
-**"bullets"** — Conteúdo expositivo (fundamentos, conceitos, como funciona)
-- Campos: title (string, máx 55 chars, DESCRITIVO — nunca só "Fundamentos"), sectionLabel (string em MAIÚSCULAS, máx 3 palavras), items (array de ${itemsPerSlide} strings no formato "Conceito: Explicação completa com ponto final.", máx 160 chars cada)
+**"bullets"** — Conteúdo expositivo com profundidade (fundamentos, conceitos avançados)
+- Campos: title (DESCRITIVO, nunca genérico — "Como Python Gerencia Memória" não "Python Memória"), sectionLabel (MAIÚSCULAS, máx 3 palavras), items (${itemsPerSlide} strings no formato "Conceito-Chave: Explicação rica e específica com exemplo ou dado.", máx 160 chars)
 
-**"two_column_bullets"** — Conteúdo extenso em duas colunas (usar quando naturalmente houver 6+ conceitos)
-- Campos: title, sectionLabel, items (array de 6-10 strings no formato "Conceito: Explicação.")
+**"two_column_bullets"** — Comparação ou listagem ampla (6-10 conceitos complementares)
+- Campos: title, sectionLabel, items (6-10 strings, cada uma autossuficiente)
 
-**"grid_cards"** — Cards visuais para tópicos independentes (ferramentas, tipos, aplicações)
-- Usar quando: 3-5 itens com estrutura clara de "Nome: descrição"
-- Campos: title, sectionLabel (ex: "FERRAMENTAS", "TIPOS DE DADOS"), items (array de 3-5 strings no formato "Nome do Card: Descrição em uma frase completa.")
+**"grid_cards"** — Cards para itens independentes e paralelos (ferramentas, tipos, frameworks)
+- Usar para: 3-5 ferramentas, padrões, abordagens ou categorias distintas
+- Campos: title, sectionLabel (ex: "FERRAMENTAS", "FRAMEWORKS", "PADRÕES"), items (3-5 strings "Nome Real: Por que usar e quando — benefício concreto.")
 
-**"process_timeline"** — Sequência de passos (processos, fluxos, metodologias)
-- Usar quando: o conteúdo descreve um passo a passo sequencial
-- Campos: title, sectionLabel (ex: "PASSO A PASSO", "COMO FUNCIONA"), items (array de 3-6 strings, cada uma descrevendo uma etapa)
+**"process_timeline"** — Sequência de etapas ordenadas (fluxo, metodologia, pipeline)
+- Campos: title, sectionLabel ("PASSO A PASSO", "FLUXO", "PIPELINE"), items (3-6 etapas, cada uma com ação específica e resultado esperado)
 
-**"comparison_table"** — Tabela comparativa entre conceitos
-- Usar quando: o conteúdo compara explicitamente diferentes abordagens, tipos ou versões
-- Campos: title, sectionLabel ("COMPARATIVO"), tableHeaders (array de 2-4 strings), tableRows (array de arrays de strings)
+**"comparison_table"** — Tabela comparativa precisa (diferenças entre abordagens/versões/ferramentas)
+- Campos: title, sectionLabel ("COMPARATIVO"), tableHeaders (2-4 colunas), tableRows (linhas com dados reais)
 
-**"example_highlight"** — Exemplo prático ou caso de uso real
-- SEMPRE usar para blocos de exemplo. NUNCA usar bullets para exemplos.
-- Campos: title (ex: "Exemplo Prático: Calculadora de Média"), sectionLabel ("ESTUDO DE CASO"), items (array de EXATAMENTE 4 strings no formato "Contexto: ...", "Desafio: ...", "Solução: ...", "Resultado: ...")
-- ORDEM OBRIGATÓRIA: Contexto → Desafio → Solução → Resultado
+**"example_highlight"** — Estudo de caso real com impacto mensurável
+- Campos: title ("Caso Real: [Nome do Cenário]"), sectionLabel ("ESTUDO DE CASO"), items (EXATAMENTE 4 strings: "Contexto: empresa/projeto/área específica...", "Desafio: problema concreto com impacto...", "Solução: técnica/ferramenta/abordagem usada...", "Resultado: dado mensurável alcançado...")
 
-**"warning_callout"** — Armadilhas, erros comuns, pontos de atenção
-- Campos: title (ex: "Cuidados e Erros Comuns"), sectionLabel ("PONTOS DE ATENÇÃO"), items (array de 3-4 strings)
+**"warning_callout"** — Armadilhas profissionais, antipadrões, erros que custam caro
+- Campos: title ("Armadilhas e Antipadrões"), sectionLabel ("ATENÇÃO"), items (3-4 strings — erros reais que profissionais cometem, com consequência)
 
-**"reflection_callout"** — Pergunta para reflexão do aluno
-- Campos: title (ex: "Para Refletir"), sectionLabel ("REFLEXÃO"), items (array com 1-2 perguntas completas)
+**"reflection_callout"** — Pergunta estratégica de reflexão profissional
+- Campos: title (pergunta impactante), sectionLabel ("REFLEXÃO CRÍTICA"), items (1-2 perguntas que fazem o aluno pensar em como aplicar no trabalho)
 
-**"summary_slide"** — Resumo do módulo (SEMPRE o penúltimo slide)
-- Campos: title ("Resumo do Módulo"), sectionLabel ("SÍNTESE"), items (array de 2-4 strings resumindo os pontos mais importantes)
+**"summary_slide"** — Consolidação do módulo
+- Campos: title ("Consolidando o Módulo"), sectionLabel ("SÍNTESE"), items (3-4 strings resumindo as competências adquiridas — use "Você agora domina...", "Este módulo provou que...")
 
-**"numbered_takeaways"** — Key Takeaways (SEMPRE o último slide de cada módulo)
-- Campos: title ("Key Takeaways"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (array de 4-5 strings, cada uma SINTETIZANDO uma lição — use "Agora você...", "Lembre-se: ...", "Você é capaz de...")
+**"numbered_takeaways"** — Key Takeaways finais (SEMPRE o último slide)
+- Campos: title ("Key Takeaways"), sectionLabel ("PRINCIPAIS APRENDIZADOS"), items (4-5 strings que sintetizam as transformações profissionais que o aluno viveu — frases com impacto que ele vai guardar)
 
-## SEQUÊNCIA OBRIGATÓRIA DE CADA MÓDULO
-1. module_cover (SEMPRE primeiro)
-2. Slides de conteúdo variado (2 a N-2)
-3. summary_slide (penúltimo)
-4. numbered_takeaways (último)
+## SEQUÊNCIA OBRIGATÓRIA
+1. module_cover
+2. Conteúdo variado e rico (mínimo 4 slides, máximo 8)
+3. summary_slide
+4. numbered_takeaways
 
-## REGRAS ADICIONAIS
-- Títulos descritivos: "Tipos de Dados em Python", não apenas "Tipos de Dados"
-- Frases completas com ponto final em todos os itens
-- sectionLabel em MAIÚSCULAS, máx 3 palavras
-- Nenhum item pode repetir informação de outro no mesmo slide
+## REGRAS DE OURO
+- Títulos são DESCRITIVOS e ESPECÍFICOS ao tema: nunca "Fundamentos", sempre "Os 4 Pilares do Gerenciamento de Estado em React"
+- Frases completas com ponto final
+- sectionLabel em MAIÚSCULAS
 - Idioma: ${language}
 
 ## CONTEÚDO DO MÓDULO
@@ -1765,14 +1789,14 @@ O primeiro caractere deve ser [ e o último ].
 **Conteúdo:**
 ${moduleContent.substring(0, 6000)}
 
-## EXEMPLO DE SAÍDA DE QUALIDADE:
+## EXEMPLO DE SAÍDA PREMIUM:
 [
-  {"layout":"module_cover","title":"${moduleTitle}","objectives":["Compreender os conceitos fundamentais e aplicá-los em cenários reais.","Desenvolver a capacidade de implementar soluções usando as ferramentas aprendidas.","Identificar e evitar os erros mais comuns na prática profissional."]},
-  {"layout":"bullets","title":"Fundamentos e Conceitos-Chave","sectionLabel":"FUNDAMENTOS","items":["Conceito Principal: Explicação completa sobre o que é e por que é importante no contexto do módulo.","Segundo Elemento: Descrição detalhada deste componente e como ele se relaciona com o anterior.","Terceiro Pilar: Explicação abrangente deste terceiro fundamento e sua aplicação prática.","Quarto Aspecto: Detalhamento deste conceito complementar com exemplos de uso real."]},
-  {"layout":"grid_cards","title":"Ferramentas e Aplicações","sectionLabel":"APLICAÇÕES","items":["Ferramenta A: Descrição concisa do que faz e quando usar esta ferramenta no dia a dia.","Ferramenta B: Explicação do propósito desta segunda ferramenta e seus benefícios.","Abordagem C: Detalhamento desta abordagem e os problemas que ela resolve."]},
-  {"layout":"example_highlight","title":"Exemplo Prático: Cenário Real","sectionLabel":"ESTUDO DE CASO","items":["Contexto: Descrição clara da situação inicial e do ambiente onde o problema ocorre.","Desafio: Explicação específica do problema a ser resolvido e suas consequências.","Solução: Detalhamento de como o problema foi abordado e quais técnicas foram aplicadas.","Resultado: Descrição objetiva do que foi alcançado e dos benefícios obtidos."]},
-  {"layout":"summary_slide","title":"Resumo do Módulo","sectionLabel":"SÍNTESE","items":["Os fundamentos apresentados fornecem a base teórica necessária para aplicação prática.","As ferramentas exploradas permitem implementar soluções eficientes para problemas reais.","O exemplo prático demonstrou a aplicação dos conceitos em um cenário autêntico."]},
-  {"layout":"numbered_takeaways","title":"Key Takeaways","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Agora você sabe identificar qual abordagem utilizar para cada tipo de problema.","Lembre-se: a prática consistente é essencial para dominar estas técnicas.","Você é capaz de implementar soluções completas usando as ferramentas aprendidas.","Evite os erros comuns revisando sempre os pontos de atenção antes de implementar."]}
+  {"layout":"module_cover","title":"${moduleTitle}","objectives":["Implementar soluções completas e otimizadas aplicando os conceitos centrais do módulo.","Analisar problemas reais e escolher a abordagem técnica mais adequada para cada contexto.","Dominar as armadilhas e antipadrões que separam iniciantes de profissionais sênior."]},
+  {"layout":"bullets","title":"Os Fundamentos que Todo Profissional Precisa Dominar","sectionLabel":"FUNDAMENTOS","items":["Conceito A (contexto real): Por que este conceito é crítico em produção — dado concreto que comprova sua importância no mercado atual.","Mecanismo Central: Como funciona internamente e qual problema resolve que abordagens anteriores não resolviam de forma eficiente.","Caso de Uso Principal: Onde este conceito brilha — empresa/projeto real que o adotou e os resultados obtidos em produção.","Armadilha Clássica: O erro que 8 em 10 iniciantes cometem com este conceito e como evitá-lo definitivamente."]},
+  {"layout":"grid_cards","title":"As Ferramentas que o Mercado Usa em Produção","sectionLabel":"FERRAMENTAS","items":["Ferramenta Real A: Adotada por empresas como Netflix e Airbnb — resolve [problema específico] com performance X% superior à alternativa padrão.","Ferramenta Real B: Padrão de mercado para [caso de uso] — integração nativa com os principais frameworks e suporte ativo da comunidade.","Abordagem C: Quando usar e por quê — diferencia profissionais júnior de sênior na escolha da solução correta para cada contexto."]},
+  {"layout":"example_highlight","title":"Caso Real: Como a [Empresa] Resolveu [Problema]","sectionLabel":"ESTUDO DE CASO","items":["Contexto: Time de 15 engenheiros em startup de fintech processando 2M de transações/dia com latência crescente e custos fora de controle.","Desafio: Sistema legado em Python síncrono com gargalo de I/O causando 3s de latência média — inaceitável para compliance bancário.","Solução: Migração incremental para arquitetura assíncrona com asyncio + Redis como cache de sessão, mantendo 100% de compatibilidade.","Resultado: Latência reduzida de 3s para 180ms (94% de melhoria), custo de infra reduzido em 40% e zero incidentes em 6 meses."]},
+  {"layout":"summary_slide","title":"Consolidando o Módulo","sectionLabel":"SÍNTESE","items":["Você agora domina os fundamentos teóricos e práticos necessários para aplicar este conhecimento em projetos reais de produção.","As ferramentas e padrões apresentados são os mesmos usados pelas maiores empresas de tecnologia do mundo atualmente.","O estudo de caso demonstrou que a aplicação correta destes conceitos tem impacto direto e mensurável nos resultados de negócio."]},
+  {"layout":"numbered_takeaways","title":"Key Takeaways","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Agora você domina os conceitos centrais e pode aplicá-los com confiança em projetos profissionais reais.","Você é capaz de identificar o contexto certo para cada abordagem — habilidade que define profissionais sênior.","A partir de hoje, você reconhece os antipadrões e sabe exatamente como evitar os erros que custam caro em produção.","Lembre-se: o diferencial não é saber a teoria, mas saber QUANDO e COMO aplicar cada técnica no contexto certo."]}
 ]
 
 Retorne APENAS o array JSON. Nenhum texto antes ou depois.`;
@@ -2663,26 +2687,38 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
   }
 
   if (!image) {
-    addGradientBar(slide, SLIDE_W * 0.5, 0, SLIDE_W * 0.5, SLIDE_H, colors.p0, "down");
+    // Large diagonal gradient sweep on right half
+    addGradientBar(slide, SLIDE_W * 0.45, 0, SLIDE_W * 0.55, SLIDE_H, colors.p0, "down");
+    // Big decorative circle top-right (out of bounds = natural crop)
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W * 0.55,
-      y: -SLIDE_H * 0.35,
-      w: SLIDE_W * 0.7,
-      h: SLIDE_W * 0.7,
+      x: SLIDE_W * 0.52,
+      y: -SLIDE_H * 0.45,
+      w: SLIDE_W * 0.75,
+      h: SLIDE_W * 0.75,
       fill: { color: colors.p1 },
-      transparency: 92,
+      transparency: 90,
+    });
+    // Second circle bottom-right
+    slide.addShape("ellipse" as any, {
+      x: SLIDE_W * 0.72,
+      y: SLIDE_H * 0.55,
+      w: SLIDE_W * 0.45,
+      h: SLIDE_W * 0.45,
+      fill: { color: colors.p2 },
+      transparency: 94,
     });
   }
   if (design.theme === "light" && !image) {
-    for (let row = 0; row < 4; row++) {
-      for (let col = 0; col < 4; col++) {
+    // Dot grid right side
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col < 5; col++) {
         slide.addShape("ellipse" as any, {
-          x: SLIDE_W - 2.8 + col * 0.55,
-          y: 0.6 + row * 0.55,
-          w: 0.08,
-          h: 0.08,
+          x: SLIDE_W - 3.2 + col * 0.52,
+          y: 0.5 + row * 0.52,
+          w: 0.07,
+          h: 0.07,
           fill: { color: colors.p0 },
-          transparency: 70,
+          transparency: 68,
         });
       }
     }
@@ -2722,17 +2758,17 @@ function renderCoverSlide(pptx: PptxGenJS, courseTitle: string, design: DesignCo
   });
   slide.addText(courseTitle, {
     x: 1.2,
-    y: 2.0,
-    w: SLIDE_W * 0.52,
-    h: 3.3,
-    fontSize: 52,
+    y: 1.85,
+    w: SLIDE_W * 0.62,
+    h: 3.6,
+    fontSize: TYPO.COVER_TITLE,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "top",
-    lineSpacingMultiple: 0.96,
+    lineSpacingMultiple: 1.0,
   });
-  addGradientBar(slide, 1.2, 5.5, 3.0, 0.07, colors.p0, "right");
+  addGradientBar(slide, 1.2, 5.6, 3.5, 0.08, colors.p0, "right");
   if (!image) {
     for (let i = 0; i < 3; i++) {
       const sz = 0.5 + i * 0.35;
@@ -3091,15 +3127,15 @@ function renderModuleCover(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfi
 
   if (!hasImage) {
     slide.addText(modNum, {
-      x: contentW - 5.2,
-      y: 2.2,
-      w: 4.8,
-      h: 4.0,
-      fontSize: 180,
+      x: contentW - 5.8,
+      y: 1.8,
+      w: 5.4,
+      h: 4.8,
+      fontSize: TYPO.MODULE_NUMBER,
       fontFace: design.fonts.title,
       bold: true,
       color: accentColor,
-      transparency: 90,
+      transparency: 82,
       align: "right",
       valign: "bottom",
     });
@@ -3127,26 +3163,26 @@ function renderModuleCover(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfi
     x: 1.1,
     y: 1.2,
     w: 5.0,
-    h: 0.28,
-    fontSize: 11,
+    h: 0.3,
+    fontSize: 12,
     fontFace: design.fonts.body,
     bold: true,
     color: accentColor,
-    charSpacing: 8,
+    charSpacing: 10,
   });
-  addHR(slide, 1.1, 1.55, 1.4, accentColor, 0.022);
-  const titleW = hasImage ? contentW * 0.75 : SLIDE_W * 0.53;
+  addHR(slide, 1.1, 1.57, 2.0, accentColor, 0.025);
+  const titleW = hasImage ? contentW * 0.75 : SLIDE_W * 0.56;
   slide.addText(plan.title, {
     x: 1.1,
-    y: 1.72,
+    y: 1.75,
     w: titleW,
-    h: 2.5,
-    fontSize: 36,
+    h: 2.6,
+    fontSize: TYPO.MODULE_TITLE,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "top",
-    lineSpacingMultiple: 1.02,
+    lineSpacingMultiple: 1.04,
   });
 
   if (plan.objectives && plan.objectives.length > 0) {
@@ -4553,40 +4589,52 @@ function renderClosingSlide(pptx: PptxGenJS, courseTitle: string, design: Design
       });
     }
   }
-  slide.addText("Obrigado!", {
+  slide.addText("Parabéns!", {
     x: 1.2,
-    y: 1.8,
-    w: SLIDE_W * 0.55,
-    h: 2.0,
-    fontSize: 68,
+    y: 1.5,
+    w: SLIDE_W * 0.62,
+    h: 1.6,
+    fontSize: 76,
     fontFace: design.fonts.title,
     bold: true,
     color: "FFFFFF",
     valign: "middle",
   });
-  addGradientBar(slide, 1.2, 4.05, 3.2, 0.06, colors.p0, "right");
-  slide.addText(courseTitle, {
+  addGradientBar(slide, 1.2, 3.3, 4.0, 0.07, colors.p0, "right");
+  slide.addText("Você concluiu o curso", {
     x: 1.2,
-    y: 4.3,
-    w: SLIDE_W * 0.5,
-    h: 0.55,
-    fontSize: 15,
+    y: 3.55,
+    w: SLIDE_W * 0.55,
+    h: 0.45,
+    fontSize: 18,
     fontFace: design.fonts.body,
     color: colors.coverSubtext,
     valign: "top",
-    lineSpacingMultiple: 1.18,
+    lineSpacingMultiple: 1.2,
   });
-  slide.addText("CONCLUSÃO", {
+  slide.addText(courseTitle, {
     x: 1.2,
-    y: 5.1,
-    w: 4.0,
-    h: 0.24,
+    y: 4.1,
+    w: SLIDE_W * 0.58,
+    h: 0.7,
+    fontSize: 22,
+    fontFace: design.fonts.title,
+    bold: true,
+    color: "FFFFFF",
+    valign: "top",
+    lineSpacingMultiple: 1.1,
+  });
+  slide.addText("CERTIFICADO DE CONCLUSÃO", {
+    x: 1.2,
+    y: 5.05,
+    w: 5.0,
+    h: 0.28,
     fontSize: 9,
     fontFace: design.fonts.body,
     bold: true,
     color: colors.p0,
     charSpacing: 7,
-    transparency: 20,
+    transparency: 10,
   });
   if (!image) {
     for (let i = 0; i < 3; i++) {
