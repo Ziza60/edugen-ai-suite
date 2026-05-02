@@ -388,45 +388,23 @@ ${sourcesBlock}
 </SOURCES>`
         : "";
 
-      const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
-      
-      STRICT JSON RULE:
-      - Return ONLY the JSON object. 
-      - Do NOT include any markdown formatting like \`\`\`json.
-      - Ensure the JSON is valid and NOT truncated.
-      
-      CRITICAL HARD CONSTRAINT — MODULE COUNT:
-      - You MUST generate EXACTLY ${actualModules} modules. Not fewer, not more.
-      - The "modules" array MUST contain exactly ${actualModules} items.
+      // LEAN structure prompt: only titles + summaries (quiz/flashcards generated per-module separately)
+      const structurePrompt = `You are an educational course designer.
 
-CRITICAL QUALITY RULES:
-- All text must have PERFECT spelling and grammar in ${language || "pt-BR"}.
-- Module titles must be complete, grammatically correct phrases.
-${sourcesInstruction}
+RULES:
+- Return ONLY valid JSON. No markdown, no explanation, no code fences.
+- The "modules" array MUST have EXACTLY ${actualModules} items.
+- Keep summaries short (1-2 sentences each).
+${use_sources ? `- Use ONLY content from <SOURCES> below.\n${sourcesInstruction}` : ""}
 
-Course details:
-- Title: ${title}
-- Theme: ${theme}
-- Target audience: ${target_audience || "general"}
-- Tone: ${tone || "professional"}
-- Language: ${language || "pt-BR"}
-- EXACTLY ${actualModules} modules
-${use_sources ? "- Base the course structure EXCLUSIVELY on the content in <SOURCES>" : ""}
-${include_quiz ? "- Include 3 quiz questions per module" : ""}
-${include_flashcards ? "- Include 5 flashcards per module" : ""}
+Course: "${title}"
+Theme: ${theme}
+Audience: ${target_audience || "general"}
+Tone: ${tone || "professional"}
+Language: ${language || "pt-BR"}
 
-Return ONLY valid JSON with this structure:
-{
-  "description": "course description",
-  "modules": [
-    {
-      "title": "Module title",
-      "summary": "brief summary for content generation"
-      ${include_quiz ? ',"quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "..."}]' : ""}
-      ${include_flashcards ? ',"flashcards": [{"front": "Pergunta EXPLÍCITA com verbo e ponto de interrogação (?)", "back": "Resposta completa e pedagógica"}]' : ""}
-    }
-  ]
-}`;
+Return EXACTLY this JSON shape:
+{"description":"<1-sentence course description>","modules":[{"title":"<module title>","summary":"<1-2 sentence summary>"}]}`;
 
       sendSSE({ type: "status", message: "Aguardando resposta da IA..." });
       const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 8000, true);
@@ -632,22 +610,74 @@ Write 800-1200 words. Be thorough and educational.`;
             .select().single();
           if (moduleError) throw moduleError;
 
-          // Insert quiz questions
-          if (include_quiz && mod.quiz?.length > 0) {
-            const quizInserts = mod.quiz.map((q: any) => ({
-              module_id: moduleData.id, question: q.question,
-              options: q.options, correct_answer: q.correct ?? 0,
-              explanation: q.explanation || null,
-            }));
-            await serviceClient.from("course_quiz_questions").insert(quizInserts);
+          // Generate & insert quiz questions via separate AI call
+          if (include_quiz) {
+            try {
+              const quizPrompt = `Generate exactly 3 quiz questions for this educational module.
+Module: "${mod.title}"
+Course: "${title}" | Language: ${language || "pt-BR"}
+Content summary: ${mod.summary}
+
+Return ONLY valid JSON array (no markdown, no explanation):
+[{"question":"...","options":["A) ...","B) ...","C) ...","D) ..."],"correct":0,"explanation":"..."}]
+Rules:
+- "correct" is the 0-based index of the correct option (0=A, 1=B, 2=C, 3=D)
+- Questions must test real understanding, not trivia
+- Write in ${language || "pt-BR"}`;
+              const quizRaw = await callAI("gemini-2.5-flash", quizPrompt, 3000, true);
+              const quizCleaned = quizRaw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+              let quizData: any[] = [];
+              try {
+                const arrMatch = quizCleaned.match(/\[[\s\S]*\]/);
+                quizData = JSON.parse(arrMatch ? arrMatch[0] : quizCleaned);
+              } catch { /* skip quiz if parse fails */ }
+              if (Array.isArray(quizData) && quizData.length > 0) {
+                const quizInserts = quizData.map((q: any) => ({
+                  module_id: moduleData.id,
+                  question: q.question || "",
+                  options: q.options || [],
+                  correct_answer: q.correct ?? q.correct_answer ?? 0,
+                  explanation: q.explanation || null,
+                }));
+                await serviceClient.from("course_quiz_questions").insert(quizInserts);
+              }
+            } catch (quizErr: any) {
+              console.warn(`[generate-course] Quiz generation failed (non-blocking): ${quizErr.message}`);
+            }
           }
 
-          // Insert flashcards
-          if (include_flashcards && mod.flashcards?.length > 0) {
-            const fcInserts = mod.flashcards.map((fc: any) => ({
-              module_id: moduleData.id, front: fc.front, back: fc.back,
-            }));
-            await serviceClient.from("course_flashcards").insert(fcInserts);
+          // Generate & insert flashcards via separate AI call
+          if (include_flashcards) {
+            try {
+              const flashcardPrompt = `Generate exactly 5 flashcards for this educational module.
+Module: "${mod.title}"
+Course: "${title}" | Language: ${language || "pt-BR"}
+Content summary: ${mod.summary}
+
+Return ONLY valid JSON array (no markdown, no explanation):
+[{"front":"Question ending with ?","back":"Complete pedagogical answer"}]
+Rules:
+- "front" must be a complete question with a "?" at the end
+- "back" must be a clear, educational answer (2-3 sentences)
+- Write in ${language || "pt-BR"}`;
+              const fcRaw = await callAI("gemini-2.5-flash", flashcardPrompt, 3000, true);
+              const fcCleaned = fcRaw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+              let fcData: any[] = [];
+              try {
+                const arrMatch = fcCleaned.match(/\[[\s\S]*\]/);
+                fcData = JSON.parse(arrMatch ? arrMatch[0] : fcCleaned);
+              } catch { /* skip flashcards if parse fails */ }
+              if (Array.isArray(fcData) && fcData.length > 0) {
+                const fcInserts = fcData.map((fc: any) => ({
+                  module_id: moduleData.id,
+                  front: fc.front || fc.question || "",
+                  back: fc.back || fc.answer || "",
+                }));
+                await serviceClient.from("course_flashcards").insert(fcInserts);
+              }
+            } catch (fcErr: any) {
+              console.warn(`[generate-course] Flashcard generation failed (non-blocking): ${fcErr.message}`);
+            }
           }
 
           // Generate AI image (non-blocking)
