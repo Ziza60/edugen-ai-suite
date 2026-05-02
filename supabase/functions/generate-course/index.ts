@@ -331,24 +331,19 @@ Deno.serve(async (req: Request) => {
 
       sendSSE({ type: "status", message: "Verificando permissões..." });
 
-      // Get subscription
+      // Get subscription — default to "pro" when no record exists
       const { data: sub } = await serviceClient
-        .from("subscriptions").select("plan").eq("user_id", userId).single();
-      const plan = (sub?.plan || "free") as "free" | "pro";
+        .from("subscriptions").select("plan").eq("user_id", userId).maybeSingle();
+      const plan = (sub?.plan || "pro") as "free" | "pro";
       const limits = PLAN_LIMITS[plan];
 
       // Check dev status
-      const { data: profile, error: profileError } = await serviceClient
+      const { data: profile } = await serviceClient
         .from("profiles").select("is_dev").eq("user_id", userId).maybeSingle();
-      let isDev = profile?.is_dev === true;
-      if (!isDev && profileError) {
-        const { data: profileById } = await serviceClient
-          .from("profiles").select("is_dev").eq("id", userId).maybeSingle();
-        isDev = profileById?.is_dev === true;
-      }
+      const isDev = profile?.is_dev === true;
 
-      // Check monthly usage
-      if (!isDev) {
+      // Check monthly usage (skipped for devs and pro users without subscription cap)
+      if (!isDev && plan === "free") {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         const { count: usageCount } = await serviceClient
