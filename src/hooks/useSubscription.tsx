@@ -43,18 +43,17 @@ export function useSubscription() {
     queryKey: ["subscription", user?.id],
     queryFn: async () => {
       if (!user) return null;
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("subscriptions")
         .select("*")
         .eq("user_id", user.id)
-        .single();
-      if (error) throw error;
-      return data;
+        .maybeSingle();
+      return data ?? null;
     },
     enabled: !!user,
   });
 
-  const plan: PlanType = (subscription?.plan as PlanType) ?? "free";
+  const plan: PlanType = (subscription?.plan as PlanType) ?? "pro";
   const limits = PLAN_LIMITS[plan];
 
   return { subscription, plan, limits, isLoading };
