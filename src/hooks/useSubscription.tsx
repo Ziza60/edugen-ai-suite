@@ -14,22 +14,22 @@ export interface PlanLimits {
 
 const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
   free: {
-    maxCourses: 3,
-    maxModules: 5,
-    images: false,
-    pdfExport: false,
-    customCertificate: false,
+    maxCourses: 9999,
+    maxModules: 20,
+    images: true,
+    pdfExport: true,
+    customCertificate: true,
   },
   starter: {
-    maxCourses: 5,
-    maxModules: 10,
+    maxCourses: 9999,
+    maxModules: 20,
     images: true,
     pdfExport: true,
     customCertificate: true,
   },
   pro: {
-    maxCourses: 5,
-    maxModules: 10,
+    maxCourses: 9999,
+    maxModules: 20,
     images: true,
     pdfExport: true,
     customCertificate: true,

@@ -8,8 +8,8 @@ const corsHeaders = {
 };
 
 const PLAN_LIMITS = {
-  free: { maxCourses: 3, maxModules: 5, images: false },
-  pro: { maxCourses: 5, maxModules: 10, images: true },
+  free: { maxCourses: 9999, maxModules: 20, images: true },
+  pro: { maxCourses: 9999, maxModules: 20, images: true },
 };
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
@@ -342,33 +342,7 @@ Deno.serve(async (req: Request) => {
         .from("profiles").select("is_dev").eq("user_id", userId).maybeSingle();
       const isDev = profile?.is_dev === true;
 
-      // Check monthly usage (skipped for devs and pro users without subscription cap)
-      if (!isDev && plan === "free") {
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-        const { count: usageCount } = await serviceClient
-          .from("usage_events").select("*", { count: "exact", head: true })
-          .eq("user_id", userId).eq("event_type", "COURSE_GENERATED").gte("created_at", startOfMonth);
-        if ((usageCount ?? 0) >= limits.maxCourses) {
-          sendSSE({ type: "error", message: "Limite mensal de cursos atingido. Faça upgrade do plano." });
-          controller?.close();
-          return;
-        }
-      }
-
       const actualModules = Math.min(num_modules || 3, limits.maxModules);
-
-      if (include_images && !limits.images && !isDev) {
-        sendSSE({ type: "error", message: "Imagens IA disponíveis apenas no plano Pro." });
-        controller?.close();
-        return;
-      }
-
-      if (use_sources && plan !== "pro" && !isDev) {
-        sendSSE({ type: "error", message: "Fontes próprias disponíveis apenas no plano Pro." });
-        controller?.close();
-        return;
-      }
 
       // Retrieve sources if needed
       let sourcesBlock = "";
