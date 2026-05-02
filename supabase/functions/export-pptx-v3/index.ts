@@ -3409,7 +3409,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   const contentH = SAFE_ZONE.H - 0.05;
   const bulletGap = items.length >= 6 ? 0.04 : 0.07;
   const rawItemH = (contentH - bulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
-  const itemH = Math.max(0.5, Math.min(1.28, rawItemH));
+  // No upper cap — let cards expand to fill content area (text auto-shrinks via shrinkText)
+  const itemH = Math.max(0.5, rawItemH);
 
   const strongTextOpts = (x: number, y: number, w: number, h: number, color = colors.text, valign: "top" | "middle" = "middle") => ({
     x,
@@ -3494,7 +3495,8 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     const rightY = 0.5;
     const rightH = SLIDE_H - rightY - 0.7;
     const rBulletGap = items.length >= 6 ? 0.03 : 0.05;
-    const rItemH = Math.max(0.46, Math.min(1.05, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1)));
+    // No upper cap — let items expand to fill the right panel height
+    const rItemH = Math.max(0.46, (rightH - rBulletGap * Math.max(items.length - 1, 0)) / Math.max(items.length, 1));
     for (let i = 0; i < items.length; i++) {
       const yPos = rightY + i * (rItemH + rBulletGap);
       const pal = design.palette[i % design.palette.length];
@@ -3531,7 +3533,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
       const numStr = String(((plan.itemStartIndex ?? 0) + i + 1)).padStart(2, "0");
       slide.addText(numStr, {
         x: contentX, y: yPos, w: tabW, h: cardH,
-        fontSize: Math.min(28, Math.max(16, cardH * 55)),
+        fontSize: Math.min(38, Math.max(14, cardH * 22)),
         fontFace: design.fonts.title, bold: true,
         color: "FFFFFF", align: "center", valign: "middle",
         transparency: 5,
@@ -3552,10 +3554,13 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     const cardW = cols === 2 ? (contentW - gap) / 2 : contentW;
     const rows = Math.ceil(items.length / cols);
     const singleCard = rows === 1 && cols === 1;
+    const rawCardH = (contentH - gap * (rows - 1)) / rows - 0.04;
+    // No upper cap — cards expand to fill content area; text auto-shrinks
     const cardH = singleCard
       ? contentH - 0.02
-      : Math.max(1.12, Math.min(1.52, (contentH - gap * (rows - 1)) / rows - 0.04));
-    const capH = Math.min(0.54, cardH * (singleCard ? 0.30 : 0.40));
+      : Math.max(1.12, rawCardH);
+    // Larger cap (0.72) so header band stays prominent on tall cards
+    const capH = Math.min(0.72, cardH * (singleCard ? 0.22 : 0.38));
     for (let i = 0; i < items.length; i++) {
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -3688,7 +3693,8 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
     const colX = contentX + col * (colW + colGap);
     const colBulletGap = colItems.length >= 3 ? 0.05 : 0.08;
     const usableHeight = colHEnd - colBulletGap * Math.max(colItems.length - 1, 0);
-    const itemH = Math.max(0.74, Math.min(1.45, usableHeight / Math.max(colItems.length, 1)));
+    // No upper cap — cards expand to fill column height; text auto-shrinks
+    const itemH = Math.max(0.74, usableHeight / Math.max(colItems.length, 1));
 
     for (let i = 0; i < colItems.length; i++) {
       const palColor = design.palette[(col * mid + i) % design.palette.length];
