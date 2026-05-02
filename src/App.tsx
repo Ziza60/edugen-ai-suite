@@ -24,6 +24,7 @@ import TutorPublic from "@/pages/TutorPublic";
 import CourseLanding from "@/pages/CourseLanding";
 import LandingPageEditor from "@/pages/LandingPageEditor";
 import ReviewPublic from "@/pages/ReviewPublic";
+import PptxDebug from "@/pages/PptxDebug";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,7 @@ const App = () => (
               <Route path="/tutor/:slug" element={<TutorPublic />} />
               <Route path="/c/:slug" element={<CourseLanding />} />
               <Route path="/review/:token" element={<ReviewPublic />} />
+              <Route path="/pptx-debug" element={<PptxDebug />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

@@ -211,6 +211,14 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 throw new Error("Exportação concluída sem URL de download.");
               }
 
+              // ── SLIDE LOG: store for /pptx-debug and print to console ──
+              if (data?.slide_log?.length) {
+                localStorage.setItem("pptx_slide_log", JSON.stringify(data.slide_log));
+                console.group(`[PPTX] Slide Log (${data.slide_log.length} slides)`);
+                console.table(data.slide_log);
+                console.groupEnd();
+              }
+
               console.log(`[PPTX] Downloading from ${engineUsed}:`, data.url);
               const DOWNLOAD_TIMEOUT_MS = 240000;
               const downloadController = new AbortController();

@@ -2545,6 +2545,14 @@ let _globalSlideNumber = 0;
 let _globalTotalSlides = 0;
 let _globalFooterBrand: string | null = "EduGenAI";
 
+// ── SLIDE LOG (returned in response for frontend debug) ──
+const VARIANT_NAMES: Record<number, string> = { 0: "SplitScreen", 1: "IndexTab", 2: "CapCards", 3: "Spotlight" };
+let _slideLog: Array<Record<string, unknown>> = [];
+function _logSlide(fn: string, extra: Record<string, unknown> = {}) {
+  _slideLog.push({ "#": _globalSlideIdx, fn, ...extra });
+  console.log(`[SLIDE #${_globalSlideIdx}] ${fn}`, extra);
+}
+
 function addSlideBackground(slide: any, color: string) {
   slide.background = { fill: color };
 }
@@ -3387,6 +3395,7 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
   const accentColor = design.palette[_globalSlideIdx % design.palette.length];
   const rawItems = plan.items || [];
   const items = rawItems.map((item) => normalizeRenderableBulletText(item)).filter(Boolean);
+  _logSlide("bullets", { variant: VARIANT_NAMES[variant] ?? variant, items: items.length, title: plan.title?.slice(0, 40), theme: design.theme, template: design.template });
   const unifiedBulletFontSize = computeUnifiedSlideFontSize(
     items,
     items.length >= 6 ? 18 : 19,
@@ -3652,6 +3661,7 @@ function renderTwoColumnBullets(pptx: PptxGenJS, plan: SlidePlan, design: Design
   const colors = getColors(design);
   const slide = pptx.addSlide();
   _globalSlideIdx++;
+  _logSlide("twoColumn", { items: (plan.items || []).length, title: plan.title?.slice(0, 40), theme: design.theme });
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
   const pal = design.palette[_globalSlideIdx % design.palette.length];
@@ -3722,6 +3732,7 @@ function renderGridCards(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig)
   const colors = getColors(design);
   const slide = pptx.addSlide();
   _globalSlideIdx++;
+  _logSlide("gridCards", { items: (plan.items || []).length, title: plan.title?.slice(0, 40), theme: design.theme });
   addSlideBackground(slide, colors.bg);
   addLightBgDecoration(slide, design, colors);
   if (design.visualStyle !== "minimal") addLeftEdge(slide, colors.p3);
@@ -5021,6 +5032,7 @@ async function runPipeline(
   _globalSlideIdx = 0;
   _globalSlideNumber = 0;
   _globalFooterBrand = design.footerBrand;
+  _slideLog = [];
 
   // Build image plan in parallel with AI generation
   const imagePlanPromise = buildImagePlan(courseTitle, modules, design.includeImages);
@@ -5567,6 +5579,7 @@ Deno.serve(async (req: Request) => {
         url: signedUrl.signedUrl,
         version: "v3",
         engine_version: ENGINE_VERSION,
+        slide_log: _slideLog,
         quality_report: {
           engine_version: ENGINE_VERSION,
           total_modules: report.totalModules,
