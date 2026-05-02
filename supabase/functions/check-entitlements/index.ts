@@ -64,8 +64,16 @@ Deno.serve(async (req: Request) => {
 
     const plan = sub?.plan || "free";
 
+    // Check if user is a dev — devs get full access to all features
+    const { data: profile } = await serviceClient
+      .from("profiles")
+      .select("is_dev")
+      .eq("user_id", userId)
+      .single();
+    const isDev = profile?.is_dev === true;
+
     const requiredPlan = isBusinessFeature ? "business" : "pro";
-    const entitled = isBusinessFeature ? plan === "business" : (plan === "pro" || plan === "business");
+    const entitled = isDev || (isBusinessFeature ? plan === "business" : (plan === "pro" || plan === "business"));
 
     if (!entitled) {
       return new Response(
