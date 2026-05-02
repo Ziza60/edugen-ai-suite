@@ -551,11 +551,11 @@ ${sourceContentInstruction}
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
 Write 800-1200 words. Be thorough and educational.`;
 
-          const rawContent = await callAI("google/gemini-3-flash-preview", contentPrompt);
+          const rawContent = await callAI("gemini-2.5-flash", contentPrompt);
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          const refinedContent = await callAI("google/gemini-3-flash-lite", refinementPrompt, 1500);
+          const refinedContent = await callAI("gemini-2.0-flash-lite", refinementPrompt, 1500);
 
           // Step C: Quality Elevation
           let elevatedContent = refinedContent;
@@ -565,7 +565,7 @@ Write 800-1200 words. Be thorough and educational.`;
               mod.title, refinedContent, title,
               target_audience || "profissionais da área", language || "pt-BR",
             );
-            const qualityResult = await callAI("google/gemini-3-flash-preview", qualityPrompt, 2000);
+            const qualityResult = await callAI("gemini-2.5-flash", qualityPrompt, 2000);
             // Strip markdown fences AND any preamble before the first ## heading
             const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
@@ -633,7 +633,7 @@ STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstra
                   Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
                 },
                 body: JSON.stringify({
-                  model: "google/gemini-3-flash-image",
+                  model: "gemini-2.0-flash-exp",
                   messages: [{ role: "user", content: imagePrompt }],
                   modalities: ["image", "text"],
                   max_tokens: 500, // Limite para geração de imagem

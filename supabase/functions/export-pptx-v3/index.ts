@@ -1619,16 +1619,14 @@ async function callAI(model: string, prompt: string): Promise<string> {
   // Prioritize personal Gemini Key if present (Bypasses Lovable Gateway per user request)
   if (geminiKey) {
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    let aiModel = model;
-    if (aiModel.includes("gemini")) {
-      aiModel = aiModel.replace("google/", "");
-      // Mapeamento estratégico: Correção para os modelos GA (estáveis) do Google
-      // O Google desativou o modelo "gemini-3-flash-preview" original.
-      // O modelo estável atual é "gemini-3-flash-preview".
-      aiModel = "gemini-3-flash-preview"; 
-    } else {
-      aiModel = "gemini-3-flash-preview";
-    }
+    let aiModel = model.replace("google/", "");
+    const MODEL_MAP: Record<string, string> = {
+      "gemini-3-flash-preview": "gemini-2.5-flash",
+      "gemini-3-flash-lite": "gemini-2.0-flash-lite",
+      "gemini-2.5-flash-lite": "gemini-2.0-flash-lite",
+    };
+    aiModel = MODEL_MAP[aiModel] ?? aiModel;
+    if (!aiModel.startsWith("gemini-")) aiModel = "gemini-2.5-flash";
 
     console.log(`[V3-AI] Calling Gemini API directly with model: ${aiModel}`);
 
@@ -2173,7 +2171,7 @@ async function generateSlidesForModule(
   try {
     report.aiCallsTotal++;
     rawText = await callAI(
-      "google/gemini-3-flash-preview",
+      "gemini-2.5-flash",
       buildSlidePrompt(moduleTitle, moduleContent, moduleIndex, density, language),
     );
     console.log(`[V3-AI] Module ${moduleIndex + 1} "${moduleTitle}": response length=${rawText.length}`);

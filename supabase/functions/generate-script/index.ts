@@ -29,7 +29,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    const model = "gemini-3-flash-preview"; 
+    const model = "gemini-2.5-flash"; 
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
