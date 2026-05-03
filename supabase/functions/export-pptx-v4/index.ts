@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "4.2.0";
+const ENGINE_VERSION = "4.2.1";
 
 // ═══════════════════════════════════════════════════════════
 // XML SAFETY — must run on ALL text before passing to PptxGenJS
@@ -1162,7 +1162,7 @@ async function generateModuleSlides(
     }
 
     const VALID_LAYOUTS: Layout[] = ["bullets","cards","takeaways","code","twocol","comparison","timeline"];
-    return parsed.map((s: any) => ({
+    const rawSlides: Slide[] = parsed.map((s: any) => ({
       layout: (VALID_LAYOUTS.includes(s.layout) ? s.layout : "bullets") as Layout,
       title: String(s.title || mod.title).slice(0, 80),
       label: String(s.label || "CONTEÚDO").slice(0, 25).toUpperCase(),
@@ -1177,6 +1177,11 @@ async function generateModuleSlides(
       rightItems: Array.isArray(s.rightItems) ? s.rightItems.slice(0, 5).map((x: any) => String(x).slice(0, 90)) : undefined,
       moduleIndex,
     }));
+
+    // Repair empty slides first, then filter out any that are still un-renderable
+    return rawSlides
+      .map(s => repairEmptySlide(s, mod.content || ""))
+      .filter(isRenderableSlide);
   } catch (e: any) {
     console.error(`[V4] Module ${moduleIndex + 1} AI error: ${e.message}`);
     return fallbackModuleSlides(mod.title, mod.content, moduleIndex, density);
@@ -1318,6 +1323,49 @@ async function repairPptxPackage(pptxData: Uint8Array): Promise<{ data: Uint8Arr
 // SECTION 6: PIPELINE
 // ═══════════════════════════════════════════════════════════
 
+// ── CONTENT VALIDATION & REPAIR ──
+// Layouts that are self-sufficient (no items/code required)
+const SELF_SUFFICIENT_LAYOUTS: Layout[] = ["cover", "toc", "module_cover", "closing"];
+
+function isRenderableSlide(s: Slide): boolean {
+  if (!s.title?.trim()) return false;
+  if (SELF_SUFFICIENT_LAYOUTS.includes(s.layout)) return true;
+  if (s.layout === "comparison") {
+    const hasLeft  = Array.isArray(s.leftItems)  && s.leftItems.some(i => i.trim().length > 0);
+    const hasRight = Array.isArray(s.rightItems) && s.rightItems.some(i => i.trim().length > 0);
+    return hasLeft || hasRight;
+  }
+  const hasItems = Array.isArray(s.items) && s.items.some(i => i.trim().length > 0);
+  const hasCode  = typeof s.code === "string" && s.code.trim().length > 0;
+  return hasItems || hasCode;
+}
+
+function repairEmptySlide(s: Slide, moduleContent: string): Slide {
+  if (isRenderableSlide(s)) return s;
+
+  // Extract fallback bullets from module content
+  const bullets = [
+    ...(moduleContent || "").matchAll(/^[-*•]\s+(.+)$/gm),
+  ].map(m => m[1].replace(/\*{1,2}/g, "").trim()).filter(b => b.length >= 15 && b.length <= 90);
+
+  const sentences = (moduleContent || "")
+    .replace(/#{1,6}\s*/g, "")
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+    .replace(/[`_]/g, "")
+    .split(/[.!?]\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length >= 20 && s.length <= 90)
+    .slice(0, 6);
+
+  const pool = bullets.length >= 2 ? bullets : sentences;
+  const repaired = pool.slice(0, 4);
+
+  if (repaired.length === 0) return s; // Can't repair, will be filtered out
+
+  console.warn(`[V4] Repaired empty slide: "${s.title}" → injected ${repaired.length} fallback bullets`);
+  return { ...s, layout: "bullets", items: repaired };
+}
+
 // ── OVERFLOW GUARD ──
 // If a code slide has too many items OR too many code lines → split into
 // Slide A (bullets explanation) + Slide B (code with minimal context)
@@ -1434,8 +1482,8 @@ async function runPipeline(
       competencies: extractCompetencies(modules[i].content),
     }, design, ++slideNum, totalSlides);
 
-    // Content slides
-    for (const s of allModuleSlides[i]) {
+    // Content slides — final safety net: filter un-renderable before hitting any renderer
+    for (const s of allModuleSlides[i].filter(isRenderableSlide)) {
       switch (s.layout) {
         case "cards":
           renderCards(pptx, s, design, ++slideNum, totalSlides);
