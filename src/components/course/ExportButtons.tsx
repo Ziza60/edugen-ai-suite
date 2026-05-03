@@ -329,15 +329,16 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
           Moodle {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
         </Button>
 
-        {/* SCORM - Business */}
+        {/* SCORM - Pro */}
         <Button
           variant="outline"
           size="sm"
-          disabled={true}
-          title="Disponível no plano Business (em breve)"
+          onClick={() => handleExportWithFunction("export-scorm", "zip", setExportingScorm, "SCORM")}
+          disabled={exportingScorm || !isPublished}
+          title={!isPublished ? "Publique o curso primeiro" : "Exportar pacote SCORM 1.2 para LMS (Moodle, Canvas, etc.)"}
         >
-          <Package className="h-4 w-4 mr-1" />
-          SCORM <Badge variant="outline" className="ml-1 text-[10px] px-1">Business</Badge>
+          {exportingScorm ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Package className="h-4 w-4 mr-1" />}
+          SCORM {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
         </Button>
       </div>
 
