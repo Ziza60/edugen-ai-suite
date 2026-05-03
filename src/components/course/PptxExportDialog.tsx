@@ -412,7 +412,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
               </div>
               <Switch
                 checked={use2Slides}
-                onCheckedChange={(v) => { setUse2Slides(v); if (v) setUseV3(false); }}
+                onCheckedChange={(v) => { setUse2Slides(v); }}
                 data-testid="switch-use-2slides"
               />
             </div>
