@@ -17,6 +17,7 @@ export interface PptxExportOptions {
   template: string;
   useV2: boolean;
   useV3: boolean;
+  useV4: boolean;
   useMagicSlides: boolean;
   use2Slides: boolean;
   usePresenton: boolean;
@@ -229,7 +230,8 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [footerBrandEnabled, setFooterBrandEnabled]   = useState(true);
   const [footerBrandValue, setFooterBrandValue]       = useState("EduGenAI");
   const [useV2]                                       = useState(true);
-  const [useV3, setUseV3]                             = useState(true);
+  const [useV3, setUseV3]                             = useState(false);
+  const [useV4, setUseV4]                             = useState(true);
   const [useMagicSlides, setUseMagicSlides]           = useState(false);
   const [use2Slides, setUse2Slides]                   = useState(false);
   const [usePresenton, setUsePresenton]               = useState(false);
@@ -255,7 +257,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useMagicSlides, use2Slides, usePresenton, twoSlidesTheme, courseType, footerBrand });
+    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useV4, useMagicSlides, use2Slides, usePresenton, twoSlidesTheme, courseType, footerBrand });
   };
 
   return (
@@ -483,14 +485,38 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
             )}
           </div>
 
-          {/* ── V3 AI Generation toggle (fallback/native) ── */}
+          {/* ── V4 Native Engine (default) ── */}
+          {!use2Slides && !usePresenton && (
+            <div className={`space-y-1 p-3 rounded-xl border transition-colors ${useV4 ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-muted/30"}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-emerald-400">🚀 EduGen v4 (Novo)</p>
+                    <Badge variant="outline" className="text-[10px] px-1 py-0 bg-emerald-500/10 text-emerald-400 border-emerald-500/20">BETA</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Prompt aprimorado + layouts mais limpos e profissionais</p>
+                </div>
+                <Switch
+                  checked={useV4}
+                  onCheckedChange={(v) => { setUseV4(v); if (v) setUseV3(false); }}
+                  data-testid="switch-use-v4"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── V3 AI Generation toggle (legacy) ── */}
           {!use2Slides && !usePresenton && (
             <div className="flex items-center justify-between px-1">
               <div>
-                <p className="text-sm font-medium">Geração de slides EduGen v3</p>
-                <p className="text-xs text-muted-foreground">Motor nativo de alta precisão pedagógica</p>
+                <p className="text-sm font-medium">EduGen v3 (motor anterior)</p>
+                <p className="text-xs text-muted-foreground">Motor estável — use para comparar com v4</p>
               </div>
-              <Switch checked={useV3} onCheckedChange={setUseV3} data-testid="switch-use-v3" />
+              <Switch
+                checked={useV3}
+                onCheckedChange={(v) => { setUseV3(v); if (v) setUseV4(false); }}
+                data-testid="switch-use-v3"
+              />
             </div>
           )}
 

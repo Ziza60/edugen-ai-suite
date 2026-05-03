@@ -221,9 +221,52 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 }
               }
 
-              // ── NATIVE ENGINE (fallback if no external engine succeeded) ──
+              // ── V4 NATIVE ENGINE ──
+              if (!data?.url && options.useV4) {
+                console.log("[PPTX] Using EduGen v4 engine...");
+                const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx-v4`;
+                const EXPORT_TIMEOUT_MS = 480000;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
+                let res: Response;
+                try {
+                  res = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${session.access_token}`,
+                      "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                    },
+                    body: JSON.stringify({
+                      course_id: courseId,
+                      palette: options.palette,
+                      density: options.density,
+                      theme: options.theme,
+                      template: options.template,
+                      includeImages: options.includeImages,
+                      courseType: options.courseType || "CURSO COMPLETO",
+                      footerBrand: options.footerBrand,
+                    }),
+                    signal: controller.signal,
+                  });
+                } finally {
+                  clearTimeout(timeoutId);
+                }
+                const responseText = await res.text();
+                let v4data: any = {};
+                try { v4data = responseText ? JSON.parse(responseText) : {}; } catch { /* ignore */ }
+                if (res.ok && v4data?.url) {
+                  data = v4data;
+                  engineUsed = "v4-native";
+                } else {
+                  console.warn("[PPTX] v4 failed, falling back to v3:", v4data?.error || res.status);
+                  toast({ title: "v4 indisponível, usando v3", description: v4data?.error || "", duration: 4000 });
+                }
+              }
+
+              // ── V3/LEGACY NATIVE ENGINE (fallback) ──
               if (!data?.url) {
-                const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx";
+                const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx-v3";
                 const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
                 console.log(`[PPTX] Starting native export to: ${url} (engine: ${functionName})`);
                 
@@ -306,6 +349,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               const fileLabel =
                 engineUsed === "presenton"   ? "PPTX-Presenton" :
                 engineUsed === "2slides"     ? "PPTX-2Slides" :
+                engineUsed === "v4-native"   ? "PPTX-v4"      :
                 engineUsed === "magicslides" ? "PPTX-PRO"     : "PPTX";
               a.download = formatFileName(courseTitle, fileLabel, "pptx");
               a.rel = "noopener";
@@ -321,11 +365,13 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               const toastTitle =
                 engineUsed === "presenton"   ? "✨ PowerPoint Presenton gerado!" :
                 engineUsed === "2slides"     ? "⚡ PowerPoint AI gerado!" :
+                engineUsed === "v4-native"   ? "🚀 PowerPoint v4 gerado!" :
                 engineUsed === "magicslides" ? "✨ PowerPoint Pro gerado!" :
                 "PowerPoint gerado!";
               const toastDesc =
                 engineUsed === "presenton"   ? `${data.slide_count} slides com design Presenton AI` :
                 engineUsed === "2slides"     ? `${data.slide_count} slides com design premium 2Slides` :
+                engineUsed === "v4-native"   ? "Novo motor com conteúdo e design aprimorados" :
                 engineUsed === "magicslides" ? "Design premium aplicado com sucesso." :
                 data.quality_report          ? `Score: ${data.quality_report.quality_score}/100` :
                 undefined;
