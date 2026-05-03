@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ENGINE_VERSION = "1.0.0-2SLIDES";
+const ENGINE_VERSION = "1.2.0-2SLIDES";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,35 +25,156 @@ function truncate(text: string, max: number): string {
   return text.length <= max ? text : text.slice(0, max - 3) + "...";
 }
 
+/**
+ * Extracts sub-sections from module markdown content.
+ * Returns 3–5 sub-sections with title + bullets, which maps to
+ * 3–5 individual slides in 2Slides (one slide per ### heading).
+ */
+function extractSubSections(
+  content: string,
+  maxSections = 4,
+  maxBulletsPerSection = 4,
+  maxBulletLen = 160,
+): { title: string; bullets: string[] }[] {
+  // Try to find existing markdown headings (## or ###)
+  const headingRe = /^#{2,4}\s+(.+)$/m;
+  const blocks = content.split(/^#{2,4}\s+/m).filter(Boolean);
+
+  if (blocks.length >= 2) {
+    // Content already has headings — parse them
+    const sections: { title: string; bullets: string[] }[] = [];
+    const parts = content.split(/(^#{2,4}\s+.+$)/m).filter(Boolean);
+    let currentTitle = "";
+    let currentBody = "";
+    for (const part of parts) {
+      if (headingRe.test(part)) {
+        if (currentTitle) {
+          sections.push({ title: currentTitle, bullets: extractBullets(currentBody, maxBulletsPerSection, maxBulletLen) });
+        }
+        currentTitle = part.replace(/^#{2,4}\s+/, "").trim();
+        currentBody = "";
+      } else {
+        currentBody += part;
+      }
+    }
+    if (currentTitle) {
+      sections.push({ title: currentTitle, bullets: extractBullets(currentBody, maxBulletsPerSection, maxBulletLen) });
+    }
+    return sections.slice(0, maxSections);
+  }
+
+  // No headings — split into paragraph groups and create synthetic sections
+  const paragraphs = content
+    .split(/\n{2,}/)
+    .map((p) => p.replace(/\s+/g, " ").trim())
+    .filter((p) => p.length > 30);
+
+  if (paragraphs.length === 0) return [];
+
+  // Split paragraphs evenly into N sections
+  const N = Math.min(maxSections, Math.max(2, Math.ceil(paragraphs.length / 2)));
+  const chunkSize = Math.ceil(paragraphs.length / N);
+  const sections: { title: string; bullets: string[] }[] = [];
+
+  for (let i = 0; i < N; i++) {
+    const chunk = paragraphs.slice(i * chunkSize, (i + 1) * chunkSize);
+    if (chunk.length === 0) continue;
+    // Use first sentence of first paragraph as section title
+    const firstPara = chunk[0];
+    const firstSentence = firstPara.split(/(?<=[.!?])\s+/)[0];
+    const title = truncate(firstSentence.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1"), 60);
+    const bullets = extractBullets(chunk.join(" "), maxBulletsPerSection, maxBulletLen);
+    sections.push({ title, bullets });
+  }
+
+  return sections;
+}
+
+function extractBullets(text: string, max: number, maxLen: number): string[] {
+  // Try to find existing list items first
+  const listItems = [...text.matchAll(/^[-*•]\s+(.+)$/mg)].map((m) => m[1].trim());
+  if (listItems.length >= 2) {
+    return listItems.slice(0, max).map((s) => truncate(s, maxLen));
+  }
+  // Fall back to sentences
+  const sentences = text
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter((s) => s.length > 20 && s.length < 300);
+  return sentences.slice(0, max).map((s) => truncate(s, maxLen));
+}
+
+/**
+ * Builds a structured presentation outline for 2Slides AI.
+ *
+ * Structure:
+ *   # Course Title  →  Cover slide
+ *   ## Índice        →  Table of contents slide
+ *   ## Módulo N      →  Module section header
+ *   ### Sub-seção    →  Individual content slide (3–4 per module)
+ *   ## Conclusão     →  Closing slide
+ *
+ * Using ### within each ## causes 2Slides to generate 3–4 slides
+ * per module instead of just 1.
+ */
 function buildUserInput(
   courseTitle: string,
   courseDescription: string,
   modules: { title: string; content: string }[],
+  courseType = "CURSO COMPLETO",
 ): string {
   const lines: string[] = [];
-  lines.push(`Curso: ${courseTitle}`);
+
+  // ── 1. Cover ─────────────────────────────────────────────────────
+  lines.push(`# ${courseTitle}`);
+  lines.push(`Tipo: ${courseType}`);
   if (courseDescription) {
-    lines.push(`Descrição: ${truncate(courseDescription, 400)}`);
+    lines.push(truncate(courseDescription.replace(/\s+/g, " ").trim(), 280));
   }
   lines.push("");
 
+  // ── 2. Table of Contents ─────────────────────────────────────────
+  lines.push("## Índice");
+  modules.forEach((m, i) => lines.push(`${i + 1}. ${m.title}`));
+  lines.push("");
+
+  // ── 3. Module sections with sub-sections ─────────────────────────
+  // Character budget: 9000 total / modules / sections to keep under limit
+  const maxSubSections = modules.length <= 4 ? 4 : modules.length <= 6 ? 3 : 2;
+  const maxBullets     = modules.length <= 4 ? 4 : 3;
+  const maxBulletLen   = modules.length <= 5 ? 140 : 110;
+
   for (let i = 0; i < modules.length; i++) {
     const m = modules[i];
-    lines.push(`Módulo ${i + 1}: ${m.title}`);
-    // Summarise the module content — keep most important paragraphs
-    const paragraphs = (m.content || "")
-      .split(/\n{2,}/)
-      .map((p) => p.replace(/\s+/g, " ").trim())
-      .filter(Boolean)
-      .slice(0, 8); // max 8 paragraphs per module
-    const summary = paragraphs
-      .map((p) => truncate(p, 250))
-      .join(" | ");
-    lines.push(truncate(summary, 800));
-    lines.push("");
+    lines.push(`## Módulo ${i + 1}: ${m.title}`);
+
+    const subSections = extractSubSections(m.content || "", maxSubSections, maxBullets, maxBulletLen);
+
+    if (subSections.length > 0) {
+      for (const sub of subSections) {
+        lines.push(`### ${sub.title}`);
+        for (const bullet of sub.bullets) {
+          lines.push(`- ${bullet}`);
+        }
+        lines.push("");
+      }
+    } else {
+      // Minimal fallback
+      lines.push(`- Conceitos essenciais de ${m.title}`);
+      lines.push("");
+    }
   }
 
-  return truncate(lines.join("\n"), 8000);
+  // ── 4. Closing ───────────────────────────────────────────────────
+  lines.push("## Conclusão e Próximos Passos");
+  lines.push(`Parabéns por concluir ${courseTitle}!`);
+  lines.push("- Aplique o conhecimento adquirido em projetos reais");
+  lines.push("- Continue sua jornada de aprendizado");
+  lines.push("- Certificado de conclusão disponível");
+  lines.push("");
+
+  return truncate(lines.join("\n"), 10000);
 }
 
 // ── Main handler ─────────────────────────────────────────────────────
@@ -95,7 +216,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { course_id, theme_key = "blue-gradient", language = "Portuguese" } = body;
+    const { course_id, theme_key = "blue-gradient", language = "Portuguese", courseType = "CURSO COMPLETO" } = body;
     if (!course_id) {
       return new Response(
         JSON.stringify({ error: "course_id required" }),
@@ -135,6 +256,7 @@ Deno.serve(async (req: Request) => {
       course.title || "Curso",
       course.description || "",
       (modules as any[]).map((m) => ({ title: m.title || "", content: m.content || "" })),
+      courseType,
     );
 
     console.log(

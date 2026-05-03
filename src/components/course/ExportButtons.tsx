@@ -135,6 +135,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                       course_id:   courseId,
                       theme_key:   options.twoSlidesTheme || "blue-gradient",
                       language:    "Portuguese",
+                      courseType:  options.courseType || "CURSO COMPLETO",
                     },
                   });
 
