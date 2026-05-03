@@ -143,12 +143,27 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                     engineUsed = "magicslides";
                     console.log("[PPTX] MagicSlides Pro successful!");
                   } else {
-                    console.warn("[PPTX] MagicSlides failed, falling back to native engine...", magicRes.error);
-                    toast({ 
-                      title: "MagicSlides (Beta) indisponível", 
-                      description: "Usando motor nativo EduGen v3 como fallback automático.",
-                      duration: 4000
-                    });
+                    const errCode = magicRes.data?.error || magicRes.error?.message || "";
+                    console.warn("[PPTX] MagicSlides failed:", errCode);
+                    if (errCode === "MAGICSLIDES_NO_CREDITS") {
+                      toast({
+                        title: "MagicSlides: créditos insuficientes",
+                        description: "Faça upgrade em magicslides.app/pricing. Usando motor EduGen v3 como fallback.",
+                        duration: 6000,
+                      });
+                    } else if (errCode === "MAGICSLIDES_AUTH_FAILED") {
+                      toast({
+                        title: "MagicSlides: credenciais inválidas",
+                        description: "Verifique o Access ID em magicslides.app → Dashboard → Settings. Usando EduGen v3.",
+                        duration: 6000,
+                      });
+                    } else {
+                      toast({ 
+                        title: "MagicSlides (Beta) indisponível", 
+                        description: "Usando motor nativo EduGen v3 como fallback automático.",
+                        duration: 4000,
+                      });
+                    }
                   }
                 } catch (magicErr) {
                   console.error("[PPTX] MagicSlides crash:", magicErr);

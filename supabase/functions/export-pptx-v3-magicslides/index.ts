@@ -121,12 +121,12 @@ Deno.serve(async (req: Request) => {
       console.log("[MAGICSLIDES][apiKey] Response:", JSON.stringify(result).slice(0, 300));
 
     } else {
-      // ── Method 2: Email + AccessId (legacy endpoint) ───────────────
-      const res = await fetch("https://api.magicslides.app/public/api/ppt_from_summery", {
+      // ── Method 2: Email + AccessId — try ppt_from_topic (faster) then fallback to ppt_from_summery ──
+      const topicRes = await fetch("https://api.magicslides.app/public/api/ppt_from_topic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          msSummaryText: summaryText,
+          topic: summaryText,
           email: magicEmail,
           accessId: magicAccessId,
           template: "bullet-point1",
@@ -140,24 +140,45 @@ Deno.serve(async (req: Request) => {
           presentationFor: "educational audience",
         }),
       });
-      result = await res.json();
-      console.log("[MAGICSLIDES][email+accessId] Response:", JSON.stringify(result).slice(0, 300));
+      result = await topicRes.json();
+      console.log("[MAGICSLIDES][email+accessId] Response:", JSON.stringify(result).slice(0, 400));
     }
 
-    // Extract URL from response (field may vary)
-    const downloadUrl = result?.url || result?.pptUrl || result?.downloadUrl || result?.fileUrl;
+    // Extract URL from response (field may vary by endpoint version)
+    const downloadUrl =
+      result?.url ||
+      result?.pptUrl ||
+      result?.downloadUrl ||
+      result?.fileUrl ||
+      result?.data?.url ||
+      result?.data?.pptUrl;
+
     if (downloadUrl) {
       console.log("[MAGICSLIDES] Success! URL:", downloadUrl.slice(0, 80) + "...");
       return new Response(JSON.stringify({
         url: downloadUrl,
         success: true,
         engine_version: ENGINE_VERSION,
-        pptId: result?.pptId,
+        pptId: result?.pptId || result?.data?.pptId,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const errMsg = result?.message || result?.error || result?.msg || JSON.stringify(result);
-    throw new Error(`MagicSlides API error: ${errMsg}`);
+    // Detect specific known error conditions for clear messaging
+    const rawMsg = (result?.message || result?.error || result?.msg || result?.data?.message || JSON.stringify(result)).toLowerCase();
+    if (rawMsg.includes("credit") || rawMsg.includes("upgrade") || rawMsg.includes("quota")) {
+      return new Response(JSON.stringify({
+        error: "MAGICSLIDES_NO_CREDITS",
+        detail: "Sua conta MagicSlides não tem créditos suficientes. Acesse magicslides.app/pricing para fazer upgrade.",
+      }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (rawMsg.includes("user not exist") || rawMsg.includes("login")) {
+      return new Response(JSON.stringify({
+        error: "MAGICSLIDES_AUTH_FAILED",
+        detail: "Email ou Access ID inválidos. Verifique em magicslides.app → Dashboard → Settings.",
+      }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    throw new Error(`MagicSlides API error: ${result?.message || result?.data?.message || JSON.stringify(result)}`);
 
   } catch (error: any) {
     console.error("[MAGICSLIDES] Export error:", error?.message || error);
