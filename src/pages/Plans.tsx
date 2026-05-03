@@ -3,49 +3,178 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { Check, X, Star, Sparkles, Loader2, CreditCard, Settings } from "lucide-react";
+import { Check, X, Sparkles, Loader2, CreditCard, Settings, Zap, Info } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 
-const ACCENT = "#DF7C3A";
-const GOLD = "#C9A96E";
-const SAGE = "#7B9E87";
+const ACCENT  = "#DF7C3A";
+const GOLD    = "#C9A96E";
+const SAGE    = "#7B9E87";
+const LAVENDER = "#A08EC2";
+const BG      = "#0B0B0F";
+const TEXT    = "#E8E3DC";
 
-type PlanKey = "free" | "starter" | "pro";
+type PlanKey   = "free" | "starter" | "pro";
+type Billing   = "monthly" | "annual";
 
+// ── Pricing ──────────────────────────────────────────────────────────
+const PRICING: Record<PlanKey, { monthly: number; annual: number; label: string }> = {
+  free:    { monthly: 0,      annual: 0,      label: "Grátis"    },
+  starter: { monthly: 54.90,  annual: 41.90,  label: "Criador"   },
+  pro:     { monthly: 127.00, annual: 97.00,  label: "Pro"       },
+};
+
+// ── Feature categories ────────────────────────────────────────────────
 interface FeatureRow {
-  label: string;
+  label:  string;
+  tip?:   string;
   values: Record<PlanKey, string | boolean>;
 }
 
-const FEATURES: FeatureRow[] = [
-  { label: "Cursos por mês", values: { free: "1", starter: "2", pro: "5" } },
-  { label: "Módulos por curso", values: { free: "6", starter: "8", pro: "12" } },
-  { label: "Imagens com IA", values: { free: "8 por curso", starter: "12 por curso", pro: "18 por curso" } },
-  { label: "Exportação PowerPoint (PPTX)", values: { free: "Básico", starter: "Bom", pro: "Premium" } },
-  { label: "Abrir no Google Slides", values: { free: false, starter: false, pro: true } },
-  { label: "Abrir no Microsoft PowerPoint", values: { free: false, starter: false, pro: true } },
-  { label: "Exportação SCORM", values: { free: false, starter: false, pro: true } },
-  { label: "Exportação Moodle XML", values: { free: false, starter: false, pro: true } },
-  { label: "Tutor IA Público para Alunos", values: { free: false, starter: false, pro: true } },
-  { label: "Landing Page do Curso", values: { free: "Simples", starter: "Personalizável", pro: "Totalmente Personalizável" } },
-  { label: "Certificado", values: { free: "Com branding EduGen", starter: "Com branding EduGen", pro: "Sem branding" } },
-  { label: "Suporte", values: { free: "Comunidade + Email", starter: "Email prioritário", pro: "Prioridade Alta" } },
+interface FeatureCategory {
+  title: string;
+  icon:  string;
+  rows:  FeatureRow[];
+}
+
+const CATEGORIES: FeatureCategory[] = [
+  {
+    title: "Criação de Cursos",
+    icon: "✦",
+    rows: [
+      { label: "Cursos por mês",        values: { free: "1",  starter: "4",  pro: "12"  } },
+      { label: "Módulos por curso",      values: { free: "5",  starter: "10", pro: "15"  } },
+      { label: "Arquivos fonte/curso",   tip: "PDFs, texto, markdown, YouTube",
+                                         values: { free: "3",  starter: "5",  pro: "10"  } },
+      { label: "Análises de PDF/hora",   values: { free: "3",  starter: "15", pro: "50"  } },
+      { label: "Idiomas de geração",     values: { free: "PT-BR", starter: "PT-BR, EN, ES", pro: "PT-BR, EN, ES, FR, DE + mais" } },
+      { label: "Translate AI",           tip: "Traduz o curso inteiro para outro idioma",
+                                         values: { free: false, starter: false, pro: true  } },
+    ],
+  },
+  {
+    title: "Conteúdo & IA",
+    icon: "◈",
+    rows: [
+      { label: "Geração por IA (Gemini)",  values: { free: true,  starter: true,  pro: true  } },
+      { label: "EduScore™",                tip: "Avaliação pedagógica com IA",
+                                           values: { free: false, starter: true,  pro: true  } },
+      { label: "Restructure AI",           tip: "Reformata o conteúdo seguindo boas práticas",
+                                           values: { free: false, starter: true,  pro: true  } },
+      { label: "Imagens com IA",           values: { free: "—",   starter: "15/curso", pro: "25/curso" } },
+      { label: "Flashcards automáticos",   values: { free: false, starter: true,  pro: true  } },
+      { label: "Quizzes automáticos",      values: { free: false, starter: true,  pro: true  } },
+      { label: "Tutor IA para alunos",     tip: "Chat baseado no conteúdo do curso para alunos",
+                                           values: { free: false, starter: false, pro: true  } },
+    ],
+  },
+  {
+    title: "Exportação",
+    icon: "⤓",
+    rows: [
+      { label: "Markdown (.md)",           values: { free: true,  starter: true,  pro: true  } },
+      { label: "Word / DOCX",              values: { free: true,  starter: true,  pro: true  } },
+      { label: "PDF",                      values: { free: false, starter: true,  pro: true  } },
+      { label: "PowerPoint — EduGen v4",   values: { free: false, starter: true,  pro: true  } },
+      { label: "PowerPoint — Presenton AI",tip: "Templates premium gerados por IA",
+                                           values: { free: false, starter: false, pro: true  } },
+      { label: "PowerPoint — 2Slides AI",  tip: "Design profissional premium",
+                                           values: { free: false, starter: false, pro: true  } },
+      { label: "SCORM (LMS)",              values: { free: false, starter: false, pro: true  } },
+      { label: "Moodle XML",               values: { free: false, starter: false, pro: true  } },
+      { label: "Notion",                   values: { free: false, starter: false, pro: true  } },
+      { label: "Google Slides / MS Office",values: { free: false, starter: false, pro: true  } },
+    ],
+  },
+  {
+    title: "Publicação & Alunos",
+    icon: "◎",
+    rows: [
+      { label: "Landing page do curso",    values: { free: "Básica",  starter: "Personalizável",  pro: "Completa (sem branding)" } },
+      { label: "Portal do aluno",          values: { free: false,     starter: true,               pro: true  } },
+      { label: "Progresso do aluno",       values: { free: false,     starter: true,               pro: true  } },
+    ],
+  },
+  {
+    title: "Certificado",
+    icon: "◇",
+    rows: [
+      { label: "Emissão de certificado",   values: { free: "Com branding EduGen", starter: "Com branding EduGen", pro: "Totalmente personalizado" } },
+      { label: "Logo do instrutor",        values: { free: false, starter: false, pro: true } },
+      { label: "Sem marca EduGen",         values: { free: false, starter: false, pro: true } },
+    ],
+  },
+  {
+    title: "Suporte",
+    icon: "◉",
+    rows: [
+      { label: "Suporte",                  values: { free: "Comunidade + Email",  starter: "Email prioritário",  pro: "Prioridade alta + Onboarding" } },
+      { label: "Analytics de criação",     values: { free: "Básico",              starter: "Intermediário",       pro: "Avançado"                      } },
+    ],
+  },
 ];
 
-const PLANS: { key: PlanKey; name: string; price: string; period: string; tagline: string; popular?: boolean }[] = [
-  { key: "free", name: "Free", price: "Grátis", period: "", tagline: "Para explorar e criar seu primeiro curso" },
-  { key: "starter", name: "Starter", price: "R$ 39,90", period: "/ mês", tagline: "Para quem quer evoluir e personalizar" },
-  { key: "pro", name: "Pro", price: "R$ 97,00", period: "/ mês", tagline: "Tudo para criar, publicar e vender", popular: true },
-];
+// ── Plan visual config ────────────────────────────────────────────────
+const PLAN_CONFIG: Record<PlanKey, {
+  name: string; tagline: string; accent: string;
+  badge?: string; popular?: boolean; highlight: string;
+}> = {
+  free: {
+    name:      "Free",
+    tagline:   "Para explorar e criar seu primeiro curso",
+    accent:    "rgba(232,227,220,0.3)",
+    highlight: "rgba(232,227,220,0.03)",
+  },
+  starter: {
+    name:      "Criador",
+    tagline:   "Para educadores que criam com frequência",
+    accent:    GOLD,
+    badge:     "Mais escolhido",
+    popular:   true,
+    highlight: `${GOLD}08`,
+  },
+  pro: {
+    name:      "Pro",
+    tagline:   "Para escolas e infoprodutores profissionais",
+    accent:    ACCENT,
+    highlight: `${ACCENT}0A`,
+  },
+};
+
+// ── Highlights per plan (top bullets on card) ─────────────────────────
+const HIGHLIGHTS: Record<PlanKey, string[]> = {
+  free: [
+    "1 curso/mês · 5 módulos",
+    "Exportação MD + DOCX",
+    "Landing page básica",
+  ],
+  starter: [
+    "4 cursos/mês · 10 módulos",
+    "IA: imagens, flashcards, quizzes",
+    "EduScore™ + Restructure AI",
+    "PDF + PPTX v4 + Portal do aluno",
+  ],
+  pro: [
+    "12 cursos/mês · 15 módulos",
+    "Tutor IA para seus alunos",
+    "SCORM · Moodle · Notion · Notion",
+    "PPTX Presenton AI + 2Slides AI",
+    "Certificado sem branding EduGen",
+    "Translate AI + Google/MS Office",
+  ],
+};
+
+const PLANS: PlanKey[] = ["free", "starter", "pro"];
 
 export default function Plans() {
   const { plan, isLoading: planLoading } = useSubscription();
-  const { user } = useAuth();
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const [checkoutLoading, setCheckoutLoading] = useState<PlanKey | null>(null);
-  const [portalLoading, setPortalLoading] = useState(false);
+  const { user }        = useAuth();
+  const [searchParams]  = useSearchParams();
+  const navigate        = useNavigate();
+  const [billing, setBilling]                   = useState<Billing>("monthly");
+  const [checkoutLoading, setCheckoutLoading]   = useState<PlanKey | null>(null);
+  const [portalLoading, setPortalLoading]       = useState(false);
+  const [expandedCat, setExpandedCat]           = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get("success") === "true") {
@@ -95,101 +224,196 @@ export default function Plans() {
 
   const currentPlan = (plan as PlanKey) ?? "free";
 
-  const planAccentColor = (key: PlanKey) => {
-    if (key === "pro") return ACCENT;
-    if (key === "starter") return GOLD;
-    return "rgba(232,227,220,0.3)";
+  const displayPrice = (key: PlanKey) => {
+    const p = PRICING[key];
+    if (key === "free") return { main: "Grátis", sub: "" };
+    const v = billing === "annual" ? p.annual : p.monthly;
+    return { main: `R$ ${v.toFixed(2).replace(".", ",")}`, sub: "/ mês" };
+  };
+
+  const annualSavings = (key: PlanKey) => {
+    if (key === "free") return null;
+    const p = PRICING[key];
+    const saved = (p.monthly - p.annual) * 12;
+    const pct   = Math.round((1 - p.annual / p.monthly) * 100);
+    return { saved: saved.toFixed(0), pct };
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0B0B0F", color: "#E8E3DC" }}>
-      {/* Header */}
+    <div style={{ minHeight: "100vh", background: BG, color: TEXT }}>
+
+      {/* ── Header ── */}
       <div style={{ borderBottom: "1px solid rgba(232,227,220,0.06)", padding: "2.5rem 0" }}>
-        <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "0 2rem", textAlign: "center" }}>
+        <div style={{ maxWidth: "1160px", margin: "0 auto", padding: "0 2rem", textAlign: "center" }}>
           <p style={{ fontSize: "0.6875rem", letterSpacing: "0.2em", textTransform: "uppercase", color: GOLD, marginBottom: "0.75rem", fontWeight: 500 }}>Preços</p>
-          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 4vw, 2.75rem)", fontWeight: 600, letterSpacing: "-0.02em", color: "#E8E3DC", lineHeight: 1.1, marginBottom: "0.75rem" }}>
+          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 4vw, 2.75rem)", fontWeight: 600, letterSpacing: "-0.02em", color: TEXT, lineHeight: 1.1, marginBottom: "0.75rem" }}>
             Escolha seu plano
           </h1>
-          <p style={{ color: "rgba(232,227,220,0.4)", fontSize: "0.9375rem", fontWeight: 300 }}>
-            Comece grátis e evolua conforme sua necessidade
+          <p style={{ color: "rgba(232,227,220,0.4)", fontSize: "0.9375rem", fontWeight: 300, marginBottom: "2rem" }}>
+            Comece grátis · Cancele a qualquer momento
           </p>
+
+          {/* Billing toggle */}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "0", background: "rgba(232,227,220,0.05)", border: "1px solid rgba(232,227,220,0.08)", borderRadius: "100px", padding: "4px" }}>
+            {(["monthly", "annual"] as Billing[]).map((b) => (
+              <button
+                key={b}
+                onClick={() => setBilling(b)}
+                style={{
+                  padding: "6px 20px",
+                  borderRadius: "100px",
+                  fontSize: "0.8125rem",
+                  fontWeight: 500,
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  background: billing === b ? ACCENT : "transparent",
+                  color: billing === b ? BG : "rgba(232,227,220,0.5)",
+                  position: "relative",
+                }}
+                data-testid={`billing-${b}`}
+              >
+                {b === "monthly" ? "Mensal" : "Anual"}
+                {b === "annual" && (
+                  <span style={{
+                    position: "absolute", top: "-10px", right: "-6px",
+                    background: SAGE, color: BG, fontSize: "0.5rem",
+                    fontWeight: 700, padding: "1px 5px", borderRadius: "100px",
+                    letterSpacing: "0.05em", whiteSpace: "nowrap",
+                  }}>
+                    ATÉ 25% OFF
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {billing === "annual" && (
+            <p style={{ fontSize: "0.75rem", color: SAGE, marginTop: "0.75rem", fontWeight: 400 }}>
+              Cobrado anualmente — economize até R$ 360/ano no Pro
+            </p>
+          )}
         </div>
       </div>
 
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "3rem 2rem" }}>
-        {/* Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "4rem" }} className="md:grid-cols-3 grid-cols-1">
-          {PLANS.map((p, idx) => {
-            const isCurrent = currentPlan === p.key;
-            const isPopular = !!p.popular;
-            const accentColor = planAccentColor(p.key);
+      <div style={{ maxWidth: "1160px", margin: "0 auto", padding: "3rem 2rem" }}>
+
+        {/* ── Plan cards ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "5rem" }}>
+          {PLANS.map((key, idx) => {
+            const cfg       = PLAN_CONFIG[key];
+            const isCurrent = currentPlan === key;
+            const price     = displayPrice(key);
+            const savings   = billing === "annual" ? annualSavings(key) : null;
 
             return (
               <motion.div
-                key={p.key}
-                initial={{ opacity: 0, y: 20 }}
+                key={key}
+                initial={{ opacity: 0, y: 24 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.08 }}
+                transition={{ delay: idx * 0.08, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                 style={{
                   position: "relative",
-                  background: isPopular ? `${ACCENT}0A` : "rgba(232,227,220,0.025)",
-                  border: isPopular ? `1px solid ${ACCENT}35` : "1px solid rgba(232,227,220,0.07)",
-                  borderRadius: "14px",
-                  padding: "2rem",
+                  background: cfg.highlight,
+                  border: cfg.popular
+                    ? `1px solid ${cfg.accent}40`
+                    : "1px solid rgba(232,227,220,0.07)",
+                  borderRadius: "16px",
+                  padding: "1.75rem",
                   display: "flex",
                   flexDirection: "column",
                 }}
               >
-                {isPopular && (
-                  <div style={{ position: "absolute", top: "-13px", left: "50%", transform: "translateX(-50%)", background: ACCENT, color: "#0B0B0F", fontSize: "0.6875rem", fontWeight: 700, padding: "3px 14px", borderRadius: "100px", letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                    Mais popular
+                {/* Badge */}
+                {cfg.badge && (
+                  <div style={{
+                    position: "absolute", top: "-13px", left: "50%", transform: "translateX(-50%)",
+                    background: cfg.accent, color: BG, fontSize: "0.6rem", fontWeight: 700,
+                    padding: "3px 14px", borderRadius: "100px", letterSpacing: "0.1em",
+                    textTransform: "uppercase", whiteSpace: "nowrap",
+                  }}>
+                    {cfg.badge}
                   </div>
                 )}
 
-                <div style={{ marginBottom: "1.75rem" }}>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: `${accentColor}15`, border: `1px solid ${accentColor}25`, color: accentColor, fontSize: "0.6875rem", fontWeight: 600, padding: "2px 10px", borderRadius: "100px", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "1rem" }}>
-                    {p.name}
+                {/* Plan name */}
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <div style={{
+                    display: "inline-flex", alignItems: "center", gap: "6px",
+                    background: `${cfg.accent}15`, border: `1px solid ${cfg.accent}25`,
+                    color: cfg.accent, fontSize: "0.625rem", fontWeight: 700,
+                    padding: "2px 10px", borderRadius: "100px",
+                    letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "0.875rem",
+                  }}>
+                    {cfg.name}
                   </div>
+
+                  {/* Price */}
                   <div style={{ display: "flex", alignItems: "baseline", gap: "4px" }}>
-                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "2.25rem", fontWeight: 700, color: "#E8E3DC" }}>{p.price}</span>
-                    {p.period && <span style={{ color: "rgba(232,227,220,0.35)", fontSize: "0.875rem", fontWeight: 300 }}>{p.period}</span>}
+                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "2.25rem", fontWeight: 700, color: TEXT, lineHeight: 1 }}>
+                      {price.main}
+                    </span>
+                    {price.sub && (
+                      <span style={{ color: "rgba(232,227,220,0.35)", fontSize: "0.8125rem", fontWeight: 300 }}>{price.sub}</span>
+                    )}
                   </div>
-                  <p style={{ fontSize: "0.8125rem", color: "rgba(232,227,220,0.4)", marginTop: "0.375rem", fontWeight: 300 }}>{p.tagline}</p>
+
+                  {savings && (
+                    <motion.div
+                      key={`savings-${key}-${billing}`}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      style={{ marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}
+                    >
+                      <span style={{ fontSize: "0.6875rem", color: SAGE, fontWeight: 500 }}>
+                        Economia de R$ {savings.saved}/ano ({savings.pct}% off)
+                      </span>
+                    </motion.div>
+                  )}
+
+                  {billing === "annual" && key !== "free" && (
+                    <p style={{ fontSize: "0.6875rem", color: "rgba(232,227,220,0.3)", marginTop: "2px" }}>
+                      Cobrado como R$ {(PRICING[key].annual * 12).toFixed(2).replace(".", ",")}/ano
+                    </p>
+                  )}
+
+                  <p style={{ fontSize: "0.8rem", color: "rgba(232,227,220,0.38)", marginTop: "0.5rem", fontWeight: 300, lineHeight: 1.4 }}>
+                    {cfg.tagline}
+                  </p>
                 </div>
 
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1.75rem" }}>
-                  {FEATURES.map((f, i) => {
-                    const v = f.values[p.key];
-                    const isOff = v === false;
-                    return (
-                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-                        {v === true ? (
-                          <Check className="h-3.5 w-3.5 shrink-0 mt-0.5" style={{ color: accentColor }} />
-                        ) : v === false ? (
-                          <X className="h-3.5 w-3.5 shrink-0 mt-0.5" style={{ color: "rgba(232,227,220,0.18)" }} />
-                        ) : (
-                          <Check className="h-3.5 w-3.5 shrink-0 mt-0.5" style={{ color: SAGE }} />
-                        )}
-                        <span style={{ fontSize: "0.8125rem", color: isOff ? "rgba(232,227,220,0.2)" : "rgba(232,227,220,0.55)", lineHeight: 1.4, textDecoration: isOff ? "line-through" : "none" }}>
-                          <span style={{ color: isOff ? "rgba(232,227,220,0.15)" : "rgba(232,227,220,0.35)" }}>{f.label}:</span>{" "}
-                          {typeof v === "string" ? <span style={{ color: isOff ? "rgba(232,227,220,0.15)" : "rgba(232,227,220,0.7)", fontWeight: 500 }}>{v}</span> : isOff ? "Não incluso" : "Incluído"}
-                        </span>
-                      </div>
-                    );
-                  })}
+                {/* Highlights */}
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
+                  {HIGHLIGHTS[key].map((h, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                      <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: cfg.accent, flexShrink: 0, marginTop: "6px" }} />
+                      <span style={{ fontSize: "0.8125rem", color: "rgba(232,227,220,0.65)", lineHeight: 1.45 }}>{h}</span>
+                    </div>
+                  ))}
                 </div>
 
+                {/* CTA */}
                 {isCurrent ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "0.7rem", borderRadius: "8px", border: `1px solid ${accentColor}30`, color: accentColor, fontSize: "0.875rem", fontWeight: 500, cursor: "default" }}>
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                      padding: "0.7rem", borderRadius: "10px",
+                      border: `1px solid ${cfg.accent}30`, color: cfg.accent,
+                      fontSize: "0.875rem", fontWeight: 500, cursor: "default",
+                    }}>
                       <Sparkles className="h-4 w-4" /> Plano atual
                     </div>
-                    {p.key !== "free" && (
+                    {key !== "free" && (
                       <button
                         onClick={handleManageSubscription}
                         disabled={portalLoading}
-                        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", padding: "0.5rem", borderRadius: "8px", color: "rgba(232,227,220,0.4)", fontSize: "0.8125rem", background: "transparent", border: "none", cursor: "pointer", transition: "color 0.15s" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = "#E8E3DC")}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                          padding: "0.5rem", borderRadius: "8px",
+                          color: "rgba(232,227,220,0.4)", fontSize: "0.8rem",
+                          background: "transparent", border: "none", cursor: "pointer", transition: "color 0.15s",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = TEXT)}
                         onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(232,227,220,0.4)")}
                       >
                         {portalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
@@ -197,20 +421,37 @@ export default function Plans() {
                       </button>
                     )}
                   </div>
-                ) : p.key === "free" ? (
-                  <div style={{ padding: "0.7rem", borderRadius: "8px", border: "1px solid rgba(232,227,220,0.07)", color: "rgba(232,227,220,0.3)", fontSize: "0.875rem", textAlign: "center", cursor: "default" }}>
-                    Plano inicial
+                ) : key === "free" ? (
+                  <div style={{
+                    padding: "0.7rem", borderRadius: "10px",
+                    border: "1px solid rgba(232,227,220,0.07)",
+                    color: "rgba(232,227,220,0.3)", fontSize: "0.875rem", textAlign: "center", cursor: "default",
+                  }}>
+                    Plano inicial — sempre grátis
                   </div>
                 ) : (
                   <button
-                    onClick={() => handleUpgrade(p.key)}
+                    onClick={() => handleUpgrade(key)}
                     disabled={checkoutLoading !== null}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "0.75rem", borderRadius: "8px", background: isPopular ? ACCENT : "rgba(232,227,220,0.06)", color: isPopular ? "#0B0B0F" : "#E8E3DC", fontSize: "0.875rem", fontWeight: 600, border: "none", cursor: checkoutLoading !== null ? "not-allowed" : "pointer", opacity: checkoutLoading !== null ? 0.6 : 1, transition: "opacity 0.15s" }}
+                    data-testid={`button-upgrade-${key}`}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                      padding: "0.75rem", borderRadius: "10px",
+                      background: cfg.popular ? cfg.accent : "rgba(232,227,220,0.07)",
+                      color: cfg.popular ? BG : TEXT,
+                      fontSize: "0.875rem", fontWeight: 600,
+                      border: cfg.popular ? "none" : `1px solid ${cfg.accent}30`,
+                      cursor: checkoutLoading !== null ? "not-allowed" : "pointer",
+                      opacity: checkoutLoading !== null ? 0.6 : 1,
+                      transition: "opacity 0.15s",
+                    }}
                     onMouseEnter={(e) => { if (checkoutLoading === null) e.currentTarget.style.opacity = "0.85"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
                   >
-                    {checkoutLoading === p.key ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                    Assinar {p.name}
+                    {checkoutLoading === key
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : key === "pro" ? <Zap className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}
+                    {billing === "annual" ? `Assinar ${cfg.name} — Anual` : `Assinar ${cfg.name}`}
                   </button>
                 )}
               </motion.div>
@@ -218,66 +459,161 @@ export default function Plans() {
           })}
         </div>
 
-        {/* Tabela comparativa */}
+        {/* ── Detailed comparison table ── */}
         <div>
-          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.75rem", fontWeight: 600, color: "#E8E3DC", textAlign: "center", marginBottom: "1.5rem", letterSpacing: "-0.01em" }}>
+          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.875rem", fontWeight: 600, color: TEXT, textAlign: "center", marginBottom: "0.5rem", letterSpacing: "-0.01em" }}>
             Comparação detalhada
           </h2>
-          <div style={{ overflow: "hidden", borderRadius: "12px", border: "1px solid rgba(232,227,220,0.07)", background: "rgba(232,227,220,0.02)" }}>
+          <p style={{ textAlign: "center", fontSize: "0.875rem", color: "rgba(232,227,220,0.3)", marginBottom: "2.5rem" }}>
+            Todas as funcionalidades incluídas em cada plano
+          </p>
+
+          <div style={{ overflow: "hidden", borderRadius: "14px", border: "1px solid rgba(232,227,220,0.07)" }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
+
+                {/* Sticky header */}
                 <thead>
-                  <tr style={{ borderBottom: "1px solid rgba(232,227,220,0.07)" }}>
-                    <th style={{ textAlign: "left", padding: "1rem 1.25rem", color: "rgba(232,227,220,0.4)", fontWeight: 500, fontSize: "0.8125rem" }}>Funcionalidade</th>
-                    {PLANS.map((p) => (
-                      <th key={p.key} style={{ padding: "1rem 1.25rem", fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: "1rem", textAlign: "center", color: p.popular ? ACCENT : "#E8E3DC" }}>
-                        {p.name} {p.popular && "★"}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr style={{ borderBottom: "1px solid rgba(232,227,220,0.07)", background: "rgba(232,227,220,0.015)" }}>
-                    <td style={{ padding: "0.875rem 1.25rem", color: "rgba(232,227,220,0.4)", fontSize: "0.8125rem" }}>Preço mensal</td>
-                    {PLANS.map((p) => (
-                      <td key={p.key} style={{ padding: "0.875rem 1.25rem", textAlign: "center", fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, fontSize: "1.125rem", color: "#E8E3DC" }}>
-                        {p.price}
-                        {p.period && <span style={{ fontSize: "0.75rem", color: "rgba(232,227,220,0.35)", fontWeight: 300 }}>{p.period}</span>}
-                      </td>
-                    ))}
+                  <tr style={{ borderBottom: "1px solid rgba(232,227,220,0.08)", background: "rgba(11,11,15,0.95)" }}>
+                    <th style={{ textAlign: "left", padding: "1.125rem 1.5rem", color: "rgba(232,227,220,0.35)", fontWeight: 500, fontSize: "0.8125rem", width: "38%" }}>
+                      Funcionalidade
+                    </th>
+                    {PLANS.map((key) => {
+                      const cfg = PLAN_CONFIG[key];
+                      const p   = displayPrice(key);
+                      return (
+                        <th key={key} style={{ padding: "1.125rem 1rem", textAlign: "center", width: "20.67%" }}>
+                          <div style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, fontSize: "1.0625rem", color: cfg.accent, marginBottom: "2px" }}>
+                            {cfg.name}
+                          </div>
+                          <div style={{ fontSize: "0.75rem", color: "rgba(232,227,220,0.4)", fontWeight: 400 }}>
+                            {key === "free" ? "Grátis" : `R$ ${(billing === "annual" ? PRICING[key].annual : PRICING[key].monthly).toFixed(2).replace(".", ",")}/mês`}
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
+
                 <tbody>
-                  {FEATURES.map((f, i) => (
-                    <tr key={i} style={{ borderBottom: i < FEATURES.length - 1 ? "1px solid rgba(232,227,220,0.05)" : "none", background: i % 2 === 1 ? "rgba(232,227,220,0.01)" : "transparent" }}>
-                      <td style={{ padding: "0.875rem 1.25rem", color: "rgba(232,227,220,0.55)" }}>{f.label}</td>
-                      {PLANS.map((p) => {
-                        const v = f.values[p.key];
-                        return (
-                          <td key={p.key} style={{ padding: "0.875rem 1.25rem", textAlign: "center" }}>
-                            {v === true ? (
-                              <Check className="h-4 w-4 mx-auto" style={{ color: p.popular ? ACCENT : SAGE }} />
-                            ) : v === false ? (
-                              <X className="h-4 w-4 mx-auto" style={{ color: "rgba(232,227,220,0.15)" }} />
-                            ) : (
-                              <span style={{ color: "rgba(232,227,220,0.7)", fontSize: "0.8125rem" }}>{v}</span>
+                  {CATEGORIES.flatMap((cat, catIdx) => [
+                    <tr
+                      key={`cat-${catIdx}`}
+                      style={{
+                        background: "rgba(232,227,220,0.03)",
+                        borderTop: catIdx > 0 ? "1px solid rgba(232,227,220,0.06)" : "none",
+                        borderBottom: "1px solid rgba(232,227,220,0.06)",
+                      }}
+                    >
+                      <td colSpan={4} style={{ padding: "0.625rem 1.5rem" }}>
+                        <span style={{ fontSize: "0.6875rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.15em", color: GOLD }}>
+                          {cat.icon} {cat.title}
+                        </span>
+                      </td>
+                    </tr>,
+                    ...cat.rows.map((row, rowIdx) => (
+                      <tr
+                        key={`row-${catIdx}-${rowIdx}`}
+                        style={{
+                          borderBottom: rowIdx < cat.rows.length - 1 ? "1px solid rgba(232,227,220,0.04)" : "none",
+                          background: rowIdx % 2 === 1 ? "rgba(232,227,220,0.012)" : "transparent",
+                        }}
+                      >
+                        <td style={{ padding: "0.8125rem 1.5rem", color: "rgba(232,227,220,0.55)" }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            {row.label}
+                            {row.tip && (
+                              <span title={row.tip} style={{ cursor: "help", color: "rgba(232,227,220,0.2)", flexShrink: 0 }}>
+                                <Info className="h-3 w-3" />
+                              </span>
                             )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                          </span>
+                        </td>
+                        {PLANS.map((key) => {
+                          const cfg = PLAN_CONFIG[key];
+                          const v   = row.values[key];
+                          return (
+                            <td key={key} style={{ padding: "0.8125rem 1rem", textAlign: "center" }}>
+                              {v === true ? (
+                                <Check className="h-4 w-4 mx-auto" style={{ color: cfg.accent }} />
+                              ) : v === false ? (
+                                <X className="h-3.5 w-3.5 mx-auto" style={{ color: "rgba(232,227,220,0.12)" }} />
+                              ) : (
+                                <span style={{ color: "rgba(232,227,220,0.7)", fontSize: "0.8125rem" }}>{v}</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    )),
+                  ])}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
 
-        <div style={{ marginTop: "2rem", textAlign: "center", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <p style={{ fontSize: "0.875rem", color: "rgba(232,227,220,0.35)" }}>
-            Pagamento seguro via Stripe · Cartão de crédito ou PIX
+        {/* ── Cost transparency note ── */}
+        <div style={{ marginTop: "3rem", padding: "1.25rem 1.5rem", borderRadius: "12px", border: "1px solid rgba(232,227,220,0.06)", background: "rgba(232,227,220,0.02)" }}>
+          <p style={{ fontSize: "0.75rem", color: "rgba(232,227,220,0.3)", textAlign: "center", lineHeight: 1.7 }}>
+            Preços calculados com base nos custos reais de infraestrutura (Supabase), modelos de IA (Google Gemini),
+            e APIs de terceiros (2Slides, Presenton). Valores em Reais. Pagamento seguro via Stripe · Cartão, PIX ou boleto.
           </p>
-          <p style={{ fontSize: "0.75rem", color: "rgba(232,227,220,0.2)" }}>
+          <p style={{ fontSize: "0.6875rem", color: "rgba(232,227,220,0.18)", textAlign: "center", marginTop: "4px" }}>
             Cancele a qualquer momento. O downgrade acontece automaticamente ao final do ciclo.
           </p>
+        </div>
+
+        {/* ── FAQ mini ── */}
+        <div style={{ marginTop: "4rem" }}>
+          <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.5rem", fontWeight: 600, color: TEXT, textAlign: "center", marginBottom: "2rem", letterSpacing: "-0.01em" }}>
+            Dúvidas frequentes
+          </h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "1rem" }}>
+            {[
+              {
+                q: "Posso trocar de plano a qualquer momento?",
+                a: "Sim. Upgrades têm efeito imediato; downgrades entram em vigor ao fim do ciclo atual.",
+              },
+              {
+                q: "O que acontece quando atinjo o limite de cursos?",
+                a: "Você pode editar cursos existentes sem restrição. Novos cursos ficam bloqueados até o próximo mês ou com upgrade.",
+              },
+              {
+                q: "As exportações SCORM e Moodle funcionam em qualquer LMS?",
+                a: "Sim. Seguimos os padrões SCORM 2004 e Moodle XML compatíveis com Moodle, Canvas, Blackboard e outros.",
+              },
+              {
+                q: "O Tutor IA consome créditos separados?",
+                a: "Não. Está incluído no plano Pro sem cobrança adicional por consulta.",
+              },
+              {
+                q: "Posso usar no plano Criador os motores Presenton e 2Slides?",
+                a: "Não. Presenton AI e 2Slides AI (design premium por IA) são exclusivos do plano Pro.",
+              },
+              {
+                q: "Como funciona o faturamento anual?",
+                a: "Cobrado em uma parcela única anual com desconto de até 25%. Ex.: Pro anual = R$ 1.164/ano vs R$ 1.524 no mensal.",
+              },
+            ].map((item, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: "1.125rem 1.25rem",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(232,227,220,0.06)",
+                  background: "rgba(232,227,220,0.02)",
+                }}
+              >
+                <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "rgba(232,227,220,0.8)", marginBottom: "0.5rem", lineHeight: 1.4 }}>
+                  {item.q}
+                </p>
+                <p style={{ fontSize: "0.8125rem", color: "rgba(232,227,220,0.4)", lineHeight: 1.6 }}>
+                  {item.a}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
