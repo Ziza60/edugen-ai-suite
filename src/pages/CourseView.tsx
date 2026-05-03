@@ -1007,7 +1007,13 @@ export default function CourseView() {
                     <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent, title: editTitle })}>
                       Salvar alterações
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => { setEditingModuleId(null); setSaveStatus("saved"); }}>
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      clearTimeout(saveTimerRef.current);
+                      setEditContent(activeModule.content || "");
+                      setEditTitle(activeModule.title);
+                      setEditingModuleId(null);
+                      setSaveStatus("saved");
+                    }}>
                       Cancelar
                     </Button>
                   </div>
