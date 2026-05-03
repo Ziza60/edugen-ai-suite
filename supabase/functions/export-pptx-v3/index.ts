@@ -654,6 +654,8 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
   if (chunks.length <= 1) return [plan];
 
   const baseTitle = plan.title || "Slide";
+  // Strip any existing continuation markers to prevent "Título (Pt. 2) (Pt. 3)" compounding
+  const cleanBase = baseTitle.replace(/\s*\(Continuação\)\s*/g, "").replace(/\s*—?\s*Pt\.\s*\d+\s*/g, "").trim();
   let runningOffset = 0;
   const out: SlidePlan[] = chunks
     .filter((c) => c.length > 0)
@@ -663,8 +665,8 @@ function normalizeAndSplitSlide(plan: SlidePlan, design: DesignConfig): SlidePla
       return {
         ...plan,
         items: chunkItems,
-        title: idx === 0 ? baseTitle : `${baseTitle} (Continuação)`,
-        continuationOf: idx === 0 ? undefined : baseTitle,
+        title: idx === 0 ? baseTitle : `${cleanBase} — Pt. ${idx + 1}`,
+        continuationOf: idx === 0 ? undefined : cleanBase,
         // GEMMA v3.10.6 — preserva sequência de numeração entre slides quebrados.
         itemStartIndex: startIdx,
       };
@@ -2700,8 +2702,8 @@ function renderSlideHeader(
     }
     // Title inside band
     slide.addText(title, {
-      x: 0.55, y: 0.40, w: SLIDE_W - 1.1, h: 0.96,
-      fontSize: 27, fontFace: design.fonts.title, bold: true,
+      x: 0.55, y: 0.38, w: SLIDE_W - 1.1, h: 0.98,
+      fontSize: 30, fontFace: design.fonts.title, bold: true,
       color: "FFFFFF", valign: "middle", lineSpacingMultiple: 1.04,
       autoFit: true,
     });
@@ -3283,38 +3285,60 @@ function renderModuleCover(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfi
   }
 
   if (!hasImage) {
-    // Single clean gradient stripe on right — replaces the 6-rect loop
+    // Right-side architectural panel — dark accent bg
     slide.addShape("rect" as any, {
-      x: contentW * 0.72,
-      y: 0,
-      w: contentW * 0.28,
-      h: SLIDE_H,
-      fill: { color: accentColor },
-      transparency: 92,
+      x: contentW * 0.68, y: 0,
+      w: SLIDE_W - contentW * 0.68, h: SLIDE_H,
+      fill: { color: colors.panelDark },
     });
-    // Ghost module number — single element, maximum visual impact
+    // Bold accent vertical bar at the seam
+    slide.addShape("rect" as any, {
+      x: contentW * 0.68, y: 0,
+      w: 0.06, h: SLIDE_H,
+      fill: { color: accentColor }, transparency: 18,
+    });
+    // Diagonal stripe pattern inside right panel (6 parallel rotated bars)
+    const stripeX = contentW * 0.68 + 0.3;
+    const panelW = SLIDE_W - stripeX - 0.1;
+    for (let s = 0; s < 6; s++) {
+      slide.addShape("rect" as any, {
+        x: stripeX + s * (panelW / 6),
+        y: -0.6,
+        w: panelW / 14,
+        h: SLIDE_H + 1.2,
+        fill: { color: accentColor },
+        transparency: 88 + s * 1.5,
+        rotate: 20,
+      });
+    }
+    // Large ghost module number — fills right panel bottom
     slide.addText(modNum, {
-      x: contentW - 5.6,
-      y: 1.6,
-      w: 5.2,
-      h: 4.6,
+      x: contentW * 0.65,
+      y: SLIDE_H * 0.28,
+      w: SLIDE_W - contentW * 0.65 - 0.2,
+      h: SLIDE_H * 0.72,
       fontSize: TYPO.MODULE_NUMBER,
       fontFace: design.fonts.title,
       bold: true,
       color: accentColor,
-      transparency: 80,
-      align: "right",
+      transparency: 72,
+      align: "center",
       valign: "bottom",
     });
-    // Single accent dot (small, precise)
+    // Small accent circle top-right
     slide.addShape("ellipse" as any, {
-      x: contentW - 1.6,
-      y: 0.55,
-      w: 0.13,
-      h: 0.13,
-      fill: { color: accentColor },
-      transparency: 20,
+      x: SLIDE_W - 1.1, y: 0.32,
+      w: 0.18, h: 0.18,
+      fill: { color: accentColor }, transparency: 10,
     });
+    // Horizontal dots row under circle
+    for (let d = 0; d < 4; d++) {
+      slide.addShape("ellipse" as any, {
+        x: SLIDE_W - 1.9 + d * 0.28, y: 0.6,
+        w: 0.07, h: 0.07,
+        fill: { color: accentColor }, transparency: 55,
+      });
+    }
   }
 
   slide.addShape("rect" as any, { x: 0.8, y: 1.1, w: 0.05, h: 2.3, fill: { color: accentColor } });
@@ -3455,34 +3479,47 @@ function renderBullets(pptx: PptxGenJS, plan: SlidePlan, design: DesignConfig) {
     const sideW = SLIDE_W * 0.35;
     slide.addShape("rect" as any, { x: 0, y: 0, w: sideW, h: SLIDE_H, fill: { color: colors.coverDark } });
     addGradientBar(slide, 0, 0, sideW, SLIDE_H, accentColor, "down");
+    // Diagonal stripe decoration inside left panel
+    for (let s = 0; s < 4; s++) {
+      slide.addShape("rect" as any, {
+        x: sideW * 0.35 + s * (sideW * 0.18),
+        y: -0.5, w: sideW * 0.06, h: SLIDE_H + 1.0,
+        fill: { color: accentColor }, transparency: 91 + s,
+        rotate: 22,
+      });
+    }
+    // Ghost large section number watermark bottom of panel
+    slide.addText(String((_globalSlideIdx % 9) + 1).padStart(2, "0"), {
+      x: -0.1, y: SLIDE_H * 0.3, w: sideW + 0.2, h: SLIDE_H * 0.7,
+      fontSize: 110, fontFace: design.fonts.title, bold: true,
+      color: accentColor, transparency: 87,
+      align: "center", valign: "bottom",
+    });
     slide.addShape("rect" as any, { x: sideW, y: 0, w: 0.05, h: SLIDE_H, fill: { color: accentColor } });
     slide.addShape("rect" as any, {
-      x: sideW + 0.05,
-      y: 0,
-      w: 0.015,
-      h: SLIDE_H,
-      fill: { color: accentColor },
-      transparency: 50,
+      x: sideW + 0.05, y: 0, w: 0.015, h: SLIDE_H,
+      fill: { color: accentColor }, transparency: 50,
     });
     if (plan.sectionLabel) {
       slide.addText(plan.sectionLabel.toUpperCase(), {
-        x: 0.45,
-        y: 0.55,
-        w: sideW - 0.9,
-        h: 0.22,
-        fontSize: 9,
-        fontFace: design.fonts.body,
-        bold: true,
-        color: accentColor,
-        charSpacing: 4,
+        x: 0.45, y: 0.55,
+        w: sideW - 0.9, h: 0.22,
+        fontSize: 9, fontFace: design.fonts.body, bold: true,
+        color: accentColor, charSpacing: 4,
       });
       addHR(slide, 0.45, 0.82, 1.2, accentColor, 0.012);
     }
+    // Small accent dot above title
+    slide.addShape("ellipse" as any, {
+      x: 0.45, y: plan.sectionLabel ? 1.06 : 0.9,
+      w: 0.09, h: 0.09,
+      fill: { color: accentColor }, transparency: 15,
+    });
     slide.addText(plan.title, {
       x: 0.45,
-      y: 1,
+      y: plan.sectionLabel ? 1.22 : 1.05,
       w: sideW - 0.9,
-      h: 3.4,
+      h: 3.2,
       fontSize: MIN_FONT.TITLE,
       fontFace: design.fonts.title,
       bold: true,
