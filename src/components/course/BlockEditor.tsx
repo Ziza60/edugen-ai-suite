@@ -18,6 +18,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 
 // ── Pedagogical section emojis for visual blocks ──
@@ -300,8 +303,12 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
     },
   });
 
-  // Actions that generate NEW content to append vs. actions that edit existing content
-  const APPEND_ACTIONS = new Set(["example", "practical", "activity"]);
+  // Default insertion mode per action ("append" = add at end, "replace" = overwrite)
+  const DEFAULT_MODE: Record<string, "append" | "replace"> = {
+    example:   "append",
+    practical: "append",
+    activity:  "append",
+  };
 
   const ACTION_LABELS: Record<string, string> = {
     improve:   "Texto melhorado ✨",
@@ -317,14 +324,12 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
   };
 
   const handleAIEnhance = useCallback(
-    async (action: string) => {
+    async (action: string, modeOverride?: "append" | "replace") => {
       if (!editor || enhancing) return;
 
       const { from, to } = editor.state.selection;
       const hasSelection = from !== to;
 
-      // For generate-style actions with no selection, use full content as context
-      // For edit-style actions with no selection, use full content
       const contextText = hasSelection
         ? editor.state.doc.textBetween(from, to, "\n")
         : htmlToMarkdown(editor.getHTML());
@@ -344,17 +349,15 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
         if (!data?.enhanced) throw new Error("Nenhum conteúdo retornado");
 
         const enhancedHtml = markdownToHtml(data.enhanced);
+        const mode = modeOverride ?? DEFAULT_MODE[action] ?? "replace";
 
         if (hasSelection) {
-          // Always replace the selected text
           editor.chain().focus().deleteRange({ from, to }).insertContent(enhancedHtml).run();
-        } else if (APPEND_ACTIONS.has(action)) {
-          // Append at end of document — don't replace existing content
+        } else if (mode === "append") {
           editor.chain().focus().insertContentAt(editor.state.doc.content.size, enhancedHtml).run();
           const newMd = htmlToMarkdown(editor.getHTML());
           onChange(newMd);
         } else {
-          // Replace entire content (improve, fix, simplify, etc.)
           editor.commands.setContent(enhancedHtml);
           onChange(data.enhanced);
         }
@@ -527,10 +530,22 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
                 <Layers className="h-4 w-4 mr-2" />
                 Aprofundar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAIEnhance("example")}>
-                <Lightbulb className="h-4 w-4 mr-2" />
-                Gerar exemplo prático
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Lightbulb className="h-4 w-4 mr-2" />
+                  Gerar exemplo prático
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => handleAIEnhance("example", "append")}>
+                    <ListOrdered className="h-4 w-4 mr-2" />
+                    Adicionar ao módulo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAIEnhance("example", "replace")}>
+                    <Scissors className="h-4 w-4 mr-2" />
+                    Substituir exemplo existente
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuItem onClick={() => handleAIEnhance("practical")}>
                 <FlaskConical className="h-4 w-4 mr-2" />
                 Transformar em aula prática
