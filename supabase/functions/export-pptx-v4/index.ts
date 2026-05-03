@@ -882,8 +882,13 @@ async function repairPptxPackage(pptxData: Uint8Array): Promise<Uint8Array> {
   });
   zip.file("[Content_Types].xml", repairedCt);
 
-  console.log(`[V4-REPAIR] Removed ${noteFiles.length} notes files, repaired content types`);
-  return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  const finalFileNames = Object.keys(zip.files);
+  console.log(`[V4-REPAIR] notes_removed=${noteFiles.length} | files_before=${allFileNames.length} | files_after=${finalFileNames.length}`);
+  console.log(`[V4-REPAIR] files: ${finalFileNames.slice(0, 30).join(", ")}`);
+  console.log(`[V4-REPAIR] contentTypes after repair: ${repairedCt.slice(0, 800)}`);
+  const out = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  console.log(`[V4-REPAIR] output_bytes=${out.byteLength} | magic=${out[0]}_${out[1]}_${out[2]}_${out[3]}`);
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1057,13 +1062,16 @@ Deno.serve(async (req: Request) => {
     const pptx = await runPipeline(courseTitle, moduleData, design, density, language, geminiKey);
 
     const rawData  = await pptx.write({ outputType: "uint8array" });
-    const pptxData = await repairPptxPackage(rawData as Uint8Array);
+    const rawBytes = rawData as Uint8Array;
+    console.log(`[V4-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]}`);
+    const pptxData = await repairPptxPackage(rawBytes);
 
     const dateStr  = new Date().toISOString().slice(0, 10);
+    const ts       = Math.floor(Date.now() / 1000);
     const safeName = courseTitle
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().substring(0, 80);
-    const fileName = `${userId}/${safeName}-PPTX-v4-${dateStr}.pptx`;
+    const fileName = `${userId}/${safeName}-PPTX-v4-${dateStr}-${ts}.pptx`;
 
     // Upload with retry
     let uploadErr: any = null;
@@ -1096,6 +1104,7 @@ Deno.serve(async (req: Request) => {
         version:        "v4",
         engine_version: ENGINE_VERSION,
         slide_count:    moduleData.length * (density === "compact" ? 5 : density === "detailed" ? 8 : 6) + 3,
+        _diag: { raw_bytes: rawBytes.byteLength, repaired_bytes: pptxData.byteLength },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
