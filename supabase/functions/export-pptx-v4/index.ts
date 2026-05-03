@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "4.0.1";
+const ENGINE_VERSION = "4.1.0";
 
 // ═══════════════════════════════════════════════════════════
 // XML SAFETY — must run on ALL text before passing to PptxGenJS
@@ -55,15 +55,18 @@ const corsHeaders = {
 // SECTION 1: TYPES
 // ═══════════════════════════════════════════════════════════
 
-type Layout = "cover" | "toc" | "module_cover" | "bullets" | "cards" | "takeaways" | "closing";
+type Layout = "cover" | "toc" | "module_cover" | "bullets" | "cards" | "takeaways" | "closing" | "code" | "twocol";
 
 interface Slide {
   layout: Layout;
   title: string;
-  label?: string;       // section label (CAIXA ALTA)
-  subtitle?: string;    // cover subtitle or module subtitle
-  items?: string[];     // bullets / card texts / takeaways
-  moduleIndex?: number; // for module_cover
+  label?: string;
+  subtitle?: string;
+  items?: string[];
+  code?: string;          // code layout: actual code snippet (preserves \n)
+  codeLabel?: string;     // e.g. "Python"
+  competencies?: string[]; // module_cover: 2-3 "what you'll learn" items
+  moduleIndex?: number;
 }
 
 interface Design {
@@ -149,6 +152,20 @@ function buildDesign(
 // ═══════════════════════════════════════════════════════════
 // SECTION 3: RENDER HELPERS
 // ═══════════════════════════════════════════════════════════
+
+// Like san() but preserves \n and \t — for code blocks
+function sanCode(text: string): string {
+  if (!text || typeof text !== "string") return "";
+  let out = text
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+  out = stripInvalidXmlChars(out);
+  return out
+    .replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    .replace(/\t/g, "  ")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+    .trim();
+}
 
 function bg(slide: any, color: string) {
   slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color } });
@@ -279,14 +296,10 @@ function renderTOC(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total
   const slide = pptx.addSlide();
   bg(slide, d.bg);
 
-  // Top accent bar
-  slide.addShape("rect" as any, {
-    x: 0, y: 0, w: SLIDE_W, h: 0.06,
-    fill: { color: d.accent },
-  });
+  slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: 0.06, fill: { color: d.accent } });
 
   // Left panel
-  const panelW = 3.6;
+  const panelW = 2.9;
   slide.addShape("rect" as any, {
     x: 0, y: 0.06, w: panelW, h: SLIDE_H - 0.06,
     fill: { color: d.surface },
@@ -296,47 +309,60 @@ function renderTOC(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total
     fontSize: 10, fontFace: d.bodyFont, bold: true,
     color: d.accent, charSpacing: 5,
   });
-  slide.addText("Conteúdo do Curso", {
-    x: ML, y: 0.66, w: panelW - ML, h: 0.8,
-    fontSize: 26, fontFace: d.titleFont, bold: true,
+  slide.addText("Conteúdo\ndo Curso", {
+    x: ML, y: 0.64, w: panelW - ML, h: 1.0,
+    fontSize: 24, fontFace: d.titleFont, bold: true,
     color: d.text, valign: "top",
+    lineSpacingMultiple: 1.1,
     fit: "shrink" as any,
   });
+  // Module count chip
+  slide.addShape("roundRect" as any, {
+    x: ML, y: FOOTER_Y - 0.54, w: 1.7, h: 0.36,
+    fill: { color: d.accent }, rectRadius: 0.04,
+  });
+  slide.addText(`${modules.length} Módulo${modules.length !== 1 ? "s" : ""}`, {
+    x: ML, y: FOOTER_Y - 0.54, w: 1.7, h: 0.36,
+    fontSize: 12, fontFace: d.bodyFont, bold: true,
+    color: "FFFFFF", align: "center", valign: "middle",
+  });
 
-  // Module list
-  const listX = panelW + 0.5;
-  const listW = SLIDE_W - listX - MR;
-  const maxMods = Math.min(modules.length, 8);
-  const itemH = Math.min(0.72, (FOOTER_Y - 0.3 - 0.3) / maxMods);
-  const startY = 0.3;
+  // Module list — 2 columns when > 5 modules
+  const listX = panelW + 0.35;
+  const totalListW = SLIDE_W - listX - MR;
+  const maxMods = Math.min(modules.length, 10);
+  const useTwoCols = maxMods > 5;
+  const cols = useTwoCols ? 2 : 1;
+  const colW = useTwoCols ? (totalListW - 0.3) / 2 : totalListW;
+  const itemsPerCol = useTwoCols ? Math.ceil(maxMods / cols) : maxMods;
+  const itemH = Math.min(0.68, (FOOTER_Y - 0.2 - 0.15) / itemsPerCol);
+  const startY = 0.22;
 
   for (let i = 0; i < maxMods; i++) {
-    const y = startY + i * itemH;
+    const col = useTwoCols ? Math.floor(i / itemsPerCol) : 0;
+    const rowInCol = useTwoCols ? i % itemsPerCol : i;
+    const x = listX + col * (colW + 0.3);
+    const y = startY + rowInCol * itemH;
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
 
-    // Number circle
     slide.addShape("ellipse" as any, {
-      x: listX, y: y + (itemH - 0.38) / 2, w: 0.38, h: 0.38,
+      x, y: y + (itemH - 0.36) / 2, w: 0.36, h: 0.36,
       fill: { color: pal },
     });
     slide.addText(String(i + 1), {
-      x: listX, y: y + (itemH - 0.38) / 2, w: 0.38, h: 0.38,
-      fontSize: 13, fontFace: d.titleFont, bold: true,
+      x, y: y + (itemH - 0.36) / 2, w: 0.36, h: 0.36,
+      fontSize: 12, fontFace: d.titleFont, bold: true,
       color: "FFFFFF", align: "center", valign: "middle",
     });
-
-    // Title
     slide.addText(san(modules[i].title), {
-      x: listX + 0.48, y: y + (itemH - 0.3) / 2, w: listW - 0.5, h: 0.3,
-      fontSize: 14, fontFace: d.bodyFont,
+      x: x + 0.46, y: y + (itemH - 0.28) / 2, w: colW - 0.5, h: 0.28,
+      fontSize: useTwoCols ? 12 : 14, fontFace: d.bodyFont,
       color: d.text, valign: "middle",
       fit: "shrink" as any,
     });
-
-    // Separator
-    if (i < maxMods - 1) {
+    if (!useTwoCols && i < maxMods - 1) {
       slide.addShape("rect" as any, {
-        x: listX, y: y + itemH - 0.01, w: listW, h: 0.01,
+        x, y: y + itemH - 0.01, w: colW, h: 0.01,
         fill: { color: d.border },
       });
     }
@@ -350,44 +376,59 @@ function renderModuleCover(pptx: PptxGenJS, slide_: Slide, d: Design, num: numbe
   const slide = pptx.addSlide();
   bg(slide, d.coverBg);
 
-  // Full-height accent sidebar
   const sideW = 0.55;
   slide.addShape("rect" as any, { x: 0, y: 0, w: sideW, h: SLIDE_H, fill: { color: d.accent } });
 
-  // Module number — large watermark
+  // Large watermark number
   const modNum = String((slide_.moduleIndex ?? 0) + 1).padStart(2, "0");
-  slide.addShape("rect" as any, {
-    x: sideW + 0.3, y: 0.4, w: 3.0, h: 2.8,
-    fill: { color: d.bg, transparency: 100 },
-  });
   slide.addText(modNum, {
-    x: sideW + 0.3, y: 0.4, w: 3.0, h: 2.8,
+    x: sideW + 0.3, y: 0.3, w: 3.2, h: 3.0,
     fontSize: 160, fontFace: d.titleFont, bold: true,
-    color: "D1D5DB",
-    valign: "top",
+    color: "D1D5DB", valign: "top",
   });
 
   // Label
   slide.addText("MÓDULO " + ((slide_.moduleIndex ?? 0) + 1), {
-    x: sideW + 0.5, y: 1.5, w: CW, h: 0.3,
+    x: sideW + 0.5, y: 1.4, w: CW, h: 0.3,
     fontSize: 10, fontFace: d.bodyFont, bold: true,
     color: d.accent, charSpacing: 5,
   });
 
-  // Title
+  // Title — shorter box to leave room for competencies
   slide.addText(san(slide_.title), {
-    x: sideW + 0.5, y: 1.9, w: SLIDE_W - sideW - 1.2, h: 2.2,
-    fontSize: 36, fontFace: d.titleFont, bold: true,
+    x: sideW + 0.5, y: 1.82, w: SLIDE_W - sideW - 1.2, h: 1.7,
+    fontSize: 34, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "top",
     fit: "shrink" as any,
     lineSpacingMultiple: 1.2,
   });
 
-  // Accent line
-  slide.addShape("rect" as any, {
-    x: sideW + 0.5, y: 4.35, w: 2.5, h: 0.04,
-    fill: { color: d.accent },
-  });
+  // Competencies section
+  const competencies = (slide_.competencies || []).slice(0, 3);
+  if (competencies.length > 0) {
+    slide.addShape("rect" as any, {
+      x: sideW + 0.5, y: 3.68, w: 2.2, h: 0.03,
+      fill: { color: d.accent },
+    });
+    slide.addText("O QUE VOCÊ VAI APRENDER", {
+      x: sideW + 0.5, y: 3.78, w: SLIDE_W - sideW - 1.3, h: 0.22,
+      fontSize: 8, fontFace: d.bodyFont, bold: true,
+      color: d.accent, charSpacing: 4,
+    });
+    for (let i = 0; i < competencies.length; i++) {
+      const cy = 4.1 + i * 0.44;
+      slide.addShape("ellipse" as any, {
+        x: sideW + 0.5, y: cy + 0.07, w: 0.13, h: 0.13,
+        fill: { color: d.accent },
+      });
+      slide.addText(san(competencies[i]), {
+        x: sideW + 0.73, y: cy, w: SLIDE_W - sideW - 1.4, h: 0.32,
+        fontSize: 12, fontFace: d.bodyFont,
+        color: "CBD5E1", valign: "middle",
+        fit: "shrink" as any,
+      });
+    }
+  }
 
   footer(slide, d, num, total);
 }
@@ -597,60 +638,250 @@ function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
   const slide = pptx.addSlide();
   bg(slide, d.coverBg);
 
-  // Decoration circles
+  // Decoration circles (top-right)
   for (let i = 0; i < 5; i++) {
     const sz = 1.2 + i * 0.9;
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W - sz * 0.7,
-      y: -sz * 0.3,
+      x: SLIDE_W - sz * 0.7, y: -sz * 0.3,
       w: sz, h: sz,
       fill: { color: d.accent, transparency: 85 + i * 2 },
     });
   }
-
-  // Left accent
   slide.addShape("rect" as any, { x: 0, y: 0, w: 0.1, h: SLIDE_H, fill: { color: d.accent } });
 
-  // Icon
+  // Left column: congrats
+  const midX = SLIDE_W * 0.48;
   slide.addText("🎓", {
-    x: ML, y: 1.2, w: 1.2, h: 1.2,
+    x: ML + 0.1, y: 0.9, w: 1.2, h: 1.2,
     fontSize: 52, align: "center", valign: "middle",
   });
-
-  // Headline
   slide.addText("Parabéns!", {
-    x: ML + 1.3, y: 1.3, w: 6.0, h: 0.6,
-    fontSize: 36, fontFace: d.titleFont, bold: true,
+    x: ML + 1.4, y: 1.0, w: midX - ML - 1.6, h: 0.6,
+    fontSize: 34, fontFace: d.titleFont, bold: true,
     color: d.accent,
   });
-
-  slide.addText(`Você concluiu: ${san(slide_.title)}`, {
-    x: ML + 1.3, y: 2.0, w: SLIDE_W - ML - 1.7, h: 0.8,
-    fontSize: 22, fontFace: d.titleFont, bold: true,
+  slide.addText(`Você concluiu:\n${san(slide_.title)}`, {
+    x: ML + 1.4, y: 1.72, w: midX - ML - 1.7, h: 1.2,
+    fontSize: 19, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "top",
+    lineSpacingMultiple: 1.2,
+    fit: "shrink" as any,
+  });
+  slide.addShape("rect" as any, {
+    x: ML + 1.4, y: 3.1, w: 2.4, h: 0.04,
+    fill: { color: d.accent },
+  });
+  slide.addText("Continue praticando e construindo\nprojetos reais com o que aprendeu!", {
+    x: ML + 0.1, y: 3.32, w: midX - ML - 0.2, h: 0.9,
+    fontSize: 12, fontFace: d.bodyFont,
+    color: "94A3B8", valign: "top",
+    lineSpacingMultiple: 1.3,
     fit: "shrink" as any,
   });
 
-  // Divider
+  // Right column: próximos passos checklist panel
+  const rightX = midX + 0.3;
+  const rightW = SLIDE_W - rightX - MR;
+  const panelY = 0.55;
+  const panelH = FOOTER_Y - panelY - 0.05;
+
+  slide.addShape("roundRect" as any, {
+    x: rightX, y: panelY, w: rightW, h: panelH,
+    fill: { color: "FFFFFF", transparency: 6 },
+    line: { color: d.accent, width: 0.5 },
+    rectRadius: 0.12,
+  });
+  // Panel header
+  slide.addShape("roundRect" as any, {
+    x: rightX, y: panelY, w: rightW, h: 0.5,
+    fill: { color: d.accent }, rectRadius: 0.12,
+  });
   slide.addShape("rect" as any, {
-    x: ML + 1.3, y: 3.0, w: 3.0, h: 0.04,
+    x: rightX, y: panelY + 0.25, w: rightW, h: 0.25,
     fill: { color: d.accent },
   });
+  slide.addText("PRÓXIMOS PASSOS", {
+    x: rightX + 0.2, y: panelY + 0.02, w: rightW - 0.4, h: 0.46,
+    fontSize: 11, fontFace: d.bodyFont, bold: true,
+    color: "FFFFFF", charSpacing: 3, valign: "middle",
+  });
 
-  // Next steps
-  const nexts = slide_.items || [
-    "Aplique o conhecimento em projetos reais",
-    "Continue explorando os materiais complementares",
-    "Compartilhe seu aprendizado com outros",
+  const nexts = slide_.items && slide_.items.length > 0 ? slide_.items : [
+    "Aplique o conteúdo em um projeto pessoal",
+    "Explore a documentação oficial das ferramentas",
+    "Construa um portfólio com os projetos deste curso",
+    "Compartilhe seu progresso com a comunidade",
   ];
-  for (let i = 0; i < Math.min(nexts.length, 3); i++) {
-    slide.addText(`• ${san(nexts[i])}`, {
-      x: ML + 1.3, y: 3.2 + i * 0.38, w: SLIDE_W - ML - 2.0, h: 0.36,
-      fontSize: 14, fontFace: d.bodyFont,
-      color: "94A3B8", valign: "middle",
+  const checkItemH = (panelH - 0.5 - 0.15) / Math.min(nexts.length, 4);
+  for (let i = 0; i < Math.min(nexts.length, 4); i++) {
+    const y = panelY + 0.5 + 0.07 + i * checkItemH;
+    // Checkbox
+    slide.addShape("roundRect" as any, {
+      x: rightX + 0.2, y: y + (checkItemH - 0.3) / 2, w: 0.3, h: 0.3,
+      fill: { color: d.accent, transparency: 80 },
+      line: { color: d.accent, width: 0.5 },
+      rectRadius: 0.04,
+    });
+    slide.addText("✓", {
+      x: rightX + 0.2, y: y + (checkItemH - 0.3) / 2, w: 0.3, h: 0.3,
+      fontSize: 11, color: d.accent, align: "center", valign: "middle",
+      fontFace: d.bodyFont, bold: true,
+    });
+    slide.addText(san(nexts[i]), {
+      x: rightX + 0.62, y, w: rightW - 0.77, h: checkItemH,
+      fontSize: 12, fontFace: d.bodyFont,
+      color: "E2E8F0", valign: "middle",
+      lineSpacingMultiple: 1.2,
+      fit: "shrink" as any,
     });
   }
 
+  footer(slide, d, num, total);
+}
+
+// ── CODE ──
+function renderCode(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+  const slide = pptx.addSlide();
+  bg(slide, d.bg);
+  header(slide, d, slide_.label || "CÓDIGO", slide_.title);
+
+  const items = (slide_.items || []).slice(0, 3);
+  const codeText = slide_.code || "";
+  const leftW = CW * 0.42;
+  const rightX = ML + leftW + 0.22;
+  const rightW = CW - leftW - 0.22;
+  const areaY = CONTENT_Y + 0.12;
+  const areaH = FOOTER_Y - areaY - 0.12;
+
+  // Left: description bullets
+  if (items.length > 0) {
+    const gap = 0.1;
+    const itemH = Math.max(0.5, (areaH - gap * (items.length - 1)) / items.length);
+    for (let i = 0; i < items.length; i++) {
+      const y = areaY + i * (itemH + gap);
+      const pal = [d.accent, d.accent2, d.accent3][i % 3];
+      slide.addShape("roundRect" as any, {
+        x: ML, y, w: leftW, h: itemH,
+        fill: { color: d.surface },
+        line: { color: d.border, width: 0.4 },
+        rectRadius: 0.06,
+      });
+      slide.addShape("roundRect" as any, {
+        x: ML, y, w: 0.055, h: itemH,
+        fill: { color: pal }, rectRadius: 0.06,
+      });
+      const dotSz = 0.1;
+      slide.addShape("ellipse" as any, {
+        x: ML + 0.18, y: y + itemH / 2 - dotSz / 2,
+        w: dotSz, h: dotSz,
+        fill: { color: pal },
+      });
+      slide.addText(san(items[i]), {
+        x: ML + 0.36, y: y + 0.05, w: leftW - 0.46, h: itemH - 0.1,
+        fontSize: 13, fontFace: d.bodyFont,
+        color: d.text, valign: "middle",
+        lineSpacingMultiple: 1.2,
+        fit: "shrink" as any,
+      });
+    }
+  }
+
+  // Right: code terminal
+  const termBg = "1E293B";
+  const barH = 0.32;
+  slide.addShape("roundRect" as any, {
+    x: rightX, y: areaY, w: rightW, h: areaH,
+    fill: { color: termBg }, rectRadius: 0.1,
+  });
+  // Title bar
+  slide.addShape("roundRect" as any, {
+    x: rightX, y: areaY, w: rightW, h: barH,
+    fill: { color: "334155" }, rectRadius: 0.1,
+  });
+  slide.addShape("rect" as any, {
+    x: rightX, y: areaY + barH / 2, w: rightW, h: barH / 2,
+    fill: { color: "334155" },
+  });
+  // Traffic light dots
+  const dotColors = ["FF5F57", "FEBC2E", "28C840"];
+  for (let i = 0; i < 3; i++) {
+    slide.addShape("ellipse" as any, {
+      x: rightX + 0.15 + i * 0.22, y: areaY + 0.1,
+      w: 0.12, h: 0.12,
+      fill: { color: dotColors[i] },
+    });
+  }
+  // Language label
+  const lang = slide_.codeLabel || "Python";
+  slide.addText(lang, {
+    x: rightX, y: areaY + 0.06, w: rightW - 0.12, h: 0.2,
+    fontSize: 9, fontFace: d.bodyFont, bold: true,
+    color: "94A3B8", align: "right",
+  });
+  // Code text
+  if (codeText) {
+    slide.addText(sanCode(codeText), {
+      x: rightX + 0.18, y: areaY + barH + 0.12,
+      w: rightW - 0.36, h: areaH - barH - 0.22,
+      fontSize: 11, fontFace: "Courier New",
+      color: "E2E8F0", valign: "top",
+      lineSpacingMultiple: 1.45,
+      fit: "shrink" as any,
+    });
+  }
+
+  footer(slide, d, num, total);
+}
+
+// ── TWOCOL ──
+function renderTwocol(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+  const slide = pptx.addSlide();
+  bg(slide, d.bg);
+  header(slide, d, slide_.label || "", slide_.title);
+
+  const items = (slide_.items || []).slice(0, 8);
+  if (items.length === 0) { footer(slide, d, num, total); return; }
+
+  const half = Math.ceil(items.length / 2);
+  const leftItems = items.slice(0, half);
+  const rightItems = items.slice(half);
+  const colW = (CW - 0.22) / 2;
+
+  const renderCol = (colItems: string[], colX: number) => {
+    const gap = 0.1;
+    const itemH = Math.max(0.48, (CONTENT_H - gap * (colItems.length - 1)) / colItems.length);
+    const fontSize = colItems.length <= 3 ? 15 : 13;
+    for (let i = 0; i < colItems.length; i++) {
+      const y = CONTENT_Y + i * (itemH + gap);
+      const pal = [d.accent, d.accent2, d.accent3][i % 3];
+      slide.addShape("roundRect" as any, {
+        x: colX, y, w: colW, h: itemH,
+        fill: { color: d.surface },
+        line: { color: d.border, width: 0.4 },
+        rectRadius: 0.06,
+      });
+      slide.addShape("roundRect" as any, {
+        x: colX, y, w: 0.055, h: itemH,
+        fill: { color: pal }, rectRadius: 0.06,
+      });
+      const dotSz = 0.1;
+      slide.addShape("ellipse" as any, {
+        x: colX + 0.18, y: y + itemH / 2 - dotSz / 2,
+        w: dotSz, h: dotSz,
+        fill: { color: pal },
+      });
+      slide.addText(san(colItems[i]), {
+        x: colX + 0.36, y: y + 0.05, w: colW - 0.46, h: itemH - 0.1,
+        fontSize, fontFace: d.bodyFont,
+        color: d.text, valign: "middle",
+        lineSpacingMultiple: 1.2,
+        fit: "shrink" as any,
+      });
+    }
+  };
+
+  renderCol(leftItems, ML);
+  renderCol(rightItems, ML + colW + 0.22);
   footer(slide, d, num, total);
 }
 
@@ -714,25 +945,29 @@ ${contentSnippet}
 
 RULES:
 1. Language: ${language}. ALL text in ${language}.
-2. Slides must cover the actual content above — no generic filler like "we will learn..." or "important to understand"
-3. Each slide must have a clear, specific title (max 60 chars) directly from the module topic
-4. Items must be SPECIFIC facts/concepts from the content — not generic introductions
-5. Max ${maxItems} items per slide, each max ${maxItemChars} chars
-6. No numbering in items (no "1.", "2." etc) — just the text
-7. No repetition of the module title in slide titles
+2. Slides must cover the actual content above — no generic filler
+3. Each slide title: max 60 chars, specific to the topic
+4. Items: SPECIFIC facts, max 10 words each, max ${maxItemChars} chars. 1 idea per item. Keep items SHORT.
+5. Max ${maxItems} items per slide
+6. No numbering in items — just the text
+7. No repeating module title in slide titles
 
 LAYOUT RULES:
-- Use "bullets" for: explanations, concepts, lists of facts (most slides)
-- Use "cards" for: comparisons, 2-4 key concepts to highlight side by side
-- Use "takeaways" ONLY for the LAST slide of the module (key takeaways/learnings)
+- "bullets": explanations, concepts, facts (default)
+- "cards": comparisons or exactly 2-4 key concepts side by side
+- "twocol": 6-8 short facts that fit neatly in two columns
+- "code": ANY slide about syntax, functions, methods, loops, conditionals, classes, operators — ALWAYS use "code" for programming constructs. Include a "code" field with real working code (5-15 lines, use \\n for line breaks).
+- "takeaways": ONLY the LAST slide of the module
 
-Return a JSON array of ${nSlides} slide objects:
+Return a JSON array of ${nSlides} objects. For "code" layout include "code" and "codeLabel" fields:
 [
   {
-    "layout": "bullets" | "cards" | "takeaways",
-    "label": "SHORT SECTION LABEL IN CAPS (max 25 chars)",
-    "title": "Specific slide title from module content",
-    "items": ["specific fact or concept", "another specific point", ...]
+    "layout": "bullets"|"cards"|"twocol"|"code"|"takeaways",
+    "label": "SECTION LABEL IN CAPS (max 25 chars)",
+    "title": "Specific slide title",
+    "items": ["short idea max 10 words", ...],
+    "code": "(code layout only) real code with \\n newlines",
+    "codeLabel": "(code layout only) e.g. Python"
   }
 ]
 
@@ -763,12 +998,14 @@ async function generateModuleSlides(
     }
 
     return parsed.map((s: any) => ({
-      layout: (["bullets", "cards", "takeaways"].includes(s.layout) ? s.layout : "bullets") as Layout,
+      layout: (["bullets", "cards", "takeaways", "code", "twocol"].includes(s.layout) ? s.layout : "bullets") as Layout,
       title: String(s.title || mod.title).slice(0, 80),
       label: String(s.label || "CONTEÚDO").slice(0, 25).toUpperCase(),
       items: Array.isArray(s.items)
-        ? s.items.slice(0, 6).map((x: any) => String(x).slice(0, 130))
+        ? s.items.slice(0, 6).map((x: any) => String(x).slice(0, 90))
         : [],
+      code: s.code ? String(s.code).slice(0, 1000) : undefined,
+      codeLabel: s.codeLabel ? String(s.codeLabel).slice(0, 20) : "Python",
       moduleIndex,
     }));
   } catch (e: any) {
@@ -912,6 +1149,29 @@ async function repairPptxPackage(pptxData: Uint8Array): Promise<{ data: Uint8Arr
 // SECTION 6: PIPELINE
 // ═══════════════════════════════════════════════════════════
 
+function extractCompetencies(content: string): string[] {
+  // Try bullet points first
+  const bullets = [...content.matchAll(/^[-*•]\s+(.+)$/gm)]
+    .map(m => m[1].replace(/\*{1,2}/g, "").trim())
+    .filter(b => b.length >= 12 && b.length <= 80)
+    .slice(0, 3);
+  if (bullets.length >= 2) return bullets;
+
+  // Fallback: sub-headings
+  const headings = [...content.matchAll(/^#{2,4}\s+(.+)$/gm)]
+    .map(m => m[1].trim())
+    .filter(h => h.length >= 10 && h.length <= 70)
+    .slice(0, 3);
+  if (headings.length >= 2) return headings;
+
+  // Fallback: first short sentences
+  return content
+    .replace(/#{1,6}\s*/g, "").replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1").replace(/[`_]/g, "")
+    .split(/[.!?\n]+/).map(s => s.trim())
+    .filter(s => s.length >= 12 && s.length <= 70)
+    .slice(0, 3);
+}
+
 async function runPipeline(
   courseTitle: string,
   modules: { title: string; content: string }[],
@@ -953,11 +1213,12 @@ async function runPipeline(
   for (let i = 0; i < modules.length; i++) {
     const cleanTitle = modules[i].title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || modules[i].title;
 
-    // Module cover
+    // Module cover with competencies extracted from content
     renderModuleCover(pptx, {
       layout: "module_cover",
       title: cleanTitle,
       moduleIndex: i,
+      competencies: extractCompetencies(modules[i].content),
     }, design, ++slideNum, totalSlides);
 
     // Content slides
@@ -969,14 +1230,29 @@ async function runPipeline(
         case "takeaways":
           renderTakeaways(pptx, s, design, ++slideNum, totalSlides);
           break;
+        case "code":
+          renderCode(pptx, s, design, ++slideNum, totalSlides);
+          break;
+        case "twocol":
+          renderTwocol(pptx, s, design, ++slideNum, totalSlides);
+          break;
         default:
           renderBullets(pptx, s, design, ++slideNum, totalSlides);
       }
     }
   }
 
-  // Closing
-  renderClosing(pptx, { layout: "closing", title: courseTitle }, design, ++slideNum, totalSlides);
+  // Closing with contextual next steps
+  renderClosing(pptx, {
+    layout: "closing",
+    title: courseTitle,
+    items: [
+      `Aplique o conteúdo de ${san(courseTitle)} em um projeto real`,
+      "Explore a documentação oficial e recursos avançados",
+      "Construa um portfólio com os projetos deste curso",
+      "Compartilhe seu progresso com a comunidade",
+    ],
+  }, design, ++slideNum, totalSlides);
 
   console.log(`[V4] Pipeline complete: ${slideNum} slides`);
   return pptx;
