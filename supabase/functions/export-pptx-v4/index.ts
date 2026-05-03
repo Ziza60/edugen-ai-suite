@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "4.1.1";
+const ENGINE_VERSION = "4.2.0";
 
 // ═══════════════════════════════════════════════════════════
 // XML SAFETY — must run on ALL text before passing to PptxGenJS
@@ -55,7 +55,7 @@ const corsHeaders = {
 // SECTION 1: TYPES
 // ═══════════════════════════════════════════════════════════
 
-type Layout = "cover" | "toc" | "module_cover" | "bullets" | "cards" | "takeaways" | "closing" | "code" | "twocol";
+type Layout = "cover" | "toc" | "module_cover" | "bullets" | "cards" | "takeaways" | "closing" | "code" | "twocol" | "comparison" | "timeline";
 
 interface Slide {
   layout: Layout;
@@ -63,11 +63,26 @@ interface Slide {
   label?: string;
   subtitle?: string;
   items?: string[];
-  code?: string;          // code layout: actual code snippet (preserves \n)
-  codeLabel?: string;     // e.g. "Python"
-  competencies?: string[]; // module_cover: 2-3 "what you'll learn" items
+  code?: string;
+  codeLabel?: string;
+  competencies?: string[];
+  leftHeader?: string;   // comparison: left column title
+  rightHeader?: string;  // comparison: right column title
+  leftItems?: string[];  // comparison: left column items
+  rightItems?: string[]; // comparison: right column items
   moduleIndex?: number;
 }
+
+// ── TYPOGRAPHY CONSTANTS (McKinsey-inspired hierarchy) ──
+const T = {
+  SLIDE_TITLE:   26,  // header title
+  SECTION_LABEL:  9,  // section label (caps, letter-spaced)
+  SUBHEADER:     18,  // card/column headers
+  BODY:          14,  // body text (1–4 items)
+  BODY_SM:       13,  // body text (5 items)
+  CODE:          11,  // monospace code
+  CAPTION:        9,  // footer / footnote
+} as const;
 
 interface Design {
   theme: "light" | "dark";
@@ -195,29 +210,25 @@ function footer(slide: any, d: Design, num: number, total: number) {
 
 // Standard slide header: label + accent line + title
 function header(slide: any, d: Design, label: string, title: string) {
-  // accent line top
   slide.addShape("rect" as any, {
     x: 0, y: 0, w: SLIDE_W, h: 0.06,
     fill: { color: d.accent },
   });
-  // label
   if (label) {
     slide.addText(san(label).toUpperCase(), {
       x: ML, y: 0.18, w: CW, h: 0.22,
-      fontSize: 9, fontFace: d.bodyFont, bold: true,
+      fontSize: T.SECTION_LABEL, fontFace: d.bodyFont, bold: true,
       color: d.accent, charSpacing: 4,
     });
   }
-  // title
   const titleY = label ? 0.44 : 0.22;
   const titleH = label ? 0.82 : 1.0;
   slide.addText(san(title), {
     x: ML, y: titleY, w: CW, h: titleH,
-    fontSize: 28, fontFace: d.titleFont, bold: true,
+    fontSize: T.SLIDE_TITLE, fontFace: d.titleFont, bold: true,
     color: d.text, valign: "middle",
     fit: "shrink" as any,
   });
-  // divider
   slide.addShape("rect" as any, {
     x: ML, y: CONTENT_Y - 0.06, w: CW, h: 0.025,
     fill: { color: d.border },
@@ -890,6 +901,136 @@ function renderTwocol(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, to
   footer(slide, d, num, total);
 }
 
+// ── COMPARISON ── McKinsey-style two-column comparison
+function renderComparison(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+  const slide = pptx.addSlide();
+  bg(slide, d.bg);
+  header(slide, d, slide_.label || "COMPARAÇÃO", slide_.title);
+
+  const lItems = (slide_.leftItems || []).slice(0, 5);
+  const rItems = (slide_.rightItems || []).slice(0, 5);
+  const lHeader = slide_.leftHeader || "A";
+  const rHeader = slide_.rightHeader || "B";
+
+  const colW  = (CW - 0.3) / 2;
+  const areaY = CONTENT_Y + 0.1;
+  const areaH = FOOTER_Y - areaY - 0.1;
+  const hdrH  = 0.46;
+  const maxRows = Math.max(lItems.length, rItems.length, 1);
+  const rowH  = Math.min(0.78, (areaH - hdrH - 0.16) / maxRows);
+
+  const renderCol = (items: string[], x: number, pal: string, colLabel: string) => {
+    // Column header pill
+    slide.addShape("roundRect" as any, {
+      x, y: areaY, w: colW, h: hdrH,
+      fill: { color: pal }, rectRadius: 0.08,
+    });
+    slide.addText(san(colLabel).toUpperCase(), {
+      x: x + 0.12, y: areaY, w: colW - 0.24, h: hdrH,
+      fontSize: T.SUBHEADER - 4, fontFace: d.titleFont, bold: true,
+      color: "FFFFFF", align: "center", valign: "middle",
+    });
+    // Row items
+    for (let i = 0; i < items.length; i++) {
+      const y = areaY + hdrH + 0.08 + i * (rowH + 0.06);
+      slide.addShape("rect" as any, {
+        x, y, w: colW, h: rowH,
+        fill: { color: i % 2 === 0 ? d.surface : d.bg },
+        line: { color: d.border, width: 0.3 },
+      });
+      // Left accent stripe
+      slide.addShape("rect" as any, { x, y, w: 0.04, h: rowH, fill: { color: pal } });
+      slide.addText(san(items[i]), {
+        x: x + 0.14, y: y + 0.04, w: colW - 0.22, h: rowH - 0.08,
+        fontSize: maxRows <= 3 ? T.BODY : T.BODY_SM, fontFace: d.bodyFont,
+        color: d.text, valign: "middle", lineSpacingMultiple: 1.15,
+        fit: "shrink" as any,
+      });
+    }
+  };
+
+  renderCol(lItems, ML, d.accent, lHeader);
+  renderCol(rItems, ML + colW + 0.3, d.accent2, rHeader);
+
+  // Vertical divider between columns
+  slide.addShape("rect" as any, {
+    x: ML + colW + 0.14, y: areaY + 0.06, w: 0.02, h: areaH - 0.12,
+    fill: { color: d.border },
+  });
+
+  footer(slide, d, num, total);
+}
+
+// ── TIMELINE ── Vertical McKinsey-style process steps
+function renderTimeline(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+  const slide = pptx.addSlide();
+  bg(slide, d.bg);
+  header(slide, d, slide_.label || "PROCESSO", slide_.title);
+
+  const items = (slide_.items || []).slice(0, 5);
+  if (items.length === 0) { footer(slide, d, num, total); return; }
+
+  const n       = items.length;
+  const lineX   = ML + 0.3;
+  const lineW   = 0.03;
+  const dotSz   = 0.4;
+  const stepH   = (FOOTER_Y - CONTENT_Y - 0.24) / n;
+  const boxH    = Math.min(0.88, stepH - 0.1);
+  const textX   = lineX + lineW + 0.32;
+  const textW   = SLIDE_W - textX - MR;
+
+  // Vertical spine line
+  slide.addShape("rect" as any, {
+    x: lineX, y: CONTENT_Y + 0.12, w: lineW, h: FOOTER_Y - CONTENT_Y - 0.24,
+    fill: { color: d.accent, transparency: 55 },
+  });
+
+  for (let i = 0; i < n; i++) {
+    const pal   = [d.accent, d.accent2, d.accent3][i % 3];
+    const centerY = CONTENT_Y + 0.12 + i * stepH + stepH / 2;
+
+    // Dot on spine
+    slide.addShape("ellipse" as any, {
+      x: lineX + lineW / 2 - dotSz / 2, y: centerY - dotSz / 2,
+      w: dotSz, h: dotSz,
+      fill: { color: pal },
+    });
+    slide.addText(String(i + 1), {
+      x: lineX + lineW / 2 - dotSz / 2, y: centerY - dotSz / 2,
+      w: dotSz, h: dotSz,
+      fontSize: 13, fontFace: d.titleFont, bold: true,
+      color: "FFFFFF", align: "center", valign: "middle",
+    });
+
+    // Connector tick
+    slide.addShape("rect" as any, {
+      x: lineX + lineW, y: centerY - 0.01, w: 0.28, h: 0.02,
+      fill: { color: pal, transparency: 30 },
+    });
+
+    // Text card
+    slide.addShape("roundRect" as any, {
+      x: textX, y: centerY - boxH / 2, w: textW, h: boxH,
+      fill: { color: d.surface },
+      line: { color: d.border, width: 0.3 },
+      rectRadius: 0.06,
+    });
+    // Left accent stripe
+    slide.addShape("roundRect" as any, {
+      x: textX, y: centerY - boxH / 2, w: 0.055, h: boxH,
+      fill: { color: pal }, rectRadius: 0.06,
+    });
+    slide.addText(san(items[i]), {
+      x: textX + 0.14, y: centerY - boxH / 2 + 0.04, w: textW - 0.22, h: boxH - 0.08,
+      fontSize: n <= 3 ? T.BODY : T.BODY_SM, fontFace: d.bodyFont,
+      color: d.text, valign: "middle", lineSpacingMultiple: 1.2,
+      fit: "shrink" as any,
+    });
+  }
+
+  footer(slide, d, num, total);
+}
+
 // ═══════════════════════════════════════════════════════════
 // SECTION 5: AI GENERATION
 // ═══════════════════════════════════════════════════════════
@@ -960,20 +1101,37 @@ RULES:
 
 LAYOUT RULES:
 - "bullets": explanations, concepts, facts (default)
-- "cards": comparisons or exactly 2-4 key concepts side by side
+- "cards": exactly 2-4 key concepts to highlight side by side
 - "twocol": 6-8 short facts that fit neatly in two columns
 - "code": ANY slide about syntax, functions, methods, loops, conditionals, classes, operators — ALWAYS use "code" for programming constructs. STRICT LIMITS: max ${maxCodeLines} lines of code (use \\n), max 3 items. Show only the most essential snippet.
+- "comparison": side-by-side contrast of TWO concepts (e.g. before/after, pros/cons, A vs B). Requires "leftHeader", "rightHeader", "leftItems" (max 5), "rightItems" (max 5).
+- "timeline": ordered steps, stages, or process flow with 3-5 items. Each item is one step.
 - "takeaways": ONLY the LAST slide of the module
 
-Return a JSON array of ${nSlides} objects. For "code" layout include "code" and "codeLabel" fields:
+Return a JSON array of ${nSlides} objects. Schema by layout:
 [
   {
-    "layout": "bullets"|"cards"|"twocol"|"code"|"takeaways",
+    "layout": "bullets"|"cards"|"twocol"|"takeaways"|"timeline",
     "label": "SECTION LABEL IN CAPS (max 25 chars)",
     "title": "Specific slide title",
-    "items": ["short idea max 10 words", ...],
-    "code": "(code layout only) real code with \\n newlines",
-    "codeLabel": "(code layout only) e.g. Python"
+    "items": ["short idea max 10 words", ...]
+  },
+  {
+    "layout": "code",
+    "label": "LABEL",
+    "title": "Title",
+    "items": ["context bullet", ...],
+    "code": "real code with \\n newlines (max ${maxCodeLines} lines)",
+    "codeLabel": "Python"
+  },
+  {
+    "layout": "comparison",
+    "label": "LABEL",
+    "title": "Title",
+    "leftHeader": "Concept A",
+    "rightHeader": "Concept B",
+    "leftItems": ["item", ...],
+    "rightItems": ["item", ...]
   }
 ]
 
@@ -1003,8 +1161,9 @@ async function generateModuleSlides(
       return fallbackModuleSlides(mod.title, mod.content, moduleIndex, density);
     }
 
+    const VALID_LAYOUTS: Layout[] = ["bullets","cards","takeaways","code","twocol","comparison","timeline"];
     return parsed.map((s: any) => ({
-      layout: (["bullets", "cards", "takeaways", "code", "twocol"].includes(s.layout) ? s.layout : "bullets") as Layout,
+      layout: (VALID_LAYOUTS.includes(s.layout) ? s.layout : "bullets") as Layout,
       title: String(s.title || mod.title).slice(0, 80),
       label: String(s.label || "CONTEÚDO").slice(0, 25).toUpperCase(),
       items: Array.isArray(s.items)
@@ -1012,6 +1171,10 @@ async function generateModuleSlides(
         : [],
       code: s.code ? String(s.code).slice(0, 1000) : undefined,
       codeLabel: s.codeLabel ? String(s.codeLabel).slice(0, 20) : "Python",
+      leftHeader:  s.leftHeader  ? String(s.leftHeader).slice(0, 40)  : undefined,
+      rightHeader: s.rightHeader ? String(s.rightHeader).slice(0, 40) : undefined,
+      leftItems:  Array.isArray(s.leftItems)  ? s.leftItems.slice(0, 5).map((x: any) => String(x).slice(0, 90))  : undefined,
+      rightItems: Array.isArray(s.rightItems) ? s.rightItems.slice(0, 5).map((x: any) => String(x).slice(0, 90)) : undefined,
       moduleIndex,
     }));
   } catch (e: any) {
@@ -1285,6 +1448,12 @@ async function runPipeline(
           break;
         case "twocol":
           renderTwocol(pptx, s, design, ++slideNum, totalSlides);
+          break;
+        case "comparison":
+          renderComparison(pptx, s, design, ++slideNum, totalSlides);
+          break;
+        case "timeline":
+          renderTimeline(pptx, s, design, ++slideNum, totalSlides);
           break;
         default:
           renderBullets(pptx, s, design, ++slideNum, totalSlides);
