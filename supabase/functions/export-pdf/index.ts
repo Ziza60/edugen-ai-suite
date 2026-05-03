@@ -172,6 +172,30 @@ class PdfRenderer {
     if (this.y + needed > MAX_Y) this.addPage();
   }
 
+  /** Estimate minimum height needed after a heading so it never strands alone at the bottom */
+  estimateFollowHeight(lines: string[], fromIdx: number): number {
+    // Skip blank lines
+    let j = fromIdx;
+    while (j < lines.length && !lines[j].trim()) j++;
+    if (j >= lines.length) return 0;
+
+    const t = lines[j].trim();
+    // Table coming up → keep at least 28mm
+    if (t.includes("|")) return 28;
+    // Another heading → keep at least 10mm
+    if (getHeadingLevel(t) > 0) return 10;
+    // Bullet list → estimate first 2 bullets
+    if (t.startsWith("- ") || t.startsWith("* ") || /^\d+\.\s/.test(t)) {
+      this.doc.setFontSize(FONT.BODY);
+      const ls = this.doc.splitTextToSize(sanitizeText(stripMarkdown(t.replace(/^[-*\d.]\s*/, ""))), CONTENT_W - 10);
+      return Math.min(ls.length, 3) * SP.LINE_H + SP.BULLET_GAP + 10;
+    }
+    // Regular paragraph → estimate first line
+    this.doc.setFontSize(FONT.BODY);
+    const ls = this.doc.splitTextToSize(sanitizeText(stripMarkdown(t)), CONTENT_W);
+    return Math.min(ls.length, 3) * SP.LINE_H + 8;
+  }
+
   drawPageChrome() {
     // Subtle left sidebar accent
     this.doc.setFillColor(...C.NAVY);
@@ -207,9 +231,9 @@ class PdfRenderer {
     this.doc.setFillColor(...C.ACCENT);
     this.doc.rect(0, bandH, PAGE_W, 3, "F");
 
-    // Left sidebar stripe on band
-    this.doc.setFillColor(255, 255, 255, 0.08);
-    this.doc.rect(0, 0, 6, bandH, "F");
+    // Lighter stripe inside left edge of band (no alpha — jsPDF doesn't support it)
+    this.doc.setFillColor(45, 58, 110);
+    this.doc.rect(0, 0, 5, bandH, "F");
 
     // Title text (white, inside band)
     const cleanTitle = sanitizeText(title);
@@ -662,9 +686,8 @@ class PdfRenderer {
         }
         skippedFirstH1 = true;
 
-        let nextIdx = i + 1;
-        while (nextIdx < lines.length && !lines[nextIdx].trim()) nextIdx++;
-        this.renderHeading(trimmed, headingLevel === 1 ? 2 : headingLevel);
+        const followH = this.estimateFollowHeight(lines, i + 1);
+        this.renderHeading(trimmed, headingLevel === 1 ? 2 : headingLevel, followH);
         i++;
         continue;
       }
