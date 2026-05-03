@@ -657,6 +657,53 @@ export default function CourseView() {
             </div>
           )}
 
+          {/* ── Portal do Aluno ── */}
+          {isPublished && landing?.slug && (
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border">
+              <div className="flex items-center gap-3">
+                <GraduationCap className="h-5 w-5 text-primary" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Portal do Aluno</span>
+                    <Badge variant="outline" className="text-[10px] border-green-500/40 text-green-600 dark:text-green-400">Público</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Link gratuito — módulos, flashcards, quizzes e certificado
+                  </p>
+                </div>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <code className="hidden sm:block text-xs text-muted-foreground bg-muted/60 px-2 py-1 rounded-md font-mono">
+                  /learn/{landing.slug}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    const url = `${window.location.origin}/learn/${landing.slug}`;
+                    navigator.clipboard.writeText(url);
+                    toast({ title: "Link do portal copiado!", description: url });
+                  }}
+                  data-testid="copy-portal-link"
+                >
+                  <Copy className="h-3 w-3 mr-1.5" />
+                  Copiar link
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => window.open(`/learn/${landing.slug}`, "_blank")}
+                  data-testid="open-portal-link"
+                >
+                  <Link2 className="h-3 w-3 mr-1.5" />
+                  Abrir portal
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* ── Review Panel ── */}
           <ReviewPanel courseId={id!} isPublished={isPublished} />
         </div>
