@@ -177,10 +177,10 @@ export default function Landing() {
       {/* ── EXPORT BAR ── */}
       <div style={{ borderTop: "1px solid rgba(232,227,220,0.05)", borderBottom: "1px solid rgba(232,227,220,0.05)", background: "rgba(232,227,220,0.015)", padding: "1.5rem 0" }}>
         <div className="container mx-auto px-6">
-          <p style={{ fontSize: "0.6875rem", color: "rgba(232,227,220,0.25)", textAlign: "center", textTransform: "uppercase", letterSpacing: "0.2em", marginBottom: "1rem" }}>Exporte para qualquer formato</p>
+          <p style={{ fontSize: "0.6875rem", color: "rgba(232,227,220,0.55)", textAlign: "center", textTransform: "uppercase", letterSpacing: "0.2em", marginBottom: "1rem" }}>Exporte para qualquer formato</p>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "2.5rem" }}>
             {exportFormats.map((f) => (
-              <div key={f.label} style={{ display: "flex", alignItems: "center", gap: "8px", color: "rgba(232,227,220,0.3)", fontSize: "0.875rem" }}>
+              <div key={f.label} style={{ display: "flex", alignItems: "center", gap: "8px", color: "rgba(232,227,220,0.6)", fontSize: "0.875rem" }}>
                 <f.icon className="h-4 w-4" /> {f.label}
               </div>
             ))}
