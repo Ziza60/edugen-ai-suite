@@ -198,7 +198,7 @@ function header(slide: any, d: Design, label: string, title: string) {
     x: ML, y: titleY, w: CW, h: titleH,
     fontSize: 28, fontFace: d.titleFont, bold: true,
     color: d.text, valign: "middle",
-    fit: "shrink" as any, shrinkText: true, minFontSize: 18,
+    fit: "shrink" as any,
   });
   // divider
   slide.addShape("rect" as any, {
@@ -245,7 +245,7 @@ function renderCover(pptx: PptxGenJS, slide_: Slide, d: Design, totalSlides: num
     x: 1.0, y: 1.65, w: SLIDE_W - 1.6, h: 2.4,
     fontSize: 44, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "middle",
-    fit: "shrink" as any, shrinkText: true, minFontSize: 24,
+    fit: "shrink" as any,
     lineSpacingMultiple: 1.15,
   });
 
@@ -300,7 +300,7 @@ function renderTOC(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total
     x: ML, y: 0.66, w: panelW - ML, h: 0.8,
     fontSize: 26, fontFace: d.titleFont, bold: true,
     color: d.text, valign: "top",
-    fit: "shrink" as any, shrinkText: true, minFontSize: 16,
+    fit: "shrink" as any,
   });
 
   // Module list
@@ -330,7 +330,7 @@ function renderTOC(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total
       x: listX + 0.48, y: y + (itemH - 0.3) / 2, w: listW - 0.5, h: 0.3,
       fontSize: 14, fontFace: d.bodyFont,
       color: d.text, valign: "middle",
-      fit: "shrink" as any, shrinkText: true, minFontSize: 10,
+      fit: "shrink" as any,
     });
 
     // Separator
@@ -379,7 +379,7 @@ function renderModuleCover(pptx: PptxGenJS, slide_: Slide, d: Design, num: numbe
     x: sideW + 0.5, y: 1.9, w: SLIDE_W - sideW - 1.2, h: 2.2,
     fontSize: 36, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "top",
-    fit: "shrink" as any, shrinkText: true, minFontSize: 20,
+    fit: "shrink" as any,
     lineSpacingMultiple: 1.2,
   });
 
@@ -439,7 +439,7 @@ function renderBullets(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
       fontSize, fontFace: d.bodyFont,
       color: d.text, valign: "middle",
       lineSpacingMultiple: 1.2,
-      fit: "shrink" as any, shrinkText: true, minFontSize: 10,
+      fit: "shrink" as any,
     });
   }
 
@@ -516,7 +516,7 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
       fontFace: d.bodyFont,
       color: d.text, align: "center", valign: "top",
       lineSpacingMultiple: 1.2,
-      fit: "shrink" as any, shrinkText: true, minFontSize: 10,
+      fit: "shrink" as any,
     });
   }
 
@@ -543,7 +543,7 @@ function renderTakeaways(pptx: PptxGenJS, slide_: Slide, d: Design, num: number,
     x: ML, y: 0.55, w: CW, h: 0.72,
     fontSize: 26, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "middle",
-    fit: "shrink" as any, shrinkText: true, minFontSize: 16,
+    fit: "shrink" as any,
   });
 
   // Items
@@ -585,7 +585,7 @@ function renderTakeaways(pptx: PptxGenJS, slide_: Slide, d: Design, num: number,
       fontSize, fontFace: d.bodyFont,
       color: "F1F5F9", valign: "middle",
       lineSpacingMultiple: 1.2,
-      fit: "shrink" as any, shrinkText: true, minFontSize: 10,
+      fit: "shrink" as any,
     });
   }
 
@@ -628,7 +628,7 @@ function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
     x: ML + 1.3, y: 2.0, w: SLIDE_W - ML - 1.7, h: 0.8,
     fontSize: 22, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "top",
-    fit: "shrink" as any, shrinkText: true, minFontSize: 14,
+    fit: "shrink" as any,
   });
 
   // Divider
@@ -824,7 +824,7 @@ function fallbackModuleSlides(title: string, content: string, moduleIndex: numbe
 // SECTION 5.5: PPTX REPAIR
 // ═══════════════════════════════════════════════════════════
 
-async function repairPptxPackage(pptxData: Uint8Array): Promise<Uint8Array> {
+async function repairPptxPackage(pptxData: Uint8Array): Promise<{ data: Uint8Array; diag: Record<string, unknown> }> {
   const zip = await JSZip.loadAsync(pptxData);
   const allFileNames = Object.keys(zip.files);
 
@@ -874,7 +874,10 @@ async function repairPptxPackage(pptxData: Uint8Array): Promise<Uint8Array> {
 
   const refreshedFileNames = new Set(Object.keys(zip.files));
   const contentTypesFile = zip.file("[Content_Types].xml");
-  if (!contentTypesFile) return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  if (!contentTypesFile) {
+    const earlyOut = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    return { data: earlyOut, diag: { notes_removed: noteFiles.length, early_return: true } };
+  }
 
   const ctXml = await contentTypesFile.async("string");
   const repairedCt = ctXml.replace(/<Override\b[^>]*PartName="([^"]+)"[^>]*\/>/g, (full, partName) => {
@@ -884,12 +887,25 @@ async function repairPptxPackage(pptxData: Uint8Array): Promise<Uint8Array> {
   zip.file("[Content_Types].xml", repairedCt);
 
   const finalFileNames = Object.keys(zip.files);
-  console.log(`[V4-REPAIR] notes_removed=${noteFiles.length} | files_before=${allFileNames.length} | files_after=${finalFileNames.length}`);
-  console.log(`[V4-REPAIR] files: ${finalFileNames.slice(0, 30).join(", ")}`);
-  console.log(`[V4-REPAIR] contentTypes after repair: ${repairedCt.slice(0, 800)}`);
   const out = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
-  console.log(`[V4-REPAIR] output_bytes=${out.byteLength} | magic=${out[0]}_${out[1]}_${out[2]}_${out[3]}`);
-  return out;
+
+  // Validate repaired output
+  const testZip = await JSZip.loadAsync(out);
+  const testFiles = Object.keys(testZip.files).filter(f => !f.endsWith("/"));
+  const slideFiles = testFiles.filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
+  const ctXmlRepaired = await testZip.file("[Content_Types].xml")?.async("string") ?? "";
+
+  return {
+    data: out,
+    diag: {
+      notes_removed:    noteFiles.length,
+      files_before:     allFileNames.length,
+      files_after:      finalFileNames.length,
+      slide_count:      slideFiles.length,
+      has_presentation: !!testZip.file("ppt/presentation.xml"),
+      content_types:    ctXmlRepaired.slice(0, 1500),
+    },
+  };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1065,8 +1081,10 @@ Deno.serve(async (req: Request) => {
     const rawData  = await pptx.write({ outputType: "uint8array" });
     const rawBytes = rawData as Uint8Array;
     console.log(`[V4-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]}`);
-    const pptxData = await repairPptxPackage(rawBytes);
-    console.log(`[V4-WRITE] repaired_bytes=${pptxData.byteLength}`);
+    const repairResult = await repairPptxPackage(rawBytes);
+    const pptxData = repairResult.data;
+    const repairDiag = repairResult.diag;
+    console.log(`[V4-WRITE] repaired_bytes=${pptxData.byteLength} slides=${repairDiag.slide_count}`);
 
     const dateStr  = new Date().toISOString().slice(0, 10);
     const ts       = Math.floor(Date.now() / 1000);
@@ -1100,9 +1118,6 @@ Deno.serve(async (req: Request) => {
       });
     } catch { /* non-critical */ }
 
-    // Also return raw (pre-repair) file as base64 for debugging — remove in production
-    const rawB64 = btoa(String.fromCharCode(...rawBytes.slice(0, 200)));
-
     return new Response(
       JSON.stringify({
         url:            signedUrl.signedUrl,
@@ -1112,7 +1127,7 @@ Deno.serve(async (req: Request) => {
         _diag: {
           raw_bytes:      rawBytes.byteLength,
           repaired_bytes: pptxData.byteLength,
-          raw_magic_b64:  rawB64.slice(0, 40),
+          ...repairDiag,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
