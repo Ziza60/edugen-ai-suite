@@ -58,8 +58,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ── CACHE CHECK ──
-    const cacheKey = await hashInput(`enhance:${action}:${language}:${text}`);
+    // ── CACHE CHECK ── v2 prefix invalidates old 800-token truncated results
+    const cacheKey = await hashInput(`enhance:v2:${action}:${language}:${text}`);
     const { data: cached } = await serviceClient
       .from("ai_cache")
       .select("response_text")
@@ -100,6 +100,21 @@ Deno.serve(async (req: Request) => {
 
     const systemPrompt = systemPrompts[action] || systemPrompts.improve;
 
+    // Content-generating actions need more tokens than editing actions
+    const maxTokensByAction: Record<string, number> = {
+      improve:    1200,
+      simplify:   1000,
+      expand:     1500,
+      fix:        1000,
+      shorten:     800,
+      deepen:     1800,
+      example:    2000,
+      practical:  2500,
+      activity:   2500,
+      regenerate: 3000,
+    };
+    const maxTokens = maxTokensByAction[action] ?? 1200;
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -113,7 +128,7 @@ Deno.serve(async (req: Request) => {
           { role: "user", content: text },
         ],
         stream: false,
-        max_tokens: 800,
+        max_tokens: maxTokens,
       }),
     });
 
@@ -150,7 +165,7 @@ Deno.serve(async (req: Request) => {
         action_type: action,
         prompt_preview: text.substring(0, 100),
         response_text: enhanced,
-      });
+      }).then(() => {}).catch(() => {}); // non-blocking cache write
     }
 
     return new Response(JSON.stringify({ enhanced }), {
