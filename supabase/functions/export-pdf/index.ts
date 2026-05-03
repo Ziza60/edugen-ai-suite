@@ -93,7 +93,7 @@ function detectBlock(text: string): BlockType {
   if (/^exemplo\s+pr[áa]tico/.test(lower) || /^na\s+pr[áa]tica/.test(lower)) return "example";
   if (/^pare\s+um\s+momento/.test(lower) || /^reflita/.test(lower) || /^checkpoint/.test(lower)) return "reflection";
   if (/^resumo/.test(lower) || /^em\s+resumo/.test(lower) || /^conclus[ãa]o/.test(lower)) return "summary";
-  if (/^key\s+takeaway/.test(lower) || /^pontos[- ]chave/.test(lower)) return "takeaways";
+  if (/^key\s+takeaway/.test(lower) || /^pontos[- ]chave/.test(lower) || /^principais\s+aprendizados/.test(lower)) return "takeaways";
   if (/^dica/.test(lower) || /^importante/.test(lower) || /^aten[çc][ãa]o/.test(lower)) return "tip";
   if (/^nota/.test(lower) || /^lembre[- ]se/.test(lower) || /^desafio/.test(lower) || /^atividade/.test(lower)) return "note";
   return null;

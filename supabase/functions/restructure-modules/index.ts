@@ -16,7 +16,7 @@ const REQUIRED_SECTIONS = [
   { emoji: "💡", label: "Exemplo prático" },
   { emoji: "⚠️", label: "Desafios e cuidados" },
   { emoji: "🧾", label: "Resumo do Módulo" },
-  { emoji: "📌", label: "Key Takeaways" },
+  { emoji: "📌", label: "Principais Aprendizados" },
 ];
 
 const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestruture o conteúdo do módulo de curso abaixo aplicando TODAS as regras a seguir. Retorne APENAS o markdown reestruturado, sem explicações.
@@ -46,7 +46,7 @@ const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestr
    - ---
    - ### 🧾 Resumo do Módulo (1 parágrafo conciso)
    - ---
-   - ### 📌 Key Takeaways (mínimo 5, máximo 6 bullets — cada bullet UMA única ideia com verbo no início; PROIBIDO colapsar duas ideias em um bullet com ponto e vírgula ou " e ")
+   - ### 📌 Principais Aprendizados (mínimo 5, máximo 6 bullets — cada bullet UMA única ideia com verbo no início; PROIBIDO colapsar duas ideias em um bullet com ponto e vírgula ou " e ")
 
 3. **Formatação**:
    - Separadores --- entre TODAS as seções
@@ -62,7 +62,7 @@ const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestr
    - A seção 🧩 Modelos/Tipos é OPCIONAL — só crie se o conteúdo já tiver dados comparativos reais
    - Elimine conteúdo redundante
    - Reflexão (💭) SEMPRE após Desafios e ANTES do Resumo
-   - Key Takeaways: mínimo 5 bullets, cada um com UMA ideia acionável iniciando com verbo
+   - Principais Aprendizados: mínimo 5 bullets, cada um com UMA ideia acionável iniciando com verbo
    - Exemplo prático DEVE ter as 4 fases em ordem FIXA: Contexto/Cenário → Desafio → Solução → Resultado
    - Se o exemplo vier com fases embaralhadas, reordene os blocos mantendo os textos originais
 
@@ -151,7 +151,7 @@ function validateModuleMarkdown(content: string, moduleIndex: number, title: str
     keyTakeawaysCount = ktLines.length;
   }
   if (keyTakeawaysCount < 5 || keyTakeawaysCount > 7) {
-    errors.push(`Key Takeaways: ${keyTakeawaysCount} itens (esperado 5-7)`);
+    errors.push(`Principais Aprendizados: ${keyTakeawaysCount} itens (esperado 5-7)`);
   }
 
   // 7. Lists within limit (no list > 7 items)

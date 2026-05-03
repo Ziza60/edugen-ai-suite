@@ -121,12 +121,12 @@ Todo módulo DEVE terminar com:
 ### 🧾 Resumo do Módulo
 [1 parágrafo curto — máximo 3 frases — sintetizando o essencial]
 
-### 📌 Key Takeaways
-- [takeaway 1 — começa com verbo, contém ação específica]
-- [takeaway 2 — começa com verbo, contém ação específica]
-- [takeaway 3 — começa com verbo, contém ação específica]
-- [takeaway 4 — começa com verbo, contém ação específica]
-- [takeaway 5 — começa com verbo, contém ação específica]
+### 📌 Principais Aprendizados
+- [aprendizado 1 — começa com verbo, contém ação específica]
+- [aprendizado 2 — começa com verbo, contém ação específica]
+- [aprendizado 3 — começa com verbo, contém ação específica]
+- [aprendizado 4 — começa com verbo, contém ação específica]
+- [aprendizado 5 — começa com verbo, contém ação específica]
 (mínimo 5, máximo 6 bullets — cada um UMA única ideia, NUNCA duas frases colapsadas com ponto e vírgula ou " e ")
 
 ---
