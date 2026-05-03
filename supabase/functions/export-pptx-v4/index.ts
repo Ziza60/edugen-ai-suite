@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "4.2.1";
+const ENGINE_VERSION = "4.2.2";
 
 // ═══════════════════════════════════════════════════════════
 // XML SAFETY — must run on ALL text before passing to PptxGenJS
@@ -741,7 +741,7 @@ function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
     slide.addText(san(nexts[i]), {
       x: rightX + 0.62, y, w: rightW - 0.77, h: checkItemH,
       fontSize: 12, fontFace: d.bodyFont,
-      color: "E2E8F0", valign: "middle",
+      color: "1E293B", valign: "middle",
       lineSpacingMultiple: 1.2,
       fit: "shrink" as any,
     });
