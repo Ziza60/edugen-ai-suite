@@ -974,11 +974,13 @@ Deno.serve(async (req: Request) => {
       .from("course-exports").createSignedUrl(fileName, 3600);
     if (signErr) throw signErr;
 
-    await serviceClient.from("usage_events").insert({
-      user_id: userId,
-      event_type: "COURSE_EXPORTED_PPTX_V4",
-      metadata: { course_id, modules: moduleData.length },
-    }).catch(() => {});
+    try {
+      await serviceClient.from("usage_events").insert({
+        user_id: userId,
+        event_type: "COURSE_EXPORTED_PPTX_V4",
+        metadata: { course_id, modules: moduleData.length },
+      });
+    } catch { /* non-critical */ }
 
     return new Response(
       JSON.stringify({
