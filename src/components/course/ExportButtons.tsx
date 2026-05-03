@@ -258,6 +258,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 if (res.ok && v4data?.url) {
                   data = v4data;
                   engineUsed = "v4-native";
+                  console.log("[PPTX] v4 diag:", JSON.stringify(v4data._diag));
                 } else {
                   console.warn("[PPTX] v4 failed, falling back to v3:", v4data?.error || res.status);
                   toast({ title: "v4 indisponível, usando v3", description: v4data?.error || "", duration: 4000 });

@@ -223,8 +223,7 @@ function renderCover(pptx: PptxGenJS, slide_: Slide, d: Design, totalSlides: num
   });
   slide.addShape("rect" as any, {
     x: 0.12, y: 0, w: 0.06, h: SLIDE_H,
-    fill: { color: d.accent2 },
-    transparency: 60,
+    fill: { color: d.accent2, transparency: 60 },
   });
 
   // Course type badge
@@ -270,8 +269,7 @@ function renderCover(pptx: PptxGenJS, slide_: Slide, d: Design, totalSlides: num
       x: SLIDE_W - sz - 0.3,
       y: SLIDE_H - sz - 0.2,
       w: sz, h: sz,
-      fill: { color: d.accent },
-      transparency: 82 + i * 4,
+      fill: { color: d.accent, transparency: 82 + i * 4 },
     });
   }
 }
@@ -358,10 +356,14 @@ function renderModuleCover(pptx: PptxGenJS, slide_: Slide, d: Design, num: numbe
 
   // Module number — large watermark
   const modNum = String((slide_.moduleIndex ?? 0) + 1).padStart(2, "0");
+  slide.addShape("rect" as any, {
+    x: sideW + 0.3, y: 0.4, w: 3.0, h: 2.8,
+    fill: { color: d.bg, transparency: 100 },
+  });
   slide.addText(modNum, {
     x: sideW + 0.3, y: 0.4, w: 3.0, h: 2.8,
     fontSize: 160, fontFace: d.titleFont, bold: true,
-    color: d.accent, transparency: 88,
+    color: "D1D5DB",
     valign: "top",
   });
 
@@ -469,7 +471,7 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
     // Shadow
     slide.addShape("roundRect" as any, {
       x: x + 0.03, y: y + 0.04, w: cardW, h: cardH,
-      fill: { color: "000000" }, transparency: 88,
+      fill: { color: "000000", transparency: 88 },
       rectRadius: 0.1,
     });
 
@@ -558,7 +560,7 @@ function renderTakeaways(pptx: PptxGenJS, slide_: Slide, d: Design, num: number,
     // Row bg
     slide.addShape("roundRect" as any, {
       x: ML, y, w: CW, h: itemH,
-      fill: { color: "FFFFFF" }, transparency: 91,
+      fill: { color: "FFFFFF", transparency: 91 },
       rectRadius: 0.07,
     });
 
@@ -602,8 +604,7 @@ function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
       x: SLIDE_W - sz * 0.7,
       y: -sz * 0.3,
       w: sz, h: sz,
-      fill: { color: d.accent },
-      transparency: 85 + i * 2,
+      fill: { color: d.accent, transparency: 85 + i * 2 },
     });
   }
 
@@ -1065,6 +1066,7 @@ Deno.serve(async (req: Request) => {
     const rawBytes = rawData as Uint8Array;
     console.log(`[V4-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]}`);
     const pptxData = await repairPptxPackage(rawBytes);
+    console.log(`[V4-WRITE] repaired_bytes=${pptxData.byteLength}`);
 
     const dateStr  = new Date().toISOString().slice(0, 10);
     const ts       = Math.floor(Date.now() / 1000);
@@ -1098,13 +1100,20 @@ Deno.serve(async (req: Request) => {
       });
     } catch { /* non-critical */ }
 
+    // Also return raw (pre-repair) file as base64 for debugging — remove in production
+    const rawB64 = btoa(String.fromCharCode(...rawBytes.slice(0, 200)));
+
     return new Response(
       JSON.stringify({
         url:            signedUrl.signedUrl,
         version:        "v4",
         engine_version: ENGINE_VERSION,
         slide_count:    moduleData.length * (density === "compact" ? 5 : density === "detailed" ? 8 : 6) + 3,
-        _diag: { raw_bytes: rawBytes.byteLength, repaired_bytes: pptxData.byteLength },
+        _diag: {
+          raw_bytes:      rawBytes.byteLength,
+          repaired_bytes: pptxData.byteLength,
+          raw_magic_b64:  rawB64.slice(0, 40),
+        },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
