@@ -15,9 +15,11 @@ src/                          # React frontend
   pages/                      # Route pages
 
 supabase/functions/           # Supabase Edge Functions (Deno)
-  export-pptx/index.ts        # PPTX exporter v1 (7888 lines, production)
-  export-pptx-v2/index.ts     # PPTX exporter v2 (~5173 lines, v2.8.1)
-  export-pptx-v3/index.ts     # PPTX exporter v3 (~2284 lines, v3.4.1, DEFAULT)
+  export-pptx/index.ts        # PPTX exporter v1 (legacy)
+  export-pptx-v2/index.ts     # PPTX exporter v2 (legacy)
+  export-pptx-v3/index.ts     # PPTX exporter v3 (v4.0.0-COMMERCIAL, DEFAULT native engine)
+  export-pptx-2slides/        # PPTX via 2Slides AI API (v1.0.0-2SLIDES) — premium design
+  export-pptx-v3-magicslides/ # PPTX via MagicSlides API (legacy, requires paid credits)
   generate-course/            # AI course generation
   export-pdf/                 # PDF export
   export-scorm/               # SCORM export

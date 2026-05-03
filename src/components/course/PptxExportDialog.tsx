@@ -18,6 +18,8 @@ export interface PptxExportOptions {
   useV2: boolean;
   useV3: boolean;
   useMagicSlides: boolean;
+  use2Slides: boolean;
+  twoSlidesTheme: string;
   courseType: string;
   footerBrand: string | null;
 }
@@ -227,7 +229,9 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [footerBrandValue, setFooterBrandValue]       = useState("EduGenAI");
   const [useV2]                                       = useState(true);
   const [useV3, setUseV3]                             = useState(true);
-  const [useMagicSlides, setUseMagicSlides]           = useState(isPro);
+  const [useMagicSlides, setUseMagicSlides]           = useState(false);
+  const [use2Slides, setUse2Slides]                   = useState(false);
+  const [twoSlidesTheme, setTwoSlidesTheme]           = useState("blue-gradient");
 
   const selectedTpl = VISUAL_TEMPLATES[template] || VISUAL_TEMPLATES.modern;
   const theme = selectedTpl.theme;
@@ -249,7 +253,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useMagicSlides, courseType, footerBrand });
+    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useMagicSlides, use2Slides, twoSlidesTheme, courseType, footerBrand });
   };
 
   return (
@@ -396,31 +400,69 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
             )}
           </div>
 
-          {/* ── MagicSlides Pro toggle ── */}
-          <div className="flex items-center justify-between p-3 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-semibold text-indigo-400">✨ MagicSlides Pro (Beta)</p>
-                <Badge variant="outline" className="text-[10px] px-1 py-0 bg-indigo-500/10 text-indigo-400 border-indigo-500/20">NOVO</Badge>
+          {/* ── 2Slides AI Engine ── */}
+          <div className={`space-y-3 p-3 rounded-xl border transition-colors ${use2Slides ? "border-sky-500/40 bg-sky-500/5" : "border-border bg-muted/30"}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-semibold text-sky-400">⚡ 2Slides AI (Recomendado)</p>
+                  <Badge variant="outline" className="text-[10px] px-1 py-0 bg-sky-500/10 text-sky-400 border-sky-500/20">NOVO</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">Design profissional gerado por IA — templates premium</p>
               </div>
-              <p className="text-xs text-muted-foreground">Motor de design avançado com imagens integradas</p>
+              <Switch
+                checked={use2Slides}
+                onCheckedChange={(v) => { setUse2Slides(v); if (v) setUseV3(false); }}
+                data-testid="switch-use-2slides"
+              />
             </div>
-            <Switch
-              checked={useMagicSlides}
-              onCheckedChange={setUseMagicSlides}
-              disabled={!isPro}
-              data-testid="switch-magic-slides"
-            />
+
+            {use2Slides && (
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs text-muted-foreground">Tema Visual</Label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {[
+                    { key: "blue-gradient",   label: "Azul Gradiente",     desc: "Moderno • Claro",     color: "#3B82F6" },
+                    { key: "blue-modern",     label: "Azul Moderno",       desc: "Limpo • Claro",       color: "#2563EB" },
+                    { key: "dark-pro",        label: "Profissional Dark",  desc: "Elegante • Escuro",   color: "#374151" },
+                    { key: "training-orange", label: "Treinamento",        desc: "Energético • Claro",  color: "#F97316" },
+                  ].map(({ key, label, desc, color }) => (
+                    <button
+                      key={key}
+                      data-testid={`theme-2slides-${key}`}
+                      onClick={() => setTwoSlidesTheme(key)}
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition-all text-xs ${
+                        twoSlidesTheme === key
+                          ? "border-sky-500 bg-sky-500/10"
+                          : "border-border hover:border-sky-500/40"
+                      }`}
+                    >
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      <div>
+                        <p className="font-medium leading-tight">{label}</p>
+                        <p className="text-muted-foreground leading-tight">{desc}</p>
+                      </div>
+                      {twoSlidesTheme === key && <Check className="h-3 w-3 text-sky-400 ml-auto shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground pt-0.5 pl-0.5">
+                  💡 10 créditos por slide — novo signup inclui 880 créditos grátis
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* ── V3 AI Generation toggle ── */}
-          <div className="flex items-center justify-between px-1">
-            <div>
-              <p className="text-sm font-medium">Geração de slides EduGen v3</p>
-              <p className="text-xs text-muted-foreground">Motor nativo de alta precisão pedagógica</p>
+          {/* ── V3 AI Generation toggle (fallback/native) ── */}
+          {!use2Slides && (
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <p className="text-sm font-medium">Geração de slides EduGen v3</p>
+                <p className="text-xs text-muted-foreground">Motor nativo de alta precisão pedagógica</p>
+              </div>
+              <Switch checked={useV3} onCheckedChange={setUseV3} data-testid="switch-use-v3" />
             </div>
-            <Switch checked={useV3} onCheckedChange={setUseV3} disabled={useMagicSlides} data-testid="switch-use-v3" />
-          </div>
+          )}
 
           {/* ── Compatibility note ── */}
           <div className="rounded-md border border-border bg-muted/50 p-3">

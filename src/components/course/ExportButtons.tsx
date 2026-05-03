@@ -126,51 +126,50 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               let data: any = null;
               let engineUsed = "v3-native";
 
-              // ── MAGICSLIDES PRO (Try first if enabled) ──
-              if (options.useMagicSlides) {
-                console.log("[PPTX] Attempting MagicSlides Pro export...");
+              // ── 2SLIDES AI ENGINE (Try first if enabled) ──
+              if (options.use2Slides) {
+                console.log("[PPTX] Attempting 2Slides AI export... theme:", options.twoSlidesTheme);
                 try {
-                  const magicRes = await supabase.functions.invoke("export-pptx-v3-magicslides", {
-                    body: { 
-                      course_id: courseId, 
-                      template: options.template,
-                      language: "Português (Brasil)" // Default or from context
+                  const res2s = await supabase.functions.invoke("export-pptx-2slides", {
+                    body: {
+                      course_id:   courseId,
+                      theme_key:   options.twoSlidesTheme || "blue-gradient",
+                      language:    "Portuguese",
                     },
                   });
 
-                  if (magicRes.data?.url && !magicRes.error) {
-                    data = magicRes.data;
-                    engineUsed = "magicslides";
-                    console.log("[PPTX] MagicSlides Pro successful!");
+                  if (res2s.data?.url && !res2s.error) {
+                    data = res2s.data;
+                    engineUsed = "2slides";
+                    console.log("[PPTX] 2Slides AI successful! Slides:", res2s.data.slide_count);
                   } else {
-                    const errCode = magicRes.data?.error || magicRes.error?.message || "";
-                    console.warn("[PPTX] MagicSlides failed:", errCode);
-                    if (errCode === "MAGICSLIDES_NO_CREDITS") {
+                    const errCode = res2s.data?.error || res2s.error?.message || "";
+                    console.warn("[PPTX] 2Slides failed:", errCode);
+                    if (errCode === "TWOSLIDES_NO_CREDITS") {
                       toast({
-                        title: "MagicSlides: créditos insuficientes",
-                        description: "Faça upgrade em magicslides.app/pricing. Usando motor EduGen v3 como fallback.",
-                        duration: 6000,
-                      });
-                    } else if (errCode === "MAGICSLIDES_AUTH_FAILED") {
-                      toast({
-                        title: "MagicSlides: credenciais inválidas",
-                        description: "Verifique o Access ID em magicslides.app → Dashboard → Settings. Usando EduGen v3.",
+                        title: "2Slides: créditos insuficientes",
+                        description: "Recarregue créditos em 2slides.com/pricing. Usando EduGen v3 como fallback.",
                         duration: 6000,
                       });
                     } else {
-                      toast({ 
-                        title: "MagicSlides (Beta) indisponível", 
+                      toast({
+                        title: "2Slides AI indisponível",
                         description: "Usando motor nativo EduGen v3 como fallback automático.",
                         duration: 4000,
                       });
                     }
                   }
-                } catch (magicErr) {
-                  console.error("[PPTX] MagicSlides crash:", magicErr);
+                } catch (err2s) {
+                  console.error("[PPTX] 2Slides crash:", err2s);
+                  toast({
+                    title: "2Slides AI indisponível",
+                    description: "Usando motor nativo EduGen v3 como fallback.",
+                    duration: 4000,
+                  });
                 }
               }
 
-              // ── NATIVE ENGINE (If MagicSlides failed or wasn't requested) ──
+              // ── NATIVE ENGINE (If 2Slides failed or wasn't requested) ──
               if (!data?.url) {
                 const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx";
                 const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
@@ -252,7 +251,10 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               const blobUrl = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = blobUrl;
-              a.download = formatFileName(courseTitle, engineUsed === "magicslides" ? "PPTX-PRO" : "PPTX", "pptx");
+              const fileLabel =
+                engineUsed === "2slides"     ? "PPTX-2Slides" :
+                engineUsed === "magicslides" ? "PPTX-PRO"     : "PPTX";
+              a.download = formatFileName(courseTitle, fileLabel, "pptx");
               a.rel = "noopener";
               document.body.appendChild(a);
               a.click();
@@ -263,11 +265,19 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 setQualityReport(data.quality_report);
               }
 
+              const toastTitle =
+                engineUsed === "2slides"    ? "⚡ PowerPoint AI gerado!" :
+                engineUsed === "magicslides" ? "✨ PowerPoint Pro gerado!" :
+                "PowerPoint gerado!";
+              const toastDesc =
+                engineUsed === "2slides"    ? `${data.slide_count} slides com design premium 2Slides` :
+                engineUsed === "magicslides" ? "Design premium aplicado com sucesso." :
+                data.quality_report         ? `Score: ${data.quality_report.quality_score}/100` :
+                undefined;
+
               toast({
-                title: engineUsed === "magicslides" ? "PowerPoint Pro gerado!" : "PowerPoint gerado!",
-                description: data.quality_report 
-                  ? `Score: ${data.quality_report.quality_score}/100` 
-                  : (engineUsed === "magicslides" ? "Design premium aplicado com sucesso." : undefined),
+                title: toastTitle,
+                description: toastDesc,
                 action: data.quality_report ? (
                   <Button variant="outline" size="sm" onClick={() => setReportOpen(true)}>
                     Ver Detalhes
