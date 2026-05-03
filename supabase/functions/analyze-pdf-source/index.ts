@@ -13,6 +13,13 @@ const json = (data: unknown, status = 200) =>
     headers: { ...cors, "Content-Type": "application/json" },
   });
 
+// Rate limits: max uploads per hour per plan
+const RATE_LIMITS: Record<string, number> = {
+  free:    3,
+  starter: 15,
+  pro:     50,
+};
+
 function normalizeText(raw: string): string {
   return raw
     .replace(/\n{3,}/g, "\n\n")
@@ -121,6 +128,42 @@ Deno.serve(async (req: Request) => {
     if (claimsError || !claimsData?.claims) return json({ error: "Token inválido" }, 401);
     const userId = claimsData.claims.sub as string;
 
+    // ── Rate limiting ─────────────────────────────────────────────────────────
+    // Fetch plan and last-hour usage in parallel
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    const [planResult, usageResult] = await Promise.all([
+      serviceClient
+        .from("subscriptions")
+        .select("plan")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      serviceClient
+        .from("course_sources")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .gte("created_at", oneHourAgo),
+    ]);
+
+    const plan: string = planResult.data?.plan ?? "free";
+    const maxPerHour = RATE_LIMITS[plan] ?? RATE_LIMITS.free;
+    const usedThisHour = usageResult.count ?? 0;
+
+    console.log(`[analyze-pdf-source] User ${userId} plan=${plan} used=${usedThisHour}/${maxPerHour} this hour`);
+
+    if (usedThisHour >= maxPerHour) {
+      return json(
+        {
+          error: `Limite de ${maxPerHour} análises por hora atingido para o plano ${plan}. Tente novamente mais tarde.`,
+          rateLimited: true,
+          limit: maxPerHour,
+          plan,
+        },
+        429,
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const courseId = formData.get("course_id") as string;
@@ -155,7 +198,6 @@ Deno.serve(async (req: Request) => {
 
     const analysis = await analyzeContent(extractedText, file.name, apiKey);
 
-    // Save file to storage (best-effort — don't fail if it errors)
     const filePath = `${userId}/${courseId}/${Date.now()}-${file.name}`;
     await serviceClient.storage.from("course-sources").upload(filePath, bytes, {
       contentType: file.type || "application/octet-stream",

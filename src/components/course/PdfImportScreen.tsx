@@ -107,6 +107,9 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
 
       clearInterval(interval);
       const result = await res.json();
+      if (res.status === 429) {
+        throw new Error(result.error || `Limite de análises por hora atingido. Tente novamente mais tarde.`);
+      }
       if (!res.ok) throw new Error(result.error || "Erro ao processar o arquivo.");
 
       setAnalysis(result as PdfAnalysis);
