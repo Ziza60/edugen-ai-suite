@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Briefcase, ShoppingCart, Code2, Heart, Shield, Sparkles, ArrowRight, LayoutTemplate, Youtube,
+  Briefcase, ShoppingCart, Code2, Heart, Shield, Sparkles, ArrowRight, LayoutTemplate, Youtube, FileText,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -113,9 +113,10 @@ interface TemplateSelectorProps {
   onSelect: (template: CourseTemplate) => void;
   onSkip: () => void;
   onYouTube?: () => void;
+  onPdf?: () => void;
 }
 
-export function TemplateSelector({ onSelect, onSkip, onYouTube }: TemplateSelectorProps) {
+export function TemplateSelector({ onSelect, onSkip, onYouTube, onPdf }: TemplateSelectorProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   return (
@@ -134,35 +135,59 @@ export function TemplateSelector({ onSelect, onSkip, onYouTube }: TemplateSelect
 
       <div className="max-w-[960px] mx-auto px-6 py-8">
 
-        {/* YouTube CTA banner */}
-        {onYouTube && (
+        {/* Import CTAs */}
+        {(onYouTube || onPdf) && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="mb-6"
+            className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3"
           >
-            <Card
-              className="cursor-pointer border-2 border-red-500/30 hover:border-red-500/60 transition-all duration-200 hover:shadow-lg bg-gradient-to-r from-red-500/5 via-red-500/3 to-transparent overflow-hidden"
-              onClick={onYouTube}
-              data-testid="card-youtube-import"
-            >
-              <CardContent className="p-5 flex items-center gap-5">
-                <div className="h-14 w-14 rounded-2xl bg-red-500/15 flex items-center justify-center shrink-0">
-                  <Youtube className="h-7 w-7 text-red-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <h3 className="font-display text-base font-bold text-foreground">YouTube → Curso</h3>
-                    <Badge className="text-[10px] bg-red-500/15 text-red-600 border-red-500/30 font-bold px-1.5 py-0">NOVO</Badge>
+            {onYouTube && (
+              <Card
+                className="cursor-pointer border-2 border-red-500/30 hover:border-red-500/60 transition-all duration-200 hover:shadow-lg bg-gradient-to-br from-red-500/5 to-transparent overflow-hidden"
+                onClick={onYouTube}
+                data-testid="card-youtube-import"
+              >
+                <CardContent className="p-5 flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-red-500/15 flex items-center justify-center shrink-0">
+                    <Youtube className="h-6 w-6 text-red-500" />
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    Cole o link de qualquer vídeo — a IA extrai a transcrição e cria o curso completo automaticamente.
-                  </p>
-                </div>
-                <ArrowRight className="h-5 w-5 text-red-500 shrink-0" />
-              </CardContent>
-            </Card>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <h3 className="font-display text-sm font-bold text-foreground">YouTube → Curso</h3>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      Cole o link de um vídeo e a IA gera o curso completo.
+                    </p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-red-500 shrink-0" />
+                </CardContent>
+              </Card>
+            )}
+            {onPdf && (
+              <Card
+                className="cursor-pointer border-2 border-blue-500/30 hover:border-blue-500/60 transition-all duration-200 hover:shadow-lg bg-gradient-to-br from-blue-500/5 to-transparent overflow-hidden"
+                onClick={onPdf}
+                data-testid="card-pdf-import"
+              >
+                <CardContent className="p-5 flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-blue-500/15 flex items-center justify-center shrink-0">
+                    <FileText className="h-6 w-6 text-blue-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <h3 className="font-display text-sm font-bold text-foreground">PDF / DOCX → Curso</h3>
+                      <Badge className="text-[10px] bg-blue-500/15 text-blue-600 border-blue-500/30 font-bold px-1.5 py-0">NOVO</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      Faça upload de apostila ou manual — a IA estrutura os módulos.
+                    </p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-blue-500 shrink-0" />
+                </CardContent>
+              </Card>
+            )}
           </motion.div>
         )}
 

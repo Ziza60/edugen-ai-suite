@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { TemplateSelector, CourseTemplate } from "@/components/course/TemplateSelector";
 import { YouTubeImportScreen } from "@/components/course/YouTubeImportScreen";
+import { PdfImportScreen, PdfAnalysis } from "@/components/course/PdfImportScreen";
 
 const STEPS = [
   { label: "Sobre o curso", num: 1 },
@@ -46,6 +47,7 @@ interface UploadedSource {
 export default function CourseWizard() {
   const [showTemplates, setShowTemplates] = useState(true);
   const [showYouTube, setShowYouTube] = useState(false);
+  const [showPdf, setShowPdf] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null);
 
   const { user } = useAuth();
@@ -145,6 +147,25 @@ export default function CourseWizard() {
     setShowYouTube(true);
   };
 
+  const handlePdfSelect = () => {
+    setShowTemplates(false);
+    setShowPdf(true);
+  };
+
+  const handlePdfComplete = (analysis: PdfAnalysis) => {
+    setForm((prev) => ({
+      ...prev,
+      title: analysis.title,
+      theme: analysis.theme,
+      targetAudience: analysis.targetAudience,
+      numModules: Math.min(analysis.suggestedModules, limits.maxModules),
+      language: analysis.detectedLanguage === "en" ? "en" : analysis.detectedLanguage === "es" ? "es" : "pt-BR",
+    }));
+    setUploadedSources([{ id: analysis.source_id, filename: analysis.filename, char_count: analysis.char_count }]);
+    setUseSources(true);
+    setShowPdf(false);
+  };
+
   const handleYouTubeComplete = (analysis: {
     source_id: string;
     filename: string;
@@ -174,6 +195,7 @@ export default function CourseWizard() {
         onSelect={handleTemplateSelect}
         onSkip={handleSkipTemplates}
         onYouTube={handleYouTubeSelect}
+        onPdf={handlePdfSelect}
       />
     );
   }
@@ -184,6 +206,16 @@ export default function CourseWizard() {
         tempCourseId={tempCourseId}
         onBack={() => { setShowYouTube(false); setShowTemplates(true); }}
         onComplete={handleYouTubeComplete}
+      />
+    );
+  }
+
+  if (showPdf) {
+    return (
+      <PdfImportScreen
+        tempCourseId={tempCourseId}
+        onBack={() => { setShowPdf(false); setShowTemplates(true); }}
+        onComplete={handlePdfComplete}
       />
     );
   }
