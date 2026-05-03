@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "4.1.0";
+const ENGINE_VERSION = "4.1.1";
 
 // ═══════════════════════════════════════════════════════════
 // XML SAFETY — must run on ALL text before passing to PptxGenJS
@@ -439,7 +439,7 @@ function renderBullets(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
   bg(slide, d.bg);
   header(slide, d, slide_.label || "", slide_.title);
 
-  const items = (slide_.items || []).slice(0, 6);
+  const items = (slide_.items || []).slice(0, 5);
   if (items.length === 0) { footer(slide, d, num, total); return; }
 
   const gap = 0.1;
@@ -746,7 +746,12 @@ function renderCode(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tota
   header(slide, d, slide_.label || "CÓDIGO", slide_.title);
 
   const items = (slide_.items || []).slice(0, 3);
-  const codeText = slide_.code || "";
+  // Hard cap: truncate to CODE_MAX_LINES regardless of AI output
+  const rawCode = slide_.code || "";
+  const codeLines = rawCode.split("\n");
+  const codeText = codeLines.length > CODE_MAX_LINES
+    ? codeLines.slice(0, CODE_MAX_LINES).join("\n") + "\n# ..."
+    : rawCode;
   const leftW = CW * 0.42;
   const rightX = ML + leftW + 0.22;
   const rightW = CW - leftW - 0.22;
@@ -922,7 +927,8 @@ function buildPrompt(
 ): string {
   const nSlides = density === "compact" ? 4 : density === "detailed" ? 7 : 5;
   const maxItems = density === "compact" ? 4 : density === "detailed" ? 6 : 5;
-  const maxItemChars = 120;
+  const maxItemChars = 80;
+  const maxCodeLines = 10;
 
   // Extract key content snippets to guide AI
   const contentSnippet = moduleContent
@@ -956,7 +962,7 @@ LAYOUT RULES:
 - "bullets": explanations, concepts, facts (default)
 - "cards": comparisons or exactly 2-4 key concepts side by side
 - "twocol": 6-8 short facts that fit neatly in two columns
-- "code": ANY slide about syntax, functions, methods, loops, conditionals, classes, operators — ALWAYS use "code" for programming constructs. Include a "code" field with real working code (5-15 lines, use \\n for line breaks).
+- "code": ANY slide about syntax, functions, methods, loops, conditionals, classes, operators — ALWAYS use "code" for programming constructs. STRICT LIMITS: max ${maxCodeLines} lines of code (use \\n), max 3 items. Show only the most essential snippet.
 - "takeaways": ONLY the LAST slide of the module
 
 Return a JSON array of ${nSlides} objects. For "code" layout include "code" and "codeLabel" fields:
@@ -1149,6 +1155,48 @@ async function repairPptxPackage(pptxData: Uint8Array): Promise<{ data: Uint8Arr
 // SECTION 6: PIPELINE
 // ═══════════════════════════════════════════════════════════
 
+// ── OVERFLOW GUARD ──
+// If a code slide has too many items OR too many code lines → split into
+// Slide A (bullets explanation) + Slide B (code with minimal context)
+const CODE_MAX_LINES = 12;
+const CODE_MAX_ITEMS_WITH_CODE = 3;
+
+function splitOverflowSlides(slides: Slide[]): Slide[] {
+  const out: Slide[] = [];
+  for (const s of slides) {
+    if (s.layout !== "code") { out.push(s); continue; }
+
+    const lines = (s.code || "").split("\n");
+    const items = s.items || [];
+    const needsSplit = items.length > CODE_MAX_ITEMS_WITH_CODE || lines.length > CODE_MAX_LINES;
+
+    if (!needsSplit) { out.push(s); continue; }
+
+    // Slide A — explanation only (bullets)
+    if (items.length > 0) {
+      out.push({
+        layout: "bullets",
+        title: s.title,
+        label: s.label,
+        items: items.slice(0, 5),
+        moduleIndex: s.moduleIndex,
+      });
+    }
+
+    // Slide B — code with max 2 context bullets
+    out.push({
+      layout: "code",
+      title: `${s.title} — Exemplo`,
+      label: s.label,
+      items: items.slice(0, 2),
+      code: lines.slice(0, CODE_MAX_LINES).join("\n"),
+      codeLabel: s.codeLabel,
+      moduleIndex: s.moduleIndex,
+    });
+  }
+  return out;
+}
+
 function extractCompetencies(content: string): string[] {
   // Try bullet points first
   const bullets = [...content.matchAll(/^[-*•]\s+(.+)$/gm)]
@@ -1189,7 +1237,9 @@ async function runPipeline(
   const allModuleSlides: Slide[][] = [];
   for (let i = 0; i < modules.length; i++) {
     console.log(`[V4] Generating slides for module ${i + 1}/${modules.length}: "${modules[i].title}"`);
-    const slides = await generateModuleSlides(courseTitle, modules[i], i, density, language, geminiKey);
+    const rawSlides = await generateModuleSlides(courseTitle, modules[i], i, density, language, geminiKey);
+    const slides = splitOverflowSlides(rawSlides);
+    console.log(`[V4] Module ${i + 1}: ${rawSlides.length} raw → ${slides.length} after split`);
     allModuleSlides.push(slides);
   }
 
