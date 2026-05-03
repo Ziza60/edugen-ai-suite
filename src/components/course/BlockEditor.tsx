@@ -300,45 +300,69 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
     },
   });
 
+  // Actions that generate NEW content to append vs. actions that edit existing content
+  const APPEND_ACTIONS = new Set(["example", "practical", "activity"]);
+
+  const ACTION_LABELS: Record<string, string> = {
+    improve:   "Texto melhorado ✨",
+    fix:       "Erros corrigidos ✨",
+    simplify:  "Texto simplificado ✨",
+    shorten:   "Texto encurtado ✨",
+    expand:    "Texto expandido ✨",
+    deepen:    "Conteúdo aprofundado ✨",
+    example:   "Exemplo prático adicionado ✨",
+    practical: "Aula prática gerada ✨",
+    activity:  "Atividade adicionada ✨",
+    regenerate:"Módulo regenerado ✨",
+  };
+
   const handleAIEnhance = useCallback(
     async (action: string) => {
       if (!editor || enhancing) return;
 
       const { from, to } = editor.state.selection;
-      const selectedText =
-        from !== to
-          ? editor.state.doc.textBetween(from, to, "\n")
-          : htmlToMarkdown(editor.getHTML());
+      const hasSelection = from !== to;
 
-      if (!selectedText || selectedText.trim().length < 5) {
-        toast({ title: "Selecione texto para melhorar", variant: "destructive" });
+      // For generate-style actions with no selection, use full content as context
+      // For edit-style actions with no selection, use full content
+      const contextText = hasSelection
+        ? editor.state.doc.textBetween(from, to, "\n")
+        : htmlToMarkdown(editor.getHTML());
+
+      if (!contextText || contextText.trim().length < 5) {
+        toast({ title: "O módulo está vazio — adicione conteúdo antes de usar a IA", variant: "destructive" });
         return;
       }
 
       setEnhancing(true);
       try {
         const { data, error } = await supabase.functions.invoke("enhance-paragraph", {
-          body: { text: selectedText, action },
+          body: { text: contextText, action },
         });
 
         if (error) throw error;
-        if (!data?.enhanced) throw new Error("No enhanced text returned");
+        if (!data?.enhanced) throw new Error("Nenhum conteúdo retornado");
 
-        if (from !== to) {
-          // Replace selection
-          const enhancedHtml = markdownToHtml(data.enhanced);
+        const enhancedHtml = markdownToHtml(data.enhanced);
+
+        if (hasSelection) {
+          // Always replace the selected text
           editor.chain().focus().deleteRange({ from, to }).insertContent(enhancedHtml).run();
+        } else if (APPEND_ACTIONS.has(action)) {
+          // Append at end of document — don't replace existing content
+          editor.chain().focus().insertContentAt(editor.state.doc.content.size, enhancedHtml).run();
+          const newMd = htmlToMarkdown(editor.getHTML());
+          onChange(newMd);
         } else {
-          // Replace entire content
-          const enhancedHtml = markdownToHtml(data.enhanced);
+          // Replace entire content (improve, fix, simplify, etc.)
           editor.commands.setContent(enhancedHtml);
           onChange(data.enhanced);
         }
 
-        toast({ title: "Texto melhorado com IA ✨" });
+        toast({ title: ACTION_LABELS[action] ?? "Pronto ✨" });
       } catch (err: any) {
         toast({
-          title: "Erro ao melhorar texto",
+          title: "Erro ao processar com IA",
           description: err.message,
           variant: "destructive",
         });
