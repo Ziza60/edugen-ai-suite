@@ -12,7 +12,6 @@ import Auth from "@/pages/Auth";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
-import DashboardV2 from "@/pages/DashboardV2";
 import CourseWizard from "@/pages/CourseWizard";
 import CourseView from "@/pages/CourseView";
 import Courses from "@/pages/Courses";
@@ -52,7 +51,6 @@ const App = () => (
                 }
               >
                 <Route path="dashboard" element={<Dashboard />} />
-                <Route path="dashboard-v2" element={<DashboardV2 />} />
                 <Route path="courses" element={<Courses />} />
                 <Route path="courses/new" element={<CourseWizard />} />
                 <Route path="courses/:id" element={<CourseView />} />

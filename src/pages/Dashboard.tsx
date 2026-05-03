@@ -1,19 +1,13 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
 import { useDevMode } from "@/hooks/useDevMode";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Plus, BookOpen, Clock, Sparkles, ArrowRight, Loader2, Trash2,
-  Eye, Pencil, GraduationCap, Bot, BarChart3, PenTool,
-  Zap, TrendingUp, FileText, BrainCircuit, Award,
-  Share2, Download, Filter, ArrowUpDown, Lightbulb, ExternalLink
+  Plus, Loader2, Trash2, Pencil, GraduationCap, BrainCircuit,
+  Sparkles, Lightbulb, BarChart3, Bot,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -23,88 +17,118 @@ import {
 import { toast } from "sonner";
 import { OnboardingModal, useOnboarding } from "@/components/OnboardingModal";
 
-// ── Hash-based color for thumbnail ──
-const THUMB_COLORS = [
-  "from-rose-500 to-pink-600",
-  "from-violet-500 to-purple-600",
-  "from-blue-500 to-indigo-600",
-  "from-cyan-500 to-teal-600",
-  "from-emerald-500 to-green-600",
-  "from-amber-500 to-orange-600",
-  "from-red-500 to-rose-600",
-  "from-fuchsia-500 to-pink-600",
-  "from-sky-500 to-blue-600",
-  "from-lime-500 to-emerald-600",
+// ── Palette ──────────────────────────────────────────────────────────────────
+const C = {
+  bg:          "#0B0B0F",
+  surface:     "#131318",
+  surfaceUp:   "#1A1A22",
+  surfaceHov:  "#1F1F29",
+  text:        "#EDE8DF",
+  textMuted:   "#7D7870",
+  textFaint:   "#3E3C38",
+  border:      "rgba(255,255,255,0.055)",
+  borderHov:   "rgba(255,255,255,0.11)",
+  accent:      "#DF7C3A",
+  accentGlow:  "rgba(223,124,58,0.13)",
+  accentBorder:"rgba(223,124,58,0.22)",
+  mint:        "#4DCB8D",
+  mintGlow:    "rgba(77,203,141,0.1)",
+  mintBorder:  "rgba(77,203,141,0.22)",
+  red:         "#D95A5A",
+  redGlow:     "rgba(217,90,90,0.1)",
+};
+
+// ── Per-course accent colors (left bar) ──────────────────────────────────────
+const ACCENTS = [
+  "#DF7C3A","#4DCB8D","#7B8FE8","#E8C24A",
+  "#E05A8A","#4AB8E8","#A87BE0","#5BE0B0","#E06060","#60C0E0",
 ];
-
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return Math.abs(hash);
+function hashStr(s: string) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h);
+  return Math.abs(h);
+}
+function accentFor(id: string) { return ACCENTS[hashStr(id) % ACCENTS.length]; }
+function initialsOf(t: string) {
+  return t.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("");
 }
 
-function getThumbColor(id: string): string {
-  return THUMB_COLORS[hashString(id) % THUMB_COLORS.length];
-}
-
-function getInitials(title: string): string {
-  return title
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join("");
-}
-
-// ── Empty state suggestions ──
 const SUGGESTIONS = [
-  { icon: BarChart3, title: "Estratégias de Social Media", desc: "Marketing digital para iniciantes", theme: "marketing" },
-  { icon: Bot, title: "Introdução à Inteligência Artificial", desc: "Conceitos fundamentais de IA e ML", theme: "tecnologia" },
-  { icon: GraduationCap, title: "Metodologias de Ensino Online", desc: "Técnicas para educação a distância", theme: "educação" },
+  { Icon: BarChart3,    title: "Estratégias de Social Media",    desc: "Marketing digital para iniciantes" },
+  { Icon: Bot,          title: "Introdução à IA",                desc: "Conceitos fundamentais de IA e ML" },
+  { Icon: GraduationCap,title: "Metodologias de Ensino Online",  desc: "Técnicas para EAD" },
 ];
 
+const serif: React.CSSProperties = { fontFamily: "'Cormorant Garamond', 'Georgia', serif" };
+const sans:  React.CSSProperties = { fontFamily: "'DM Sans', 'Inter', sans-serif" };
+
+// ── Small icon button ─────────────────────────────────────────────────────────
+function IconBtn({ children, onClick, title, hoverColor }:
+  { children: React.ReactNode; onClick: () => void; title: string; hoverColor: string }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button title={title} onClick={onClick}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{
+        ...sans,
+        width: 32, height: 32, borderRadius: 7,
+        border: `1px solid ${hov ? hoverColor + "50" : C.border}`,
+        background: hov ? hoverColor + "16" : "transparent",
+        color: hov ? hoverColor : C.textMuted,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", transition: "all 0.15s",
+      }}
+    >{children}</button>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user }         = useAuth();
   const { plan, limits } = useSubscription();
-  const { usage } = useMonthlyUsage();
-  const { isDev } = useDevMode();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [deletingCourse, setDeletingCourse] = useState<{ id: string; title: string } | null>(null);
+  const { usage }        = useMonthlyUsage();
+  const { isDev }        = useDevMode();
+  const navigate         = useNavigate();
+  const queryClient      = useQueryClient();
   const { open: onboardingOpen, dismiss: dismissOnboarding } = useOnboarding();
 
-  // Filters & sorting
-  const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published">("all");
-  const [langFilter, setLangFilter] = useState<"all" | string>("all");
-  const [sortBy, setSortBy] = useState<"recent" | "oldest" | "title">("recent");
+  const [deleting,     setDeleting]     = useState<{ id: string; title: string } | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all"|"draft"|"published">("all");
+  const [sortBy,       setSortBy]       = useState<"recent"|"oldest"|"title">("recent");
 
+  // Inject fonts
+  useEffect(() => {
+    const id = "dashboard-fonts";
+    if (!document.getElementById(id)) {
+      const link = document.createElement("link");
+      link.id    = id;
+      link.rel   = "stylesheet";
+      link.href  = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,600;0,700;1,300;1,500&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap";
+      document.head.appendChild(link);
+    }
+  }, []);
+
+  // ── Queries ────────────────────────────────────────────────────────────────
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ["courses", user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("courses")
-        .select("*")
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("courses").select("*")
+        .eq("user_id", user!.id).order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
     enabled: !!user,
   });
 
-  // Fetch landing slugs for all courses (to show portal links on cards)
   const { data: landingSlugs = {} } = useQuery<Record<string, string>>({
     queryKey: ["dashboard-landing-slugs", user?.id],
     queryFn: async () => {
-      const courseIds = courses.map((c: any) => c.id);
-      if (courseIds.length === 0) return {};
+      const ids = courses.map((c: any) => c.id);
+      if (!ids.length) return {};
       const { data } = await (supabase.from("course_landings") as any)
-        .select("course_id, slug")
-        .in("course_id", courseIds);
+        .select("course_id, slug").in("course_id", ids);
       const map: Record<string, string> = {};
-      (data || []).forEach((row: any) => { if (row.slug) map[row.course_id] = row.slug; });
+      (data || []).forEach((r: any) => { if (r.slug) map[r.course_id] = r.slug; });
       return map;
     },
     enabled: courses.length > 0,
@@ -113,560 +137,508 @@ export default function Dashboard() {
   const { data: courseStats = {} } = useQuery({
     queryKey: ["course-stats", user?.id],
     queryFn: async () => {
-      const courseIds = courses.map((c: any) => c.id);
-      if (courseIds.length === 0) return {};
-      const { data: modules } = await supabase
-        .from("course_modules")
-        .select("id, course_id")
-        .in("course_id", courseIds);
-      const stats: Record<string, { modules: number }> = {};
-      courseIds.forEach((id: string) => { stats[id] = { modules: 0 }; });
-      modules?.forEach((m: any) => { if (stats[m.course_id]) stats[m.course_id].modules++; });
-      return stats;
+      const ids = courses.map((c: any) => c.id);
+      if (!ids.length) return {};
+      const { data: mods } = await supabase.from("course_modules")
+        .select("id, course_id").in("course_id", ids);
+      const s: Record<string, number> = {};
+      ids.forEach((id: string) => { s[id] = 0; });
+      mods?.forEach((m: any) => { if (s[m.course_id] !== undefined) s[m.course_id]++; });
+      return s;
     },
     enabled: courses.length > 0,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (courseId: string) => {
-      const { error } = await supabase.from("courses").delete().eq("id", courseId);
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("courses").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["courses", user?.id] });
-      toast.success("Curso excluído com sucesso.");
-      setDeletingCourse(null);
+      toast.success("Curso excluído.");
+      setDeleting(null);
     },
-    onError: () => {
-      toast.error("Erro ao excluir o curso. Tente novamente.");
-    },
+    onError: () => toast.error("Erro ao excluir."),
   });
 
-  // ── Filtered & sorted courses ──
   const filteredCourses = useMemo(() => {
-    let result = [...courses];
-
-    // Status filter
-    if (statusFilter === "draft") result = result.filter((c: any) => c.status === "draft");
-    if (statusFilter === "published") result = result.filter((c: any) => c.status === "published");
-
-    // Language filter
-    if (langFilter !== "all") result = result.filter((c: any) => c.language === langFilter);
-
-    // Sort
-    if (sortBy === "recent") result.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    if (sortBy === "oldest") result.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    if (sortBy === "title") result.sort((a: any, b: any) => a.title.localeCompare(b.title, "pt-BR"));
-
-    return result;
-  }, [courses, statusFilter, langFilter, sortBy]);
-
-  const availableLanguages = useMemo(() => {
-    const langs = new Set(courses.map((c: any) => c.language));
-    return Array.from(langs);
-  }, [courses]);
+    let r = [...courses];
+    if (statusFilter === "draft")     r = r.filter((c: any) => c.status === "draft");
+    if (statusFilter === "published") r = r.filter((c: any) => c.status === "published");
+    if (sortBy === "recent") r.sort((a: any, b: any) => +new Date(b.created_at) - +new Date(a.created_at));
+    if (sortBy === "oldest") r.sort((a: any, b: any) => +new Date(a.created_at) - +new Date(b.created_at));
+    if (sortBy === "title")  r.sort((a: any, b: any) => a.title.localeCompare(b.title, "pt-BR"));
+    return r;
+  }, [courses, statusFilter, sortBy]);
 
   const canCreate = isDev || usage < limits.maxCoursesPerMonth;
-  const usagePercent = Math.min((usage / limits.maxCoursesPerMonth) * 100, 100);
+  const usagePct  = Math.min((usage / limits.maxCoursesPerMonth) * 100, 100);
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen">
-      {/* ═══════════════════ PREVIEW BANNER ═══════════════════ */}
-      <div className="bg-primary/5 border-b border-primary/10 px-6 py-2.5 flex items-center justify-between gap-4">
-        <p className="text-xs text-muted-foreground">
-          🎨 <span className="font-medium text-foreground">Nova versão do dashboard disponível para preview</span>
-        </p>
-        <button
-          onClick={() => navigate("/app/dashboard-v2")}
-          className="text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1 shrink-0 transition-colors"
-        >
-          Ver tela teste →
-        </button>
-      </div>
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, ...sans }}>
 
-      {/* ═══════════════════ HERO HEADER ═══════════════════ */}
-      <div className="bg-gradient-to-br from-primary/8 via-background to-accent/5 border-b border-border">
-        <div className="max-w-6xl mx-auto px-6 lg:px-10 py-8 lg:py-10">
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+      {/* ══════════════════════════════ HERO ══════════════════════════════════ */}
+      <div style={{ borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "52px 40px 36px" }}>
+
+          {/* Plan chip */}
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            fontSize: 10, fontWeight: 600, letterSpacing: "0.14em",
+            textTransform: "uppercase", color: C.accent,
+            background: C.accentGlow, border: `1px solid ${C.accentBorder}`,
+            borderRadius: 5, padding: "4px 10px", marginBottom: 24,
+          }}>
+            <Sparkles size={9} /> Plano {plan.toUpperCase()}
+          </span>
+
+          {/* Title + CTA row */}
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 32, flexWrap: "wrap" }}>
             <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-primary" />
-                </div>
-                <Badge variant={plan === "pro" ? "default" : "secondary"} className="text-xs font-semibold tracking-wide">
-                  PLANO {plan.toUpperCase()}
-                </Badge>
-              </div>
-              <h1 className="font-display text-3xl lg:text-4xl font-bold text-foreground tracking-tight">
-                Dashboard
+              <h1 style={{
+                ...serif,
+                fontSize: "clamp(54px, 6vw, 84px)",
+                fontWeight: 600, lineHeight: 0.92,
+                margin: 0, color: C.text, letterSpacing: "-0.02em",
+              }}>
+                Seus<br />
+                <em style={{ fontStyle: "italic", fontWeight: 300, color: "#A09890" }}>Cursos.</em>
               </h1>
-              <p className="text-muted-foreground mt-2 text-base lg:text-lg max-w-lg">
-                Gerencie, publique e exporte seus cursos criados com IA
+              <p style={{ color: C.textMuted, marginTop: 18, fontSize: 14, maxWidth: 420, lineHeight: 1.6 }}>
+                Gerencie, publique e exporte seus cursos criados com IA.
               </p>
             </div>
+            <NewCourseBtn disabled={!canCreate} onClick={() => canCreate && navigate("/app/courses/new")} />
+          </div>
 
-            <Button
-              onClick={() => canCreate && navigate("/app/courses/new")}
-              disabled={!canCreate}
-              size="lg"
-              className="h-12 px-7 text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
-            >
-              <Plus className="h-5 w-5 mr-2" />
-              Criar novo curso com IA
-            </Button>
+          {/* Stats row */}
+          <div style={{
+            display: "flex", alignItems: "center",
+            marginTop: 40, paddingTop: 28, borderTop: `1px solid ${C.border}`,
+          }}>
+            {[
+              { val: String(courses.length),                    label: "cursos criados"   },
+              { val: `${usage} / ${limits.maxCoursesPerMonth}`, label: "usados este mês"  },
+              { val: plan === "pro" ? "Pro" : plan === "starter" ? "Starter" : "Free", label: "plano atual" },
+            ].map((s, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "stretch" }}>
+                {i > 0 && <div style={{ width: 1, background: C.border, margin: "0 32px" }} />}
+                <div>
+                  <div style={{ ...serif, fontSize: 34, fontWeight: 600, lineHeight: 1, color: C.text }}>
+                    {s.val}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 5, textTransform: "uppercase", letterSpacing: "0.09em" }}>
+                    {s.label}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Usage bar */}
+            <div style={{ flex: 1, marginLeft: 40, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <div style={{ height: 2, background: C.surfaceUp, borderRadius: 2, overflow: "hidden" }}>
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${usagePct}%` }}
+                  transition={{ duration: 0.8, ease: "easeOut" }}
+                  style={{ height: "100%", background: C.accent, borderRadius: 2 }}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 lg:px-10 py-8 space-y-8">
-        {/* ═══════════════════ METRICS ROW ═══════════════════ */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          {/* Card 1 — Plan */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0 }}
-            className="group relative bg-card rounded-2xl border border-border p-6 hover:border-primary/20 transition-colors overflow-hidden"
-          >
-            <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-bl-[4rem] -mr-2 -mt-2" />
-            <div className="relative">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                </div>
-                <span className="text-sm font-medium text-muted-foreground">Plano atual</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-2xl font-display font-bold text-foreground">
-                  {plan === "pro" ? "PRO" : "FREE"}
-                </span>
-                {plan === "free" && (
-                  <button
-                    onClick={() => navigate("/app/planos")}
-                    className="text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
-                  >
-                    Upgrade <ArrowRight className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </motion.div>
+      {/* ══════════════════════════════ BODY ══════════════════════════════════ */}
+      <div style={{ maxWidth: 1080, margin: "0 auto", padding: "36px 40px 80px" }}>
 
-          {/* Card 2 — Monthly usage */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-            className="group relative bg-card rounded-2xl border border-border p-6 hover:border-primary/20 transition-colors overflow-hidden"
-          >
-            <div className="absolute top-0 right-0 w-24 h-24 bg-secondary/5 rounded-bl-[4rem] -mr-2 -mt-2" />
-            <div className="relative">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-8 w-8 rounded-lg bg-secondary/10 flex items-center justify-center">
-                  <Clock className="h-4 w-4 text-secondary" />
-                </div>
-                <span className="text-sm font-medium text-muted-foreground">Uso mensal</span>
-              </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-display font-bold text-foreground">{usage}</span>
-                <span className="text-base text-muted-foreground font-medium">/ {limits.maxCoursesPerMonth} cursos</span>
-              </div>
-              <Progress value={usagePercent} className="mt-3 h-2" />
-            </div>
-          </motion.div>
-
-          {/* Card 3 — Total courses */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.16 }}
-            className="group relative bg-card rounded-2xl border border-border p-6 hover:border-primary/20 transition-colors overflow-hidden"
-          >
-            <div className="absolute top-0 right-0 w-24 h-24 bg-accent/5 rounded-bl-[4rem] -mr-2 -mt-2" />
-            <div className="relative">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-8 w-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                  <BookOpen className="h-4 w-4 text-accent" />
-                </div>
-                <span className="text-sm font-medium text-muted-foreground">Cursos criados</span>
-              </div>
-              <span className="text-2xl font-display font-bold text-foreground">{courses.length}</span>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* ═══════════════════ UPSELL BANNER ═══════════════════ */}
+        {/* Upsell banner */}
         {plan === "free" && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="relative bg-gradient-to-r from-primary/6 via-primary/4 to-accent/6 border border-primary/15 rounded-2xl px-6 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 overflow-hidden"
+            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            style={{
+              background: `linear-gradient(135deg, ${C.accentGlow}, transparent)`,
+              border: `1px solid ${C.accentBorder}`,
+              borderRadius: 10, padding: "18px 22px",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              gap: 16, marginBottom: 32,
+            }}
           >
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,hsl(var(--primary)/0.06),transparent_50%)]" />
-            <div className="relative flex items-start gap-4">
-              <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                <TrendingUp className="h-5 w-5 text-primary" />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                {usage} de {limits.maxCoursesPerMonth} cursos gratuitos usados este mês
               </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Você usou <strong>{usage}</strong> de <strong>{limits.maxCoursesPerMonth}</strong> cursos gratuitos este mês
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  No Pro, crie mais cursos, gere PDFs, exporte PPTX e use imagens com IA.
-                </p>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>
+                No Starter e Pro: mais cursos, exportação PPTX e imagens com IA.
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="relative shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-semibold"
-              onClick={() => navigate("/app/planos")}
-            >
-              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-              Ver plano Pro
-            </Button>
+            <GhostBtn onClick={() => navigate("/app/planos")} color={C.accent}>
+              <Sparkles size={11} /> Ver planos
+            </GhostBtn>
           </motion.div>
         )}
 
-        {/* ═══════════════════ LIMIT REACHED ═══════════════════ */}
+        {/* Limit reached */}
         {!canCreate && plan === "free" && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-destructive/5 border border-destructive/20 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            style={{
+              background: C.redGlow, border: `1px solid rgba(217,90,90,0.2)`,
+              borderRadius: 10, padding: "18px 22px",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              gap: 16, marginBottom: 32,
+            }}
           >
             <div>
-              <h3 className="font-display font-bold text-lg text-foreground">Limite atingido</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Você já criou {limits.maxCoursesPerMonth} cursos gratuitos este mês. Faça upgrade para continuar criando.
-              </p>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Limite atingido</div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>
+                Você já criou {limits.maxCoursesPerMonth} cursos gratuitos este mês. Faça upgrade para continuar.
+              </div>
             </div>
-            <Button onClick={() => navigate("/app/planos")} className="shrink-0">
-              Fazer upgrade <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+            <GhostBtn onClick={() => navigate("/app/planos")} color={C.red}>
+              Fazer upgrade
+            </GhostBtn>
           </motion.div>
         )}
 
-        {/* ═══════════════════ COURSES SECTION ═══════════════════ */}
-        <div>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <div>
-              <h2 className="font-display text-xl lg:text-2xl font-bold text-foreground">Meus cursos</h2>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {courses.length > 0
-                  ? `${courses.length} curso${courses.length !== 1 ? "s" : ""} criado${courses.length !== 1 ? "s" : ""}`
-                  : "Nenhum curso criado ainda"}
-              </p>
-            </div>
-
-            {/* ── Filters & Sort ── */}
-            {courses.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
-                  <SelectTrigger className="h-9 w-[130px] text-xs">
-                    <Filter className="h-3 w-3 mr-1.5 text-muted-foreground" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="draft">Rascunho</SelectItem>
-                    <SelectItem value="published">Publicado</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {availableLanguages.length > 1 && (
-                  <Select value={langFilter} onValueChange={setLangFilter}>
-                    <SelectTrigger className="h-9 w-[120px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Idiomas</SelectItem>
-                      {availableLanguages.map((lang) => (
-                        <SelectItem key={lang} value={lang}>
-                          {lang === "pt-BR" ? "Português" : lang === "en" ? "English" : lang === "es" ? "Español" : lang}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
-                  <SelectTrigger className="h-9 w-[140px] text-xs">
-                    <ArrowUpDown className="h-3 w-3 mr-1.5 text-muted-foreground" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recent">Mais recente</SelectItem>
-                    <SelectItem value="oldest">Mais antigo</SelectItem>
-                    <SelectItem value="title">Título A–Z</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+        {/* Section header + filters */}
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+          <div>
+            <h2 style={{ ...serif, fontSize: 26, fontWeight: 600, color: C.text, margin: 0 }}>
+              Meus cursos
+            </h2>
+            <p style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>
+              {courses.length > 0
+                ? `${courses.length} curso${courses.length !== 1 ? "s" : ""}`
+                : "Nenhum curso ainda"}
+            </p>
           </div>
 
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-3">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <span className="text-sm text-muted-foreground">Carregando cursos…</span>
-            </div>
-          ) : courses.length === 0 ? (
-            /* ── Empty State with contextual suggestions ── */
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="border-2 border-dashed border-border rounded-2xl bg-card/50"
-            >
-              <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-                <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center mb-6">
-                  <BrainCircuit className="h-10 w-10 text-primary" />
-                </div>
-                <h3 className="font-display text-2xl font-bold text-foreground mb-2">
-                  Você ainda não criou nenhum curso
-                </h3>
-                <p className="text-muted-foreground mb-8 max-w-md text-base">
-                  Crie seu primeiro curso com IA em menos de 10 minutos. Módulos, quizzes, flashcards e certificados — tudo automático.
-                </p>
-                <Button onClick={() => navigate("/app/courses/new")} size="lg" className="h-12 px-8 text-base font-semibold shadow-lg shadow-primary/20 mb-10">
-                  <Plus className="h-5 w-5 mr-2" />
-                  Criar primeiro curso
-                </Button>
-
-                {/* ── Contextual suggestions ── */}
-                <div className="w-full max-w-2xl">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Lightbulb className="h-4 w-4 text-primary" />
-                    <p className="text-sm font-semibold text-foreground">Sugestões para começar</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {SUGGESTIONS.map((s) => (
-                      <button
-                        key={s.title}
-                        onClick={() => navigate("/app/courses/new")}
-                        className="group/sug text-left bg-muted/40 hover:bg-primary/5 border border-border/60 hover:border-primary/25 rounded-xl p-4 transition-all"
-                      >
-                        <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-                          <s.icon className="h-4 w-4 text-primary" />
-                        </div>
-                        <p className="text-sm font-semibold text-foreground leading-snug mb-1">{s.title}</p>
-                        <p className="text-xs text-muted-foreground">{s.desc}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          ) : filteredCourses.length === 0 ? (
-            /* ── No results for current filter ── */
-            <div className="text-center py-16">
-              <Filter className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Nenhum curso encontrado com os filtros selecionados.</p>
-              <Button variant="link" size="sm" onClick={() => { setStatusFilter("all"); setLangFilter("all"); }} className="mt-2">
-                Limpar filtros
-              </Button>
-            </div>
-          ) : (
-            /* ── Course Grid ── */
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              <AnimatePresence>
-                {filteredCourses.map((course: any, i: number) => {
-                  const stats = (courseStats as any)[course.id];
-                  const moduleCount = stats?.modules ?? 0;
-                  const isPublished = course.status === "published";
-                  const initials = getInitials(course.title);
-                  const thumbGradient = getThumbColor(course.id);
-                  const portalSlug = isPublished ? (landingSlugs as any)[course.id] : null;
-
-                  return (
-                    <motion.div
-                      key={course.id}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ delay: i * 0.04, duration: 0.3 }}
-                    >
-                      <div className="group relative bg-card rounded-2xl border border-border hover:border-primary/25 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200 overflow-hidden">
-                        {/* ── Thumbnail header ── */}
-                        <div className={`h-24 bg-gradient-to-br ${thumbGradient} relative overflow-hidden`}>
-                          <div className="absolute inset-0 bg-black/10" />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-3xl font-display font-bold text-white/90 tracking-wider select-none">
-                              {initials}
-                            </span>
-                          </div>
-                          {/* Status badge on thumbnail */}
-                          <div className="absolute top-3 right-3">
-                            <Badge
-                              variant={isPublished ? "default" : "outline"}
-                              className={`text-[10px] font-semibold px-2 py-0.5 backdrop-blur-sm ${
-                                isPublished
-                                  ? "bg-white/20 text-white border-white/30 hover:bg-white/30"
-                                  : "bg-black/20 text-white border-white/20 hover:bg-black/30"
-                              }`}
-                            >
-                              {isPublished ? "✓ Publicado" : "Rascunho"}
-                            </Badge>
-                          </div>
-                        </div>
-
-                        <div className="p-5 space-y-3">
-                          {/* Title */}
-                          <h3 className="font-display font-semibold text-[15px] leading-snug text-foreground line-clamp-2">
-                            {course.title}
-                          </h3>
-
-                          {/* Status + progress line */}
-                          <p className="text-xs text-muted-foreground">
-                            {isPublished
-                              ? `Publicado — ${moduleCount} módulo${moduleCount !== 1 ? "s" : ""}`
-                              : `Rascunho — ${moduleCount} módulo${moduleCount !== 1 ? "s" : ""}`}
-                          </p>
-
-                          {/* Metadata chips */}
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {course.include_quiz && (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5">
-                                <BookOpen className="h-3 w-3" /> quizzes
-                              </span>
-                            )}
-                            {course.include_flashcards && (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5">
-                                <BrainCircuit className="h-3 w-3" /> flashcards
-                              </span>
-                            )}
-                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5">
-                              <Award className="h-3 w-3" /> certificado
-                            </span>
-                            <span className="inline-flex items-center text-[11px] text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5 uppercase tracking-wider font-medium">
-                              {course.language}
-                            </span>
-                          </div>
-
-                          {/* Date */}
-                          <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/60">
-                            Criado em {new Date(course.created_at).toLocaleDateString("pt-BR")}
-                          </div>
-
-                          {/* Portal do Aluno — só aparece quando publicado e tem slug */}
-                          {portalSlug && (
-                            <div className="flex items-center gap-2 pt-2 pb-1 border-t border-border/60">
-                              <GraduationCap className="h-3.5 w-3.5 text-primary shrink-0" />
-                              <span className="text-[11px] text-muted-foreground flex-1 truncate font-mono">
-                                /learn/{portalSlug}
-                              </span>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-[11px] px-2 shrink-0"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(`${window.location.origin}/learn/${portalSlug}`);
-                                  toast.success("Link do portal copiado!");
-                                }}
-                                data-testid={`copy-portal-${course.id}`}
-                              >
-                                <Share2 className="h-3 w-3 mr-1" />
-                                Copiar
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-[11px] px-2 shrink-0 text-primary border-primary/20 hover:bg-primary/5"
-                                onClick={() => window.open(`/learn/${portalSlug}`, "_blank")}
-                                data-testid={`open-portal-${course.id}`}
-                              >
-                                <ExternalLink className="h-3 w-3 mr-1" />
-                                Portal
-                              </Button>
-                            </div>
-                          )}
-
-                          {/* Quick actions */}
-                          <div className="flex items-center gap-2 pt-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 text-xs flex-1 font-medium"
-                              onClick={() => navigate(`/app/courses/${course.id}`)}
-                            >
-                              <Pencil className="h-3.5 w-3.5 mr-1" />
-                              Editar
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 text-xs flex-1 font-medium"
-                              onClick={() => navigate(`/app/courses/${course.id}`)}
-                            >
-                              <Download className="h-3.5 w-3.5 mr-1" />
-                              Exportar
-                            </Button>
-                            {isPublished && course.tutor_slug && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(`${window.location.origin}/tutor/${course.tutor_slug}`);
-                                  toast.success("Link copiado!");
-                                }}
-                              >
-                                <Share2 className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive"
-                              onClick={() => setDeletingCourse({ id: course.id, title: course.title })}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
+          {courses.length > 0 && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <NativeSelect value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)}>
+                <option value="all">Todos</option>
+                <option value="draft">Rascunho</option>
+                <option value="published">Publicado</option>
+              </NativeSelect>
+              <NativeSelect value={sortBy} onChange={e => setSortBy(e.target.value as any)}>
+                <option value="recent">Mais recente</option>
+                <option value="oldest">Mais antigo</option>
+                <option value="title">Título A–Z</option>
+              </NativeSelect>
             </div>
           )}
         </div>
+
+        {/* Content states */}
+        {isLoading ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "72px 0", gap: 12 }}>
+            <Loader2 size={26} color={C.accent} style={{ animation: "spin 1s linear infinite" }} />
+            <span style={{ fontSize: 12, color: C.textMuted }}>Carregando cursos…</span>
+          </div>
+
+        ) : courses.length === 0 ? (
+          <EmptyState navigate={navigate} />
+
+        ) : filteredCourses.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "56px 0" }}>
+            <p style={{ fontSize: 13, color: C.textMuted }}>Nenhum curso com os filtros selecionados.</p>
+            <button onClick={() => { setStatusFilter("all"); setSortBy("recent"); }}
+              style={{ ...sans, background: "none", border: "none", color: C.accent, fontSize: 12, cursor: "pointer", marginTop: 8 }}>
+              Limpar filtros
+            </button>
+          </div>
+
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <AnimatePresence>
+              {filteredCourses.map((course: any, i: number) => {
+                const mods        = (courseStats as any)[course.id] ?? 0;
+                const isPublished = course.status === "published";
+                const accent      = accentFor(course.id);
+                const portalSlug  = isPublished ? (landingSlugs as any)[course.id] : null;
+                const dateStr     = new Date(course.created_at).toLocaleDateString("pt-BR", {
+                  day: "2-digit", month: "short", year: "2-digit",
+                });
+                return (
+                  <motion.div key={course.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.97 }}
+                    transition={{ delay: i * 0.025, duration: 0.22 }}
+                  >
+                    <CourseRow
+                      course={course} mods={mods}
+                      isPublished={isPublished} accent={accent}
+                      portalSlug={portalSlug} dateStr={dateStr}
+                      onEdit={() => navigate(`/app/courses/${course.id}`)}
+                      onPortal={() => window.open(`/learn/${portalSlug}`, "_blank")}
+                      onDelete={() => setDeleting({ id: course.id, title: course.title })}
+                    />
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
 
-      {/* ═══════════════════ DELETE DIALOG ═══════════════════ */}
-      <AlertDialog open={!!deletingCourse} onOpenChange={(open) => !open && setDeletingCourse(null)}>
-        <AlertDialogContent>
+      {/* Delete dialog */}
+      <AlertDialog open={!!deleting} onOpenChange={open => !open && setDeleting(null)}>
+        <AlertDialogContent style={{ background: C.surfaceUp, border: `1px solid ${C.border}`, color: C.text, ...sans }}>
           <AlertDialogHeader>
-            <AlertDialogTitle className="font-display">Excluir curso?</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <span className="block">
-                Esta ação é irreversível. O curso <strong>"{deletingCourse?.title}"</strong> e todos os seus materiais serão removidos permanentemente.
-              </span>
+            <AlertDialogTitle style={{ color: C.text, ...serif, fontSize: 22 }}>Excluir curso?</AlertDialogTitle>
+            <AlertDialogDescription style={{ color: C.textMuted }}>
+              Esta ação é irreversível. O curso <strong style={{ color: C.text }}>"{deleting?.title}"</strong> e todos os seus materiais serão removidos permanentemente.
               {plan === "free" && (
-                <span className="block text-warning text-sm font-medium">
-                  ⚠️ Excluir um curso não libera novas criações no seu limite mensal.
+                <span style={{ display: "block", color: "#E8C24A", fontSize: 12, marginTop: 10 }}>
+                  ⚠ Excluir não libera novas criações no limite mensal.
                 </span>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteMutation.isPending}
+              style={{ background: C.surface, border: `1px solid ${C.border}`, color: C.text, ...sans }}>
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deleteMutation.isPending}
-              onClick={() => deletingCourse && deleteMutation.mutate(deletingCourse.id)}
-            >
-              {deleteMutation.isPending ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Excluindo...</>
-              ) : (
-                "Excluir permanentemente"
-              )}
+              onClick={() => deleting && deleteMutation.mutate(deleting.id)}
+              style={{ background: C.red, color: "#fff", border: "none", ...sans }}>
+              {deleteMutation.isPending
+                ? <><Loader2 size={13} style={{ marginRight: 6 }} />Excluindo…</>
+                : "Excluir permanentemente"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
       <OnboardingModal open={onboardingOpen} onDismiss={dismissOnboarding} freeCourses={limits.maxCoursesPerMonth} />
     </div>
+  );
+}
+
+// ═════════════════════════ SUB-COMPONENTS ════════════════════════════════════
+
+function CourseRow({ course, mods, isPublished, accent, portalSlug, dateStr, onEdit, onPortal, onDelete }: {
+  course: any; mods: number; isPublished: boolean; accent: string;
+  portalSlug: string | null; dateStr: string;
+  onEdit: () => void; onPortal: () => void; onDelete: () => void;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{
+        background: hov ? C.surfaceHov : C.surface,
+        border: `1px solid ${hov ? C.borderHov : C.border}`,
+        borderRadius: 10, display: "flex", alignItems: "center",
+        overflow: "hidden", transition: "all 0.17s", cursor: "default",
+      }}
+    >
+      <div style={{ width: 3, alignSelf: "stretch", background: accent, flexShrink: 0 }} />
+
+      <div style={{
+        width: 52, height: 52, borderRadius: 8, flexShrink: 0,
+        background: accent + "18", margin: "0 18px",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <span style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 20, fontWeight: 700, color: accent }}>
+          {initialsOf(course.title)}
+        </span>
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0, padding: "14px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {course.title}
+          </span>
+          <StatusPill published={isPublished} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <Dot label={`${mods} módulo${mods !== 1 ? "s" : ""}`} />
+          {course.include_quiz       && <Dot label="quizzes" />}
+          {course.include_flashcards && <Dot label="flashcards" />}
+          <Dot label="certificado" />
+          <span style={{ fontSize: 10, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            {course.language}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 18px", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, color: C.textFaint, marginRight: 6 }}>{dateStr}</span>
+        {portalSlug && (
+          <IconBtn title="Abrir portal do aluno" onClick={onPortal} hoverColor={C.mint}>
+            <GraduationCap size={13} />
+          </IconBtn>
+        )}
+        <IconBtn title="Editar curso" onClick={onEdit} hoverColor={C.accent}>
+          <Pencil size={13} />
+        </IconBtn>
+        <IconBtn title="Excluir" onClick={onDelete} hoverColor={C.red}>
+          <Trash2 size={13} />
+        </IconBtn>
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({ published }: { published: boolean }) {
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
+      color: published ? C.mint : C.textFaint,
+      background: published ? C.mintGlow : C.surfaceUp,
+      border: `1px solid ${published ? C.mintBorder : C.border}`,
+      borderRadius: 3, padding: "2px 6px", flexShrink: 0,
+    }}>
+      {published ? "Publicado" : "Rascunho"}
+    </span>
+  );
+}
+
+function Dot({ label }: { label: string }) {
+  return (
+    <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: C.textMuted }}>
+      <span style={{ width: 3, height: 3, borderRadius: "50%", background: C.textFaint, display: "inline-block", flexShrink: 0 }} />
+      {label}
+    </span>
+  );
+}
+
+function NewCourseBtn({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button onClick={onClick} disabled={disabled}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{
+        fontFamily: "'DM Sans', 'Inter', sans-serif",
+        display: "inline-flex", alignItems: "center", gap: 10,
+        background: disabled ? C.surfaceUp : hov ? "#F08A48" : C.accent,
+        color: disabled ? C.textFaint : "#fff",
+        border: "none", borderRadius: 9, padding: "13px 26px",
+        fontSize: 14, fontWeight: 600,
+        cursor: disabled ? "not-allowed" : "pointer",
+        boxShadow: disabled ? "none" : hov ? "0 10px 36px rgba(223,124,58,0.38)" : "0 6px 24px rgba(223,124,58,0.28)",
+        transition: "all 0.18s", whiteSpace: "nowrap",
+      }}
+    >
+      <Plus size={17} /> Criar novo curso
+    </button>
+  );
+}
+
+function GhostBtn({ onClick, color, children }: { onClick: () => void; color: string; children: React.ReactNode }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button onClick={onClick}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{
+        fontFamily: "'DM Sans', 'Inter', sans-serif",
+        background: hov ? color + "18" : "transparent",
+        border: `1px solid ${color}40`, color,
+        borderRadius: 6, padding: "7px 14px",
+        fontSize: 11, fontWeight: 600, cursor: "pointer",
+        transition: "all 0.15s",
+        display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
+      }}
+    >{children}</button>
+  );
+}
+
+function NativeSelect({ value, onChange, children }: {
+  value: string; onChange: React.ChangeEventHandler<HTMLSelectElement>; children: React.ReactNode;
+}) {
+  return (
+    <select value={value} onChange={onChange} style={{
+      fontFamily: "'DM Sans', 'Inter', sans-serif",
+      background: C.surfaceUp, border: `1px solid ${C.border}`,
+      color: C.textMuted, borderRadius: 6,
+      padding: "6px 10px", fontSize: 11, cursor: "pointer", outline: "none",
+    }}>
+      {children}
+    </select>
+  );
+}
+
+function EmptyState({ navigate }: { navigate: (path: string) => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+      style={{
+        border: `1px dashed ${C.border}`, borderRadius: 14,
+        background: C.surface, padding: "64px 40px", textAlign: "center",
+      }}
+    >
+      <div style={{
+        width: 68, height: 68, borderRadius: 16, margin: "0 auto 22px",
+        background: `linear-gradient(135deg, ${C.accentGlow}, ${C.mintGlow})`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <BrainCircuit size={30} color={C.accent} />
+      </div>
+      <h3 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 28, fontWeight: 600, color: C.text, margin: "0 0 10px" }}>
+        Nenhum curso ainda
+      </h3>
+      <p style={{ color: C.textMuted, fontSize: 13, maxWidth: 400, margin: "0 auto 28px", lineHeight: 1.65 }}>
+        Crie seu primeiro curso com IA em menos de 10 minutos — módulos, quizzes, flashcards e certificados automáticos.
+      </p>
+      <button
+        onClick={() => navigate("/app/courses/new")}
+        style={{
+          fontFamily: "'DM Sans', 'Inter', sans-serif",
+          background: C.accent, color: "#fff", border: "none",
+          borderRadius: 8, padding: "12px 26px",
+          fontSize: 13, fontWeight: 600, cursor: "pointer",
+          display: "inline-flex", alignItems: "center", gap: 7,
+          boxShadow: "0 8px 24px rgba(223,124,58,0.28)", marginBottom: 44,
+        }}
+      >
+        <Plus size={15} /> Criar primeiro curso
+      </button>
+
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, justifyContent: "center" }}>
+          <Lightbulb size={11} color={C.accent} />
+          <span style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+            Sugestões para começar
+          </span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+          {SUGGESTIONS.map(s => (
+            <SuggestionCard key={s.title} Icon={s.Icon} title={s.title} desc={s.desc}
+              onClick={() => navigate("/app/courses/new")} />
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function SuggestionCard({ Icon, title, desc, onClick }: {
+  Icon: React.ElementType; title: string; desc: string; onClick: () => void;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button onClick={onClick}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{
+        fontFamily: "'DM Sans', 'Inter', sans-serif",
+        background: hov ? C.surfaceHov : C.surfaceUp,
+        border: `1px solid ${hov ? C.borderHov : C.border}`,
+        borderRadius: 9, padding: "14px", textAlign: "left",
+        cursor: "pointer", transition: "all 0.16s",
+      }}
+    >
+      <div style={{ width: 30, height: 30, borderRadius: 7, background: C.accentGlow, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+        <Icon size={13} color={C.accent} />
+      </div>
+      <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text, lineHeight: 1.35, marginBottom: 3 }}>{title}</div>
+      <div style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.4 }}>{desc}</div>
+    </button>
   );
 }
