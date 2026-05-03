@@ -1852,14 +1852,19 @@ module_cover → bullets → grid_cards/process_timeline → example_highlight �
 - sectionLabel em MAIÚSCULAS
 - Idioma: ${language}
 
-## ⛔ FRASES PROIBIDAS NO numbered_takeaways
+## ⛔ FRASES PROIBIDAS NO numbered_takeaways E summary_slide
 NUNCA use estas frases genéricas que aparecem idênticas em TODOS os módulos e destroem a credibilidade do material:
 - "Agora você domina os conceitos fundamentais deste módulo e pode aplicá-los na prática"
+- "Agora você domina os conceitos centrais e pode aplicá-los com confiança em projetos profissionais reais"
 - "Lembre-se de revisar os pontos principais antes de avançar para o próximo módulo"
 - "Você é capaz de explicar estes conceitos com suas próprias palavras e usá-los em projetos reais"
 - "Continue praticando: a maestria vem com a aplicação consistente do conhecimento adquirido"
 - "As ferramentas e padrões apresentados são os mesmos usados pelas maiores empresas de tecnologia do mundo"
 - "O estudo de caso demonstrou que a aplicação correta destes conceitos tem impacto direto"
+- "Você agora domina os fundamentos teóricos e práticos necessários para aplicar este conhecimento"
+- "Você é capaz de identificar o contexto certo para cada abordagem — habilidade que define profissionais sênior"
+- "A partir de hoje, você reconhece os antipadrões e sabe exatamente como evitar os erros que custam caro"
+- "Lembre-se: o diferencial não é saber a teoria, mas saber QUANDO e COMO aplicar cada técnica"
 
 Os takeaways DEVEM mencionar conceitos específicos do Módulo ${moduleIndex + 1}: **"${moduleTitle}"**.
 ✅ CORRETO: "Agora você domina list comprehensions e generators — os recursos que tornam código Python verdadeiramente idiomático e 3x mais legível."
@@ -1879,8 +1884,8 @@ ${moduleContent.substring(0, 6000)}
   {"layout":"bullets","title":"Os Fundamentos que Todo Profissional Precisa Dominar","sectionLabel":"FUNDAMENTOS","items":["Conceito A (contexto real): Por que este conceito é crítico em produção — dado concreto que comprova sua importância no mercado atual.","Mecanismo Central: Como funciona internamente e qual problema resolve que abordagens anteriores não resolviam de forma eficiente.","Caso de Uso Principal: Onde este conceito brilha — empresa/projeto real que o adotou e os resultados obtidos em produção.","Armadilha Clássica: O erro que 8 em 10 iniciantes cometem com este conceito e como evitá-lo definitivamente."]},
   {"layout":"grid_cards","title":"As Ferramentas que o Mercado Usa em Produção","sectionLabel":"FERRAMENTAS","items":["Ferramenta Real A: Adotada por empresas como Netflix e Airbnb — resolve [problema específico] com performance X% superior à alternativa padrão.","Ferramenta Real B: Padrão de mercado para [caso de uso] — integração nativa com os principais frameworks e suporte ativo da comunidade.","Abordagem C: Quando usar e por quê — diferencia profissionais júnior de sênior na escolha da solução correta para cada contexto."]},
   {"layout":"example_highlight","title":"Caso Real: Como a [Empresa] Resolveu [Problema]","sectionLabel":"ESTUDO DE CASO","items":["Contexto: Time de 15 engenheiros em startup de fintech processando 2M de transações/dia com latência crescente e custos fora de controle.","Desafio: Sistema legado em Python síncrono com gargalo de I/O causando 3s de latência média — inaceitável para compliance bancário.","Solução: Migração incremental para arquitetura assíncrona com asyncio + Redis como cache de sessão, mantendo 100% de compatibilidade.","Resultado: Latência reduzida de 3s para 180ms (94% de melhoria), custo de infra reduzido em 40% e zero incidentes em 6 meses."]},
-  {"layout":"summary_slide","title":"Consolidando o Módulo","sectionLabel":"SÍNTESE","items":["Você agora domina os fundamentos teóricos e práticos necessários para aplicar este conhecimento em projetos reais de produção.","As ferramentas e padrões apresentados são os mesmos usados pelas maiores empresas de tecnologia do mundo atualmente.","O estudo de caso demonstrou que a aplicação correta destes conceitos tem impacto direto e mensurável nos resultados de negócio."]},
-  {"layout":"numbered_takeaways","title":"Key Takeaways","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Agora você domina os conceitos centrais e pode aplicá-los com confiança em projetos profissionais reais.","Você é capaz de identificar o contexto certo para cada abordagem — habilidade que define profissionais sênior.","A partir de hoje, você reconhece os antipadrões e sabe exatamente como evitar os erros que custam caro em produção.","Lembre-se: o diferencial não é saber a teoria, mas saber QUANDO e COMO aplicar cada técnica no contexto certo."]}
+  {"layout":"summary_slide","title":"Consolidando o Módulo","sectionLabel":"SÍNTESE","items":["Você agora domina asyncio e a diferença entre concorrência e paralelismo — conhecimento que elimina gargalos de I/O em sistemas reais.","Você sabe quando usar asyncio vs threads vs multiprocessing, escolha que separa engenheiros júnior de sênior em revisões de código.","O estudo de caso mostrou que migrar para arquitetura assíncrona reduziu latência de 3s para 180ms — impacto direto em SLA."]},
+  {"layout":"numbered_takeaways","title":"Principais Aprendizados","sectionLabel":"PRINCIPAIS APRENDIZADOS","items":["Agora você domina asyncio: cria event loops, escreve coroutines com async/await e gerencia tarefas concorrentes sem race conditions.","Você implementa padrões producer-consumer com asyncio.Queue — base de 90% dos sistemas de alta-throughput em Python moderno.","A partir de hoje você identifica quando asyncio supera threads: operações I/O-bound com dezenas de conexões simultâneas.","Você evita o erro clássico de misturar código bloqueante com async, garantindo que nenhum await 'engole' o event loop."]}
 ]
 
 Retorne APENAS o array JSON. Nenhum texto antes ou depois.`;
@@ -2245,16 +2250,16 @@ function buildFallbackSlides(moduleTitle: string, moduleContent: string, moduleI
     }
   }
 
-  // FALLBACK-FIX: Takeaways genéricos de qualidade, NUNCA cópias do conteúdo
+  // Takeaways de fallback referenciam o título do módulo para não serem genéricos
   slides.push({
     layout: "numbered_takeaways",
     title: "Principais Aprendizados",
     sectionLabel: "PRINCIPAIS APRENDIZADOS",
     items: [
-      "Agora você domina os conceitos fundamentais deste módulo e pode aplicá-los na prática.",
-      "Lembre-se de revisar os pontos principais antes de avançar para o próximo módulo.",
-      "Você é capaz de explicar estes conceitos com suas próprias palavras e usá-los em projetos reais.",
-      "Continue praticando: a maestria vem com a aplicação consistente do conhecimento adquirido.",
+      `Você domina os fundamentos de "${moduleTitle}" e pode aplicá-los em projetos reais.`,
+      `Os conceitos de "${moduleTitle}" que você aprendeu são os mesmos usados por profissionais sênior no mercado.`,
+      `Você é capaz de identificar quando e como usar as técnicas de "${moduleTitle}" no contexto certo.`,
+      "A prática consistente consolida o aprendizado — aplique o que aprendeu em um projeto real esta semana.",
     ],
     moduleIndex,
   });
@@ -2476,7 +2481,12 @@ async function generateSlidesForModule(
       const normalized = item.toLowerCase().replace(/[.!?;:]+$/g, "").replace(/\s+/g, " ").trim();
       let isDuplicate = false;
       for (const prev of allPreviousPhrases) {
-        if (normalized === prev || normalized.includes(prev) || prev.includes(normalized)) {
+        // Only flag as duplicate on exact match, or when the takeaway is very short
+        // and is fully contained inside a slide item (not the other way around).
+        // This avoids falsely flagging specific takeaways that merely share topic words.
+        const isExactMatch = normalized === prev;
+        const isShortSubstring = normalized.length < 80 && prev.includes(normalized);
+        if (isExactMatch || isShortSubstring) {
           isDuplicate = true;
           break;
         }
@@ -5151,8 +5161,9 @@ async function runPipeline(
     return out;
   });
 
-  // Count total content slides for footer
-  _globalTotalSlides = splitModulePlans.reduce((sum, plans) => sum + plans.length, 0);
+  // Count total content slides for footer.
+  // +1 accounts for the closing slide which also calls addFooter and increments _globalSlideNumber.
+  _globalTotalSlides = splitModulePlans.reduce((sum, plans) => sum + plans.length, 0) + 1;
 
   // Render all module slides
   for (let mi = 0; mi < splitModulePlans.length; mi++) {
