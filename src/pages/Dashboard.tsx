@@ -171,6 +171,19 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen">
+      {/* ═══════════════════ PREVIEW BANNER ═══════════════════ */}
+      <div className="bg-primary/5 border-b border-primary/10 px-6 py-2.5 flex items-center justify-between gap-4">
+        <p className="text-xs text-muted-foreground">
+          🎨 <span className="font-medium text-foreground">Nova versão do dashboard disponível para preview</span>
+        </p>
+        <button
+          onClick={() => navigate("/app/dashboard-v2")}
+          className="text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1 shrink-0 transition-colors"
+        >
+          Ver tela teste →
+        </button>
+      </div>
+
       {/* ═══════════════════ HERO HEADER ═══════════════════ */}
       <div className="bg-gradient-to-br from-primary/8 via-background to-accent/5 border-b border-border">
         <div className="max-w-6xl mx-auto px-6 lg:px-10 py-8 lg:py-10">

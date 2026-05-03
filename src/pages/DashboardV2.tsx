@@ -180,6 +180,30 @@ export default function DashboardV2() {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, ...sans }}>
 
+      {/* ══════════════════════════════ BACK BANNER ═══════════════════════════ */}
+      <div style={{
+        background: "rgba(255,255,255,0.03)",
+        borderBottom: `1px solid ${C.border}`,
+        padding: "10px 40px",
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+      }}>
+        <span style={{ fontSize: 11, color: C.textMuted }}>
+          🧪 Você está visualizando a <strong style={{ color: C.text }}>tela teste</strong> — ainda não substituiu o dashboard atual
+        </span>
+        <button onClick={() => navigate("/app/dashboard")} style={{
+          ...sans,
+          background: "transparent", border: `1px solid ${C.border}`,
+          color: C.textMuted, borderRadius: 5,
+          padding: "4px 12px", fontSize: 11, cursor: "pointer",
+          transition: "all 0.15s",
+        }}
+          onMouseEnter={e => { (e.target as HTMLButtonElement).style.color = C.text; (e.target as HTMLButtonElement).style.borderColor = C.borderHov; }}
+          onMouseLeave={e => { (e.target as HTMLButtonElement).style.color = C.textMuted; (e.target as HTMLButtonElement).style.borderColor = C.border; }}
+        >
+          ← Versão atual
+        </button>
+      </div>
+
       {/* ══════════════════════════════ HERO ══════════════════════════════════ */}
       <div style={{ borderBottom: `1px solid ${C.border}` }}>
         <div style={{ maxWidth: 1080, margin: "0 auto", padding: "52px 40px 36px" }}>
