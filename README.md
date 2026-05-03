@@ -1,73 +1,117 @@
-# Welcome to your Lovable project
+# EduGenAI
 
-## Project info
+**Transforme conhecimento bruto em cursos completos, prontos para vender ou treinar equipes.**
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+EduGenAI é uma plataforma SaaS que converte PDFs, apostilas, vídeos do YouTube e materiais internos em pacotes educacionais completos — com módulos, quizzes, flashcards, certificado, landing page e tutor com IA — em minutos, não em semanas.
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## Para quem é
 
-**Use Lovable**
+- **Professores independentes** que querem lançar cursos online sem montar tudo do zero
+- **Infoprodutores** que precisam transformar e-books e apostilas em produtos digitais
+- **Consultores e coaches** que querem empacotar seu método em um curso estruturado
+- **Treinadores corporativos e RH** que precisam converter manuais e documentos internos em treinamentos
+- **Escolas livres e cursos livres** que querem digitalizar material didático existente
+- **Profissionais autônomos** que têm conhecimento acumulado e querem monetizá-lo
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+---
 
-Changes made via Lovable will be committed automatically to this repo.
+## O que o EduGenAI entrega
 
-**Use your preferred IDE**
+O diferencial não é "gerar texto com IA". É pegar um material bruto e devolver um pacote educacional completo e pronto para uso:
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+| Entrada | Saída |
+|---|---|
+| PDF ou DOCX (apostila, manual, e-book) | Curso com módulos estruturados |
+| Vídeo do YouTube | Transcrição analisada e transformada em aulas |
+| Tema livre ou template | Curso gerado do zero com IA |
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### O que vem no pacote gerado
 
-Follow these steps:
+- **Módulos com conteúdo completo** — texto estruturado, editável em blocos
+- **Quizzes automáticos** — perguntas de múltipla escolha por módulo
+- **Flashcards de revisão** — para retenção de conteúdo
+- **Certificado personalizável** — emitido automaticamente ao aluno
+- **Landing page** — página pública de vendas ou captação
+- **Portal do aluno** — URL pública com navegação estilo Udemy
+- **Tutor com IA** — alunos tiram dúvidas sobre o conteúdo do curso
+- **Exportação** — PDF, PPTX (apresentações), SCORM, Markdown, Notion
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+---
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## Funcionalidades principais
 
-# Step 3: Install the necessary dependencies.
-npm i
+- Importação de PDF e DOCX com extração de texto via Gemini Vision
+- Importação de vídeos do YouTube via transcrição automática
+- Gerador de curso com IA (Gemini 2.5 Flash) a partir de tema, template ou material importado
+- Editor de módulos com blocos (texto rico, edição inline)
+- Auto-save com indicador de status
+- Tradução de cursos para outros idiomas
+- EduScore — avaliação pedagógica automática do conteúdo
+- Verificação de qualidade e reformatação de conteúdo
+- Script de narração para videoaulas
+- Gerenciamento de planos (Free / Starter / Pro)
+- Autenticação com e-mail e Google
+- Dashboard com métricas de uso
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+---
+
+## Stack técnica
+
+| Camada | Tecnologia |
+|---|---|
+| Frontend | React + TypeScript + Vite |
+| UI | shadcn/ui + Tailwind CSS |
+| Backend | Express (Node.js) |
+| Banco de dados | PostgreSQL via Supabase |
+| Edge Functions | Supabase Functions (Deno) |
+| IA | Google Gemini 2.5 Flash |
+| Autenticação | Supabase Auth |
+| Storage | Supabase Storage |
+
+---
+
+## Rodando localmente
+
+```bash
+# Clone o repositório
+git clone <URL_DO_REPO>
+cd <NOME_DO_PROJETO>
+
+# Instale as dependências
+npm install
+
+# Configure as variáveis de ambiente
+# Crie um arquivo .env com VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY
+
+# Inicie o servidor de desenvolvimento
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+O app roda em `http://localhost:5000` por padrão.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+---
 
-**Use GitHub Codespaces**
+## Variáveis de ambiente necessárias
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+| Variável | Descrição |
+|---|---|
+| `VITE_SUPABASE_URL` | URL do projeto Supabase |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Chave anon pública do Supabase |
 
-## What technologies are used for this project?
+As edge functions utilizam `GEMINI_API_KEY` e as chaves de serviço do Supabase, configuradas nos secrets do projeto.
 
-This project is built with:
+---
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Estrutura do projeto
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+```
+src/
+  pages/          # Páginas principais (Dashboard, CourseView, CourseWizard, StudentPortal…)
+  components/     # Componentes reutilizáveis e de curso
+  hooks/          # Hooks customizados (auth, subscription, theme…)
+  integrations/   # Cliente Supabase
+supabase/
+  functions/      # Edge functions (geração, exportação, análise, tutor…)
+```
