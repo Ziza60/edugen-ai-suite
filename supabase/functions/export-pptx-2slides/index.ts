@@ -195,8 +195,8 @@ Deno.serve(async (req: Request) => {
     const twoSlidesKey = Deno.env.get("TWOSLIDES_API_KEY");
     if (!twoSlidesKey) {
       return new Response(
-        JSON.stringify({ error: "TWOSLIDES_NOT_CONFIGURED", detail: "TWOSLIDES_API_KEY secret não configurado." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({ success: false, error: "TWOSLIDES_NOT_CONFIGURED", detail: "TWOSLIDES_API_KEY secret não configurado." }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -287,13 +287,21 @@ Deno.serve(async (req: Request) => {
       if (rawMsg.includes("credit") || rawMsg.includes("insufficient")) {
         return new Response(
           JSON.stringify({
-            error:  "TWOSLIDES_NO_CREDITS",
-            detail: "Sua conta 2Slides não tem créditos suficientes. Acesse 2slides.com/pricing para recarregar.",
+            success: false,
+            error:   "TWOSLIDES_NO_CREDITS",
+            detail:  "Sua conta 2Slides não tem créditos suficientes. Acesse 2slides.com/pricing para recarregar.",
           }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      throw new Error(`2Slides API error: ${JSON.stringify(genData)}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:   "TWOSLIDES_API_ERROR",
+          detail:  JSON.stringify(genData).slice(0, 200),
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const { downloadUrl, slidePageCount, jobId } = genData.data || {};

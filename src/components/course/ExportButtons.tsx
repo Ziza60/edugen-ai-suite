@@ -144,18 +144,26 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                     engineUsed = "2slides";
                     console.log("[PPTX] 2Slides AI successful! Slides:", res2s.data.slide_count);
                   } else {
+                    // Since the function returns HTTP 200 with success:false for soft errors,
+                    // res2s.data contains the error object; res2s.error fires only on real failures.
                     const errCode = res2s.data?.error || res2s.error?.message || "";
-                    console.warn("[PPTX] 2Slides failed:", errCode);
+                    console.warn("[PPTX] 2Slides failed:", errCode, res2s.data?.detail || "");
                     if (errCode === "TWOSLIDES_NO_CREDITS") {
                       toast({
-                        title: "2Slides: créditos insuficientes",
-                        description: "Recarregue créditos em 2slides.com/pricing. Usando EduGen v3 como fallback.",
-                        duration: 6000,
+                        title: "⚡ 2Slides: créditos esgotados",
+                        description: "Recarregue em 2slides.com/pricing. Gerando com EduGen v3…",
+                        duration: 7000,
+                      });
+                    } else if (errCode === "TWOSLIDES_NOT_CONFIGURED") {
+                      toast({
+                        title: "2Slides não configurado",
+                        description: "Chave de API ausente. Gerando com EduGen v3…",
+                        duration: 5000,
                       });
                     } else {
                       toast({
-                        title: "2Slides AI indisponível",
-                        description: "Usando motor nativo EduGen v3 como fallback automático.",
+                        title: "2Slides temporariamente indisponível",
+                        description: "Gerando apresentação com EduGen v3…",
                         duration: 4000,
                       });
                     }
