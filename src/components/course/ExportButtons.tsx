@@ -126,8 +126,53 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               let data: any = null;
               let engineUsed = "v3-native";
 
-              // ── 2SLIDES AI ENGINE (Try first if enabled) ──
-              if (options.use2Slides) {
+              // ── PRESENTON AI ENGINE ──
+              if (options.usePresenton) {
+                console.log("[PPTX] Attempting Presenton AI export... template:", options.template);
+                try {
+                  const resP = await supabase.functions.invoke("export-pptx-presenton", {
+                    body: {
+                      course_id:    courseId,
+                      template:     options.template,
+                      density:      options.density,
+                      courseType:   options.courseType || "CURSO COMPLETO",
+                      includeImages: options.includeImages,
+                    },
+                  });
+
+                  if (resP.data?.url && !resP.error) {
+                    data = resP.data;
+                    engineUsed = "presenton";
+                    console.log("[PPTX] Presenton AI successful! Slides:", resP.data.slide_count, "Credits:", resP.data.credits_consumed);
+                  } else {
+                    const errCode = resP.data?.error || resP.error?.message || "";
+                    console.warn("[PPTX] Presenton failed:", errCode, resP.data?.detail || "");
+                    if (errCode === "PRESENTON_NOT_CONFIGURED") {
+                      toast({
+                        title: "Presenton não configurado",
+                        description: "Chave de API ausente. Gerando com EduGen v3…",
+                        duration: 5000,
+                      });
+                    } else {
+                      toast({
+                        title: "Presenton temporariamente indisponível",
+                        description: "Gerando apresentação com EduGen v3…",
+                        duration: 4000,
+                      });
+                    }
+                  }
+                } catch (errP) {
+                  console.error("[PPTX] Presenton crash:", errP);
+                  toast({
+                    title: "Presenton AI indisponível",
+                    description: "Usando motor nativo EduGen v3 como fallback.",
+                    duration: 4000,
+                  });
+                }
+              }
+
+              // ── 2SLIDES AI ENGINE (Try if enabled and Presenton not used) ──
+              if (!data?.url && options.use2Slides) {
                 console.log("[PPTX] Attempting 2Slides AI export... theme:", options.twoSlidesTheme);
                 try {
                   const res2s = await supabase.functions.invoke("export-pptx-2slides", {
@@ -144,8 +189,6 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                     engineUsed = "2slides";
                     console.log("[PPTX] 2Slides AI successful! Slides:", res2s.data.slide_count);
                   } else {
-                    // Since the function returns HTTP 200 with success:false for soft errors,
-                    // res2s.data contains the error object; res2s.error fires only on real failures.
                     const errCode = res2s.data?.error || res2s.error?.message || "";
                     console.warn("[PPTX] 2Slides failed:", errCode, res2s.data?.detail || "");
                     if (errCode === "TWOSLIDES_NO_CREDITS") {
@@ -178,7 +221,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 }
               }
 
-              // ── NATIVE ENGINE (If 2Slides failed or wasn't requested) ──
+              // ── NATIVE ENGINE (fallback if no external engine succeeded) ──
               if (!data?.url) {
                 const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx";
                 const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
@@ -261,6 +304,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               const a = document.createElement("a");
               a.href = blobUrl;
               const fileLabel =
+                engineUsed === "presenton"   ? "PPTX-Presenton" :
                 engineUsed === "2slides"     ? "PPTX-2Slides" :
                 engineUsed === "magicslides" ? "PPTX-PRO"     : "PPTX";
               a.download = formatFileName(courseTitle, fileLabel, "pptx");
@@ -275,13 +319,15 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               }
 
               const toastTitle =
-                engineUsed === "2slides"    ? "⚡ PowerPoint AI gerado!" :
+                engineUsed === "presenton"   ? "✨ PowerPoint Presenton gerado!" :
+                engineUsed === "2slides"     ? "⚡ PowerPoint AI gerado!" :
                 engineUsed === "magicslides" ? "✨ PowerPoint Pro gerado!" :
                 "PowerPoint gerado!";
               const toastDesc =
-                engineUsed === "2slides"    ? `${data.slide_count} slides com design premium 2Slides` :
+                engineUsed === "presenton"   ? `${data.slide_count} slides com design Presenton AI` :
+                engineUsed === "2slides"     ? `${data.slide_count} slides com design premium 2Slides` :
                 engineUsed === "magicslides" ? "Design premium aplicado com sucesso." :
-                data.quality_report         ? `Score: ${data.quality_report.quality_score}/100` :
+                data.quality_report          ? `Score: ${data.quality_report.quality_score}/100` :
                 undefined;
 
               toast({

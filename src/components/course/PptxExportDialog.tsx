@@ -19,6 +19,7 @@ export interface PptxExportOptions {
   useV3: boolean;
   useMagicSlides: boolean;
   use2Slides: boolean;
+  usePresenton: boolean;
   twoSlidesTheme: string;
   courseType: string;
   footerBrand: string | null;
@@ -231,6 +232,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [useV3, setUseV3]                             = useState(true);
   const [useMagicSlides, setUseMagicSlides]           = useState(false);
   const [use2Slides, setUse2Slides]                   = useState(false);
+  const [usePresenton, setUsePresenton]               = useState(false);
   const [twoSlidesTheme, setTwoSlidesTheme]           = useState("blue-gradient");
 
   const selectedTpl = VISUAL_TEMPLATES[template] || VISUAL_TEMPLATES.modern;
@@ -253,7 +255,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useMagicSlides, use2Slides, twoSlidesTheme, courseType, footerBrand });
+    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useMagicSlides, use2Slides, usePresenton, twoSlidesTheme, courseType, footerBrand });
   };
 
   return (
@@ -400,19 +402,47 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
             )}
           </div>
 
+          {/* ── Presenton AI Engine ── */}
+          <div className={`space-y-3 p-3 rounded-xl border transition-colors ${usePresenton ? "border-violet-500/40 bg-violet-500/5" : "border-border bg-muted/30"}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-semibold text-violet-400">✨ Presenton AI (Recomendado)</p>
+                  <Badge variant="outline" className="text-[10px] px-1 py-0 bg-violet-500/10 text-violet-400 border-violet-500/20">NOVO</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">Slides profissionais gerados por IA com templates premium</p>
+              </div>
+              <Switch
+                checked={usePresenton}
+                onCheckedChange={(v) => {
+                  setUsePresenton(v);
+                  if (v) setUse2Slides(false);
+                }}
+                data-testid="switch-use-presenton"
+              />
+            </div>
+            {usePresenton && (
+              <p className="text-[10px] text-muted-foreground pl-0.5">
+                O template visual selecionado acima será usado para escolher o design do Presenton.
+              </p>
+            )}
+          </div>
+
           {/* ── 2Slides AI Engine ── */}
           <div className={`space-y-3 p-3 rounded-xl border transition-colors ${use2Slides ? "border-sky-500/40 bg-sky-500/5" : "border-border bg-muted/30"}`}>
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-semibold text-sky-400">⚡ 2Slides AI (Recomendado)</p>
-                  <Badge variant="outline" className="text-[10px] px-1 py-0 bg-sky-500/10 text-sky-400 border-sky-500/20">NOVO</Badge>
+                  <p className="text-sm font-semibold text-sky-400">⚡ 2Slides AI</p>
                 </div>
                 <p className="text-xs text-muted-foreground">Design profissional gerado por IA — templates premium</p>
               </div>
               <Switch
                 checked={use2Slides}
-                onCheckedChange={(v) => { setUse2Slides(v); }}
+                onCheckedChange={(v) => {
+                  setUse2Slides(v);
+                  if (v) setUsePresenton(false);
+                }}
                 data-testid="switch-use-2slides"
               />
             </div>
@@ -454,7 +484,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
           </div>
 
           {/* ── V3 AI Generation toggle (fallback/native) ── */}
-          {!use2Slides && (
+          {!use2Slides && !usePresenton && (
             <div className="flex items-center justify-between px-1">
               <div>
                 <p className="text-sm font-medium">Geração de slides EduGen v3</p>
