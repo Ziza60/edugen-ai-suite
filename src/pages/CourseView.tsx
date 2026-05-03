@@ -11,8 +11,13 @@ import {
   ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
   RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
   Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2,
-  BarChart3, Globe, Rocket, Languages, Save, Cloud, CloudOff
+  BarChart3, Globe, Rocket, Languages, Save, Cloud, CloudOff,
+  Mic, ChevronDown, Wrench, ShieldCheck, AlignLeft
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { ExportButtons } from "@/components/course/ExportButtons";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +52,7 @@ export default function CourseView() {
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [certDialogOpen, setCertDialogOpen] = useState(false);
+  const [scriptOpen, setScriptOpen] = useState(false);
   const [reprocessingFlashcards, setReprocessingFlashcards] = useState(false);
   const [restructuring, setRestructuring] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -371,12 +377,14 @@ export default function CourseView() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Primary actions */}
               <Button
                 variant={isPublished ? "outline" : "default"}
                 size="sm"
                 onClick={() => togglePublish.mutate()}
                 className="h-9"
+                data-testid="btn-publish"
               >
                 <Eye className="h-4 w-4 mr-1.5" />
                 {isPublished ? "Despublicar" : "Publicar"}
@@ -391,94 +399,165 @@ export default function CourseView() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-9 bg-primary/5 border-primary/20 text-primary"
+                className="h-9"
                 onClick={() => navigate(`/app/courses/${id}/landing-page`)}
+                data-testid="btn-landing-page"
               >
                 <Globe className="h-4 w-4 mr-1.5" />
                 Landing Page
               </Button>
+
+              {/* Tools dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9" data-testid="btn-ferramentas">
+                    <Wrench className="h-4 w-4 mr-1.5" />
+                    Ferramentas
+                    <ChevronDown className="h-3.5 w-3.5 ml-1.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  {/* Script */}
+                  <DropdownMenuItem
+                    disabled={!isPublished}
+                    onSelect={() => setScriptOpen(true)}
+                    data-testid="menu-script"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      <Mic className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <div className="flex items-center gap-1.5 font-medium text-sm">
+                          Script de narração
+                          {!isPro && <Badge variant="outline" className="text-[10px] px-1 py-0">PRO</Badge>}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Roteiro para gravar videoaulas</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  {/* Certificate */}
+                  <DropdownMenuItem onSelect={() => setCertDialogOpen(true)} data-testid="menu-certificate">
+                    <div className="flex items-start gap-3 py-0.5">
+                      <GraduationCap className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium text-sm">Certificado</p>
+                        <p className="text-xs text-muted-foreground">Personalizar o certificado do curso</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  {/* Translate */}
+                  <DropdownMenuItem
+                    disabled={modules.length === 0}
+                    onSelect={() => setTranslateOpen(true)}
+                    data-testid="menu-translate"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      <Languages className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium text-sm">Traduzir curso</p>
+                        <p className="text-xs text-muted-foreground">Traduz todos os módulos para outro idioma</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  {/* EduScore */}
+                  <DropdownMenuItem
+                    disabled={calculatingScore || modules.length === 0}
+                    onSelect={async () => {
+                      setCalculatingScore(true);
+                      try {
+                        const { data, error } = await supabase.functions.invoke("calculate-eduscore", {
+                          body: { course_id: id },
+                        });
+                        if (error) throw error;
+                        setEduScore(data);
+                      } catch (err: any) {
+                        toast({ title: "Erro ao calcular EduScore", description: err.message, variant: "destructive" });
+                      } finally {
+                        setCalculatingScore(false);
+                      }
+                    }}
+                    data-testid="menu-eduscore"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      {calculatingScore
+                        ? <Loader2 className="h-4 w-4 mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+                        : <BarChart3 className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />}
+                      <div>
+                        <p className="font-medium text-sm">EduScore™</p>
+                        <p className="text-xs text-muted-foreground">Avalia a qualidade pedagógica do curso</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Verificar qualidade (was "Validar") */}
+                  <DropdownMenuItem
+                    disabled={validating || modules.length === 0}
+                    onSelect={async () => {
+                      setValidating(true);
+                      try {
+                        const { data, error } = await supabase.functions.invoke("restructure-modules", {
+                          body: { course_id: id, validate_only: true },
+                        });
+                        if (error) throw error;
+                        setQualityReport(data?.markdown_quality_report || null);
+                        const summary = data?.markdown_quality_report?.summary;
+                        toast({
+                          title: `Qualidade: ${summary?.modules_passed || 0}/${(summary?.modules_passed || 0) + (summary?.modules_failed || 0)} módulos OK`,
+                          description: summary?.recommendation || "Checklist concluído.",
+                          variant: summary?.modules_failed > 0 ? "destructive" : "default",
+                        });
+                      } catch (err: any) {
+                        toast({ title: "Erro na verificação", description: err.message, variant: "destructive" });
+                      } finally {
+                        setValidating(false);
+                      }
+                    }}
+                    data-testid="menu-validate"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      {validating
+                        ? <Loader2 className="h-4 w-4 mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+                        : <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />}
+                      <div>
+                        <p className="font-medium text-sm">Verificar qualidade</p>
+                        <p className="text-xs text-muted-foreground">Checa se o conteúdo segue padrões pedagógicos</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  {/* Reformatar conteúdo (was "Padronizar") */}
+                  <DropdownMenuItem
+                    disabled={restructuring || modules.length === 0}
+                    onSelect={handleRestructureWithDiff}
+                    data-testid="menu-restructure"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      {restructuring
+                        ? <Loader2 className="h-4 w-4 mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+                        : <AlignLeft className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />}
+                      <div>
+                        <p className="font-medium text-sm">Reformatar conteúdo</p>
+                        <p className="text-xs text-muted-foreground">Padroniza títulos, listas e formatação dos módulos</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Script dialog (no trigger — opened via dropdown) */}
               <ScriptGeneratorButton
                 courseId={id!}
                 courseTitle={course.title}
                 isPro={isPro}
                 disabled={!isPublished}
+                open={scriptOpen}
+                onOpenChange={setScriptOpen}
+                renderTrigger={false}
               />
-              <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)} className="h-9">
-                <GraduationCap className="h-4 w-4 mr-1.5" />
-                Certificado
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                disabled={calculatingScore || modules.length === 0}
-                onClick={async () => {
-                  setCalculatingScore(true);
-                  try {
-                    const { data, error } = await supabase.functions.invoke("calculate-eduscore", {
-                      body: { course_id: id },
-                    });
-                    if (error) throw error;
-                    setEduScore(data);
-                  } catch (err: any) {
-                    toast({ title: "Erro ao calcular EduScore", description: err.message, variant: "destructive" });
-                  } finally {
-                    setCalculatingScore(false);
-                  }
-                }}
-              >
-                {calculatingScore ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <BarChart3 className="h-4 w-4 mr-1.5" />}
-                EduScore™
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                disabled={modules.length === 0}
-                onClick={() => setTranslateOpen(true)}
-              >
-                <Languages className="h-4 w-4 mr-1.5" />
-                Traduzir
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                disabled={validating}
-                onClick={async () => {
-                  setValidating(true);
-                  try {
-                    const { data, error } = await supabase.functions.invoke("restructure-modules", {
-                      body: { course_id: id, validate_only: true },
-                    });
-                    if (error) throw error;
-                    setQualityReport(data?.markdown_quality_report || null);
-                    const summary = data?.markdown_quality_report?.summary;
-                    toast({
-                      title: `Validação: ${summary?.modules_passed || 0}/${summary?.modules_passed + summary?.modules_failed || 0} PASS`,
-                      description: summary?.recommendation || "Checklist concluído.",
-                      variant: summary?.modules_failed > 0 ? "destructive" : "default",
-                    });
-                  } catch (err: any) {
-                    toast({ title: "Erro na validação", description: err.message, variant: "destructive" });
-                  } finally {
-                    setValidating(false);
-                  }
-                }}
-              >
-                {validating ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <FileText className="h-4 w-4 mr-1.5" />}
-                Validar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                disabled={restructuring}
-                onClick={handleRestructureWithDiff}
-              >
-                {restructuring ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <RefreshCw className="h-4 w-4 mr-1.5" />}
-                Padronizar
-              </Button>
             </div>
           </div>
 
