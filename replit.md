@@ -43,6 +43,20 @@ supabase/functions/           # Supabase Edge Functions (Deno)
 - `VITE_SUPABASE_URL` — Supabase project URL
 - `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon/public key
 
+## Student Portal — `/learn/:slug` (v1.0)
+Public URL where students access a course without registration. Shares the same slug as the landing page (`/c/:slug`).
+- **Edge function**: `supabase/functions/get-course-portal/index.ts` — GET ?slug returns all portal data (course, modules, flashcards, quizzes); POST {courseId, studentName} issues a certificate using course owner's user_id.
+- **Page**: `src/pages/StudentPortal.tsx` — full dark-themed portal (Udemy-style) with:
+  - Sticky header with progress bar
+  - Collapsible sidebar with module list + completion status
+  - Markdown renderer for module content
+  - Inline 3D flip flashcard player
+  - Multiple-choice quiz with score + explanations
+  - Progress persisted in localStorage per courseId
+  - Certificate modal (student enters name → edge function → redirect to /certificate/:token)
+- **Landing page**: Added "Acessar curso" + "Começar agora" buttons to `/c/:slug` pointing to `/learn/:slug`
+- **Route**: `/learn/:slug` added to `src/App.tsx`
+
 ## YouTube → Curso (Feature)
 - **Edge function**: `supabase/functions/analyze-youtube/index.ts` — extrai transcrição, salva como course_source, analisa com Gemini (título/tema/público/módulos/idioma)
 - **UI**: `src/components/course/YouTubeImportScreen.tsx` — tela dedicada com URL input, loading steps animados, preview das sugestões da IA

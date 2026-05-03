@@ -1,7 +1,7 @@
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Sparkles, CheckCircle, BookOpen, Quote, ArrowRight } from "lucide-react";
+import { Loader2, Sparkles, CheckCircle, BookOpen, Quote, ArrowRight, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 
@@ -90,7 +90,15 @@ export default function CourseLanding() {
               </>
             )}
           </div>
-          <Button size="sm" className="btn-custom">{landing.cta_text || "Quero me inscrever"}</Button>
+          <div className="flex items-center gap-2">
+            <Link to={`/learn/${slug}`}>
+              <Button size="sm" variant="outline" className="border-custom text-custom gap-1.5">
+                <PlayCircle className="h-4 w-4" />
+                Acessar curso
+              </Button>
+            </Link>
+            <Button size="sm" className="btn-custom">{landing.cta_text || "Quero me inscrever"}</Button>
+          </div>
         </div>
       </header>
 
@@ -112,10 +120,18 @@ export default function CourseLanding() {
           <p className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-8">
             {landing.subtitle}
           </p>
-          <Button size="lg" className="text-base px-8 btn-custom">
-            {landing.cta_text || "Quero me inscrever"}
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link to={`/learn/${slug}`}>
+              <Button size="lg" className="text-base px-8 btn-custom">
+                <PlayCircle className="mr-2 h-5 w-5" />
+                Começar agora — é grátis
+              </Button>
+            </Link>
+            <Button size="lg" variant="outline" className="text-base px-8 border-custom text-custom">
+              {landing.cta_text || "Quero me inscrever"}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </motion.div>
       </section>
 
