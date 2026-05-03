@@ -3,9 +3,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ArrowRight, Youtube, Loader2, CheckCircle2, Sparkles, AlertCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, ArrowRight, Youtube, Loader2, CheckCircle2, Sparkles, AlertCircle, Languages } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
+
+const LANGUAGE_OPTIONS = [
+  { value: "pt-BR", label: "🇧🇷 Português (BR)" },
+  { value: "en", label: "🇺🇸 English" },
+  { value: "es", label: "🇪🇸 Español" },
+];
 
 interface YouTubeAnalysis {
   source_id: string;
@@ -39,6 +46,7 @@ export function YouTubeImportScreen({ tempCourseId, onBack, onComplete }: YouTub
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<YouTubeAnalysis | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("pt-BR");
 
   const isValidYouTubeUrl = (u: string) =>
     /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)/.test(u.trim());
@@ -63,7 +71,11 @@ export function YouTubeImportScreen({ tempCourseId, onBack, onComplete }: YouTub
       if (fnError) throw new Error(fnError.message || "Erro ao analisar o vídeo.");
       if (data?.error) throw new Error(data.error);
 
-      setAnalysis(data as YouTubeAnalysis);
+      const result = data as YouTubeAnalysis;
+      setAnalysis(result);
+      const detected = result.detectedLanguage;
+      const supported = LANGUAGE_OPTIONS.find((l) => l.value === detected);
+      setSelectedLanguage(supported ? detected : "pt-BR");
     } catch (err: any) {
       clearInterval(stepInterval);
       setError(err.message || "Não foi possível processar o vídeo. Verifique se a URL é válida e o vídeo tem legendas.");
@@ -247,11 +259,23 @@ export function YouTubeImportScreen({ tempCourseId, onBack, onComplete }: YouTub
                         <p className="text-xs text-muted-foreground">Módulos sugeridos</p>
                         <p className="text-lg font-bold text-foreground">{analysis.suggestedModules}</p>
                       </div>
-                      <div className="bg-muted/50 rounded-lg px-3 py-2 text-center flex-1">
-                        <p className="text-xs text-muted-foreground">Idioma detectado</p>
-                        <p className="text-sm font-bold text-foreground">
-                          {analysis.detectedLanguage === "pt-BR" ? "Português (BR)" : analysis.detectedLanguage === "en" ? "English" : analysis.detectedLanguage}
-                        </p>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <Languages className="h-3.5 w-3.5 text-muted-foreground" />
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Idioma do curso</p>
+                        </div>
+                        <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                          <SelectTrigger className="h-10 text-sm" data-testid="select-course-language">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LANGUAGE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </div>
@@ -267,7 +291,7 @@ export function YouTubeImportScreen({ tempCourseId, onBack, onComplete }: YouTub
                     </Button>
                     <Button
                       className="flex-2 h-11 px-6 font-semibold shadow-lg shadow-primary/20"
-                      onClick={() => onComplete(analysis)}
+                      onClick={() => onComplete({ ...analysis, detectedLanguage: selectedLanguage })}
                       data-testid="button-youtube-continue"
                     >
                       Continuar
