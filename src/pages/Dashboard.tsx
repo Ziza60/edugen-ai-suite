@@ -13,7 +13,7 @@ import {
   Plus, BookOpen, Clock, Sparkles, ArrowRight, Loader2, Trash2,
   Eye, Pencil, GraduationCap, Bot, BarChart3, PenTool,
   Zap, TrendingUp, FileText, BrainCircuit, Award,
-  Share2, Download, Filter, ArrowUpDown, Lightbulb
+  Share2, Download, Filter, ArrowUpDown, Lightbulb, ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -92,6 +92,22 @@ export default function Dashboard() {
       return data;
     },
     enabled: !!user,
+  });
+
+  // Fetch landing slugs for all courses (to show portal links on cards)
+  const { data: landingSlugs = {} } = useQuery<Record<string, string>>({
+    queryKey: ["dashboard-landing-slugs", user?.id],
+    queryFn: async () => {
+      const courseIds = courses.map((c: any) => c.id);
+      if (courseIds.length === 0) return {};
+      const { data } = await (supabase.from("course_landings") as any)
+        .select("course_id, slug")
+        .in("course_id", courseIds);
+      const map: Record<string, string> = {};
+      (data || []).forEach((row: any) => { if (row.slug) map[row.course_id] = row.slug; });
+      return map;
+    },
+    enabled: courses.length > 0,
   });
 
   const { data: courseStats = {} } = useQuery({
@@ -447,6 +463,7 @@ export default function Dashboard() {
                   const isPublished = course.status === "published";
                   const initials = getInitials(course.title);
                   const thumbGradient = getThumbColor(course.id);
+                  const portalSlug = isPublished ? (landingSlugs as any)[course.id] : null;
 
                   return (
                     <motion.div
@@ -517,6 +534,39 @@ export default function Dashboard() {
                           <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/60">
                             Criado em {new Date(course.created_at).toLocaleDateString("pt-BR")}
                           </div>
+
+                          {/* Portal do Aluno — só aparece quando publicado e tem slug */}
+                          {portalSlug && (
+                            <div className="flex items-center gap-2 pt-2 pb-1 border-t border-border/60">
+                              <GraduationCap className="h-3.5 w-3.5 text-primary shrink-0" />
+                              <span className="text-[11px] text-muted-foreground flex-1 truncate font-mono">
+                                /learn/{portalSlug}
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[11px] px-2 shrink-0"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(`${window.location.origin}/learn/${portalSlug}`);
+                                  toast.success("Link do portal copiado!");
+                                }}
+                                data-testid={`copy-portal-${course.id}`}
+                              >
+                                <Share2 className="h-3 w-3 mr-1" />
+                                Copiar
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[11px] px-2 shrink-0 text-primary border-primary/20 hover:bg-primary/5"
+                                onClick={() => window.open(`/learn/${portalSlug}`, "_blank")}
+                                data-testid={`open-portal-${course.id}`}
+                              >
+                                <ExternalLink className="h-3 w-3 mr-1" />
+                                Portal
+                              </Button>
+                            </div>
+                          )}
 
                           {/* Quick actions */}
                           <div className="flex items-center gap-2 pt-1">
