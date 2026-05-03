@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
+import JSZip from "npm:jszip@3.10.1";
 
 const ENGINE_VERSION = "4.0.0";
 
@@ -779,6 +780,73 @@ function fallbackModuleSlides(title: string, content: string, moduleIndex: numbe
 }
 
 // ═══════════════════════════════════════════════════════════
+// SECTION 5.5: PPTX REPAIR
+// ═══════════════════════════════════════════════════════════
+
+async function repairPptxPackage(pptxData: Uint8Array): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(pptxData);
+  const allFileNames = Object.keys(zip.files);
+
+  const noteFiles = allFileNames.filter((name) =>
+    name.startsWith("ppt/notesSlides/") || name.startsWith("ppt/notesMasters/")
+  );
+  for (const name of noteFiles) zip.remove(name);
+
+  const presentationFile = zip.file("ppt/presentation.xml");
+  if (presentationFile) {
+    const xml = await presentationFile.async("string");
+    zip.file("ppt/presentation.xml",
+      xml.replace(/<p:notesMasterIdLst>[\s\S]*?<\/p:notesMasterIdLst>/g, "").replace(/\s{2,}/g, " ")
+    );
+  }
+
+  const presentationRelsFile = zip.file("ppt/_rels/presentation.xml.rels");
+  if (presentationRelsFile) {
+    const xml = await presentationRelsFile.async("string");
+    zip.file("ppt/_rels/presentation.xml.rels",
+      xml.replace(/<Relationship[^>]*Type="[^"]*\/notesMaster"[^>]*\/>/g, "").replace(/\s{2,}/g, " ")
+    );
+  }
+
+  const viewPropsFile = zip.file("ppt/viewProps.xml");
+  if (viewPropsFile) {
+    const xml = await viewPropsFile.async("string");
+    zip.file("ppt/viewProps.xml",
+      xml.replace(/<p:notesTextViewPr>[\s\S]*?<\/p:notesTextViewPr>/g, "").replace(/\s{2,}/g, " ")
+    );
+  }
+
+  const appPropsFile = zip.file("docProps/app.xml");
+  if (appPropsFile) {
+    const xml = await appPropsFile.async("string");
+    zip.file("docProps/app.xml",
+      xml.replace(/<Notes>\d+<\/Notes>/g, "<Notes>0</Notes>").replace(/\s{2,}/g, " ")
+    );
+  }
+
+  for (const name of allFileNames.filter((f) => /^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/.test(f))) {
+    const f = zip.file(name);
+    if (!f) continue;
+    const xml = await f.async("string");
+    zip.file(name, xml.replace(/<Relationship[^>]*Type="[^"]*\/notesSlide"[^>]*\/>/g, "").replace(/\s{2,}/g, " "));
+  }
+
+  const refreshedFileNames = new Set(Object.keys(zip.files));
+  const contentTypesFile = zip.file("[Content_Types].xml");
+  if (!contentTypesFile) return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+
+  const ctXml = await contentTypesFile.async("string");
+  const repairedCt = ctXml.replace(/<Override\b[^>]*PartName="([^"]+)"[^>]*\/>/g, (full, partName) => {
+    const norm = String(partName || "").replace(/^\//, "");
+    return (norm && !refreshedFileNames.has(norm)) ? "" : full;
+  });
+  zip.file("[Content_Types].xml", repairedCt);
+
+  console.log(`[V4-REPAIR] Removed ${noteFiles.length} notes files, repaired content types`);
+  return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+}
+
+// ═══════════════════════════════════════════════════════════
 // SECTION 6: PIPELINE
 // ═══════════════════════════════════════════════════════════
 
@@ -949,7 +1017,7 @@ Deno.serve(async (req: Request) => {
     const pptx = await runPipeline(courseTitle, moduleData, design, density, language, geminiKey);
 
     const rawData  = await pptx.write({ outputType: "uint8array" });
-    const pptxData = rawData as Uint8Array;
+    const pptxData = await repairPptxPackage(rawData as Uint8Array);
 
     const dateStr  = new Date().toISOString().slice(0, 10);
     const safeName = courseTitle
