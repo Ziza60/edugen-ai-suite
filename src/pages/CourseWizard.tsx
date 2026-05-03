@@ -23,6 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { TemplateSelector, CourseTemplate } from "@/components/course/TemplateSelector";
+import { YouTubeImportScreen } from "@/components/course/YouTubeImportScreen";
 
 const STEPS = [
   { label: "Sobre o curso", num: 1 },
@@ -44,6 +45,7 @@ interface UploadedSource {
 
 export default function CourseWizard() {
   const [showTemplates, setShowTemplates] = useState(true);
+  const [showYouTube, setShowYouTube] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null);
 
   const { user } = useAuth();
@@ -138,8 +140,52 @@ export default function CourseWizard() {
     setShowTemplates(false);
   };
 
+  const handleYouTubeSelect = () => {
+    setShowTemplates(false);
+    setShowYouTube(true);
+  };
+
+  const handleYouTubeComplete = (analysis: {
+    source_id: string;
+    filename: string;
+    char_count: number;
+    title: string;
+    theme: string;
+    targetAudience: string;
+    suggestedModules: number;
+    detectedLanguage: string;
+  }) => {
+    setForm((prev) => ({
+      ...prev,
+      title: analysis.title,
+      theme: analysis.theme,
+      targetAudience: analysis.targetAudience,
+      numModules: Math.min(analysis.suggestedModules, limits.maxModules),
+      language: analysis.detectedLanguage === "en" ? "en" : analysis.detectedLanguage === "es" ? "es" : "pt-BR",
+    }));
+    setUploadedSources([{ id: analysis.source_id, filename: analysis.filename, char_count: analysis.char_count }]);
+    setUseSources(true);
+    setShowYouTube(false);
+  };
+
   if (showTemplates) {
-    return <TemplateSelector onSelect={handleTemplateSelect} onSkip={handleSkipTemplates} />;
+    return (
+      <TemplateSelector
+        onSelect={handleTemplateSelect}
+        onSkip={handleSkipTemplates}
+        onYouTube={handleYouTubeSelect}
+      />
+    );
+  }
+
+  if (showYouTube) {
+    return (
+      <YouTubeImportScreen
+        tempCourseId={tempCourseId}
+        onBack={() => { setShowYouTube(false); setShowTemplates(true); }}
+        onComplete={handleYouTubeComplete}
+      />
+    );
   }
 
   const updateForm = (key: string, value: any) => {

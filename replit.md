@@ -43,6 +43,12 @@ supabase/functions/           # Supabase Edge Functions (Deno)
 - `VITE_SUPABASE_URL` — Supabase project URL
 - `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon/public key
 
+## YouTube → Curso (Feature)
+- **Edge function**: `supabase/functions/analyze-youtube/index.ts` — extrai transcrição, salva como course_source, analisa com Gemini (título/tema/público/módulos/idioma)
+- **UI**: `src/components/course/YouTubeImportScreen.tsx` — tela dedicada com URL input, loading steps animados, preview das sugestões da IA
+- **Fluxo**: TemplateSelector → card YouTube → YouTubeImportScreen → auto-preenche formulário (title/theme/audience/language/modules) + ativa useSources com a transcrição como fonte → wizard pré-preenchido
+- **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
+
 ## PPTX Exporter v3 (Current Engine)
 Production exporter at `supabase/functions/export-pptx-v3/index.ts` (2284 lines, v3.4.1).
 Pipeline: Parse → Segment → Distribute → Merge Sparse → Visual Fit → Anti-Repetition → Image Fetch → Render → Export.
