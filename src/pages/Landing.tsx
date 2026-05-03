@@ -1,203 +1,203 @@
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Sparkles, BookOpen, Zap, Award, ArrowRight, FileUp, CheckCircle, Crown,
-  Moon, Sun, Brain, Target, BarChart3, Pencil, Globe, Presentation,
-  GraduationCap, School, Bot, Video, Users, Star, FileText, Download,
-  MessageSquare, ExternalLink, Copy,
-} from "lucide-react";
 import { motion } from "framer-motion";
-import { useTheme } from "@/hooks/useTheme";
-import { useState } from "react";
-import { toast } from "sonner";
+import { useEffect } from "react";
+import {
+  Brain, FileUp, Target, BarChart3, Pencil, Globe,
+  Presentation, GraduationCap, School, Bot, Video, Users,
+  Star, FileText, ArrowRight, CheckCircle, Crown, Sparkles,
+  BookOpen,
+} from "lucide-react";
+
+const ACCENT = "#DF7C3A";
+const GOLD = "#C9A96E";
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: { opacity: 1, y: 0 },
+  hidden: { opacity: 0, y: 32 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } },
 };
-
-const stagger = {
-  visible: { transition: { staggerChildren: 0.08 } },
-};
+const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
 
 const features = [
-  // Row 1 — CRIAÇÃO
-  { icon: Brain, title: "Geração por IA", desc: "Tema → curso completo em < 2 min. Módulos, quizzes e flashcards automáticos.", gradient: "from-indigo-500 to-indigo-600", row: 0 },
-  { icon: FileUp, title: "Fontes próprias", desc: "Envie PDFs, YouTube ou artigos. A IA extrai e estrutura o conteúdo fielmente.", gradient: "from-indigo-500 to-indigo-600", pro: true, row: 0 },
-  { icon: Target, title: "Templates por nicho", desc: "Onboarding, Vendas, RH, Tech. Estrutura pedagógica pronta para começar.", gradient: "from-indigo-500 to-indigo-600", row: 0 },
-  // Row 2 — QUALIDADE
-  { icon: BarChart3, title: "EduScore™", desc: "Score de qualidade pedagógica exclusivo. Clareza, completude, engajamento e equilíbrio.", gradient: "from-violet-500 to-violet-600", pro: true, row: 1 },
-  { icon: Pencil, title: "Editor rico com IA", desc: "TipTap com toolbar completa. Selecione qualquer trecho e melhore com IA em 1 clique.", gradient: "from-violet-500 to-violet-600", row: 1 },
-  { icon: Globe, title: "Tradução pedagógica", desc: "Traduz e adapta exemplos culturais para o idioma-alvo. Não é só tradução — é localização.", gradient: "from-violet-500 to-violet-600", row: 1 },
-  // Row 3 — DISTRIBUIÇÃO
-  { icon: Presentation, title: "PPTX profissional", desc: "Apresentações com design premium, temas, paletas e densidade configurável.", gradient: "from-emerald-500 to-emerald-600", pro: true, row: 2 },
-  { icon: GraduationCap, title: "SCORM para LMS", desc: "Exportação compatível com Moodle, Canvas, Blackboard e qualquer LMS.", gradient: "from-emerald-500 to-emerald-600", pro: true, row: 2 },
-  { icon: School, title: "Moodle XML", desc: "Backup nativo do Moodle com quiz, páginas e flashcards. Sem API, funciona offline.", gradient: "from-emerald-500 to-emerald-600", pro: true, row: 2 },
-  // Row 4 — ENGAJAMENTO
-  { icon: Bot, title: "Tutor IA para alunos", desc: "Link público com chat IA treinado no seu curso. Alunos perguntam, a IA responde.", gradient: "from-amber-500 to-amber-600", pro: true, row: 3 },
-  { icon: Video, title: "Script para vídeo", desc: "Gera roteiro de apresentação oral com marcadores de pausa e ênfases. Exporta em DOCX.", gradient: "from-amber-500 to-amber-600", pro: true, row: 3 },
-  { icon: Users, title: "Revisão colaborativa", desc: "Compartilhe o curso para revisores externos deixarem comentários por módulo. IA sintetiza.", gradient: "from-amber-500 to-amber-600", pro: true, row: 3 },
+  { icon: Brain, title: "Geração por IA", desc: "Tema → curso completo em menos de 2 minutos. Módulos, quizzes e flashcards automáticos.", cat: "Criação", pro: false },
+  { icon: FileUp, title: "Fontes próprias", desc: "Envie PDFs, YouTube ou artigos. A IA extrai e estrutura o conteúdo fielmente.", cat: "Criação", pro: true },
+  { icon: Target, title: "Templates por nicho", desc: "Onboarding, Vendas, RH, Tech. Estrutura pedagógica pronta para começar.", cat: "Criação", pro: false },
+  { icon: BarChart3, title: "EduScore™", desc: "Score de qualidade pedagógica exclusivo. Clareza, completude, engajamento e equilíbrio.", cat: "Qualidade", pro: true },
+  { icon: Pencil, title: "Editor rico com IA", desc: "TipTap com toolbar completa. Selecione qualquer trecho e melhore com IA em 1 clique.", cat: "Qualidade", pro: false },
+  { icon: Globe, title: "Tradução pedagógica", desc: "Traduz e adapta exemplos culturais para o idioma-alvo. Localização real, não só tradução.", cat: "Qualidade", pro: true },
+  { icon: Presentation, title: "PPTX profissional", desc: "Apresentações com design premium, temas, paletas e densidade configurável.", cat: "Distribuição", pro: true },
+  { icon: GraduationCap, title: "SCORM para LMS", desc: "Exportação compatível com Moodle, Canvas, Blackboard e qualquer LMS.", cat: "Distribuição", pro: true },
+  { icon: School, title: "Moodle XML", desc: "Backup nativo do Moodle com quiz, páginas e flashcards. Sem API, funciona offline.", cat: "Distribuição", pro: true },
+  { icon: Bot, title: "Tutor IA para alunos", desc: "Link público com chat IA treinado no seu curso. Alunos perguntam, a IA responde.", cat: "Engajamento", pro: true },
+  { icon: Video, title: "Script para vídeo", desc: "Gera roteiro de apresentação oral com marcadores de pausa e ênfases. Exporta em DOCX.", cat: "Engajamento", pro: true },
+  { icon: Users, title: "Revisão colaborativa", desc: "Compartilhe o curso para revisores externos deixarem comentários por módulo.", cat: "Engajamento", pro: true },
 ];
+
+const catColors: Record<string, string> = {
+  Criação: "#DF7C3A",
+  Qualidade: "#C9A96E",
+  Distribuição: "#7B9E87",
+  Engajamento: "#A08EC2",
+};
 
 const exportFormats = [
   { icon: FileText, label: "PDF" },
   { icon: Presentation, label: "PPTX" },
   { icon: GraduationCap, label: "SCORM" },
-  { icon: School, label: "Moodle" },
+  { icon: School, label: "Moodle XML" },
   { icon: BookOpen, label: "Notion" },
   { icon: Video, label: "Script de Vídeo" },
 ];
 
 const eduScoreDimensions = [
-  { label: "Clareza", score: 87, color: "bg-emerald-500" },
-  { label: "Completude", score: 74, color: "bg-indigo-500" },
-  { label: "Engajamento", score: 91, color: "bg-violet-500" },
-  { label: "Equilíbrio", score: 68, color: "bg-amber-500" },
+  { label: "Clareza", score: 87, color: "#7B9E87" },
+  { label: "Completude", score: 74, color: "#C9A96E" },
+  { label: "Engajamento", score: 91, color: "#DF7C3A" },
+  { label: "Equilíbrio", score: 68, color: "#A08EC2" },
 ];
 
 const tutorMessages = [
   { role: "user", text: "O que é aprendizagem assíncrona?" },
-  { role: "ai", text: "Aprendizagem assíncrona é quando o aluno estuda no seu próprio ritmo, sem precisar estar online ao mesmo tempo que o instrutor. Exemplos incluem videoaulas gravadas, fóruns de discussão e materiais de leitura disponíveis a qualquer hora." },
+  { role: "ai", text: "Aprendizagem assíncrona é quando o aluno estuda no seu próprio ritmo, sem precisar estar online ao mesmo tempo que o instrutor. Exemplos incluem videoaulas gravadas e materiais disponíveis a qualquer hora." },
   { role: "user", text: "Qual a diferença para síncrona?" },
 ];
 
+const freePlan = ["3 cursos/mês", "Até 5 módulos por curso", "Quiz e flashcards", "Certificados verificáveis", "Exportação PDF"];
+const proPlan = [
+  "5 cursos/mês",
+  "Até 10 módulos por curso",
+  "Fontes próprias (PDF, YouTube, web)",
+  "PPTX com design premium",
+  "SCORM + Moodle + Notion",
+  "EduScore™ pedagógico",
+  "Tutor IA para alunos",
+  "Script para vídeo/narração",
+  "Tradução pedagógica",
+  "Revisão colaborativa",
+  "Analytics do criador",
+];
+
 export default function Landing() {
-  const { theme, toggleTheme } = useTheme();
+  useEffect(() => {
+    if (!document.getElementById("landing-fonts")) {
+      const link = document.createElement("link");
+      link.id = "landing-fonts";
+      link.rel = "stylesheet";
+      link.href = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap";
+      document.head.appendChild(link);
+    }
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] dark:bg-[#0A0A0F] text-white relative overflow-hidden selection:bg-indigo-500/30">
-      {/* Grain texture overlay */}
-      <div className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")", backgroundRepeat: "repeat" }} />
+    <div style={{ fontFamily: "'DM Sans', sans-serif", background: "#0B0B0F", color: "#E8E3DC", minHeight: "100vh", overflowX: "hidden" }}>
+      {/* grain overlay */}
+      <div
+        className="fixed inset-0 pointer-events-none z-0"
+        style={{ opacity: 0.025, backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")", backgroundRepeat: "repeat" }}
+      />
 
-      {/* ======= SEÇÃO 1 — NAV ======= */}
-      <header className="sticky top-0 z-50 w-full border-b bg-[#0A0A0F]/95 backdrop-blur supports-[backdrop-filter]:bg-[#0A0A0F]/60 border-white/5">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 shadow-elegant">
-              <GraduationCap className="h-6 w-6 text-indigo-400" />
+      {/* ── NAV ── */}
+      <header className="sticky top-0 z-50 w-full" style={{ background: "rgba(11,11,15,0.92)", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(232,227,220,0.06)" }}>
+        <div className="container mx-auto flex h-16 items-center justify-between px-6">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "rgba(223,124,58,0.12)", border: "1px solid rgba(223,124,58,0.2)" }}>
+              <GraduationCap className="h-5 w-5" style={{ color: ACCENT }} />
             </div>
-            <div className="flex flex-col">
-              <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
-                EduGen AI
-              </span>
-              <span className="text-[10px] text-indigo-400/60 font-medium tracking-widest uppercase -mt-1">
-                Motor Pedagógico
-              </span>
+            <div>
+              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.25rem", fontWeight: 700, letterSpacing: "-0.01em", color: "#E8E3DC" }}>EduGen AI</span>
+              <div style={{ fontSize: "9px", letterSpacing: "0.18em", color: "rgba(201,169,110,0.55)", textTransform: "uppercase", lineHeight: 1, marginTop: "-2px" }}>Motor Pedagógico</div>
             </div>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6">
-            <Link to="/auth" className="text-sm font-medium text-white/60 transition-colors hover:text-white">
-              Dashboard
-            </Link>
-            <Link to="/auth" className="text-sm font-medium text-white/60 transition-colors hover:text-white">
-              Planos
-            </Link>
+          <nav className="hidden md:flex items-center gap-8">
+            {["Funcionalidades", "Planos"].map((item) => (
+              <Link key={item} to="/auth"
+                style={{ fontSize: "0.875rem", color: "rgba(232,227,220,0.45)", fontWeight: 400, letterSpacing: "0.02em", transition: "color 0.2s" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#E8E3DC")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(232,227,220,0.45)")}
+              >{item}</Link>
+            ))}
           </nav>
 
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-white/60 hover:text-white hover:bg-white/5">
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" className="text-white/60 hover:text-white hover:bg-white/5 hidden sm:flex" asChild>
-              <Link to="/auth">Entrar</Link>
-            </Button>
-            <Button className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white border-0 shadow-lg shadow-indigo-500/20" asChild>
-              <Link to="/auth">Começar agora</Link>
-            </Button>
+            <Link to="/auth"
+              style={{ fontSize: "0.875rem", color: "rgba(232,227,220,0.45)", padding: "0.4rem 1rem", borderRadius: "8px", transition: "all 0.2s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#E8E3DC"; e.currentTarget.style.background = "rgba(232,227,220,0.05)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(232,227,220,0.45)"; e.currentTarget.style.background = "transparent"; }}
+              className="hidden sm:block"
+            >Entrar</Link>
+            <Link to="/auth"
+              style={{ fontSize: "0.875rem", fontWeight: 500, padding: "0.5rem 1.25rem", borderRadius: "8px", background: ACCENT, color: "#0B0B0F", textDecoration: "none", transition: "opacity 0.2s", letterSpacing: "0.01em" }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+            >Começar agora</Link>
           </div>
         </div>
       </header>
 
-      {/* ======= SEÇÃO 2 — HERO ======= */}
-      <section className="relative container mx-auto px-4 pt-24 pb-32 text-center">
-        {/* Animated blobs */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] pointer-events-none">
-          <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-[120px]" style={{ animation: "blob-move-1 8s ease-in-out infinite" }} />
-          <div className="absolute inset-0 rounded-full bg-violet-600/15 blur-[120px] translate-x-20" style={{ animation: "blob-move-2 8s ease-in-out infinite" }} />
-        </div>
-
-        <motion.div
-          className="relative z-10"
-          variants={stagger}
-          initial="hidden"
-          animate="visible"
-        >
+      {/* ── HERO ── */}
+      <section className="relative container mx-auto px-6 pt-28 pb-36 text-center">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] pointer-events-none" style={{ background: "radial-gradient(ellipse at center, rgba(223,124,58,0.08) 0%, transparent 70%)" }} />
+        <motion.div className="relative z-10" variants={stagger} initial="hidden" animate="visible">
           <motion.div variants={fadeUp}>
-            <div className="inline-flex items-center gap-2 bg-white/[0.06] border border-white/[0.08] text-indigo-300 px-4 py-1.5 rounded-full text-sm font-medium mb-8">
-              ✦ Agora com Tutor IA para alunos
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(223,124,58,0.08)", border: "1px solid rgba(223,124,58,0.2)", color: ACCENT, padding: "6px 16px", borderRadius: "100px", fontSize: "0.8125rem", fontWeight: 500, marginBottom: "2.5rem", letterSpacing: "0.02em" }}>
+              <Sparkles className="h-3.5 w-3.5" /> Agora com Tutor IA para alunos
             </div>
           </motion.div>
 
-          <motion.h1
-            variants={fadeUp}
-            className="font-display-sora text-[44px] md:text-[72px] font-extrabold leading-[1.05] mb-6 max-w-4xl mx-auto tracking-tight"
-          >
-            Transforme qualquer idéia em um <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">curso completo e pronto para vender</span>
+          <motion.h1 variants={fadeUp} style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.8rem, 6vw, 5rem)", fontWeight: 600, lineHeight: 1.08, letterSpacing: "-0.02em", marginBottom: "1.5rem", maxWidth: "820px", marginLeft: "auto", marginRight: "auto", color: "#E8E3DC" }}>
+            Transforme qualquer ideia em um{" "}
+            <em style={{ color: ACCENT, fontStyle: "italic" }}>curso completo</em>{" "}
+            e pronto para vender
           </motion.h1>
 
-          <motion.p
-            variants={fadeUp}
-            className="text-lg md:text-xl text-white/50 max-w-2xl mx-auto mb-10 leading-relaxed"
-          >
-            Você traz o tema, a IA cria a estrutura pedagógica, o material didático e as apresentações profissionais. 
-            Tudo automático, elegante e pronto para seus alunos.
+          <motion.p variants={fadeUp} style={{ fontSize: "1.125rem", lineHeight: 1.7, color: "rgba(232,227,220,0.5)", maxWidth: "580px", margin: "0 auto 2.5rem", fontWeight: 300 }}>
+            Você traz o tema, a IA cria a estrutura pedagógica, o material didático e as apresentações profissionais. Tudo automático, elegante e pronto para seus alunos.
           </motion.p>
 
-          <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10">
-            <Button size="lg" className="text-base px-8 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white border-0 h-12" asChild>
-              <Link to="/auth">
-                Criar meu primeiro curso
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="ghost" className="text-base px-8 text-white/60 hover:text-white hover:bg-white/5 h-12" asChild>
-              <Link to="/auth">
-                Ver demonstração ↗
-              </Link>
-            </Button>
+          <motion.div variants={fadeUp} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px", marginBottom: "2.5rem" }}>
+            <Link to="/auth"
+              style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: ACCENT, color: "#0B0B0F", fontWeight: 600, fontSize: "0.9375rem", padding: "0.75rem 2rem", borderRadius: "8px", letterSpacing: "0.01em", transition: "opacity 0.2s", textDecoration: "none" }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+            >Criar meu primeiro curso <ArrowRight className="h-4 w-4" /></Link>
+            <Link to="/auth"
+              style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "rgba(232,227,220,0.5)", fontSize: "0.9375rem", padding: "0.75rem 2rem", borderRadius: "8px", border: "1px solid rgba(232,227,220,0.1)", transition: "all 0.2s", textDecoration: "none", background: "transparent" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#E8E3DC"; e.currentTarget.style.borderColor = "rgba(232,227,220,0.25)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(232,227,220,0.5)"; e.currentTarget.style.borderColor = "rgba(232,227,220,0.1)"; }}
+            >Ver demonstração ↗</Link>
           </motion.div>
 
-          <motion.div variants={fadeUp} className="flex items-center justify-center gap-2 text-sm text-white/40">
-            <div className="flex gap-0.5 text-amber-400">
-              {[...Array(5)].map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}
-            </div>
-            <span>Usado por +2.400 criadores de conteúdo</span>
+          <motion.div variants={fadeUp} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "0.8125rem", color: "rgba(232,227,220,0.35)" }}>
+            <div style={{ display: "flex", gap: "2px", color: GOLD }}>{[...Array(5)].map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}</div>
+            Usado por +2.400 criadores de conteúdo
           </motion.div>
         </motion.div>
       </section>
 
-      {/* ======= SEÇÃO 3 — EXPORT FORMATS BAR ======= */}
-      <section className="bg-white/[0.02] border-y border-white/5 py-6 overflow-hidden">
-        <div className="container mx-auto px-4">
-          <p className="text-xs text-white/30 text-center mb-4 uppercase tracking-widest">Exporte para qualquer formato</p>
-          <div className="flex items-center justify-center gap-8 md:gap-12 flex-wrap">
+      {/* ── EXPORT BAR ── */}
+      <div style={{ borderTop: "1px solid rgba(232,227,220,0.05)", borderBottom: "1px solid rgba(232,227,220,0.05)", background: "rgba(232,227,220,0.015)", padding: "1.5rem 0" }}>
+        <div className="container mx-auto px-6">
+          <p style={{ fontSize: "0.6875rem", color: "rgba(232,227,220,0.25)", textAlign: "center", textTransform: "uppercase", letterSpacing: "0.2em", marginBottom: "1rem" }}>Exporte para qualquer formato</p>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "2.5rem" }}>
             {exportFormats.map((f) => (
-              <div key={f.label} className="flex items-center gap-2 text-white/40 text-sm">
-                <f.icon className="h-4 w-4" />
-                <span>{f.label}</span>
+              <div key={f.label} style={{ display: "flex", alignItems: "center", gap: "8px", color: "rgba(232,227,220,0.3)", fontSize: "0.875rem" }}>
+                <f.icon className="h-4 w-4" /> {f.label}
               </div>
             ))}
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* ======= SEÇÃO 4 — FEATURES GRID ======= */}
-      <section className="container mx-auto px-4 py-24">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-16"
-        >
-          <h2 className="font-display-sora text-3xl md:text-[40px] font-bold tracking-tight">
+      {/* ── FEATURES ── */}
+      <section className="container mx-auto px-6 py-28">
+        <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} style={{ textAlign: "center", marginBottom: "4rem" }}>
+          <p style={{ fontSize: "0.75rem", letterSpacing: "0.2em", textTransform: "uppercase", color: GOLD, marginBottom: "1rem", fontWeight: 500 }}>Funcionalidades</p>
+          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 4vw, 2.75rem)", fontWeight: 600, letterSpacing: "-0.02em", color: "#E8E3DC", lineHeight: 1.15 }}>
             Tudo que você precisa para criar e distribuir
           </h2>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1px", background: "rgba(232,227,220,0.06)", borderRadius: "16px", overflow: "hidden" }}>
           {features.map((f, i) => (
             <motion.div
               key={f.title}
@@ -206,290 +206,213 @@ export default function Landing() {
               viewport={{ once: true }}
               transition={{ duration: 0.4, delay: i * 0.05 }}
               whileHover={{ scale: 1.02 }}
-              className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-6 hover:bg-white/[0.06] hover:border-white/[0.15] transition-all duration-300 relative group"
+              style={{ background: "#0B0B0F", padding: "1.75rem", position: "relative", transition: "background 0.2s", cursor: "default" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(232,227,220,0.025)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#0B0B0F")}
             >
               {f.pro && (
-                <div className="absolute top-4 right-4">
-                  <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/30 text-[10px] px-2 py-0.5 gap-1">
-                    <Crown className="h-3 w-3" />
-                    PRO
-                  </Badge>
+                <div style={{ position: "absolute", top: "1.25rem", right: "1.25rem", display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(201,169,110,0.1)", border: "1px solid rgba(201,169,110,0.2)", color: GOLD, fontSize: "0.625rem", fontWeight: 600, padding: "2px 8px", borderRadius: "100px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                  <Crown className="h-2.5 w-2.5" /> PRO
                 </div>
               )}
-              <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${f.gradient} flex items-center justify-center mb-4`}>
-                <f.icon className="h-5 w-5 text-white" />
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "0.875rem" }}>
+                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: `${catColors[f.cat]}18`, border: `1px solid ${catColors[f.cat]}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <f.icon className="h-4 w-4" style={{ color: catColors[f.cat] }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.625rem", letterSpacing: "0.15em", textTransform: "uppercase", color: catColors[f.cat], opacity: 0.7, marginBottom: "2px", fontWeight: 500 }}>{f.cat}</div>
+                  <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.0625rem", fontWeight: 600, color: "#E8E3DC", lineHeight: 1.2 }}>{f.title}</h3>
+                </div>
               </div>
-              <h3 className="font-display-sora text-lg font-semibold mb-2">{f.title}</h3>
-              <p className="text-sm text-white/40 leading-relaxed">{f.desc}</p>
+              <p style={{ fontSize: "0.8125rem", color: "rgba(232,227,220,0.38)", lineHeight: 1.6, fontWeight: 300 }}>{f.desc}</p>
             </motion.div>
           ))}
         </div>
       </section>
 
-      {/* ======= SEÇÃO 5 — EDUSCORE™ ======= */}
-      <section className="bg-gradient-to-r from-indigo-950/50 to-violet-950/50 border-y border-indigo-500/20 py-24">
-        <div className="container mx-auto px-4">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
-              <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 px-3 py-1 rounded-full text-xs font-semibold mb-6">
-                ✦ Exclusivo EduGen AI
-              </div>
-              <h2 className="font-display-sora text-3xl md:text-4xl font-bold mb-4 leading-tight">
-                O único score de qualidade{" "}
-                <br className="hidden md:block" />
-                pedagógica do mercado
+      {/* ── EDUSCORE ── */}
+      <section style={{ borderTop: "1px solid rgba(232,227,220,0.05)", borderBottom: "1px solid rgba(232,227,220,0.05)", padding: "7rem 0" }}>
+        <div className="container mx-auto px-6">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            <motion.div initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(223,124,58,0.08)", border: "1px solid rgba(223,124,58,0.2)", color: ACCENT, padding: "4px 14px", borderRadius: "100px", fontSize: "0.75rem", fontWeight: 500, marginBottom: "1.5rem" }}>✦ Exclusivo EduGen AI</div>
+              <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 3.5vw, 2.5rem)", fontWeight: 600, lineHeight: 1.15, letterSpacing: "-0.02em", color: "#E8E3DC", marginBottom: "1.25rem" }}>
+                O único score de qualidade<br />pedagógica do mercado
               </h2>
-              <p className="text-white/50 leading-relaxed mb-8 max-w-lg">
-                Após cada geração, o EduScore™ avalia seu curso em 4 dimensões:
-                clareza de linguagem, completude dos objetivos, equilíbrio entre
-                teoria e prática, e engajamento do conteúdo.
+              <p style={{ color: "rgba(232,227,220,0.45)", lineHeight: 1.75, marginBottom: "2rem", fontWeight: 300, maxWidth: "480px" }}>
+                Após cada geração, o EduScore™ avalia seu curso em 4 dimensões: clareza de linguagem, completude dos objetivos, equilíbrio entre teoria e prática, e engajamento do conteúdo.
               </p>
-              <Button className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white border-0" asChild>
-                <Link to="/auth">
-                  Ver meu EduScore →
-                </Link>
-              </Button>
+              <Link to="/auth"
+                style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: ACCENT, fontWeight: 500, fontSize: "0.875rem", textDecoration: "none", letterSpacing: "0.02em", transition: "opacity 0.2s" }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              >Ver meu EduScore™ <ArrowRight className="h-4 w-4" /></Link>
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-6 space-y-5"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <BarChart3 className="h-5 w-5 text-indigo-400" />
-                <span className="font-display-sora font-semibold text-lg">EduScore™</span>
-                <span className="ml-auto text-2xl font-bold text-indigo-400">80<span className="text-sm text-white/30">/100</span></span>
+            <motion.div initial={{ opacity: 0, x: 30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, delay: 0.15 }}
+              style={{ background: "rgba(232,227,220,0.03)", border: "1px solid rgba(232,227,220,0.07)", borderRadius: "16px", padding: "1.75rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "1.5rem" }}>
+                <BarChart3 className="h-5 w-5" style={{ color: ACCENT }} />
+                <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.125rem", fontWeight: 600, color: "#E8E3DC" }}>EduScore™</span>
+                <span style={{ marginLeft: "auto", fontSize: "1.5rem", fontWeight: 700, color: ACCENT }}>80<span style={{ fontSize: "0.875rem", color: "rgba(232,227,220,0.25)", fontWeight: 400 }}>/100</span></span>
               </div>
-              {eduScoreDimensions.map((d) => (
-                <div key={d.label} className="space-y-1.5">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-white/60">{d.label}</span>
-                    <span className="font-semibold">{d.score}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                {eduScoreDimensions.map((d) => (
+                  <div key={d.label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem", marginBottom: "6px" }}>
+                      <span style={{ color: "rgba(232,227,220,0.5)" }}>{d.label}</span>
+                      <span style={{ color: "#E8E3DC", fontWeight: 500 }}>{d.score}</span>
+                    </div>
+                    <div style={{ height: "4px", background: "rgba(232,227,220,0.06)", borderRadius: "100px", overflow: "hidden" }}>
+                      <motion.div style={{ height: "100%", background: d.color, borderRadius: "100px" }} initial={{ width: 0 }} whileInView={{ width: `${d.score}%` }} viewport={{ once: true }} transition={{ duration: 1.2, delay: 0.3, ease: [0.22, 1, 0.36, 1] }} />
+                    </div>
                   </div>
-                  <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
-                    <motion.div
-                      className={`h-full ${d.color} rounded-full`}
-                      initial={{ width: 0 }}
-                      whileInView={{ width: `${d.score}%` }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 1, delay: 0.3 }}
-                    />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </motion.div>
           </div>
         </div>
       </section>
 
-      {/* ======= SEÇÃO 6 — TUTOR IA ======= */}
-      <section className="container mx-auto px-4 py-24">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Chat mockup */}
-          <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5 space-y-3 order-2 lg:order-1"
-          >
-            <div className="flex items-center gap-2 pb-3 border-b border-white/[0.06]">
-              <Bot className="h-5 w-5 text-violet-400" />
-              <span className="font-display-sora font-semibold text-sm">Tutor IA — Marketing Digital</span>
+      {/* ── TUTOR IA ── */}
+      <section className="container mx-auto px-6 py-28">
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
+          <motion.div initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}
+            style={{ background: "rgba(232,227,220,0.025)", border: "1px solid rgba(232,227,220,0.07)", borderRadius: "16px", padding: "1.5rem" }}
+            className="order-2 lg:order-1">
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingBottom: "1rem", borderBottom: "1px solid rgba(232,227,220,0.06)", marginBottom: "1rem" }}>
+              <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#7B9E87" }} />
+              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "0.9375rem", fontWeight: 600, color: "#E8E3DC" }}>Tutor IA — Marketing Digital</span>
             </div>
             {tutorMessages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
-                  m.role === "user"
-                    ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/20"
-                    : "bg-white/[0.06] text-white/70 border border-white/[0.06]"
-                }`}>
+              <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: "0.75rem" }}>
+                <div style={{ maxWidth: "82%", padding: "0.625rem 1rem", borderRadius: "12px", fontSize: "0.8125rem", lineHeight: 1.6, background: m.role === "user" ? `${ACCENT}18` : "rgba(232,227,220,0.05)", border: m.role === "user" ? `1px solid ${ACCENT}28` : "1px solid rgba(232,227,220,0.06)", color: m.role === "user" ? "rgba(232,227,220,0.8)" : "rgba(232,227,220,0.55)" }}>
                   {m.text}
                 </div>
               </div>
             ))}
-            <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
-              <div className="flex-1 bg-white/[0.04] rounded-lg px-3 py-2 text-xs text-white/20">Pergunte algo sobre o curso...</div>
+            <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid rgba(232,227,220,0.05)" }}>
+              <div style={{ background: "rgba(232,227,220,0.03)", borderRadius: "8px", padding: "0.625rem 0.875rem", fontSize: "0.75rem", color: "rgba(232,227,220,0.18)" }}>Pergunte algo sobre o curso…</div>
             </div>
           </motion.div>
 
-          {/* Text */}
-          <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="order-1 lg:order-2"
-          >
-            <div className="inline-flex items-center gap-2 bg-violet-500/10 border border-violet-500/20 text-violet-300 px-3 py-1 rounded-full text-xs font-semibold mb-6">
-              ✦ Novo
-            </div>
-            <h2 className="font-display-sora text-3xl md:text-4xl font-bold mb-4 leading-tight">
-              Seus alunos têm dúvidas.{" "}
-              <br className="hidden md:block" />
-              A IA responde por você.
+          <motion.div initial={{ opacity: 0, x: 30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }} className="order-1 lg:order-2">
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(160,142,194,0.1)", border: "1px solid rgba(160,142,194,0.2)", color: "#A08EC2", padding: "4px 14px", borderRadius: "100px", fontSize: "0.75rem", fontWeight: 500, marginBottom: "1.5rem" }}>✦ Novo</div>
+            <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 3.5vw, 2.5rem)", fontWeight: 600, lineHeight: 1.15, letterSpacing: "-0.02em", color: "#E8E3DC", marginBottom: "1.25rem" }}>
+              Seus alunos têm dúvidas.<br />A IA responde por você.
             </h2>
-            <p className="text-white/50 leading-relaxed mb-6 max-w-lg">
-              Ative o Tutor IA e compartilhe um link único com seus alunos.
-              Cada tutor é treinado exclusivamente no conteúdo do seu curso —
-              sem respostas genéricas, sem alucinação.
+            <p style={{ color: "rgba(232,227,220,0.45)", lineHeight: 1.75, marginBottom: "1.75rem", fontWeight: 300, maxWidth: "460px" }}>
+              Ative o Tutor IA e compartilhe um link único com seus alunos. Cada tutor é treinado exclusivamente no conteúdo do seu curso — sem respostas genéricas, sem alucinação.
             </p>
-            <ul className="space-y-3 text-sm text-white/60">
-              <li className="flex items-center gap-2.5">
-                <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
-                Link público sem login do aluno
-              </li>
-              <li className="flex items-center gap-2.5">
-                <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
-                Histórico de perguntas no painel do criador
-              </li>
-              <li className="flex items-center gap-2.5">
-                <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
-                Baseado 100% no seu conteúdo
-              </li>
+            <ul style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+              {["Link público sem login do aluno", "Histórico de perguntas no painel do criador", "Baseado 100% no seu conteúdo"].map((item) => (
+                <li key={item} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.875rem", color: "rgba(232,227,220,0.55)" }}>
+                  <CheckCircle className="h-4 w-4 shrink-0" style={{ color: "#7B9E87" }} /> {item}
+                </li>
+              ))}
             </ul>
           </motion.div>
         </div>
       </section>
 
-      {/* ======= SEÇÃO 7 — PLANOS ======= */}
-      <section className="container mx-auto px-4 py-24">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="text-center mb-14"
-        >
-          <h2 className="font-display-sora text-3xl md:text-4xl font-bold tracking-tight">
-            Comece grátis. Escale quando precisar.
-          </h2>
-        </motion.div>
-
-        <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-          {/* FREE */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.1 }}
-            className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8"
-          >
-            <h3 className="font-display-sora text-xl font-bold mb-1">Free</h3>
-            <p className="text-3xl font-bold mb-6">Grátis</p>
-            <ul className="space-y-3 text-sm text-white/60 mb-8">
-              {["3 cursos/mês", "Até 5 módulos por curso", "Quiz e flashcards", "Certificados verificáveis", "Exportação PDF"].map((item) => (
-                <li key={item} className="flex items-center gap-2.5">
-                  <CheckCircle className="h-4 w-4 text-white/20 shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <Button variant="outline" className="w-full border-white/10 text-white hover:bg-white/5" asChild>
-              <Link to="/auth">Começar grátis</Link>
-            </Button>
+      {/* ── PLANOS ── */}
+      <section style={{ borderTop: "1px solid rgba(232,227,220,0.05)", padding: "7rem 0" }}>
+        <div className="container mx-auto px-6">
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ textAlign: "center", marginBottom: "4rem" }}>
+            <p style={{ fontSize: "0.75rem", letterSpacing: "0.2em", textTransform: "uppercase", color: GOLD, marginBottom: "1rem", fontWeight: 500 }}>Planos</p>
+            <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem, 4vw, 2.75rem)", fontWeight: 600, letterSpacing: "-0.02em", color: "#E8E3DC", lineHeight: 1.15 }}>
+              Comece grátis. Escale quando precisar.
+            </h2>
           </motion.div>
 
-          {/* PRO */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.2 }}
-            className="bg-white/[0.04] border-2 border-indigo-500/40 rounded-2xl p-8 scale-[1.02] relative"
-          >
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-              <Badge className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-0 px-3 py-1">
-                Popular
-              </Badge>
-            </div>
-            <h3 className="font-display-sora text-xl font-bold mb-1">Pro</h3>
-            <p className="text-3xl font-bold mb-1">R$59,90<span className="text-sm font-normal text-white/40">/mês</span></p>
-            <p className="text-xs text-white/30 mb-6">Cancele quando quiser</p>
-            <ul className="space-y-3 text-sm text-white/60 mb-8">
-              {[
-                "5 cursos/mês",
-                "Até 10 módulos por curso",
-                "Tudo do Free, mais:",
-                "Fontes próprias (PDF, YouTube, web)",
-                "PPTX com design premium",
-                "SCORM + Moodle + Notion",
-                "EduScore™ pedagógico",
-                "Tutor IA para alunos",
-                "Script para vídeo/narração",
-                "Tradução pedagógica",
-                "Revisão colaborativa",
-                "Analytics do criador",
-              ].map((item) => (
-                <li key={item} className="flex items-center gap-2.5">
-                  <CheckCircle className="h-4 w-4 text-indigo-400 shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <Button className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white border-0" asChild>
-              <Link to="/auth">
-                Começar com Pro
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </motion.div>
+          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }}
+              style={{ background: "rgba(232,227,220,0.025)", border: "1px solid rgba(232,227,220,0.07)", borderRadius: "16px", padding: "2rem" }}>
+              <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.375rem", fontWeight: 600, color: "#E8E3DC", marginBottom: "0.25rem" }}>Free</h3>
+              <p style={{ fontSize: "2rem", fontWeight: 700, color: "#E8E3DC", marginBottom: "1.75rem" }}>Grátis</p>
+              <ul style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "2rem" }}>
+                {freePlan.map((item) => (
+                  <li key={item} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.875rem", color: "rgba(232,227,220,0.45)" }}>
+                    <CheckCircle className="h-4 w-4 shrink-0" style={{ color: "rgba(232,227,220,0.2)" }} /> {item}
+                  </li>
+                ))}
+              </ul>
+              <Link to="/auth"
+                style={{ display: "block", textAlign: "center", padding: "0.7rem", borderRadius: "8px", border: "1px solid rgba(232,227,220,0.1)", color: "rgba(232,227,220,0.6)", fontSize: "0.875rem", fontWeight: 500, textDecoration: "none", transition: "all 0.2s" }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(232,227,220,0.25)"; e.currentTarget.style.color = "#E8E3DC"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(232,227,220,0.1)"; e.currentTarget.style.color = "rgba(232,227,220,0.6)"; }}
+              >Começar grátis</Link>
+            </motion.div>
+
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }}
+              style={{ background: `${ACCENT}0D`, border: `1px solid ${ACCENT}35`, borderRadius: "16px", padding: "2rem", position: "relative" }}>
+              <div style={{ position: "absolute", top: "-13px", left: "50%", transform: "translateX(-50%)", background: ACCENT, color: "#0B0B0F", fontSize: "0.6875rem", fontWeight: 700, padding: "3px 14px", borderRadius: "100px", letterSpacing: "0.08em", textTransform: "uppercase" }}>Popular</div>
+              <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.375rem", fontWeight: 600, color: "#E8E3DC", marginBottom: "0.25rem" }}>Pro</h3>
+              <div style={{ marginBottom: "0.25rem" }}>
+                <span style={{ fontSize: "2rem", fontWeight: 700, color: "#E8E3DC" }}>R$59,90</span>
+                <span style={{ fontSize: "0.875rem", color: "rgba(232,227,220,0.3)", fontWeight: 300 }}>/mês</span>
+              </div>
+              <p style={{ fontSize: "0.75rem", color: "rgba(232,227,220,0.25)", marginBottom: "1.75rem" }}>Cancele quando quiser</p>
+              <ul style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "2rem" }}>
+                {proPlan.map((item) => (
+                  <li key={item} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.875rem", color: "rgba(232,227,220,0.55)" }}>
+                    <CheckCircle className="h-4 w-4 shrink-0" style={{ color: ACCENT }} /> {item}
+                  </li>
+                ))}
+              </ul>
+              <Link to="/auth"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "0.7rem", borderRadius: "8px", background: ACCENT, color: "#0B0B0F", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none", transition: "opacity 0.2s" }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              >Começar com Pro <ArrowRight className="h-4 w-4" /></Link>
+            </motion.div>
+          </div>
         </div>
       </section>
 
-      {/* ======= SEÇÃO 8 — CTA FINAL ======= */}
-      <section className="relative py-24 overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-indigo-500/10 blur-[120px]" style={{ animation: "blob-move-1 8s ease-in-out infinite" }} />
-        </div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="relative z-10 container mx-auto px-4 text-center"
-        >
-          <h2 className="font-display-sora text-4xl md:text-[56px] font-bold tracking-tight mb-4">
+      {/* ── CTA FINAL ── */}
+      <section style={{ padding: "7rem 0", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "radial-gradient(ellipse at 50% 50%, rgba(223,124,58,0.07) 0%, transparent 65%)" }} />
+        <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}
+          style={{ position: "relative", zIndex: 1, textAlign: "center", padding: "0 1.5rem" }}>
+          <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.5rem, 5vw, 4rem)", fontWeight: 600, letterSpacing: "-0.025em", color: "#E8E3DC", lineHeight: 1.1, marginBottom: "1.25rem" }}>
             Seu próximo curso começa agora.
           </h2>
-          <p className="text-white/40 text-lg mb-10 max-w-lg mx-auto">
+          <p style={{ color: "rgba(232,227,220,0.4)", fontSize: "1.0625rem", margin: "0 auto 2.5rem", maxWidth: "440px", fontWeight: 300, lineHeight: 1.65 }}>
             Junte-se a criadores que já transformaram seu conhecimento em cursos profissionais.
           </p>
-          <Button size="lg" className="text-base px-10 h-14 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white border-0 text-lg" asChild>
-            <Link to="/auth">
-              Criar meu primeiro curso grátis
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Link>
-          </Button>
+          <Link to="/auth"
+            style={{ display: "inline-flex", alignItems: "center", gap: "10px", background: ACCENT, color: "#0B0B0F", fontWeight: 600, fontSize: "1rem", padding: "0.875rem 2.5rem", borderRadius: "8px", textDecoration: "none", transition: "opacity 0.2s", letterSpacing: "0.01em" }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+          >Criar meu primeiro curso grátis <ArrowRight className="h-5 w-5" /></Link>
         </motion.div>
       </section>
 
-      {/* ======= SEÇÃO 9 — FOOTER ======= */}
-      <footer className="border-t border-white/5 py-10">
-        <div className="container mx-auto px-4 grid md:grid-cols-3 gap-8 text-sm text-white/40">
+      {/* ── FOOTER ── */}
+      <footer style={{ borderTop: "1px solid rgba(232,227,220,0.05)", padding: "2.5rem 0" }}>
+        <div className="container mx-auto px-6 grid md:grid-cols-3 gap-8">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-                <Sparkles className="h-3.5 w-3.5 text-white" />
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "0.625rem" }}>
+              <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: `${ACCENT}15`, border: `1px solid ${ACCENT}25`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Sparkles className="h-3.5 w-3.5" style={{ color: ACCENT }} />
               </div>
-              <span className="font-display-sora font-bold text-white">EduGen AI</span>
+              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, fontSize: "1.0625rem", color: "#E8E3DC" }}>EduGen AI</span>
             </div>
-            <p className="text-white/30 text-xs">Cursos profissionais criados com inteligência artificial.</p>
+            <p style={{ fontSize: "0.75rem", color: "rgba(232,227,220,0.25)", lineHeight: 1.6 }}>Cursos profissionais criados com inteligência artificial.</p>
           </div>
-          <div className="flex flex-col gap-2">
-            <Link to="/auth" className="hover:text-white transition-colors">Entrar</Link>
-            <Link to="/plans" className="hover:text-white transition-colors">Planos</Link>
-            <Link to="/auth" className="hover:text-white transition-colors">Criar curso</Link>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {["Entrar", "Planos", "Criar curso"].map((item) => (
+              <Link key={item} to="/auth"
+                style={{ fontSize: "0.875rem", color: "rgba(232,227,220,0.35)", textDecoration: "none", transition: "color 0.2s" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#E8E3DC")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(232,227,220,0.35)")}
+              >{item}</Link>
+            ))}
           </div>
-          <div className="flex flex-col gap-2 md:text-right md:items-end">
-            <p>© {new Date().getFullYear()} EduGen AI</p>
-            <p className="text-white/20 text-xs">Todos os direitos reservados.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", textAlign: "right", alignItems: "flex-end" }}>
+            <p style={{ fontSize: "0.875rem", color: "rgba(232,227,220,0.35)" }}>© {new Date().getFullYear()} EduGen AI</p>
+            <p style={{ fontSize: "0.75rem", color: "rgba(232,227,220,0.2)" }}>Todos os direitos reservados.</p>
           </div>
         </div>
       </footer>
