@@ -7,12 +7,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
   RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
   Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2,
   BarChart3, Globe, Rocket, Languages, Save, Cloud, CloudOff,
-  Mic, ChevronDown, Wrench, ShieldCheck, AlignLeft
+  Mic, ChevronDown, Wrench, ShieldCheck, AlignLeft, Sparkles, WandSparkles,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -51,6 +52,8 @@ export default function CourseView() {
   const [activeModuleIndex, setActiveModuleIndex] = useState(0);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [editTitle, setEditTitle] = useState("");
+  const [regenerating, setRegenerating] = useState(false);
   const [certDialogOpen, setCertDialogOpen] = useState(false);
   const [scriptOpen, setScriptOpen] = useState(false);
   const [reprocessingFlashcards, setReprocessingFlashcards] = useState(false);
@@ -201,8 +204,10 @@ export default function CourseView() {
   });
 
   const updateModule = useMutation({
-    mutationFn: async ({ moduleId, content }: { moduleId: string; content: string }) => {
-      const { error } = await supabase.from("course_modules").update({ content }).eq("id", moduleId);
+    mutationFn: async ({ moduleId, content, title }: { moduleId: string; content: string; title?: string }) => {
+      const patch: Record<string, string> = { content };
+      if (title && title.trim()) patch.title = title.trim();
+      const { error } = await supabase.from("course_modules").update(patch).eq("id", moduleId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -895,13 +900,32 @@ export default function CourseView() {
             <div className="px-6 lg:px-10 py-8 max-w-[760px]">
               {/* Module header */}
               <div className="flex items-start justify-between gap-4 mb-6">
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">
                     Módulo {activeModuleIndex + 1} de {modules.length}
                   </p>
-                  <h2 className="font-display text-2xl font-bold text-foreground">{activeModule.title}</h2>
+                  {editingModuleId === activeModule.id ? (
+                    <Input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="font-display text-xl font-bold h-auto py-1.5 px-2 border-primary/40 focus-visible:ring-primary/30"
+                      placeholder="Título do módulo"
+                      data-testid="input-module-title"
+                    />
+                  ) : (
+                    <h2 className="font-display text-2xl font-bold text-foreground">{activeModule.title}</h2>
+                  )}
+                  {/* Summary preview — first plain paragraph of content */}
+                  {editingModuleId !== activeModule.id && (() => {
+                    const firstPara = (activeModule.content || "")
+                      .split("\n")
+                      .find((l) => l.trim() && !l.startsWith("#") && !l.startsWith("-") && !l.startsWith("*") && !l.startsWith(">") && !l.startsWith("|"));
+                    return firstPara ? (
+                      <p className="mt-1.5 text-sm text-muted-foreground line-clamp-2 leading-relaxed">{firstPara.replace(/\*\*/g, "")}</p>
+                    ) : null;
+                  })()}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {/* Auto-save indicator */}
                   {editingModuleId === activeModule.id && (
                     <span className={`text-xs flex items-center gap-1 ${
@@ -913,16 +937,50 @@ export default function CourseView() {
                       {saveStatusLabel}
                     </span>
                   )}
+                  {/* Regenerate module button (Starter + Pro, only in edit mode) */}
+                  {editingModuleId === activeModule.id && (isPro || isStarter) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 border-primary/30 text-primary hover:bg-primary/10"
+                      disabled={regenerating}
+                      title="Regenerar conteúdo do módulo com IA"
+                      data-testid="button-regenerate-module"
+                      onClick={async () => {
+                        if (!editContent.trim()) return;
+                        setRegenerating(true);
+                        try {
+                          const { data, error } = await supabase.functions.invoke("enhance-paragraph", {
+                            body: { text: editContent, action: "regenerate" },
+                          });
+                          if (error) throw error;
+                          if (data?.enhanced) {
+                            setEditContent(data.enhanced);
+                            setSaveStatus("unsaved");
+                            toast({ title: "Módulo regenerado com IA ✨" });
+                          }
+                        } catch (err: any) {
+                          toast({ title: "Erro ao regenerar", description: err.message, variant: "destructive" });
+                        } finally {
+                          setRegenerating(false);
+                        }
+                      }}
+                    >
+                      {regenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <WandSparkles className="h-4 w-4 mr-1.5" />}
+                      Regenerar
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
                     className="shrink-0 h-9"
                     onClick={() => {
                       if (editingModuleId === activeModule.id) {
-                        updateModule.mutate({ moduleId: activeModule.id, content: editContent });
+                        updateModule.mutate({ moduleId: activeModule.id, content: editContent, title: editTitle });
                       } else {
                         setEditingModuleId(activeModule.id);
                         setEditContent(activeModule.content || "");
+                        setEditTitle(activeModule.title);
                         setSaveStatus("saved");
                       }
                     }}
@@ -946,7 +1004,7 @@ export default function CourseView() {
                     isStarter={isStarter}
                   />
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent })}>
+                    <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent, title: editTitle })}>
                       Salvar alterações
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => { setEditingModuleId(null); setSaveStatus("saved"); }}>

@@ -94,7 +94,8 @@ Deno.serve(async (req: Request) => {
       deepen:    `Você é um especialista pedagógico. Aprofunde o texto com conceitos técnicos, nuances, referências ou frameworks relevantes para quem já tem conhecimento básico. Mantenha o formato markdown. Responda APENAS com o texto aprofundado.`,
       example:   `Você é um educador. Gere um exemplo prático, concreto e detalhado que ilustre bem o conceito descrito no texto. Pode ser um caso real, analogia ou cenário. Formate como markdown com título "## Exemplo Prático". Responda APENAS com o exemplo.`,
       practical: `Você é um designer instrucional. Transforme o conteúdo fornecido em uma aula prática com: objetivo claro, atividade hands-on passo a passo, dicas de execução e critérios de sucesso. Formate com seções markdown. Responda APENAS com a aula prática.`,
-      activity:  `Você é um designer instrucional. Crie uma atividade de aprendizagem baseada no conteúdo: descreva o objetivo, as instruções passo a passo, os materiais necessários e como avaliar o resultado. Formate com seções markdown. Responda APENAS com a atividade.`,
+      activity:    `Você é um designer instrucional. Crie uma atividade de aprendizagem baseada no conteúdo: descreva o objetivo, as instruções passo a passo, os materiais necessários e como avaliar o resultado. Formate com seções markdown. Responda APENAS com a atividade.`,
+      regenerate:  `Você é um especialista pedagógico e redator de cursos. Reescreva completamente este conteúdo de módulo com uma abordagem mais rica e didática. Mantenha o tema mas crie estrutura nova com: objetivo de aprendizagem, conceitos principais explicados com profundidade, pelo menos um exemplo prático concreto, e um resumo dos pontos-chave. Use markdown com seções ## e listas onde apropriado. Responda APENAS com o novo conteúdo do módulo.`,
     };
 
     const systemPrompt = systemPrompts[action] || systemPrompts.improve;
