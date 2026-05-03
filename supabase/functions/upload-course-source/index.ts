@@ -7,8 +7,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const MAX_FILES_FREE = 3;
-const MAX_FILES_PRO = 20;
+// Max source files per course per plan — keep in sync with supabase/functions/_shared/plans.ts
+const MAX_FILES_PER_PLAN: Record<string, number> = {
+  free:    3,
+  starter: 5,
+  pro:     10,
+};
+const MAX_FILES_DEFAULT = 3;
 const ALLOWED_TYPES = ["application/pdf", "text/plain", "text/markdown"];
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
 const MAX_TOTAL_CHARS = 500_000;
@@ -138,7 +143,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check existing sources count for this course
-    const maxFiles = plan === "pro" || isDev ? MAX_FILES_PRO : MAX_FILES_FREE;
+    const maxFiles = isDev ? (MAX_FILES_PER_PLAN.pro) : (MAX_FILES_PER_PLAN[plan] ?? MAX_FILES_DEFAULT);
     const { count: existingCount } = await serviceClient
       .from("course_sources")
       .select("*", { count: "exact", head: true })

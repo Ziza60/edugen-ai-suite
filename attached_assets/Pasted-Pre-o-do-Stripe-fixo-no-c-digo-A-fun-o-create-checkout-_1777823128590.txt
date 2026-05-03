@@ -1,0 +1,102 @@
+Preço do Stripe fixo no código
+
+A função create-checkout usa um PRO_PRICE_ID fixo.
+
+Isso dificulta manutenção, teste, troca de preços e criação de planos diferentes.
+
+Melhoria: mover os Price IDs para secrets/env:
+
+STRIPE_PRICE_STARTER
+STRIPE_PRICE_PRO
+STRIPE_PRICE_BUSINESS
+4. Falta de prova de qualidade
+
+O app gera cursos, mas o produto vendável precisa provar que gera bons cursos.
+
+Você deveria adicionar:
+
+nota de qualidade do curso;
+checklist pedagógico;
+revisão automática;
+alerta de conteúdo raso;
+detector de módulos genéricos;
+comparação “antes/depois”;
+modo “melhorar este módulo”.
+
+Isso pode virar um diferencial: não apenas criar curso, mas melhorar curso.
+
+4. Funcionalidades que mais agregariam valor
+Prioridade 1 — Editor visual de curso
+
+Hoje, o app parece forte na geração. Para vender, precisa ser forte na edição.
+
+Adicione um editor com:
+
+arrastar e soltar módulos;
+editar título, resumo e conteúdo;
+duplicar módulo;
+regenerar apenas uma seção;
+melhorar explicação;
+encurtar;
+aprofundar;
+transformar em aula prática;
+adicionar exemplo;
+gerar atividade.
+
+Isso aumenta muito o valor percebido.
+
+Prioridade 2 — Curso vendável com página pública
+
+A rota /c/:slug já sugere landing page pública.
+
+Transforme isso em um grande diferencial:
+
+capa do curso;
+descrição comercial;
+módulos visíveis;
+botão de inscrição;
+formulário de lead;
+botão de WhatsApp;
+depoimentos;
+preço externo;
+checkout próprio futuramente.
+
+Assim, o EduGen deixa de ser só ferramenta de criação e vira ferramenta de publicação e venda.
+
+Prioridade 3 — Tutor IA treinado no curso
+
+O tutor público já existe como rota.
+
+Esse pode ser o maior diferencial do app.
+
+Venda assim:
+
+“Cada curso criado vem com um tutor IA treinado no próprio conteúdo.”
+
+Funcionalidades ideais:
+
+aluno pergunta sobre o curso;
+tutor responde apenas com base no material;
+tutor cita o módulo relacionado;
+tutor sugere revisão;
+tutor gera perguntas de treino;
+tutor explica em linguagem simples.
+
+Isso diferencia o app de geradores básicos de PDF.
+
+Prioridade 4 — Exportações realmente profissionais
+
+A página de planos menciona PPTX, SCORM e Moodle XML.
+
+Essas exportações são muito vendáveis, especialmente para treinamento corporativo.
+
+Priorize:
+
+PPTX com visual premium;
+SCORM 1.2 funcional;
+Moodle XML para quizzes;
+PDF apostila;
+DOCX editável;
+pacote ZIP do curso.
+
+Para vender para empresas, SCORM e Moodle importam muito.

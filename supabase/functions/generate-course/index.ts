@@ -7,10 +7,13 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PLAN_LIMITS = {
-  free: { maxCourses: 9999, maxModules: 20, images: true },
-  pro: { maxCourses: 9999, maxModules: 20, images: true },
+// Plan limits — keep in sync with supabase/functions/_shared/plans.ts
+const PLAN_LIMITS: Record<string, { maxCoursesPerMonth: number; maxModules: number }> = {
+  free:    { maxCoursesPerMonth: 1,  maxModules: 6  },
+  starter: { maxCoursesPerMonth: 2,  maxModules: 8  },
+  pro:     { maxCoursesPerMonth: 5,  maxModules: 12 },
 };
+const DEFAULT_LIMITS = PLAN_LIMITS.free;
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
 async function callAI(model: string, prompt: string, maxTokens = 4000, isJson = false) {
@@ -335,8 +338,8 @@ Deno.serve(async (req: Request) => {
       // Get subscription — default to "pro" when no record exists
       const { data: sub } = await serviceClient
         .from("subscriptions").select("plan").eq("user_id", userId).maybeSingle();
-      const plan = (sub?.plan || "pro") as "free" | "pro";
-      const limits = PLAN_LIMITS[plan];
+      const plan = sub?.plan || "pro";
+      const limits = PLAN_LIMITS[plan] ?? DEFAULT_LIMITS;
 
       // Check dev status
       const { data: profile } = await serviceClient

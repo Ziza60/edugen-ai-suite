@@ -166,8 +166,8 @@ export default function Dashboard() {
     return Array.from(langs);
   }, [courses]);
 
-  const canCreate = isDev || usage < limits.maxCourses;
-  const usagePercent = Math.min((usage / limits.maxCourses) * 100, 100);
+  const canCreate = isDev || usage < limits.maxCoursesPerMonth;
+  const usagePercent = Math.min((usage / limits.maxCoursesPerMonth) * 100, 100);
 
   return (
     <div className="min-h-screen">
@@ -256,7 +256,7 @@ export default function Dashboard() {
               </div>
               <div className="flex items-baseline gap-1">
                 <span className="text-2xl font-display font-bold text-foreground">{usage}</span>
-                <span className="text-base text-muted-foreground font-medium">/ {limits.maxCourses} cursos</span>
+                <span className="text-base text-muted-foreground font-medium">/ {limits.maxCoursesPerMonth} cursos</span>
               </div>
               <Progress value={usagePercent} className="mt-3 h-2" />
             </div>
@@ -297,7 +297,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">
-                  Você usou <strong>{usage}</strong> de <strong>{limits.maxCourses}</strong> cursos gratuitos este mês
+                  Você usou <strong>{usage}</strong> de <strong>{limits.maxCoursesPerMonth}</strong> cursos gratuitos este mês
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   No Pro, crie mais cursos, gere PDFs, exporte PPTX e use imagens com IA.
@@ -326,7 +326,7 @@ export default function Dashboard() {
             <div>
               <h3 className="font-display font-bold text-lg text-foreground">Limite atingido</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Você já criou {limits.maxCourses} cursos gratuitos este mês. Faça upgrade para continuar criando.
+                Você já criou {limits.maxCoursesPerMonth} cursos gratuitos este mês. Faça upgrade para continuar criando.
               </p>
             </div>
             <Button onClick={() => navigate("/app/planos")} className="shrink-0">
@@ -653,7 +653,7 @@ export default function Dashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <OnboardingModal open={onboardingOpen} onDismiss={dismissOnboarding} freeCourses={limits.maxCourses} />
+      <OnboardingModal open={onboardingOpen} onDismiss={dismissOnboarding} freeCourses={limits.maxCoursesPerMonth} />
     </div>
   );
 }

@@ -987,7 +987,7 @@ export default function CourseWizard() {
                         <div className="bg-muted/50 border border-border rounded-xl p-3 text-xs text-muted-foreground flex items-start gap-2">
                           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                           <span>
-                            Você usou <strong>{usage}</strong> de <strong>{limits.maxCourses}</strong> cursos gratuitos este mês. Esta geração usará 1 crédito.
+                            Você usou <strong>{usage}</strong> de <strong>{limits.maxCoursesPerMonth}</strong> cursos gratuitos este mês. Esta geração usará 1 crédito.
                           </span>
                         </div>
                       )}

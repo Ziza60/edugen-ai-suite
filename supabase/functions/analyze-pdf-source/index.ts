@@ -13,7 +13,7 @@ const json = (data: unknown, status = 200) =>
     headers: { ...cors, "Content-Type": "application/json" },
   });
 
-// Rate limits: max uploads per hour per plan
+// Max PDF/DOCX analyses per hour per plan — keep in sync with supabase/functions/_shared/plans.ts
 const RATE_LIMITS: Record<string, number> = {
   free:    3,
   starter: 15,

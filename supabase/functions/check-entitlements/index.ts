@@ -7,8 +7,23 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PRO_FEATURES = ["flashcards_flip", "export_pdf", "export_pptx", "export_notion", "ai_images", "custom_certificate", "export_moodle", "export_scorm"];
-const BUSINESS_FEATURES: string[] = []; // reservado para uso futuro
+// Features that require Pro plan (not available on Free or Starter)
+// Keep in sync with supabase/functions/_shared/plans.ts PRO_ONLY_FEATURES
+const PRO_FEATURES = [
+  "flashcards_flip",
+  "export_scorm",
+  "export_moodle",
+  "tutor_ia",
+  "custom_certificate",
+  "pptx_premium",
+  "google_slides",
+  "microsoft_pptx",
+  // Legacy keys kept for backward compatibility
+  "export_pdf",
+  "export_pptx",
+  "export_notion",
+  "ai_images",
+];
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -46,51 +61,46 @@ Deno.serve(async (req: Request) => {
 
     const { feature } = await req.json();
 
-    if (!feature || (!PRO_FEATURES.includes(feature) && !BUSINESS_FEATURES.includes(feature))) {
-      return new Response(JSON.stringify({ error: "Invalid feature" }), {
+    if (!feature || !PRO_FEATURES.includes(feature)) {
+      return new Response(JSON.stringify({ error: "Invalid or unknown feature" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const isBusinessFeature = BUSINESS_FEATURES.includes(feature);
+    // Check subscription and dev flag in parallel
+    const [subResult, profileResult] = await Promise.all([
+      serviceClient.from("subscriptions").select("plan").eq("user_id", userId).maybeSingle(),
+      serviceClient.from("profiles").select("is_dev").eq("user_id", userId).maybeSingle(),
+    ]);
 
-    // Check subscription
-    const { data: sub } = await serviceClient
-      .from("subscriptions")
-      .select("plan")
-      .eq("user_id", userId)
-      .single();
+    const plan: string = subResult.data?.plan ?? "free";
+    const isDev = profileResult.data?.is_dev === true;
 
-    const plan = sub?.plan || "free";
-
-    // Check if user is a dev — devs get full access to all features
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("is_dev")
-      .eq("user_id", userId)
-      .single();
-    const isDev = profile?.is_dev === true;
-
-    const requiredPlan = isBusinessFeature ? "business" : "pro";
-    const entitled = isDev || (isBusinessFeature ? plan === "business" : (plan === "pro" || plan === "business"));
+    // Pro features require plan === "pro" (or dev override)
+    const entitled = isDev || plan === "pro";
 
     if (!entitled) {
       return new Response(
-        JSON.stringify({ error: `This feature requires a ${requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1)} plan.`, feature, entitled: false }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({
+          error: "Esta funcionalidade requer o plano Pro.",
+          feature,
+          entitled: false,
+          plan,
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     return new Response(
       JSON.stringify({ entitled: true, feature, plan }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error: any) {
     console.error("Check entitlements error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
