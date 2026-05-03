@@ -267,7 +267,7 @@ Deno.serve(async (req: Request) => {
         n_slides:               nSlides,
         instructions:           `Este é um curso educacional em português chamado "${course.title}". Tipo: ${courseType}. Gere slides em Português do Brasil com linguagem pedagógica clara e objetiva. Cada módulo deve ter slides claros e bem estruturados.`,
         tone:                   "default",
-        verbosity:              density === "compact" ? "concise" : density === "detailed" ? "detailed" : "standard",
+        verbosity:              "standard",
         language:               "Portuguese",
         standard_template:      presentonConfig.template,
         theme:                  presentonConfig.theme,
@@ -320,10 +320,11 @@ Deno.serve(async (req: Request) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err: any) {
-    console.error("[PRESENTON] Fatal error:", err?.message || err);
+    const msg = err?.message || "Internal server error";
+    console.error("[PRESENTON] Fatal error:", msg);
     return new Response(
-      JSON.stringify({ error: err?.message || "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ success: false, error: "PRESENTON_ERROR", detail: msg }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
