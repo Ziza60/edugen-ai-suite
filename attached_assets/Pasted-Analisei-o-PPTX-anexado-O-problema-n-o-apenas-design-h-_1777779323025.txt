@@ -1,0 +1,156 @@
+Analisei o PPTX anexado. O problema não é apenas “design”: há falhas estruturais no algoritmo que transforma o conteúdo em slides. O arquivo tem aparência de apresentação gerada automaticamente sem controle suficiente de quebra, hierarquia, overflow e segmentação semântica.
+
+Diagnóstico principal
+
+O PPTX está com 5 problemas centrais:
+
+1. Texto está sendo quebrado de forma mecânica
+
+Exemplo recorrente: frases como “Fundamentos A IA Generativa...”, “Como funciona...”, “Aplicações reais...” aparecem grudadas ao conteúdo.
+
+Isso indica que o exportador não está reconhecendo corretamente os títulos/seções do Markdown. Ele está tratando tudo como texto corrido.
+
+Correção: antes de gerar o PPTX, o conteúdo precisa passar por um parser que identifique:
+
+### Fundamentos
+### Como funciona
+### Aplicações reais
+### Exemplo prático
+### Desafios e cuidados
+### Resumo
+
+Cada seção deve virar um bloco próprio ou um slide próprio.
+
+2. Há repetição de numeração
+
+Em vários slides aparece algo como:
+
+01
+01
+
+ou
+
+04
+04
+
+Isso mostra que o layout está criando dois elementos de numeração: um decorativo e outro textual.
+
+Correção: o número do item deve ser gerado apenas pelo template visual, nunca importado também do conteúdo.
+
+3. O conteúdo está sendo cortado
+
+No índice e em alguns slides de módulo, há textos interrompidos no meio da frase, por exemplo:
+
+Explorar as capacidades da IA generativa...
+Obter uma compreensão…
+
+e também cortes como:
+
+construi
+Ch
+prom
+
+Isso acontece porque o gerador coloca texto em caixas fixas sem recalcular tamanho, linhas ou slides adicionais.
+
+Correção: o exportador precisa ter regra de overflow:
+
+se texto > limite de caracteres:
+    dividir em novo slide
+se linha > limite:
+    quebrar respeitando palavra inteira
+se bloco > altura disponível:
+    criar slide "continuação"
+4. Os slides “Principais Aprendizados” são genéricos
+
+Todos os módulos usam praticamente os mesmos aprendizados:
+
+Agora você domina os conceitos fundamentais...
+Lembre-se de revisar...
+Você é capaz de explicar...
+Continue praticando...
+
+Isso reduz muito o valor do PPTX. Parece material automático e pouco personalizado.
+
+Correção: os key takeaways precisam ser extraídos do conteúdo real do módulo. Exemplo:
+
+Para módulo de Prompt Engineering, os aprendizados deveriam mencionar:
+
+zero-shot;
+few-shot;
+Chain of Thought;
+iteração de prompts;
+escolha da técnica conforme a tarefa.
+5. O número total de slides está inconsistente
+
+O arquivo tem 79 slides, mas os rodapés indicam algo como 1 / 75, 2 / 75 etc. Isso passa sensação de erro técnico.
+
+Correção: a contagem total deve ser calculada depois que todos os slides forem criados, não antes.
+
+Problema de fundo
+
+O PPTX está sendo gerado como se o conteúdo fosse apenas uma lista de frases.
+
+Mas um curso precisa ser convertido em tipos de slide, por exemplo:
+
+capa;
+índice;
+abertura de módulo;
+objetivos;
+conceito central;
+processo/etapas;
+tabela comparativa;
+exemplo prático;
+aplicações reais;
+resumo;
+quiz;
+certificado.
+
+Hoje o exportador parece pegar qualquer bloco e jogar em layouts aleatórios. Por isso há slides bonitos isoladamente, mas o conjunto fica inconsistente.
+
+O que eu recomendo mudar no EduGen
+Prioridade máxima
+
+Criar uma etapa intermediária antes do PPTX:
+
+{
+  "slide_type": "concept",
+  "title": "O que é IA Generativa",
+  "body": [
+    "IA generativa cria conteúdos novos a partir de padrões aprendidos.",
+    "Pode gerar texto, imagem, música, código e respostas conversacionais."
+  ]
+}
+
+Ou seja: não gerar PPTX direto do Markdown.
+
+Primeiro transforme o curso em um roteiro de slides estruturado. Depois o PPTX apenas renderiza esse roteiro.
+
+Regra prática para melhorar imediatamente
+
+Use estes limites:
+
+Título: até 80 caracteres
+Subtítulo: até 120 caracteres
+Slide comum: até 3 bullets
+Bullet: até 120 caracteres
+Texto grande: nunca colocar em slide; dividir em cards
+Máximo: 35–45 palavras por slide
+
+O seu PPTX atual frequentemente passa disso ou quebra mal.
+
+Veredito
+
+O problema não está só na estética. O problema está na lógica de exportação.
+
+Para gerar PPTX vendável, o app precisa de:
+
+parser de Markdown;
+classificador de seções;
+roteiro intermediário em JSON;
+limites rígidos de texto por slide;
+regra automática de overflow;
+templates por tipo de slide;
+takeaways específicos por módulo;
+contagem final corrigida depois da geração.
+
+Com isso, o PPTX deixa de parecer “texto jogado em slides” e passa a parecer uma apresentação profissional.
