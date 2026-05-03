@@ -8,7 +8,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PRO_PRICE_ID = "price_1T6bhGFqUUuQh5GkIcpbbsNc";
+// Price IDs come from Supabase secrets — set via:
+// supabase secrets set STRIPE_PRICE_PRO=price_xxx STRIPE_PRICE_STARTER=price_yyy
+function getPriceId(plan: string): string {
+  const pro     = Deno.env.get("STRIPE_PRICE_PRO")     || "price_1T6bhGFqUUuQh5GkIcpbbsNc";
+  const starter = Deno.env.get("STRIPE_PRICE_STARTER") || pro;
+  if (plan === "starter") return starter;
+  return pro;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -29,9 +36,11 @@ Deno.serve(async (req: Request) => {
     const { data: claimsData, error: claimsError } = await supabaseClient.auth.getClaims(token);
     if (claimsError || !claimsData?.claims) throw new Error("Invalid token");
 
-    const userId = claimsData.claims.sub as string;
-    const email = claimsData.claims.email as string;
+    const userId  = claimsData.claims.sub as string;
+    const email   = claimsData.claims.email as string;
     if (!email) throw new Error("Email not available");
+
+    const { plan = "pro" } = await req.json().catch(() => ({}));
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
       apiVersion: "2025-08-27.basil",
@@ -43,16 +52,17 @@ Deno.serve(async (req: Request) => {
       customerId = customers.data[0].id;
     }
 
-    const origin = req.headers.get("origin") || "http://localhost:3000";
+    const origin   = req.headers.get("origin") || "http://localhost:3000";
+    const priceId  = getPriceId(plan);
 
     const session = await stripe.checkout.sessions.create({
-      customer: customerId,
+      customer:       customerId,
       customer_email: customerId ? undefined : email,
-      line_items: [{ price: PRO_PRICE_ID, quantity: 1 }],
-      mode: "subscription",
-      success_url: `${origin}/app/planos?success=true`,
-      cancel_url: `${origin}/app/planos?canceled=true`,
-      metadata: { user_id: userId },
+      line_items:     [{ price: priceId, quantity: 1 }],
+      mode:           "subscription",
+      success_url:    `${origin}/app/planos?success=true`,
+      cancel_url:     `${origin}/app/planos?canceled=true`,
+      metadata:       { user_id: userId, plan },
     });
 
     return new Response(JSON.stringify({ url: session.url }), {

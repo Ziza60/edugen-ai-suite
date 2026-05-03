@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import {
   Bold, Italic, List, ListOrdered, Heading2, Heading3,
   Link as LinkIcon, Undo2, Redo2, Sparkles, Loader2,
-  Type, Minus, Quote, Code,
+  Type, Minus, Quote, Code, Scissors, Layers, Lightbulb,
+  FlaskConical, BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -252,6 +253,7 @@ interface BlockEditorProps {
   content: string; // markdown
   onChange: (markdown: string) => void;
   isPro?: boolean;
+  isStarter?: boolean;
 }
 
 export function BlockEditor({ content, onChange, isPro = false }: BlockEditorProps) {

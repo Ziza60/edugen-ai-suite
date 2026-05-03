@@ -86,10 +86,15 @@ Deno.serve(async (req: Request) => {
     const model = "gemini-2.5-flash"; 
 
     const systemPrompts: Record<string, string> = {
-      improve: `Você é um editor pedagógico especialista. Melhore o texto fornecido mantendo o mesmo significado mas tornando-o mais claro, conciso e profissional. Mantenha o formato markdown. Responda APENAS com o texto melhorado, sem explicações.`,
-      simplify: `Você é um editor pedagógico. Simplifique o texto fornecido para que seja compreensível por iniciantes. Use linguagem simples e direta. Mantenha o formato markdown. Responda APENAS com o texto simplificado.`,
-      expand: `Você é um editor pedagógico. Expanda o texto fornecido com mais detalhes, exemplos e explicações. Mantenha o formato markdown. Responda APENAS com o texto expandido.`,
-      fix: `Você é um editor. Corrija erros gramaticais, ortográficos e de formatação no texto. Mantenha o formato markdown. Responda APENAS com o texto corrigido.`,
+      improve:   `Você é um editor pedagógico especialista. Melhore o texto fornecido mantendo o mesmo significado mas tornando-o mais claro, conciso e profissional. Mantenha o formato markdown. Responda APENAS com o texto melhorado, sem explicações.`,
+      simplify:  `Você é um editor pedagógico. Simplifique o texto fornecido para que seja compreensível por iniciantes. Use linguagem simples e direta. Mantenha o formato markdown. Responda APENAS com o texto simplificado.`,
+      expand:    `Você é um editor pedagógico. Expanda o texto fornecido com mais detalhes, exemplos e explicações. Mantenha o formato markdown. Responda APENAS com o texto expandido.`,
+      fix:       `Você é um editor. Corrija erros gramaticais, ortográficos e de formatação no texto. Mantenha o formato markdown. Responda APENAS com o texto corrigido.`,
+      shorten:   `Você é um editor pedagógico. Reduza o texto fornecido para a metade, preservando os pontos mais importantes. Seja direto e elimine redundâncias. Mantenha o formato markdown. Responda APENAS com o texto encurtado.`,
+      deepen:    `Você é um especialista pedagógico. Aprofunde o texto com conceitos técnicos, nuances, referências ou frameworks relevantes para quem já tem conhecimento básico. Mantenha o formato markdown. Responda APENAS com o texto aprofundado.`,
+      example:   `Você é um educador. Gere um exemplo prático, concreto e detalhado que ilustre bem o conceito descrito no texto. Pode ser um caso real, analogia ou cenário. Formate como markdown com título "## Exemplo Prático". Responda APENAS com o exemplo.`,
+      practical: `Você é um designer instrucional. Transforme o conteúdo fornecido em uma aula prática com: objetivo claro, atividade hands-on passo a passo, dicas de execução e critérios de sucesso. Formate com seções markdown. Responda APENAS com a aula prática.`,
+      activity:  `Você é um designer instrucional. Crie uma atividade de aprendizagem baseada no conteúdo: descreva o objetivo, as instruções passo a passo, os materiais necessários e como avaliar o resultado. Formate com seções markdown. Responda APENAS com a atividade.`,
     };
 
     const systemPrompt = systemPrompts[action] || systemPrompts.improve;
