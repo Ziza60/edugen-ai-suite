@@ -1,0 +1,103 @@
+O que endurecer no v3
+1. Regras fortes no schema/validação
+
+O Zod não pode apenas validar tipo. Ele precisa validar qualidade mínima.
+
+Exemplo de regra:
+
+title: z.string().max(72)
+items: z.array(z.string().max(130)).max(4)
+sectionLabel: z.string().max(24)
+
+E rejeitar/normalizar itens contendo:
+
+"Objetivo do Módulo"
+"Fundamentos "
+"Como funciona "
+"Aplicações reais "
+"Exemplo prático "
+"Desafios e cuidados "
+
+Quando esses termos vierem grudados no texto, o normalizador deve separar ou remover o prefixo.
+
+2. Não permitir numeração textual nos items
+
+Se o layout já renderiza 01, 02, 03, então o item não pode começar com:
+
+01
+1.
+1)
+
+Normalize antes do render:
+
+item.replace(/^\s*(\d{1,2}|0\d)[\.\)\-:]?\s*/, "")
+
+Isso resolveria o “01 01”.
+
+3. Split semântico, não split mecânico
+
+O erro “Pt. 2” aparece demais e de modo artificial.
+
+Em vez de:
+
+slide.items.length > limite → cria Pt. 2
+
+melhor:
+
+se layout = concept:
+  máximo 3 ideias
+se layout = process:
+  máximo 4 etapas
+se layout = example_highlight:
+  exatamente Contexto, Desafio, Solução, Resultado
+se layout = takeaways:
+  máximo 5 bullets curtos
+
+Ou seja, cada layout precisa ter sua própria regra de corte.
+
+4. Segunda chamada de IA só para reparar o JSON
+
+Quando o SlidePlan[] falhar nos limites, não tente consertar tudo na mão. Faça uma chamada curta:
+
+“Reescreva este SlidePlan mantendo os mesmos layouts, mas reduza títulos para 70 caracteres, itens para 120 caracteres, máximo 4 itens por slide, sem numeração textual e sem frases cortadas.”
+
+Isso custa pouco e melhora muito.
+
+5. Rejeitar slide genérico de “Principais Aprendizados”
+
+Esse é um ponto crítico. O v3 não pode aceitar takeaways como:
+
+Agora você domina os conceitos fundamentais...
+Continue praticando...
+
+Regra prática: se o takeaway não menciona termos específicos do módulo, reprova.
+
+Exemplo:
+
+const genericPatterns = [
+  /agora você domina/i,
+  /continue praticando/i,
+  /conceitos fundamentais/i,
+  /próximo módulo/i,
+  /com suas próprias palavras/i,
+]
+
+Se bater, manda regenerar.
+
+Conclusão
+
+Você está certo: o export pptxv3 já tem o caminho correto.
+
+Mas o erro está no fato de que ele provavelmente trata o JSON como “válido” quando ele só é válido formalmente, não visualmente nem pedagogicamente.
+
+A correção não é criar outro pipeline. É transformar o v3 em:
+
+AI SlidePlan
+→ Zod estrutural
+→ normalizador agressivo
+→ validador visual/pedagógico
+→ repair AI se necessário
+→ render
+→ pós-checagem de overflow
+
+O v3 está conceitualmente certo. Ele só precisa ficar muito mais rígido.

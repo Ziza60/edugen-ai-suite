@@ -26,9 +26,9 @@ const SlidePlanSchema = z.object({
     // Preserva compatibilidade com layouts já existentes no motor atual.
     "definition",
   ]),
-  title: z.string().max(80),
-  sectionLabel: z.string().max(50).optional(),
-  items: z.array(z.string().max(170)).max(6).optional(),
+  title: z.string().max(72),
+  sectionLabel: z.string().max(30).optional(),
+  items: z.array(z.string().max(130)).max(6).optional(),
   objectives: z.array(z.string().max(160)).max(3).optional(),
   tableHeaders: z.array(z.string().max(40)).optional(),
   tableRows: z.array(z.array(z.string().max(120))).optional(),
@@ -2043,6 +2043,55 @@ function ensureSentenceEnd(text: string): string {
   return t + ".";
 }
 
+// ── Item normalizers ─────────────────────────────────────────────────────
+/** Remove leading textual numbering like "01.", "1.", "1)", "1-" that would
+ *  duplicate the visual badge already rendered by the layout. */
+function stripLeadingNumber(item: string): string {
+  return item.replace(/^\s*(\d{1,2}|0\d)[\.\)\-:\s]\s*/, "").trim();
+}
+
+/** Strip section-title prefixes that leak from Markdown headings into item text,
+ *  e.g. "Objetivo do Módulo: ..." → "..." */
+const SECTION_PREFIX_RE = /^(objetivo\s+do\s+m[oó]dulo|fundamentos?|como\s+funciona|aplica[çc][õo]es\s+reais?|exemplo\s+pr[áa]tico|desafios?\s+e\s+cuidados?|resumo\s+do\s+m[oó]dulo|resumo|principais\s+aprendizados?)\s*[:–\-]\s*/i;
+function stripSectionPrefix(item: string): string {
+  return item.replace(SECTION_PREFIX_RE, "").trim();
+}
+
+/** Per-layout hard caps on number of items. */
+function layoutMaxItems(layout: SlideLayoutV3, densityMax: number): number {
+  switch (layout) {
+    case "example_highlight":   return 4;
+    case "numbered_takeaways":  return 5;
+    case "summary_slide":       return 4;
+    case "warning_callout":     return 4;
+    case "reflection_callout":  return 2;
+    case "grid_cards":          return 5;
+    case "process_timeline":    return 6;
+    case "two_column_bullets":  return 8;
+    case "bullets":             return densityMax;
+    default:                    return densityMax;
+  }
+}
+
+/** Generic takeaway patterns that appear identical across all modules. */
+const GENERIC_TAKEAWAY_RE = [
+  /agora você domina os conceitos fundamentais/i,
+  /conceitos fundamentais deste módulo/i,
+  /lembre-se de revisar os pontos principais antes de avançar/i,
+  /continue praticando/i,
+  /com suas próprias palavras/i,
+  /maestria vem com a aplicação consistente/i,
+  /fundamentos teóricos e práticos necessários para aplicar/i,
+  /aplicação correta destes conceitos tem impacto direto/i,
+  /agora você domina os conceitos centrais e pode aplicá-los com confiança/i,
+  /você é capaz de identificar o contexto certo para cada abordagem — habilidade que define/i,
+  /a partir de hoje, você reconhece os antipadrões e sabe exatamente como evitar/i,
+  /o diferencial não é saber a teoria, mas saber quando e como aplicar/i,
+];
+function isGenericTakeaway(item: string): boolean {
+  return GENERIC_TAKEAWAY_RE.some((re) => re.test(item));
+}
+
 function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): SlidePlan | null {
   raw = sanitizeAndValidate(raw)[0];
   if (!raw || typeof raw !== "object" || !raw.layout) return null;
@@ -2066,19 +2115,24 @@ function normalizeSlide(raw: any, moduleIndex: number, design: DesignConfig): Sl
   ];
   if (!validLayouts.includes(layout)) return null;
 
-  const title = sanitizeText(String(raw.title || "")).substring(0, 80) || "Slide";
-  const sectionLabel = sanitizeText(String(raw.sectionLabel || "")).substring(0, 50);
+  const title = sanitizeText(String(raw.title || "")).substring(0, 72) || "Slide";
+  const sectionLabel = sanitizeText(String(raw.sectionLabel || "")).substring(0, 30);
 
-  // Items: filter out empty/too-short strings, enforce sentence end
-  const maxItems = design.density.maxItemsPerSlide + 2; // allow slight overflow for AI
+  // Items: filter, normalize (strip leading numbers + section prefixes), enforce limits
+  const perLayoutMax = layoutMaxItems(layout, design.density.maxItemsPerSlide);
   let items: string[] = [];
   if (Array.isArray(raw.items)) {
-    const itemCharLimit = layout === "example_highlight" ? 350 : 200;
+    const itemCharLimit = layout === "example_highlight" ? 300 : 130;
     items = raw.items
       .filter((i: any) => typeof i === "string" && i.trim().length > 5)
-      .map((i: string) => ensureSentenceEnd(sanitizeText(i).substring(0, itemCharLimit)))
+      .map((i: string) => {
+        let s = sanitizeText(i);
+        s = stripLeadingNumber(s);
+        s = stripSectionPrefix(s);
+        return ensureSentenceEnd(s.substring(0, itemCharLimit));
+      })
       .filter((i: string) => !isSectionMarker(i))
-      .slice(0, maxItems + 2);
+      .slice(0, perLayoutMax);
   }
 
   // For example_highlight: enforce canonical 4-phase order
@@ -2458,6 +2512,36 @@ async function generateSlidesForModule(
       report.warnings.push(`[V3-ANTI-REP] Swapped "${curr.layout}" → "${alt}" for "${curr.title}"`);
       compacted[i] = { ...curr, layout: alt };
       consecutive = 0;
+    }
+  }
+
+  // 6a. QUALITY: Detectar takeaways com frases genéricas proibidas e substituir
+  const takeawaysSlideGeneric = compacted.find((s) => s.layout === "numbered_takeaways");
+  if (takeawaysSlideGeneric && takeawaysSlideGeneric.items) {
+    const langPrefix = language.includes("Port") ? "pt" : language.includes("Span") ? "es" : "en";
+    const genericItems = takeawaysSlideGeneric.items.filter(isGenericTakeaway);
+    if (genericItems.length > 0) {
+      report.warnings.push(
+        `[V3-GENERIC-TAKEAWAY] Module ${moduleIndex + 1}: ${genericItems.length} generic takeaway(s) detected and replaced.`,
+      );
+      const specific = takeawaysSlideGeneric.items.filter((it) => !isGenericTakeaway(it));
+      const fill = langPrefix === "pt"
+        ? [
+            `Você domina os fundamentos de "${moduleTitle}" com profundidade suficiente para usá-los em projetos reais.`,
+            `Os conceitos de "${moduleTitle}" aprendidos aqui estão entre os mais exigidos pelo mercado profissional.`,
+            `Você identifica quando e como aplicar as técnicas de "${moduleTitle}" conforme o contexto do problema.`,
+            `A maestria em "${moduleTitle}" vem da prática — aplique o que aprendeu em um projeto concreto esta semana.`,
+          ]
+        : langPrefix === "es"
+          ? [
+              `Dominas los fundamentos de "${moduleTitle}" con suficiente profundidad para usarlos en proyectos reales.`,
+              `Los conceptos de "${moduleTitle}" aprendidos aquí están entre los más demandados por el mercado profesional.`,
+            ]
+          : [
+              `You master the fundamentals of "${moduleTitle}" deeply enough to apply them in real projects.`,
+              `The concepts from "${moduleTitle}" are among the most in-demand skills in the professional market.`,
+            ];
+      takeawaysSlideGeneric.items = [...specific, ...fill].slice(0, 5);
     }
   }
 
