@@ -3,7 +3,47 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "4.0.0";
+const ENGINE_VERSION = "4.0.1";
+
+// ═══════════════════════════════════════════════════════════
+// XML SAFETY — must run on ALL text before passing to PptxGenJS
+// ═══════════════════════════════════════════════════════════
+
+function stripInvalidXmlChars(input: string): string {
+  let out = "";
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = i + 1 < input.length ? input.charCodeAt(i + 1) : 0;
+      if (next >= 0xdc00 && next <= 0xdfff) { out += input[i] + input[i + 1]; i++; continue; }
+      continue; // orphan high surrogate → drop
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) continue; // lone low surrogate
+    if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) continue; // control chars
+    if (code === 0x7f) continue;
+    if (code === 0xfffe || code === 0xffff) continue; // non-characters
+    out += input[i];
+  }
+  return out;
+}
+
+function san(text: string): string {
+  if (!text || typeof text !== "string") return "";
+  let out = text
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_, c) => {
+      const n = Number(c);
+      if (!Number.isFinite(n) || n < 0 || n > 0x10ffff) return "";
+      try { return String.fromCodePoint(n); } catch { return ""; }
+    });
+  out = stripInvalidXmlChars(out);
+  return out
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -122,7 +162,7 @@ function footer(slide: any, d: Design, num: number, total: number) {
   });
   // brand
   if (d.footerBrand) {
-    slide.addText(d.footerBrand, {
+    slide.addText(san(d.footerBrand), {
       x: ML, y: FOOTER_Y + 0.05, w: CW * 0.5, h: 0.22,
       fontSize: 9, fontFace: d.bodyFont,
       color: d.subtext, bold: true, charSpacing: 2,
@@ -145,7 +185,7 @@ function header(slide: any, d: Design, label: string, title: string) {
   });
   // label
   if (label) {
-    slide.addText(label.toUpperCase(), {
+    slide.addText(san(label).toUpperCase(), {
       x: ML, y: 0.18, w: CW, h: 0.22,
       fontSize: 9, fontFace: d.bodyFont, bold: true,
       color: d.accent, charSpacing: 4,
@@ -154,7 +194,7 @@ function header(slide: any, d: Design, label: string, title: string) {
   // title
   const titleY = label ? 0.44 : 0.22;
   const titleH = label ? 0.82 : 1.0;
-  slide.addText(title, {
+  slide.addText(san(title), {
     x: ML, y: titleY, w: CW, h: titleH,
     fontSize: 28, fontFace: d.titleFont, bold: true,
     color: d.text, valign: "middle",
@@ -194,7 +234,7 @@ function renderCover(pptx: PptxGenJS, slide_: Slide, d: Design, totalSlides: num
       fill: { color: d.accent },
       rectRadius: 0.04,
     });
-    slide.addText(slide_.subtitle.toUpperCase(), {
+    slide.addText(san(slide_.subtitle).toUpperCase(), {
       x: 1.0, y: 1.1, w: 4.5, h: 0.34,
       fontSize: 10, fontFace: d.bodyFont, bold: true,
       color: "FFFFFF", charSpacing: 3, valign: "middle",
@@ -202,7 +242,7 @@ function renderCover(pptx: PptxGenJS, slide_: Slide, d: Design, totalSlides: num
   }
 
   // Title
-  slide.addText(slide_.title, {
+  slide.addText(san(slide_.title), {
     x: 1.0, y: 1.65, w: SLIDE_W - 1.6, h: 2.4,
     fontSize: 44, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "middle",
@@ -288,7 +328,7 @@ function renderTOC(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total
     });
 
     // Title
-    slide.addText(modules[i].title, {
+    slide.addText(san(modules[i].title), {
       x: listX + 0.48, y: y + (itemH - 0.3) / 2, w: listW - 0.5, h: 0.3,
       fontSize: 14, fontFace: d.bodyFont,
       color: d.text, valign: "middle",
@@ -333,7 +373,7 @@ function renderModuleCover(pptx: PptxGenJS, slide_: Slide, d: Design, num: numbe
   });
 
   // Title
-  slide.addText(slide_.title, {
+  slide.addText(san(slide_.title), {
     x: sideW + 0.5, y: 1.9, w: SLIDE_W - sideW - 1.2, h: 2.2,
     fontSize: 36, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "top",
@@ -392,7 +432,7 @@ function renderBullets(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
     });
 
     // Text
-    slide.addText(items[i], {
+    slide.addText(san(items[i]), {
       x: ML + 0.36, y: y + 0.05, w: CW - 0.46, h: itemH - 0.1,
       fontSize, fontFace: d.bodyFont,
       color: d.text, valign: "middle",
@@ -468,7 +508,7 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
 
     // Text
     const textY = y + 0.18 + badgeSz + 0.14;
-    slide.addText(items[i], {
+    slide.addText(san(items[i]), {
       x: x + 0.14, y: textY, w: cardW - 0.28, h: y + cardH - textY - 0.14,
       fontSize: items.length <= 2 ? 16 : 13,
       fontFace: d.bodyFont,
@@ -490,14 +530,14 @@ function renderTakeaways(pptx: PptxGenJS, slide_: Slide, d: Design, num: number,
   slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: 0.07, fill: { color: d.accent } });
 
   // Label
-  slide.addText((slide_.label || "PRINCIPAIS APRENDIZADOS").toUpperCase(), {
+  slide.addText(san(slide_.label || "PRINCIPAIS APRENDIZADOS").toUpperCase(), {
     x: ML, y: 0.22, w: CW, h: 0.26,
     fontSize: 9, fontFace: d.bodyFont, bold: true,
     color: d.accent, charSpacing: 5,
   });
 
   // Title
-  slide.addText(slide_.title, {
+  slide.addText(san(slide_.title), {
     x: ML, y: 0.55, w: CW, h: 0.72,
     fontSize: 26, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "middle",
@@ -538,7 +578,7 @@ function renderTakeaways(pptx: PptxGenJS, slide_: Slide, d: Design, num: number,
 
     // Text
     const fontSize = items.length <= 3 ? 16 : 14;
-    slide.addText(items[i], {
+    slide.addText(san(items[i]), {
       x: ML + numSz + 0.28, y: y + 0.05, w: CW - numSz - 0.38, h: itemH - 0.1,
       fontSize, fontFace: d.bodyFont,
       color: "F1F5F9", valign: "middle",
@@ -583,7 +623,7 @@ function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
     color: d.accent,
   });
 
-  slide.addText(`Você concluiu: ${slide_.title}`, {
+  slide.addText(`Você concluiu: ${san(slide_.title)}`, {
     x: ML + 1.3, y: 2.0, w: SLIDE_W - ML - 1.7, h: 0.8,
     fontSize: 22, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", valign: "top",
@@ -603,7 +643,7 @@ function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
     "Compartilhe seu aprendizado com outros",
   ];
   for (let i = 0; i < Math.min(nexts.length, 3); i++) {
-    slide.addText(`• ${nexts[i]}`, {
+    slide.addText(`• ${san(nexts[i])}`, {
       x: ML + 1.3, y: 3.2 + i * 0.38, w: SLIDE_W - ML - 2.0, h: 0.36,
       fontSize: 14, fontFace: d.bodyFont,
       color: "94A3B8", valign: "middle",
