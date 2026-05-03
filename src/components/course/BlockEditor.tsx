@@ -256,7 +256,8 @@ interface BlockEditorProps {
   isStarter?: boolean;
 }
 
-export function BlockEditor({ content, onChange, isPro = false }: BlockEditorProps) {
+export function BlockEditor({ content, onChange, isPro = false, isStarter = false }: BlockEditorProps) {
+  const hasAI = isPro || isStarter;
   const { toast } = useToast();
   const [enhancing, setEnhancing] = useState(false);
   const sections = useMemo(() => parseSections(content), [content]);
@@ -458,7 +459,7 @@ export function BlockEditor({ content, onChange, isPro = false }: BlockEditorPro
         <div className="flex-1" />
 
         {/* AI Actions */}
-        {isPro ? (
+        {hasAI ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -466,6 +467,7 @@ export function BlockEditor({ content, onChange, isPro = false }: BlockEditorPro
                 size="sm"
                 className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
                 disabled={enhancing}
+                data-testid="button-ai-editor"
               >
                 {enhancing ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -475,23 +477,43 @@ export function BlockEditor({ content, onChange, isPro = false }: BlockEditorPro
                 IA
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem onClick={() => handleAIEnhance("improve")}>
-                <Sparkles className="h-4 w-4 mr-2" />
+                <Sparkles className="h-4 w-4 mr-2 text-primary" />
                 Melhorar texto
                 <span className="ml-auto text-xs text-muted-foreground">⌘↵</span>
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleAIEnhance("fix")}>
+                <Code className="h-4 w-4 mr-2" />
+                Corrigir erros
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleAIEnhance("simplify")}>
                 <Type className="h-4 w-4 mr-2" />
-                Simplificar
+                Simplificar linguagem
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleAIEnhance("shorten")}>
+                <Scissors className="h-4 w-4 mr-2" />
+                Encurtar
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleAIEnhance("expand")}>
                 <ListOrdered className="h-4 w-4 mr-2" />
                 Expandir
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAIEnhance("fix")}>
-                <Code className="h-4 w-4 mr-2" />
-                Corrigir erros
+              <DropdownMenuItem onClick={() => handleAIEnhance("deepen")}>
+                <Layers className="h-4 w-4 mr-2" />
+                Aprofundar
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleAIEnhance("example")}>
+                <Lightbulb className="h-4 w-4 mr-2" />
+                Gerar exemplo prático
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleAIEnhance("practical")}>
+                <FlaskConical className="h-4 w-4 mr-2" />
+                Transformar em aula prática
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleAIEnhance("activity")}>
+                <BookOpen className="h-4 w-4 mr-2" />
+                Adicionar atividade
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -501,10 +523,10 @@ export function BlockEditor({ content, onChange, isPro = false }: BlockEditorPro
             size="sm"
             className="h-7 text-xs gap-1.5 text-muted-foreground"
             disabled
-            title="Disponível no plano Pro"
+            title="Disponível nos planos Starter e Pro"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            IA (Pro)
+            IA
           </Button>
         )}
       </div>
@@ -546,7 +568,7 @@ export function BlockEditor({ content, onChange, isPro = false }: BlockEditorPro
       {/* ── Footer status ── */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border bg-muted/20 text-xs text-muted-foreground">
         <span>{sections.length} seções · {content.split("\n").length} linhas</span>
-        {isPro && (
+        {hasAI && (
           <span className="flex items-center gap-1">
             <Sparkles className="h-3 w-3" />
             ⌘+Enter para melhorar com IA

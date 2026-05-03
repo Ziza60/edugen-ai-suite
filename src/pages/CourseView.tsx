@@ -80,6 +80,7 @@ export default function CourseView() {
   const [applyingRestructure, setApplyingRestructure] = useState(false);
 
   const isPro = plan === "pro" || isDev;
+  const isStarter = plan === "starter";
 
   useEffect(() => {
     if (!isPro) {
@@ -942,6 +943,7 @@ export default function CourseView() {
                     content={editContent}
                     onChange={handleContentChange}
                     isPro={isPro}
+                    isStarter={isStarter}
                   />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent })}>

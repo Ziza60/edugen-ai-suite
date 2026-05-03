@@ -5,10 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Download, FileText, Loader2, Package, StickyNote, GraduationCap,
+  Download, FileText, Loader2, Package, StickyNote, GraduationCap, FileType,
 } from "lucide-react";
 import { PptxExportDialog, type PptxExportOptions } from "./PptxExportDialog";
 import { PptxQualityReport, type QualityReport } from "./PptxQualityReport";
+import {
+  Document, Packer, Paragraph, TextRun, HeadingLevel,
+  AlignmentType, BorderStyle, ShadingType,
+} from "docx";
 
 interface ExportButtonsProps {
   courseId: string;
@@ -26,6 +30,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const [exportingScorm, setExportingScorm] = useState(false);
   const [exportingNotion, setExportingNotion] = useState(false);
   const [exportingMoodle, setExportingMoodle] = useState(false);
+  const [exportingDocx, setExportingDocx] = useState(false);
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
 
@@ -33,6 +38,143 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
     const safe = (title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/gi, "").trim();
     const date = new Date().toISOString().slice(0, 10);
     return `${safe} - ${format} - ${date}.${ext}`;
+  };
+
+  const handleExportDocx = async () => {
+    setExportingDocx(true);
+    try {
+      const children: Paragraph[] = [];
+
+      // Cover: course title
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: courseTitle, bold: true, size: 56, color: "1a1a2e" })],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: `${modules.length} módulos`, size: 28, color: "666666" })],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 800 },
+        }),
+        new Paragraph({ children: [new TextRun({ text: "", break: 1 })] }),
+      );
+
+      for (const mod of modules) {
+        // Module heading
+        children.push(
+          new Paragraph({
+            text: mod.title,
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 480, after: 200 },
+            border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: "e2e8f0", space: 4 } },
+          })
+        );
+
+        const rawContent = mod.content || "";
+        const lines = rawContent.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("## ")) {
+            children.push(new Paragraph({ text: line.slice(3), heading: HeadingLevel.HEADING_2, spacing: { before: 240, after: 120 } }));
+          } else if (line.startsWith("### ")) {
+            children.push(new Paragraph({ text: line.slice(4), heading: HeadingLevel.HEADING_3, spacing: { before: 160, after: 80 } }));
+          } else if (line.startsWith("# ")) {
+            children.push(new Paragraph({ text: line.slice(2), heading: HeadingLevel.HEADING_1, spacing: { before: 320, after: 160 } }));
+          } else if (line.startsWith("- ") || line.startsWith("* ")) {
+            children.push(new Paragraph({ text: line.slice(2), bullet: { level: 0 }, spacing: { after: 60 } }));
+          } else if (/^\d+\. /.test(line)) {
+            children.push(new Paragraph({ text: line.replace(/^\d+\. /, ""), numbering: { reference: "ordered", level: 0 }, spacing: { after: 60 } }));
+          } else if (line.startsWith("> ")) {
+            children.push(new Paragraph({
+              children: [new TextRun({ text: line.slice(2), italics: true, color: "555555" })],
+              indent: { left: 720 },
+              spacing: { after: 120 },
+              shading: { type: ShadingType.SOLID, color: "f8f9fa", fill: "f8f9fa" },
+            }));
+          } else if (line === "---") {
+            children.push(new Paragraph({
+              children: [],
+              border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: "e2e8f0", space: 2 } },
+              spacing: { before: 120, after: 120 },
+            }));
+          } else if (line.trim() === "") {
+            children.push(new Paragraph({ text: "", spacing: { after: 80 } }));
+          } else {
+            // Inline bold/italic parsing
+            const runs: TextRun[] = [];
+            const boldItalicRe = /\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`/g;
+            let lastIdx = 0;
+            let m: RegExpExecArray | null;
+            while ((m = boldItalicRe.exec(line)) !== null) {
+              if (m.index > lastIdx) runs.push(new TextRun({ text: line.slice(lastIdx, m.index) }));
+              if (m[1]) runs.push(new TextRun({ text: m[1], bold: true, italics: true }));
+              else if (m[2]) runs.push(new TextRun({ text: m[2], bold: true }));
+              else if (m[3]) runs.push(new TextRun({ text: m[3], italics: true }));
+              else if (m[4]) runs.push(new TextRun({ text: m[4], font: "Courier New", size: 20, color: "d63384" }));
+              lastIdx = m.index + m[0].length;
+            }
+            if (lastIdx < line.length) runs.push(new TextRun({ text: line.slice(lastIdx) }));
+            children.push(new Paragraph({ children: runs.length ? runs : [new TextRun({ text: line })], spacing: { after: 100 } }));
+          }
+        }
+      }
+
+      // Footer branding
+      if (!isPro) {
+        children.push(
+          new Paragraph({ children: [], spacing: { before: 400 } }),
+          new Paragraph({
+            children: [new TextRun({ text: "Gerado com EduGenAI — plataforma de cursos com IA", italics: true, size: 18, color: "999999" })],
+            alignment: AlignmentType.CENTER,
+          })
+        );
+      }
+
+      const doc = new Document({
+        numbering: {
+          config: [{
+            reference: "ordered",
+            levels: [{ level: 0, format: "decimal", text: "%1.", alignment: AlignmentType.START, style: { paragraph: { indent: { left: 720, hanging: 360 } } } }],
+          }],
+        },
+        styles: {
+          default: {
+            document: { run: { font: "Calibri", size: 24, color: "1a1a2e" } },
+          },
+          paragraphStyles: [
+            { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", run: { size: 36, bold: true, color: "1a1a2e" } },
+            { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", run: { size: 28, bold: true, color: "334155" } },
+            { id: "Heading3", name: "Heading 3", basedOn: "Normal", next: "Normal", run: { size: 24, bold: true, color: "475569" } },
+          ],
+        },
+        sections: [{ properties: {}, children }],
+      });
+
+      const buffer = await Packer.toBlob(doc);
+      const url = URL.createObjectURL(buffer);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = formatFileName(courseTitle, "DOCX", "docx");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({ title: "DOCX gerado com sucesso!" });
+
+      if (user) {
+        supabase.from("usage_events").insert({
+          user_id: user.id,
+          event_type: "COURSE_EXPORTED_DOCX",
+          metadata: { course_id: courseId },
+        }).then(() => {});
+      }
+    } catch (err: any) {
+      toast({ title: "Erro ao gerar DOCX", description: err.message, variant: "destructive" });
+    } finally {
+      setExportingDocx(false);
+    }
   };
 
   const handleExportMarkdown = () => {
@@ -97,8 +239,21 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
     <>
       <div className="flex flex-wrap gap-2">
         {/* Markdown - Free + Pro */}
-        <Button variant="outline" size="sm" onClick={handleExportMarkdown}>
+        <Button variant="outline" size="sm" onClick={handleExportMarkdown} data-testid="button-export-md">
           <Download className="h-4 w-4 mr-1" /> MD
+        </Button>
+
+        {/* DOCX - Free + Pro (client-side) */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportDocx}
+          disabled={exportingDocx}
+          data-testid="button-export-docx"
+          title="Exportar como documento Word editável"
+        >
+          {exportingDocx ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileType className="h-4 w-4 mr-1" />}
+          DOCX
         </Button>
 
         {/* PDF - Pro */}
