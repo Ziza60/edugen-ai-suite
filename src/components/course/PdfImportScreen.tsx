@@ -65,8 +65,8 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
       setError("Apenas arquivos PDF e DOCX são aceitos.");
       return;
     }
-    if (f.size > 20 * 1024 * 1024) {
-      setError("Arquivo muito grande. Limite: 20 MB.");
+    if (f.size > 5 * 1024 * 1024) {
+      setError("Arquivo muito grande. Limite: 5 MB.");
       return;
     }
     setError(null);
@@ -221,7 +221,7 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                     <div className="flex items-center justify-center gap-2">
                       <Badge variant="outline" className="text-[11px]">PDF</Badge>
                       <Badge variant="outline" className="text-[11px]">DOCX</Badge>
-                      <Badge variant="outline" className="text-[11px]">Até 20 MB</Badge>
+                      <Badge variant="outline" className="text-[11px]">Até 5 MB</Badge>
                     </div>
                   </div>
                 )}

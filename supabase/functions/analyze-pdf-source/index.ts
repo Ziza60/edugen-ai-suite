@@ -29,8 +29,17 @@ function normalizeText(raw: string): string {
     .trim();
 }
 
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 async function extractPdfText(bytes: Uint8Array, apiKey: string): Promise<string> {
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
+  const base64 = uint8ToBase64(bytes);
   const res = await fetch(
     "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
     {
@@ -174,8 +183,8 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Apenas arquivos PDF e DOCX são suportados." }, 400);
     }
 
-    if (file.size > 20 * 1024 * 1024) {
-      return json({ error: "Arquivo muito grande. Limite: 20 MB." }, 400);
+    if (file.size > 5 * 1024 * 1024) {
+      return json({ error: "Arquivo muito grande. Limite: 5 MB." }, 400);
     }
 
     const bytes = new Uint8Array(await file.arrayBuffer());
