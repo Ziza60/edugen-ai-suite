@@ -10,12 +10,10 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import * as pdfjsLib from "pdfjs-dist";
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import JSZip from "jszip";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).href;
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const LANGUAGE_OPTIONS = [
   { value: "pt-BR", label: "🇧🇷 Português (BR)" },
@@ -65,43 +63,130 @@ function escapeXml(text: string): string {
     .replace(/'/g, "&apos;");
 }
 
-async function extractPdfText(file: File): Promise<string> {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const parts: string[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = content.items
-      .map((item: any) => ("str" in item ? item.str : ""))
-      .join(" ");
-    parts.push(pageText);
-  }
-  return parts.join("\n\n");
-}
-
-async function textToDocxBlob(text: string, originalName: string): Promise<File> {
+async function textToDocxFile(text: string, originalName: string): Promise<File> {
   const paragraphs = text
     .split(/\n+/)
-    .map((line) => line.trim())
+    .map((l) => l.trim())
     .filter(Boolean)
-    .map((line) => `<w:p ><w:r><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`)
+    .map((l) => `<w:p ><w:r><w:t xml:space="preserve">${escapeXml(l)}</w:t></w:r></w:p>`)
     .join("\n");
 
-  const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-<w:body>
-${paragraphs}
-</w:body>
-</w:document>`;
+  const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>\n${paragraphs}\n</w:body></w:document>`;
 
   const zip = new JSZip();
   zip.file("word/document.xml", docXml);
   const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
-  const docxName = originalName.replace(/\.pdf$/i, ".docx");
-  return new File([blob], docxName, {
+  const name = originalName.replace(/\.pdf$/i, ".docx");
+  return new File([blob], name, {
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });
+}
+
+// Build a minimal multi-page PDF from JPEG page images (keeps size tiny)
+function buildMinimalPdf(
+  pages: Array<{ jpeg: Uint8Array; w: number; h: number }>,
+): Uint8Array {
+  const enc = new TextEncoder();
+  const parts: Uint8Array[] = [];
+  const offsets: number[] = [];
+  let pos = 0;
+
+  function str(s: string): Uint8Array {
+    const b = enc.encode(s);
+    parts.push(b);
+    pos += b.length;
+    return b;
+  }
+  function raw(b: Uint8Array): void {
+    parts.push(b);
+    pos += b.length;
+  }
+  function mark(n: number): void {
+    offsets[n - 1] = pos;
+  }
+
+  const n = pages.length;
+  // obj numbering: 1=catalog, 2=pages, then per page: 3+i*3=page, 4+i*3=img, 5+i*3=content
+  const totalObjs = 2 + n * 3;
+
+  str("%PDF-1.4\n");
+
+  mark(1);
+  str("1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n");
+
+  mark(2);
+  const kids = pages.map((_, i) => `${3 + i * 3} 0 R`).join(" ");
+  str(`2 0 obj\n<</Type /Pages /Kids [${kids}] /Count ${n}>>\nendobj\n`);
+
+  for (let i = 0; i < n; i++) {
+    const { jpeg, w, h } = pages[i];
+    const pageId    = 3 + i * 3;
+    const imgId     = 4 + i * 3;
+    const contentId = 5 + i * 3;
+
+    mark(pageId);
+    str(`${pageId} 0 obj\n<</Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources <</XObject <</Im${i + 1} ${imgId} 0 R>>>> /Contents ${contentId} 0 R>>\nendobj\n`);
+
+    mark(imgId);
+    str(`${imgId} 0 obj\n<</Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length}>>\nstream\n`);
+    raw(jpeg);
+    str("\nendstream\nendobj\n");
+
+    mark(contentId);
+    const cs = `q ${w} 0 0 ${h} 0 0 cm /Im${i + 1} Do Q`;
+    str(`${contentId} 0 obj\n<</Length ${cs.length}>>\nstream\n${cs}\nendstream\nendobj\n`);
+  }
+
+  const xrefPos = pos;
+  str(`xref\n0 ${totalObjs + 1}\n`);
+  str("0000000000 65535 f \n");
+  for (let i = 0; i < totalObjs; i++) {
+    str(String(offsets[i]).padStart(10, "0") + " 00000 n \n");
+  }
+  str(`trailer\n<</Size ${totalObjs + 1} /Root 1 0 R>>\nstartxref\n${xrefPos}\n%%EOF\n`);
+
+  const total = parts.reduce((s, b) => s + b.length, 0);
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const b of parts) { out.set(b, p); p += b.length; }
+  return out;
+}
+
+// Render PDF pages as small JPEGs and pack into a tiny PDF (for scanned/image PDFs)
+async function renderPdfToMiniPdf(pdfFile: File): Promise<File> {
+  const buffer = await pdfFile.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const numPages = Math.min(pdf.numPages, 4);  // max 4 pages for size budget
+  const pages: Array<{ jpeg: Uint8Array; w: number; h: number }> = [];
+
+  for (let i = 1; i <= numPages; i++) {
+    const page = await pdf.getPage(i);
+    const nativeVp = page.getViewport({ scale: 1 });
+    // Target 320px wide — keeps each JPEG under ~10KB at quality 0.2
+    const scale = 320 / nativeVp.width;
+    const vp = page.getViewport({ scale });
+
+    const canvas = document.createElement("canvas");
+    canvas.width  = Math.round(vp.width);
+    canvas.height = Math.round(vp.height);
+    const ctx = canvas.getContext("2d")!;
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+    const blob = await new Promise<Blob>((res) =>
+      canvas.toBlob((b) => res(b!), "image/jpeg", 0.2),
+    );
+    pages.push({
+      jpeg: new Uint8Array(await blob.arrayBuffer()),
+      w: canvas.width,
+      h: canvas.height,
+    });
+  }
+
+  const pdfBytes = buildMinimalPdf(pages);
+  const totalKB = (pdfBytes.length / 1024).toFixed(1);
+  console.log(`[PdfImport] mini-PDF size: ${totalKB} KB for ${numPages} pages`);
+
+  return new File([pdfBytes], pdfFile.name, { type: "application/pdf" });
 }
 
 export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportScreenProps) {
@@ -145,16 +230,38 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
       if (!session) throw new Error("Sessão expirada. Faça login novamente.");
 
       const ext = file.name.split(".").pop()?.toLowerCase();
-
       let fileToSend: File = file;
 
       if (ext === "pdf") {
         setLoadingStep(1);
-        const text = await extractPdfText(file);
-        if (!text || text.trim().length < 100) {
-          throw new Error("Não foi possível extrair texto deste PDF. Verifique se o arquivo não está protegido ou é apenas composto por imagens.");
+
+        // Try text extraction first (works for text-based PDFs)
+        let extractedText = "";
+        try {
+          const ab = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+          const textParts: string[] = [];
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            textParts.push(
+              content.items.map((item: any) => ("str" in item ? item.str : "")).join(" "),
+            );
+          }
+          extractedText = textParts.join("\n\n").trim();
+        } catch (e) {
+          console.warn("[PdfImport] text extraction failed:", e);
         }
-        fileToSend = await textToDocxBlob(text, file.name);
+
+        if (extractedText.length >= 100) {
+          // Text-based PDF: convert to DOCX and send (no btoa in edge fn)
+          fileToSend = await textToDocxFile(extractedText, file.name);
+          console.log(`[PdfImport] text PDF → DOCX (${extractedText.length} chars)`);
+        } else {
+          // Scanned/image PDF: render pages and build a tiny PDF (< 40KB)
+          console.log("[PdfImport] image PDF detected, rendering pages…");
+          fileToSend = await renderPdfToMiniPdf(file);
+        }
       }
 
       setLoadingStep(2);
