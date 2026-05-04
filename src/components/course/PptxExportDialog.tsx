@@ -491,10 +491,10 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-semibold text-emerald-400">🚀 EduGen v4 (Novo)</p>
-                    <Badge variant="outline" className="text-[10px] px-1 py-0 bg-emerald-500/10 text-emerald-400 border-emerald-500/20">BETA</Badge>
+                    <p className="text-sm font-semibold text-emerald-400">🚀 EduGen v5</p>
+                    <Badge variant="outline" className="text-[10px] px-1 py-0 bg-emerald-500/10 text-emerald-400 border-emerald-500/20">NOVO</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">Prompt aprimorado + layouts mais limpos e profissionais</p>
+                  <p className="text-xs text-muted-foreground">Engine v5 — slides centrados, paletas expandidas, prompt McKinsey</p>
                 </div>
                 <Switch
                   checked={useV4}
