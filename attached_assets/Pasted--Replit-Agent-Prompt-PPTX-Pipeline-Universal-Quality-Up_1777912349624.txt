@@ -1,0 +1,603 @@
+# Replit Agent Prompt — PPTX Pipeline Universal Quality Upgrade (v5)
+
+> **Objetivo**: Aplicar melhorias cirúrgicas no pipeline de geração de PPTX para elevar
+> a qualidade visual e técnica de **todos** os decks futuros, independentemente de tema,
+> idioma, paleta ou densidade. Nenhuma funcionalidade existente deve ser removida.
+
+---
+
+## Contexto do projeto
+
+O arquivo principal é uma **Supabase Edge Function** em TypeScript (Deno) que:
+1. Recebe `course_id`, `palette`, `theme`, `density`, `language` e `footerBrand` via POST
+2. Busca módulos no banco Supabase
+3. Chama **Gemini 2.5 Flash** para gerar JSON de slides por módulo
+4. Usa **PptxGenJS 3.12** para renderizar o arquivo `.pptx`
+5. Faz reparo do pacote ZIP com **JSZip** e sobe para Supabase Storage
+
+Todas as alterações descritas abaixo devem ser aplicadas **nesse único arquivo**.
+Se o agente identificar que partes do código foram refatoradas ou movidas, deve adaptar
+as instruções ao estado atual do arquivo — o objetivo final importa mais que a localização exata.
+
+---
+
+## BLOCO 1 — Correção de bugs críticos
+
+### 1.1 — Remover sequências `\n` e `\t` literais do conteúdo dos módulos
+
+**Problema**: O conteúdo dos módulos pode conter `\\n` (barra-n escapado como string literal)
+vindo do banco de dados. Isso aparece como texto nos slides ("\\n Cronograma de atividades").
+
+**Onde aplicar**: No início da função `runPipeline()`, logo após recuperar `moduleData`,
+e dentro de `extractCompetencies()` antes de processar o conteúdo.
+
+**Substituir** a linha que monta `moduleData`:
+```typescript
+// ANTES
+const moduleData = (modules as any[]).map((m) => ({
+  title: (m.title || "").trim(),
+  content: (m.content || "").trim(),
+}));
+
+// DEPOIS
+const moduleData = (modules as any[]).map((m) => ({
+  title: (m.title || "").replace(/\\n/g, " ").replace(/\\t/g, " ").trim(),
+  content: (m.content || "")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "  ")
+    .trim(),
+}));
+```
+
+**Também substituir** o início de `extractCompetencies()`:
+```typescript
+// ANTES
+function extractCompetencies(content: string): string[] {
+  // Try bullet points first
+  const bullets = [...content.matchAll(/^[-*•]\s+(.+)$/gm)]
+
+// DEPOIS
+function extractCompetencies(content: string): string[] {
+  const content = (content || "")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "  ");
+  const bullets = [...content.matchAll(/^[-*•]\s+(.+)$/gm)]
+```
+
+---
+
+### 1.2 — Corrigir contagem real de slides no footer
+
+**Problema**: O `totalSlides` é estimado antes da geração e diverge do total real após
+`splitOverflowSlides()`, exibindo paginação errada (ex: "6 / 43" quando o real é "6 / 47").
+
+**Onde aplicar**: Dentro de `runPipeline()`, após o loop de geração de módulos e antes
+de começar a renderizar os slides.
+
+**Adicionar** este bloco logo após o loop `for (let i = 0; i < modules.length; i++)`:
+```typescript
+// Calcular total real APÓS geração (substitui a estimativa anterior)
+const realContentSlides = allModuleSlides.reduce(
+  (sum, moduleSlides) => sum + moduleSlides.length + 1, // +1 = module cover
+  0
+);
+const totalSlides = 1 + 1 + realContentSlides + 1; // cover + toc + content + closing
+let slideNum = 0;
+```
+
+**Remover** qualquer linha anterior que declare `totalSlides` com estimativa baseada em `density`.
+Garantir que a variável `totalSlides` usada nos renderers seja esta calculada acima.
+
+---
+
+## BLOCO 2 — Performance: paralelizar geração de slides
+
+**Problema**: O loop sequencial aguarda cada chamada Gemini antes de iniciar a próxima.
+Com 7 módulos isso resulta em ~21–28 segundos de espera linear desnecessária.
+
+**Onde aplicar**: Dentro de `runPipeline()`, substituir o loop `for` de geração.
+
+**Substituir** o loop de geração (o `for` que chama `generateModuleSlides`):
+```typescript
+// ANTES — sequencial
+const allModuleSlides: Slide[][] = [];
+for (let i = 0; i < modules.length; i++) {
+  console.log(`[V4] Generating slides for module ${i + 1}/${modules.length}: "${modules[i].title}"`);
+  const rawSlides = await generateModuleSlides(
+    courseTitle, modules[i], i, density, language, geminiKey,
+  );
+  const splitSlides = splitOverflowSlides(rawSlides);
+  const variedSlides = applyLayoutVariety(splitSlides);
+  allModuleSlides.push(variedSlides);
+}
+
+// DEPOIS — paralelo com limite de concorrência (máximo 3 simultâneos)
+async function processBatch<T>(
+  items: T[],
+  fn: (item: T, index: number) => Promise<Slide[]>,
+  concurrency: number,
+): Promise<Slide[][]> {
+  const results: Slide[][] = new Array(items.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return results;
+}
+
+const allModuleSlides = await processBatch(
+  modules,
+  async (mod, i) => {
+    console.log(`[V5] Generating module ${i + 1}/${modules.length}: "${mod.title}"`);
+    const rawSlides = await generateModuleSlides(
+      courseTitle, mod, i, density, language, geminiKey,
+    );
+    const splitSlides = splitOverflowSlides(rawSlides);
+    const variedSlides = applyLayoutVariety(splitSlides);
+    console.log(`[V5] Module ${i + 1}: ${rawSlides.length}→${variedSlides.length} slides`);
+    return variedSlides;
+  },
+  3, // máximo 3 módulos em paralelo (respeita rate-limit Gemini)
+);
+```
+
+**Atenção**: A função `processBatch` deve ser declarada **fora** de `runPipeline()`, no escopo
+do módulo, para evitar re-declaração a cada execução.
+
+---
+
+## BLOCO 3 — Sistema de design universal: paleta dinâmica por tema
+
+**Objetivo**: Garantir que qualquer paleta escolhida pelo usuário produza decks com:
+- Dominância clara de uma cor (60–70% do peso visual)
+- Acento único de alto contraste (10%)
+- Hierarquia tipográfica usando **dois** pesos distintos de fonte
+- Sem faixas horizontais decorativas no topo dos slides de conteúdo
+
+### 3.1 — Ampliar o `PALETTE_MAP` com paletas profissionais
+
+**Onde aplicar**: Substituir o objeto `PALETTE_MAP` existente.
+
+```typescript
+// SUBSTITUIR o PALETTE_MAP completo por:
+const PALETTE_MAP: Record<string, [string, string, string, string, string]> = {
+  // [accent_primary, accent_secondary, accent_tertiary, cover_dark, highlight]
+  default:     ["1E3A5F", "2E6DA4", "C47F17", "0F2340", "E8A020"],
+  ocean:       ["064E8C", "1A7EC2", "0E9E8A", "031D35", "1DBFAA"],
+  forest:      ["1B4D2E", "2E7D4F", "6B9E3A", "0A2016", "8BC34A"],
+  sunset:      ["8B1A1A", "C0392B", "E67E22", "3D0000", "F39C12"],
+  monochrome:  ["1A1A2E", "2C2C3E", "4A4A6A", "0D0D1A", "7B7BA0"],
+  corporate:   ["1C3557", "2A5298", "B8860B", "0A1628", "DAA520"],
+  emerald:     ["0D3D2B", "1A7A52", "D4AC0D", "061E15", "F1C40F"],
+  slate:       ["1E2D3D", "2E4057", "E07B39", "0C1520", "F0956A"],
+  crimson:     ["6B0F1A", "A91E31", "C47B00", "35000A", "E8960A"],
+  teal:        ["00454A", "007D87", "C27B00", "001E22", "E59400"],
+};
+```
+
+### 3.2 — Refatorar `buildDesign()` para usar a nova estrutura de 5 cores
+
+**Substituir** a função `buildDesign()` por:
+```typescript
+function buildDesign(
+  theme: "light" | "dark",
+  palette: string,
+  _template: string, // mantido para compatibilidade de assinatura
+  footerBrand: string,
+): Design {
+  const [acc1, acc2, acc3, coverBgHex, highlight] =
+    PALETTE_MAP[palette] ?? PALETTE_MAP.default;
+
+  const base = {
+    accent: acc1,
+    accent2: acc2,
+    accent3: acc3,
+    highlight,           // novo campo: acento de destaque máximo
+    titleFont: "Cambria",   // serifa com autoridade — melhor para conteúdo profissional
+    bodyFont: "Calibri",
+    footerBrand,
+    coverBg: coverBgHex,
+  };
+
+  if (theme === "dark") {
+    return {
+      ...base,
+      theme: "dark",
+      bg: "0D1117",
+      surface: "161B22",
+      text: "E6EDF3",
+      subtext: "8B949E",
+      border: "21262D",
+    };
+  }
+  return {
+    ...base,
+    theme: "light",
+    bg: "FFFFFF",
+    surface: "F6F8FA",
+    text: "0D1117",
+    subtext: "57606A",
+    border: "D0D7DE",
+  };
+}
+```
+
+**Atualizar a interface `Design`** para incluir o novo campo `highlight`:
+```typescript
+interface Design {
+  theme: "light" | "dark";
+  accent: string;
+  accent2: string;
+  accent3: string;
+  highlight: string;      // ← adicionar este campo
+  bg: string;
+  surface: string;
+  text: string;
+  subtext: string;
+  border: string;
+  coverBg: string;
+  titleFont: string;
+  bodyFont: string;
+  footerBrand: string;
+}
+```
+
+---
+
+## BLOCO 4 — Eliminar marcadores visuais de "AI slop"
+
+### 4.1 — Remover a faixa horizontal decorativa do topo nos slides de conteúdo
+
+**Problema**: A `rect` de `h: 0.06` no topo de todos os slides de conteúdo é o marcador
+mais reconhecível de slides gerados por IA. Deve ser **removida** da função `header()`.
+
+**Substituir** a função `header()` por:
+```typescript
+function header(slide: any, d: Design, label: string, title: string) {
+  // REMOVIDO: faixa colorida horizontal de 0.06" — padrão "AI slop"
+  // Substituído por: chip de label estilizado no canto superior esquerdo
+
+  if (label) {
+    // Chip de label: fundo colorido com bordas arredondadas — mais sutil e moderno
+    const labelText = san(label).toUpperCase();
+    const chipW = Math.min(Math.max(labelText.length * 0.085 + 0.3, 1.0), 3.2);
+    slide.addShape("roundRect" as any, {
+      x: ML,
+      y: 0.16,
+      w: chipW,
+      h: 0.25,
+      fill: { color: d.accent, transparency: 88 },
+      line: { color: d.accent, width: 0.5 },
+      rectRadius: 0.04,
+    });
+    slide.addText(labelText, {
+      x: ML + 0.05,
+      y: 0.16,
+      w: chipW - 0.05,
+      h: 0.25,
+      fontSize: T.SECTION_LABEL,
+      fontFace: d.bodyFont,
+      bold: true,
+      color: d.accent,
+      charSpacing: 3,
+      valign: "middle",
+    });
+  }
+
+  const titleY = label ? 0.48 : 0.22;
+  const titleH = label ? 0.9 : 1.1;
+
+  slide.addText(san(title), {
+    x: ML,
+    y: titleY,
+    w: CW,
+    h: titleH,
+    fontSize: T.SLIDE_TITLE + 2, // 28pt — mais impacto visual
+    fontFace: d.titleFont,
+    bold: true,
+    color: d.text,
+    valign: "middle",
+    fit: "shrink" as any,
+  });
+
+  // Divisor sutil abaixo do título — linha fina, não faixa
+  slide.addShape("rect" as any, {
+    x: ML,
+    y: CONTENT_Y - 0.04,
+    w: 0.4, // linha curta como acento, não full-width
+    h: 0.03,
+    fill: { color: d.accent },
+  });
+}
+```
+
+### 4.2 — Corrigir module cover: watermark não deve sobrepor o título
+
+**Problema**: O número grande (160pt) posicionado em `x: sideW+0.3, y:0.3` colide visualmente
+com o título em `y:1.82`. As letras do título emergem de dentro do número.
+
+**Dentro de `renderModuleCover()`**, substituir o bloco do watermark (o `addText` com `fontSize: 160`):
+```typescript
+// ANTES
+slide.addText(modNum, {
+  x: sideW + 0.3,
+  y: 0.3,
+  w: 3.2,
+  h: 3.0,
+  fontSize: 160,
+  fontFace: d.titleFont,
+  bold: true,
+  color: "D1D5DB",
+  valign: "top",
+});
+
+// DEPOIS — mover para quadrante superior direito, fora do caminho do título
+slide.addText(modNum, {
+  x: SLIDE_W - 3.8,  // canto direito
+  y: 0.15,
+  w: 3.5,
+  h: 2.8,
+  fontSize: 140,
+  fontFace: d.titleFont,
+  bold: true,
+  color: d.theme === "dark" ? "1E2A3A" : "E0E7EF", // tons ultra-sutis do tema
+  valign: "top",
+  align: "right",
+});
+```
+
+---
+
+## BLOCO 5 — Melhorar layouts que desperdiçam espaço
+
+### 5.1 — Bullets: limitar altura máxima de item e centralizar grupo
+
+**Problema**: Com 2–3 itens, cada card-bullet ocupa ~130px de altura com uma única linha
+de texto, criando excesso de espaço branco abaixo do conteúdo.
+
+**Dentro de `renderBullets()`**, substituir o cálculo de `itemH` e adicionar centralização:
+```typescript
+// ANTES
+const gap = 0.1;
+const totalGap = gap * (items.length - 1);
+const itemH = Math.max(0.55, (CONTENT_H - totalGap) / items.length);
+const fontSize = items.length <= 3 ? 18 : items.length <= 4 ? 16 : 14;
+
+// DEPOIS
+const gap = 0.12;
+const totalGap = gap * (items.length - 1);
+const rawItemH = (CONTENT_H - totalGap) / items.length;
+const itemH = Math.min(Math.max(rawItemH, 0.55), 1.4); // máximo de 1.4" por item
+const fontSize = items.length <= 2 ? 18 : items.length <= 3 ? 17 : items.length <= 4 ? 15 : 14;
+
+// Centralizar grupo verticalmente quando items não preenchem toda a área
+const totalBlockH = items.length * itemH + totalGap;
+const startY = CONTENT_Y + Math.max(0, (CONTENT_H - totalBlockH) / 2);
+
+// Substituir 'y = CONTENT_Y + i * (itemH + gap)' por:
+// y = startY + i * (itemH + gap)
+```
+
+**Atenção**: após esse bloco, todas as ocorrências de `CONTENT_Y + i * (itemH + gap)`
+dentro de `renderBullets()` devem usar `startY` no lugar de `CONTENT_Y`.
+
+### 5.2 — Cards: altura mínima e máxima + centralização vertical
+
+**Dentro de `renderCards()`**, substituir o cálculo de `cardH`:
+```typescript
+// ANTES
+const cardH = (CONTENT_H - gap * (rows - 1)) / rows;
+
+// DEPOIS
+const rawCardH = (CONTENT_H - gap * (rows - 1)) / rows;
+const cardH = Math.min(rawCardH, items.length <= 2 ? 4.2 : items.length === 3 ? 2.8 : 2.2);
+
+// Recalcular startY para centralizar o grupo de cards
+const totalCardsH = rows * cardH + gap * (rows - 1);
+const cardsStartY = CONTENT_Y + Math.max(0, (CONTENT_H - totalCardsH) / 2);
+
+// Substituir 'CONTENT_Y + row * (cardH + gap)' por:
+// cardsStartY + row * (cardH + gap)
+```
+
+### 5.3 — TOC: centralizar módulos verticalmente + espaçamento dinâmico
+
+**Dentro de `renderTOC()`**, substituir o cálculo de `itemH` e `startY`:
+```typescript
+// ANTES
+const itemH = Math.min(0.68, (FOOTER_Y - 0.2 - 0.15) / itemsPerCol);
+const startY = 0.22;
+
+// DEPOIS
+const availH = FOOTER_Y - 0.5; // espaço disponível para a lista
+const rawItemH = availH / itemsPerCol;
+const itemH = Math.min(0.75, Math.max(0.55, rawItemH));
+const totalH = itemsPerCol * itemH;
+// Centralizar verticalmente na área disponível
+const startY = (availH - totalH) / 2 + 0.3;
+```
+
+---
+
+## BLOCO 6 — Melhorar o prompt de geração Gemini para conteúdo de maior qualidade
+
+**Onde aplicar**: Substituir a função `buildPrompt()` por:
+
+```typescript
+function buildPrompt(
+  courseTitle: string,
+  moduleTitle: string,
+  moduleContent: string,
+  moduleIndex: number,
+  density: string,
+  language: string,
+): string {
+  const nSlides = density === "compact" ? 4 : density === "detailed" ? 8 : 6;
+  const maxItems = density === "compact" ? 4 : density === "detailed" ? 6 : 5;
+  const maxItemChars = 90;
+  const maxCodeLines = 12;
+
+  const contentSnippet = moduleContent
+    .replace(/#{1,6}\s*/g, "")
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+    .replace(/[`_]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 3500);
+
+  return `You are a world-class instructional designer specializing in premium slide decks.
+Generate exactly ${nSlides} content slides for MODULE ${moduleIndex + 1} of a professional course.
+
+COURSE: "${courseTitle}"
+MODULE ${moduleIndex + 1}: "${moduleTitle}"
+
+SOURCE CONTENT (use as primary reference — do not invent content not present here):
+---
+${contentSnippet}
+---
+
+═══ CRITICAL RULES (violations disqualify the response) ═══
+1. ALL text must be in: ${language}
+2. Slide titles: specific, descriptive, max 65 chars. NEVER use: "Introduction", "Overview",
+   "Module ${moduleIndex + 1}", "Objectives", or a title identical to the module name.
+3. Each bullet item: ONE concrete idea, max 15 words, max ${maxItemChars} chars.
+   No numbering. No markdown. No escape sequences.
+4. Max ${maxItems} items per slide.
+5. No slide may have an empty items array (except layout: "comparison" which uses leftItems/rightItems).
+6. VARIETY RULE: No more than 2 consecutive slides with the same layout type.
+7. The LAST slide of the module must ALWAYS use layout: "takeaways".
+
+═══ LAYOUT SELECTION GUIDE ═══
+
+"bullets"    → Default. 3–5 concrete facts, definitions, or principles. Use when content
+               is explanatory, conceptual, or descriptive. Items must be complete thoughts.
+
+"cards"      → Exactly 3–4 named concepts. Format: "ConceptName: Brief explanation (≤12 words)".
+               Use ONLY when content has 3–4 distinct, nameable terms or categories.
+
+"twocol"     → 6–8 short items that naturally split into two balanced groups (not random halves).
+               Use when content has a clear A/B grouping (before/after, theory/practice).
+
+"process"    → Ordered 3–5 action steps with clear sequential dependency.
+               Each item starts with a VERB. Use for: how-to, workflows, methodologies, phases.
+               Trigger words: etapa, passo, fase, ciclo, fluxo, como fazer, processo.
+
+"timeline"   → Chronological 3–5 milestones or historical events with clear time ordering.
+               Use ONLY when sequence over time is the main point.
+
+"comparison" → EXACTLY two concepts contrasted. Requires: leftHeader, rightHeader,
+               leftItems (2–4), rightItems (2–4). Items must be parallel in structure.
+               Trigger words: vs, versus, diferença, vantagem, desvantagem, antes/depois.
+
+"code"       → Use ONLY when slide content involves actual syntax, commands, functions,
+               formulas, templates, or structured notation. Max ${maxCodeLines} code lines.
+               items = max 2 context bullets. codeLabel = language/tool name.
+
+"takeaways"  → REQUIRED as the final slide. 3–5 key learnings the learner will remember.
+               Items must be actionable or memorable, not just topic names.
+
+═══ QUALITY STANDARDS ═══
+- Prefer specific data points over generic statements (e.g. "ISSAI 3000/35: plan for quality"
+  is better than "Planning is important")
+- Each slide must teach something independently — no slide should be just a list of subtopics
+- Titles should complete the thought: "The 5 Requirements for High-Quality Planning" is better
+  than "Requirements"
+- takeaways items should start with an action verb or key insight noun
+
+Return a JSON array of exactly ${nSlides} objects. Valid schemas:
+
+Standard slide:
+{ "layout": "bullets"|"cards"|"twocol"|"takeaways"|"process"|"timeline",
+  "label": "SECTION LABEL (max 22 chars, CAPS)",
+  "title": "Specific descriptive title",
+  "items": ["item 1", "item 2", "item 3"] }
+
+Comparison slide:
+{ "layout": "comparison", "label": "COMPARAÇÃO",
+  "title": "Concept A vs Concept B",
+  "leftHeader": "Concept A", "rightHeader": "Concept B",
+  "leftItems": ["item 1", "item 2"], "rightItems": ["item 1", "item 2"] }
+
+Code slide:
+{ "layout": "code", "label": "CÓDIGO",
+  "title": "Descriptive title",
+  "items": ["context bullet 1", "context bullet 2"],
+  "code": "actual code with \\n newlines",
+  "codeLabel": "Python|SQL|JavaScript|etc" }
+
+Return ONLY the JSON array. No markdown fences. No explanation. No preamble.`;
+}
+```
+
+---
+
+## BLOCO 7 — Constante de versão e logging
+
+**Onde aplicar**: No topo do arquivo, substituir:
+```typescript
+const ENGINE_VERSION = "4.3.0";
+```
+por:
+```typescript
+const ENGINE_VERSION = "5.0.0";
+```
+
+**Dentro do handler HTTP**, atualizar o log de início:
+```typescript
+// ANTES
+console.log(`[V4] ENGINE=${ENGINE_VERSION} | ...`);
+
+// DEPOIS
+console.log(`[V5] ENGINE=${ENGINE_VERSION} | "${courseTitle}" | ${moduleData.length} modules | theme=${theme} | palette=${palette} | density=${density} | lang=${language}`);
+```
+
+---
+
+## Checklist de validação após aplicar as mudanças
+
+O agente deve verificar cada item antes de considerar o trabalho concluído:
+
+- [ ] **Não há nenhum `\\n` visível** nos textos de slides em uma exportação de teste
+- [ ] **Footer exibe a paginação correta**: último slide mostra `N / N` (não `N / estimativa`)
+- [ ] **Nenhuma faixa horizontal `h: 0.06`** permanece na função `header()`
+- [ ] **A função `processBatch`** está declarada no escopo do módulo (não dentro de `runPipeline`)
+- [ ] **`PALETTE_MAP`** tem 10 entradas com tuplas de 5 strings cada
+- [ ] **`Design` interface** inclui o campo `highlight: string`
+- [ ] **`buildDesign()`** usa `titleFont: "Cambria"` como padrão
+- [ ] **`ENGINE_VERSION`** está como `"5.0.0"`
+- [ ] **Todos os `[V4]`** nos console.log foram atualizados para `[V5]`
+- [ ] **O TypeScript compila** sem erros (`deno check` ou equivalente)
+- [ ] **A edge function responde** com status 200 em uma requisição de teste
+
+---
+
+## O que NÃO alterar
+
+- A lógica de autenticação Supabase e verificação de `user_id`
+- A função `repairPptxPackage()` — não tocar
+- Os parâmetros aceitos no body da request HTTP
+- A lógica de upload com retry para o Supabase Storage
+- As funções `san()`, `sanCode()`, `stripInvalidXmlChars()`
+- Os layouts `renderCode()`, `renderComparison()`, `renderTimeline()`, `renderTakeaways()`, `renderClosing()`
+- As constantes de layout `SLIDE_W`, `SLIDE_H`, `ML`, `MR`, `CW`, `HEADER_H`, `FOOTER_Y`
+- A função `splitOverflowSlides()` e `applyLayoutVariety()`
+- O sistema de fallback `fallbackModuleSlides()` e `repairEmptySlide()`
+
+---
+
+## Notas de compatibilidade
+
+1. O campo `highlight` adicionado à interface `Design` é **opcional de usar** nos renderers
+   existentes — apenas `buildDesign()` precisa populá-lo. Renderers futuros podem acessá-lo
+   via `d.highlight` para criar elementos de destaque máximo (ex: badge "Conceito Chave").
+
+2. A mudança de `Calibri` para `Cambria` no `titleFont` afeta **todos os slides de título**
+   (covers, headers, module covers). Se o usuário preferir manter Calibri para um tema
+   específico, pode ser sobreposto no futuro adicionando `titleFont` como parâmetro da request.
+
+3. A paralelização com `processBatch` mantém a **ordem dos módulos** porque usa índice fixo
+   (`results[i]`), não `push`. A ordem de renderização permanece idêntica ao código atual.

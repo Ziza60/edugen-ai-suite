@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "4.3.0";
+const ENGINE_VERSION = "5.0.0";
 
 // ═══════════════════════════════════════════════════════════
 // XML SAFETY — must run on ALL text before passing to PptxGenJS
@@ -110,9 +110,10 @@ const T = {
 
 interface Design {
   theme: "light" | "dark";
-  accent: string; // hex no #
+  accent: string;
   accent2: string;
   accent3: string;
+  highlight: string;
   bg: string;
   surface: string;
   text: string;
@@ -138,12 +139,18 @@ const FOOTER_Y = 7.16;
 const CONTENT_Y = HEADER_H;
 const CONTENT_H = FOOTER_Y - CONTENT_Y - 0.1; // 5.61
 
-const PALETTE_MAP: Record<string, string[]> = {
-  default: ["4F46E5", "7C3AED", "0891B2", "059669", "D97706"],
-  ocean: ["0369A1", "0284C7", "0891B2", "0D9488", "1D4ED8"],
-  forest: ["15803D", "16A34A", "0D9488", "047857", "166534"],
-  sunset: ["DC2626", "EA580C", "D97706", "B91C1C", "C2410C"],
-  monochrome: ["1E293B", "334155", "475569", "64748B", "94A3B8"],
+// Each entry: [accent, accent2, accent3, highlight, coverBg]
+const PALETTE_MAP: Record<string, [string, string, string, string, string]> = {
+  default:    ["4F46E5", "7C3AED", "0891B2", "F59E0B", "0F0F1A"],
+  ocean:      ["0369A1", "0284C7", "0891B2", "06B6D4", "020C18"],
+  forest:     ["15803D", "16A34A", "0D9488", "84CC16", "071A0E"],
+  sunset:     ["DC2626", "EA580C", "D97706", "F59E0B", "1A0505"],
+  monochrome: ["1E293B", "334155", "475569", "94A3B8", "0A0F18"],
+  rose:       ["BE185D", "9D174D", "DB2777", "F472B6", "1A0511"],
+  amber:      ["B45309", "D97706", "F59E0B", "FCD34D", "1A1005"],
+  teal:       ["0F766E", "0D9488", "14B8A6", "5EEAD4", "03100E"],
+  violet:     ["6D28D9", "7C3AED", "8B5CF6", "C4B5FD", "0D0714"],
+  slate:      ["1D4ED8", "2563EB", "3B82F6", "93C5FD", "080D1A"],
 };
 
 function buildDesign(
@@ -153,36 +160,39 @@ function buildDesign(
   footerBrand: string,
 ): Design {
   const colors = PALETTE_MAP[palette] || PALETTE_MAP.default;
+  const [accent, accent2, accent3, highlight, palettecover] = colors;
 
   if (theme === "dark") {
     return {
       theme,
-      accent: colors[0],
-      accent2: colors[1],
-      accent3: colors[2],
+      accent,
+      accent2,
+      accent3,
+      highlight,
       bg: "0A0E1A",
       surface: "111827",
       text: "F1F5F9",
       subtext: "94A3B8",
       border: "1E293B",
-      coverBg: "060A14",
-      titleFont: "Calibri",
+      coverBg: palettecover,
+      titleFont: "Cambria",
       bodyFont: "Calibri",
       footerBrand,
     };
   }
   return {
     theme,
-    accent: colors[0],
-    accent2: colors[1],
-    accent3: colors[2],
+    accent,
+    accent2,
+    accent3,
+    highlight,
     bg: "FFFFFF",
     surface: "F8FAFC",
     text: "0F172A",
     subtext: "475569",
     border: "E2E8F0",
     coverBg: "0F172A",
-    titleFont: "Calibri",
+    titleFont: "Cambria",
     bodyFont: "Calibri",
     footerBrand,
   };
@@ -256,30 +266,34 @@ function footer(slide: any, d: Design, num: number, total: number) {
   });
 }
 
-// Standard slide header: label + accent line + title
+// Standard slide header: chip label + accent line + title
 function header(slide: any, d: Design, label: string, title: string) {
-  slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: SLIDE_W,
-    h: 0.06,
-    fill: { color: d.accent },
-  });
   if (label) {
+    const chipW = Math.min(3.2, label.length * 0.115 + 0.5);
+    slide.addShape("roundRect" as any, {
+      x: ML,
+      y: 0.22,
+      w: chipW,
+      h: 0.28,
+      fill: { color: d.accent },
+      rectRadius: 0.04,
+    });
     slide.addText(san(label).toUpperCase(), {
       x: ML,
-      y: 0.18,
-      w: CW,
-      h: 0.22,
+      y: 0.22,
+      w: chipW,
+      h: 0.28,
       fontSize: T.SECTION_LABEL,
       fontFace: d.bodyFont,
       bold: true,
-      color: d.accent,
-      charSpacing: 4,
+      color: "FFFFFF",
+      charSpacing: 3,
+      align: "center",
+      valign: "middle",
     });
   }
-  const titleY = label ? 0.44 : 0.22;
-  const titleH = label ? 0.82 : 1.0;
+  const titleY = label ? 0.58 : 0.22;
+  const titleH = label ? 0.72 : 1.0;
   slide.addText(san(title), {
     x: ML,
     y: titleY,
@@ -487,8 +501,10 @@ function renderTOC(
   const cols = useTwoCols ? 2 : 1;
   const colW = useTwoCols ? (totalListW - 0.3) / 2 : totalListW;
   const itemsPerCol = useTwoCols ? Math.ceil(maxMods / cols) : maxMods;
-  const itemH = Math.min(0.68, (FOOTER_Y - 0.2 - 0.15) / itemsPerCol);
-  const startY = 0.22;
+  const availH = FOOTER_Y - 0.35;
+  const itemH = Math.min(0.68, availH / itemsPerCol);
+  const totalListH = itemsPerCol * itemH;
+  const startY = 0.35 + Math.max(0, (availH - totalListH) / 2);
 
   for (let i = 0; i < maxMods; i++) {
     const col = useTwoCols ? Math.floor(i / itemsPerCol) : 0;
@@ -561,17 +577,19 @@ function renderModuleCover(
     fill: { color: d.accent },
   });
 
-  // Large watermark number
+  // Large watermark number — top-right corner
   const modNum = String((slide_.moduleIndex ?? 0) + 1).padStart(2, "0");
   slide.addText(modNum, {
-    x: sideW + 0.3,
-    y: 0.3,
+    x: SLIDE_W - 3.8,
+    y: 0.1,
     w: 3.2,
     h: 3.0,
     fontSize: 160,
     fontFace: d.titleFont,
     bold: true,
-    color: "D1D5DB",
+    color: "FFFFFF",
+    transparency: 88,
+    align: "right",
     valign: "top",
   });
 
@@ -670,11 +688,13 @@ function renderBullets(
 
   const gap = 0.1;
   const totalGap = gap * (items.length - 1);
-  const itemH = Math.max(0.55, (CONTENT_H - totalGap) / items.length);
+  const itemH = Math.min(1.4, Math.max(0.55, (CONTENT_H - totalGap) / items.length));
+  const totalBlockH = items.length * itemH + totalGap;
+  const startY = CONTENT_Y + Math.max(0, (CONTENT_H - totalBlockH) / 2);
   const fontSize = items.length <= 3 ? 18 : items.length <= 4 ? 16 : 14;
 
   for (let i = 0; i < items.length; i++) {
-    const y = CONTENT_Y + i * (itemH + gap);
+    const y = startY + i * (itemH + gap);
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
 
     // Card background
@@ -749,13 +769,15 @@ function renderCards(
   const rows = Math.ceil(items.length / cols);
   const gap = 0.22;
   const cardW = (CW - gap * (cols - 1)) / cols;
-  const cardH = (CONTENT_H - gap * (rows - 1)) / rows;
+  const cardH = Math.min(2.8, (CONTENT_H - gap * (rows - 1)) / rows);
+  const totalCardsH = rows * cardH + (rows - 1) * gap;
+  const cardsStartY = CONTENT_Y + Math.max(0, (CONTENT_H - totalCardsH) / 2);
 
   for (let i = 0; i < items.length; i++) {
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = ML + col * (cardW + gap);
-    const y = CONTENT_Y + row * (cardH + gap);
+    const y = cardsStartY + row * (cardH + gap);
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
 
     // Parse "Title: Description"
@@ -1769,75 +1791,83 @@ function buildPrompt(
 ): string {
   const nSlides = density === "compact" ? 4 : density === "detailed" ? 7 : 5;
   const maxItems = density === "compact" ? 4 : density === "detailed" ? 6 : 5;
-  const maxItemChars = 80;
   const maxCodeLines = 10;
 
-  // Extract key content snippets to guide AI
-  const contentSnippet = moduleContent
+  // Normalise literal escape sequences that can appear when content is DB-stored
+  const normalised = moduleContent
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "  ");
+
+  const contentSnippet = normalised
     .replace(/#{1,6}\s*/g, "")
     .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
     .replace(/[`_]/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
-    .slice(0, 3000);
+    .slice(0, 3500);
 
-  return `You are an expert course slide designer. Generate exactly ${nSlides} slides for MODULE ${moduleIndex + 1} of a course.
+  return `You are a senior instructional designer producing McKinsey-quality slides for an online course.
 
 COURSE: "${courseTitle}"
-MODULE ${moduleIndex + 1}: "${moduleTitle}"
+MODULE ${moduleIndex + 1} OF COURSE: "${moduleTitle}"
 
-MODULE CONTENT (use this as the source of truth):
+SOURCE CONTENT (treat as ground truth — do NOT invent facts outside it):
 ---
 ${contentSnippet}
 ---
 
-RULES:
-1. Language: ${language}. ALL text in ${language}.
-2. Slides must cover the actual content above — no generic filler.
-3. Slide titles: max 60 chars. NEVER use generic titles like "Module Overview", "Introduction", "Module ${moduleIndex + 1}", or just the module name.
-4. Items: SPECIFIC facts/ideas, max 12 words each, max ${maxItemChars} chars. 1 idea per item.
-5. Max ${maxItems} items per slide.
-6. No numbering in items — just the text.
-7. VARIETY: Do NOT produce more than 2 consecutive slides with the same layout.
+════ GLOBAL RULES ════
+1. Output language: ${language}. Every word of every field must be in ${language}.
+2. Generate EXACTLY ${nSlides} slide objects — no more, no less.
+3. Each slide title: 5–60 chars, specific and descriptive. FORBIDDEN titles: "Introdução", "Visão Geral", "Overview", "Introduction", "Módulo ${moduleIndex + 1}", or any title that merely repeats the module name.
+4. Items: concrete, single-idea statements. Max 15 words each. No bullet prefixes, no numbering.
+5. Max ${maxItems} items per non-code slide; max 3 items on code slides.
+6. VARIETY RULE: never place the same layout in more than 2 consecutive slides.
+7. The LAST slide of the array MUST use layout "takeaways".
 
-LAYOUT SELECTION (choose the best fit for the content):
-- "bullets": default for explanations, concepts, definitions, facts (3–5 items).
-- "cards": exactly 3–4 key concepts/terms. Format each item as "Term: Short definition or explanation" (max 15 words after ":"). Use when content has distinct named concepts.
-- "twocol": 6–8 short facts that naturally split into two equal groups.
-- "code": REQUIRED for any slide showing syntax, functions, methods, loops, conditionals, classes, operators, or API calls. STRICT: max ${maxCodeLines} code lines (\\n), max 3 bullet items.
-- "comparison": TWO things contrasted side by side. TRIGGER WORDS: vs, versus, diferença, comparação, vantagens/desvantagens, antes/depois, pros/cons, melhor/pior, A x B. Requires leftHeader, rightHeader, max 4 leftItems, max 4 rightItems.
-- "process": ordered sequence of steps/stages with clear flow. TRIGGER WORDS: passo, etapa, fluxo, pipeline, sequência, ciclo, como funciona, how to, steps, workflow, request→response, input→output. Use 3–5 items. Each item = one action step (verb + object).
-- "timeline": vertical milestone list or historical progression. Use for time-ordered events. 3–5 items.
-- "takeaways": ONLY the LAST slide of the module — summary of key learnings.
+════ LAYOUT GUIDE ════
+"bullets"    — default for explanations, definitions, principles (3–5 items).
+"cards"      — 3–4 distinct named concepts. Each item MUST follow "Term: one-line explanation" (≤15 words after ":").
+"twocol"     — 6–8 short facts that naturally split into two parallel groups.
+"process"    — ordered steps / pipeline / workflow. 3–5 items, each starting with an action verb.
+              TRIGGERS: passo, etapa, fluxo, pipeline, sequência, ciclo, como funciona, how to, steps, request→response.
+"timeline"   — time-ordered milestones or historical events. 3–5 items.
+"comparison" — exactly two things contrasted side by side.
+              TRIGGERS: vs, versus, diferença, antes/depois, pros/cons, vantagens/desvantagens, A x B.
+              Requires leftHeader, rightHeader, up to 4 leftItems, up to 4 rightItems.
+"code"       — MANDATORY when the content covers syntax, functions, loops, classes, API calls, or operators.
+              Provide real, runnable code. Max ${maxCodeLines} lines (\\n separated). Max 3 context items.
+"takeaways"  — LAST slide only. 3–5 key learning outcomes from this module.
 
-Return a JSON array of exactly ${nSlides} objects. Schema by layout:
+════ OUTPUT FORMAT ════
+Return ONLY a valid JSON array — no markdown fences, no commentary.
+
+Schema (use the matching shape per layout):
 [
   {
-    "layout": "bullets"|"cards"|"twocol"|"takeaways"|"timeline"|"process",
-    "label": "SECTION LABEL IN CAPS (max 25 chars)",
-    "title": "Specific descriptive slide title",
-    "items": ["specific idea", ...]
+    "layout": "bullets"|"cards"|"twocol"|"process"|"timeline"|"takeaways",
+    "label": "CAPS LABEL ≤25 CHARS",
+    "title": "Specific slide title",
+    "items": ["item 1", "item 2", "item 3"]
   },
   {
     "layout": "code",
-    "label": "LABEL",
-    "title": "Title",
-    "items": ["context bullet max 3", ...],
-    "code": "real code snippet with \\n newlines (max ${maxCodeLines} lines, preserve indentation)",
-    "codeLabel": "Python|JavaScript|SQL|etc"
+    "label": "CAPS LABEL",
+    "title": "Slide title",
+    "items": ["context point 1", "context point 2"],
+    "code": "line1\\nline2\\nline3",
+    "codeLabel": "Python|JavaScript|SQL|TypeScript|Bash|etc"
   },
   {
     "layout": "comparison",
-    "label": "LABEL",
-    "title": "X vs Y",
+    "label": "CAPS LABEL",
+    "title": "A vs B",
     "leftHeader": "Concept A",
     "rightHeader": "Concept B",
-    "leftItems": ["item 1", "item 2", "item 3", "item 4"],
-    "rightItems": ["item 1", "item 2", "item 3", "item 4"]
+    "leftItems": ["point 1", "point 2", "point 3"],
+    "rightItems": ["point 1", "point 2", "point 3"]
   }
-]
-
-Return ONLY the JSON array, no markdown, no explanation.`;
+]`;
 }
 
 async function generateModuleSlides(
@@ -1870,7 +1900,7 @@ async function generateModuleSlides(
       if (!Array.isArray(parsed)) throw new Error("Not array");
     } catch {
       console.warn(
-        `[V4] Module ${moduleIndex + 1}: JSON parse failed, using fallback`,
+        `[V5] Module ${moduleIndex + 1}: JSON parse failed, using fallback`,
       );
       return fallbackModuleSlides(mod.title, mod.content, moduleIndex, density);
     }
@@ -1919,7 +1949,7 @@ async function generateModuleSlides(
       .map((s) => repairEmptySlide(s, mod.content || ""))
       .filter(isRenderableSlide);
   } catch (e: any) {
-    console.error(`[V4] Module ${moduleIndex + 1} AI error: ${e.message}`);
+    console.error(`[V5] Module ${moduleIndex + 1} AI error: ${e.message}`);
     return fallbackModuleSlides(mod.title, mod.content, moduleIndex, density);
   }
 }
@@ -2139,14 +2169,14 @@ function applyLayoutVariety(slides: Slide[]): Slide[] {
       if (items.length >= 3 && items.length <= 4) {
         // Convert to cards if items fit "Term: Description" style — just use as-is
         out[i] = { ...out[i], layout: "cards" };
-        console.log(`[V4] Variety: converted slide ${i + 1} bullets→cards`);
+        console.log(`[V5] Variety: converted slide ${i + 1} bullets→cards`);
       } else if (items.length >= 5) {
         out[i] = { ...out[i], layout: "twocol" };
-        console.log(`[V4] Variety: converted slide ${i + 1} bullets→twocol`);
+        console.log(`[V5] Variety: converted slide ${i + 1} bullets→twocol`);
       }
     } else if (cur === "twocol") {
       out[i] = { ...out[i], layout: "bullets" };
-      console.log(`[V4] Variety: converted slide ${i + 1} twocol→bullets`);
+      console.log(`[V5] Variety: converted slide ${i + 1} twocol→bullets`);
     }
   }
   return out;
@@ -2202,7 +2232,7 @@ function repairEmptySlide(s: Slide, moduleContent: string): Slide {
   if (repaired.length === 0) return s; // Can't repair, will be filtered out
 
   console.warn(
-    `[V4] Repaired empty slide: "${s.title}" → injected ${repaired.length} fallback bullets`,
+    `[V5] Repaired empty slide: "${s.title}" → injected ${repaired.length} fallback bullets`,
   );
   return { ...s, layout: "bullets", items: repaired };
 }
@@ -2257,22 +2287,26 @@ function splitOverflowSlides(slides: Slide[]): Slide[] {
 }
 
 function extractCompetencies(content: string): string[] {
+  const normalised = content
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, " ");
+
   // Try bullet points first
-  const bullets = [...content.matchAll(/^[-*•]\s+(.+)$/gm)]
+  const bullets = [...normalised.matchAll(/^[-*•]\s+(.+)$/gm)]
     .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
     .filter((b) => b.length >= 12 && b.length <= 80)
     .slice(0, 3);
   if (bullets.length >= 2) return bullets;
 
   // Fallback: sub-headings
-  const headings = [...content.matchAll(/^#{2,4}\s+(.+)$/gm)]
+  const headings = [...normalised.matchAll(/^#{2,4}\s+(.+)$/gm)]
     .map((m) => m[1].trim())
     .filter((h) => h.length >= 10 && h.length <= 70)
     .slice(0, 3);
   if (headings.length >= 2) return headings;
 
   // Fallback: first short sentences
-  return content
+  return normalised
     .replace(/#{1,6}\s*/g, "")
     .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
     .replace(/[`_]/g, "")
@@ -2292,34 +2326,52 @@ async function runPipeline(
 ): Promise<PptxGenJS> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
-  pptx.author = "EduGenAI v4";
+  pptx.author = "EduGenAI v5";
   pptx.title = courseTitle;
 
-  // Generate all module slides (sequential to avoid rate limits)
-  const allModuleSlides: Slide[][] = [];
-  for (let i = 0; i < modules.length; i++) {
-    console.log(
-      `[V4] Generating slides for module ${i + 1}/${modules.length}: "${modules[i].title}"`,
+  // Process modules in parallel batches (max 3 concurrent Gemini calls)
+  async function processBatch(
+    indices: number[],
+  ): Promise<{ i: number; slides: Slide[] }[]> {
+    return Promise.all(
+      indices.map(async (i) => {
+        console.log(
+          `[V5] Generating slides for module ${i + 1}/${modules.length}: "${modules[i].title}"`,
+        );
+        const rawSlides = await generateModuleSlides(
+          courseTitle,
+          modules[i],
+          i,
+          density,
+          language,
+          geminiKey,
+        );
+        const splitSlides = splitOverflowSlides(rawSlides);
+        const variedSlides = applyLayoutVariety(splitSlides);
+        console.log(
+          `[V5] Module ${i + 1}: ${rawSlides.length} raw → ${splitSlides.length} split → ${variedSlides.length} final`,
+        );
+        return { i, slides: variedSlides };
+      }),
     );
-    const rawSlides = await generateModuleSlides(
-      courseTitle,
-      modules[i],
-      i,
-      density,
-      language,
-      geminiKey,
-    );
-    const splitSlides = splitOverflowSlides(rawSlides);
-    const variedSlides = applyLayoutVariety(splitSlides);
-    console.log(
-      `[V4] Module ${i + 1}: ${rawSlides.length} raw → ${splitSlides.length} split → ${variedSlides.length} final`,
-    );
-    allModuleSlides.push(variedSlides);
   }
 
-  // Count total slides for footer
+  const BATCH_SIZE = 3;
+  const allModuleSlides: Slide[][] = new Array(modules.length);
+  for (let b = 0; b < modules.length; b += BATCH_SIZE) {
+    const batchIndices = Array.from(
+      { length: Math.min(BATCH_SIZE, modules.length - b) },
+      (_, k) => b + k,
+    );
+    const results = await processBatch(batchIndices);
+    for (const { i, slides } of results) {
+      allModuleSlides[i] = slides;
+    }
+  }
+
+  // Count actual total slides from generated content (for accurate footer numbers)
   const contentSlideCount = allModuleSlides.reduce(
-    (s, m) => s + m.length + 1,
+    (s, m) => s + m.filter(isRenderableSlide).length + 1,
     0,
   ); // +1 per module cover
   const totalSlides = 1 + 1 + contentSlideCount + 1; // cover + toc + modules + closing
@@ -2416,7 +2468,7 @@ async function runPipeline(
     totalSlides,
   );
 
-  console.log(`[V4] Pipeline complete: ${slideNum} slides`);
+  console.log(`[V5] Pipeline complete: ${slideNum} slides`);
   return pptx;
 }
 
@@ -2526,12 +2578,12 @@ Deno.serve(async (req: Request) => {
 
     const courseTitle = (course.title || "Curso").trim();
     const moduleData = (modules as any[]).map((m) => ({
-      title: (m.title || "").trim(),
+      title: (m.title || "").trim().replace(/\\n/g, " ").replace(/\\t/g, " "),
       content: (m.content || "").trim(),
     }));
 
     console.log(
-      `[V4] ENGINE=${ENGINE_VERSION} | "${courseTitle}" | ${moduleData.length} modules | theme=${theme} | density=${density}`,
+      `[V5] ENGINE=${ENGINE_VERSION} | "${courseTitle}" | ${moduleData.length} modules | theme=${theme} | density=${density}`,
     );
 
     const pptx = await runPipeline(
@@ -2608,10 +2660,7 @@ Deno.serve(async (req: Request) => {
         url: signedUrl.signedUrl,
         version: "v4",
         engine_version: ENGINE_VERSION,
-        slide_count:
-          moduleData.length *
-            (density === "compact" ? 5 : density === "detailed" ? 8 : 6) +
-          3,
+        slide_count: (repairDiag.slide_count as number) ?? 0,
         _diag: {
           raw_bytes: rawBytes.byteLength,
           repaired_bytes: pptxData.byteLength,
@@ -2624,7 +2673,7 @@ Deno.serve(async (req: Request) => {
       },
     );
   } catch (error: any) {
-    console.error("[V4] Export error:", error);
+    console.error("[V5] Export error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Internal server error" }),
       {
