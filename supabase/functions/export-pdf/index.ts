@@ -357,10 +357,7 @@ class PdfRenderer {
     this.doc.setTextColor(...C.WHITE);
     this.doc.text(`${this.pageNum}`, PAGE_W / 2, PAGE_H - 3, { align: "center" });
     this.doc.setTextColor(...C.TEXT_BODY);
-
-    // Content starts on next page
-    this.addPage();
-    this.y = MARGIN_T;
+    // NOTE: content page is created by renderModuleContent, not here
   }
 
   // ── Headings ────────────────────────────────────────────────────────
@@ -652,6 +649,10 @@ class PdfRenderer {
   // ── Module content ───────────────────────────────────────────────────
 
   renderModuleContent(content: string, moduleTitle: string) {
+    // Create the content page here (module divider does NOT create it)
+    this.addPage();
+    this.y = MARGIN_T;
+
     const lines = content.split("\n");
     const normModuleTitle = normalizeTitle(moduleTitle);
     let i = 0;
@@ -660,7 +661,12 @@ class PdfRenderer {
     while (i < lines.length) {
       const trimmed = lines[i].trim();
 
-      if (!trimmed) { this.y += 2.5; i++; continue; }
+      // Blank lines: advance y but never past the content boundary
+      if (!trimmed) {
+        if (this.y + 2.5 < MAX_Y - 10) this.y += 2.5;
+        i++;
+        continue;
+      }
 
       // Table detection
       if (trimmed.includes("|") && i + 1 < lines.length && lines[i + 1]?.includes("|")) {
