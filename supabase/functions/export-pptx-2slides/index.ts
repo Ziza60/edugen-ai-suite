@@ -237,12 +237,6 @@ Deno.serve(async (req: Request) => {
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    if (course.status !== "published") {
-      return new Response(
-        JSON.stringify({ error: "Course must be published to export." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
 
     // Fetch modules
     const { data: modules = [] } = await serviceClient
