@@ -653,7 +653,13 @@ class PdfRenderer {
     this.addPage();
     this.y = MARGIN_T;
 
-    const lines = content.split("\n");
+    // Normalise literal escape sequences stored in DB (\\n → real newline, \\t → space)
+    const normContent = content
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, " ")
+      .replace(/:\n+\d+\./g, ":");  // remove list-number artefacts after colons
+
+    const lines = normContent.split("\n");
     const normModuleTitle = normalizeTitle(moduleTitle);
     let i = 0;
     let skippedFirstH1 = false;
