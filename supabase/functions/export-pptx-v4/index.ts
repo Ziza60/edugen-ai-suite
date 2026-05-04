@@ -430,14 +430,6 @@ function renderTOC(
   const slide = pptx.addSlide();
   bg(slide, d.bg);
 
-  slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: SLIDE_W,
-    h: 0.06,
-    fill: { color: d.accent },
-  });
-
   // Left panel
   const panelW = 2.9;
   slide.addShape("rect" as any, {
@@ -643,7 +635,7 @@ function renderModuleCover(
       charSpacing: 4,
     });
     for (let i = 0; i < competencies.length; i++) {
-      const cy = 4.1 + i * 0.44;
+      const cy = [4.05, 5.00, 5.95][i];
       slide.addShape("ellipse" as any, {
         x: sideW + 0.5,
         y: cy + 0.07,
@@ -769,7 +761,8 @@ function renderCards(
   const rows = Math.ceil(items.length / cols);
   const gap = 0.22;
   const cardW = (CW - gap * (cols - 1)) / cols;
-  const cardH = Math.min(2.8, (CONTENT_H - gap * (rows - 1)) / rows);
+  const maxCardH = items.length <= 2 ? 2.2 : items.length === 3 ? 2.0 : 1.8;
+  const cardH = Math.min(maxCardH, (CONTENT_H - gap * (rows - 1)) / rows);
   const totalCardsH = rows * cardH + (rows - 1) * gap;
   const cardsStartY = CONTENT_Y + Math.max(0, (CONTENT_H - totalCardsH) / 2);
 
@@ -1804,6 +1797,7 @@ function buildPrompt(
     .replace(/#{1,6}\s*/g, "")
     .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
     .replace(/[`_]/g, "")
+    .replace(/:\n+\d+\./g, ":")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
     .slice(0, 3500);
@@ -1930,7 +1924,7 @@ async function generateModuleSlides(
         .toUpperCase(),
       items: Array.isArray(s.items)
         ? s.items.slice(0, 6).map((x: any) =>
-            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").trim().slice(0, 110)
+            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").replace(/\n/g, " ").trim().slice(0, 110)
           )
         : [],
       code: s.code ? String(s.code).slice(0, 1200) : undefined,
