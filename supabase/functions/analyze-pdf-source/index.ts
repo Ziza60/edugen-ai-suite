@@ -137,8 +137,7 @@ Deno.serve(async (req: Request) => {
     if (claimsError || !claimsData?.claims) return json({ error: "Token inválido" }, 401);
     const userId = claimsData.claims.sub as string;
 
-    // ── Rate limiting ─────────────────────────────────────────────────────────
-    // Fetch plan and last-hour usage in parallel
+    // ── Rate limiting ──────────────────────────────────────────────────────────
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const [planResult, usageResult] = await Promise.all([
@@ -171,25 +170,38 @@ Deno.serve(async (req: Request) => {
         429,
       );
     }
-    // ─────────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
 
-    const formData = await req.formData();
-    const file = formData.get("file") as File;
-    const courseId = formData.get("course_id") as string;
-    if (!file || !courseId) return json({ error: "file e course_id são obrigatórios" }, 400);
+    // Accept JSON body: { file_path, course_id, filename, content_type }
+    const body = await req.json();
+    const { file_path, course_id, filename, content_type } = body as {
+      file_path: string;
+      course_id: string;
+      filename: string;
+      content_type?: string;
+    };
 
-    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (!file_path || !course_id || !filename) {
+      return json({ error: "file_path, course_id e filename são obrigatórios" }, 400);
+    }
+
+    const ext = filename.split(".").pop()?.toLowerCase();
     if (!["pdf", "docx"].includes(ext || "")) {
       return json({ error: "Apenas arquivos PDF e DOCX são suportados." }, 400);
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      return json({ error: "Arquivo muito grande. Limite: 5 MB." }, 400);
+    // Download file from Storage (no size limit — internal transfer)
+    console.log(`[analyze-pdf-source] Downloading ${file_path} from storage…`);
+    const { data: fileData, error: downloadErr } = await serviceClient.storage
+      .from("course-sources")
+      .download(file_path);
+
+    if (downloadErr || !fileData) {
+      return json({ error: `Erro ao baixar arquivo do storage: ${downloadErr?.message}` }, 500);
     }
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
-
-    console.log(`[analyze-pdf-source] Processing ${file.name} (${ext}, ${bytes.length} bytes)`);
+    const bytes = new Uint8Array(await fileData.arrayBuffer());
+    console.log(`[analyze-pdf-source] Processing ${filename} (${ext}, ${bytes.length} bytes)`);
 
     let rawText: string;
     if (ext === "pdf") {
@@ -205,21 +217,16 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[analyze-pdf-source] Extracted ${extractedText.length} chars, analyzing…`);
 
-    const analysis = await analyzeContent(extractedText, file.name, apiKey);
-
-    const filePath = `${userId}/${courseId}/${Date.now()}-${file.name}`;
-    await serviceClient.storage.from("course-sources").upload(filePath, bytes, {
-      contentType: file.type || "application/octet-stream",
-    }).catch((e: any) => console.warn("Storage upload skipped:", e.message));
+    const analysis = await analyzeContent(extractedText, filename, apiKey);
 
     const { data: source, error: sourceErr } = await serviceClient
       .from("course_sources")
       .insert({
-        course_id: courseId,
+        course_id,
         user_id: userId,
-        filename: file.name,
-        file_path: filePath,
-        content_type: file.type || "application/octet-stream",
+        filename,
+        file_path,
+        content_type: content_type || "application/octet-stream",
         char_count: extractedText.length,
         extracted_text: extractedText.slice(0, 500_000),
       })
@@ -232,9 +239,9 @@ Deno.serve(async (req: Request) => {
 
     return json({
       source_id: source.id,
-      filename: file.name,
+      filename,
       char_count: extractedText.length,
-      title: analysis.title || file.name.replace(/\.[^.]+$/, ""),
+      title: analysis.title || filename.replace(/\.[^.]+$/, ""),
       theme: analysis.theme || "",
       targetAudience: analysis.targetAudience || "",
       suggestedModules: Number(analysis.suggestedModules) || 6,

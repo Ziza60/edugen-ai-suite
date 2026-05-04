@@ -19,7 +19,7 @@ const LANGUAGE_OPTIONS = [
 ];
 
 const LOADING_STEPS = [
-  "Lendo o arquivo…",
+  "Enviando arquivo para o servidor…",
   "Extraindo texto…",
   "Analisando conteúdo com IA…",
   "Estruturando os módulos…",
@@ -65,8 +65,8 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
       setError("Apenas arquivos PDF e DOCX são aceitos.");
       return;
     }
-    if (f.size > 5 * 1024 * 1024) {
-      setError("Arquivo muito grande. Limite: 5 MB.");
+    if (f.size > 50 * 1024 * 1024) {
+      setError("Arquivo muito grande. Limite: 50 MB.");
       return;
     }
     setError(null);
@@ -86,29 +86,45 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
     setLoading(true);
     setLoadingStep(0);
 
-    const interval = setInterval(() => {
+    const stepTimer = setInterval(() => {
       setLoadingStep((s) => Math.min(s + 1, LOADING_STEPS.length - 1));
-    }, 4000);
+    }, 5000);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("course_id", tempCourseId);
-
       const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sessão expirada. Faça login novamente.");
+
+      // Step 1 — upload file directly to Storage (bypasses Edge Function body limit)
+      const storageKey = `${session.user.id}/${tempCourseId}/${Date.now()}-${file.name}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("course-sources")
+        .upload(storageKey, file, { contentType: file.type || "application/octet-stream", upsert: false });
+      if (uploadErr) throw new Error(`Erro ao enviar arquivo: ${uploadErr.message}`);
+
+      setLoadingStep(1);
+
+      // Step 2 — call edge function with path only (no binary body)
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-pdf-source`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-          body: formData,
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            file_path: storageKey,
+            course_id: tempCourseId,
+            filename: file.name,
+            content_type: file.type || "application/octet-stream",
+          }),
         },
       );
 
-      clearInterval(interval);
+      clearInterval(stepTimer);
       const result = await res.json();
       if (res.status === 429) {
-        throw new Error(result.error || `Limite de análises por hora atingido. Tente novamente mais tarde.`);
+        throw new Error(result.error || "Limite de análises por hora atingido. Tente novamente mais tarde.");
       }
       if (!res.ok) throw new Error(result.error || "Erro ao processar o arquivo.");
 
@@ -116,7 +132,7 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
       const lang = LANGUAGE_OPTIONS.find((l) => l.value === result.detectedLanguage);
       setSelectedLanguage(lang ? result.detectedLanguage : "pt-BR");
     } catch (err: any) {
-      clearInterval(interval);
+      clearInterval(stepTimer);
       setError(err.message || "Não foi possível processar o arquivo.");
     } finally {
       setLoading(false);
@@ -221,7 +237,7 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                     <div className="flex items-center justify-center gap-2">
                       <Badge variant="outline" className="text-[11px]">PDF</Badge>
                       <Badge variant="outline" className="text-[11px]">DOCX</Badge>
-                      <Badge variant="outline" className="text-[11px]">Até 5 MB</Badge>
+                      <Badge variant="outline" className="text-[11px]">Até 50 MB</Badge>
                     </div>
                   </div>
                 )}
