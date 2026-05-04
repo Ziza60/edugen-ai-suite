@@ -269,7 +269,7 @@ function footer(slide: any, d: Design, num: number, total: number) {
 // Standard slide header: chip label + accent line + title
 function header(slide: any, d: Design, label: string, title: string) {
   if (label) {
-    const chipW = Math.min(3.2, label.length * 0.115 + 0.5);
+    const chipW = Math.min(4.2, label.length * 0.105 + 0.4);
     slide.addShape("roundRect" as any, {
       x: ML,
       y: 0.22,
@@ -1920,11 +1920,17 @@ async function generateModuleSlides(
         mod.title,
       ),
       label: String(s.label || "CONTEÚDO")
-        .slice(0, 25)
+        .slice(0, 32)
         .toUpperCase(),
       items: Array.isArray(s.items)
         ? s.items.slice(0, 6).map((x: any) =>
-            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").replace(/\n/g, " ").trim().slice(0, 110)
+            String(x)
+              .replace(/\\n\s*\d*\.?/g, "")
+              .replace(/\n\s*\d*\.?/g, "")
+              .replace(/\\t/g, " ")
+              .replace(/\s{2,}/g, " ")
+              .trim()
+              .slice(0, 110)
           )
         : [],
       code: s.code ? String(s.code).slice(0, 1200) : undefined,
@@ -1935,12 +1941,24 @@ async function generateModuleSlides(
         : undefined,
       leftItems: Array.isArray(s.leftItems)
         ? s.leftItems.slice(0, 4).map((x: any) =>
-            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").trim().slice(0, 90)
+            String(x)
+              .replace(/\\n\s*\d*\.?/g, "")
+              .replace(/\n\s*\d*\.?/g, "")
+              .replace(/\\t/g, " ")
+              .replace(/\s{2,}/g, " ")
+              .trim()
+              .slice(0, 90)
           )
         : undefined,
       rightItems: Array.isArray(s.rightItems)
         ? s.rightItems.slice(0, 4).map((x: any) =>
-            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").trim().slice(0, 90)
+            String(x)
+              .replace(/\\n\s*\d*\.?/g, "")
+              .replace(/\n\s*\d*\.?/g, "")
+              .replace(/\\t/g, " ")
+              .replace(/\s{2,}/g, " ")
+              .trim()
+              .slice(0, 90)
           )
         : undefined,
       moduleIndex,
@@ -2288,15 +2306,18 @@ function splitOverflowSlides(slides: Slide[]): Slide[] {
   return out;
 }
 
-function extractCompetencies(content: string): string[] {
+function extractCompetencies(content: string, moduleTitle?: string): string[] {
   const normalised = content
     .replace(/\\n/g, "\n")
     .replace(/\\t/g, " ");
 
+  const titleLower = (moduleTitle ?? "").trim().toLowerCase();
   // Try bullet points first
   const bullets = [...normalised.matchAll(/^[-*•]\s+(.+)$/gm)]
     .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
     .filter((b) => b.length >= 12 && b.length <= 80)
+    .filter((b) => !Array.from(b).some((c) => { const cp = c.codePointAt(0) ?? 0; return (cp >= 0x1F300 && cp <= 0x1FFFF) || (cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0xFE00 && cp <= 0xFE0F); }))
+    .filter((b) => b.toLowerCase() !== titleLower)
     .slice(0, 3);
   if (bullets.length >= 2) return bullets;
 
@@ -2304,6 +2325,8 @@ function extractCompetencies(content: string): string[] {
   const headings = [...normalised.matchAll(/^#{2,4}\s+(.+)$/gm)]
     .map((m) => m[1].trim())
     .filter((h) => h.length >= 10 && h.length <= 70)
+    .filter((h) => !Array.from(h).some((c) => { const cp = c.codePointAt(0) ?? 0; return (cp >= 0x1F300 && cp <= 0x1FFFF) || (cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0xFE00 && cp <= 0xFE0F); }))
+    .filter((h) => h.toLowerCase() !== titleLower)
     .slice(0, 3);
   if (headings.length >= 2) return headings;
 
@@ -2415,7 +2438,7 @@ async function runPipeline(
         layout: "module_cover",
         title: cleanTitle,
         moduleIndex: i,
-        competencies: extractCompetencies(modules[i].content),
+        competencies: extractCompetencies(modules[i].content, cleanTitle),
       },
       design,
       ++slideNum,

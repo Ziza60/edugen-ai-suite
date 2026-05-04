@@ -1,0 +1,258 @@
+# Replit Agent — 3 Correções Cirúrgicas (v5.2 → v5.3)
+
+> Cada bloco mostra o texto exato a localizar (DE) e o texto exato a colocar no lugar (PARA).
+> Todos os regex foram testados contra os casos reais do PPTX antes de serem escritos aqui.
+> Substituição literal — não reformular, não reinterpretar.
+
+---
+
+## CORREÇÃO 1 — Bug `\n` literal nos items: fix definitivo
+
+**Contexto do problema**: Os itens gerados pelo Gemini contêm padrões como
+`"elaboraria:\n\n1"`, `"chave.\n2"` e `"problemas.\n4"` — texto seguido de `\n`
+(como dois caracteres literais: barra + n) e depois um número de lista.
+Esses números vêm do conteúdo do banco de dados que usa listas numeradas.
+As correções anteriores não capturaram esse padrão específico.
+
+**Localizar** dentro de `generateModuleSlides()` o mapeamento dos `items[]`.
+É o trecho que contém `.replace(/\\n/g, " ")` e `.replace(/\n/g, " ")`.
+
+**Substituir DE:**
+```typescript
+      items: Array.isArray(s.items)
+        ? s.items.slice(0, 6).map((x: any) =>
+            String(x)
+              .replace(/\\n/g, " ")
+              .replace(/\\t/g, " ")
+              .replace(/\n/g, " ")
+              .replace(/\s{2,}/g, " ")
+              .trim()
+              .slice(0, 110)
+          )
+        : [],
+```
+
+**PARA:**
+```typescript
+      items: Array.isArray(s.items)
+        ? s.items.slice(0, 6).map((x: any) =>
+            String(x)
+              .replace(/\\n\s*\d*\.?/g, "")
+              .replace(/\n\s*\d*\.?/g, "")
+              .replace(/\\t/g, " ")
+              .replace(/\s{2,}/g, " ")
+              .trim()
+              .slice(0, 110)
+          )
+        : [],
+```
+
+> **O que mudou e por quê:**
+> - `.replace(/\\n\s*\d*\.?/g, "")` — remove `\n` como 2 chars literais **mais** qualquer número opcional depois (captura `\n\n1`, `\n2`, `\n4`)
+> - `.replace(/\n\s*\d*\.?/g, "")` — remove newline real **mais** qualquer número opcional depois
+> - Os dois substituem por string vazia (`""`), não por espaço — evita `"elaboraria: "` com espaço final indesejado
+> - `.replace(/\s{2,}/g, " ")` depois colapsa espaços duplos que possam ter sobrado
+> - Testado: preserva `"ISSAI 3000/35"`, `"Fase 1:"`, `"Artigo 101"`, `"IMAT, 05"` — zero falsos positivos
+
+**Fazer o mesmo** para `leftItems` e `rightItems` no mesmo bloco:
+
+**Substituir DE:**
+```typescript
+      leftItems: Array.isArray(s.leftItems)
+        ? s.leftItems.slice(0, 4).map((x: any) =>
+            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").trim().slice(0, 90)
+          )
+        : undefined,
+      rightItems: Array.isArray(s.rightItems)
+        ? s.rightItems.slice(0, 4).map((x: any) =>
+            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").trim().slice(0, 90)
+          )
+        : undefined,
+```
+
+**PARA:**
+```typescript
+      leftItems: Array.isArray(s.leftItems)
+        ? s.leftItems.slice(0, 4).map((x: any) =>
+            String(x)
+              .replace(/\\n\s*\d*\.?/g, "")
+              .replace(/\n\s*\d*\.?/g, "")
+              .replace(/\\t/g, " ")
+              .replace(/\s{2,}/g, " ")
+              .trim()
+              .slice(0, 90)
+          )
+        : undefined,
+      rightItems: Array.isArray(s.rightItems)
+        ? s.rightItems.slice(0, 4).map((x: any) =>
+            String(x)
+              .replace(/\\n\s*\d*\.?/g, "")
+              .replace(/\n\s*\d*\.?/g, "")
+              .replace(/\\t/g, " ")
+              .replace(/\s{2,}/g, " ")
+              .trim()
+              .slice(0, 90)
+          )
+        : undefined,
+```
+
+---
+
+## CORREÇÃO 2 — Emojis e títulos duplicados nas competências dos module covers
+
+**Contexto do problema**: A função `extractCompetencies()` extrai bullets do conteúdo
+do módulo, mas alguns módulos têm seções nomeadas com emoji (`"🎯 Objetivo do Módulo"`,
+`"🧠 Fundamentos"`) e a primeira bullet repete o próprio nome do módulo.
+Isso aparece nos module covers dos módulos 5 e 6 como competências inválidas.
+
+### 2-A · Alterar a assinatura de `extractCompetencies()`
+
+**Localizar** a declaração da função `extractCompetencies`. É a linha:
+```typescript
+function extractCompetencies(content: string): string[] {
+```
+
+**Substituir DE:**
+```typescript
+function extractCompetencies(content: string): string[] {
+```
+
+**PARA:**
+```typescript
+function extractCompetencies(content: string, moduleTitle?: string): string[] {
+```
+
+### 2-B · Adicionar filtros dentro de `extractCompetencies()`
+
+**Localizar** dentro de `extractCompetencies()` a linha que define `const bullets`.
+É o trecho com `.matchAll(/^[-*•]\s+(.+)$/gm)`.
+
+**Substituir DE:**
+```typescript
+  const bullets = [...normalised.matchAll(/^[-*•]\s+(.+)$/gm)]
+    .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
+    .filter((b) => b.length >= 12 && b.length <= 80)
+    .slice(0, 3);
+```
+
+**PARA:**
+```typescript
+  const titleLower = (moduleTitle ?? "").trim().toLowerCase();
+  const bullets = [...normalised.matchAll(/^[-*•]\s+(.+)$/gm)]
+    .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
+    .filter((b) => b.length >= 12 && b.length <= 80)
+    .filter((b) => !/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/u.test(b))
+    .filter((b) => b.toLowerCase() !== titleLower)
+    .slice(0, 3);
+```
+
+**Também substituir** o bloco de `headings` logo abaixo:
+
+**Substituir DE:**
+```typescript
+  const headings = [...normalised.matchAll(/^#{2,4}\s+(.+)$/gm)]
+    .map((m) => m[1].trim())
+    .filter((h) => h.length >= 10 && h.length <= 70)
+    .slice(0, 3);
+```
+
+**PARA:**
+```typescript
+  const headings = [...normalised.matchAll(/^#{2,4}\s+(.+)$/gm)]
+    .map((m) => m[1].trim())
+    .filter((h) => h.length >= 10 && h.length <= 70)
+    .filter((h) => !/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/u.test(h))
+    .filter((h) => h.toLowerCase() !== titleLower)
+    .slice(0, 3);
+```
+
+### 2-C · Atualizar a chamada de `extractCompetencies()` em `runPipeline()`
+
+**Localizar** dentro de `runPipeline()` a chamada à função. É a linha:
+```typescript
+        competencies: extractCompetencies(modules[i].content),
+```
+
+**Substituir DE:**
+```typescript
+        competencies: extractCompetencies(modules[i].content),
+```
+
+**PARA:**
+```typescript
+        competencies: extractCompetencies(modules[i].content, cleanTitle),
+```
+
+> `cleanTitle` já existe nesse bloco — é a variável calculada logo acima que remove o prefixo "Módulo X:" do título.
+
+---
+
+## CORREÇÃO 3 — Label truncado: aumentar limite de 25 para 32 caracteres
+
+**Contexto do problema**: Labels gerados pelo Gemini com mais de 25 chars são cortados.
+`"RESPONSABILIDADES DA EQUIPE"` (27 chars) vira `"RESPONSABILIDADES DA EQUI"`.
+Também afeta `"PRINCÍPIOS DO PLANEJAMENTO"` e outros labels longos.
+
+### 3-A · Limite do label em `generateModuleSlides()`
+
+**Localizar** dentro de `generateModuleSlides()` a linha do label no mapeamento dos rawSlides.
+
+**Substituir DE:**
+```typescript
+      label: String(s.label || "CONTEÚDO")
+        .slice(0, 25)
+        .toUpperCase(),
+```
+
+**PARA:**
+```typescript
+      label: String(s.label || "CONTEÚDO")
+        .slice(0, 32)
+        .toUpperCase(),
+```
+
+### 3-B · Largura do chip em `header()`
+
+**Localizar** dentro da função `header()` a linha que calcula `chipW`.
+
+**Substituir DE:**
+```typescript
+    const chipW = Math.min(3.2, label.length * 0.115 + 0.5);
+```
+
+**PARA:**
+```typescript
+    const chipW = Math.min(4.2, label.length * 0.105 + 0.4);
+```
+
+> Validado: com label de 32 chars → chipW = min(4.2, 32×0.105+0.4) = min(4.2, 3.76) = **3.76"**.
+> Com label de 11 chars → chipW = **1.555"**. Com label de 25 chars → **3.025"**.
+> O chip mais largo (4.2") inicia em x=ML=0.65" e termina em 4.85" — dentro dos limites do slide.
+
+---
+
+## Checklist de verificação obrigatória após aplicar
+
+O agente deve confirmar cada item antes de encerrar:
+
+**Buscas que NÃO devem existir mais:**
+- `.slice(0, 25).toUpperCase()` no bloco de label dentro de `generateModuleSlides`
+- `Math.min(3.2, label.length * 0.115 + 0.5)` dentro de `header()`
+- `.replace(/\\n/g, " ")` nos items[] de `generateModuleSlides` (foi substituído pelo novo regex)
+- `function extractCompetencies(content: string):` sem o parâmetro `moduleTitle`
+
+**Buscas que DEVEM existir:**
+- `.replace(/\\n\s*\d*\.?/g, "")` nos items[] de `generateModuleSlides`
+- `/[\u{1F300}-\u{1FFFF}` dentro de `extractCompetencies`
+- `moduleTitle?: string` na assinatura de `extractCompetencies`
+- `extractCompetencies(modules[i].content, cleanTitle)` na chamada em `runPipeline`
+- `.slice(0, 32).toUpperCase()` no label de `generateModuleSlides`
+- `Math.min(4.2, label.length * 0.105 + 0.4)` dentro de `header()`
+
+**O que NÃO alterar:**
+- `renderProcess()` — não tocar
+- `renderCards()` — não tocar
+- `renderModuleCover()` — não tocar
+- `PALETTE_MAP` — não tocar
+- `repairPptxPackage()` — não tocar
+- Qualquer lógica de autenticação, upload ou handler HTTP
