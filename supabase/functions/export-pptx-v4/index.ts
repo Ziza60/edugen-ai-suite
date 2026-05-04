@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "4.2.2";
+const ENGINE_VERSION = "4.3.0";
 
 // ═══════════════════════════════════════════════════════════
 // XML SAFETY — must run on ALL text before passing to PptxGenJS
@@ -55,7 +55,7 @@ const corsHeaders = {
 // SECTION 1: TYPES
 // ═══════════════════════════════════════════════════════════
 
-type Layout = "cover" | "toc" | "module_cover" | "bullets" | "cards" | "takeaways" | "closing" | "code" | "twocol" | "comparison" | "timeline";
+type Layout = "cover" | "toc" | "module_cover" | "bullets" | "cards" | "takeaways" | "closing" | "code" | "twocol" | "comparison" | "timeline" | "process";
 
 interface Slide {
   layout: Layout;
@@ -499,6 +499,7 @@ function renderBullets(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
 }
 
 // ── CARDS ──
+// Items can be "Title: Description" — renderer splits on first ": "
 function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
@@ -507,9 +508,9 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
   const items = (slide_.items || []).slice(0, 4);
   if (items.length === 0) { footer(slide, d, num, total); return; }
 
-  const cols = items.length <= 2 ? items.length : 2;
+  const cols = items.length <= 3 ? items.length : 2;
   const rows = Math.ceil(items.length / cols);
-  const gap = 0.2;
+  const gap = 0.22;
   const cardW = (CW - gap * (cols - 1)) / cols;
   const cardH = (CONTENT_H - gap * (rows - 1)) / rows;
 
@@ -520,6 +521,12 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
     const y = CONTENT_Y + row * (cardH + gap);
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
 
+    // Parse "Title: Description"
+    const colonIdx = items[i].indexOf(": ");
+    const hasTitle = colonIdx > 0 && colonIdx < 50;
+    const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
+    const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
+
     // Shadow
     slide.addShape("roundRect" as any, {
       x: x + 0.03, y: y + 0.04, w: cardW, h: cardH,
@@ -527,7 +534,7 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
       rectRadius: 0.1,
     });
 
-    // Card
+    // Card body
     slide.addShape("roundRect" as any, {
       x, y, w: cardW, h: cardH,
       fill: { color: d.surface },
@@ -535,41 +542,139 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
       rectRadius: 0.1,
     });
 
-    // Top accent bar
-    slide.addShape("roundRect" as any, {
-      x, y, w: cardW, h: 0.1,
-      fill: { color: pal },
-      rectRadius: 0.1,
-    });
+    // Top color bar
+    const topBarH = 0.1;
+    slide.addShape("roundRect" as any, { x, y, w: cardW, h: topBarH, fill: { color: pal }, rectRadius: 0.1 });
+    slide.addShape("rect" as any, { x, y: y + topBarH * 0.4, w: cardW, h: topBarH * 0.6, fill: { color: pal } });
+
+    // Color left stripe
     slide.addShape("rect" as any, {
-      x, y: y + 0.04, w: cardW, h: 0.06,
-      fill: { color: pal },
+      x, y: y + topBarH, w: 0.055, h: cardH - topBarH,
+      fill: { color: pal, transparency: 60 },
     });
 
-    // Number badge
-    const badgeSz = 0.42;
+    // Number badge in top-left of color bar
+    const badgeSz = 0.36;
     slide.addShape("ellipse" as any, {
-      x: x + cardW / 2 - badgeSz / 2, y: y + 0.18,
+      x: x + 0.14, y: y + topBarH * 0.5 - badgeSz / 2,
       w: badgeSz, h: badgeSz,
-      fill: { color: pal },
+      fill: { color: d.theme === "dark" ? "111827" : "FFFFFF", transparency: 10 },
     });
     slide.addText(String(i + 1), {
-      x: x + cardW / 2 - badgeSz / 2, y: y + 0.18,
+      x: x + 0.14, y: y + topBarH * 0.5 - badgeSz / 2,
       w: badgeSz, h: badgeSz,
-      fontSize: 16, fontFace: d.titleFont, bold: true,
-      color: "FFFFFF", align: "center", valign: "middle",
+      fontSize: 13, fontFace: d.titleFont, bold: true,
+      color: pal, align: "center", valign: "middle",
     });
 
-    // Text
-    const textY = y + 0.18 + badgeSz + 0.14;
-    slide.addText(san(items[i]), {
-      x: x + 0.14, y: textY, w: cardW - 0.28, h: y + cardH - textY - 0.14,
-      fontSize: items.length <= 2 ? 16 : 13,
+    // Card title (bold) — from "Title: ..."
+    const innerX = x + 0.18;
+    const innerW = cardW - 0.26;
+    let contentY = y + topBarH + 0.14;
+
+    if (hasTitle && cardTopText) {
+      slide.addText(san(cardTopText), {
+        x: innerX, y: contentY, w: innerW, h: 0.38,
+        fontSize: items.length <= 2 ? 17 : items.length === 3 ? 15 : 13,
+        fontFace: d.titleFont, bold: true,
+        color: d.text, valign: "top",
+        lineSpacingMultiple: 1.1,
+        fit: "shrink" as any,
+      });
+      contentY += 0.38 + 0.06;
+    }
+
+    // Card body text
+    const remainH = y + cardH - contentY - 0.12;
+    slide.addText(san(cardBodyText), {
+      x: innerX, y: contentY, w: innerW, h: Math.max(0.3, remainH),
+      fontSize: items.length <= 2 ? 15 : items.length === 3 ? 12 : 11,
       fontFace: d.bodyFont,
-      color: d.text, align: "center", valign: "top",
+      color: hasTitle ? d.subtext : d.text,
+      align: "left", valign: "top",
       lineSpacingMultiple: 1.2,
       fit: "shrink" as any,
     });
+  }
+
+  footer(slide, d, num, total);
+}
+
+// ── PROCESS ── Horizontal arrow flow (3–5 steps)
+function renderProcess(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+  const slide = pptx.addSlide();
+  bg(slide, d.bg);
+  header(slide, d, slide_.label || "PROCESSO", slide_.title);
+
+  const items = (slide_.items || []).slice(0, 5);
+  if (items.length === 0) { footer(slide, d, num, total); return; }
+
+  const n      = items.length;
+  const areaY  = CONTENT_Y + 0.25;
+  const areaH  = FOOTER_Y - areaY - 0.25;
+  const arrowW = n <= 4 ? 0.28 : 0.2;
+  const totalArrows = (n - 1) * arrowW;
+  const boxW   = (CW - totalArrows) / n;
+  const boxH   = areaH;
+
+  for (let i = 0; i < n; i++) {
+    const x   = ML + i * (boxW + arrowW);
+    const pal = [d.accent, d.accent2, d.accent3][i % 3];
+
+    // Box shadow
+    slide.addShape("roundRect" as any, {
+      x: x + 0.03, y: areaY + 0.04, w: boxW, h: boxH,
+      fill: { color: "000000", transparency: 90 }, rectRadius: 0.1,
+    });
+
+    // Box
+    slide.addShape("roundRect" as any, {
+      x, y: areaY, w: boxW, h: boxH,
+      fill: { color: d.surface },
+      line: { color: pal, width: 1.2 },
+      rectRadius: 0.1,
+    });
+
+    // Top color bar
+    slide.addShape("roundRect" as any, { x, y: areaY, w: boxW, h: 0.1, fill: { color: pal }, rectRadius: 0.1 });
+    slide.addShape("rect" as any, { x, y: areaY + 0.04, w: boxW, h: 0.06, fill: { color: pal } });
+
+    // Step number badge (centered, below bar)
+    const badgeSz = n <= 3 ? 0.5 : 0.4;
+    const badgeX  = x + boxW / 2 - badgeSz / 2;
+    const badgeY  = areaY + 0.18;
+    slide.addShape("ellipse" as any, {
+      x: badgeX, y: badgeY, w: badgeSz, h: badgeSz,
+      fill: { color: pal },
+    });
+    slide.addText(String(i + 1), {
+      x: badgeX, y: badgeY, w: badgeSz, h: badgeSz,
+      fontSize: n <= 3 ? 18 : 14, fontFace: d.titleFont, bold: true,
+      color: "FFFFFF", align: "center", valign: "middle",
+    });
+
+    // Step text
+    const textY = badgeY + badgeSz + 0.12;
+    const textH = areaY + boxH - textY - 0.14;
+    slide.addText(san(items[i]), {
+      x: x + 0.1, y: textY, w: boxW - 0.2, h: Math.max(0.3, textH),
+      fontSize: n <= 3 ? 15 : n <= 4 ? 13 : 11,
+      fontFace: d.bodyFont, color: d.text,
+      align: "center", valign: "top",
+      lineSpacingMultiple: 1.2,
+      fit: "shrink" as any,
+    });
+
+    // Arrow to next (skip last)
+    if (i < n - 1) {
+      const arrowX = x + boxW + 0.02;
+      const arrowCY = areaY + boxH / 2;
+      slide.addText("›", {
+        x: arrowX, y: arrowCY - 0.22, w: arrowW - 0.04, h: 0.44,
+        fontSize: 28, fontFace: d.titleFont, bold: true,
+        color: pal, align: "center", valign: "middle",
+      });
+    }
   }
 
   footer(slide, d, num, total);
@@ -907,8 +1012,8 @@ function renderComparison(pptx: PptxGenJS, slide_: Slide, d: Design, num: number
   bg(slide, d.bg);
   header(slide, d, slide_.label || "COMPARAÇÃO", slide_.title);
 
-  const lItems = (slide_.leftItems || []).slice(0, 5);
-  const rItems = (slide_.rightItems || []).slice(0, 5);
+  const lItems = (slide_.leftItems || []).slice(0, 4);
+  const rItems = (slide_.rightItems || []).slice(0, 4);
   const lHeader = slide_.leftHeader || "A";
   const rHeader = slide_.rightHeader || "B";
 
@@ -1092,46 +1197,47 @@ ${contentSnippet}
 
 RULES:
 1. Language: ${language}. ALL text in ${language}.
-2. Slides must cover the actual content above — no generic filler
-3. Each slide title: max 60 chars, specific to the topic
-4. Items: SPECIFIC facts, max 10 words each, max ${maxItemChars} chars. 1 idea per item. Keep items SHORT.
-5. Max ${maxItems} items per slide
-6. No numbering in items — just the text
-7. No repeating module title in slide titles
+2. Slides must cover the actual content above — no generic filler.
+3. Slide titles: max 60 chars. NEVER use generic titles like "Module Overview", "Introduction", "Module ${moduleIndex + 1}", or just the module name.
+4. Items: SPECIFIC facts/ideas, max 12 words each, max ${maxItemChars} chars. 1 idea per item.
+5. Max ${maxItems} items per slide.
+6. No numbering in items — just the text.
+7. VARIETY: Do NOT produce more than 2 consecutive slides with the same layout.
 
-LAYOUT RULES:
-- "bullets": explanations, concepts, facts (default)
-- "cards": exactly 2-4 key concepts to highlight side by side
-- "twocol": 6-8 short facts that fit neatly in two columns
-- "code": ANY slide about syntax, functions, methods, loops, conditionals, classes, operators — ALWAYS use "code" for programming constructs. STRICT LIMITS: max ${maxCodeLines} lines of code (use \\n), max 3 items. Show only the most essential snippet.
-- "comparison": side-by-side contrast of TWO concepts (e.g. before/after, pros/cons, A vs B). Requires "leftHeader", "rightHeader", "leftItems" (max 5), "rightItems" (max 5).
-- "timeline": ordered steps, stages, or process flow with 3-5 items. Each item is one step.
-- "takeaways": ONLY the LAST slide of the module
+LAYOUT SELECTION (choose the best fit for the content):
+- "bullets": default for explanations, concepts, definitions, facts (3–5 items).
+- "cards": exactly 3–4 key concepts/terms. Format each item as "Term: Short definition or explanation" (max 15 words after ":"). Use when content has distinct named concepts.
+- "twocol": 6–8 short facts that naturally split into two equal groups.
+- "code": REQUIRED for any slide showing syntax, functions, methods, loops, conditionals, classes, operators, or API calls. STRICT: max ${maxCodeLines} code lines (\\n), max 3 bullet items.
+- "comparison": TWO things contrasted side by side. TRIGGER WORDS: vs, versus, diferença, comparação, vantagens/desvantagens, antes/depois, pros/cons, melhor/pior, A x B. Requires leftHeader, rightHeader, max 4 leftItems, max 4 rightItems.
+- "process": ordered sequence of steps/stages with clear flow. TRIGGER WORDS: passo, etapa, fluxo, pipeline, sequência, ciclo, como funciona, how to, steps, workflow, request→response, input→output. Use 3–5 items. Each item = one action step (verb + object).
+- "timeline": vertical milestone list or historical progression. Use for time-ordered events. 3–5 items.
+- "takeaways": ONLY the LAST slide of the module — summary of key learnings.
 
-Return a JSON array of ${nSlides} objects. Schema by layout:
+Return a JSON array of exactly ${nSlides} objects. Schema by layout:
 [
   {
-    "layout": "bullets"|"cards"|"twocol"|"takeaways"|"timeline",
+    "layout": "bullets"|"cards"|"twocol"|"takeaways"|"timeline"|"process",
     "label": "SECTION LABEL IN CAPS (max 25 chars)",
-    "title": "Specific slide title",
-    "items": ["short idea max 10 words", ...]
+    "title": "Specific descriptive slide title",
+    "items": ["specific idea", ...]
   },
   {
     "layout": "code",
     "label": "LABEL",
     "title": "Title",
-    "items": ["context bullet", ...],
-    "code": "real code with \\n newlines (max ${maxCodeLines} lines)",
-    "codeLabel": "Python"
+    "items": ["context bullet max 3", ...],
+    "code": "real code snippet with \\n newlines (max ${maxCodeLines} lines, preserve indentation)",
+    "codeLabel": "Python|JavaScript|SQL|etc"
   },
   {
     "layout": "comparison",
     "label": "LABEL",
-    "title": "Title",
+    "title": "X vs Y",
     "leftHeader": "Concept A",
     "rightHeader": "Concept B",
-    "leftItems": ["item", ...],
-    "rightItems": ["item", ...]
+    "leftItems": ["item 1", "item 2", "item 3", "item 4"],
+    "rightItems": ["item 1", "item 2", "item 3", "item 4"]
   }
 ]
 
@@ -1161,20 +1267,20 @@ async function generateModuleSlides(
       return fallbackModuleSlides(mod.title, mod.content, moduleIndex, density);
     }
 
-    const VALID_LAYOUTS: Layout[] = ["bullets","cards","takeaways","code","twocol","comparison","timeline"];
+    const VALID_LAYOUTS: Layout[] = ["bullets","cards","takeaways","code","twocol","comparison","timeline","process"];
     const rawSlides: Slide[] = parsed.map((s: any) => ({
       layout: (VALID_LAYOUTS.includes(s.layout) ? s.layout : "bullets") as Layout,
-      title: String(s.title || mod.title).slice(0, 80),
+      title: cleanSlideTitle(String(s.title || mod.title).slice(0, 80), mod.title),
       label: String(s.label || "CONTEÚDO").slice(0, 25).toUpperCase(),
       items: Array.isArray(s.items)
-        ? s.items.slice(0, 6).map((x: any) => String(x).slice(0, 90))
+        ? s.items.slice(0, 6).map((x: any) => String(x).slice(0, 110))
         : [],
-      code: s.code ? String(s.code).slice(0, 1000) : undefined,
+      code: s.code ? String(s.code).slice(0, 1200) : undefined,
       codeLabel: s.codeLabel ? String(s.codeLabel).slice(0, 20) : "Python",
       leftHeader:  s.leftHeader  ? String(s.leftHeader).slice(0, 40)  : undefined,
       rightHeader: s.rightHeader ? String(s.rightHeader).slice(0, 40) : undefined,
-      leftItems:  Array.isArray(s.leftItems)  ? s.leftItems.slice(0, 5).map((x: any) => String(x).slice(0, 90))  : undefined,
-      rightItems: Array.isArray(s.rightItems) ? s.rightItems.slice(0, 5).map((x: any) => String(x).slice(0, 90)) : undefined,
+      leftItems:  Array.isArray(s.leftItems)  ? s.leftItems.slice(0, 4).map((x: any) => String(x).slice(0, 90))  : undefined,
+      rightItems: Array.isArray(s.rightItems) ? s.rightItems.slice(0, 4).map((x: any) => String(x).slice(0, 90)) : undefined,
       moduleIndex,
     }));
 
@@ -1323,6 +1429,49 @@ async function repairPptxPackage(pptxData: Uint8Array): Promise<{ data: Uint8Arr
 // SECTION 6: PIPELINE
 // ═══════════════════════════════════════════════════════════
 
+// ── TITLE GARBAGE CLEANUP ──
+// Removes generic AI-generated structural titles that add no value
+const GARBAGE_TITLE_RE = /^(m[oó]dulo\s+\d+|objetivo\s+(do\s+)?m[oó]dulo|introdu[cç][aã]o\s+ao\s+m[oó]dulo|vis[aã]o\s+geral\s+do\s+m[oó]dulo|conte[uú]do\s+do\s+m[oó]dulo|overview|introduction|module\s+\d+|fundamentos|conceitos\s+b[aá]sicos)$/i;
+
+function cleanSlideTitle(title: string, moduleTitle: string): string {
+  const t = title.trim();
+  if (GARBAGE_TITLE_RE.test(t) || t.toLowerCase() === moduleTitle.trim().toLowerCase()) {
+    // Try to form a more specific title from the module title
+    return moduleTitle.slice(0, 60);
+  }
+  return t;
+}
+
+// ── LAYOUT VARIETY ENFORCEMENT ──
+// Prevents more than 2 consecutive slides with the same layout
+const VARIETY_SWAPPABLE: Layout[] = ["bullets", "twocol"];
+
+function applyLayoutVariety(slides: Slide[]): Slide[] {
+  const out: Slide[] = [...slides];
+  for (let i = 2; i < out.length - 1; i++) { // skip last (takeaways)
+    const cur   = out[i].layout;
+    const prev1 = out[i - 1].layout;
+    const prev2 = out[i - 2].layout;
+    if (!VARIETY_SWAPPABLE.includes(cur) || cur !== prev1 || cur !== prev2) continue;
+
+    const items = out[i].items || [];
+    if (cur === "bullets") {
+      if (items.length >= 3 && items.length <= 4) {
+        // Convert to cards if items fit "Term: Description" style — just use as-is
+        out[i] = { ...out[i], layout: "cards" };
+        console.log(`[V4] Variety: converted slide ${i + 1} bullets→cards`);
+      } else if (items.length >= 5) {
+        out[i] = { ...out[i], layout: "twocol" };
+        console.log(`[V4] Variety: converted slide ${i + 1} bullets→twocol`);
+      }
+    } else if (cur === "twocol") {
+      out[i] = { ...out[i], layout: "bullets" };
+      console.log(`[V4] Variety: converted slide ${i + 1} twocol→bullets`);
+    }
+  }
+  return out;
+}
+
 // ── CONTENT VALIDATION & REPAIR ──
 // Layouts that are self-sufficient (no items/code required)
 const SELF_SUFFICIENT_LAYOUTS: Layout[] = ["cover", "toc", "module_cover", "closing"];
@@ -1449,9 +1598,10 @@ async function runPipeline(
   for (let i = 0; i < modules.length; i++) {
     console.log(`[V4] Generating slides for module ${i + 1}/${modules.length}: "${modules[i].title}"`);
     const rawSlides = await generateModuleSlides(courseTitle, modules[i], i, density, language, geminiKey);
-    const slides = splitOverflowSlides(rawSlides);
-    console.log(`[V4] Module ${i + 1}: ${rawSlides.length} raw → ${slides.length} after split`);
-    allModuleSlides.push(slides);
+    const splitSlides = splitOverflowSlides(rawSlides);
+    const variedSlides = applyLayoutVariety(splitSlides);
+    console.log(`[V4] Module ${i + 1}: ${rawSlides.length} raw → ${splitSlides.length} split → ${variedSlides.length} final`);
+    allModuleSlides.push(variedSlides);
   }
 
   // Count total slides for footer
@@ -1502,6 +1652,9 @@ async function runPipeline(
           break;
         case "timeline":
           renderTimeline(pptx, s, design, ++slideNum, totalSlides);
+          break;
+        case "process":
+          renderProcess(pptx, s, design, ++slideNum, totalSlides);
           break;
         default:
           renderBullets(pptx, s, design, ++slideNum, totalSlides);

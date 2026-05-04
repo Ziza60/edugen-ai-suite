@@ -1,0 +1,39 @@
+Implemente progressivamente novos layouts no exportador PPTX v4, sem alterar a arquitetura geral atual.
+
+Etapa 1:
+1. Adicionar layout "comparison":
+- Usar para conteúdos comparativos detectados por termos como "vs", "versus", "diferença", "comparação", "texto vs binário", "classe vs objeto", "lista vs tupla", "GET vs POST".
+- Renderizar em duas colunas equilibradas, com título, label e até 4 linhas comparativas por coluna.
+- Se houver mais de 4 itens por coluna, dividir em novo slide.
+- Evitar texto longo: máximo 100 caracteres por item.
+
+2. Adicionar layout "code_split":
+- Usar para slides com código.
+- Renderizar em duas áreas: explicação curta à esquerda e bloco de código à direita.
+- Máximo de 3 bullets explicativos.
+- Máximo de 10 a 12 linhas de código por slide.
+- Se o código passar do limite, dividir em slides adicionais com sufixo "— Parte 2".
+- Usar fonte monoespaçada no código e preservar indentação.
+- Não permitir transbordo vertical.
+
+Etapa 2:
+3. Adicionar layout "cards":
+- Usar para 3 ou 4 conceitos independentes.
+- Renderizar como cards visuais com título curto e descrição curta.
+- Usar para conceitos como Classe, Objeto, Atributo, Método; Testes, Logs, Depuração; JSON, API, HTTP, Requests.
+- Máximo de 4 cards por slide.
+
+Etapa 3:
+4. Adicionar layout "process":
+- Usar para sequências, etapas ou fluxos.
+- Detectar termos como "passo", "etapa", "fluxo", "processo", "pipeline", "try/except/finally", "request/response".
+- Renderizar como linha ou sequência visual: 1 → 2 → 3 → 4.
+- Máximo de 5 etapas por slide.
+- Se houver mais etapas, dividir em novo slide.
+
+Regras globais:
+- Não repetir o mesmo layout mais de 2 vezes seguidas, salvo slides de código.
+- Todo slide comum precisa ter título e conteúdo útil.
+- Slide sem items, sem código e sem cards deve ser removido ou reparado.
+- Remover lixo estrutural como "Módulo X", "Objetivo do Módulo", "Fundamentos" quando aparecer como conteúdo.
+- Manter PPTX v4 como fallback padrão.
