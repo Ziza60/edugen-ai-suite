@@ -382,6 +382,33 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 }
               }
 
+              // ── V6 NATIVE ENGINE (Template ZIP) ──
+              if (!data?.url && options.useV6) {
+                console.log("[PPTX] Using EduGen v6 engine (template ZIP)...");
+                try {
+                  const resV6 = await supabase.functions.invoke("export-pptx-v6", {
+                    body: {
+                      course_id:   courseId,
+                      density:     options.density,
+                      language:    "Português (Brasil)",
+                      footerBrand: options.footerBrand,
+                    },
+                  });
+                  if (resV6.data?.url && !resV6.error) {
+                    data = resV6.data;
+                    engineUsed = "v6-native";
+                    console.log("[PPTX] v6 successful! Slides:", resV6.data.slide_count);
+                  } else {
+                    const errMsg = resV6.data?.error || resV6.error?.message || "";
+                    console.warn("[PPTX] v6 failed, falling back to v4:", errMsg);
+                    toast({ title: "v6 indisponível, usando v5", description: errMsg, duration: 4000 });
+                  }
+                } catch (errV6) {
+                  console.error("[PPTX] v6 crash:", errV6);
+                  toast({ title: "EduGen v6 indisponível", description: "Usando motor v5 como fallback.", duration: 4000 });
+                }
+              }
+
               // ── V4 NATIVE ENGINE ──
               if (!data?.url && options.useV4) {
                 console.log("[PPTX] Using EduGen v4 engine...");
@@ -511,7 +538,8 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               const fileLabel =
                 engineUsed === "presenton"   ? "PPTX-Presenton" :
                 engineUsed === "2slides"     ? "PPTX-2Slides" :
-                engineUsed === "v4-native"   ? "PPTX-v4"      :
+                engineUsed === "v6-native"   ? "PPTX-v6"      :
+                engineUsed === "v4-native"   ? "PPTX-v5"      :
                 engineUsed === "magicslides" ? "PPTX-PRO"     : "PPTX";
               a.download = formatFileName(courseTitle, fileLabel, "pptx");
               a.rel = "noopener";
@@ -527,13 +555,15 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               const toastTitle =
                 engineUsed === "presenton"   ? "✨ PowerPoint Presenton gerado!" :
                 engineUsed === "2slides"     ? "⚡ PowerPoint AI gerado!" :
-                engineUsed === "v4-native"   ? "🚀 PowerPoint v4 gerado!" :
+                engineUsed === "v6-native"   ? "🎯 PowerPoint v6 gerado!" :
+                engineUsed === "v4-native"   ? "🚀 PowerPoint v5 gerado!" :
                 engineUsed === "magicslides" ? "✨ PowerPoint Pro gerado!" :
                 "PowerPoint gerado!";
               const toastDesc =
                 engineUsed === "presenton"   ? `${data.slide_count} slides com design Presenton AI` :
                 engineUsed === "2slides"     ? `${data.slide_count} slides com design premium 2Slides` :
-                engineUsed === "v4-native"   ? "Novo motor com conteúdo e design aprimorados" :
+                engineUsed === "v6-native"   ? `Engine v6 • template navy/gold • ${data.slide_count || 0} slides` :
+                engineUsed === "v4-native"   ? "Motor v5 com conteúdo e design aprimorados" :
                 engineUsed === "magicslides" ? "Design premium aplicado com sucesso." :
                 data.quality_report          ? `Score: ${data.quality_report.quality_score}/100` :
                 undefined;
