@@ -108,34 +108,42 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
     }
 
     case "MODULE_COVER": {
-      const titleLower = s("title").toLowerCase();
-      const comps = sl("competencies", 3).filter(
+      const title = s("title");
+      const titleLower = title.toLowerCase();
+      let comps = sl("competencies", 3).filter(
         (c) => c.toLowerCase() !== titleLower
       );
+      // Fallback: se não extraiu competências, gera a partir do título do módulo
+      if (comps.length === 0 && title) {
+        comps = [`Compreender os fundamentos de ${title}`];
+      }
+      // Sempre preencher 3 slots — repete o último para evitar marcadores vazios
+      while (comps.length < 3) {
+        comps.push(comps[comps.length - 1] ?? title);
+      }
       r.MODULE_NUMBER = s("module_number", "01");
       r.MODULE_LABEL  = s("module_label", "MÓDULO 1");
-      r.TITLE         = s("title");
-      r.COMP_1        = comps[0] ?? "";
-      r.COMP_2        = comps[1] ?? "";
-      r.COMP_3        = comps[2] ?? "";
+      r.TITLE         = title;
+      r.COMP_1        = comps[0];
+      r.COMP_2        = comps[1];
+      r.COMP_3        = comps[2];
       break;
     }
 
     case "BULLETS": {
       let items = sl("items", 5);
       const title = s("title");
-      // Garantia: bullets sempre com mínimo 4 itens visíveis.
-      // Se o Gemini gerou menos de 4 (incluindo zero), preenche com fallback
-      // para evitar que marcadores âmbar apareçam sem texto no template.
-      if (items.length < 4) {
+      // Sempre preencher todos os 5 slots — o template tem 5 marcadores dourados
+      // hardcoded; slots vazios fazem aparecer marcadores sem texto.
+      if (items.length < 5) {
         const fallback = items.length > 0
           ? items[items.length - 1]
           : (title || "Conteúdo deste módulo");
-        while (items.length < 4) items.push(fallback);
+        while (items.length < 5) items.push(fallback);
       }
       r.LABEL = s("label", "CONTEÚDO").toUpperCase().slice(0, 32);
       r.TITLE = title;
-      for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i] ?? "";
+      for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i];
       break;
     }
 
@@ -169,10 +177,15 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
     }
 
     case "PROCESS": {
-      const steps = sl("steps").length ? sl("steps") : sl("items", 5);
+      let steps = sl("steps").length ? sl("steps") : sl("items", 5);
+      // Sempre preencher 5 slots — números 1-5 são shapes hardcoded no template
+      if (steps.length < 5) {
+        const fb = steps.length > 0 ? steps[steps.length - 1] : s("title");
+        while (steps.length < 5) steps.push(fb);
+      }
       r.LABEL = s("label", "PROCESSO").toUpperCase().slice(0, 32);
       r.TITLE = s("title");
-      for (let i = 0; i < 5; i++) r[`STEP_${i + 1}`] = steps[i] ?? "";
+      for (let i = 0; i < 5; i++) r[`STEP_${i + 1}`] = steps[i];
       break;
     }
 
@@ -191,10 +204,14 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
     }
 
     case "TIMELINE": {
-      const items = sl("items", 5);
+      let items = sl("items", 5);
+      if (items.length < 5) {
+        const fb = items.length > 0 ? items[items.length - 1] : s("title");
+        while (items.length < 5) items.push(fb);
+      }
       r.LABEL = s("label", "LINHA DO TEMPO").toUpperCase().slice(0, 32);
       r.TITLE = s("title");
-      for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i] ?? "";
+      for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i];
       break;
     }
 
@@ -225,10 +242,14 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
     }
 
     case "TAKEAWAYS": {
-      const items = sl("items", 5);
+      let items = sl("items", 5);
+      if (items.length < 5) {
+        const fb = items.length > 0 ? items[items.length - 1] : s("title");
+        while (items.length < 5) items.push(fb);
+      }
       r.LABEL = s("label", "APRENDIZADOS").toUpperCase().slice(0, 32);
       r.TITLE = s("title");
-      for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i] ?? "";
+      for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i];
       break;
     }
 
@@ -466,14 +487,13 @@ Schema:
 }
 
 function extractCompetencies(content: string, moduleTitle?: string): string[] {
-  // Strip JSON-like content: remove lines that look like JSON key-value pairs
-  // and try to extract plain text if content is JSON-encoded
-  let norm = (content || "").replace(/\\n/g, "\n");
+  let norm = (content || "").replace(/\\n/g, "\n").replace(/\\"/g, '"');
 
-  // If content looks like JSON, try to parse and extract text fields
-  if (norm.trim().startsWith("{") || norm.trim().startsWith("[")) {
+  // Case 1: valid JSON object/array → walk and collect string values
+  const trimmed = norm.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
-      const parsed = JSON.parse(norm);
+      const parsed = JSON.parse(trimmed);
       const extracted: string[] = [];
       const walk = (obj: unknown) => {
         if (typeof obj === "string" && obj.length > 10) extracted.push(obj);
@@ -481,34 +501,46 @@ function extractCompetencies(content: string, moduleTitle?: string): string[] {
         else if (obj && typeof obj === "object") Object.values(obj as Record<string, unknown>).forEach(walk);
       };
       walk(parsed);
-      norm = extracted.join("\n");
-    } catch { /* not valid JSON, use as-is */ }
+      if (extracted.length > 0) norm = extracted.join("\n");
+    } catch { /* not valid JSON, fall through */ }
   }
 
-  // Remove JSON artifact patterns like "key": "value" and "key": value
+  // Case 2: fragmented JSON — lines like  "key": "value"  without surrounding braces
+  // Extract only the string values, discard the keys
+  const fragmentValues: string[] = [];
+  norm.replace(/"[a-zA-Z_]+":\s*"([^"]{10,})"/g, (_, v) => {
+    fragmentValues.push(v);
+    return "";
+  });
+  if (fragmentValues.length > 0) {
+    // Use extracted values as the normalized text
+    norm = fragmentValues.join("\n");
+  }
+
+  // Strip remaining JSON punctuation and key patterns
   norm = norm
-    .replace(/"[a-z_]+":\s*"[^"]*"/g, "")
-    .replace(/"[a-z_]+":\s*[\d\[\{][^,\n]*/g, "")
-    .replace(/^\s*[\{\}\[\],]\s*$/gm, "");
+    .replace(/"[a-zA-Z_]+":\s*/g, "")
+    .replace(/["{}[\],]/g, " ")
+    .replace(/\s{2,}/g, " ");
 
   const titleLower = (moduleTitle ?? "").trim().toLowerCase();
 
+  // Try bullet-style extraction first
   const bullets = [...norm.matchAll(/^[-*•]\s+(.+)$/gm)]
-    .map((m) => m[1].replace(/\*{1,2}/g, "").replace(/\\n\s*\d*\.?/g, "").trim())
+    .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
     .filter((b) => b.length >= 12 && b.length <= 80)
-    .filter((b) => !b.includes('"') && !b.includes(':'))
     .filter((b) => !Array.from(b).some((c) => { const cp = c.codePointAt(0) ?? 0; return (cp >= 0x1F300 && cp <= 0x1FFFF) || (cp >= 0x2600 && cp <= 0x27BF); }))
     .filter((b) => b.toLowerCase() !== titleLower)
     .slice(0, 3);
 
   if (bullets.length >= 2) return bullets;
 
+  // Fall back to sentence splitting
   return norm
     .replace(/#{1,6}\s*/g, "")
     .split(/[.!?\n]+/)
     .map((s) => s.trim())
     .filter((s) => s.length >= 12 && s.length <= 70)
-    .filter((s) => !s.includes('"') && !s.includes(':'))
     .filter((s) => !Array.from(s).some((c) => { const cp = c.codePointAt(0) ?? 0; return cp >= 0x1F300 && cp <= 0x1FFFF; }))
     .filter((s) => s.toLowerCase() !== titleLower)
     .slice(0, 3);
