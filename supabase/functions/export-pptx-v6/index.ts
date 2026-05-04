@@ -123,16 +123,18 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
 
     case "BULLETS": {
       let items = sl("items", 5);
+      const title = s("title");
       // Garantia: bullets sempre com mínimo 4 itens visíveis.
-      // Se o Gemini gerou menos de 4, repete o último item até completar.
-      // Isso evita que marcadores âmbar apareçam sem texto no template.
-      if (items.length > 0 && items.length < 4) {
-        while (items.length < 4) {
-          items.push(items[items.length - 1]);
-        }
+      // Se o Gemini gerou menos de 4 (incluindo zero), preenche com fallback
+      // para evitar que marcadores âmbar apareçam sem texto no template.
+      if (items.length < 4) {
+        const fallback = items.length > 0
+          ? items[items.length - 1]
+          : (title || "Conteúdo deste módulo");
+        while (items.length < 4) items.push(fallback);
       }
       r.LABEL = s("label", "CONTEÚDO").toUpperCase().slice(0, 32);
-      r.TITLE = s("title");
+      r.TITLE = title;
       for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i] ?? "";
       break;
     }
@@ -464,12 +466,37 @@ Schema:
 }
 
 function extractCompetencies(content: string, moduleTitle?: string): string[] {
-  const norm = (content || "").replace(/\\n/g, "\n");
+  // Strip JSON-like content: remove lines that look like JSON key-value pairs
+  // and try to extract plain text if content is JSON-encoded
+  let norm = (content || "").replace(/\\n/g, "\n");
+
+  // If content looks like JSON, try to parse and extract text fields
+  if (norm.trim().startsWith("{") || norm.trim().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(norm);
+      const extracted: string[] = [];
+      const walk = (obj: unknown) => {
+        if (typeof obj === "string" && obj.length > 10) extracted.push(obj);
+        else if (Array.isArray(obj)) obj.forEach(walk);
+        else if (obj && typeof obj === "object") Object.values(obj as Record<string, unknown>).forEach(walk);
+      };
+      walk(parsed);
+      norm = extracted.join("\n");
+    } catch { /* not valid JSON, use as-is */ }
+  }
+
+  // Remove JSON artifact patterns like "key": "value" and "key": value
+  norm = norm
+    .replace(/"[a-z_]+":\s*"[^"]*"/g, "")
+    .replace(/"[a-z_]+":\s*[\d\[\{][^,\n]*/g, "")
+    .replace(/^\s*[\{\}\[\],]\s*$/gm, "");
+
   const titleLower = (moduleTitle ?? "").trim().toLowerCase();
 
   const bullets = [...norm.matchAll(/^[-*•]\s+(.+)$/gm)]
     .map((m) => m[1].replace(/\*{1,2}/g, "").replace(/\\n\s*\d*\.?/g, "").trim())
     .filter((b) => b.length >= 12 && b.length <= 80)
+    .filter((b) => !b.includes('"') && !b.includes(':'))
     .filter((b) => !Array.from(b).some((c) => { const cp = c.codePointAt(0) ?? 0; return (cp >= 0x1F300 && cp <= 0x1FFFF) || (cp >= 0x2600 && cp <= 0x27BF); }))
     .filter((b) => b.toLowerCase() !== titleLower)
     .slice(0, 3);
@@ -481,6 +508,7 @@ function extractCompetencies(content: string, moduleTitle?: string): string[] {
     .split(/[.!?\n]+/)
     .map((s) => s.trim())
     .filter((s) => s.length >= 12 && s.length <= 70)
+    .filter((s) => !s.includes('"') && !s.includes(':'))
     .filter((s) => !Array.from(s).some((c) => { const cp = c.codePointAt(0) ?? 0; return cp >= 0x1F300 && cp <= 0x1FFFF; }))
     .filter((s) => s.toLowerCase() !== titleLower)
     .slice(0, 3);
@@ -505,7 +533,15 @@ async function generateModuleSlides(
 
     return parsed.map((s: Record<string, unknown>) => {
       const layout = VALID_LAYOUTS.includes(String(s.layout)) ? String(s.layout) : "bullets";
-      const rawItems = Array.isArray(s.items) ? s.items : [];
+      // Accept multiple field names Gemini may use instead of "items"
+      const rawItems: unknown[] = Array.isArray(s.items) ? s.items
+        : Array.isArray(s.points) ? s.points
+        : Array.isArray(s.bullets) ? s.bullets
+        : Array.isArray(s.steps) ? s.steps
+        : Array.isArray(s.content) ? s.content
+        : Array.isArray(s.concepts) ? s.concepts
+        : Array.isArray(s.facts) ? s.facts
+        : [];
       const items = rawItems
         .map((x) =>
           san(String(x))
