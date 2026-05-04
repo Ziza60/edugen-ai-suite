@@ -349,19 +349,25 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                     if (errCode === "TWOSLIDES_NO_CREDITS") {
                       toast({
                         title: "⚡ 2Slides: créditos esgotados",
-                        description: "Recarregue em 2slides.com/pricing. Gerando com EduGen v3…",
+                        description: "Recarregue em 2slides.com/pricing. Gerando com EduGen v4…",
                         duration: 7000,
                       });
                     } else if (errCode === "TWOSLIDES_NOT_CONFIGURED") {
                       toast({
                         title: "2Slides não configurado",
-                        description: "Chave de API ausente. Gerando com EduGen v3…",
+                        description: "Chave de API ausente. Gerando com EduGen v4…",
                         duration: 5000,
+                      });
+                    } else if (errCode === "TWOSLIDES_TIMEOUT") {
+                      toast({
+                        title: "2Slides: tempo limite excedido",
+                        description: res2s.data?.detail || "Curso muito grande para o 2Slides. Gerando com EduGen v4…",
+                        duration: 8000,
                       });
                     } else {
                       toast({
                         title: "2Slides temporariamente indisponível",
-                        description: "Gerando apresentação com EduGen v3…",
+                        description: "Gerando apresentação com EduGen v4…",
                         duration: 4000,
                       });
                     }

@@ -258,22 +258,48 @@ Deno.serve(async (req: Request) => {
     );
 
     // ── Call 2Slides API (sync mode) ──────────────────────────────────
-    const t0 = Date.now();
-    const genRes = await fetch("https://2slides.com/api/v1/slides/generate", {
-      method:  "POST",
-      headers: {
-        "Authorization": `Bearer ${twoSlidesKey}`,
-        "Content-Type":  "application/json",
-      },
-      body: JSON.stringify({
-        userInput,
-        themeId,
-        responseLanguage: language,
-        mode: "sync",
-      }),
-    });
+    // Cap at 120s so we return a clean error before the 150s edge-function limit
+    const TWOSLIDES_TIMEOUT_MS = 120_000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TWOSLIDES_TIMEOUT_MS);
 
-    const genData = await genRes.json();
+    const t0 = Date.now();
+    let genRes: Response;
+    let genData: any;
+    try {
+      genRes = await fetch("https://2slides.com/api/v1/slides/generate", {
+        method:  "POST",
+        headers: {
+          "Authorization": `Bearer ${twoSlidesKey}`,
+          "Content-Type":  "application/json",
+        },
+        body: JSON.stringify({
+          userInput,
+          themeId,
+          responseLanguage: language,
+          mode: "sync",
+        }),
+        signal: controller.signal,
+      });
+      genData = await genRes.json();
+    } catch (fetchErr: any) {
+      clearTimeout(timeoutId);
+      const isTimeout = fetchErr?.name === "AbortError";
+      console.warn(`[2SLIDES] Fetch ${isTimeout ? "timed out" : "failed"}:`, fetchErr?.message);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:   isTimeout ? "TWOSLIDES_TIMEOUT" : "TWOSLIDES_NETWORK_ERROR",
+          detail:  isTimeout
+            ? `A geração demorou mais de ${TWOSLIDES_TIMEOUT_MS / 1000}s. Tente um curso com menos módulos ou use o motor EduGen v4.`
+            : fetchErr?.message,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
     console.log(`[2SLIDES] API response (${Date.now() - t0}ms):`, JSON.stringify(genData).slice(0, 300));
 
     if (!genRes.ok || !genData?.success) {
