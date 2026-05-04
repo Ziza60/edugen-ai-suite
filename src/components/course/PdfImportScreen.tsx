@@ -94,12 +94,30 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Sessão expirada. Faça login novamente.");
 
-      // Step 1 — upload file directly to Storage (bypasses Edge Function body limit)
-      const storageKey = `${session.user.id}/${tempCourseId}/${Date.now()}-${file.name}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("course-sources")
-        .upload(storageKey, file, { contentType: file.type || "application/octet-stream", upsert: false });
-      if (uploadErr) throw new Error(`Erro ao enviar arquivo: ${uploadErr.message}`);
+      // Step 1 — get a signed upload URL (bypasses RLS + Edge Function body size limit)
+      const urlRes = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-upload-url`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ filename: file.name, course_id: tempCourseId }),
+        },
+      );
+      const urlData = await urlRes.json();
+      if (!urlRes.ok) throw new Error(urlData.error || "Erro ao obter URL de upload.");
+
+      const { signed_url, file_path: storageKey } = urlData;
+
+      // Upload directly to Storage using the signed URL (no size limit)
+      const uploadRes = await fetch(signed_url, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error(`Erro ao enviar arquivo: ${uploadRes.statusText}`);
 
       setLoadingStep(1);
 
@@ -190,23 +208,23 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
-                onClick={() => !file && fileInputRef.current?.click()}
                 data-testid="pdf-dropzone"
-                className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
+                className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
                   isDragging
                     ? "border-blue-500 bg-blue-500/5"
                     : file
-                    ? "border-green-500/50 bg-green-500/5 cursor-default"
-                    : "border-border hover:border-blue-400 hover:bg-blue-500/3"
+                    ? "border-green-500/50 bg-green-500/5"
+                    : "border-border hover:border-blue-400 hover:bg-blue-500/5"
                 }`}
               >
                 <input
                   ref={fileInputRef}
+                  id="pdf-file-input"
                   type="file"
                   accept=".pdf,.docx"
                   className="hidden"
                   data-testid="pdf-file-input"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) acceptFile(f); }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) acceptFile(f); e.target.value = ""; }}
                 />
 
                 {file ? (
@@ -222,14 +240,17 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 shrink-0"
-                      onClick={(e) => { e.stopPropagation(); setFile(null); setError(null); }}
+                      onClick={() => { setFile(null); setError(null); }}
                     >
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <Upload className="h-8 w-8 text-muted-foreground/50 mx-auto" />
+                  <label
+                    htmlFor="pdf-file-input"
+                    className="flex flex-col items-center gap-3 cursor-pointer select-none"
+                  >
+                    <Upload className="h-8 w-8 text-muted-foreground/50" />
                     <div>
                       <p className="font-medium text-foreground">Arraste o arquivo aqui</p>
                       <p className="text-sm text-muted-foreground mt-1">ou clique para selecionar</p>
@@ -239,7 +260,7 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                       <Badge variant="outline" className="text-[11px]">DOCX</Badge>
                       <Badge variant="outline" className="text-[11px]">Até 50 MB</Badge>
                     </div>
-                  </div>
+                  </label>
                 )}
               </div>
 
