@@ -141,7 +141,7 @@ const CONTENT_H = FOOTER_Y - CONTENT_Y - 0.1; // 5.61
 
 // Each entry: [accent, accent2, accent3, highlight, coverBg]
 const PALETTE_MAP: Record<string, [string, string, string, string, string]> = {
-  default:    ["4F46E5", "7C3AED", "0891B2", "F59E0B", "0F0F1A"],
+  default:    ["1E3A5F", "2E6DA4", "C47F17", "E8A020", "0A1628"],
   ocean:      ["0369A1", "0284C7", "0891B2", "06B6D4", "020C18"],
   forest:     ["15803D", "16A34A", "0D9488", "84CC16", "071A0E"],
   sunset:     ["DC2626", "EA580C", "D97706", "F59E0B", "1A0505"],
@@ -308,10 +308,10 @@ function header(slide: any, d: Design, label: string, title: string) {
   });
   slide.addShape("rect" as any, {
     x: ML,
-    y: CONTENT_Y - 0.06,
-    w: CW,
-    h: 0.025,
-    fill: { color: d.border },
+    y: CONTENT_Y - 0.05,
+    w: 0.4,
+    h: 0.035,
+    fill: { color: d.accent },
   });
 }
 
@@ -920,12 +920,14 @@ function renderProcess(
   }
 
   const n = items.length;
-  const areaY = CONTENT_Y + 0.25;
-  const areaH = FOOTER_Y - areaY - 0.25;
   const arrowW = n <= 4 ? 0.28 : 0.2;
   const totalArrows = (n - 1) * arrowW;
   const boxW = (CW - totalArrows) / n;
-  const boxH = areaH;
+  // Altura compacta: suficiente para badge + texto + respiro, sem desperdício
+  const boxH = n <= 3 ? 2.4 : n === 4 ? 2.2 : 2.0;
+  // Centralizar verticalmente no espaço de conteúdo
+  const areaY = CONTENT_Y + (CONTENT_H - boxH) / 2;
+  const areaH = boxH; // mantido por compatibilidade com o restante do código
 
   for (let i = 0; i < n; i++) {
     const x = ML + i * (boxW + arrowW);
@@ -1927,7 +1929,9 @@ async function generateModuleSlides(
         .slice(0, 25)
         .toUpperCase(),
       items: Array.isArray(s.items)
-        ? s.items.slice(0, 6).map((x: any) => String(x).slice(0, 110))
+        ? s.items.slice(0, 6).map((x: any) =>
+            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").trim().slice(0, 110)
+          )
         : [],
       code: s.code ? String(s.code).slice(0, 1200) : undefined,
       codeLabel: s.codeLabel ? String(s.codeLabel).slice(0, 20) : "Python",
@@ -1936,10 +1940,14 @@ async function generateModuleSlides(
         ? String(s.rightHeader).slice(0, 40)
         : undefined,
       leftItems: Array.isArray(s.leftItems)
-        ? s.leftItems.slice(0, 4).map((x: any) => String(x).slice(0, 90))
+        ? s.leftItems.slice(0, 4).map((x: any) =>
+            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").trim().slice(0, 90)
+          )
         : undefined,
       rightItems: Array.isArray(s.rightItems)
-        ? s.rightItems.slice(0, 4).map((x: any) => String(x).slice(0, 90))
+        ? s.rightItems.slice(0, 4).map((x: any) =>
+            String(x).replace(/\\n/g, " ").replace(/\\t/g, " ").trim().slice(0, 90)
+          )
         : undefined,
       moduleIndex,
     }));
@@ -2598,13 +2606,13 @@ Deno.serve(async (req: Request) => {
     const rawData = await pptx.write({ outputType: "uint8array" });
     const rawBytes = rawData as Uint8Array;
     console.log(
-      `[V4-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]}`,
+      `[V5-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]}`,
     );
     const repairResult = await repairPptxPackage(rawBytes);
     const pptxData = repairResult.data;
     const repairDiag = repairResult.diag;
     console.log(
-      `[V4-WRITE] repaired_bytes=${pptxData.byteLength} slides=${repairDiag.slide_count}`,
+      `[V5-WRITE] repaired_bytes=${pptxData.byteLength} slides=${repairDiag.slide_count}`,
     );
 
     const dateStr = new Date().toISOString().slice(0, 10);
@@ -2616,7 +2624,7 @@ Deno.serve(async (req: Request) => {
       .replace(/\s+/g, "-")
       .trim()
       .substring(0, 80);
-    const fileName = `${userId}/${safeName}-PPTX-v4-${dateStr}-${ts}.pptx`;
+    const fileName = `${userId}/${safeName}-PPTX-v5-${dateStr}-${ts}.pptx`;
 
     // Upload with retry
     let uploadErr: any = null;
@@ -2648,7 +2656,7 @@ Deno.serve(async (req: Request) => {
     try {
       await serviceClient.from("usage_events").insert({
         user_id: userId,
-        event_type: "COURSE_EXPORTED_PPTX_V4",
+        event_type: "COURSE_EXPORTED_PPTX_V5",
         metadata: { course_id, modules: moduleData.length },
       });
     } catch {
@@ -2658,7 +2666,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         url: signedUrl.signedUrl,
-        version: "v4",
+        version: "v5",
         engine_version: ENGINE_VERSION,
         slide_count: (repairDiag.slide_count as number) ?? 0,
         _diag: {
