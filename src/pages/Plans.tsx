@@ -76,10 +76,10 @@ const CATEGORIES: FeatureCategory[] = [
       { label: "Word / DOCX",              values: { free: true,  starter: true,  pro: true  } },
       { label: "PDF",                      values: { free: false, starter: true,  pro: true  } },
       { label: "PowerPoint — EduGen v4",   values: { free: false, starter: true,  pro: true  } },
-      { label: "PowerPoint — Presenton AI",tip: "Templates premium gerados por IA",
-                                           values: { free: false, starter: false, pro: true  } },
-      { label: "PowerPoint — 2Slides AI",  tip: "Design profissional premium",
-                                           values: { free: false, starter: false, pro: true  } },
+      { label: "PowerPoint — Presenton AI",tip: "Templates premium gerados por IA · 3 exports incluídos/mês",
+                                           values: { free: false, starter: false, pro: "3/mês"  } },
+      { label: "PowerPoint — 2Slides AI",  tip: "Design profissional premium · compartilha a cota de 3 exports/mês",
+                                           values: { free: false, starter: false, pro: "3/mês (compartilhado)"  } },
       { label: "SCORM (LMS)",              values: { free: false, starter: false, pro: true  } },
       { label: "Moodle XML",               values: { free: false, starter: false, pro: true  } },
       { label: "Notion",                   values: { free: false, starter: false, pro: true  } },
@@ -157,10 +157,11 @@ const HIGHLIGHTS: Record<PlanKey, string[]> = {
   pro: [
     "12 cursos/mês · 15 módulos",
     "Tutor IA para seus alunos",
-    "SCORM · Moodle · Notion · Notion",
-    "PPTX Presenton AI + 2Slides AI",
+    "SCORM · Moodle · Notion · Google/MS Office",
+    "3 exports premium/mês (Presenton AI + 2Slides)",
+    "PPTX v4 ilimitado no plano",
     "Certificado sem branding EduGen",
-    "Translate AI + Google/MS Office",
+    "Translate AI (múltiplos idiomas)",
   ],
 };
 
@@ -588,8 +589,12 @@ export default function Plans() {
                 a: "Não. Está incluído no plano Pro sem cobrança adicional por consulta.",
               },
               {
-                q: "Posso usar no plano Criador os motores Presenton e 2Slides?",
-                a: "Não. Presenton AI e 2Slides AI (design premium por IA) são exclusivos do plano Pro.",
+                q: "O que são os 3 exports premium/mês do Pro?",
+                a: "Presenton AI e 2Slides AI geram slides com design profissional por IA. O Pro inclui 3 exports desse tipo por mês. PPTX v4 (motor próprio) é ilimitado. Créditos extras disponíveis em breve.",
+              },
+              {
+                q: "Posso usar Presenton ou 2Slides no plano Criador?",
+                a: "Não. Esses motores premium de design por IA são exclusivos do Pro. O Criador inclui PPTX v4 (motor EduGen), que já entrega apresentações de alta qualidade.",
               },
               {
                 q: "Como funciona o faturamento anual?",

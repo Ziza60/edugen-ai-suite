@@ -1,0 +1,141 @@
+1. O que está MUITO bom
+✔ Posicionamento de mercado
+Free → entrada perfeita
+Criador → bem precificado (R$54,90)
+Pro → competitivo (R$127)
+
+👉 Você está 3–5x mais barato que concorrentes internacionais (isso é ótimo para aquisição).
+
+✔ Escalonamento lógico de valor
+Criador → criação
+Pro → distribuição + escala + LMS
+
+👉 Isso está correto.
+
+✔ Features bem organizadas
+
+Especialmente:
+
+Portal do aluno
+SCORM / Moodle
+Tutor IA
+Translate AI
+
+👉 Isso é nível produto vendável real.
+
+🚨 2. O PROBLEMA CRÍTICO (precisa corrigir)
+❌ Pro está “ilimitando” algo que NÃO pode ser ilimitado
+PPTX Presenton AI + 2Slides AI
+
+👉 Isso é o ponto de risco.
+
+💣 Por quê?
+
+Porque seu plano permite:
+
+12 cursos/mês × 15 módulos
+→ ~60–80 slides por curso
+→ até 12 exports premium
+
+Mesmo com custo corrigido, isso pode gerar:
+
+~R$80–100 de custo só com PPTX
+
+👉 seu plano custa R$127
+
+👉 margem fica extremamente apertada ou negativa em heavy users
+
+🧠 3. O erro estratégico
+
+Você está tratando:
+
+PPTX premium = feature fixa do plano
+
+Mas deveria tratar como:
+
+PPTX premium = recurso variável (consumo)
+🎯 4. Ajuste mínimo (SEM mudar preço)
+
+Você NÃO precisa mudar o preço.
+
+Só precisa mudar isso:
+
+🔥 Alteração crítica
+❌ Atual
+PPTX Presenton AI + 2Slides AI (implícito ilimitado)
+✅ Correto
+PPTX premium (3 exportações/mês incluídas)
++ créditos adicionais sob demanda
+📊 5. Nova estrutura recomendada
+🟣 PRO (R$127)
+✔ 12 cursos/mês
+✔ Tutor IA
+✔ SCORM / Moodle
+✔ Portal completo
+
+✔ PPTX v4 ilimitado (seu motor)
+
+✔ 3 exports premium (2Slides/Presenton)
+
++ créditos extras:
+R$29 → 300 créditos
+💡 6. Por que isso funciona
+✔ 95% dos usuários
+nunca vão usar mais de 3 exports premium
+continuam felizes
+✔ 5% heavy users
+pagam mais
+não quebram sua margem
+🧠 7. Criador também precisa de ajuste leve
+
+Hoje:
+
+Criador → PPTX v4 incluído
+
+👉 perfeito
+
+NÃO adicione PPTX premium aqui
+(senão você cria canibalização)
+
+⚠️ 8. Pequenos ajustes adicionais
+🔧 Duplicação aqui:
+Notion · Notion
+
+👉 corrigir
+
+🔧 Módulo 6 problema conceitual (já vimos antes)
+"A curva de aprendizado..."
+
+👉 não é valor → é fricção
+
+🔧 Criador pode subir levemente no valor futuro
+R$54,90 → R$59,90
+
+Mas isso é opcional.
+
+🧠 9. Veredito geral do pricing
+Nota: 9/10 (com ajuste de PPTX)
+✔ Excelente:
+posicionamento
+preço
+diferenciação
+❌ Problema:
+custo variável não controlado
+🚀 10. Conclusão direta
+
+👉 Seu modelo é bom
+👉 Seu preço está bom
+👉 Seu produto está vendável
+
+Mas:
+
+⚠️ Você precisa separar feature fixa de custo variável
+
+💬 Resumo final
+
+Se você fizer apenas essa mudança:
+
+PPTX premium limitado + créditos
+
+👉 seu negócio deixa de ser arriscado
+👉 e passa a ser escalável
