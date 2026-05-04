@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,13 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
+import * as pdfjsLib from "pdfjs-dist";
+import JSZip from "jszip";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).href;
 
 const LANGUAGE_OPTIONS = [
   { value: "pt-BR", label: "🇧🇷 Português (BR)" },
@@ -19,7 +26,7 @@ const LANGUAGE_OPTIONS = [
 ];
 
 const LOADING_STEPS = [
-  "Enviando arquivo…",
+  "Lendo arquivo…",
   "Extraindo texto…",
   "Analisando conteúdo com IA…",
   "Estruturando os módulos…",
@@ -49,6 +56,54 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+async function extractPdfText(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const parts: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map((item: any) => ("str" in item ? item.str : ""))
+      .join(" ");
+    parts.push(pageText);
+  }
+  return parts.join("\n\n");
+}
+
+async function textToDocxBlob(text: string, originalName: string): Promise<File> {
+  const paragraphs = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `<w:p ><w:r><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>`)
+    .join("\n");
+
+  const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+${paragraphs}
+</w:body>
+</w:document>`;
+
+  const zip = new JSZip();
+  zip.file("word/document.xml", docXml);
+  const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+  const docxName = originalName.replace(/\.pdf$/i, ".docx");
+  return new File([blob], docxName, {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
+}
+
 export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportScreenProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -57,7 +112,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<PdfAnalysis | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState("pt-BR");
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const acceptFile = useCallback((f: File) => {
     const ext = f.name.split(".").pop()?.toLowerCase();
@@ -86,16 +140,27 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
     setLoading(true);
     setLoadingStep(0);
 
-    const stepTimer = setInterval(() => {
-      setLoadingStep((s) => Math.min(s + 1, LOADING_STEPS.length - 1));
-    }, 4000);
-
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Sessão expirada. Faça login novamente.");
 
+      const ext = file.name.split(".").pop()?.toLowerCase();
+
+      let fileToSend: File = file;
+
+      if (ext === "pdf") {
+        setLoadingStep(1);
+        const text = await extractPdfText(file);
+        if (!text || text.trim().length < 100) {
+          throw new Error("Não foi possível extrair texto deste PDF. Verifique se o arquivo não está protegido ou é apenas composto por imagens.");
+        }
+        fileToSend = await textToDocxBlob(text, file.name);
+      }
+
+      setLoadingStep(2);
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileToSend);
       formData.append("course_id", tempCourseId);
 
       const res = await fetch(
@@ -107,7 +172,7 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
         },
       );
 
-      clearInterval(stepTimer);
+      setLoadingStep(3);
       const result = await res.json();
       if (res.status === 429) {
         throw new Error(result.error || "Limite de análises por hora atingido. Tente novamente mais tarde.");
@@ -118,7 +183,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
       const lang = LANGUAGE_OPTIONS.find((l) => l.value === result.detectedLanguage);
       setSelectedLanguage(lang ? result.detectedLanguage : "pt-BR");
     } catch (err: any) {
-      clearInterval(stepTimer);
       setError(err.message || "Não foi possível processar o arquivo.");
     } finally {
       setLoading(false);
@@ -131,7 +195,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
 
   return (
     <div className="min-h-screen bg-muted/30">
-      {/* Top bar */}
       <div className="bg-card border-b border-border">
         <div className="max-w-[840px] mx-auto px-6 py-4 flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack} className="shrink-0">
@@ -158,7 +221,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
               exit={{ opacity: 0, y: -16 }}
               className="space-y-6"
             >
-              {/* Hero */}
               <div className="text-center space-y-3">
                 <div className="h-16 w-16 rounded-2xl bg-blue-500/10 flex items-center justify-center mx-auto">
                   <FileText className="h-8 w-8 text-blue-500" />
@@ -171,7 +233,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 </p>
               </div>
 
-              {/* Drop zone */}
               <div
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
@@ -206,7 +267,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 ) : (
                   <label className="flex flex-col items-center gap-3 cursor-pointer select-none">
                     <input
-                      ref={fileInputRef}
                       type="file"
                       accept=".pdf,.docx"
                       className="hidden"
@@ -227,7 +287,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 )}
               </div>
 
-              {/* Loading steps */}
               {loading && (
                 <Card className="border-blue-500/20 bg-blue-500/5">
                   <CardContent className="p-5 space-y-3">
@@ -249,7 +308,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 </Card>
               )}
 
-              {/* Error */}
               {error && (
                 <div className="flex items-start gap-2 text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-4 py-3">
                   <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -257,7 +315,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 </div>
               )}
 
-              {/* CTA */}
               <Button
                 className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
                 disabled={!file || loading}
@@ -271,7 +328,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 )}
               </Button>
 
-              {/* Tips */}
               <div className="grid grid-cols-3 gap-3">
                 {[
                   { icon: BookOpen, label: "Apostilas e manuais" },
@@ -292,7 +348,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
               animate={{ opacity: 1, y: 0 }}
               className="space-y-5"
             >
-              {/* Success badge */}
               <div className="flex items-center gap-2 text-green-600 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-2.5">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span className="text-sm font-medium">
@@ -300,7 +355,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 </span>
               </div>
 
-              {/* Analysis result */}
               <Card>
                 <CardContent className="p-6 space-y-5">
                   <div>
@@ -332,7 +386,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                     </div>
                   </div>
 
-                  {/* Language selector */}
                   <div className="flex items-center gap-3 pt-3 border-t border-border">
                     <Globe2 className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span className="text-sm text-muted-foreground">Idioma do curso:</span>
