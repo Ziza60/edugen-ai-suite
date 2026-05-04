@@ -13,7 +13,6 @@ const json = (data: unknown, status = 200) =>
     headers: { ...cors, "Content-Type": "application/json" },
   });
 
-// Max PDF/DOCX analyses per hour per plan — keep in sync with supabase/functions/_shared/plans.ts
 const RATE_LIMITS: Record<string, number> = {
   free:    3,
   starter: 15,
@@ -29,6 +28,7 @@ function normalizeText(raw: string): string {
     .trim();
 }
 
+// Chunked base64 — avoids call-stack overflow for large files
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 8192;
@@ -122,9 +122,9 @@ Deno.serve(async (req: Request) => {
     if (!authHeader) return json({ error: "Não autenticado" }, 401);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const apiKey = Deno.env.get("GEMINI_API_KEY");
+    const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey     = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const apiKey      = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) return json({ error: "GEMINI_API_KEY não configurada" }, 500);
 
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -139,69 +139,36 @@ Deno.serve(async (req: Request) => {
 
     // ── Rate limiting ──────────────────────────────────────────────────────────
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-
     const [planResult, usageResult] = await Promise.all([
-      serviceClient
-        .from("subscriptions")
-        .select("plan")
-        .eq("user_id", userId)
-        .maybeSingle(),
-      serviceClient
-        .from("course_sources")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .gte("created_at", oneHourAgo),
+      serviceClient.from("subscriptions").select("plan").eq("user_id", userId).maybeSingle(),
+      serviceClient.from("course_sources").select("id", { count: "exact", head: true })
+        .eq("user_id", userId).gte("created_at", oneHourAgo),
     ]);
 
     const plan: string = planResult.data?.plan ?? "free";
-    const maxPerHour = RATE_LIMITS[plan] ?? RATE_LIMITS.free;
+    const maxPerHour   = RATE_LIMITS[plan] ?? RATE_LIMITS.free;
     const usedThisHour = usageResult.count ?? 0;
 
-    console.log(`[analyze-pdf-source] User ${userId} plan=${plan} used=${usedThisHour}/${maxPerHour} this hour`);
+    console.log(`[analyze-pdf-source] user=${userId} plan=${plan} used=${usedThisHour}/${maxPerHour}`);
 
     if (usedThisHour >= maxPerHour) {
-      return json(
-        {
-          error: `Limite de ${maxPerHour} análises por hora atingido para o plano ${plan}. Tente novamente mais tarde.`,
-          rateLimited: true,
-          limit: maxPerHour,
-          plan,
-        },
-        429,
-      );
+      return json({ error: `Limite de ${maxPerHour} análises/hora atingido (plano ${plan}).`, rateLimited: true }, 429);
     }
     // ──────────────────────────────────────────────────────────────────────────
 
-    // Accept JSON body: { file_path, course_id, filename, content_type }
-    const body = await req.json();
-    const { file_path, course_id, filename, content_type } = body as {
-      file_path: string;
-      course_id: string;
-      filename: string;
-      content_type?: string;
-    };
+    // Parse multipart form data
+    const formData  = await req.formData();
+    const file      = formData.get("file") as File;
+    const courseId  = formData.get("course_id") as string;
+    if (!file || !courseId) return json({ error: "file e course_id são obrigatórios" }, 400);
 
-    if (!file_path || !course_id || !filename) {
-      return json({ error: "file_path, course_id e filename são obrigatórios" }, 400);
-    }
-
-    const ext = filename.split(".").pop()?.toLowerCase();
+    const ext = file.name.split(".").pop()?.toLowerCase();
     if (!["pdf", "docx"].includes(ext || "")) {
       return json({ error: "Apenas arquivos PDF e DOCX são suportados." }, 400);
     }
 
-    // Download file from Storage (no size limit — internal transfer)
-    console.log(`[analyze-pdf-source] Downloading ${file_path} from storage…`);
-    const { data: fileData, error: downloadErr } = await serviceClient.storage
-      .from("course-sources")
-      .download(file_path);
-
-    if (downloadErr || !fileData) {
-      return json({ error: `Erro ao baixar arquivo do storage: ${downloadErr?.message}` }, 500);
-    }
-
-    const bytes = new Uint8Array(await fileData.arrayBuffer());
-    console.log(`[analyze-pdf-source] Processing ${filename} (${ext}, ${bytes.length} bytes)`);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    console.log(`[analyze-pdf-source] Processing ${file.name} (${bytes.length} bytes)`);
 
     let rawText: string;
     if (ext === "pdf") {
@@ -217,16 +184,22 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[analyze-pdf-source] Extracted ${extractedText.length} chars, analyzing…`);
 
-    const analysis = await analyzeContent(extractedText, filename, apiKey);
+    const analysis = await analyzeContent(extractedText, file.name, apiKey);
+
+    // Store file in Storage (with service key — no RLS restriction)
+    const filePath = `${userId}/${courseId}/${Date.now()}-${file.name}`;
+    await serviceClient.storage.from("course-sources").upload(filePath, bytes, {
+      contentType: file.type || "application/octet-stream",
+    }).catch((e: any) => console.warn("Storage upload skipped:", e.message));
 
     const { data: source, error: sourceErr } = await serviceClient
       .from("course_sources")
       .insert({
-        course_id,
+        course_id: courseId,
         user_id: userId,
-        filename,
-        file_path,
-        content_type: content_type || "application/octet-stream",
+        filename: file.name,
+        file_path: filePath,
+        content_type: file.type || "application/octet-stream",
         char_count: extractedText.length,
         extracted_text: extractedText.slice(0, 500_000),
       })
@@ -238,15 +211,15 @@ Deno.serve(async (req: Request) => {
     console.log(`[analyze-pdf-source] Done — source_id: ${source.id}`);
 
     return json({
-      source_id: source.id,
-      filename,
-      char_count: extractedText.length,
-      title: analysis.title || filename.replace(/\.[^.]+$/, ""),
-      theme: analysis.theme || "",
-      targetAudience: analysis.targetAudience || "",
+      source_id:       source.id,
+      filename:        file.name,
+      char_count:      extractedText.length,
+      title:           analysis.title           || file.name.replace(/\.[^.]+$/, ""),
+      theme:           analysis.theme           || "",
+      targetAudience:  analysis.targetAudience  || "",
       suggestedModules: Number(analysis.suggestedModules) || 6,
-      detectedLanguage: analysis.language || "pt-BR",
-      summary: analysis.summary || "",
+      detectedLanguage: analysis.language       || "pt-BR",
+      summary:         analysis.summary         || "",
     });
   } catch (err: any) {
     console.error("[analyze-pdf-source] Error:", err);

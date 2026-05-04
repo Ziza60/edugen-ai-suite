@@ -19,7 +19,7 @@ const LANGUAGE_OPTIONS = [
 ];
 
 const LOADING_STEPS = [
-  "Enviando arquivo para o servidor…",
+  "Enviando arquivo…",
   "Extraindo texto…",
   "Analisando conteúdo com IA…",
   "Estruturando os módulos…",
@@ -88,54 +88,22 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
 
     const stepTimer = setInterval(() => {
       setLoadingStep((s) => Math.min(s + 1, LOADING_STEPS.length - 1));
-    }, 5000);
+    }, 4000);
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Sessão expirada. Faça login novamente.");
 
-      // Step 1 — get a signed upload URL (bypasses RLS + Edge Function body size limit)
-      const urlRes = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-upload-url`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ filename: file.name, course_id: tempCourseId }),
-        },
-      );
-      const urlData = await urlRes.json();
-      if (!urlRes.ok) throw new Error(urlData.error || "Erro ao obter URL de upload.");
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("course_id", tempCourseId);
 
-      const { signed_url, file_path: storageKey } = urlData;
-
-      // Upload directly to Storage using the signed URL (no size limit)
-      const uploadRes = await fetch(signed_url, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!uploadRes.ok) throw new Error(`Erro ao enviar arquivo: ${uploadRes.statusText}`);
-
-      setLoadingStep(1);
-
-      // Step 2 — call edge function with path only (no binary body)
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-pdf-source`,
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            file_path: storageKey,
-            course_id: tempCourseId,
-            filename: file.name,
-            content_type: file.type || "application/octet-stream",
-          }),
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: formData,
         },
       );
 
@@ -217,16 +185,6 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                     : "border-border hover:border-blue-400 hover:bg-blue-500/5"
                 }`}
               >
-                <input
-                  ref={fileInputRef}
-                  id="pdf-file-input"
-                  type="file"
-                  accept=".pdf,.docx"
-                  className="hidden"
-                  data-testid="pdf-file-input"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) acceptFile(f); e.target.value = ""; }}
-                />
-
                 {file ? (
                   <div className="flex items-center gap-4">
                     <div className="h-12 w-12 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
@@ -246,10 +204,15 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                     </Button>
                   </div>
                 ) : (
-                  <label
-                    htmlFor="pdf-file-input"
-                    className="flex flex-col items-center gap-3 cursor-pointer select-none"
-                  >
+                  <label className="flex flex-col items-center gap-3 cursor-pointer select-none">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.docx"
+                      className="hidden"
+                      data-testid="pdf-file-input"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) acceptFile(f); e.target.value = ""; }}
+                    />
                     <Upload className="h-8 w-8 text-muted-foreground/50" />
                     <div>
                       <p className="font-medium text-foreground">Arraste o arquivo aqui</p>
