@@ -1,0 +1,276 @@
+# Replit Agent — 3 Correções Cirúrgicas (v6 → v6.1)
+
+## Contexto
+
+O PPTX v6 resolveu todos os bugs históricos (\n literal, placeholders, paginação).
+Três problemas visuais novos foram identificados. Este prompt os corrige no código
+`supabase/functions/export-pptx-v6/index.ts` e no `build_template.py`.
+
+Cada bloco abaixo especifica **exatamente** o texto a localizar (DE) e o texto de
+substituição (PARA). Nenhuma interpretação necessária.
+
+---
+
+## CORREÇÃO 1 — TWOCOL vazio: dois fixes no `index.ts`
+
+**Causa confirmada:** o Gemini às vezes gera `{layout:"twocol", leftItems:[...], rightItems:[...]}` 
+em vez de `{layout:"twocol", items:[...]}`. O código atual lê só `items[]`, deixando os slots 
+`L1..L4` e `R1..R4` todos vazios. Segundo problema: quando `items[]` existe mas tem menos de 4 
+itens, não há conteúdo suficiente para dividir em 2 colunas.
+
+### 1-A · `buildReplacements()` — ler `leftItems`/`rightItems` direto quando presentes
+
+**Localizar** o `case "TWOCOL":` dentro da função `buildReplacements()`.
+
+**Substituir DE:**
+```typescript
+    case "TWOCOL": {
+      const all   = sl("items", 8);
+      const half  = Math.ceil(all.length / 2);
+      const left  = all.slice(0, half);
+      const right = all.slice(half);
+      r.LABEL = s("label", "CONTEÚDO").toUpperCase().slice(0, 32);
+      r.TITLE = s("title");
+      for (let i = 0; i < 4; i++) {
+        r[`L${i + 1}`] = left[i]  ?? "";
+        r[`R${i + 1}`] = right[i] ?? "";
+      }
+      break;
+    }
+```
+
+**PARA:**
+```typescript
+    case "TWOCOL": {
+      // Suporta dois formatos de resposta do Gemini:
+      // 1. {items:[...8 itens...]} → divide ao meio
+      // 2. {leftItems:[...], rightItems:[...]} → usa diretamente
+      const hasExplicitSides =
+        Array.isArray(d.leftItems) || Array.isArray(d.left_items);
+      let left: string[];
+      let right: string[];
+      if (hasExplicitSides) {
+        left  = sanList(d.leftItems  ?? d.left_items,  4);
+        right = sanList(d.rightItems ?? d.right_items, 4);
+      } else {
+        const all  = sl("items", 8);
+        const half = Math.ceil(all.length / 2);
+        left  = all.slice(0, half);
+        right = all.slice(half);
+      }
+      r.LABEL = s("label", "CONTEÚDO").toUpperCase().slice(0, 32);
+      r.TITLE = s("title");
+      for (let i = 0; i < 4; i++) {
+        r[`L${i + 1}`] = left[i]  ?? "";
+        r[`R${i + 1}`] = right[i] ?? "";
+      }
+      break;
+    }
+```
+
+### 1-B · `generateModuleSlides()` — fallback para BULLETS quando TWOCOL insuficiente
+
+**Localizar** dentro de `generateModuleSlides()` o trecho que trata `layout === "twocol"` no mapa
+dos slides. É o bloco `if (layout === "process")` seguido do `return` final.
+
+**Substituir DE:**
+```typescript
+      if (layout === "process") {
+        return { layout: "PROCESS", label, title, steps: items.slice(0, 5) };
+      }
+
+      return { layout: layout.toUpperCase(), label, title, items };
+```
+
+**PARA:**
+```typescript
+      if (layout === "process") {
+        return { layout: "PROCESS", label, title, steps: items.slice(0, 5) };
+      }
+
+      // TWOCOL precisa de pelo menos 4 itens para ter conteúdo em ambas as colunas.
+      // Se o Gemini gerou poucos itens, tratar como BULLETS para evitar slide vazio.
+      if (layout === "twocol" && items.length < 4) {
+        return { layout: "BULLETS", label, title, items };
+      }
+
+      return { layout: layout.toUpperCase(), label, title, items };
+```
+
+---
+
+## CORREÇÃO 2 — Bullets com marcadores visíveis sem texto
+
+**Causa confirmada:** o template BULLETS tem 5 pares rect+textbox. O rect âmbar 
+(marcador vertical) é um shape independente do textbox do item. Quando `ITEM_4=""` 
+e `ITEM_5=""`, o rect aparece mas o texto não — criando marcadores "fantasmas".
+
+A solução é em dois níveis:
+
+### 2-A · Forçar mínimo de 4 itens no prompt do Gemini — `buildPrompt()`
+
+**Localizar** dentro de `buildPrompt()` a regra número 5 sobre itens.
+
+**Substituir DE:**
+```typescript
+5. Max ${maxItems} items per slide. Last slide MUST be "takeaways".
+```
+
+**PARA:**
+```typescript
+5. "bullets" layout: generate EXACTLY 4 or 5 items — never fewer than 4. Other layouts: max ${maxItems} items. Last slide MUST be "takeaways".
+```
+
+### 2-B · Garantia no código — `buildReplacements()` case BULLETS
+
+**Localizar** o `case "BULLETS":` dentro de `buildReplacements()`.
+
+**Substituir DE:**
+```typescript
+    case "BULLETS": {
+      const items = sl("items", 5);
+      r.LABEL = s("label", "CONTEÚDO").toUpperCase().slice(0, 32);
+      r.TITLE = s("title");
+      for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i] ?? "";
+      break;
+    }
+```
+
+**PARA:**
+```typescript
+    case "BULLETS": {
+      let items = sl("items", 5);
+      // Garantia: bullets sempre com mínimo 4 itens visíveis.
+      // Se o Gemini gerou menos de 4, repete o último item até completar.
+      // Isso evita que marcadores âmbar apareçam sem texto no template.
+      if (items.length > 0 && items.length < 4) {
+        while (items.length < 4) {
+          items.push(items[items.length - 1]);
+        }
+      }
+      r.LABEL = s("label", "CONTEÚDO").toUpperCase().slice(0, 32);
+      r.TITLE = s("title");
+      for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i] ?? "";
+      break;
+    }
+```
+
+---
+
+## CORREÇÃO 3 — TOC: números órfãos (08, 09, 10) sem módulo
+
+**Causa confirmada:** os números `1..10` no TOC são texto hardcoded no template.
+Quando um curso tem 7 módulos, os textos `MOD_8`, `MOD_9` e `MOD_10` ficam vazios,
+mas os números `8`, `9` e `10` continuam visíveis.
+
+A solução é converter os números em placeholders `{{NUM_1}}..{{NUM_10}}` no 
+`build_template.py` e preencher com string vazia no código quando o módulo não existe.
+
+### 3-A · Rebuild do template — `build_template.py`
+
+**Localizar** dentro de `build_toc()` o loop que cria os números dos módulos.
+É o bloco que contém `txt(slide, str(i+1), ...)` para os índices `0..9`.
+
+**Substituir DE:**
+```python
+    for i in range(10):
+        color = ac(i)
+        # Number circle
+        c = rect(slide, x, y+(iH-Inches(0.36))/2, Inches(0.36), Inches(0.36), fill=color)
+        txt(slide, str(i+1), x, y+(iH-Inches(0.36))/2, Inches(0.36), Inches(0.36),
+            fn=TF, fs=12, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+        # Module name
+        txt(slide, f"{{{{{names[i]}}}}}",
+            x+Inches(0.46), y+(iH-Inches(0.28))/2, cw2-Inches(0.5), Inches(0.28),
+            fn=BF, fs=12, color=WHITE)
+```
+
+**PARA:**
+```python
+    for i in range(10):
+        color = ac(i)
+        # Number circle — usa placeholder {{NUM_N}} para poder apagar quando módulo não existe
+        c = rect(slide, x, y+(iH-Inches(0.36))/2, Inches(0.36), Inches(0.36), fill=color)
+        txt(slide, f"{{{{NUM_{i+1}}}}}",
+            x, y+(iH-Inches(0.36))/2, Inches(0.36), Inches(0.36),
+            fn=TF, fs=12, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+        # Module name
+        txt(slide, f"{{{{{names[i]}}}}}",
+            x+Inches(0.46), y+(iH-Inches(0.28))/2, cw2-Inches(0.5), Inches(0.28),
+            fn=BF, fs=12, color=WHITE)
+```
+
+### 3-B · Atualizar `buildReplacements()` case TOC — `index.ts`
+
+**Localizar** o `case "TOC":` dentro de `buildReplacements()`.
+
+**Substituir DE:**
+```typescript
+    case "TOC": {
+      const mods = sl("modules", 10);
+      r.MODULE_COUNT = `${mods.length} Módulo${mods.length !== 1 ? "s" : ""}`;
+      for (let i = 0; i < 10; i++) r[`MOD_${i + 1}`] = mods[i] ?? "";
+      break;
+    }
+```
+
+**PARA:**
+```typescript
+    case "TOC": {
+      const mods = sl("modules", 10);
+      r.MODULE_COUNT = `${mods.length} Módulo${mods.length !== 1 ? "s" : ""}`;
+      for (let i = 0; i < 10; i++) {
+        r[`MOD_${i + 1}`] = mods[i] ?? "";
+        // NUM_N: preencher com o número formatado se módulo existe, string vazia se não existe.
+        // String vazia apaga o número âmbar e o círculo fica sem texto — mais limpo que
+        // mostrar 8, 9, 10 sem módulo correspondente.
+        r[`NUM_${i + 1}`] = i < mods.length ? String(i + 1) : "";
+      }
+      break;
+    }
+```
+
+### 3-C · Rebuild e upload do template
+
+Após aplicar a correção 3-A no `build_template.py`, executar os dois comandos:
+
+```bash
+# 1. Regerar o template com os novos placeholders NUM_N
+python3 build_template.py
+# → gera novo template.pptx
+
+# 2. Subir o novo template para o Supabase Storage (substitui o anterior)
+supabase storage cp template.pptx ss:///templates/edugenai_template.pptx
+```
+
+---
+
+## Ordem de execução
+
+1. Aplicar **1-A** e **1-B** em `index.ts` (TWOCOL)
+2. Aplicar **2-A** e **2-B** em `index.ts` (Bullets)
+3. Aplicar **3-A** em `build_template.py`
+4. Rodar `python3 build_template.py` para gerar o novo `template.pptx`
+5. Fazer upload do `template.pptx` para o Storage
+6. Aplicar **3-B** em `index.ts` (TOC)
+7. Deploy: `supabase functions deploy export-pptx-v6`
+
+---
+
+## Verificação obrigatória após aplicar
+
+**Buscas que DEVEM existir no `index.ts`:**
+- `hasExplicitSides` — novo campo no case TWOCOL
+- `items.length < 4` dentro do if de layout "twocol" em `generateModuleSlides`
+- `while (items.length < 4)` no case BULLETS
+- `NUM_${i + 1}` no case TOC
+- `"bullets" layout: generate EXACTLY 4 or 5 items` no buildPrompt
+
+**Buscas que DEVEM existir no `build_template.py`:**
+- `{{NUM_` dentro de `build_toc()`
+
+**O que NÃO alterar:**
+- Toda a lógica de `generatePptxZip()` — não tocar
+- `escapeXml()`, `san()`, `sanList()` — não tocar
+- A lógica de upload, auth, Storage download — não tocar
+- Qualquer outro layout além de TWOCOL, BULLETS e TOC

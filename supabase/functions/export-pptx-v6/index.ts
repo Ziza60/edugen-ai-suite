@@ -97,7 +97,13 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
     case "TOC": {
       const mods = sl("modules", 10);
       r.MODULE_COUNT = `${mods.length} Módulo${mods.length !== 1 ? "s" : ""}`;
-      for (let i = 0; i < 10; i++) r[`MOD_${i + 1}`] = mods[i] ?? "";
+      for (let i = 0; i < 10; i++) {
+        r[`MOD_${i + 1}`] = mods[i] ?? "";
+        // NUM_N: preencher com o número formatado se módulo existe, string vazia se não existe.
+        // String vazia apaga o número âmbar e o círculo fica sem texto — mais limpo que
+        // mostrar 8, 9, 10 sem módulo correspondente.
+        r[`NUM_${i + 1}`] = i < mods.length ? String(i + 1) : "";
+      }
       break;
     }
 
@@ -116,7 +122,15 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
     }
 
     case "BULLETS": {
-      const items = sl("items", 5);
+      let items = sl("items", 5);
+      // Garantia: bullets sempre com mínimo 4 itens visíveis.
+      // Se o Gemini gerou menos de 4, repete o último item até completar.
+      // Isso evita que marcadores âmbar apareçam sem texto no template.
+      if (items.length > 0 && items.length < 4) {
+        while (items.length < 4) {
+          items.push(items[items.length - 1]);
+        }
+      }
       r.LABEL = s("label", "CONTEÚDO").toUpperCase().slice(0, 32);
       r.TITLE = s("title");
       for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i] ?? "";
@@ -183,10 +197,22 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
     }
 
     case "TWOCOL": {
-      const all   = sl("items", 8);
-      const half  = Math.ceil(all.length / 2);
-      const left  = all.slice(0, half);
-      const right = all.slice(half);
+      // Suporta dois formatos de resposta do Gemini:
+      // 1. {items:[...8 itens...]} → divide ao meio
+      // 2. {leftItems:[...], rightItems:[...]} → usa diretamente
+      const hasExplicitSides =
+        Array.isArray(d.leftItems) || Array.isArray(d.left_items);
+      let left: string[];
+      let right: string[];
+      if (hasExplicitSides) {
+        left  = sanList(d.leftItems  ?? d.left_items,  4);
+        right = sanList(d.rightItems ?? d.right_items, 4);
+      } else {
+        const all  = sl("items", 8);
+        const half = Math.ceil(all.length / 2);
+        left  = all.slice(0, half);
+        right = all.slice(half);
+      }
       r.LABEL = s("label", "CONTEÚDO").toUpperCase().slice(0, 32);
       r.TITLE = s("title");
       for (let i = 0; i < 4; i++) {
@@ -413,7 +439,7 @@ RULES:
 2. Generate EXACTLY ${nSlides} slides.
 3. Titles: 5–60 chars, specific. NEVER use: "Introduction", "Overview", "Module ${moduleIndex + 1}", or the module name alone.
 4. Items: ONE idea each, max 15 words. No bullet prefixes, no numbering, no escape sequences.
-5. Max ${maxItems} items per slide. Last slide MUST be "takeaways".
+5. "bullets" layout: generate EXACTLY 4 or 5 items — never fewer than 4. Other layouts: max ${maxItems} items. Last slide MUST be "takeaways".
 6. Never place same layout in more than 2 consecutive slides.
 
 LAYOUTS:
@@ -519,6 +545,12 @@ async function generateModuleSlides(
 
       if (layout === "process") {
         return { layout: "PROCESS", label, title, steps: items.slice(0, 5) };
+      }
+
+      // TWOCOL precisa de pelo menos 4 itens para ter conteúdo em ambas as colunas.
+      // Se o Gemini gerou poucos itens, tratar como BULLETS para evitar slide vazio.
+      if (layout === "twocol" && items.length < 4) {
+        return { layout: "BULLETS", label, title, items };
       }
 
       return { layout: layout.toUpperCase(), label, title, items };

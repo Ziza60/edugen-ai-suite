@@ -163,9 +163,9 @@ def make_toc(prs):
         row = i % 5
         x = list_x + col * (list_w + Inches(0.2))
         y = CONTENT_Y + row * Inches(0.9)
-        # Número do módulo
+        # Número do módulo — usa placeholder {{NUM_N}} para poder apagar quando módulo não existe
         add_textbox(sl, x, y, Inches(0.4), Inches(0.4),
-                    f"{i+1:02d}", 11, bold=True, color=GOLD, font_name="Calibri")
+                    f"{{{{NUM_{i+1}}}}}", 11, bold=True, color=GOLD, font_name="Calibri")
         # Texto
         add_textbox(sl, x + Inches(0.45), y, list_w - Inches(0.45), Inches(0.8),
                     ph, 11, color=TEXT_DARK, font_name="Calibri")
