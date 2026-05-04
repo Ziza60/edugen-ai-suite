@@ -15,11 +15,16 @@ function stripInvalidXmlChars(input: string): string {
     const code = input.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) {
       const next = i + 1 < input.length ? input.charCodeAt(i + 1) : 0;
-      if (next >= 0xdc00 && next <= 0xdfff) { out += input[i] + input[i + 1]; i++; continue; }
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        out += input[i] + input[i + 1];
+        i++;
+        continue;
+      }
       continue; // orphan high surrogate → drop
     }
     if (code >= 0xdc00 && code <= 0xdfff) continue; // lone low surrogate
-    if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) continue; // control chars
+    if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d)
+      continue; // control chars
     if (code === 0x7f) continue;
     if (code === 0xfffe || code === 0xffff) continue; // non-characters
     out += input[i];
@@ -30,12 +35,19 @@ function stripInvalidXmlChars(input: string): string {
 function san(text: string): string {
   if (!text || typeof text !== "string") return "";
   let out = text
-    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&#(\d+);/g, (_, c) => {
       const n = Number(c);
       if (!Number.isFinite(n) || n < 0 || n > 0x10ffff) return "";
-      try { return String.fromCodePoint(n); } catch { return ""; }
+      try {
+        return String.fromCodePoint(n);
+      } catch {
+        return "";
+      }
     });
   out = stripInvalidXmlChars(out);
   return out
@@ -55,7 +67,19 @@ const corsHeaders = {
 // SECTION 1: TYPES
 // ═══════════════════════════════════════════════════════════
 
-type Layout = "cover" | "toc" | "module_cover" | "bullets" | "cards" | "takeaways" | "closing" | "code" | "twocol" | "comparison" | "timeline" | "process";
+type Layout =
+  | "cover"
+  | "toc"
+  | "module_cover"
+  | "bullets"
+  | "cards"
+  | "takeaways"
+  | "closing"
+  | "code"
+  | "twocol"
+  | "comparison"
+  | "timeline"
+  | "process";
 
 interface Slide {
   layout: Layout;
@@ -66,27 +90,27 @@ interface Slide {
   code?: string;
   codeLabel?: string;
   competencies?: string[];
-  leftHeader?: string;   // comparison: left column title
-  rightHeader?: string;  // comparison: right column title
-  leftItems?: string[];  // comparison: left column items
+  leftHeader?: string; // comparison: left column title
+  rightHeader?: string; // comparison: right column title
+  leftItems?: string[]; // comparison: left column items
   rightItems?: string[]; // comparison: right column items
   moduleIndex?: number;
 }
 
 // ── TYPOGRAPHY CONSTANTS (McKinsey-inspired hierarchy) ──
 const T = {
-  SLIDE_TITLE:   26,  // header title
-  SECTION_LABEL:  9,  // section label (caps, letter-spaced)
-  SUBHEADER:     18,  // card/column headers
-  BODY:          14,  // body text (1–4 items)
-  BODY_SM:       13,  // body text (5 items)
-  CODE:          11,  // monospace code
-  CAPTION:        9,  // footer / footnote
+  SLIDE_TITLE: 26, // header title
+  SECTION_LABEL: 9, // section label (caps, letter-spaced)
+  SUBHEADER: 18, // card/column headers
+  BODY: 14, // body text (1–4 items)
+  BODY_SM: 13, // body text (5 items)
+  CODE: 11, // monospace code
+  CAPTION: 9, // footer / footnote
 } as const;
 
 interface Design {
   theme: "light" | "dark";
-  accent: string;       // hex no #
+  accent: string; // hex no #
   accent2: string;
   accent3: string;
   bg: string;
@@ -106,19 +130,19 @@ interface Design {
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
-const ML = 0.65;   // margin left
-const MR = 0.65;   // margin right
-const CW = SLIDE_W - ML - MR;  // content width = 12.033
-const HEADER_H = 1.45;         // space above content
+const ML = 0.65; // margin left
+const MR = 0.65; // margin right
+const CW = SLIDE_W - ML - MR; // content width = 12.033
+const HEADER_H = 1.45; // space above content
 const FOOTER_Y = 7.16;
 const CONTENT_Y = HEADER_H;
 const CONTENT_H = FOOTER_Y - CONTENT_Y - 0.1; // 5.61
 
 const PALETTE_MAP: Record<string, string[]> = {
-  default:    ["4F46E5", "7C3AED", "0891B2", "059669", "D97706"],
-  ocean:      ["0369A1", "0284C7", "0891B2", "0D9488", "1D4ED8"],
-  forest:     ["15803D", "16A34A", "0D9488", "047857", "166534"],
-  sunset:     ["DC2626", "EA580C", "D97706", "B91C1C", "C2410C"],
+  default: ["4F46E5", "7C3AED", "0891B2", "059669", "D97706"],
+  ocean: ["0369A1", "0284C7", "0891B2", "0D9488", "1D4ED8"],
+  forest: ["15803D", "16A34A", "0D9488", "047857", "166534"],
+  sunset: ["DC2626", "EA580C", "D97706", "B91C1C", "C2410C"],
   monochrome: ["1E293B", "334155", "475569", "64748B", "94A3B8"],
 };
 
@@ -133,33 +157,33 @@ function buildDesign(
   if (theme === "dark") {
     return {
       theme,
-      accent:  colors[0],
+      accent: colors[0],
       accent2: colors[1],
       accent3: colors[2],
-      bg:      "0A0E1A",
+      bg: "0A0E1A",
       surface: "111827",
-      text:    "F1F5F9",
+      text: "F1F5F9",
       subtext: "94A3B8",
-      border:  "1E293B",
+      border: "1E293B",
       coverBg: "060A14",
       titleFont: "Calibri",
-      bodyFont:  "Calibri",
+      bodyFont: "Calibri",
       footerBrand,
     };
   }
   return {
     theme,
-    accent:  colors[0],
+    accent: colors[0],
     accent2: colors[1],
     accent3: colors[2],
-    bg:      "FFFFFF",
+    bg: "FFFFFF",
     surface: "F8FAFC",
-    text:    "0F172A",
+    text: "0F172A",
     subtext: "475569",
-    border:  "E2E8F0",
+    border: "E2E8F0",
     coverBg: "0F172A",
     titleFont: "Calibri",
-    bodyFont:  "Calibri",
+    bodyFont: "Calibri",
     footerBrand,
   };
 }
@@ -172,65 +196,107 @@ function buildDesign(
 function sanCode(text: string): string {
   if (!text || typeof text !== "string") return "";
   let out = text
-    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
   out = stripInvalidXmlChars(out);
   return out
-    .replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
     .replace(/\t/g, "  ")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
     .trim();
 }
 
 function bg(slide: any, color: string) {
-  slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color } });
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: 0,
+    w: SLIDE_W,
+    h: SLIDE_H,
+    fill: { color },
+  });
 }
 
 function footer(slide: any, d: Design, num: number, total: number) {
   // thin line
   slide.addShape("rect" as any, {
-    x: ML, y: FOOTER_Y, w: CW, h: 0.01,
+    x: ML,
+    y: FOOTER_Y,
+    w: CW,
+    h: 0.01,
     fill: { color: d.border },
   });
   // brand
   if (d.footerBrand) {
     slide.addText(san(d.footerBrand), {
-      x: ML, y: FOOTER_Y + 0.05, w: CW * 0.5, h: 0.22,
-      fontSize: 9, fontFace: d.bodyFont,
-      color: d.subtext, bold: true, charSpacing: 2,
+      x: ML,
+      y: FOOTER_Y + 0.05,
+      w: CW * 0.5,
+      h: 0.22,
+      fontSize: 9,
+      fontFace: d.bodyFont,
+      color: d.subtext,
+      bold: true,
+      charSpacing: 2,
     });
   }
   // page number
   slide.addText(`${num} / ${total}`, {
-    x: ML + CW * 0.5, y: FOOTER_Y + 0.05, w: CW * 0.5, h: 0.22,
-    fontSize: 9, fontFace: d.bodyFont,
-    color: d.subtext, align: "right",
+    x: ML + CW * 0.5,
+    y: FOOTER_Y + 0.05,
+    w: CW * 0.5,
+    h: 0.22,
+    fontSize: 9,
+    fontFace: d.bodyFont,
+    color: d.subtext,
+    align: "right",
   });
 }
 
 // Standard slide header: label + accent line + title
 function header(slide: any, d: Design, label: string, title: string) {
   slide.addShape("rect" as any, {
-    x: 0, y: 0, w: SLIDE_W, h: 0.06,
+    x: 0,
+    y: 0,
+    w: SLIDE_W,
+    h: 0.06,
     fill: { color: d.accent },
   });
   if (label) {
     slide.addText(san(label).toUpperCase(), {
-      x: ML, y: 0.18, w: CW, h: 0.22,
-      fontSize: T.SECTION_LABEL, fontFace: d.bodyFont, bold: true,
-      color: d.accent, charSpacing: 4,
+      x: ML,
+      y: 0.18,
+      w: CW,
+      h: 0.22,
+      fontSize: T.SECTION_LABEL,
+      fontFace: d.bodyFont,
+      bold: true,
+      color: d.accent,
+      charSpacing: 4,
     });
   }
   const titleY = label ? 0.44 : 0.22;
   const titleH = label ? 0.82 : 1.0;
   slide.addText(san(title), {
-    x: ML, y: titleY, w: CW, h: titleH,
-    fontSize: T.SLIDE_TITLE, fontFace: d.titleFont, bold: true,
-    color: d.text, valign: "middle",
+    x: ML,
+    y: titleY,
+    w: CW,
+    h: titleH,
+    fontSize: T.SLIDE_TITLE,
+    fontFace: d.titleFont,
+    bold: true,
+    color: d.text,
+    valign: "middle",
     fit: "shrink" as any,
   });
   slide.addShape("rect" as any, {
-    x: ML, y: CONTENT_Y - 0.06, w: CW, h: 0.025,
+    x: ML,
+    y: CONTENT_Y - 0.06,
+    w: CW,
+    h: 0.025,
     fill: { color: d.border },
   });
 }
@@ -240,54 +306,89 @@ function header(slide: any, d: Design, label: string, title: string) {
 // ═══════════════════════════════════════════════════════════
 
 // ── COVER ──
-function renderCover(pptx: PptxGenJS, slide_: Slide, d: Design, totalSlides: number) {
+function renderCover(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  totalSlides: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.coverBg);
 
   // Left accent bar gradient
   slide.addShape("rect" as any, {
-    x: 0, y: 0, w: 0.12, h: SLIDE_H,
+    x: 0,
+    y: 0,
+    w: 0.12,
+    h: SLIDE_H,
     fill: { color: d.accent },
   });
   slide.addShape("rect" as any, {
-    x: 0.12, y: 0, w: 0.06, h: SLIDE_H,
+    x: 0.12,
+    y: 0,
+    w: 0.06,
+    h: SLIDE_H,
     fill: { color: d.accent2, transparency: 60 },
   });
 
   // Course type badge
   if (slide_.subtitle) {
     slide.addShape("roundRect" as any, {
-      x: 1.0, y: 1.1, w: Math.min(4.0, slide_.subtitle.length * 0.18 + 0.5), h: 0.34,
+      x: 1.0,
+      y: 1.1,
+      w: Math.min(4.0, slide_.subtitle.length * 0.18 + 0.5),
+      h: 0.34,
       fill: { color: d.accent },
       rectRadius: 0.04,
     });
     slide.addText(san(slide_.subtitle).toUpperCase(), {
-      x: 1.0, y: 1.1, w: 4.5, h: 0.34,
-      fontSize: 10, fontFace: d.bodyFont, bold: true,
-      color: "FFFFFF", charSpacing: 3, valign: "middle",
+      x: 1.0,
+      y: 1.1,
+      w: 4.5,
+      h: 0.34,
+      fontSize: 10,
+      fontFace: d.bodyFont,
+      bold: true,
+      color: "FFFFFF",
+      charSpacing: 3,
+      valign: "middle",
     });
   }
 
   // Title
   slide.addText(san(slide_.title), {
-    x: 1.0, y: 1.65, w: SLIDE_W - 1.6, h: 2.4,
-    fontSize: 44, fontFace: d.titleFont, bold: true,
-    color: "FFFFFF", valign: "middle",
+    x: 1.0,
+    y: 1.65,
+    w: SLIDE_W - 1.6,
+    h: 2.4,
+    fontSize: 44,
+    fontFace: d.titleFont,
+    bold: true,
+    color: "FFFFFF",
+    valign: "middle",
     fit: "shrink" as any,
     lineSpacingMultiple: 1.15,
   });
 
   // Divider line
   slide.addShape("rect" as any, {
-    x: 1.0, y: 4.25, w: 3.0, h: 0.04,
+    x: 1.0,
+    y: 4.25,
+    w: 3.0,
+    h: 0.04,
     fill: { color: d.accent },
   });
 
   // Subtitle / tagline
   slide.addText("Curso completo com material profissional", {
-    x: 1.0, y: 4.42, w: SLIDE_W - 2.0, h: 0.4,
-    fontSize: 14, fontFace: d.bodyFont,
-    color: "94A3B8", valign: "middle",
+    x: 1.0,
+    y: 4.42,
+    w: SLIDE_W - 2.0,
+    h: 0.4,
+    fontSize: 14,
+    fontFace: d.bodyFont,
+    color: "94A3B8",
+    valign: "middle",
   });
 
   // Bottom right decoration circles
@@ -296,46 +397,86 @@ function renderCover(pptx: PptxGenJS, slide_: Slide, d: Design, totalSlides: num
     slide.addShape("ellipse" as any, {
       x: SLIDE_W - sz - 0.3,
       y: SLIDE_H - sz - 0.2,
-      w: sz, h: sz,
+      w: sz,
+      h: sz,
       fill: { color: d.accent, transparency: 82 + i * 4 },
     });
   }
 }
 
 // ── TABLE OF CONTENTS ──
-function renderTOC(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number, modules: {title:string}[]) {
+function renderTOC(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+  modules: { title: string }[],
+) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
 
-  slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: 0.06, fill: { color: d.accent } });
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: 0,
+    w: SLIDE_W,
+    h: 0.06,
+    fill: { color: d.accent },
+  });
 
   // Left panel
   const panelW = 2.9;
   slide.addShape("rect" as any, {
-    x: 0, y: 0.06, w: panelW, h: SLIDE_H - 0.06,
+    x: 0,
+    y: 0.06,
+    w: panelW,
+    h: SLIDE_H - 0.06,
     fill: { color: d.surface },
   });
   slide.addText("ÍNDICE", {
-    x: ML, y: 0.3, w: panelW - ML, h: 0.28,
-    fontSize: 10, fontFace: d.bodyFont, bold: true,
-    color: d.accent, charSpacing: 5,
+    x: ML,
+    y: 0.3,
+    w: panelW - ML,
+    h: 0.28,
+    fontSize: 10,
+    fontFace: d.bodyFont,
+    bold: true,
+    color: d.accent,
+    charSpacing: 5,
   });
   slide.addText("Conteúdo\ndo Curso", {
-    x: ML, y: 0.64, w: panelW - ML, h: 1.0,
-    fontSize: 24, fontFace: d.titleFont, bold: true,
-    color: d.text, valign: "top",
+    x: ML,
+    y: 0.64,
+    w: panelW - ML,
+    h: 1.0,
+    fontSize: 24,
+    fontFace: d.titleFont,
+    bold: true,
+    color: d.text,
+    valign: "top",
     lineSpacingMultiple: 1.1,
     fit: "shrink" as any,
   });
   // Module count chip
   slide.addShape("roundRect" as any, {
-    x: ML, y: FOOTER_Y - 0.54, w: 1.7, h: 0.36,
-    fill: { color: d.accent }, rectRadius: 0.04,
+    x: ML,
+    y: FOOTER_Y - 0.54,
+    w: 1.7,
+    h: 0.36,
+    fill: { color: d.accent },
+    rectRadius: 0.04,
   });
   slide.addText(`${modules.length} Módulo${modules.length !== 1 ? "s" : ""}`, {
-    x: ML, y: FOOTER_Y - 0.54, w: 1.7, h: 0.36,
-    fontSize: 12, fontFace: d.bodyFont, bold: true,
-    color: "FFFFFF", align: "center", valign: "middle",
+    x: ML,
+    y: FOOTER_Y - 0.54,
+    w: 1.7,
+    h: 0.36,
+    fontSize: 12,
+    fontFace: d.bodyFont,
+    bold: true,
+    color: "FFFFFF",
+    align: "center",
+    valign: "middle",
   });
 
   // Module list — 2 columns when > 5 modules
@@ -357,23 +498,41 @@ function renderTOC(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
 
     slide.addShape("ellipse" as any, {
-      x, y: y + (itemH - 0.36) / 2, w: 0.36, h: 0.36,
+      x,
+      y: y + (itemH - 0.36) / 2,
+      w: 0.36,
+      h: 0.36,
       fill: { color: pal },
     });
     slide.addText(String(i + 1), {
-      x, y: y + (itemH - 0.36) / 2, w: 0.36, h: 0.36,
-      fontSize: 12, fontFace: d.titleFont, bold: true,
-      color: "FFFFFF", align: "center", valign: "middle",
+      x,
+      y: y + (itemH - 0.36) / 2,
+      w: 0.36,
+      h: 0.36,
+      fontSize: 12,
+      fontFace: d.titleFont,
+      bold: true,
+      color: "FFFFFF",
+      align: "center",
+      valign: "middle",
     });
     slide.addText(san(modules[i].title), {
-      x: x + 0.46, y: y + (itemH - 0.28) / 2, w: colW - 0.5, h: 0.28,
-      fontSize: useTwoCols ? 12 : 14, fontFace: d.bodyFont,
-      color: d.text, valign: "middle",
+      x: x + 0.46,
+      y: y + (itemH - 0.28) / 2,
+      w: colW - 0.5,
+      h: 0.28,
+      fontSize: useTwoCols ? 12 : 14,
+      fontFace: d.bodyFont,
+      color: d.text,
+      valign: "middle",
       fit: "shrink" as any,
     });
     if (!useTwoCols && i < maxMods - 1) {
       slide.addShape("rect" as any, {
-        x, y: y + itemH - 0.01, w: colW, h: 0.01,
+        x,
+        y: y + itemH - 0.01,
+        w: colW,
+        h: 0.01,
         fill: { color: d.border },
       });
     }
@@ -383,33 +542,63 @@ function renderTOC(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total
 }
 
 // ── MODULE COVER ──
-function renderModuleCover(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderModuleCover(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.coverBg);
 
   const sideW = 0.55;
-  slide.addShape("rect" as any, { x: 0, y: 0, w: sideW, h: SLIDE_H, fill: { color: d.accent } });
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: 0,
+    w: sideW,
+    h: SLIDE_H,
+    fill: { color: d.accent },
+  });
 
   // Large watermark number
   const modNum = String((slide_.moduleIndex ?? 0) + 1).padStart(2, "0");
   slide.addText(modNum, {
-    x: sideW + 0.3, y: 0.3, w: 3.2, h: 3.0,
-    fontSize: 160, fontFace: d.titleFont, bold: true,
-    color: "D1D5DB", valign: "top",
+    x: sideW + 0.3,
+    y: 0.3,
+    w: 3.2,
+    h: 3.0,
+    fontSize: 160,
+    fontFace: d.titleFont,
+    bold: true,
+    color: "D1D5DB",
+    valign: "top",
   });
 
   // Label
   slide.addText("MÓDULO " + ((slide_.moduleIndex ?? 0) + 1), {
-    x: sideW + 0.5, y: 1.4, w: CW, h: 0.3,
-    fontSize: 10, fontFace: d.bodyFont, bold: true,
-    color: d.accent, charSpacing: 5,
+    x: sideW + 0.5,
+    y: 1.4,
+    w: CW,
+    h: 0.3,
+    fontSize: 10,
+    fontFace: d.bodyFont,
+    bold: true,
+    color: d.accent,
+    charSpacing: 5,
   });
 
   // Title — shorter box to leave room for competencies
   slide.addText(san(slide_.title), {
-    x: sideW + 0.5, y: 1.82, w: SLIDE_W - sideW - 1.2, h: 1.7,
-    fontSize: 34, fontFace: d.titleFont, bold: true,
-    color: "FFFFFF", valign: "top",
+    x: sideW + 0.5,
+    y: 1.82,
+    w: SLIDE_W - sideW - 1.2,
+    h: 1.7,
+    fontSize: 34,
+    fontFace: d.titleFont,
+    bold: true,
+    color: "FFFFFF",
+    valign: "top",
     fit: "shrink" as any,
     lineSpacingMultiple: 1.2,
   });
@@ -418,24 +607,41 @@ function renderModuleCover(pptx: PptxGenJS, slide_: Slide, d: Design, num: numbe
   const competencies = (slide_.competencies || []).slice(0, 3);
   if (competencies.length > 0) {
     slide.addShape("rect" as any, {
-      x: sideW + 0.5, y: 3.68, w: 2.2, h: 0.03,
+      x: sideW + 0.5,
+      y: 3.68,
+      w: 2.2,
+      h: 0.03,
       fill: { color: d.accent },
     });
     slide.addText("O QUE VOCÊ VAI APRENDER", {
-      x: sideW + 0.5, y: 3.78, w: SLIDE_W - sideW - 1.3, h: 0.22,
-      fontSize: 8, fontFace: d.bodyFont, bold: true,
-      color: d.accent, charSpacing: 4,
+      x: sideW + 0.5,
+      y: 3.78,
+      w: SLIDE_W - sideW - 1.3,
+      h: 0.22,
+      fontSize: 8,
+      fontFace: d.bodyFont,
+      bold: true,
+      color: d.accent,
+      charSpacing: 4,
     });
     for (let i = 0; i < competencies.length; i++) {
       const cy = 4.1 + i * 0.44;
       slide.addShape("ellipse" as any, {
-        x: sideW + 0.5, y: cy + 0.07, w: 0.13, h: 0.13,
+        x: sideW + 0.5,
+        y: cy + 0.07,
+        w: 0.13,
+        h: 0.13,
         fill: { color: d.accent },
       });
       slide.addText(san(competencies[i]), {
-        x: sideW + 0.73, y: cy, w: SLIDE_W - sideW - 1.4, h: 0.32,
-        fontSize: 12, fontFace: d.bodyFont,
-        color: "CBD5E1", valign: "middle",
+        x: sideW + 0.73,
+        y: cy,
+        w: SLIDE_W - sideW - 1.4,
+        h: 0.32,
+        fontSize: 12,
+        fontFace: d.bodyFont,
+        color: "CBD5E1",
+        valign: "middle",
         fit: "shrink" as any,
       });
     }
@@ -445,13 +651,22 @@ function renderModuleCover(pptx: PptxGenJS, slide_: Slide, d: Design, num: numbe
 }
 
 // ── BULLETS ──
-function renderBullets(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderBullets(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
   header(slide, d, slide_.label || "", slide_.title);
 
   const items = (slide_.items || []).slice(0, 5);
-  if (items.length === 0) { footer(slide, d, num, total); return; }
+  if (items.length === 0) {
+    footer(slide, d, num, total);
+    return;
+  }
 
   const gap = 0.1;
   const totalGap = gap * (items.length - 1);
@@ -464,7 +679,10 @@ function renderBullets(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
 
     // Card background
     slide.addShape("roundRect" as any, {
-      x: ML, y, w: CW, h: itemH,
+      x: ML,
+      y,
+      w: CW,
+      h: itemH,
       fill: { color: d.surface },
       line: { color: d.border, width: 0.4 },
       rectRadius: 0.06,
@@ -472,7 +690,10 @@ function renderBullets(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
 
     // Left color strip
     slide.addShape("roundRect" as any, {
-      x: ML, y, w: 0.055, h: itemH,
+      x: ML,
+      y,
+      w: 0.055,
+      h: itemH,
       fill: { color: pal },
       rectRadius: 0.06,
     });
@@ -480,16 +701,23 @@ function renderBullets(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
     // Bullet dot
     const dotSz = 0.1;
     slide.addShape("ellipse" as any, {
-      x: ML + 0.18, y: y + itemH / 2 - dotSz / 2,
-      w: dotSz, h: dotSz,
+      x: ML + 0.18,
+      y: y + itemH / 2 - dotSz / 2,
+      w: dotSz,
+      h: dotSz,
       fill: { color: pal },
     });
 
     // Text
     slide.addText(san(items[i]), {
-      x: ML + 0.36, y: y + 0.05, w: CW - 0.46, h: itemH - 0.1,
-      fontSize, fontFace: d.bodyFont,
-      color: d.text, valign: "middle",
+      x: ML + 0.36,
+      y: y + 0.05,
+      w: CW - 0.46,
+      h: itemH - 0.1,
+      fontSize,
+      fontFace: d.bodyFont,
+      color: d.text,
+      valign: "middle",
       lineSpacingMultiple: 1.2,
       fit: "shrink" as any,
     });
@@ -500,13 +728,22 @@ function renderBullets(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
 
 // ── CARDS ──
 // Items can be "Title: Description" — renderer splits on first ": "
-function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderCards(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
   header(slide, d, slide_.label || "", slide_.title);
 
   const items = (slide_.items || []).slice(0, 4);
-  if (items.length === 0) { footer(slide, d, num, total); return; }
+  if (items.length === 0) {
+    footer(slide, d, num, total);
+    return;
+  }
 
   const cols = items.length <= 3 ? items.length : 2;
   const rows = Math.ceil(items.length / cols);
@@ -529,14 +766,20 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
 
     // Shadow
     slide.addShape("roundRect" as any, {
-      x: x + 0.03, y: y + 0.04, w: cardW, h: cardH,
+      x: x + 0.03,
+      y: y + 0.04,
+      w: cardW,
+      h: cardH,
       fill: { color: "000000", transparency: 88 },
       rectRadius: 0.1,
     });
 
     // Card body
     slide.addShape("roundRect" as any, {
-      x, y, w: cardW, h: cardH,
+      x,
+      y,
+      w: cardW,
+      h: cardH,
       fill: { color: d.surface },
       line: { color: d.border, width: 0.4 },
       rectRadius: 0.1,
@@ -544,27 +787,54 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
 
     // Top color bar
     const topBarH = 0.1;
-    slide.addShape("roundRect" as any, { x, y, w: cardW, h: topBarH, fill: { color: pal }, rectRadius: 0.1 });
-    slide.addShape("rect" as any, { x, y: y + topBarH * 0.4, w: cardW, h: topBarH * 0.6, fill: { color: pal } });
+    slide.addShape("roundRect" as any, {
+      x,
+      y,
+      w: cardW,
+      h: topBarH,
+      fill: { color: pal },
+      rectRadius: 0.1,
+    });
+    slide.addShape("rect" as any, {
+      x,
+      y: y + topBarH * 0.4,
+      w: cardW,
+      h: topBarH * 0.6,
+      fill: { color: pal },
+    });
 
     // Color left stripe
     slide.addShape("rect" as any, {
-      x, y: y + topBarH, w: 0.055, h: cardH - topBarH,
+      x,
+      y: y + topBarH,
+      w: 0.055,
+      h: cardH - topBarH,
       fill: { color: pal, transparency: 60 },
     });
 
     // Number badge in top-left of color bar
     const badgeSz = 0.36;
     slide.addShape("ellipse" as any, {
-      x: x + 0.14, y: y + topBarH * 0.5 - badgeSz / 2,
-      w: badgeSz, h: badgeSz,
-      fill: { color: d.theme === "dark" ? "111827" : "FFFFFF", transparency: 10 },
+      x: x + 0.14,
+      y: y + topBarH * 0.5 - badgeSz / 2,
+      w: badgeSz,
+      h: badgeSz,
+      fill: {
+        color: d.theme === "dark" ? "111827" : "FFFFFF",
+        transparency: 10,
+      },
     });
     slide.addText(String(i + 1), {
-      x: x + 0.14, y: y + topBarH * 0.5 - badgeSz / 2,
-      w: badgeSz, h: badgeSz,
-      fontSize: 13, fontFace: d.titleFont, bold: true,
-      color: pal, align: "center", valign: "middle",
+      x: x + 0.14,
+      y: y + topBarH * 0.5 - badgeSz / 2,
+      w: badgeSz,
+      h: badgeSz,
+      fontSize: 13,
+      fontFace: d.titleFont,
+      bold: true,
+      color: pal,
+      align: "center",
+      valign: "middle",
     });
 
     // Card title (bold) — from "Title: ..."
@@ -574,10 +844,15 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
 
     if (hasTitle && cardTopText) {
       slide.addText(san(cardTopText), {
-        x: innerX, y: contentY, w: innerW, h: 0.38,
+        x: innerX,
+        y: contentY,
+        w: innerW,
+        h: 0.38,
         fontSize: items.length <= 2 ? 17 : items.length === 3 ? 15 : 13,
-        fontFace: d.titleFont, bold: true,
-        color: d.text, valign: "top",
+        fontFace: d.titleFont,
+        bold: true,
+        color: d.text,
+        valign: "top",
         lineSpacingMultiple: 1.1,
         fit: "shrink" as any,
       });
@@ -587,11 +862,15 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
     // Card body text
     const remainH = y + cardH - contentY - 0.12;
     slide.addText(san(cardBodyText), {
-      x: innerX, y: contentY, w: innerW, h: Math.max(0.3, remainH),
+      x: innerX,
+      y: contentY,
+      w: innerW,
+      h: Math.max(0.3, remainH),
       fontSize: items.length <= 2 ? 15 : items.length === 3 ? 12 : 11,
       fontFace: d.bodyFont,
       color: hasTitle ? d.subtext : d.text,
-      align: "left", valign: "top",
+      align: "left",
+      valign: "top",
       lineSpacingMultiple: 1.2,
       fit: "shrink" as any,
     });
@@ -601,66 +880,110 @@ function renderCards(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tot
 }
 
 // ── PROCESS ── Horizontal arrow flow (3–5 steps)
-function renderProcess(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderProcess(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
   header(slide, d, slide_.label || "PROCESSO", slide_.title);
 
   const items = (slide_.items || []).slice(0, 5);
-  if (items.length === 0) { footer(slide, d, num, total); return; }
+  if (items.length === 0) {
+    footer(slide, d, num, total);
+    return;
+  }
 
-  const n      = items.length;
-  const areaY  = CONTENT_Y + 0.25;
-  const areaH  = FOOTER_Y - areaY - 0.25;
+  const n = items.length;
+  const areaY = CONTENT_Y + 0.25;
+  const areaH = FOOTER_Y - areaY - 0.25;
   const arrowW = n <= 4 ? 0.28 : 0.2;
   const totalArrows = (n - 1) * arrowW;
-  const boxW   = (CW - totalArrows) / n;
-  const boxH   = areaH;
+  const boxW = (CW - totalArrows) / n;
+  const boxH = areaH;
 
   for (let i = 0; i < n; i++) {
-    const x   = ML + i * (boxW + arrowW);
+    const x = ML + i * (boxW + arrowW);
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
 
     // Box shadow
     slide.addShape("roundRect" as any, {
-      x: x + 0.03, y: areaY + 0.04, w: boxW, h: boxH,
-      fill: { color: "000000", transparency: 90 }, rectRadius: 0.1,
+      x: x + 0.03,
+      y: areaY + 0.04,
+      w: boxW,
+      h: boxH,
+      fill: { color: "000000", transparency: 90 },
+      rectRadius: 0.1,
     });
 
     // Box
     slide.addShape("roundRect" as any, {
-      x, y: areaY, w: boxW, h: boxH,
+      x,
+      y: areaY,
+      w: boxW,
+      h: boxH,
       fill: { color: d.surface },
       line: { color: pal, width: 1.2 },
       rectRadius: 0.1,
     });
 
     // Top color bar
-    slide.addShape("roundRect" as any, { x, y: areaY, w: boxW, h: 0.1, fill: { color: pal }, rectRadius: 0.1 });
-    slide.addShape("rect" as any, { x, y: areaY + 0.04, w: boxW, h: 0.06, fill: { color: pal } });
+    slide.addShape("roundRect" as any, {
+      x,
+      y: areaY,
+      w: boxW,
+      h: 0.1,
+      fill: { color: pal },
+      rectRadius: 0.1,
+    });
+    slide.addShape("rect" as any, {
+      x,
+      y: areaY + 0.04,
+      w: boxW,
+      h: 0.06,
+      fill: { color: pal },
+    });
 
     // Step number badge (centered, below bar)
     const badgeSz = n <= 3 ? 0.5 : 0.4;
-    const badgeX  = x + boxW / 2 - badgeSz / 2;
-    const badgeY  = areaY + 0.18;
+    const badgeX = x + boxW / 2 - badgeSz / 2;
+    const badgeY = areaY + 0.18;
     slide.addShape("ellipse" as any, {
-      x: badgeX, y: badgeY, w: badgeSz, h: badgeSz,
+      x: badgeX,
+      y: badgeY,
+      w: badgeSz,
+      h: badgeSz,
       fill: { color: pal },
     });
     slide.addText(String(i + 1), {
-      x: badgeX, y: badgeY, w: badgeSz, h: badgeSz,
-      fontSize: n <= 3 ? 18 : 14, fontFace: d.titleFont, bold: true,
-      color: "FFFFFF", align: "center", valign: "middle",
+      x: badgeX,
+      y: badgeY,
+      w: badgeSz,
+      h: badgeSz,
+      fontSize: n <= 3 ? 18 : 14,
+      fontFace: d.titleFont,
+      bold: true,
+      color: "FFFFFF",
+      align: "center",
+      valign: "middle",
     });
 
     // Step text
     const textY = badgeY + badgeSz + 0.12;
     const textH = areaY + boxH - textY - 0.14;
     slide.addText(san(items[i]), {
-      x: x + 0.1, y: textY, w: boxW - 0.2, h: Math.max(0.3, textH),
+      x: x + 0.1,
+      y: textY,
+      w: boxW - 0.2,
+      h: Math.max(0.3, textH),
       fontSize: n <= 3 ? 15 : n <= 4 ? 13 : 11,
-      fontFace: d.bodyFont, color: d.text,
-      align: "center", valign: "top",
+      fontFace: d.bodyFont,
+      color: d.text,
+      align: "center",
+      valign: "top",
       lineSpacingMultiple: 1.2,
       fit: "shrink" as any,
     });
@@ -670,9 +993,16 @@ function renderProcess(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
       const arrowX = x + boxW + 0.02;
       const arrowCY = areaY + boxH / 2;
       slide.addText("›", {
-        x: arrowX, y: arrowCY - 0.22, w: arrowW - 0.04, h: 0.44,
-        fontSize: 28, fontFace: d.titleFont, bold: true,
-        color: pal, align: "center", valign: "middle",
+        x: arrowX,
+        y: arrowCY - 0.22,
+        w: arrowW - 0.04,
+        h: 0.44,
+        fontSize: 28,
+        fontFace: d.titleFont,
+        bold: true,
+        color: pal,
+        align: "center",
+        valign: "middle",
       });
     }
   }
@@ -681,25 +1011,49 @@ function renderProcess(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
 }
 
 // ── TAKEAWAYS ──
-function renderTakeaways(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderTakeaways(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.coverBg);
 
   // Accent top stripe
-  slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: 0.07, fill: { color: d.accent } });
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: 0,
+    w: SLIDE_W,
+    h: 0.07,
+    fill: { color: d.accent },
+  });
 
   // Label
   slide.addText(san(slide_.label || "PRINCIPAIS APRENDIZADOS").toUpperCase(), {
-    x: ML, y: 0.22, w: CW, h: 0.26,
-    fontSize: 9, fontFace: d.bodyFont, bold: true,
-    color: d.accent, charSpacing: 5,
+    x: ML,
+    y: 0.22,
+    w: CW,
+    h: 0.26,
+    fontSize: 9,
+    fontFace: d.bodyFont,
+    bold: true,
+    color: d.accent,
+    charSpacing: 5,
   });
 
   // Title
   slide.addText(san(slide_.title), {
-    x: ML, y: 0.55, w: CW, h: 0.72,
-    fontSize: 26, fontFace: d.titleFont, bold: true,
-    color: "FFFFFF", valign: "middle",
+    x: ML,
+    y: 0.55,
+    w: CW,
+    h: 0.72,
+    fontSize: 26,
+    fontFace: d.titleFont,
+    bold: true,
+    color: "FFFFFF",
+    valign: "middle",
     fit: "shrink" as any,
   });
 
@@ -716,7 +1070,10 @@ function renderTakeaways(pptx: PptxGenJS, slide_: Slide, d: Design, num: number,
 
     // Row bg
     slide.addShape("roundRect" as any, {
-      x: ML, y, w: CW, h: itemH,
+      x: ML,
+      y,
+      w: CW,
+      h: itemH,
       fill: { color: "FFFFFF", transparency: 91 },
       rectRadius: 0.07,
     });
@@ -724,23 +1081,36 @@ function renderTakeaways(pptx: PptxGenJS, slide_: Slide, d: Design, num: number,
     // Number
     const numSz = Math.min(0.5, itemH * 0.7);
     slide.addShape("ellipse" as any, {
-      x: ML + 0.14, y: y + itemH / 2 - numSz / 2,
-      w: numSz, h: numSz,
+      x: ML + 0.14,
+      y: y + itemH / 2 - numSz / 2,
+      w: numSz,
+      h: numSz,
       fill: { color: pal },
     });
     slide.addText(String(i + 1), {
-      x: ML + 0.14, y: y + itemH / 2 - numSz / 2,
-      w: numSz, h: numSz,
-      fontSize: 15, fontFace: d.titleFont, bold: true,
-      color: "FFFFFF", align: "center", valign: "middle",
+      x: ML + 0.14,
+      y: y + itemH / 2 - numSz / 2,
+      w: numSz,
+      h: numSz,
+      fontSize: 15,
+      fontFace: d.titleFont,
+      bold: true,
+      color: "FFFFFF",
+      align: "center",
+      valign: "middle",
     });
 
     // Text
     const fontSize = items.length <= 3 ? 16 : 14;
     slide.addText(san(items[i]), {
-      x: ML + numSz + 0.28, y: y + 0.05, w: CW - numSz - 0.38, h: itemH - 0.1,
-      fontSize, fontFace: d.bodyFont,
-      color: "F1F5F9", valign: "middle",
+      x: ML + numSz + 0.28,
+      y: y + 0.05,
+      w: CW - numSz - 0.38,
+      h: itemH - 0.1,
+      fontSize,
+      fontFace: d.bodyFont,
+      color: "F1F5F9",
+      valign: "middle",
       lineSpacingMultiple: 1.2,
       fit: "shrink" as any,
     });
@@ -750,7 +1120,13 @@ function renderTakeaways(pptx: PptxGenJS, slide_: Slide, d: Design, num: number,
 }
 
 // ── CLOSING ──
-function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderClosing(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.coverBg);
 
@@ -758,42 +1134,77 @@ function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
   for (let i = 0; i < 5; i++) {
     const sz = 1.2 + i * 0.9;
     slide.addShape("ellipse" as any, {
-      x: SLIDE_W - sz * 0.7, y: -sz * 0.3,
-      w: sz, h: sz,
+      x: SLIDE_W - sz * 0.7,
+      y: -sz * 0.3,
+      w: sz,
+      h: sz,
       fill: { color: d.accent, transparency: 85 + i * 2 },
     });
   }
-  slide.addShape("rect" as any, { x: 0, y: 0, w: 0.1, h: SLIDE_H, fill: { color: d.accent } });
+  slide.addShape("rect" as any, {
+    x: 0,
+    y: 0,
+    w: 0.1,
+    h: SLIDE_H,
+    fill: { color: d.accent },
+  });
 
   // Left column: congrats
   const midX = SLIDE_W * 0.48;
   slide.addText("🎓", {
-    x: ML + 0.1, y: 0.9, w: 1.2, h: 1.2,
-    fontSize: 52, align: "center", valign: "middle",
+    x: ML + 0.1,
+    y: 0.9,
+    w: 1.2,
+    h: 1.2,
+    fontSize: 52,
+    align: "center",
+    valign: "middle",
   });
   slide.addText("Parabéns!", {
-    x: ML + 1.4, y: 1.0, w: midX - ML - 1.6, h: 0.6,
-    fontSize: 34, fontFace: d.titleFont, bold: true,
+    x: ML + 1.4,
+    y: 1.0,
+    w: midX - ML - 1.6,
+    h: 0.6,
+    fontSize: 34,
+    fontFace: d.titleFont,
+    bold: true,
     color: d.accent,
   });
   slide.addText(`Você concluiu:\n${san(slide_.title)}`, {
-    x: ML + 1.4, y: 1.72, w: midX - ML - 1.7, h: 1.2,
-    fontSize: 19, fontFace: d.titleFont, bold: true,
-    color: "FFFFFF", valign: "top",
+    x: ML + 1.4,
+    y: 1.72,
+    w: midX - ML - 1.7,
+    h: 1.2,
+    fontSize: 19,
+    fontFace: d.titleFont,
+    bold: true,
+    color: "FFFFFF",
+    valign: "top",
     lineSpacingMultiple: 1.2,
     fit: "shrink" as any,
   });
   slide.addShape("rect" as any, {
-    x: ML + 1.4, y: 3.1, w: 2.4, h: 0.04,
+    x: ML + 1.4,
+    y: 3.1,
+    w: 2.4,
+    h: 0.04,
     fill: { color: d.accent },
   });
-  slide.addText("Continue praticando e construindo\nprojetos reais com o que aprendeu!", {
-    x: ML + 0.1, y: 3.32, w: midX - ML - 0.2, h: 0.9,
-    fontSize: 12, fontFace: d.bodyFont,
-    color: "94A3B8", valign: "top",
-    lineSpacingMultiple: 1.3,
-    fit: "shrink" as any,
-  });
+  slide.addText(
+    "Continue praticando e construindo\nprojetos reais com o que aprendeu!",
+    {
+      x: ML + 0.1,
+      y: 3.32,
+      w: midX - ML - 0.2,
+      h: 0.9,
+      fontSize: 12,
+      fontFace: d.bodyFont,
+      color: "94A3B8",
+      valign: "top",
+      lineSpacingMultiple: 1.3,
+      fit: "shrink" as any,
+    },
+  );
 
   // Right column: próximos passos checklist panel
   const rightX = midX + 0.3;
@@ -802,51 +1213,86 @@ function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
   const panelH = FOOTER_Y - panelY - 0.05;
 
   slide.addShape("roundRect" as any, {
-    x: rightX, y: panelY, w: rightW, h: panelH,
+    x: rightX,
+    y: panelY,
+    w: rightW,
+    h: panelH,
     fill: { color: "FFFFFF", transparency: 6 },
     line: { color: d.accent, width: 0.5 },
     rectRadius: 0.12,
   });
   // Panel header
   slide.addShape("roundRect" as any, {
-    x: rightX, y: panelY, w: rightW, h: 0.5,
-    fill: { color: d.accent }, rectRadius: 0.12,
+    x: rightX,
+    y: panelY,
+    w: rightW,
+    h: 0.5,
+    fill: { color: d.accent },
+    rectRadius: 0.12,
   });
   slide.addShape("rect" as any, {
-    x: rightX, y: panelY + 0.25, w: rightW, h: 0.25,
+    x: rightX,
+    y: panelY + 0.25,
+    w: rightW,
+    h: 0.25,
     fill: { color: d.accent },
   });
   slide.addText("PRÓXIMOS PASSOS", {
-    x: rightX + 0.2, y: panelY + 0.02, w: rightW - 0.4, h: 0.46,
-    fontSize: 11, fontFace: d.bodyFont, bold: true,
-    color: "FFFFFF", charSpacing: 3, valign: "middle",
+    x: rightX + 0.2,
+    y: panelY + 0.02,
+    w: rightW - 0.4,
+    h: 0.46,
+    fontSize: 11,
+    fontFace: d.bodyFont,
+    bold: true,
+    color: "FFFFFF",
+    charSpacing: 3,
+    valign: "middle",
   });
 
-  const nexts = slide_.items && slide_.items.length > 0 ? slide_.items : [
-    "Aplique o conteúdo em um projeto pessoal",
-    "Explore a documentação oficial das ferramentas",
-    "Construa um portfólio com os projetos deste curso",
-    "Compartilhe seu progresso com a comunidade",
-  ];
+  const nexts =
+    slide_.items && slide_.items.length > 0
+      ? slide_.items
+      : [
+          "Aplique o conteúdo em um projeto pessoal",
+          "Explore a documentação oficial das ferramentas",
+          "Construa um portfólio com os projetos deste curso",
+          "Compartilhe seu progresso com a comunidade",
+        ];
   const checkItemH = (panelH - 0.5 - 0.15) / Math.min(nexts.length, 4);
   for (let i = 0; i < Math.min(nexts.length, 4); i++) {
     const y = panelY + 0.5 + 0.07 + i * checkItemH;
     // Checkbox
     slide.addShape("roundRect" as any, {
-      x: rightX + 0.2, y: y + (checkItemH - 0.3) / 2, w: 0.3, h: 0.3,
+      x: rightX + 0.2,
+      y: y + (checkItemH - 0.3) / 2,
+      w: 0.3,
+      h: 0.3,
       fill: { color: d.accent, transparency: 80 },
       line: { color: d.accent, width: 0.5 },
       rectRadius: 0.04,
     });
     slide.addText("✓", {
-      x: rightX + 0.2, y: y + (checkItemH - 0.3) / 2, w: 0.3, h: 0.3,
-      fontSize: 11, color: d.accent, align: "center", valign: "middle",
-      fontFace: d.bodyFont, bold: true,
+      x: rightX + 0.2,
+      y: y + (checkItemH - 0.3) / 2,
+      w: 0.3,
+      h: 0.3,
+      fontSize: 11,
+      color: d.accent,
+      align: "center",
+      valign: "middle",
+      fontFace: d.bodyFont,
+      bold: true,
     });
     slide.addText(san(nexts[i]), {
-      x: rightX + 0.62, y, w: rightW - 0.77, h: checkItemH,
-      fontSize: 12, fontFace: d.bodyFont,
-      color: "1E293B", valign: "middle",
+      x: rightX + 0.62,
+      y,
+      w: rightW - 0.77,
+      h: checkItemH,
+      fontSize: 12,
+      fontFace: d.bodyFont,
+      color: "1E293B",
+      valign: "middle",
       lineSpacingMultiple: 1.2,
       fit: "shrink" as any,
     });
@@ -856,7 +1302,13 @@ function renderClosing(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, t
 }
 
 // ── CODE ──
-function renderCode(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderCode(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
   header(slide, d, slide_.label || "CÓDIGO", slide_.title);
@@ -865,9 +1317,10 @@ function renderCode(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tota
   // Hard cap: truncate to CODE_MAX_LINES regardless of AI output
   const rawCode = slide_.code || "";
   const codeLines = rawCode.split("\n");
-  const codeText = codeLines.length > CODE_MAX_LINES
-    ? codeLines.slice(0, CODE_MAX_LINES).join("\n") + "\n# ..."
-    : rawCode;
+  const codeText =
+    codeLines.length > CODE_MAX_LINES
+      ? codeLines.slice(0, CODE_MAX_LINES).join("\n") + "\n# ..."
+      : rawCode;
   const leftW = CW * 0.42;
   const rightX = ML + leftW + 0.22;
   const rightW = CW - leftW - 0.22;
@@ -877,30 +1330,47 @@ function renderCode(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tota
   // Left: description bullets
   if (items.length > 0) {
     const gap = 0.1;
-    const itemH = Math.max(0.5, (areaH - gap * (items.length - 1)) / items.length);
+    const itemH = Math.max(
+      0.5,
+      (areaH - gap * (items.length - 1)) / items.length,
+    );
     for (let i = 0; i < items.length; i++) {
       const y = areaY + i * (itemH + gap);
       const pal = [d.accent, d.accent2, d.accent3][i % 3];
       slide.addShape("roundRect" as any, {
-        x: ML, y, w: leftW, h: itemH,
+        x: ML,
+        y,
+        w: leftW,
+        h: itemH,
         fill: { color: d.surface },
         line: { color: d.border, width: 0.4 },
         rectRadius: 0.06,
       });
       slide.addShape("roundRect" as any, {
-        x: ML, y, w: 0.055, h: itemH,
-        fill: { color: pal }, rectRadius: 0.06,
+        x: ML,
+        y,
+        w: 0.055,
+        h: itemH,
+        fill: { color: pal },
+        rectRadius: 0.06,
       });
       const dotSz = 0.1;
       slide.addShape("ellipse" as any, {
-        x: ML + 0.18, y: y + itemH / 2 - dotSz / 2,
-        w: dotSz, h: dotSz,
+        x: ML + 0.18,
+        y: y + itemH / 2 - dotSz / 2,
+        w: dotSz,
+        h: dotSz,
         fill: { color: pal },
       });
       slide.addText(san(items[i]), {
-        x: ML + 0.36, y: y + 0.05, w: leftW - 0.46, h: itemH - 0.1,
-        fontSize: 13, fontFace: d.bodyFont,
-        color: d.text, valign: "middle",
+        x: ML + 0.36,
+        y: y + 0.05,
+        w: leftW - 0.46,
+        h: itemH - 0.1,
+        fontSize: 13,
+        fontFace: d.bodyFont,
+        color: d.text,
+        valign: "middle",
         lineSpacingMultiple: 1.2,
         fit: "shrink" as any,
       });
@@ -911,41 +1381,64 @@ function renderCode(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tota
   const termBg = "1E293B";
   const barH = 0.32;
   slide.addShape("roundRect" as any, {
-    x: rightX, y: areaY, w: rightW, h: areaH,
-    fill: { color: termBg }, rectRadius: 0.1,
+    x: rightX,
+    y: areaY,
+    w: rightW,
+    h: areaH,
+    fill: { color: termBg },
+    rectRadius: 0.1,
   });
   // Title bar
   slide.addShape("roundRect" as any, {
-    x: rightX, y: areaY, w: rightW, h: barH,
-    fill: { color: "334155" }, rectRadius: 0.1,
+    x: rightX,
+    y: areaY,
+    w: rightW,
+    h: barH,
+    fill: { color: "334155" },
+    rectRadius: 0.1,
   });
   slide.addShape("rect" as any, {
-    x: rightX, y: areaY + barH / 2, w: rightW, h: barH / 2,
+    x: rightX,
+    y: areaY + barH / 2,
+    w: rightW,
+    h: barH / 2,
     fill: { color: "334155" },
   });
   // Traffic light dots
   const dotColors = ["FF5F57", "FEBC2E", "28C840"];
   for (let i = 0; i < 3; i++) {
     slide.addShape("ellipse" as any, {
-      x: rightX + 0.15 + i * 0.22, y: areaY + 0.1,
-      w: 0.12, h: 0.12,
+      x: rightX + 0.15 + i * 0.22,
+      y: areaY + 0.1,
+      w: 0.12,
+      h: 0.12,
       fill: { color: dotColors[i] },
     });
   }
   // Language label
   const lang = slide_.codeLabel || "Python";
   slide.addText(lang, {
-    x: rightX, y: areaY + 0.06, w: rightW - 0.12, h: 0.2,
-    fontSize: 9, fontFace: d.bodyFont, bold: true,
-    color: "94A3B8", align: "right",
+    x: rightX,
+    y: areaY + 0.06,
+    w: rightW - 0.12,
+    h: 0.2,
+    fontSize: 9,
+    fontFace: d.bodyFont,
+    bold: true,
+    color: "94A3B8",
+    align: "right",
   });
   // Code text
   if (codeText) {
     slide.addText(sanCode(codeText), {
-      x: rightX + 0.18, y: areaY + barH + 0.12,
-      w: rightW - 0.36, h: areaH - barH - 0.22,
-      fontSize: 11, fontFace: "Courier New",
-      color: "E2E8F0", valign: "top",
+      x: rightX + 0.18,
+      y: areaY + barH + 0.12,
+      w: rightW - 0.36,
+      h: areaH - barH - 0.22,
+      fontSize: 11,
+      fontFace: "Courier New",
+      color: "E2E8F0",
+      valign: "top",
       lineSpacingMultiple: 1.45,
       fit: "shrink" as any,
     });
@@ -955,13 +1448,22 @@ function renderCode(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, tota
 }
 
 // ── TWOCOL ──
-function renderTwocol(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderTwocol(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
   header(slide, d, slide_.label || "", slide_.title);
 
   const items = (slide_.items || []).slice(0, 8);
-  if (items.length === 0) { footer(slide, d, num, total); return; }
+  if (items.length === 0) {
+    footer(slide, d, num, total);
+    return;
+  }
 
   const half = Math.ceil(items.length / 2);
   const leftItems = items.slice(0, half);
@@ -970,31 +1472,48 @@ function renderTwocol(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, to
 
   const renderCol = (colItems: string[], colX: number) => {
     const gap = 0.1;
-    const itemH = Math.max(0.48, (CONTENT_H - gap * (colItems.length - 1)) / colItems.length);
+    const itemH = Math.max(
+      0.48,
+      (CONTENT_H - gap * (colItems.length - 1)) / colItems.length,
+    );
     const fontSize = colItems.length <= 3 ? 15 : 13;
     for (let i = 0; i < colItems.length; i++) {
       const y = CONTENT_Y + i * (itemH + gap);
       const pal = [d.accent, d.accent2, d.accent3][i % 3];
       slide.addShape("roundRect" as any, {
-        x: colX, y, w: colW, h: itemH,
+        x: colX,
+        y,
+        w: colW,
+        h: itemH,
         fill: { color: d.surface },
         line: { color: d.border, width: 0.4 },
         rectRadius: 0.06,
       });
       slide.addShape("roundRect" as any, {
-        x: colX, y, w: 0.055, h: itemH,
-        fill: { color: pal }, rectRadius: 0.06,
+        x: colX,
+        y,
+        w: 0.055,
+        h: itemH,
+        fill: { color: pal },
+        rectRadius: 0.06,
       });
       const dotSz = 0.1;
       slide.addShape("ellipse" as any, {
-        x: colX + 0.18, y: y + itemH / 2 - dotSz / 2,
-        w: dotSz, h: dotSz,
+        x: colX + 0.18,
+        y: y + itemH / 2 - dotSz / 2,
+        w: dotSz,
+        h: dotSz,
         fill: { color: pal },
       });
       slide.addText(san(colItems[i]), {
-        x: colX + 0.36, y: y + 0.05, w: colW - 0.46, h: itemH - 0.1,
-        fontSize, fontFace: d.bodyFont,
-        color: d.text, valign: "middle",
+        x: colX + 0.36,
+        y: y + 0.05,
+        w: colW - 0.46,
+        h: itemH - 0.1,
+        fontSize,
+        fontFace: d.bodyFont,
+        color: d.text,
+        valign: "middle",
         lineSpacingMultiple: 1.2,
         fit: "shrink" as any,
       });
@@ -1007,7 +1526,13 @@ function renderTwocol(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, to
 }
 
 // ── COMPARISON ── McKinsey-style two-column comparison
-function renderComparison(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderComparison(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
   header(slide, d, slide_.label || "COMPARAÇÃO", slide_.title);
@@ -1017,38 +1542,69 @@ function renderComparison(pptx: PptxGenJS, slide_: Slide, d: Design, num: number
   const lHeader = slide_.leftHeader || "A";
   const rHeader = slide_.rightHeader || "B";
 
-  const colW  = (CW - 0.3) / 2;
+  const colW = (CW - 0.3) / 2;
   const areaY = CONTENT_Y + 0.1;
   const areaH = FOOTER_Y - areaY - 0.1;
-  const hdrH  = 0.46;
+  const hdrH = 0.46;
   const maxRows = Math.max(lItems.length, rItems.length, 1);
-  const rowH  = Math.min(0.78, (areaH - hdrH - 0.16) / maxRows);
+  const rowH = Math.min(0.78, (areaH - hdrH - 0.16) / maxRows);
 
-  const renderCol = (items: string[], x: number, pal: string, colLabel: string) => {
+  const renderCol = (
+    items: string[],
+    x: number,
+    pal: string,
+    colLabel: string,
+  ) => {
     // Column header pill
     slide.addShape("roundRect" as any, {
-      x, y: areaY, w: colW, h: hdrH,
-      fill: { color: pal }, rectRadius: 0.08,
+      x,
+      y: areaY,
+      w: colW,
+      h: hdrH,
+      fill: { color: pal },
+      rectRadius: 0.08,
     });
     slide.addText(san(colLabel).toUpperCase(), {
-      x: x + 0.12, y: areaY, w: colW - 0.24, h: hdrH,
-      fontSize: T.SUBHEADER - 4, fontFace: d.titleFont, bold: true,
-      color: "FFFFFF", align: "center", valign: "middle",
+      x: x + 0.12,
+      y: areaY,
+      w: colW - 0.24,
+      h: hdrH,
+      fontSize: T.SUBHEADER - 4,
+      fontFace: d.titleFont,
+      bold: true,
+      color: "FFFFFF",
+      align: "center",
+      valign: "middle",
     });
     // Row items
     for (let i = 0; i < items.length; i++) {
       const y = areaY + hdrH + 0.08 + i * (rowH + 0.06);
       slide.addShape("rect" as any, {
-        x, y, w: colW, h: rowH,
+        x,
+        y,
+        w: colW,
+        h: rowH,
         fill: { color: i % 2 === 0 ? d.surface : d.bg },
         line: { color: d.border, width: 0.3 },
       });
       // Left accent stripe
-      slide.addShape("rect" as any, { x, y, w: 0.04, h: rowH, fill: { color: pal } });
+      slide.addShape("rect" as any, {
+        x,
+        y,
+        w: 0.04,
+        h: rowH,
+        fill: { color: pal },
+      });
       slide.addText(san(items[i]), {
-        x: x + 0.14, y: y + 0.04, w: colW - 0.22, h: rowH - 0.08,
-        fontSize: maxRows <= 3 ? T.BODY : T.BODY_SM, fontFace: d.bodyFont,
-        color: d.text, valign: "middle", lineSpacingMultiple: 1.15,
+        x: x + 0.14,
+        y: y + 0.04,
+        w: colW - 0.22,
+        h: rowH - 0.08,
+        fontSize: maxRows <= 3 ? T.BODY : T.BODY_SM,
+        fontFace: d.bodyFont,
+        color: d.text,
+        valign: "middle",
+        lineSpacingMultiple: 1.15,
         fit: "shrink" as any,
       });
     }
@@ -1059,7 +1615,10 @@ function renderComparison(pptx: PptxGenJS, slide_: Slide, d: Design, num: number
 
   // Vertical divider between columns
   slide.addShape("rect" as any, {
-    x: ML + colW + 0.14, y: areaY + 0.06, w: 0.02, h: areaH - 0.12,
+    x: ML + colW + 0.14,
+    y: areaY + 0.06,
+    w: 0.02,
+    h: areaH - 0.12,
     fill: { color: d.border },
   });
 
@@ -1067,68 +1626,104 @@ function renderComparison(pptx: PptxGenJS, slide_: Slide, d: Design, num: number
 }
 
 // ── TIMELINE ── Vertical McKinsey-style process steps
-function renderTimeline(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, total: number) {
+function renderTimeline(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
   header(slide, d, slide_.label || "PROCESSO", slide_.title);
 
   const items = (slide_.items || []).slice(0, 5);
-  if (items.length === 0) { footer(slide, d, num, total); return; }
+  if (items.length === 0) {
+    footer(slide, d, num, total);
+    return;
+  }
 
-  const n       = items.length;
-  const lineX   = ML + 0.3;
-  const lineW   = 0.03;
-  const dotSz   = 0.4;
-  const stepH   = (FOOTER_Y - CONTENT_Y - 0.24) / n;
-  const boxH    = Math.min(0.88, stepH - 0.1);
-  const textX   = lineX + lineW + 0.32;
-  const textW   = SLIDE_W - textX - MR;
+  const n = items.length;
+  const lineX = ML + 0.3;
+  const lineW = 0.03;
+  const dotSz = 0.4;
+  const stepH = (FOOTER_Y - CONTENT_Y - 0.24) / n;
+  const boxH = Math.min(0.88, stepH - 0.1);
+  const textX = lineX + lineW + 0.32;
+  const textW = SLIDE_W - textX - MR;
 
   // Vertical spine line
   slide.addShape("rect" as any, {
-    x: lineX, y: CONTENT_Y + 0.12, w: lineW, h: FOOTER_Y - CONTENT_Y - 0.24,
+    x: lineX,
+    y: CONTENT_Y + 0.12,
+    w: lineW,
+    h: FOOTER_Y - CONTENT_Y - 0.24,
     fill: { color: d.accent, transparency: 55 },
   });
 
   for (let i = 0; i < n; i++) {
-    const pal   = [d.accent, d.accent2, d.accent3][i % 3];
+    const pal = [d.accent, d.accent2, d.accent3][i % 3];
     const centerY = CONTENT_Y + 0.12 + i * stepH + stepH / 2;
 
     // Dot on spine
     slide.addShape("ellipse" as any, {
-      x: lineX + lineW / 2 - dotSz / 2, y: centerY - dotSz / 2,
-      w: dotSz, h: dotSz,
+      x: lineX + lineW / 2 - dotSz / 2,
+      y: centerY - dotSz / 2,
+      w: dotSz,
+      h: dotSz,
       fill: { color: pal },
     });
     slide.addText(String(i + 1), {
-      x: lineX + lineW / 2 - dotSz / 2, y: centerY - dotSz / 2,
-      w: dotSz, h: dotSz,
-      fontSize: 13, fontFace: d.titleFont, bold: true,
-      color: "FFFFFF", align: "center", valign: "middle",
+      x: lineX + lineW / 2 - dotSz / 2,
+      y: centerY - dotSz / 2,
+      w: dotSz,
+      h: dotSz,
+      fontSize: 13,
+      fontFace: d.titleFont,
+      bold: true,
+      color: "FFFFFF",
+      align: "center",
+      valign: "middle",
     });
 
     // Connector tick
     slide.addShape("rect" as any, {
-      x: lineX + lineW, y: centerY - 0.01, w: 0.28, h: 0.02,
+      x: lineX + lineW,
+      y: centerY - 0.01,
+      w: 0.28,
+      h: 0.02,
       fill: { color: pal, transparency: 30 },
     });
 
     // Text card
     slide.addShape("roundRect" as any, {
-      x: textX, y: centerY - boxH / 2, w: textW, h: boxH,
+      x: textX,
+      y: centerY - boxH / 2,
+      w: textW,
+      h: boxH,
       fill: { color: d.surface },
       line: { color: d.border, width: 0.3 },
       rectRadius: 0.06,
     });
     // Left accent stripe
     slide.addShape("roundRect" as any, {
-      x: textX, y: centerY - boxH / 2, w: 0.055, h: boxH,
-      fill: { color: pal }, rectRadius: 0.06,
+      x: textX,
+      y: centerY - boxH / 2,
+      w: 0.055,
+      h: boxH,
+      fill: { color: pal },
+      rectRadius: 0.06,
     });
     slide.addText(san(items[i]), {
-      x: textX + 0.14, y: centerY - boxH / 2 + 0.04, w: textW - 0.22, h: boxH - 0.08,
-      fontSize: n <= 3 ? T.BODY : T.BODY_SM, fontFace: d.bodyFont,
-      color: d.text, valign: "middle", lineSpacingMultiple: 1.2,
+      x: textX + 0.14,
+      y: centerY - boxH / 2 + 0.04,
+      w: textW - 0.22,
+      h: boxH - 0.08,
+      fontSize: n <= 3 ? T.BODY : T.BODY_SM,
+      fontFace: d.bodyFont,
+      color: d.text,
+      valign: "middle",
+      lineSpacingMultiple: 1.2,
       fit: "shrink" as any,
     });
   }
@@ -1140,7 +1735,8 @@ function renderTimeline(pptx: PptxGenJS, slide_: Slide, d: Design, num: number, 
 // SECTION 5: AI GENERATION
 // ═══════════════════════════════════════════════════════════
 
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+const GEMINI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
 async function callGemini(prompt: string, geminiKey: string): Promise<string> {
   const res = await fetch(`${GEMINI_URL}?key=${geminiKey}`, {
@@ -1253,40 +1849,74 @@ async function generateModuleSlides(
   geminiKey: string,
 ): Promise<Slide[]> {
   try {
-    const prompt = buildPrompt(courseTitle, mod.title, mod.content || "", moduleIndex, density, language);
+    const prompt = buildPrompt(
+      courseTitle,
+      mod.title,
+      mod.content || "",
+      moduleIndex,
+      density,
+      language,
+    );
     const raw = await callGemini(prompt, geminiKey);
 
     let parsed: any[];
     try {
       // Remove possible markdown code fences
-      const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      const clean = raw
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
       parsed = JSON.parse(clean);
       if (!Array.isArray(parsed)) throw new Error("Not array");
     } catch {
-      console.warn(`[V4] Module ${moduleIndex + 1}: JSON parse failed, using fallback`);
+      console.warn(
+        `[V4] Module ${moduleIndex + 1}: JSON parse failed, using fallback`,
+      );
       return fallbackModuleSlides(mod.title, mod.content, moduleIndex, density);
     }
 
-    const VALID_LAYOUTS: Layout[] = ["bullets","cards","takeaways","code","twocol","comparison","timeline","process"];
+    const VALID_LAYOUTS: Layout[] = [
+      "bullets",
+      "cards",
+      "takeaways",
+      "code",
+      "twocol",
+      "comparison",
+      "timeline",
+      "process",
+    ];
     const rawSlides: Slide[] = parsed.map((s: any) => ({
-      layout: (VALID_LAYOUTS.includes(s.layout) ? s.layout : "bullets") as Layout,
-      title: cleanSlideTitle(String(s.title || mod.title).slice(0, 80), mod.title),
-      label: String(s.label || "CONTEÚDO").slice(0, 25).toUpperCase(),
+      layout: (VALID_LAYOUTS.includes(s.layout)
+        ? s.layout
+        : "bullets") as Layout,
+      title: cleanSlideTitle(
+        String(s.title || mod.title).slice(0, 80),
+        mod.title,
+      ),
+      label: String(s.label || "CONTEÚDO")
+        .slice(0, 25)
+        .toUpperCase(),
       items: Array.isArray(s.items)
         ? s.items.slice(0, 6).map((x: any) => String(x).slice(0, 110))
         : [],
       code: s.code ? String(s.code).slice(0, 1200) : undefined,
       codeLabel: s.codeLabel ? String(s.codeLabel).slice(0, 20) : "Python",
-      leftHeader:  s.leftHeader  ? String(s.leftHeader).slice(0, 40)  : undefined,
-      rightHeader: s.rightHeader ? String(s.rightHeader).slice(0, 40) : undefined,
-      leftItems:  Array.isArray(s.leftItems)  ? s.leftItems.slice(0, 4).map((x: any) => String(x).slice(0, 90))  : undefined,
-      rightItems: Array.isArray(s.rightItems) ? s.rightItems.slice(0, 4).map((x: any) => String(x).slice(0, 90)) : undefined,
+      leftHeader: s.leftHeader ? String(s.leftHeader).slice(0, 40) : undefined,
+      rightHeader: s.rightHeader
+        ? String(s.rightHeader).slice(0, 40)
+        : undefined,
+      leftItems: Array.isArray(s.leftItems)
+        ? s.leftItems.slice(0, 4).map((x: any) => String(x).slice(0, 90))
+        : undefined,
+      rightItems: Array.isArray(s.rightItems)
+        ? s.rightItems.slice(0, 4).map((x: any) => String(x).slice(0, 90))
+        : undefined,
       moduleIndex,
     }));
 
     // Repair empty slides first, then filter out any that are still un-renderable
     return rawSlides
-      .map(s => repairEmptySlide(s, mod.content || ""))
+      .map((s) => repairEmptySlide(s, mod.content || ""))
       .filter(isRenderableSlide);
   } catch (e: any) {
     console.error(`[V4] Module ${moduleIndex + 1} AI error: ${e.message}`);
@@ -1294,19 +1924,25 @@ async function generateModuleSlides(
   }
 }
 
-function fallbackModuleSlides(title: string, content: string, moduleIndex: number, density: string): Slide[] {
+function fallbackModuleSlides(
+  title: string,
+  content: string,
+  moduleIndex: number,
+  density: string,
+): Slide[] {
   // Extract bullets from markdown content
-  const bullets = [
-    ...content.matchAll(/^[-*•]\s+(.+)$/gm)
-  ].map(m => m[1].trim()).filter(b => b.length > 10).slice(0, 12);
+  const bullets = [...content.matchAll(/^[-*•]\s+(.+)$/gm)]
+    .map((m) => m[1].trim())
+    .filter((b) => b.length > 10)
+    .slice(0, 12);
 
   const sentences = content
     .replace(/#{1,6}\s*/g, "")
     .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
     .replace(/[`_\-*•]/g, "")
     .split(/[.!?]\s+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 20 && s.length < 150)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 20 && s.length < 150)
     .slice(0, 12);
 
   const items = bullets.length >= 3 ? bullets : sentences;
@@ -1341,86 +1977,124 @@ function fallbackModuleSlides(title: string, content: string, moduleIndex: numbe
 // SECTION 5.5: PPTX REPAIR
 // ═══════════════════════════════════════════════════════════
 
-async function repairPptxPackage(pptxData: Uint8Array): Promise<{ data: Uint8Array; diag: Record<string, unknown> }> {
+async function repairPptxPackage(
+  pptxData: Uint8Array,
+): Promise<{ data: Uint8Array; diag: Record<string, unknown> }> {
   const zip = await JSZip.loadAsync(pptxData);
   const allFileNames = Object.keys(zip.files);
 
-  const noteFiles = allFileNames.filter((name) =>
-    name.startsWith("ppt/notesSlides/") || name.startsWith("ppt/notesMasters/")
+  const noteFiles = allFileNames.filter(
+    (name) =>
+      name.startsWith("ppt/notesSlides/") ||
+      name.startsWith("ppt/notesMasters/"),
   );
   for (const name of noteFiles) zip.remove(name);
 
   const presentationFile = zip.file("ppt/presentation.xml");
   if (presentationFile) {
     const xml = await presentationFile.async("string");
-    zip.file("ppt/presentation.xml",
-      xml.replace(/<p:notesMasterIdLst>[\s\S]*?<\/p:notesMasterIdLst>/g, "").replace(/\s{2,}/g, " ")
+    zip.file(
+      "ppt/presentation.xml",
+      xml
+        .replace(/<p:notesMasterIdLst>[\s\S]*?<\/p:notesMasterIdLst>/g, "")
+        .replace(/\s{2,}/g, " "),
     );
   }
 
   const presentationRelsFile = zip.file("ppt/_rels/presentation.xml.rels");
   if (presentationRelsFile) {
     const xml = await presentationRelsFile.async("string");
-    zip.file("ppt/_rels/presentation.xml.rels",
-      xml.replace(/<Relationship[^>]*Type="[^"]*\/notesMaster"[^>]*\/>/g, "").replace(/\s{2,}/g, " ")
+    zip.file(
+      "ppt/_rels/presentation.xml.rels",
+      xml
+        .replace(/<Relationship[^>]*Type="[^"]*\/notesMaster"[^>]*\/>/g, "")
+        .replace(/\s{2,}/g, " "),
     );
   }
 
   const viewPropsFile = zip.file("ppt/viewProps.xml");
   if (viewPropsFile) {
     const xml = await viewPropsFile.async("string");
-    zip.file("ppt/viewProps.xml",
-      xml.replace(/<p:notesTextViewPr>[\s\S]*?<\/p:notesTextViewPr>/g, "").replace(/\s{2,}/g, " ")
+    zip.file(
+      "ppt/viewProps.xml",
+      xml
+        .replace(/<p:notesTextViewPr>[\s\S]*?<\/p:notesTextViewPr>/g, "")
+        .replace(/\s{2,}/g, " "),
     );
   }
 
   const appPropsFile = zip.file("docProps/app.xml");
   if (appPropsFile) {
     const xml = await appPropsFile.async("string");
-    zip.file("docProps/app.xml",
-      xml.replace(/<Notes>\d+<\/Notes>/g, "<Notes>0</Notes>").replace(/\s{2,}/g, " ")
+    zip.file(
+      "docProps/app.xml",
+      xml
+        .replace(/<Notes>\d+<\/Notes>/g, "<Notes>0</Notes>")
+        .replace(/\s{2,}/g, " "),
     );
   }
 
-  for (const name of allFileNames.filter((f) => /^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/.test(f))) {
+  for (const name of allFileNames.filter((f) =>
+    /^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/.test(f),
+  )) {
     const f = zip.file(name);
     if (!f) continue;
     const xml = await f.async("string");
-    zip.file(name, xml.replace(/<Relationship[^>]*Type="[^"]*\/notesSlide"[^>]*\/>/g, "").replace(/\s{2,}/g, " "));
+    zip.file(
+      name,
+      xml
+        .replace(/<Relationship[^>]*Type="[^"]*\/notesSlide"[^>]*\/>/g, "")
+        .replace(/\s{2,}/g, " "),
+    );
   }
 
   const refreshedFileNames = new Set(Object.keys(zip.files));
   const contentTypesFile = zip.file("[Content_Types].xml");
   if (!contentTypesFile) {
-    const earlyOut = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
-    return { data: earlyOut, diag: { notes_removed: noteFiles.length, early_return: true } };
+    const earlyOut = await zip.generateAsync({
+      type: "uint8array",
+      compression: "DEFLATE",
+    });
+    return {
+      data: earlyOut,
+      diag: { notes_removed: noteFiles.length, early_return: true },
+    };
   }
 
   const ctXml = await contentTypesFile.async("string");
-  const repairedCt = ctXml.replace(/<Override\b[^>]*PartName="([^"]+)"[^>]*\/>/g, (full, partName) => {
-    const norm = String(partName || "").replace(/^\//, "");
-    return (norm && !refreshedFileNames.has(norm)) ? "" : full;
-  });
+  const repairedCt = ctXml.replace(
+    /<Override\b[^>]*PartName="([^"]+)"[^>]*\/>/g,
+    (full, partName) => {
+      const norm = String(partName || "").replace(/^\//, "");
+      return norm && !refreshedFileNames.has(norm) ? "" : full;
+    },
+  );
   zip.file("[Content_Types].xml", repairedCt);
 
   const finalFileNames = Object.keys(zip.files);
-  const out = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  const out = await zip.generateAsync({
+    type: "uint8array",
+    compression: "DEFLATE",
+  });
 
   // Validate repaired output
   const testZip = await JSZip.loadAsync(out);
-  const testFiles = Object.keys(testZip.files).filter(f => !f.endsWith("/"));
-  const slideFiles = testFiles.filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
-  const ctXmlRepaired = await testZip.file("[Content_Types].xml")?.async("string") ?? "";
+  const testFiles = Object.keys(testZip.files).filter((f) => !f.endsWith("/"));
+  const slideFiles = testFiles.filter((f) =>
+    /^ppt\/slides\/slide\d+\.xml$/.test(f),
+  );
+  const ctXmlRepaired =
+    (await testZip.file("[Content_Types].xml")?.async("string")) ?? "";
 
   return {
     data: out,
     diag: {
-      notes_removed:    noteFiles.length,
-      files_before:     allFileNames.length,
-      files_after:      finalFileNames.length,
-      slide_count:      slideFiles.length,
+      notes_removed: noteFiles.length,
+      files_before: allFileNames.length,
+      files_after: finalFileNames.length,
+      slide_count: slideFiles.length,
       has_presentation: !!testZip.file("ppt/presentation.xml"),
-      content_types:    ctXmlRepaired.slice(0, 1500),
+      content_types: ctXmlRepaired.slice(0, 1500),
     },
   };
 }
@@ -1431,11 +2105,15 @@ async function repairPptxPackage(pptxData: Uint8Array): Promise<{ data: Uint8Arr
 
 // ── TITLE GARBAGE CLEANUP ──
 // Removes generic AI-generated structural titles that add no value
-const GARBAGE_TITLE_RE = /^(m[oó]dulo\s+\d+|objetivo\s+(do\s+)?m[oó]dulo|introdu[cç][aã]o\s+ao\s+m[oó]dulo|vis[aã]o\s+geral\s+do\s+m[oó]dulo|conte[uú]do\s+do\s+m[oó]dulo|overview|introduction|module\s+\d+|fundamentos|conceitos\s+b[aá]sicos)$/i;
+const GARBAGE_TITLE_RE =
+  /^(m[oó]dulo\s+\d+|objetivo\s+(do\s+)?m[oó]dulo|introdu[cç][aã]o\s+ao\s+m[oó]dulo|vis[aã]o\s+geral\s+do\s+m[oó]dulo|conte[uú]do\s+do\s+m[oó]dulo|overview|introduction|module\s+\d+|fundamentos|conceitos\s+b[aá]sicos)$/i;
 
 function cleanSlideTitle(title: string, moduleTitle: string): string {
   const t = title.trim();
-  if (GARBAGE_TITLE_RE.test(t) || t.toLowerCase() === moduleTitle.trim().toLowerCase()) {
+  if (
+    GARBAGE_TITLE_RE.test(t) ||
+    t.toLowerCase() === moduleTitle.trim().toLowerCase()
+  ) {
     // Try to form a more specific title from the module title
     return moduleTitle.slice(0, 60);
   }
@@ -1448,11 +2126,13 @@ const VARIETY_SWAPPABLE: Layout[] = ["bullets", "twocol"];
 
 function applyLayoutVariety(slides: Slide[]): Slide[] {
   const out: Slide[] = [...slides];
-  for (let i = 2; i < out.length - 1; i++) { // skip last (takeaways)
-    const cur   = out[i].layout;
+  for (let i = 2; i < out.length - 1; i++) {
+    // skip last (takeaways)
+    const cur = out[i].layout;
     const prev1 = out[i - 1].layout;
     const prev2 = out[i - 2].layout;
-    if (!VARIETY_SWAPPABLE.includes(cur) || cur !== prev1 || cur !== prev2) continue;
+    if (!VARIETY_SWAPPABLE.includes(cur) || cur !== prev1 || cur !== prev2)
+      continue;
 
     const items = out[i].items || [];
     if (cur === "bullets") {
@@ -1474,18 +2154,28 @@ function applyLayoutVariety(slides: Slide[]): Slide[] {
 
 // ── CONTENT VALIDATION & REPAIR ──
 // Layouts that are self-sufficient (no items/code required)
-const SELF_SUFFICIENT_LAYOUTS: Layout[] = ["cover", "toc", "module_cover", "closing"];
+const SELF_SUFFICIENT_LAYOUTS: Layout[] = [
+  "cover",
+  "toc",
+  "module_cover",
+  "closing",
+];
 
 function isRenderableSlide(s: Slide): boolean {
   if (!s.title?.trim()) return false;
   if (SELF_SUFFICIENT_LAYOUTS.includes(s.layout)) return true;
   if (s.layout === "comparison") {
-    const hasLeft  = Array.isArray(s.leftItems)  && s.leftItems.some(i => i.trim().length > 0);
-    const hasRight = Array.isArray(s.rightItems) && s.rightItems.some(i => i.trim().length > 0);
+    const hasLeft =
+      Array.isArray(s.leftItems) &&
+      s.leftItems.some((i) => i.trim().length > 0);
+    const hasRight =
+      Array.isArray(s.rightItems) &&
+      s.rightItems.some((i) => i.trim().length > 0);
     return hasLeft || hasRight;
   }
-  const hasItems = Array.isArray(s.items) && s.items.some(i => i.trim().length > 0);
-  const hasCode  = typeof s.code === "string" && s.code.trim().length > 0;
+  const hasItems =
+    Array.isArray(s.items) && s.items.some((i) => i.trim().length > 0);
+  const hasCode = typeof s.code === "string" && s.code.trim().length > 0;
   return hasItems || hasCode;
 }
 
@@ -1493,17 +2183,17 @@ function repairEmptySlide(s: Slide, moduleContent: string): Slide {
   if (isRenderableSlide(s)) return s;
 
   // Extract fallback bullets from module content
-  const bullets = [
-    ...(moduleContent || "").matchAll(/^[-*•]\s+(.+)$/gm),
-  ].map(m => m[1].replace(/\*{1,2}/g, "").trim()).filter(b => b.length >= 15 && b.length <= 90);
+  const bullets = [...(moduleContent || "").matchAll(/^[-*•]\s+(.+)$/gm)]
+    .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
+    .filter((b) => b.length >= 15 && b.length <= 90);
 
   const sentences = (moduleContent || "")
     .replace(/#{1,6}\s*/g, "")
     .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
     .replace(/[`_]/g, "")
     .split(/[.!?]\s+/)
-    .map(s => s.trim())
-    .filter(s => s.length >= 20 && s.length <= 90)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 20 && s.length <= 90)
     .slice(0, 6);
 
   const pool = bullets.length >= 2 ? bullets : sentences;
@@ -1511,7 +2201,9 @@ function repairEmptySlide(s: Slide, moduleContent: string): Slide {
 
   if (repaired.length === 0) return s; // Can't repair, will be filtered out
 
-  console.warn(`[V4] Repaired empty slide: "${s.title}" → injected ${repaired.length} fallback bullets`);
+  console.warn(
+    `[V4] Repaired empty slide: "${s.title}" → injected ${repaired.length} fallback bullets`,
+  );
   return { ...s, layout: "bullets", items: repaired };
 }
 
@@ -1524,13 +2216,20 @@ const CODE_MAX_ITEMS_WITH_CODE = 3;
 function splitOverflowSlides(slides: Slide[]): Slide[] {
   const out: Slide[] = [];
   for (const s of slides) {
-    if (s.layout !== "code") { out.push(s); continue; }
+    if (s.layout !== "code") {
+      out.push(s);
+      continue;
+    }
 
     const lines = (s.code || "").split("\n");
     const items = s.items || [];
-    const needsSplit = items.length > CODE_MAX_ITEMS_WITH_CODE || lines.length > CODE_MAX_LINES;
+    const needsSplit =
+      items.length > CODE_MAX_ITEMS_WITH_CODE || lines.length > CODE_MAX_LINES;
 
-    if (!needsSplit) { out.push(s); continue; }
+    if (!needsSplit) {
+      out.push(s);
+      continue;
+    }
 
     // Slide A — explanation only (bullets)
     if (items.length > 0) {
@@ -1560,23 +2259,26 @@ function splitOverflowSlides(slides: Slide[]): Slide[] {
 function extractCompetencies(content: string): string[] {
   // Try bullet points first
   const bullets = [...content.matchAll(/^[-*•]\s+(.+)$/gm)]
-    .map(m => m[1].replace(/\*{1,2}/g, "").trim())
-    .filter(b => b.length >= 12 && b.length <= 80)
+    .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
+    .filter((b) => b.length >= 12 && b.length <= 80)
     .slice(0, 3);
   if (bullets.length >= 2) return bullets;
 
   // Fallback: sub-headings
   const headings = [...content.matchAll(/^#{2,4}\s+(.+)$/gm)]
-    .map(m => m[1].trim())
-    .filter(h => h.length >= 10 && h.length <= 70)
+    .map((m) => m[1].trim())
+    .filter((h) => h.length >= 10 && h.length <= 70)
     .slice(0, 3);
   if (headings.length >= 2) return headings;
 
   // Fallback: first short sentences
   return content
-    .replace(/#{1,6}\s*/g, "").replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1").replace(/[`_]/g, "")
-    .split(/[.!?\n]+/).map(s => s.trim())
-    .filter(s => s.length >= 12 && s.length <= 70)
+    .replace(/#{1,6}\s*/g, "")
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+    .replace(/[`_]/g, "")
+    .split(/[.!?\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 12 && s.length <= 70)
     .slice(0, 3);
 }
 
@@ -1596,41 +2298,75 @@ async function runPipeline(
   // Generate all module slides (sequential to avoid rate limits)
   const allModuleSlides: Slide[][] = [];
   for (let i = 0; i < modules.length; i++) {
-    console.log(`[V4] Generating slides for module ${i + 1}/${modules.length}: "${modules[i].title}"`);
-    const rawSlides = await generateModuleSlides(courseTitle, modules[i], i, density, language, geminiKey);
+    console.log(
+      `[V4] Generating slides for module ${i + 1}/${modules.length}: "${modules[i].title}"`,
+    );
+    const rawSlides = await generateModuleSlides(
+      courseTitle,
+      modules[i],
+      i,
+      density,
+      language,
+      geminiKey,
+    );
     const splitSlides = splitOverflowSlides(rawSlides);
     const variedSlides = applyLayoutVariety(splitSlides);
-    console.log(`[V4] Module ${i + 1}: ${rawSlides.length} raw → ${splitSlides.length} split → ${variedSlides.length} final`);
+    console.log(
+      `[V4] Module ${i + 1}: ${rawSlides.length} raw → ${splitSlides.length} split → ${variedSlides.length} final`,
+    );
     allModuleSlides.push(variedSlides);
   }
 
   // Count total slides for footer
-  const contentSlideCount = allModuleSlides.reduce((s, m) => s + m.length + 1, 0); // +1 per module cover
+  const contentSlideCount = allModuleSlides.reduce(
+    (s, m) => s + m.length + 1,
+    0,
+  ); // +1 per module cover
   const totalSlides = 1 + 1 + contentSlideCount + 1; // cover + toc + modules + closing
   let slideNum = 0;
 
   // Cover
-  renderCover(pptx, {
-    layout: "cover",
-    title: courseTitle,
-    subtitle: "CURSO COMPLETO",
-  }, design, totalSlides);
+  renderCover(
+    pptx,
+    {
+      layout: "cover",
+      title: courseTitle,
+      subtitle: "CURSO COMPLETO",
+    },
+    design,
+    totalSlides,
+  );
   slideNum++;
 
   // TOC
-  renderTOC(pptx, { layout: "toc", title: "Conteúdo" }, design, ++slideNum, totalSlides, modules);
+  renderTOC(
+    pptx,
+    { layout: "toc", title: "Conteúdo" },
+    design,
+    ++slideNum,
+    totalSlides,
+    modules,
+  );
 
   // Modules
   for (let i = 0; i < modules.length; i++) {
-    const cleanTitle = modules[i].title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || modules[i].title;
+    const cleanTitle =
+      modules[i].title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() ||
+      modules[i].title;
 
     // Module cover with competencies extracted from content
-    renderModuleCover(pptx, {
-      layout: "module_cover",
-      title: cleanTitle,
-      moduleIndex: i,
-      competencies: extractCompetencies(modules[i].content),
-    }, design, ++slideNum, totalSlides);
+    renderModuleCover(
+      pptx,
+      {
+        layout: "module_cover",
+        title: cleanTitle,
+        moduleIndex: i,
+        competencies: extractCompetencies(modules[i].content),
+      },
+      design,
+      ++slideNum,
+      totalSlides,
+    );
 
     // Content slides — final safety net: filter un-renderable before hitting any renderer
     for (const s of allModuleSlides[i].filter(isRenderableSlide)) {
@@ -1663,16 +2399,22 @@ async function runPipeline(
   }
 
   // Closing with contextual next steps
-  renderClosing(pptx, {
-    layout: "closing",
-    title: courseTitle,
-    items: [
-      `Aplique o conteúdo de ${san(courseTitle)} em um projeto real`,
-      "Explore a documentação oficial e recursos avançados",
-      "Construa um portfólio com os projetos deste curso",
-      "Compartilhe seu progresso com a comunidade",
-    ],
-  }, design, ++slideNum, totalSlides);
+  renderClosing(
+    pptx,
+    {
+      layout: "closing",
+      title: courseTitle,
+      items: [
+        `Aplique o conteúdo de ${san(courseTitle)} em um projeto real`,
+        "Explore a documentação oficial e recursos avançados",
+        "Construa um portfólio com os projetos deste curso",
+        "Compartilhe seu progresso com a comunidade",
+      ],
+    },
+    design,
+    ++slideNum,
+    totalSlides,
+  );
 
   console.log(`[V4] Pipeline complete: ${slideNum} slides`);
   return pptx;
@@ -1691,29 +2433,36 @@ Deno.serve(async (req: Request) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Not authenticated" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
     if (!geminiKey) {
-      return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "GEMINI_API_KEY not configured" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey    = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
     const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await userClient.auth.getUser(token);
+    const { data: claimsData, error: claimsError } =
+      await userClient.auth.getUser(token);
     if (claimsError || !claimsData?.user) {
       return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const userId = claimsData.user.id;
@@ -1721,41 +2470,52 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const {
       course_id,
-      palette     = "default",
-      density     = "standard",
-      theme       = "light",
-      template    = "modern",
+      palette = "default",
+      density = "standard",
+      theme = "light",
+      template = "modern",
       includeImages = false,
-      courseType  = "CURSO COMPLETO",
+      courseType = "CURSO COMPLETO",
       footerBrand = "EduGenAI",
-      language    = "Português (Brasil)",
+      language = "Português (Brasil)",
     } = body;
 
     if (!course_id) {
       return new Response(JSON.stringify({ error: "course_id required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
     const { data: course, error: courseErr } = await serviceClient
-      .from("courses").select("*")
-      .eq("id", course_id).eq("user_id", userId).single();
+      .from("courses")
+      .select("*")
+      .eq("id", course_id)
+      .eq("user_id", userId)
+      .single();
     if (courseErr || !course) {
       return new Response(JSON.stringify({ error: "Course not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (course.status !== "published") {
-      return new Response(JSON.stringify({ error: "Course must be published to export." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Course must be published to export." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const { data: modules = [] } = await serviceClient
-      .from("course_modules").select("*")
-      .eq("course_id", course_id).order("order_index");
+      .from("course_modules")
+      .select("*")
+      .eq("course_id", course_id)
+      .order("order_index");
 
     const design = buildDesign(
       theme === "dark" ? "dark" : "light",
@@ -1765,45 +2525,72 @@ Deno.serve(async (req: Request) => {
     );
 
     const courseTitle = (course.title || "Curso").trim();
-    const moduleData  = (modules as any[]).map((m) => ({
-      title:   (m.title || "").trim(),
+    const moduleData = (modules as any[]).map((m) => ({
+      title: (m.title || "").trim(),
       content: (m.content || "").trim(),
     }));
 
-    console.log(`[V4] ENGINE=${ENGINE_VERSION} | "${courseTitle}" | ${moduleData.length} modules | theme=${theme} | density=${density}`);
+    console.log(
+      `[V4] ENGINE=${ENGINE_VERSION} | "${courseTitle}" | ${moduleData.length} modules | theme=${theme} | density=${density}`,
+    );
 
-    const pptx = await runPipeline(courseTitle, moduleData, design, density, language, geminiKey);
+    const pptx = await runPipeline(
+      courseTitle,
+      moduleData,
+      design,
+      density,
+      language,
+      geminiKey,
+    );
 
-    const rawData  = await pptx.write({ outputType: "uint8array" });
+    const rawData = await pptx.write({ outputType: "uint8array" });
     const rawBytes = rawData as Uint8Array;
-    console.log(`[V4-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]}`);
+    console.log(
+      `[V4-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]}`,
+    );
     const repairResult = await repairPptxPackage(rawBytes);
     const pptxData = repairResult.data;
     const repairDiag = repairResult.diag;
-    console.log(`[V4-WRITE] repaired_bytes=${pptxData.byteLength} slides=${repairDiag.slide_count}`);
+    console.log(
+      `[V4-WRITE] repaired_bytes=${pptxData.byteLength} slides=${repairDiag.slide_count}`,
+    );
 
-    const dateStr  = new Date().toISOString().slice(0, 10);
-    const ts       = Math.floor(Date.now() / 1000);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const ts = Math.floor(Date.now() / 1000);
     const safeName = courseTitle
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().substring(0, 80);
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9\s\-]/g, "")
+      .replace(/\s+/g, "-")
+      .trim()
+      .substring(0, 80);
     const fileName = `${userId}/${safeName}-PPTX-v4-${dateStr}-${ts}.pptx`;
 
     // Upload with retry
     let uploadErr: any = null;
     for (let attempt = 1; attempt <= 4; attempt++) {
-      const { error } = await serviceClient.storage.from("course-exports").upload(fileName, pptxData, {
-        contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        upsert: true,
-      });
-      if (!error) { uploadErr = null; break; }
+      const { error } = await serviceClient.storage
+        .from("course-exports")
+        .upload(fileName, pptxData, {
+          contentType:
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          upsert: true,
+        });
+      if (!error) {
+        uploadErr = null;
+        break;
+      }
       uploadErr = error;
-      if (attempt < 4) await new Promise(r => setTimeout(r, Math.min(2000 * 2 ** (attempt - 1), 15000)));
+      if (attempt < 4)
+        await new Promise((r) =>
+          setTimeout(r, Math.min(2000 * 2 ** (attempt - 1), 15000)),
+        );
     }
     if (uploadErr) throw uploadErr;
 
     const { data: signedUrl, error: signErr } = await serviceClient.storage
-      .from("course-exports").createSignedUrl(fileName, 3600);
+      .from("course-exports")
+      .createSignedUrl(fileName, 3600);
     if (signErr) throw signErr;
 
     try {
@@ -1812,27 +2599,38 @@ Deno.serve(async (req: Request) => {
         event_type: "COURSE_EXPORTED_PPTX_V4",
         metadata: { course_id, modules: moduleData.length },
       });
-    } catch { /* non-critical */ }
+    } catch {
+      /* non-critical */
+    }
 
     return new Response(
       JSON.stringify({
-        url:            signedUrl.signedUrl,
-        version:        "v4",
+        url: signedUrl.signedUrl,
+        version: "v4",
         engine_version: ENGINE_VERSION,
-        slide_count:    moduleData.length * (density === "compact" ? 5 : density === "detailed" ? 8 : 6) + 3,
+        slide_count:
+          moduleData.length *
+            (density === "compact" ? 5 : density === "detailed" ? 8 : 6) +
+          3,
         _diag: {
-          raw_bytes:      rawBytes.byteLength,
+          raw_bytes: rawBytes.byteLength,
           repaired_bytes: pptxData.byteLength,
           ...repairDiag,
         },
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
-
   } catch (error: any) {
     console.error("[V4] Export error:", error);
-    return new Response(JSON.stringify({ error: error.message || "Internal server error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: error.message || "Internal server error" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });
