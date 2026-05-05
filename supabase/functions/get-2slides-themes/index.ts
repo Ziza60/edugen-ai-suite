@@ -8,15 +8,15 @@ const corsHeaders = {
 };
 
 const COURSE_TYPE_QUERY: Record<string, string> = {
-  "CURSO COMPLETO":         "educação",
-  "TREINAMENTO":            "treinamento",
-  "WORKSHOP":               "criativo",
-  "WEBINAR":                "moderno",
-  "MINI-CURSO":             "educação",
-  "TRILHA DE APRENDIZAGEM": "profissional",
-  "MÓDULO":                 "educação",
+  "CURSO COMPLETO":         "education",
+  "TREINAMENTO":            "training",
+  "WORKSHOP":               "creative",
+  "WEBINAR":                "modern",
+  "MINI-CURSO":             "education",
+  "TRILHA DE APRENDIZAGEM": "professional",
+  "MÓDULO":                 "education",
 };
-const DEFAULT_QUERY = "educação";
+const DEFAULT_QUERY = "education";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -58,23 +58,43 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[GET-2SLIDES-THEMES] courseType="${courseType}" → query="${query}" limit=${limit}`);
 
-    const res = await fetch(
-      `https://2slides.com/api/v1/themes/search?query=${encodeURIComponent(query)}&limit=${limit}`,
-      { headers: { "Authorization": `Bearer ${twoSlidesKey}` } },
-    );
+    // Normaliza qualquer formato de resposta da API 2Slides para um array
+    const extractThemes = (raw: any): any[] => {
+      if (Array.isArray(raw))               return raw;
+      if (Array.isArray(raw?.themes?.themes)) return raw.themes.themes;
+      if (Array.isArray(raw?.themes))        return raw.themes;
+      if (Array.isArray(raw?.data))          return raw.data;
+      return [];
+    };
 
-    if (!res.ok) {
-      console.warn(`[GET-2SLIDES-THEMES] API error: ${res.status}`);
-      return new Response(JSON.stringify({ error: "TWOSLIDES_SEARCH_FAILED", status: res.status }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Tenta sequencialmente: query principal → fallbacks → listagem geral
+    const fallbackQueries = [query, "business", "corporate", "modern"];
+    const fallbackUrls    = [
+      ...fallbackQueries.map(q =>
+        `https://2slides.com/api/v1/themes/search?query=${encodeURIComponent(q)}&limit=${limit}`
+      ),
+      `https://2slides.com/api/v1/themes?limit=${limit}`,
+    ];
+
+    let themes: any[] = [];
+    let usedUrl = "";
+
+    for (const url of fallbackUrls) {
+      const res = await fetch(url, {
+        headers: { "Authorization": `Bearer ${twoSlidesKey}` },
       });
+      console.log(`[GET-2SLIDES-THEMES] GET ${url} → ${res.status}`);
+      if (!res.ok) continue;
+      const raw = await res.json();
+      console.log(`[GET-2SLIDES-THEMES] Raw:`, JSON.stringify(raw).slice(0, 400));
+      themes = extractThemes(raw);
+      usedUrl = url;
+      if (themes.length > 0) break;
     }
 
-    const data = await res.json();
-    const themes = data?.themes ?? data?.data ?? (Array.isArray(data) ? data : []);
-    console.log(`[GET-2SLIDES-THEMES] Found ${themes.length} themes`);
+    console.log(`[GET-2SLIDES-THEMES] Final: ${themes.length} themes from ${usedUrl}`);
 
-    return new Response(JSON.stringify({ themes, query }), {
+    return new Response(JSON.stringify({ themes, query, total: themes.length }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 

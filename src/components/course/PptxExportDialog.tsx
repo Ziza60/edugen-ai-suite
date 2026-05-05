@@ -274,13 +274,16 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
           },
         });
         const data = await res.json();
+        console.log("[2SLIDES-THEMES] response status:", res.status, "data:", JSON.stringify(data));
         if (data?.themes?.length) {
           setTwoSlidesThemes(data.themes);
           setTwoSlidesTheme(data.themes[0].id);
         } else {
+          console.warn("[2SLIDES-THEMES] No themes in response:", data);
           setThemesError(true);
         }
-      } catch {
+      } catch (err) {
+        console.error("[2SLIDES-THEMES] fetch error:", err);
         setThemesError(true);
       } finally {
         setLoadingThemes(false);
