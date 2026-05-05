@@ -376,47 +376,23 @@ Deno.serve(async (req: Request) => {
       courseType,
     );
 
-    // ── Decidir endpoint e parâmetros ──────────────────────────────────────
-    // Se REFERENCE_IMAGE_URL estiver configurado → create-like-this (replica design EduGenAI)
-    // Caso contrário → generate com tema buscado dinamicamente por courseType
-    let endpoint: string;
-    let requestBody: Record<string, unknown>;
+    // ── Sempre usar endpoint /slides/generate (gera PPTX válido) ──────────
+    // O endpoint create-like-this retorna PDF por padrão — não usar.
+    // themeId: usar o fornecido pelo frontend; se ausente, tentar busca dinâmica;
+    // se ainda ausente, usar fallback hardcoded (tema comprovadamente funcional).
+    const FALLBACK_THEME_IDS = ["blue-gradient", "blue-modern", "dark-pro", "training-orange"];
+    const resolvedThemeId = bodyThemeId
+      || await searchThemeId(twoSlidesKey, courseType)
+      || FALLBACK_THEME_IDS[0];
 
-    if (REFERENCE_IMAGE_URL) {
-      // Endpoint: POST /api/v1/slides/create-like-this
-      // Replica o estilo visual da imagem de referência (template premium navy+âmbar)
-      endpoint = `${TWOSLIDES_BASE_URL}/slides/create-like-this`;
-      requestBody = {
-        userInput,
-        referenceImageUrl: REFERENCE_IMAGE_URL,
-        responseLanguage: language,
-        outputFormat: "pptx",
-        mode: "async",
-      };
-      console.log(`[2SLIDES] Mode: create-like-this | ref=${REFERENCE_IMAGE_URL}`);
-    } else {
-      // Fallback: POST /api/v1/slides/generate
-      // Usar o themeId passado pelo frontend; se ausente, buscar dinamicamente
-      const themeId = bodyThemeId || await searchThemeId(twoSlidesKey, courseType);
-      if (!themeId) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "TWOSLIDES_THEME_NOT_FOUND",
-            detail: `Nenhum tema encontrado para courseType="${courseType}". Configure EDUGENAI_REFERENCE_IMAGE_URL ou verifique a API key.`,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-      endpoint = `${TWOSLIDES_BASE_URL}/slides/generate`;
-      requestBody = {
-        userInput,
-        themeId,
-        responseLanguage: language,
-        mode: "async",
-      };
-      console.log(`[2SLIDES] Mode: generate | themeId=${themeId} | courseType=${courseType}`);
-    }
+    const endpoint = `${TWOSLIDES_BASE_URL}/slides/generate`;
+    const requestBody: Record<string, unknown> = {
+      userInput,
+      themeId: resolvedThemeId,
+      responseLanguage: language,
+      mode: "async",
+    };
+    console.log(`[2SLIDES] Mode: generate | themeId=${resolvedThemeId} | courseType=${courseType}`);
 
     // ── Chamar API 2Slides (async) ─────────────────────────────────────────
     const t0 = Date.now();
