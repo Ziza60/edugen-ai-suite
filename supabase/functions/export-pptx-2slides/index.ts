@@ -141,10 +141,12 @@ function buildUserInput(
   lines.push("");
 
   // ── 3. Module sections with sub-sections ─────────────────────────
-  // Character budget: 9000 total / modules / sections to keep under limit
-  const maxSubSections = modules.length <= 4 ? 4 : modules.length <= 6 ? 3 : 2;
-  const maxBullets     = modules.length <= 4 ? 4 : 3;
-  const maxBulletLen   = modules.length <= 5 ? 140 : 110;
+  // Budget per module: ~1200 chars each → 3 sub-sections × 3 bullets × ~100 chars
+  // Always use 3 sub-sections minimum so the API generates enough slides.
+  // For courses with ≤4 modules we go up to 4 sub-sections for richer content.
+  const maxSubSections = modules.length <= 4 ? 4 : 3;
+  const maxBullets     = 3;
+  const maxBulletLen   = 120;
 
   for (let i = 0; i < modules.length; i++) {
     const m = modules[i];
@@ -152,7 +154,7 @@ function buildUserInput(
 
     const subSections = extractSubSections(m.content || "", maxSubSections, maxBullets, maxBulletLen);
 
-    if (subSections.length > 0) {
+    if (subSections.length >= 2) {
       for (const sub of subSections) {
         lines.push(`### ${sub.title}`);
         for (const bullet of sub.bullets) {
@@ -161,9 +163,17 @@ function buildUserInput(
         lines.push("");
       }
     } else {
-      // Minimal fallback
-      lines.push(`- Conceitos essenciais de ${m.title}`);
-      lines.push("");
+      // Synthetic fallback — guarantee 3 sub-sections so the API generates real slides
+      const synth = [
+        { h: `Fundamentos de ${m.title}`,   bullets: ["Conceitos e definições essenciais da área", "Contexto e importância no ambiente profissional", "Principais termos e abordagens utilizados"] },
+        { h: `Aplicação Prática`,            bullets: ["Metodologias e ferramentas aplicadas no dia a dia", "Exemplos reais e casos de uso da área", "Boas práticas e erros comuns a evitar"] },
+        { h: `Resultados e Próximos Passos`, bullets: ["Indicadores de sucesso e métricas de avaliação", "Como consolidar e aprofundar o aprendizado", "Conexão deste módulo com o restante do curso"] },
+      ];
+      for (const s of synth) {
+        lines.push(`### ${s.h}`);
+        for (const b of s.bullets) lines.push(`- ${b}`);
+        lines.push("");
+      }
     }
   }
 
@@ -180,7 +190,7 @@ function buildUserInput(
   lines.push("- Explore os próximos cursos da trilha de aprendizado");
   lines.push("");
 
-  return truncate(lines.join("\n"), 10000);
+  return truncate(lines.join("\n"), 14000);
 }
 
 // ── Main handler ─────────────────────────────────────────────────────
