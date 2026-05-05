@@ -60,39 +60,28 @@ Deno.serve(async (req: Request) => {
 
     // Normaliza qualquer formato de resposta da API 2Slides para um array
     const extractThemes = (raw: any): any[] => {
-      if (Array.isArray(raw))               return raw;
+      if (Array.isArray(raw))                 return raw;
       if (Array.isArray(raw?.themes?.themes)) return raw.themes.themes;
-      if (Array.isArray(raw?.themes))        return raw.themes;
-      if (Array.isArray(raw?.data))          return raw.data;
+      if (Array.isArray(raw?.themes))         return raw.themes;
+      if (Array.isArray(raw?.data))           return raw.data;
       return [];
     };
 
-    // Tenta sequencialmente: query principal → fallbacks → listagem geral
-    const fallbackQueries = [query, "business", "corporate", "modern"];
-    const fallbackUrls    = [
-      ...fallbackQueries.map(q =>
-        `https://2slides.com/api/v1/themes/search?query=${encodeURIComponent(q)}&limit=${limit}`
-      ),
-      `https://2slides.com/api/v1/themes?limit=${limit}`,
-    ];
+    // Uma única chamada com a query mapeada; se vazia retorna [] imediatamente
+    const searchUrl = `https://2slides.com/api/v1/themes/search?query=${encodeURIComponent(query)}&limit=${limit}`;
+    const res = await fetch(searchUrl, {
+      headers: { "Authorization": `Bearer ${twoSlidesKey}` },
+    });
+    console.log(`[GET-2SLIDES-THEMES] GET ${searchUrl} → ${res.status}`);
 
     let themes: any[] = [];
-    let usedUrl = "";
-
-    for (const url of fallbackUrls) {
-      const res = await fetch(url, {
-        headers: { "Authorization": `Bearer ${twoSlidesKey}` },
-      });
-      console.log(`[GET-2SLIDES-THEMES] GET ${url} → ${res.status}`);
-      if (!res.ok) continue;
+    if (res.ok) {
       const raw = await res.json();
-      console.log(`[GET-2SLIDES-THEMES] Raw:`, JSON.stringify(raw).slice(0, 400));
+      console.log(`[GET-2SLIDES-THEMES] Raw:`, JSON.stringify(raw).slice(0, 500));
       themes = extractThemes(raw);
-      usedUrl = url;
-      if (themes.length > 0) break;
     }
 
-    console.log(`[GET-2SLIDES-THEMES] Final: ${themes.length} themes from ${usedUrl}`);
+    console.log(`[GET-2SLIDES-THEMES] Final: ${themes.length} themes`);
 
     return new Response(JSON.stringify({ themes, query, total: themes.length }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },

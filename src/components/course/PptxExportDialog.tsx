@@ -517,10 +517,11 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
                   </div>
                 )}
 
-                {/* Erro */}
-                {!loadingThemes && themesError && (
-                  <div className="text-xs text-destructive py-2 pl-1">
-                    Não foi possível carregar os temas. Verifique sua chave de API do 2Slides.
+                {/* Sem temas disponíveis — estilo via imagem de referência */}
+                {!loadingThemes && (themesError || twoSlidesThemes.length === 0) && (
+                  <div className="flex items-start gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2.5 text-xs text-sky-300">
+                    <Check className="h-3.5 w-3.5 mt-0.5 shrink-0 text-sky-400" />
+                    <span>Estilo visual aplicado automaticamente via template de referência EduGenAI — nenhuma seleção necessária.</span>
                   </div>
                 )}
 
