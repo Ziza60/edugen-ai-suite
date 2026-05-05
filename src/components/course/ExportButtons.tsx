@@ -333,7 +333,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                   const res2s = await supabase.functions.invoke("export-pptx-2slides", {
                     body: {
                       course_id:   courseId,
-                      theme_key:   options.twoSlidesTheme || "blue-gradient",
+                      themeId:     options.twoSlidesTheme || "",
                       language:    "Portuguese",
                       courseType:  options.courseType || "CURSO COMPLETO",
                     },

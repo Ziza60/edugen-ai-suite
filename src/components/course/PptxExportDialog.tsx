@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -7,6 +8,15 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Loader2, Presentation, ImageOff, Info, Check } from "lucide-react";
+
+// ── 2Slides theme type (retornado pela API) ────────────────────────
+interface TwoSlidesTheme {
+  id: string;
+  name: string;
+  thumbnailUrl?: string;
+  previewUrl?: string;
+  tags?: string[];
+}
 
 // ── Exported options type ──────────────────────────────────────────
 export interface PptxExportOptions {
@@ -237,7 +247,48 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [useMagicSlides, setUseMagicSlides]           = useState(false);
   const [use2Slides, setUse2Slides]                   = useState(false);
   const [usePresenton, setUsePresenton]               = useState(false);
-  const [twoSlidesTheme, setTwoSlidesTheme]           = useState("blue-gradient");
+  const [twoSlidesTheme, setTwoSlidesTheme]           = useState("");
+  const [twoSlidesThemes, setTwoSlidesThemes]         = useState<TwoSlidesTheme[]>([]);
+  const [loadingThemes, setLoadingThemes]             = useState(false);
+  const [themesError, setThemesError]                 = useState(false);
+
+  // Buscar temas do 2Slides quando o painel for ativado ou courseType mudar
+  useEffect(() => {
+    if (!use2Slides) return;
+
+    setLoadingThemes(true);
+    setThemesError(false);
+    setTwoSlidesThemes([]);
+    setTwoSlidesTheme("");
+
+    const fetchThemes = async () => {
+      try {
+        const session = (await supabase.auth.getSession()).data.session;
+        if (!session?.access_token) throw new Error("Sessão expirada");
+
+        const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-2slides-themes?courseType=${encodeURIComponent(courseType)}&limit=12`;
+        const res = await fetch(fnUrl, {
+          headers: {
+            "Authorization": `Bearer ${session.access_token}`,
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+        });
+        const data = await res.json();
+        if (data?.themes?.length) {
+          setTwoSlidesThemes(data.themes);
+          setTwoSlidesTheme(data.themes[0].id);
+        } else {
+          setThemesError(true);
+        }
+      } catch {
+        setThemesError(true);
+      } finally {
+        setLoadingThemes(false);
+      }
+    };
+
+    fetchThemes();
+  }, [use2Slides, courseType]);
 
   const selectedTpl = VISUAL_TEMPLATES[template] || VISUAL_TEMPLATES.modern;
   const theme = selectedTpl.theme;
@@ -454,32 +505,69 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
             {use2Slides && (
               <div className="space-y-1.5 pt-1">
                 <Label className="text-xs text-muted-foreground">Tema Visual</Label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {[
-                    { key: "blue-gradient",   label: "Azul Gradiente",     desc: "Moderno • Claro",     color: "#3B82F6" },
-                    { key: "blue-modern",     label: "Azul Moderno",       desc: "Limpo • Claro",       color: "#2563EB" },
-                    { key: "dark-pro",        label: "Profissional Dark",  desc: "Elegante • Escuro",   color: "#374151" },
-                    { key: "training-orange", label: "Treinamento",        desc: "Energético • Claro",  color: "#F97316" },
-                  ].map(({ key, label, desc, color }) => (
-                    <button
-                      key={key}
-                      data-testid={`theme-2slides-${key}`}
-                      onClick={() => setTwoSlidesTheme(key)}
-                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition-all text-xs ${
-                        twoSlidesTheme === key
-                          ? "border-sky-500 bg-sky-500/10"
-                          : "border-border hover:border-sky-500/40"
-                      }`}
-                    >
-                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                      <div>
-                        <p className="font-medium leading-tight">{label}</p>
-                        <p className="text-muted-foreground leading-tight">{desc}</p>
-                      </div>
-                      {twoSlidesTheme === key && <Check className="h-3 w-3 text-sky-400 ml-auto shrink-0" />}
-                    </button>
-                  ))}
-                </div>
+
+                {/* Loading */}
+                {loadingThemes && (
+                  <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Buscando temas disponíveis...
+                  </div>
+                )}
+
+                {/* Erro */}
+                {!loadingThemes && themesError && (
+                  <div className="text-xs text-destructive py-2 pl-1">
+                    Não foi possível carregar os temas. Verifique sua chave de API do 2Slides.
+                  </div>
+                )}
+
+                {/* Grid de temas dinâmicos */}
+                {!loadingThemes && twoSlidesThemes.length > 0 && (
+                  <div className="grid grid-cols-2 gap-1.5 max-h-64 overflow-y-auto pr-1">
+                    {twoSlidesThemes.map((t) => {
+                      const thumb = t.thumbnailUrl || t.previewUrl;
+                      const selected = twoSlidesTheme === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          data-testid={`theme-2slides-${t.id}`}
+                          onClick={() => setTwoSlidesTheme(t.id)}
+                          className={`relative flex flex-col rounded-lg border-2 overflow-hidden text-left transition-all ${
+                            selected
+                              ? "border-sky-500 shadow-sm shadow-sky-500/20"
+                              : "border-border hover:border-sky-500/40"
+                          }`}
+                        >
+                          {thumb ? (
+                            <img
+                              src={thumb}
+                              alt={t.name}
+                              className="w-full h-16 object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-16 bg-muted flex items-center justify-center">
+                              <span className="text-[10px] text-muted-foreground">Preview</span>
+                            </div>
+                          )}
+                          <div className={`px-2 py-1.5 ${selected ? "bg-sky-500/10" : "bg-card"}`}>
+                            <p className="text-[11px] font-medium leading-tight truncate">{t.name}</p>
+                            {t.tags && t.tags.length > 0 && (
+                              <p className="text-[10px] text-muted-foreground leading-tight truncate">
+                                {t.tags.slice(0, 2).join(" • ")}
+                              </p>
+                            )}
+                          </div>
+                          {selected && (
+                            <div className="absolute top-1.5 left-1.5 bg-sky-500 rounded-full p-0.5">
+                              <Check className="h-2.5 w-2.5 text-white" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <p className="text-[10px] text-muted-foreground pt-0.5 pl-0.5">
                   💡 10 créditos por slide — novo signup inclui 880 créditos grátis
                 </p>

@@ -340,7 +340,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { course_id, language = "Portuguese", courseType = "CURSO COMPLETO" } = body;
+    const { course_id, language = "Portuguese", courseType = "CURSO COMPLETO", themeId: bodyThemeId } = body;
     if (!course_id) {
       return new Response(
         JSON.stringify({ error: "course_id required" }),
@@ -394,8 +394,9 @@ Deno.serve(async (req: Request) => {
       };
       console.log(`[2SLIDES] Mode: create-like-this | ref=${REFERENCE_IMAGE_URL}`);
     } else {
-      // Fallback: POST /api/v1/slides/generate com tema buscado dinamicamente
-      const themeId = await searchThemeId(twoSlidesKey, courseType);
+      // Fallback: POST /api/v1/slides/generate
+      // Usar o themeId passado pelo frontend; se ausente, buscar dinamicamente
+      const themeId = bodyThemeId || await searchThemeId(twoSlidesKey, courseType);
       if (!themeId) {
         return new Response(
           JSON.stringify({
