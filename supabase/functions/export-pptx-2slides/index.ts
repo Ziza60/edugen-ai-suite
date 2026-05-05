@@ -135,8 +135,9 @@ function buildUserInput(
   lines.push("");
 
   // ── 2. Table of Contents ─────────────────────────────────────────
-  lines.push("## Índice");
-  modules.forEach((m, i) => lines.push(`${i + 1}. ${m.title}`));
+  lines.push("## Índice do Curso");
+  lines.push(`### Visão Geral — ${modules.length} Módulos`);
+  modules.forEach((m, i) => lines.push(`- Módulo ${i + 1}: ${m.title}`));
   lines.push("");
 
   // ── 3. Module sections with sub-sections ─────────────────────────
@@ -168,10 +169,15 @@ function buildUserInput(
 
   // ── 4. Closing ───────────────────────────────────────────────────
   lines.push("## Conclusão e Próximos Passos");
-  lines.push(`Parabéns por concluir ${courseTitle}!`);
+  lines.push(`### Parabéns por concluir ${truncate(courseTitle, 60)}!`);
   lines.push("- Aplique o conhecimento adquirido em projetos reais");
-  lines.push("- Continue sua jornada de aprendizado");
-  lines.push("- Certificado de conclusão disponível");
+  lines.push("- Continue sua jornada de aprendizado e desenvolvimento");
+  lines.push("- Certificado de conclusão disponível na plataforma");
+  lines.push("");
+  lines.push("### Recursos e Suporte");
+  lines.push("- Acesse o material de apoio disponível no portal");
+  lines.push("- Participe da comunidade de alunos e tire suas dúvidas");
+  lines.push("- Explore os próximos cursos da trilha de aprendizado");
   lines.push("");
 
   return truncate(lines.join("\n"), 10000);
