@@ -134,14 +134,8 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
     case "BULLETS": {
       let items = sl("items", 5);
       const title = s("title");
-      // Sempre preencher todos os 5 slots — o template tem 5 marcadores dourados
-      // hardcoded; slots vazios fazem aparecer marcadores sem texto.
-      if (items.length < 5) {
-        const fallback = items.length > 0
-          ? items[items.length - 1]
-          : (title || "Conteúdo deste módulo");
-        while (items.length < 5) items.push(fallback);
-      }
+      // Slots vazios ficam como string vazia — o template renderiza marcadores limpos sem texto duplicado.
+      while (items.length < 5) items.push("");
       r.LABEL = s("label", "CONTEÚDO").toUpperCase().slice(0, 32);
       r.TITLE = title;
       for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i];
@@ -179,11 +173,8 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
 
     case "PROCESS": {
       let steps = sl("steps").length ? sl("steps") : sl("items", 5);
-      // Sempre preencher 5 slots — números 1-5 são shapes hardcoded no template
-      if (steps.length < 5) {
-        const fb = steps.length > 0 ? steps[steps.length - 1] : s("title");
-        while (steps.length < 5) steps.push(fb);
-      }
+      // Slots vazios ficam como string vazia — o template renderiza shapes limpos sem texto duplicado.
+      while (steps.length < 5) steps.push("");
       r.LABEL = s("label", "PROCESSO").toUpperCase().slice(0, 32);
       r.TITLE = s("title");
       for (let i = 0; i < 5; i++) r[`STEP_${i + 1}`] = steps[i];
@@ -206,10 +197,7 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
 
     case "TIMELINE": {
       let items = sl("items", 5);
-      if (items.length < 5) {
-        const fb = items.length > 0 ? items[items.length - 1] : s("title");
-        while (items.length < 5) items.push(fb);
-      }
+      while (items.length < 5) items.push("");
       r.LABEL = s("label", "LINHA DO TEMPO").toUpperCase().slice(0, 32);
       r.TITLE = s("title");
       for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i];
@@ -244,10 +232,7 @@ function buildReplacements(d: Record<string, unknown>): [string, Record<string, 
 
     case "TAKEAWAYS": {
       let items = sl("items", 5);
-      if (items.length < 5) {
-        const fb = items.length > 0 ? items[items.length - 1] : s("title");
-        while (items.length < 5) items.push(fb);
-      }
+      while (items.length < 5) items.push("");
       r.LABEL = s("label", "APRENDIZADOS").toUpperCase().slice(0, 32);
       r.TITLE = s("title");
       for (let i = 0; i < 5; i++) r[`ITEM_${i + 1}`] = items[i];
@@ -332,8 +317,16 @@ function buildImageQuery(courseTitle: string, moduleTitle: string): string {
     })
     .slice(0, 3);
 
-  // Course subject always leads the query so Pexels understands the domain
-  const query = [...courseWords, ...moduleWords].join(" ").slice(0, 80);
+  // Extract technical abbreviations / proper nouns (SQL, React, Python, AWS, etc.) to anchor the query
+  const techTerms = [...courseTitle.matchAll(/\b([A-Z]{2,}|[A-Z][a-z]{1,}(?:JS|QL|AI|ML|DB|Py)?)\b/g)]
+    .map((m) => m[1])
+    .filter((t) => t.length >= 2 && !["Com","Uma","Para","Sem","Nos","Nas","Dos","Das","Com"].includes(t))
+    .slice(0, 2);
+  const dedupedCourse = courseWords.filter(
+    (w) => !techTerms.some((t) => t.toLowerCase() === w.toLowerCase())
+  );
+  // Tech terms always lead so Pexels understands the domain before generic course words
+  const query = [...techTerms, ...dedupedCourse, ...moduleWords].join(" ").slice(0, 80);
   return query || courseTitle.slice(0, 40);
 }
 
@@ -473,7 +466,7 @@ async function generatePptxZip(
       `<p:spPr>` +
         `<a:xfrm><a:off x="${IMG_X}" y="0"/><a:ext cx="${IMG_W}" cy="${IMG_H}"/></a:xfrm>` +
         `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
-        `<a:solidFill><a:srgbClr val="FFFFFF"><a:alpha val="35000"/></a:srgbClr></a:solidFill>` +
+        `<a:solidFill><a:srgbClr val="FFFFFF"><a:alpha val="60000"/></a:srgbClr></a:solidFill>` +
         `<a:ln><a:noFill/></a:ln>` +
       `</p:spPr>` +
       `</p:sp>`;
@@ -603,16 +596,22 @@ function buildPrompt(
   const nSlides = density === "compact" ? 4 : density === "detailed" ? 8 : 6;
   const maxItems = density === "compact" ? 4 : density === "detailed" ? 6 : 5;
 
+  // Preserve code blocks + headings so Gemini can generate code/example slides
   const snippet = moduleContent
     .replace(/\\n/g, "\n")
     .replace(/\\t/g, "  ")
-    .replace(/#{1,6}\s*/g, "")
+    // Fenced code blocks → clear [EXEMPLO DE CÓDIGO]: marker (Gemini will generate code slides)
+    .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_, code) => `\n[EXEMPLO DE CÓDIGO]:\n${code.trim()}\n`)
+    // Headings → section labels visible to Gemini (helps identify topics)
+    .replace(/^#{1,6}\s+(.+)$/gm, (_, t) => `\n[${t.toUpperCase()}]:`)
+    // Strip remaining markdown markers, keep content
     .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
-    .replace(/[`_]/g, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
     .replace(/:\n+\d+\./g, ":")
-    .replace(/\n{2,}/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim()
-    .slice(0, 3500);
+    .slice(0, 5000);
 
   return `You are a senior instructional designer. Generate exactly ${nSlides} slides for MODULE ${moduleIndex + 1}.
 
@@ -733,7 +732,7 @@ async function generateModuleSlides(
 
     const VALID_LAYOUTS = ["bullets","cards","twocol","process","comparison","timeline","takeaways"];
 
-    return parsed.map((s: Record<string, unknown>) => {
+    const normalizedSlides = parsed.map((s: Record<string, unknown>) => {
       const layout = VALID_LAYOUTS.includes(String(s.layout)) ? String(s.layout) : "bullets";
       // Accept multiple field names Gemini may use instead of "items"
       const rawItems: unknown[] = Array.isArray(s.items) ? s.items
@@ -793,6 +792,36 @@ async function generateModuleSlides(
 
       return { layout: layout.toUpperCase(), label, title, items };
     });
+
+    // Bug 4: detecta 3+ BULLETS consecutivos e converte o 3º para TWOCOL ou CARDS
+    let consecutiveBullets = 0;
+    for (let i = 0; i < normalizedSlides.length; i++) {
+      const sl = normalizedSlides[i];
+      if (String(sl.layout).toUpperCase() === "BULLETS") {
+        consecutiveBullets++;
+        if (consecutiveBullets >= 3) {
+          const its = Array.isArray(sl.items) ? (sl.items as string[]).filter(Boolean) : [];
+          if (its.length >= 6) {
+            // 6+ itens → TWOCOL divide ao meio
+            normalizedSlides[i] = { ...sl, layout: "TWOCOL" };
+            console.log(`[V6] Slide ${i + 1}: BULLETS→TWOCOL (${its.length} items, 3+ consecutive)`);
+          } else if (its.length >= 2) {
+            // 2-5 itens → CARDS_2 ou CARDS_3
+            const n = Math.min(3, its.length);
+            const cards = its.slice(0, n).map((item) => {
+              const ci = item.indexOf(": ");
+              return ci > 0 ? { title: item.slice(0, ci), body: item.slice(ci + 2) } : { title: item, body: "" };
+            });
+            normalizedSlides[i] = { ...sl, layout: `CARDS_${n}`, cards };
+            console.log(`[V6] Slide ${i + 1}: BULLETS→CARDS_${n} (${its.length} items, 3+ consecutive)`);
+          }
+          consecutiveBullets = 0; // reset após conversão para não cascatear
+        }
+      } else {
+        consecutiveBullets = 0;
+      }
+    }
+    return normalizedSlides;
   } catch (e) {
     console.error(`[V6] Module ${moduleIndex + 1} error: ${(e as Error).message}`);
     return [
