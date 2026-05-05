@@ -390,6 +390,7 @@ Deno.serve(async (req: Request) => {
         userInput,
         referenceImageUrl: REFERENCE_IMAGE_URL,
         responseLanguage: language,
+        outputFormat: "pptx",
         mode: "async",
       };
       console.log(`[2SLIDES] Mode: create-like-this | ref=${REFERENCE_IMAGE_URL}`);
@@ -461,7 +462,17 @@ Deno.serve(async (req: Request) => {
     const pptxRes = await fetch(downloadUrl);
     if (!pptxRes.ok) throw new Error(`Falha ao baixar PPTX do 2Slides: ${pptxRes.status}`);
     const pptxData = new Uint8Array(await pptxRes.arrayBuffer());
-    console.log(`[2SLIDES] Downloaded ${(pptxData.byteLength / 1024).toFixed(0)} KB`);
+    const downloadedKB = (pptxData.byteLength / 1024).toFixed(0);
+    console.log(`[2SLIDES] Downloaded ${downloadedKB} KB`);
+
+    // Validar magic bytes — PPTX é ZIP (50 4B 03 04); PDF começa com %PDF (25 50 44 46)
+    const magic = pptxData.slice(0, 4);
+    const isPdf = magic[0] === 0x25 && magic[1] === 0x50 && magic[2] === 0x44 && magic[3] === 0x46;
+    const isPptx = magic[0] === 0x50 && magic[1] === 0x4B;
+    console.log(`[2SLIDES] File magic: ${Array.from(magic).map(b => b.toString(16).padStart(2,'0')).join(' ')} | isPptx=${isPptx} | isPdf=${isPdf}`);
+    if (!isPptx) {
+      throw new Error(`Arquivo baixado não é PPTX (magic=${Array.from(magic).map(b => b.toString(16)).join('')}). Verifique o parâmetro outputFormat na API 2Slides.`);
+    }
 
     // ── Upload para Supabase Storage ───────────────────────────────────────
     const dateStr  = new Date().toISOString().slice(0, 10);
