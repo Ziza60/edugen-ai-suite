@@ -1489,36 +1489,32 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return encodeBase64(new Uint8Array(buffer));
 }
 
-async function fetchUnsplashImage(
+async function fetchPexelsImage(
   query: string,
-  orientation: "landscape" | "portrait" | "squarish" = "landscape",
+  orientation: "landscape" | "portrait" | "square" = "landscape",
   usedPhotoIds?: Set<string>,
 ): Promise<SlideImage | null> {
-  const accessKey = Deno.env.get("UNSPLASH_ACCESS_KEY");
-  if (!accessKey) return null;
+  const apiKey = Deno.env.get("PEXELS_API_KEY");
+  if (!apiKey) return null;
 
   try {
-    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=12&content_filter=high`;
-    const res = await fetch(url, { headers: { Authorization: `Client-ID ${accessKey}` } });
+    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=15&orientation=${orientation}`;
+    const res = await fetch(url, { headers: { Authorization: apiKey } });
     if (!res.ok) return null;
 
     const data = await res.json();
-    const results = Array.isArray(data?.results) ? data.results : [];
+    const results: any[] = Array.isArray(data?.photos) ? data.photos : [];
     if (!results.length) return null;
 
-    const validResults = results.filter((photo: any) => {
-      const imageUrl = photo?.urls?.regular || photo?.urls?.small;
-      return !!photo?.id && !!imageUrl;
-    });
-    if (!validResults.length) return null;
+    const validResults = results.filter((p: any) => p?.id && (p?.src?.large || p?.src?.medium));
 
     const uniquePool = usedPhotoIds
-      ? validResults.filter((photo: any) => !usedPhotoIds.has(String(photo.id)))
+      ? validResults.filter((p: any) => !usedPhotoIds.has(String(p.id)))
       : validResults;
 
     const pool = uniquePool.length ? uniquePool : validResults;
     const photo = pool[Math.floor(Math.random() * pool.length)];
-    const imageUrl = photo.urls?.regular || photo.urls?.small;
+    const imageUrl = photo.src?.large || photo.src?.medium;
     if (!imageUrl) return null;
 
     const imgRes = await fetch(imageUrl);
@@ -1534,8 +1530,8 @@ async function fetchUnsplashImage(
 
     return {
       base64Data: `data:${mimeType};base64,${base64}`,
-      credit: photo.user?.name || "Unsplash",
-      creditUrl: photo.user?.links?.html || "https://unsplash.com",
+      credit: photo.photographer || "Pexels",
+      creditUrl: photo.photographer_url || "https://www.pexels.com",
       photoId,
     };
   } catch {
@@ -1549,7 +1545,7 @@ async function buildImagePlan(
   includeImages: boolean,
 ): Promise<ImagePlan> {
   const empty: ImagePlan = { cover: null, modules: new Map(), closing: null };
-  if (!includeImages || !Deno.env.get("UNSPLASH_ACCESS_KEY")) return empty;
+  if (!includeImages || !Deno.env.get("PEXELS_API_KEY")) return empty;
 
   const usedPhotoIds = new Set<string>();
 
@@ -1558,7 +1554,7 @@ async function buildImagePlan(
 
   const fetchUniqueWithRetries = async (queries: string[]): Promise<SlideImage | null> => {
     for (const q of queries) {
-      const image = await fetchUnsplashImage(q, "landscape", usedPhotoIds);
+      const image = await fetchPexelsImage(q, "landscape", usedPhotoIds);
       if (image) return image;
     }
     return null;
@@ -1567,7 +1563,7 @@ async function buildImagePlan(
   // Last-resort helper when unique pool is exhausted.
   const fetchAnyWithRetries = async (queries: string[]): Promise<SlideImage | null> => {
     for (const q of queries) {
-      const image = await fetchUnsplashImage(q, "landscape");
+      const image = await fetchPexelsImage(q, "landscape");
       if (image) return image;
     }
     return null;
@@ -5189,10 +5185,10 @@ async function runPipeline(
   // Wait for image plan
   const imagePlan = await imagePlanPromise;
 
-  const unsplashKey = Deno.env.get("UNSPLASH_ACCESS_KEY") || "";
+  const pexelsKey = Deno.env.get("PEXELS_API_KEY") || "";
   report.imageDiagnostics = {
-    unsplashKeyPresent: unsplashKey.length > 0,
-    unsplashKeyLength: unsplashKey.length,
+    unsplashKeyPresent: pexelsKey.length > 0,
+    unsplashKeyLength: pexelsKey.length,
     includeImages: design.includeImages,
     coverImageFetched: !!imagePlan.cover,
     closingImageFetched: !!imagePlan.closing,
@@ -5200,7 +5196,7 @@ async function runPipeline(
     moduleImagesTotal: modules.length,
     errors: [],
   };
-  if (!unsplashKey) report.imageDiagnostics.errors.push("UNSPLASH_ACCESS_KEY not set");
+  if (!pexelsKey) report.imageDiagnostics.errors.push("PEXELS_API_KEY not set");
   if (!design.includeImages) report.imageDiagnostics.errors.push("includeImages is false");
 
   // Build TOC descriptions (first sentence of each module content)

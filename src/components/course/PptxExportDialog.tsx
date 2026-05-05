@@ -381,7 +381,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
           {includeImages && (
             <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
               <ImageOff className="h-3.5 w-3.5 shrink-0" />
-              Requer integração Unsplash ativa. Se não configurada, o PPTX será gerado sem imagens.
+              Imagens buscadas automaticamente via Pexels durante a geração do PPTX.
             </div>
           )}
 

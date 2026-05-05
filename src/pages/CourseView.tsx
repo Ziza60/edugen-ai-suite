@@ -15,6 +15,7 @@ import {
   BarChart3, Globe, Rocket, Languages, Save, Cloud, CloudOff,
   Mic, ChevronDown, Wrench, ShieldCheck, AlignLeft, Sparkles, WandSparkles,
 } from "lucide-react";
+import { PexelsPicker } from "@/components/course/PexelsPicker";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -201,6 +202,33 @@ export default function CourseView() {
     },
     enabled: flashcards.length > 0 && isPro,
     retry: false,
+  });
+
+  const saveModuleImage = useMutation({
+    mutationFn: async ({ moduleId, url, altText }: { moduleId: string; url: string; altText: string }) => {
+      const { error } = await supabase.from("course_images").upsert(
+        { module_id: moduleId, url, alt_text: altText },
+        { onConflict: "module_id" },
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-images", id] });
+      toast({ title: "Imagem salva!" });
+    },
+    onError: () => toast({ title: "Erro ao salvar imagem", variant: "destructive" }),
+  });
+
+  const removeModuleImage = useMutation({
+    mutationFn: async (moduleId: string) => {
+      const { error } = await supabase.from("course_images").delete().eq("module_id", moduleId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-images", id] });
+      toast({ title: "Imagem removida" });
+    },
+    onError: () => toast({ title: "Erro ao remover imagem", variant: "destructive" }),
   });
 
   const updateModule = useMutation({
@@ -1020,8 +1048,9 @@ export default function CourseView() {
                 </div>
               ) : (
                 <div>
-                  {moduleImage && (
-                    <div className="mb-6 rounded-xl overflow-hidden border border-border relative">
+                  {/* ── Module image ── */}
+                  {moduleImage ? (
+                    <div className="mb-4 rounded-xl overflow-hidden border border-border relative group">
                       <img
                         src={moduleImage.url}
                         alt={moduleImage.alt_text || `Ilustração do módulo ${activeModuleIndex + 1}`}
@@ -1036,6 +1065,29 @@ export default function CourseView() {
                           {activeModule.title}
                         </h3>
                       </div>
+                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <PexelsPicker
+                          moduleTitle={activeModule.title}
+                          moduleId={activeModule.id}
+                          currentImageUrl={moduleImage.url}
+                          onSelect={({ url, alt }) =>
+                            saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
+                          }
+                          onRemove={() => removeModuleImage.mutate(activeModule.id)}
+                          disabled={saveModuleImage.isPending || removeModuleImage.isPending}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mb-4">
+                      <PexelsPicker
+                        moduleTitle={activeModule.title}
+                        moduleId={activeModule.id}
+                        onSelect={({ url, alt }) =>
+                          saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
+                        }
+                        disabled={saveModuleImage.isPending}
+                      />
                     </div>
                   )}
                   <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-display prose-headings:font-bold prose-p:leading-relaxed prose-li:leading-relaxed">
