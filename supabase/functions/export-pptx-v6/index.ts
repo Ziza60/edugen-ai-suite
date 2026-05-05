@@ -37,7 +37,8 @@ function san(text: unknown): string {
   return text
     .replace(/\\n\s*\d*\.?/g, "")
     .replace(/\n\s*\d*\.?/g, " ")
-    .replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, "")
+    // Remove emoji and variation selectors (U+FE00–FE0F, U+200D zero-width joiner)
+    .replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}\uFE00-\uFE0F\u200D]/gu, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -535,11 +536,14 @@ function extractCompetencies(content: string, moduleTitle?: string): string[] {
 
   if (bullets.length >= 2) return bullets;
 
-  // Fall back to sentence splitting
-  return norm
+  // Fall back to sentence splitting — preserve decimal/currency dots (digit.digit)
+  const protected_ = norm
     .replace(/#{1,6}\s*/g, "")
+    .replace(/(\d)\.(\d)/g, "$1\x00$2");  // protect decimal points with null byte
+
+  return protected_
     .split(/[.!?\n]+/)
-    .map((s) => s.trim())
+    .map((s) => s.replace(/\x00/g, ".").trim())   // restore decimal points
     .filter((s) => s.length >= 12 && s.length <= 70)
     .filter((s) => !Array.from(s).some((c) => { const cp = c.codePointAt(0) ?? 0; return cp >= 0x1F300 && cp <= 0x1FFFF; }))
     .filter((s) => s.toLowerCase() !== titleLower)
@@ -679,12 +683,50 @@ async function buildSlidesList(
       .replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "")
       .trim();
 
+    // Use Gemini-generated content as competencies for the MODULE_COVER.
+    // Three strategies tried in order; extractCompetencies is last resort.
+    const geminiComps = (() => {
+      const moduleSlides = allModuleSlides[i] ?? [];
+
+      // Strategy 1: first BULLETS slide that has non-empty items
+      for (const s of moduleSlides) {
+        if (String(s.layout).toUpperCase() === "BULLETS" && Array.isArray(s.items)) {
+          const nonEmpty = (s.items as string[]).filter(Boolean);
+          if (nonEmpty.length > 0) {
+            return nonEmpty.slice(0, 3).map((x) => san(String(x)));
+          }
+        }
+      }
+
+      // Strategy 2: any slide with non-empty items (TAKEAWAYS, TIMELINE, etc.)
+      for (const s of moduleSlides) {
+        if (Array.isArray(s.items)) {
+          const nonEmpty = (s.items as string[]).filter(Boolean);
+          if (nonEmpty.length > 0) {
+            return nonEmpty.slice(0, 3).map((x) => san(String(x)));
+          }
+        }
+      }
+
+      // Strategy 3: use content-slide titles as competencies
+      // They are specific, coherent and always present even when items are empty.
+      const titles = moduleSlides
+        .map((s) => san(String(s.title || "")))
+        .filter((t) => t.length > 8 && t.toLowerCase() !== cleanTitle.toLowerCase())
+        .slice(0, 3);
+      return titles;
+    })();
+
+    const competencies = geminiComps.length > 0
+      ? geminiComps
+      : extractCompetencies(modules[i].content, cleanTitle);
+
     slides.push({
       layout: "MODULE_COVER",
       module_number: String(i + 1).padStart(2, "0"),
       module_label: `MÓDULO ${i + 1}`,
       title: cleanTitle,
-      competencies: extractCompetencies(modules[i].content, cleanTitle),
+      competencies,
     });
 
     for (const slide of allModuleSlides[i]) {
