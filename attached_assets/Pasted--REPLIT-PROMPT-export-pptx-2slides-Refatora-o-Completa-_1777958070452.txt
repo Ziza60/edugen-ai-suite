@@ -1,0 +1,630 @@
+# REPLIT_PROMPT — export-pptx-2slides: Refatoração Completa v2.0
+
+## Contexto e histórico de decisões
+
+Esta é uma refatoração completa da edge function `export-pptx-2slides/index.ts`, baseada em análise visual do PPTX gerado + leitura completa da documentação oficial da API 2Slides.
+
+### Problemas identificados na versão atual (v1.2.0-2SLIDES)
+
+**Problema 1 — Poucos slides (10 para 7 módulos, esperado ~30)**
+- Causa raiz: A API 2Slides trata `##` como 1 slide e `###` como bullet dentro desse slide.
+- O código atual usa `##` para o módulo e `###` para sub-seções → todos os `###` dentro de um `##` colapsam em 1 único slide por módulo.
+- Conclusão: o `truncate(lines.join("\n"), 14000)` NÃO é o problema — com 7 módulos o input tem apenas ~3.400 chars. O problema é estrutural.
+- Fix: promover cada sub-seção para `##` independente (cada `##` = 1 slide).
+
+**Problema 2 — Mode `sync` vai quebrar com o fix**
+- A documentação oficial confirma: `sync` é para menos de 10 páginas, `async` para mais.
+- Com o fix do `userInput` gerando ~30 slides, o `sync` com timeout de 120s vai falhar.
+- Fix: migrar para `async` + polling do jobId.
+
+**Problema 3 — `THEME_MAP` hardcoded com 4 IDs**
+- Os IDs foram copiados manualmente da UI — não existe nenhum endpoint que liste temas.
+- A API tem `GET /api/v1/themes/search?query=palavra` para buscar temas dinamicamente.
+- Fix: buscar tema dinamicamente por palavra-chave baseada no `courseType`.
+
+**Problema 4 — Tema padrão `blue-gradient` com bugs visuais não corrigíveis**
+- Confirmado visualmente: `<Company>`, `<Project>`, `2024` no header não são preenchíveis via input.
+- Número decorativo gigante estoura frames em texto longo em português.
+- Fix: trocar para busca dinâmica; eliminar `blue-gradient` do fallback.
+
+**Problema 5 — Endpoint errado para o objetivo de design**
+- A documentação revelou `POST /api/v1/slides/create-like-this`: gera slides replicando o estilo visual de uma imagem de referência.
+- Isso permite usar um screenshot do `template_premium_v2.pptx` (paleta navy+âmbar do EduGenAI) como referência visual — sem precisar de template customizado.
+- O endpoint `generate` (atual) não oferece controle de design além do themeId.
+
+---
+
+## Arquitetura nova vs. antiga
+
+| Aspecto | v1.2.0 (atual) | v2.0 (novo) |
+|---|---|---|
+| Endpoint | `POST /api/v1/slides/generate` (sync) | `POST /api/v1/slides/create-like-this` (async) |
+| Tema | `THEME_MAP` hardcoded (4 IDs) | Busca dinâmica via `GET /api/v1/themes/search` |
+| Mode | `sync` (quebra com 30+ slides) | `async` + polling do jobId |
+| Design | Tema genérico 2Slides | `referenceImageUrl` do template premium EduGenAI |
+| Estrutura userInput | `##` módulo + `###` sub-seções (errado) | `##` flat por slide (correto) |
+| Slides esperados (7 módulos) | 10 | ~30 |
+
+---
+
+## Arquivo a editar
+
+`supabase/functions/export-pptx-2slides/index.ts`
+
+---
+
+## Substituição completa do arquivo
+
+Substituir o conteúdo INTEIRO do arquivo pelo seguinte:
+
+```typescript
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const ENGINE_VERSION = "2.0.0-2SLIDES";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+// ── Imagem de referência de estilo (template premium EduGenAI navy+âmbar) ──
+// Esta URL deve ser um screenshot público de um slide do template_premium_v2.pptx
+// hospedado no Supabase Storage (bucket público) ou em outro CDN acessível.
+// Se não estiver disponível, a geração cai para busca de tema por palavra-chave.
+const REFERENCE_IMAGE_URL = Deno.env.get("EDUGENAI_REFERENCE_IMAGE_URL") ?? "";
+
+// ── Mapeamento courseType → palavra-chave de busca de tema ──────────────────
+// Usado quando REFERENCE_IMAGE_URL não está configurado (fallback).
+// Endpoint: GET /api/v1/themes/search?query=PALAVRA&limit=1
+const COURSE_TYPE_THEME_QUERY: Record<string, string> = {
+  "CURSO COMPLETO": "educação",
+  "TREINAMENTO":    "treinamento",
+  "WORKSHOP":       "criativo",
+  "WEBINAR":        "moderno",
+  "MINI-CURSO":     "educação",
+  "TRILHA":         "profissional",
+};
+const DEFAULT_THEME_QUERY = "educação";
+
+// ── Polling config ───────────────────────────────────────────────────────────
+const POLL_INTERVAL_MS   = 8_000;   // checar a cada 8s
+const POLL_MAX_ATTEMPTS  = 14;      // 14 × 8s = 112s máximo (< 150s limit da edge function)
+const TWOSLIDES_BASE_URL = "https://2slides.com/api/v1";
+
+// ── Content helpers ──────────────────────────────────────────────────────────
+function truncate(text: string, max: number): string {
+  if (!text) return "";
+  return text.length <= max ? text : text.slice(0, max - 3) + "...";
+}
+
+function extractSubSections(
+  content: string,
+  maxSections = 3,
+  maxBulletsPerSection = 4,
+  maxBulletLen = 150,
+): { title: string; bullets: string[] }[] {
+  const headingRe = /^#{2,4}\s+(.+)$/m;
+  const blocks = content.split(/^#{2,4}\s+/m).filter(Boolean);
+
+  if (blocks.length >= 2) {
+    const sections: { title: string; bullets: string[] }[] = [];
+    const parts = content.split(/(^#{2,4}\s+.+$)/m).filter(Boolean);
+    let currentTitle = "";
+    let currentBody = "";
+    for (const part of parts) {
+      if (headingRe.test(part)) {
+        if (currentTitle) {
+          sections.push({ title: currentTitle, bullets: extractBullets(currentBody, maxBulletsPerSection, maxBulletLen) });
+        }
+        currentTitle = part.replace(/^#{2,4}\s+/, "").trim();
+        currentBody = "";
+      } else {
+        currentBody += part;
+      }
+    }
+    if (currentTitle) {
+      sections.push({ title: currentTitle, bullets: extractBullets(currentBody, maxBulletsPerSection, maxBulletLen) });
+    }
+    return sections.slice(0, maxSections);
+  }
+
+  const paragraphs = content
+    .split(/\n{2,}/)
+    .map((p) => p.replace(/\s+/g, " ").trim())
+    .filter((p) => p.length > 30);
+
+  if (paragraphs.length === 0) return [];
+
+  const N = Math.min(maxSections, Math.max(2, Math.ceil(paragraphs.length / 2)));
+  const chunkSize = Math.ceil(paragraphs.length / N);
+  const sections: { title: string; bullets: string[] }[] = [];
+
+  for (let i = 0; i < N; i++) {
+    const chunk = paragraphs.slice(i * chunkSize, (i + 1) * chunkSize);
+    if (chunk.length === 0) continue;
+    const firstPara = chunk[0];
+    const firstSentence = firstPara.split(/(?<=[.!?])\s+/)[0];
+    const title = truncate(firstSentence.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1"), 60);
+    const bullets = extractBullets(chunk.join(" "), maxBulletsPerSection, maxBulletLen);
+    sections.push({ title, bullets });
+  }
+
+  return sections;
+}
+
+function extractBullets(text: string, max: number, maxLen: number): string[] {
+  const listItems = [...text.matchAll(/^[-*•]\s+(.+)$/mg)].map((m) => m[1].trim());
+  if (listItems.length >= 2) {
+    return listItems.slice(0, max).map((s) => truncate(s, maxLen));
+  }
+  const sentences = text
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter((s) => s.length > 20 && s.length < 300);
+  return sentences.slice(0, max).map((s) => truncate(s, maxLen));
+}
+
+/**
+ * Constrói o userInput para a API 2Slides.
+ *
+ * REGRA CRÍTICA: cada ## = 1 slide na API 2Slides.
+ * NÃO usar ### dentro de ## para sub-seções — usar ## separados.
+ *
+ * Estrutura por módulo:
+ *   ## Módulo N: Título   → 1 slide cover do módulo
+ *   ## Sub-seção A        → 1 slide de conteúdo
+ *   ## Sub-seção B        → 1 slide de conteúdo
+ *   ## Sub-seção C        → 1 slide de conteúdo
+ *
+ * Total esperado: 1 cover + 1 TOC + (N_módulos × 4) + 2 closing
+ */
+function buildUserInput(
+  courseTitle: string,
+  courseDescription: string,
+  modules: { title: string; content: string }[],
+  courseType = "CURSO COMPLETO",
+): string {
+  const lines: string[] = [];
+
+  // ── 1. Cover ──────────────────────────────────────────────────────────────
+  // Limitar título a 45 chars — títulos longos são truncados no layout cover do 2Slides
+  const shortTitle = courseTitle.length > 45
+    ? courseTitle.slice(0, 42) + "..."
+    : courseTitle;
+  lines.push(`# ${shortTitle}`);
+  lines.push(`Tipo: ${courseType}`);
+  if (courseDescription) {
+    lines.push(truncate(courseDescription.replace(/\s+/g, " ").trim(), 280));
+  }
+  lines.push("");
+
+  // ── 2. Table of Contents ──────────────────────────────────────────────────
+  // 1 único ## para o TOC — sem ### dentro para não desperdiçar slots de slide
+  lines.push("## Índice do Curso");
+  modules.forEach((m, i) => lines.push(`- Módulo ${i + 1}: ${m.title}`));
+  lines.push("");
+
+  // ── 3. Módulos ────────────────────────────────────────────────────────────
+  const maxSubSections = 3;  // 3 sub-seções → 4 slides por módulo (cover + 3)
+  const maxBullets     = 4;  // 4 bullets força layout de lista (evita "statistic" slide)
+  const maxBulletLen   = 150;
+
+  for (let i = 0; i < modules.length; i++) {
+    const m = modules[i];
+
+    // Slide cover do módulo (1 ##  = 1 slide)
+    lines.push(`## Módulo ${i + 1}: ${m.title}`);
+    lines.push(`- Conteúdo principal deste módulo`);
+    lines.push("");
+
+    const subSections = extractSubSections(m.content || "", maxSubSections, maxBullets, maxBulletLen);
+
+    if (subSections.length >= 2) {
+      // Cada sub-seção como ## independente → slide próprio
+      for (const sub of subSections) {
+        lines.push(`## ${sub.title}`);
+        for (const bullet of sub.bullets) {
+          lines.push(`- ${bullet}`);
+        }
+        // Garantir mínimo de 3 bullets — evita layout "statistic" indesejado
+        const missing = 3 - sub.bullets.length;
+        for (let k = 0; k < missing; k++) {
+          lines.push(`- Conceito complementar relacionado ao tema`);
+        }
+        lines.push("");
+      }
+    } else {
+      // Fallback sintético — garante 3 slides por módulo mesmo sem conteúdo estruturado
+      const synth = [
+        {
+          h: `Fundamentos: ${truncate(m.title, 40)}`,
+          bullets: [
+            "Conceitos e definições essenciais da área",
+            "Contexto e importância no ambiente profissional",
+            "Principais termos e abordagens utilizados",
+            "Base teórica necessária para aplicação prática",
+          ],
+        },
+        {
+          h: `Aplicação Prática`,
+          bullets: [
+            "Metodologias e ferramentas aplicadas no dia a dia",
+            "Exemplos reais e casos de uso da área",
+            "Boas práticas recomendadas por especialistas",
+            "Erros comuns e como evitá-los na prática",
+          ],
+        },
+        {
+          h: `Resultados e Próximos Passos`,
+          bullets: [
+            "Indicadores de sucesso e métricas de avaliação",
+            "Como consolidar e aprofundar o aprendizado",
+            "Ferramentas de suporte disponíveis na plataforma",
+            "Conexão deste módulo com o restante do curso",
+          ],
+        },
+      ];
+      for (const s of synth) {
+        lines.push(`## ${s.h}`);
+        for (const b of s.bullets) lines.push(`- ${b}`);
+        lines.push("");
+      }
+    }
+  }
+
+  // ── 4. Closing ────────────────────────────────────────────────────────────
+  lines.push("## Conclusão e Próximos Passos");
+  lines.push("- Aplique o conhecimento adquirido em projetos reais");
+  lines.push("- Continue sua jornada de aprendizado e desenvolvimento");
+  lines.push("- Certificado de conclusão disponível na plataforma");
+  lines.push("- Explore os próximos cursos da trilha de aprendizado");
+  lines.push("");
+
+  lines.push("## Recursos e Suporte");
+  lines.push("- Acesse o material de apoio disponível no portal");
+  lines.push("- Participe da comunidade de alunos e tire suas dúvidas");
+  lines.push("- Avalie o curso e compartilhe seu feedback");
+  lines.push("- Conecte-se com outros profissionais da área");
+  lines.push("");
+
+  const result = lines.join("\n");
+
+  // Log de diagnóstico
+  const h2Count = lines.filter(l => l.startsWith("## ")).length;
+  console.log(`[2SLIDES] userInput: ${result.length} chars | ${h2Count} slides esperados (##)`);
+
+  // Proteção para inputs excepcionalmente grandes (cursos com 20+ módulos)
+  return truncate(result, 14000);
+}
+
+// ── Buscar themeId dinamicamente ─────────────────────────────────────────────
+// Endpoint: GET /api/v1/themes/search?query=PALAVRA&limit=1
+// Retorna o primeiro tema da busca — mais relevante para a palavra-chave.
+// Usado como fallback quando REFERENCE_IMAGE_URL não está configurado.
+async function searchThemeId(apiKey: string, courseType: string): Promise<string | null> {
+  const query = COURSE_TYPE_THEME_QUERY[courseType] ?? DEFAULT_THEME_QUERY;
+  try {
+    const res = await fetch(
+      `${TWOSLIDES_BASE_URL}/themes/search?query=${encodeURIComponent(query)}&limit=1`,
+      { headers: { "Authorization": `Bearer ${apiKey}` } },
+    );
+    if (!res.ok) {
+      console.warn(`[2SLIDES] Theme search failed: ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    // A resposta provavelmente é { themes: [{ id, name, ... }] } ou [{ id, name }]
+    const themes = data?.themes ?? data?.data ?? data;
+    const themeId = Array.isArray(themes) && themes[0]?.id ? themes[0].id : null;
+    console.log(`[2SLIDES] Theme search "${query}" → ${themeId ?? "not found"}`);
+    return themeId;
+  } catch (e) {
+    console.warn(`[2SLIDES] Theme search error:`, e);
+    return null;
+  }
+}
+
+// ── Polling do jobId ──────────────────────────────────────────────────────────
+async function pollJob(apiKey: string, jobId: string): Promise<{ downloadUrl: string; slidePageCount: number }> {
+  for (let attempt = 1; attempt <= POLL_MAX_ATTEMPTS; attempt++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+
+    const res = await fetch(`${TWOSLIDES_BASE_URL}/jobs/${jobId}`, {
+      headers: { "Authorization": `Bearer ${apiKey}` },
+    });
+
+    if (!res.ok) {
+      console.warn(`[2SLIDES] Poll attempt ${attempt}: HTTP ${res.status}`);
+      continue;
+    }
+
+    const data = await res.json();
+    const status = data?.status ?? data?.data?.status;
+    const message = data?.message ?? data?.data?.message ?? "";
+    console.log(`[2SLIDES] Poll ${attempt}/${POLL_MAX_ATTEMPTS}: status=${status} | ${message}`);
+
+    if (status === "success") {
+      const downloadUrl = data?.downloadUrl ?? data?.data?.downloadUrl;
+      const slidePageCount = data?.slidePageCount ?? data?.data?.slidePageCount ?? 0;
+      if (!downloadUrl) throw new Error(`Job success but no downloadUrl. jobId=${jobId}`);
+      return { downloadUrl, slidePageCount };
+    }
+
+    if (status === "failed" || status === "error") {
+      throw new Error(`Job failed. jobId=${jobId} | message=${message}`);
+    }
+    // status === "pending" | "processing" → continuar polling
+  }
+  throw new Error(`Job polling timeout after ${POLL_MAX_ATTEMPTS} attempts. jobId=${jobId}`);
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Not authenticated" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const twoSlidesKey = Deno.env.get("TWOSLIDES_API_KEY");
+    if (!twoSlidesKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: "TWOSLIDES_NOT_CONFIGURED", detail: "TWOSLIDES_API_KEY secret não configurado." }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const supabaseUrl   = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const serviceClient = createClient(supabaseUrl, serviceKey);
+
+    // Autenticar usuário
+    const { data: { user }, error: userError } = await serviceClient.auth.getUser(
+      authHeader.replace("Bearer ", ""),
+    );
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const body = await req.json();
+    const { course_id, language = "Portuguese", courseType = "CURSO COMPLETO" } = body;
+    if (!course_id) {
+      return new Response(
+        JSON.stringify({ error: "course_id required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Buscar curso
+    const { data: course, error: courseErr } = await serviceClient
+      .from("courses")
+      .select("*")
+      .eq("id", course_id)
+      .eq("user_id", user.id)
+      .single();
+    if (courseErr || !course) {
+      return new Response(
+        JSON.stringify({ error: "Course not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Buscar módulos
+    const { data: modules = [] } = await serviceClient
+      .from("course_modules")
+      .select("title, content")
+      .eq("course_id", course_id)
+      .order("order_index");
+
+    const userInput = buildUserInput(
+      course.title || "Curso",
+      course.description || "",
+      (modules as any[]).map((m) => ({ title: m.title || "", content: m.content || "" })),
+      courseType,
+    );
+
+    // ── Decidir endpoint e parâmetros ──────────────────────────────────────
+    // Se REFERENCE_IMAGE_URL estiver configurado → create-like-this (replica design EduGenAI)
+    // Caso contrário → generate com tema buscado dinamicamente por courseType
+    let endpoint: string;
+    let requestBody: Record<string, unknown>;
+
+    if (REFERENCE_IMAGE_URL) {
+      // Endpoint: POST /api/v1/slides/create-like-this
+      // Replica o estilo visual da imagem de referência (template premium navy+âmbar)
+      endpoint = `${TWOSLIDES_BASE_URL}/slides/create-like-this`;
+      requestBody = {
+        userInput,
+        referenceImageUrl: REFERENCE_IMAGE_URL,
+        responseLanguage: language,
+        mode: "async",
+      };
+      console.log(`[2SLIDES] Mode: create-like-this | ref=${REFERENCE_IMAGE_URL}`);
+    } else {
+      // Fallback: POST /api/v1/slides/generate com tema buscado dinamicamente
+      const themeId = await searchThemeId(twoSlidesKey, courseType);
+      if (!themeId) {
+        return new Response(
+          JSON.stringify({ success: false, error: "TWOSLIDES_THEME_NOT_FOUND", detail: `Nenhum tema encontrado para courseType="${courseType}". Configure EDUGENAI_REFERENCE_IMAGE_URL ou verifique a API key.` }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      endpoint = `${TWOSLIDES_BASE_URL}/slides/generate`;
+      requestBody = {
+        userInput,
+        themeId,
+        responseLanguage: language,
+        mode: "async",
+      };
+      console.log(`[2SLIDES] Mode: generate | themeId=${themeId} | courseType=${courseType}`);
+    }
+
+    // ── Chamar API 2Slides (async) ─────────────────────────────────────────
+    const t0 = Date.now();
+    const genRes = await fetch(endpoint, {
+      method:  "POST",
+      headers: {
+        "Authorization": `Bearer ${twoSlidesKey}`,
+        "Content-Type":  "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const genData = await genRes.json();
+    console.log(`[2SLIDES] Initial response (${Date.now() - t0}ms):`, JSON.stringify(genData).slice(0, 300));
+
+    if (!genRes.ok || !genData?.success) {
+      const rawMsg = JSON.stringify(genData).toLowerCase();
+      if (rawMsg.includes("credit") || rawMsg.includes("insufficient")) {
+        return new Response(
+          JSON.stringify({ success: false, error: "TWOSLIDES_NO_CREDITS", detail: "Sua conta 2Slides não tem créditos suficientes. Acesse 2slides.com/pricing para recarregar." }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({ success: false, error: "TWOSLIDES_API_ERROR", detail: JSON.stringify(genData).slice(0, 200) }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── Polling do job ─────────────────────────────────────────────────────
+    const jobId = genData?.data?.jobId ?? genData?.jobId;
+    if (!jobId) throw new Error(`2Slides não retornou jobId. Response: ${JSON.stringify(genData).slice(0, 200)}`);
+
+    console.log(`[2SLIDES] jobId=${jobId} | iniciando polling...`);
+    const { downloadUrl, slidePageCount } = await pollJob(twoSlidesKey, jobId);
+    console.log(`[2SLIDES] Job concluído! ${slidePageCount} slides | downloadUrl obtida`);
+
+    // ── Download do PPTX ───────────────────────────────────────────────────
+    const pptxRes = await fetch(downloadUrl);
+    if (!pptxRes.ok) throw new Error(`Falha ao baixar PPTX do 2Slides: ${pptxRes.status}`);
+    const pptxData = new Uint8Array(await pptxRes.arrayBuffer());
+    console.log(`[2SLIDES] Downloaded ${(pptxData.byteLength / 1024).toFixed(0)} KB`);
+
+    // ── Upload para Supabase Storage ───────────────────────────────────────
+    const dateStr  = new Date().toISOString().slice(0, 10);
+    const safeName = (course.title || "curso")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9\s\-]/g, "")
+      .replace(/\s+/g, "-")
+      .trim()
+      .substring(0, 80);
+    const fileName = `${user.id}/${safeName}-2Slides-${dateStr}.pptx`;
+
+    let uploadErr: any = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const { error } = await serviceClient.storage
+        .from("course-exports")
+        .upload(fileName, pptxData, {
+          contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          upsert: true,
+        });
+      if (!error) { uploadErr = null; break; }
+      uploadErr = error;
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+    if (uploadErr) throw uploadErr;
+
+    const { data: signedUrl, error: signErr } = await serviceClient.storage
+      .from("course-exports")
+      .createSignedUrl(fileName, 3600);
+    if (signErr) throw signErr;
+
+    // ── Usage event ────────────────────────────────────────────────────────
+    await serviceClient.from("usage_events").insert({
+      user_id:    user.id,
+      event_type: "COURSE_EXPORTED_PPTX_2SLIDES",
+      metadata:   {
+        course_id,
+        slide_count:  slidePageCount,
+        job_id:       jobId,
+        endpoint:     REFERENCE_IMAGE_URL ? "create-like-this" : "generate",
+        course_type:  courseType,
+      },
+    });
+
+    console.log(`[2SLIDES] Done! URL assinada pronta.`);
+
+    return new Response(
+      JSON.stringify({
+        url:            signedUrl.signedUrl,
+        version:        "2slides",
+        engine_version: ENGINE_VERSION,
+        slide_count:    slidePageCount,
+        job_id:         jobId,
+        endpoint_used:  REFERENCE_IMAGE_URL ? "create-like-this" : "generate",
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+
+  } catch (error: any) {
+    console.error("[2SLIDES] Export error:", error?.message || error);
+    return new Response(
+      JSON.stringify({ error: error.message || "Internal server error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+});
+```
+
+---
+
+## Variável de ambiente a configurar no Supabase
+
+No painel do Supabase → Edge Functions → Secrets, adicionar:
+
+```
+EDUGENAI_REFERENCE_IMAGE_URL = https://SEU_BUCKET.supabase.co/storage/v1/object/public/templates/reference_slide.png
+```
+
+Esta imagem deve ser um screenshot de um slide do `template_premium_v2.pptx` (preferencialmente o slide de bullets ou cover), hospedada em bucket público. Se não configurada, o sistema cai automaticamente para busca de tema por palavra-chave.
+
+**Como gerar a imagem de referência:**
+1. Abrir `template_premium_v2.pptx` no PowerPoint ou LibreOffice
+2. Exportar o slide 1 (cover) como PNG em alta resolução
+3. Fazer upload para `supabase storage cp reference_slide.png ss:///templates/reference_slide.png`
+4. Tornar o bucket `templates` público (ou usar URL assinada de longa duração)
+
+---
+
+## O que NÃO mudar
+
+- `export-pptx-v4` — manter como fallback, não tocar
+- `export-pptx-v6` — manter como motor principal, não tocar
+- Tabelas do banco (`courses`, `course_modules`, `usage_events`) — não alterar schema
+- `extractSubSections()` e `extractBullets()` — lógica correta, mantida no novo arquivo
+
+---
+
+## Verificação após deploy
+
+```bash
+supabase functions deploy export-pptx-2slides
+```
+
+Verificar nos logs do Supabase após um export de teste:
+
+```
+[2SLIDES] userInput: XXXX chars | YY slides esperados (##)
+[2SLIDES] Mode: create-like-this | ref=https://...   ← se configurado
+[2SLIDES] jobId=abc123 | iniciando polling...
+[2SLIDES] Poll 1/14: status=processing | Slides generation in progress
+[2SLIDES] Poll 3/14: status=success
+[2SLIDES] Job concluído! ZZ slides | downloadUrl obtida
+```
+
+`YY` (## no input) deve ser próximo de `ZZ` (slides gerados). Para 7 módulos: YY ≈ 30, ZZ ≈ 28-32.

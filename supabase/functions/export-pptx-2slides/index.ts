@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ENGINE_VERSION = "1.2.0-2SLIDES";
+const ENGINE_VERSION = "2.0.0-2SLIDES";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,39 +9,46 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── Curated professional themes (IDs verified via API) ──────────────
-const THEME_MAP: Record<string, string> = {
-  "blue-modern":     "st-1759917935785-nx0z6ae54",  // Blue Modern Project Presentation (light)
-  "blue-gradient":   "st-1763383163914-9ftifz8jv",  // Blue and White Gradient Modern (light)
-  "dark-pro":        "st-1763450718138-5utx9lnia",  // Black and Gray Gradient Professional (dark)
-  "training-orange": "st-1761218879337-89489751t",  // Yellow & White Modern Training (light)
-  "tech-green":      "st-1757840073876-sxlvltrs3",  // Green Modern Futuristic AI (dark)
-};
-const DEFAULT_THEME_ID = THEME_MAP["dark-pro"];
+// ── Imagem de referência de estilo (template premium EduGenAI navy+âmbar) ──
+// Esta URL deve ser um screenshot público de um slide do template_premium_v2.pptx
+// hospedado no Supabase Storage (bucket público) ou em outro CDN acessível.
+// Se não estiver disponível, a geração cai para busca de tema por palavra-chave.
+const REFERENCE_IMAGE_URL = Deno.env.get("EDUGENAI_REFERENCE_IMAGE_URL") ?? "";
 
-// ── Content helpers ──────────────────────────────────────────────────
+// ── Mapeamento courseType → palavra-chave de busca de tema ──────────────────
+// Usado quando REFERENCE_IMAGE_URL não está configurado (fallback).
+// Endpoint: GET /api/v1/themes/search?query=PALAVRA&limit=1
+const COURSE_TYPE_THEME_QUERY: Record<string, string> = {
+  "CURSO COMPLETO": "educação",
+  "TREINAMENTO":    "treinamento",
+  "WORKSHOP":       "criativo",
+  "WEBINAR":        "moderno",
+  "MINI-CURSO":     "educação",
+  "TRILHA":         "profissional",
+};
+const DEFAULT_THEME_QUERY = "educação";
+
+// ── Polling config ───────────────────────────────────────────────────────────
+const POLL_INTERVAL_MS   = 8_000;   // checar a cada 8s
+const POLL_MAX_ATTEMPTS  = 14;      // 14 × 8s = 112s máximo (< 150s limit da edge function)
+const TWOSLIDES_BASE_URL = "https://2slides.com/api/v1";
+
+// ── Content helpers ──────────────────────────────────────────────────────────
 function truncate(text: string, max: number): string {
   if (!text) return "";
   return text.length <= max ? text : text.slice(0, max - 3) + "...";
 }
 
-/**
- * Extracts sub-sections from module markdown content.
- * Returns 3–5 sub-sections with title + bullets, which maps to
- * 3–5 individual slides in 2Slides (one slide per ### heading).
- */
 function extractSubSections(
   content: string,
-  maxSections = 4,
+  maxSections = 3,
   maxBulletsPerSection = 4,
-  maxBulletLen = 160,
+  maxBulletLen = 150,
 ): { title: string; bullets: string[] }[] {
-  // Try to find existing markdown headings (## or ###)
   const headingRe = /^#{2,4}\s+(.+)$/m;
   const blocks = content.split(/^#{2,4}\s+/m).filter(Boolean);
 
   if (blocks.length >= 2) {
-    // Content already has headings — parse them
     const sections: { title: string; bullets: string[] }[] = [];
     const parts = content.split(/(^#{2,4}\s+.+$)/m).filter(Boolean);
     let currentTitle = "";
@@ -63,7 +70,6 @@ function extractSubSections(
     return sections.slice(0, maxSections);
   }
 
-  // No headings — split into paragraph groups and create synthetic sections
   const paragraphs = content
     .split(/\n{2,}/)
     .map((p) => p.replace(/\s+/g, " ").trim())
@@ -71,7 +77,6 @@ function extractSubSections(
 
   if (paragraphs.length === 0) return [];
 
-  // Split paragraphs evenly into N sections
   const N = Math.min(maxSections, Math.max(2, Math.ceil(paragraphs.length / 2)));
   const chunkSize = Math.ceil(paragraphs.length / N);
   const sections: { title: string; bullets: string[] }[] = [];
@@ -79,7 +84,6 @@ function extractSubSections(
   for (let i = 0; i < N; i++) {
     const chunk = paragraphs.slice(i * chunkSize, (i + 1) * chunkSize);
     if (chunk.length === 0) continue;
-    // Use first sentence of first paragraph as section title
     const firstPara = chunk[0];
     const firstSentence = firstPara.split(/(?<=[.!?])\s+/)[0];
     const title = truncate(firstSentence.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1"), 60);
@@ -91,12 +95,10 @@ function extractSubSections(
 }
 
 function extractBullets(text: string, max: number, maxLen: number): string[] {
-  // Try to find existing list items first
   const listItems = [...text.matchAll(/^[-*•]\s+(.+)$/mg)].map((m) => m[1].trim());
   if (listItems.length >= 2) {
     return listItems.slice(0, max).map((s) => truncate(s, maxLen));
   }
-  // Fall back to sentences
   const sentences = text
     .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
     .split(/(?<=[.!?])\s+|\n+/)
@@ -106,17 +108,18 @@ function extractBullets(text: string, max: number, maxLen: number): string[] {
 }
 
 /**
- * Builds a structured presentation outline for 2Slides AI.
+ * Constrói o userInput para a API 2Slides.
  *
- * Structure:
- *   # Course Title  →  Cover slide
- *   ## Índice        →  Table of contents slide
- *   ## Módulo N      →  Module section header
- *   ### Sub-seção    →  Individual content slide (3–4 per module)
- *   ## Conclusão     →  Closing slide
+ * REGRA CRÍTICA: cada ## = 1 slide na API 2Slides.
+ * NÃO usar ### dentro de ## para sub-seções — usar ## separados.
  *
- * Using ### within each ## causes 2Slides to generate 3–4 slides
- * per module instead of just 1.
+ * Estrutura por módulo:
+ *   ## Módulo N: Título   → 1 slide cover do módulo
+ *   ## Sub-seção A        → 1 slide de conteúdo
+ *   ## Sub-seção B        → 1 slide de conteúdo
+ *   ## Sub-seção C        → 1 slide de conteúdo
+ *
+ * Total esperado: 1 cover + 1 TOC + (N_módulos × 4) + 2 closing
  */
 function buildUserInput(
   courseTitle: string,
@@ -126,8 +129,11 @@ function buildUserInput(
 ): string {
   const lines: string[] = [];
 
-  // ── 1. Cover ─────────────────────────────────────────────────────
-  const shortTitle = truncate(courseTitle, 40);
+  // ── 1. Cover ──────────────────────────────────────────────────────────────
+  // Limitar título a 45 chars — títulos longos são truncados no layout cover do 2Slides
+  const shortTitle = courseTitle.length > 45
+    ? courseTitle.slice(0, 42) + "..."
+    : courseTitle;
   lines.push(`# ${shortTitle}`);
   lines.push(`Tipo: ${courseType}`);
   if (courseDescription) {
@@ -135,42 +141,71 @@ function buildUserInput(
   }
   lines.push("");
 
-  // ── 2. Table of Contents ─────────────────────────────────────────
+  // ── 2. Table of Contents ──────────────────────────────────────────────────
+  // 1 único ## para o TOC — sem ### dentro para não desperdiçar slots de slide
   lines.push("## Índice do Curso");
-  lines.push(`### Visão Geral — ${modules.length} Módulos`);
   modules.forEach((m, i) => lines.push(`- Módulo ${i + 1}: ${m.title}`));
   lines.push("");
 
-  // ── 3. Module sections ─────────────────────────────────────────────
-  const maxSubSections = 4;   // sempre 4, independente do nº de módulos
-  const maxBullets     = 4;   // era 3
-  const maxBulletLen   = 150; // era 120
+  // ── 3. Módulos ────────────────────────────────────────────────────────────
+  const maxSubSections = 3;  // 3 sub-seções → 4 slides por módulo (cover + 3)
+  const maxBullets     = 4;  // 4 bullets força layout de lista (evita "statistic" slide)
+  const maxBulletLen   = 150;
 
   for (let i = 0; i < modules.length; i++) {
     const m = modules[i];
 
-    // Slide cover do módulo (1 ## = 1 slide próprio)
+    // Slide cover do módulo (1 ## = 1 slide)
     lines.push(`## Módulo ${i + 1}: ${m.title}`);
-    lines.push(`- Tópico central deste módulo do curso`);
+    lines.push(`- Conteúdo principal deste módulo`);
     lines.push("");
 
     const subSections = extractSubSections(m.content || "", maxSubSections, maxBullets, maxBulletLen);
 
     if (subSections.length >= 2) {
-      // Cada sub-seção como ## independente → 1 slide próprio
+      // Cada sub-seção como ## independente → slide próprio
       for (const sub of subSections) {
         lines.push(`## ${sub.title}`);
         for (const bullet of sub.bullets) {
           lines.push(`- ${bullet}`);
         }
+        // Garantir mínimo de 3 bullets — evita layout "statistic" indesejado
+        const missing = 3 - sub.bullets.length;
+        for (let k = 0; k < missing; k++) {
+          lines.push(`- Conceito complementar relacionado ao tema`);
+        }
         lines.push("");
       }
     } else {
-      // Fallback sintético — 3 slides por módulo garantidos
+      // Fallback sintético — garante 3 slides por módulo mesmo sem conteúdo estruturado
       const synth = [
-        { h: `Fundamentos: ${m.title}`,      bullets: ["Conceitos e definições essenciais da área", "Contexto e importância no ambiente profissional", "Principais termos e abordagens utilizados", "Base teórica que sustenta a prática"] },
-        { h: `Aplicação Prática`,             bullets: ["Metodologias e ferramentas aplicadas no dia a dia", "Exemplos reais e casos de uso da área", "Boas práticas e erros comuns a evitar", "Passo a passo para implementação"] },
-        { h: `Resultados e Próximos Passos`,  bullets: ["Indicadores de sucesso e métricas de avaliação", "Como consolidar e aprofundar o aprendizado", "Conexão deste módulo com o restante do curso", "Ações imediatas para aplicar o conhecimento"] },
+        {
+          h: `Fundamentos: ${truncate(m.title, 40)}`,
+          bullets: [
+            "Conceitos e definições essenciais da área",
+            "Contexto e importância no ambiente profissional",
+            "Principais termos e abordagens utilizados",
+            "Base teórica necessária para aplicação prática",
+          ],
+        },
+        {
+          h: `Aplicação Prática`,
+          bullets: [
+            "Metodologias e ferramentas aplicadas no dia a dia",
+            "Exemplos reais e casos de uso da área",
+            "Boas práticas recomendadas por especialistas",
+            "Erros comuns e como evitá-los na prática",
+          ],
+        },
+        {
+          h: `Resultados e Próximos Passos`,
+          bullets: [
+            "Indicadores de sucesso e métricas de avaliação",
+            "Como consolidar e aprofundar o aprendizado",
+            "Ferramentas de suporte disponíveis na plataforma",
+            "Conexão deste módulo com o restante do curso",
+          ],
+        },
       ];
       for (const s of synth) {
         lines.push(`## ${s.h}`);
@@ -180,24 +215,93 @@ function buildUserInput(
     }
   }
 
-  // ── 4. Closing ───────────────────────────────────────────────────
-  lines.push(`## Parabéns por concluir ${shortTitle}!`);
+  // ── 4. Closing ────────────────────────────────────────────────────────────
+  lines.push("## Conclusão e Próximos Passos");
   lines.push("- Aplique o conhecimento adquirido em projetos reais");
-  lines.push("- Crie um plano de ação com metas claras para os próximos 90 dias");
+  lines.push("- Continue sua jornada de aprendizado e desenvolvimento");
   lines.push("- Certificado de conclusão disponível na plataforma");
-  lines.push("- Compartilhe o aprendizado com sua equipe e organização");
-  lines.push("");
-  lines.push("## Recursos e Próximos Passos");
-  lines.push("- Acesse o material de apoio e leituras complementares no portal");
-  lines.push("- Participe da comunidade de alunos e tire suas dúvidas");
   lines.push("- Explore os próximos cursos da trilha de aprendizado");
-  lines.push("- Continue sua jornada de desenvolvimento profissional");
   lines.push("");
 
-  return truncate(lines.join("\n"), 14000);
+  lines.push("## Recursos e Suporte");
+  lines.push("- Acesse o material de apoio disponível no portal");
+  lines.push("- Participe da comunidade de alunos e tire suas dúvidas");
+  lines.push("- Avalie o curso e compartilhe seu feedback");
+  lines.push("- Conecte-se com outros profissionais da área");
+  lines.push("");
+
+  const result = lines.join("\n");
+
+  // Log de diagnóstico
+  const h2Count = lines.filter(l => l.startsWith("## ")).length;
+  console.log(`[2SLIDES] userInput: ${result.length} chars | ${h2Count} slides esperados (##)`);
+
+  // Proteção para inputs excepcionalmente grandes (cursos com 20+ módulos)
+  return truncate(result, 14000);
 }
 
-// ── Main handler ─────────────────────────────────────────────────────
+// ── Buscar themeId dinamicamente ─────────────────────────────────────────────
+// Endpoint: GET /api/v1/themes/search?query=PALAVRA&limit=1
+// Retorna o primeiro tema da busca — mais relevante para a palavra-chave.
+// Usado como fallback quando REFERENCE_IMAGE_URL não está configurado.
+async function searchThemeId(apiKey: string, courseType: string): Promise<string | null> {
+  const query = COURSE_TYPE_THEME_QUERY[courseType] ?? DEFAULT_THEME_QUERY;
+  try {
+    const res = await fetch(
+      `${TWOSLIDES_BASE_URL}/themes/search?query=${encodeURIComponent(query)}&limit=1`,
+      { headers: { "Authorization": `Bearer ${apiKey}` } },
+    );
+    if (!res.ok) {
+      console.warn(`[2SLIDES] Theme search failed: ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    // A resposta provavelmente é { themes: [{ id, name, ... }] } ou [{ id, name }]
+    const themes = data?.themes ?? data?.data ?? data;
+    const themeId = Array.isArray(themes) && themes[0]?.id ? themes[0].id : null;
+    console.log(`[2SLIDES] Theme search "${query}" → ${themeId ?? "not found"}`);
+    return themeId;
+  } catch (e) {
+    console.warn(`[2SLIDES] Theme search error:`, e);
+    return null;
+  }
+}
+
+// ── Polling do jobId ──────────────────────────────────────────────────────────
+async function pollJob(apiKey: string, jobId: string): Promise<{ downloadUrl: string; slidePageCount: number }> {
+  for (let attempt = 1; attempt <= POLL_MAX_ATTEMPTS; attempt++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+
+    const res = await fetch(`${TWOSLIDES_BASE_URL}/jobs/${jobId}`, {
+      headers: { "Authorization": `Bearer ${apiKey}` },
+    });
+
+    if (!res.ok) {
+      console.warn(`[2SLIDES] Poll attempt ${attempt}: HTTP ${res.status}`);
+      continue;
+    }
+
+    const data = await res.json();
+    const status = data?.status ?? data?.data?.status;
+    const message = data?.message ?? data?.data?.message ?? "";
+    console.log(`[2SLIDES] Poll ${attempt}/${POLL_MAX_ATTEMPTS}: status=${status} | ${message}`);
+
+    if (status === "success") {
+      const downloadUrl = data?.downloadUrl ?? data?.data?.downloadUrl;
+      const slidePageCount = data?.slidePageCount ?? data?.data?.slidePageCount ?? 0;
+      if (!downloadUrl) throw new Error(`Job success but no downloadUrl. jobId=${jobId}`);
+      return { downloadUrl, slidePageCount };
+    }
+
+    if (status === "failed" || status === "error") {
+      throw new Error(`Job failed. jobId=${jobId} | message=${message}`);
+    }
+    // status === "pending" | "processing" → continuar polling
+  }
+  throw new Error(`Job polling timeout after ${POLL_MAX_ATTEMPTS} attempts. jobId=${jobId}`);
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -220,11 +324,11 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const supabaseUrl    = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey     = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const serviceClient  = createClient(supabaseUrl, serviceKey);
+    const supabaseUrl   = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const serviceClient = createClient(supabaseUrl, serviceKey);
 
-    // Authenticate user
+    // Autenticar usuário
     const { data: { user }, error: userError } = await serviceClient.auth.getUser(
       authHeader.replace("Bearer ", ""),
     );
@@ -236,7 +340,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { course_id, theme_key = "blue-gradient", language = "Portuguese", courseType = "CURSO COMPLETO" } = body;
+    const { course_id, language = "Portuguese", courseType = "CURSO COMPLETO" } = body;
     if (!course_id) {
       return new Response(
         JSON.stringify({ error: "course_id required" }),
@@ -244,7 +348,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Fetch course
+    // Buscar curso
     const { data: course, error: courseErr } = await serviceClient
       .from("courses")
       .select("*")
@@ -258,14 +362,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Fetch modules
+    // Buscar módulos
     const { data: modules = [] } = await serviceClient
       .from("course_modules")
       .select("title, content")
       .eq("course_id", course_id)
       .order("order_index");
 
-    const themeId   = THEME_MAP[theme_key] || DEFAULT_THEME_ID;
     const userInput = buildUserInput(
       course.title || "Curso",
       course.description || "",
@@ -273,54 +376,59 @@ Deno.serve(async (req: Request) => {
       courseType,
     );
 
-    console.log(
-      `[2SLIDES] Starting: "${course.title}" | theme=${theme_key}(${themeId}) | inputLen=${userInput.length} | lang=${language}`,
-    );
+    // ── Decidir endpoint e parâmetros ──────────────────────────────────────
+    // Se REFERENCE_IMAGE_URL estiver configurado → create-like-this (replica design EduGenAI)
+    // Caso contrário → generate com tema buscado dinamicamente por courseType
+    let endpoint: string;
+    let requestBody: Record<string, unknown>;
 
-    // ── Call 2Slides API (sync mode) ──────────────────────────────────
-    // Cap at 120s so we return a clean error before the 150s edge-function limit
-    const TWOSLIDES_TIMEOUT_MS = 120_000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TWOSLIDES_TIMEOUT_MS);
-
-    const t0 = Date.now();
-    let genRes: Response;
-    let genData: any;
-    try {
-      genRes = await fetch("https://2slides.com/api/v1/slides/generate", {
-        method:  "POST",
-        headers: {
-          "Authorization": `Bearer ${twoSlidesKey}`,
-          "Content-Type":  "application/json",
-        },
-        body: JSON.stringify({
-          userInput,
-          themeId,
-          responseLanguage: language,
-          mode: "sync",
-        }),
-        signal: controller.signal,
-      });
-      genData = await genRes.json();
-    } catch (fetchErr: any) {
-      clearTimeout(timeoutId);
-      const isTimeout = fetchErr?.name === "AbortError";
-      console.warn(`[2SLIDES] Fetch ${isTimeout ? "timed out" : "failed"}:`, fetchErr?.message);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error:   isTimeout ? "TWOSLIDES_TIMEOUT" : "TWOSLIDES_NETWORK_ERROR",
-          detail:  isTimeout
-            ? `A geração demorou mais de ${TWOSLIDES_TIMEOUT_MS / 1000}s. Tente um curso com menos módulos ou use o motor EduGen v4.`
-            : fetchErr?.message,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    } finally {
-      clearTimeout(timeoutId);
+    if (REFERENCE_IMAGE_URL) {
+      // Endpoint: POST /api/v1/slides/create-like-this
+      // Replica o estilo visual da imagem de referência (template premium navy+âmbar)
+      endpoint = `${TWOSLIDES_BASE_URL}/slides/create-like-this`;
+      requestBody = {
+        userInput,
+        referenceImageUrl: REFERENCE_IMAGE_URL,
+        responseLanguage: language,
+        mode: "async",
+      };
+      console.log(`[2SLIDES] Mode: create-like-this | ref=${REFERENCE_IMAGE_URL}`);
+    } else {
+      // Fallback: POST /api/v1/slides/generate com tema buscado dinamicamente
+      const themeId = await searchThemeId(twoSlidesKey, courseType);
+      if (!themeId) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "TWOSLIDES_THEME_NOT_FOUND",
+            detail: `Nenhum tema encontrado para courseType="${courseType}". Configure EDUGENAI_REFERENCE_IMAGE_URL ou verifique a API key.`,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      endpoint = `${TWOSLIDES_BASE_URL}/slides/generate`;
+      requestBody = {
+        userInput,
+        themeId,
+        responseLanguage: language,
+        mode: "async",
+      };
+      console.log(`[2SLIDES] Mode: generate | themeId=${themeId} | courseType=${courseType}`);
     }
 
-    console.log(`[2SLIDES] API response (${Date.now() - t0}ms):`, JSON.stringify(genData).slice(0, 300));
+    // ── Chamar API 2Slides (async) ─────────────────────────────────────────
+    const t0 = Date.now();
+    const genRes = await fetch(endpoint, {
+      method:  "POST",
+      headers: {
+        "Authorization": `Bearer ${twoSlidesKey}`,
+        "Content-Type":  "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const genData = await genRes.json();
+    console.log(`[2SLIDES] Initial response (${Date.now() - t0}ms):`, JSON.stringify(genData).slice(0, 300));
 
     if (!genRes.ok || !genData?.success) {
       const rawMsg = JSON.stringify(genData).toLowerCase();
@@ -328,36 +436,33 @@ Deno.serve(async (req: Request) => {
         return new Response(
           JSON.stringify({
             success: false,
-            error:   "TWOSLIDES_NO_CREDITS",
-            detail:  "Sua conta 2Slides não tem créditos suficientes. Acesse 2slides.com/pricing para recarregar.",
+            error: "TWOSLIDES_NO_CREDITS",
+            detail: "Sua conta 2Slides não tem créditos suficientes. Acesse 2slides.com/pricing para recarregar.",
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
       return new Response(
-        JSON.stringify({
-          success: false,
-          error:   "TWOSLIDES_API_ERROR",
-          detail:  JSON.stringify(genData).slice(0, 200),
-        }),
+        JSON.stringify({ success: false, error: "TWOSLIDES_API_ERROR", detail: JSON.stringify(genData).slice(0, 200) }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const { downloadUrl, slidePageCount, jobId } = genData.data || {};
-    if (!downloadUrl) {
-      throw new Error(`2Slides did not return a downloadUrl. jobId=${jobId}`);
-    }
+    // ── Polling do job ─────────────────────────────────────────────────────
+    const jobId = genData?.data?.jobId ?? genData?.jobId;
+    if (!jobId) throw new Error(`2Slides não retornou jobId. Response: ${JSON.stringify(genData).slice(0, 200)}`);
 
-    console.log(`[2SLIDES] Success! ${slidePageCount} slides | jobId=${jobId} | downloading...`);
+    console.log(`[2SLIDES] jobId=${jobId} | iniciando polling...`);
+    const { downloadUrl, slidePageCount } = await pollJob(twoSlidesKey, jobId);
+    console.log(`[2SLIDES] Job concluído! ${slidePageCount} slides | downloadUrl obtida`);
 
-    // ── Download PPTX from 2Slides presigned URL ──────────────────────
+    // ── Download do PPTX ───────────────────────────────────────────────────
     const pptxRes = await fetch(downloadUrl);
-    if (!pptxRes.ok) throw new Error(`Failed to download PPTX from 2Slides: ${pptxRes.status}`);
+    if (!pptxRes.ok) throw new Error(`Falha ao baixar PPTX do 2Slides: ${pptxRes.status}`);
     const pptxData = new Uint8Array(await pptxRes.arrayBuffer());
     console.log(`[2SLIDES] Downloaded ${(pptxData.byteLength / 1024).toFixed(0)} KB`);
 
-    // ── Upload to Supabase Storage ────────────────────────────────────
+    // ── Upload para Supabase Storage ───────────────────────────────────────
     const dateStr  = new Date().toISOString().slice(0, 10);
     const safeName = (course.title || "curso")
       .normalize("NFD")
@@ -387,14 +492,20 @@ Deno.serve(async (req: Request) => {
       .createSignedUrl(fileName, 3600);
     if (signErr) throw signErr;
 
-    // ── Usage event ───────────────────────────────────────────────────
+    // ── Usage event ────────────────────────────────────────────────────────
     await serviceClient.from("usage_events").insert({
       user_id:    user.id,
       event_type: "COURSE_EXPORTED_PPTX_2SLIDES",
-      metadata:   { course_id, slide_count: slidePageCount, theme_key, job_id: jobId },
+      metadata:   {
+        course_id,
+        slide_count:  slidePageCount,
+        job_id:       jobId,
+        endpoint:     REFERENCE_IMAGE_URL ? "create-like-this" : "generate",
+        course_type:  courseType,
+      },
     });
 
-    console.log(`[2SLIDES] Done! Signed URL ready.`);
+    console.log(`[2SLIDES] Done! URL assinada pronta.`);
 
     return new Response(
       JSON.stringify({
@@ -402,11 +513,12 @@ Deno.serve(async (req: Request) => {
         version:        "2slides",
         engine_version: ENGINE_VERSION,
         slide_count:    slidePageCount,
-        theme_key,
         job_id:         jobId,
+        endpoint_used:  REFERENCE_IMAGE_URL ? "create-like-this" : "generate",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
+
   } catch (error: any) {
     console.error("[2SLIDES] Export error:", error?.message || error);
     return new Response(
