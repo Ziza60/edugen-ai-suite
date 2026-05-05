@@ -286,13 +286,41 @@ function fillXml(xml: string, reps: Record<string, string>): string {
 }
 
 // ═══════════════════════════════════════════════════════════
+// PEXELS IMAGE FETCH
+// ═══════════════════════════════════════════════════════════
+
+async function fetchModuleImage(query: string, pexelsKey: string): Promise<Uint8Array | null> {
+  try {
+    const searchRes = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=5&orientation=landscape`,
+      { headers: { Authorization: pexelsKey } },
+    );
+    if (!searchRes.ok) return null;
+    const searchData = await searchRes.json();
+    const photo = searchData.photos?.[0];
+    if (!photo) return null;
+    const imgUrl = photo.src?.large || photo.src?.medium;
+    if (!imgUrl) return null;
+    const imgRes = await fetch(imgUrl);
+    if (!imgRes.ok) return null;
+    return new Uint8Array(await imgRes.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // GENERATE PPTX ZIP
 // ═══════════════════════════════════════════════════════════
+
+const IMAGE_REL_TYPE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 
 async function generatePptxZip(
   slidesData: Record<string, unknown>[],
   brand: string,
-  templateBytes: Uint8Array
+  templateBytes: Uint8Array,
+  moduleImages?: Map<number, Uint8Array>,
 ): Promise<Uint8Array> {
 
   const tpl = await JSZip.loadAsync(templateBytes);
@@ -310,7 +338,7 @@ async function generatePptxZip(
     })
   );
 
-  const filledSlides: { xml: string; rel: string }[] = slidesData.map((sd) => {
+  const filledSlides: { xml: string; rel: string; moduleIdx?: number }[] = slidesData.map((sd) => {
     const [layout, reps] = buildReplacements(sd);
     const idx = LAYOUT_INDEX[layout] ?? LAYOUT_INDEX["BULLETS"];
     const slideXml = layoutXmls[`ppt/slides/slide${idx + 1}.xml`];
@@ -318,16 +346,64 @@ async function generatePptxZip(
     return {
       xml: fillXml(slideXml, reps),
       rel: slideRel,
+      moduleIdx: typeof sd._moduleIdx === "number" ? (sd._moduleIdx as number) : undefined,
     };
   });
 
   const total = filledSlides.length;
-  const finalSlides = filledSlides.map((s, i) => ({
+  const baseSlides = filledSlides.map((s, i) => ({
     xml: s.xml
       .replaceAll("1 / 45", `${i + 1} / ${total}`)
       .replaceAll("EduGenAI", escapeXml(brand)),
     rel: s.rel,
+    moduleIdx: s.moduleIdx,
   }));
+
+  // ── Embed Pexels images into MODULE_COVER slides ──
+  const imageMediaFiles: { name: string; bytes: Uint8Array }[] = [];
+
+  const finalSlides = baseSlides.map((s) => {
+    const modIdx = s.moduleIdx;
+    if (modIdx === undefined || !moduleImages?.has(modIdx)) {
+      return { xml: s.xml, rel: s.rel };
+    }
+
+    const imgBytes  = moduleImages.get(modIdx)!;
+    const mediaName = `module_img_${modIdx + 1}.jpeg`;
+    const mediaPath = `ppt/media/${mediaName}`;
+    imageMediaFiles.push({ name: mediaPath, bytes: imgBytes });
+
+    const rId = `rIdModImg${modIdx + 1}`;
+
+    // Add image relationship to slide .rels
+    const relWithImage = s.rel
+      ? s.rel.replace(
+          "</Relationships>",
+          `<Relationship Id="${rId}" Type="${IMAGE_REL_TYPE}" Target="../media/${mediaName}"/>\n</Relationships>`,
+        )
+      : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n<Relationship Id="${rId}" Type="${IMAGE_REL_TYPE}" Target="../media/${mediaName}"/>\n</Relationships>`;
+
+    // Inject <p:pic> into <p:spTree> — right-panel image (right 44% of widescreen slide)
+    const picXml =
+      `<p:pic>` +
+      `<p:nvPicPr>` +
+        `<p:cNvPr id="201" name="ModuleImage"/>` +
+        `<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>` +
+        `<p:nvPr/>` +
+      `</p:nvPicPr>` +
+      `<p:blipFill>` +
+        `<a:blip r:embed="${rId}"/>` +
+        `<a:stretch><a:fillRect/></a:stretch>` +
+      `</p:blipFill>` +
+      `<p:spPr>` +
+        `<a:xfrm><a:off x="6858000" y="0"/><a:ext cx="5334000" cy="6858000"/></a:xfrm>` +
+        `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
+      `</p:spPr>` +
+      `</p:pic>`;
+
+    const xmlWithImage = s.xml.replace("</p:spTree>", picXml + "</p:spTree>");
+    return { xml: xmlWithImage, rel: relWithImage };
+  });
 
   const prsXmlOrig = await tpl.file("ppt/presentation.xml")!.async("string");
   const newSldIds = finalSlides
@@ -359,7 +435,12 @@ async function generatePptxZip(
       `<Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="${SLIDE_CONTENT_TYPE}"/>`
     )
     .join("\n");
-  const ct = ctClean.replace("</Types>", newOverrides + "\n</Types>");
+  let ct = ctClean.replace("</Types>", newOverrides + "\n</Types>");
+
+  // Ensure JPEG content type is registered (needed for embedded module images)
+  if (imageMediaFiles.length > 0 && !ct.includes('Extension="jpeg"') && !ct.includes('Extension="jpg"')) {
+    ct = ct.replace("</Types>", '<Default Extension="jpeg" ContentType="image/jpeg"/>\n</Types>');
+  }
 
   const slidePattern = /^ppt\/slides\/(slide\d+\.xml|_rels\/slide\d+\.xml\.rels)$/;
 
@@ -384,6 +465,11 @@ async function generatePptxZip(
         outZip.file(name, content);
       })
   );
+
+  // Add module image media files
+  for (const { name, bytes } of imageMediaFiles) {
+    outZip.file(name, bytes, { binary: true });
+  }
 
   finalSlides.forEach((s, i) => {
     outZip.file(`ppt/slides/slide${i + 1}.xml`, s.xml);
@@ -723,6 +809,7 @@ async function buildSlidesList(
 
     slides.push({
       layout: "MODULE_COVER",
+      _moduleIdx: i,
       module_number: String(i + 1).padStart(2, "0"),
       module_label: `MÓDULO ${i + 1}`,
       title: cleanTitle,
@@ -785,9 +872,10 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const {
       course_id,
-      density     = "standard",
-      language    = "Português (Brasil)",
-      footerBrand = "EduGenAI",
+      density        = "standard",
+      language       = "Português (Brasil)",
+      footerBrand    = "EduGenAI",
+      include_images = false,
     } = body;
 
     if (!course_id) {
@@ -820,7 +908,23 @@ Deno.serve(async (req: Request) => {
       content: (m.content || "").trim(),
     }));
 
-    console.log(`[V6] "${courseTitle}" | ${moduleData.length} modules | density=${density}`);
+    console.log(`[V6] "${courseTitle}" | ${moduleData.length} modules | density=${density} | images=${include_images}`);
+
+    const pexelsKey = Deno.env.get("PEXELS_API_KEY") || "";
+
+    // Fetch module images from Pexels in parallel with template download + slide generation
+    const moduleImagePromise: Promise<Map<number, Uint8Array> | undefined> =
+      include_images && pexelsKey
+        ? (async () => {
+            const results = await Promise.all(
+              moduleData.map((mod) => fetchModuleImage(mod.title, pexelsKey))
+            );
+            const map = new Map<number, Uint8Array>();
+            results.forEach((img, i) => { if (img) map.set(i, img); });
+            console.log(`[V6-IMG] Fetched ${map.size}/${moduleData.length} module images`);
+            return map;
+          })()
+        : Promise.resolve(undefined);
 
     const { data: tplBlob, error: tplErr } = await svc.storage
       .from("templates").download(TEMPLATE_STORAGE_PATH);
@@ -829,12 +933,13 @@ Deno.serve(async (req: Request) => {
     }
     const templateBytes = new Uint8Array(await tplBlob.arrayBuffer());
 
-    const slidesList = await buildSlidesList(
-      courseTitle, moduleData, density, language, footerBrand, geminiKey
-    );
+    const [slidesList, moduleImages] = await Promise.all([
+      buildSlidesList(courseTitle, moduleData, density, language, footerBrand, geminiKey),
+      moduleImagePromise,
+    ]);
     console.log(`[V6] ${slidesList.length} slides gerados`);
 
-    const pptxBytes = await generatePptxZip(slidesList, footerBrand, templateBytes);
+    const pptxBytes = await generatePptxZip(slidesList, footerBrand, templateBytes, moduleImages);
     console.log(`[V6] PPTX: ${pptxBytes.byteLength.toLocaleString()} bytes`);
 
     const dateStr  = new Date().toISOString().slice(0, 10);

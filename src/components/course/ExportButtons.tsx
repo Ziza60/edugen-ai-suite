@@ -388,10 +388,11 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 try {
                   const resV6 = await supabase.functions.invoke("export-pptx-v6", {
                     body: {
-                      course_id:   courseId,
-                      density:     options.density,
-                      language:    "Português (Brasil)",
-                      footerBrand: options.footerBrand,
+                      course_id:     courseId,
+                      density:       options.density,
+                      language:      "Português (Brasil)",
+                      footerBrand:   options.footerBrand,
+                      include_images: options.includeImages,
                     },
                   });
                   if (resV6.data?.url && !resV6.error) {
