@@ -17,7 +17,7 @@ const THEME_MAP: Record<string, string> = {
   "training-orange": "st-1761218879337-89489751t",  // Yellow & White Modern Training (light)
   "tech-green":      "st-1757840073876-sxlvltrs3",  // Green Modern Futuristic AI (dark)
 };
-const DEFAULT_THEME_ID = THEME_MAP["blue-gradient"];
+const DEFAULT_THEME_ID = THEME_MAP["dark-pro"];
 
 // ── Content helpers ──────────────────────────────────────────────────
 function truncate(text: string, max: number): string {
@@ -127,7 +127,8 @@ function buildUserInput(
   const lines: string[] = [];
 
   // ── 1. Cover ─────────────────────────────────────────────────────
-  lines.push(`# ${courseTitle}`);
+  const shortTitle = truncate(courseTitle, 40);
+  lines.push(`# ${shortTitle}`);
   lines.push(`Tipo: ${courseType}`);
   if (courseDescription) {
     lines.push(truncate(courseDescription.replace(/\s+/g, " ").trim(), 280));
@@ -140,37 +141,39 @@ function buildUserInput(
   modules.forEach((m, i) => lines.push(`- Módulo ${i + 1}: ${m.title}`));
   lines.push("");
 
-  // ── 3. Module sections with sub-sections ─────────────────────────
-  // Budget per module: ~1200 chars each → 3 sub-sections × 3 bullets × ~100 chars
-  // Always use 3 sub-sections minimum so the API generates enough slides.
-  // For courses with ≤4 modules we go up to 4 sub-sections for richer content.
-  const maxSubSections = modules.length <= 4 ? 4 : 3;
-  const maxBullets     = 3;
-  const maxBulletLen   = 120;
+  // ── 3. Module sections ─────────────────────────────────────────────
+  const maxSubSections = 4;   // sempre 4, independente do nº de módulos
+  const maxBullets     = 4;   // era 3
+  const maxBulletLen   = 150; // era 120
 
   for (let i = 0; i < modules.length; i++) {
     const m = modules[i];
+
+    // Slide cover do módulo (1 ## = 1 slide próprio)
     lines.push(`## Módulo ${i + 1}: ${m.title}`);
+    lines.push(`- Tópico central deste módulo do curso`);
+    lines.push("");
 
     const subSections = extractSubSections(m.content || "", maxSubSections, maxBullets, maxBulletLen);
 
     if (subSections.length >= 2) {
+      // Cada sub-seção como ## independente → 1 slide próprio
       for (const sub of subSections) {
-        lines.push(`### ${sub.title}`);
+        lines.push(`## ${sub.title}`);
         for (const bullet of sub.bullets) {
           lines.push(`- ${bullet}`);
         }
         lines.push("");
       }
     } else {
-      // Synthetic fallback — guarantee 3 sub-sections so the API generates real slides
+      // Fallback sintético — 3 slides por módulo garantidos
       const synth = [
-        { h: `Fundamentos de ${m.title}`,   bullets: ["Conceitos e definições essenciais da área", "Contexto e importância no ambiente profissional", "Principais termos e abordagens utilizados"] },
-        { h: `Aplicação Prática`,            bullets: ["Metodologias e ferramentas aplicadas no dia a dia", "Exemplos reais e casos de uso da área", "Boas práticas e erros comuns a evitar"] },
-        { h: `Resultados e Próximos Passos`, bullets: ["Indicadores de sucesso e métricas de avaliação", "Como consolidar e aprofundar o aprendizado", "Conexão deste módulo com o restante do curso"] },
+        { h: `Fundamentos: ${m.title}`,      bullets: ["Conceitos e definições essenciais da área", "Contexto e importância no ambiente profissional", "Principais termos e abordagens utilizados", "Base teórica que sustenta a prática"] },
+        { h: `Aplicação Prática`,             bullets: ["Metodologias e ferramentas aplicadas no dia a dia", "Exemplos reais e casos de uso da área", "Boas práticas e erros comuns a evitar", "Passo a passo para implementação"] },
+        { h: `Resultados e Próximos Passos`,  bullets: ["Indicadores de sucesso e métricas de avaliação", "Como consolidar e aprofundar o aprendizado", "Conexão deste módulo com o restante do curso", "Ações imediatas para aplicar o conhecimento"] },
       ];
       for (const s of synth) {
-        lines.push(`### ${s.h}`);
+        lines.push(`## ${s.h}`);
         for (const b of s.bullets) lines.push(`- ${b}`);
         lines.push("");
       }
@@ -178,16 +181,17 @@ function buildUserInput(
   }
 
   // ── 4. Closing ───────────────────────────────────────────────────
-  lines.push("## Conclusão e Próximos Passos");
-  lines.push(`### Parabéns por concluir ${truncate(courseTitle, 60)}!`);
+  lines.push(`## Parabéns por concluir ${shortTitle}!`);
   lines.push("- Aplique o conhecimento adquirido em projetos reais");
-  lines.push("- Continue sua jornada de aprendizado e desenvolvimento");
+  lines.push("- Crie um plano de ação com metas claras para os próximos 90 dias");
   lines.push("- Certificado de conclusão disponível na plataforma");
+  lines.push("- Compartilhe o aprendizado com sua equipe e organização");
   lines.push("");
-  lines.push("### Recursos e Suporte");
-  lines.push("- Acesse o material de apoio disponível no portal");
+  lines.push("## Recursos e Próximos Passos");
+  lines.push("- Acesse o material de apoio e leituras complementares no portal");
   lines.push("- Participe da comunidade de alunos e tire suas dúvidas");
   lines.push("- Explore os próximos cursos da trilha de aprendizado");
+  lines.push("- Continue sua jornada de desenvolvimento profissional");
   lines.push("");
 
   return truncate(lines.join("\n"), 14000);
