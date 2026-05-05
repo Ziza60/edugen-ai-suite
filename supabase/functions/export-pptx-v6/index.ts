@@ -289,17 +289,74 @@ function fillXml(xml: string, reps: Record<string, string>): string {
 // PEXELS IMAGE FETCH
 // ═══════════════════════════════════════════════════════════
 
-async function fetchModuleImage(query: string, pexelsKey: string): Promise<Uint8Array | null> {
+// Words to strip from course/module titles when building Pexels queries
+const FILLER_WORDS = new Set([
+  // Portuguese stopwords & generic course words
+  "a","o","as","os","e","é","de","do","da","dos","das","em","no","na","nos","nas",
+  "um","uma","uns","umas","para","por","com","sem","que","se","ao","à","aos","às",
+  "mais","como","sobre","entre","até","após","desde","durante","sob","ante",
+  // Common course title prefixes that add no domain meaning
+  "dominando","aprenda","aprendendo","introdução","fundamentos","guia","curso",
+  "completo","básico","avançado","prático","profissional","essencial","master",
+  "aprenda","descubra","entenda","domine","use","usando","utilizando","como",
+]);
+
+function buildImageQuery(courseTitle: string, moduleTitle: string): string {
+  const tokenize = (text: string) =>
+    text
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // strip accents for matching
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !FILLER_WORDS.has(w));
+
+  const courseTokens = tokenize(courseTitle).slice(0, 3);
+  const moduleTokens = tokenize(moduleTitle)
+    .filter((w) => !courseTokens.includes(w)) // avoid duplicates
+    .slice(0, 3);
+
+  // Re-use original casing from course title for better Pexels results
+  const courseWords = courseTitle
+    .split(/\s+/)
+    .filter((w) => {
+      const norm = w.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      return norm.length > 2 && !FILLER_WORDS.has(norm);
+    })
+    .slice(0, 3);
+
+  const moduleWords = moduleTitle
+    .split(/\s+/)
+    .filter((w) => {
+      const norm = w.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      return norm.length > 2 && !FILLER_WORDS.has(norm) && !moduleTokens.every((t) => t !== norm.toLowerCase());
+    })
+    .slice(0, 3);
+
+  // Course subject always leads the query so Pexels understands the domain
+  const query = [...courseWords, ...moduleWords].join(" ").slice(0, 80);
+  return query || courseTitle.slice(0, 40);
+}
+
+async function fetchModuleImage(
+  courseTitle: string,
+  moduleTitle: string,
+  pexelsKey: string,
+): Promise<Uint8Array | null> {
+  const query = buildImageQuery(courseTitle, moduleTitle);
+  console.log(`[V6-IMG] Query: "${query}"`);
   try {
     const searchRes = await fetch(
-      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=5&orientation=landscape`,
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=10&orientation=landscape`,
       { headers: { Authorization: pexelsKey } },
     );
     if (!searchRes.ok) return null;
     const searchData = await searchRes.json();
-    const photo = searchData.photos?.[0];
-    if (!photo) return null;
-    const imgUrl = photo.src?.large || photo.src?.medium;
+    // Pick a photo that isn't the very first (avoids same stock photo for all modules)
+    const photos: unknown[] = searchData.photos ?? [];
+    if (photos.length === 0) return null;
+    const photo = (photos[1] ?? photos[0]) as Record<string, unknown>;
+    const src = photo.src as Record<string, string> | undefined;
+    const imgUrl = src?.large || src?.medium;
     if (!imgUrl) return null;
     const imgRes = await fetch(imgUrl);
     if (!imgRes.ok) return null;
@@ -917,7 +974,7 @@ Deno.serve(async (req: Request) => {
       include_images && pexelsKey
         ? (async () => {
             const results = await Promise.all(
-              moduleData.map((mod) => fetchModuleImage(mod.title, pexelsKey))
+              moduleData.map((mod) => fetchModuleImage(courseTitle, mod.title, pexelsKey))
             );
             const map = new Map<number, Uint8Array>();
             results.forEach((img, i) => { if (img) map.set(i, img); });
