@@ -125,3 +125,165 @@
     font-family: 'Cormorant Garamond', serif;
   }
 }
+
+/* ── Module content typography ─────────────────────────────────────────────── */
+.module-prose {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: hsl(var(--foreground));
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+.module-prose h1,
+.module-prose h2,
+.module-prose h3,
+.module-prose h4,
+.module-prose h5,
+.module-prose h6 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: left;
+  color: hsl(var(--foreground));
+  margin-top: 2em;
+  margin-bottom: 0.6em;
+}
+
+.module-prose h1 { font-size: 1.875rem; border-bottom: 2px solid hsl(var(--primary) / 0.2); padding-bottom: 0.35em; }
+.module-prose h2 { font-size: 1.5rem;   border-bottom: 1px solid hsl(var(--border)); padding-bottom: 0.25em; }
+.module-prose h3 { font-size: 1.25rem;  }
+.module-prose h4 { font-size: 1.1rem;   color: hsl(var(--primary)); }
+.module-prose h5 { font-size: 1rem;     font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--muted-foreground)); }
+.module-prose h6 { font-size: 0.9rem;   font-weight: 600; color: hsl(var(--muted-foreground)); }
+
+/* First heading has no top margin */
+.module-prose > h1:first-child,
+.module-prose > h2:first-child,
+.module-prose > h3:first-child {
+  margin-top: 0;
+}
+
+.module-prose p {
+  margin-top: 0;
+  margin-bottom: 1.25em;
+  text-align: justify;
+}
+
+.module-prose p:last-child { margin-bottom: 0; }
+
+/* Lists */
+.module-prose ul,
+.module-prose ol {
+  margin-top: 0.5em;
+  margin-bottom: 1.25em;
+  padding-left: 1.75em;
+  text-align: left;
+}
+
+.module-prose ul { list-style-type: disc; }
+.module-prose ol { list-style-type: decimal; }
+
+.module-prose li {
+  margin-bottom: 0.4em;
+  line-height: 1.75;
+  padding-left: 0.25em;
+}
+
+.module-prose li::marker {
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+.module-prose li > p { margin-bottom: 0.4em; }
+
+/* Nested lists */
+.module-prose ul ul,
+.module-prose ol ol,
+.module-prose ul ol,
+.module-prose ol ul {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+}
+
+/* Blockquote */
+.module-prose blockquote {
+  border-left: 4px solid hsl(var(--primary));
+  margin: 1.5em 0;
+  padding: 0.75em 1.25em;
+  background: hsl(var(--primary) / 0.05);
+  border-radius: 0 8px 8px 0;
+  color: hsl(var(--foreground) / 0.8);
+  font-style: italic;
+  text-align: left;
+}
+
+.module-prose blockquote p { margin-bottom: 0; text-align: left; }
+
+/* Code */
+.module-prose code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 0.875em;
+  background: hsl(var(--muted));
+  color: hsl(var(--primary));
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  border: 1px solid hsl(var(--border));
+}
+
+.module-prose pre {
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 1.25em 1.5em;
+  overflow-x: auto;
+  margin: 1.5em 0;
+  line-height: 1.6;
+}
+
+.module-prose pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.875rem;
+  color: hsl(var(--foreground));
+}
+
+/* Strong & em */
+.module-prose strong {
+  font-weight: 700;
+  color: hsl(var(--foreground));
+}
+
+.module-prose em {
+  font-style: italic;
+  color: hsl(var(--foreground) / 0.85);
+}
+
+/* Horizontal rule */
+.module-prose hr {
+  border: none;
+  border-top: 2px solid hsl(var(--border));
+  margin: 2.5em 0;
+}
+
+/* Links */
+.module-prose a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: opacity 0.15s;
+}
+.module-prose a:hover { opacity: 0.75; }
+
+/* Dark mode adjustments */
+.dark .module-prose {
+  color: hsl(var(--foreground));
+}
+.dark .module-prose blockquote {
+  background: hsl(var(--primary) / 0.08);
+}
+.dark .module-prose code {
+  background: hsl(var(--muted));
+}

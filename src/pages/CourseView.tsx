@@ -1090,7 +1090,7 @@ export default function CourseView() {
                       />
                     </div>
                   )}
-                  <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-display prose-headings:font-bold prose-p:leading-relaxed prose-li:leading-relaxed">
+                  <div className="module-prose">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>
                       {activeModule.content || "*Sem conteúdo ainda*"}
                     </ReactMarkdown>
