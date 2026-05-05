@@ -1,12 +1,19 @@
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useState } from "react";
 import {
   Brain, FileUp, Target, BarChart3, Pencil, Globe,
   Presentation, GraduationCap, School, Bot, Video, Users,
   Star, FileText, ArrowRight, CheckCircle, Crown, Sparkles,
-  BookOpen,
+  BookOpen, Play, X,
 } from "lucide-react";
+
+// ── Substitua pela URL do YouTube do seu vídeo demo ──────────────────────────
+// Formatos aceitos:
+//   https://www.youtube.com/watch?v=XXXXXXXXXXX
+//   https://youtu.be/XXXXXXXXXXX
+// Deixe em branco ("") para mostrar um placeholder enquanto o vídeo não está pronto.
+const DEMO_VIDEO_ID = ""; // ex: "dQw4w9WgXcQ"
 
 const ACCENT = "#DF7C3A";
 const GOLD = "#C9A96E";
@@ -77,6 +84,8 @@ const proPlan = [
 ];
 
 export default function Landing() {
+  const [demoOpen, setDemoOpen] = useState(false);
+
   useEffect(() => {
     if (!document.getElementById("landing-fonts")) {
       const link = document.createElement("link");
@@ -160,11 +169,12 @@ export default function Landing() {
               onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
               onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
             >Criar meu primeiro curso <ArrowRight className="h-4 w-4" /></Link>
-            <Link to="/auth"
-              style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "rgba(232,227,220,0.5)", fontSize: "0.9375rem", padding: "0.75rem 2rem", borderRadius: "8px", border: "1px solid rgba(232,227,220,0.1)", transition: "all 0.2s", textDecoration: "none", background: "transparent" }}
+            <button
+              onClick={() => setDemoOpen(true)}
+              style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "rgba(232,227,220,0.5)", fontSize: "0.9375rem", padding: "0.75rem 2rem", borderRadius: "8px", border: "1px solid rgba(232,227,220,0.1)", transition: "all 0.2s", background: "transparent", cursor: "pointer" }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "#E8E3DC"; e.currentTarget.style.borderColor = "rgba(232,227,220,0.25)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(232,227,220,0.5)"; e.currentTarget.style.borderColor = "rgba(232,227,220,0.1)"; }}
-            >Ver demonstração ↗</Link>
+            ><Play className="h-4 w-4 fill-current" /> Ver demonstração</button>
           </motion.div>
 
           <motion.div variants={fadeUp} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "0.8125rem", color: "rgba(232,227,220,0.35)" }}>
@@ -416,6 +426,91 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+
+      {/* ── DEMO VIDEO MODAL ── */}
+      <AnimatePresence>
+        {demoOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setDemoOpen(false)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 1000,
+              background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "1.5rem",
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "100%", maxWidth: "900px",
+                background: "#111115",
+                borderRadius: "16px",
+                border: "1px solid rgba(232,227,220,0.08)",
+                overflow: "hidden",
+                boxShadow: "0 32px 80px rgba(0,0,0,0.7)",
+              }}
+            >
+              {/* Header */}
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "1rem 1.25rem",
+                borderBottom: "1px solid rgba(232,227,220,0.06)",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: `rgba(223,124,58,0.12)`, border: `1px solid rgba(223,124,58,0.2)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Play className="h-3.5 w-3.5" style={{ color: ACCENT, fill: ACCENT }} />
+                  </div>
+                  <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", fontWeight: 600, color: "#E8E3DC" }}>
+                    Demonstração — EduGen AI
+                  </span>
+                </div>
+                <button
+                  onClick={() => setDemoOpen(false)}
+                  style={{ background: "rgba(232,227,220,0.06)", border: "none", borderRadius: "8px", width: "32px", height: "32px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "rgba(232,227,220,0.5)", transition: "all 0.15s" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(232,227,220,0.12)"; e.currentTarget.style.color = "#E8E3DC"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(232,227,220,0.06)"; e.currentTarget.style.color = "rgba(232,227,220,0.5)"; }}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Video area */}
+              <div style={{ position: "relative", paddingBottom: "56.25%", background: "#0B0B0F" }}>
+                {DEMO_VIDEO_ID ? (
+                  <iframe
+                    src={`https://www.youtube.com/embed/${DEMO_VIDEO_ID}?autoplay=1&rel=0&modestbranding=1`}
+                    title="Demonstração EduGen AI"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" }}
+                  />
+                ) : (
+                  /* Placeholder enquanto o vídeo não está configurado */
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.5rem" }}>
+                    <div style={{ width: "72px", height: "72px", borderRadius: "50%", background: `rgba(223,124,58,0.12)`, border: `1px solid rgba(223,124,58,0.25)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Play className="h-8 w-8" style={{ color: ACCENT, fill: ACCENT, marginLeft: "3px" }} />
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <p style={{ color: "#E8E3DC", fontWeight: 500, marginBottom: "6px" }}>Vídeo em breve</p>
+                      <p style={{ color: "rgba(232,227,220,0.35)", fontSize: "0.875rem", maxWidth: "320px" }}>
+                        Configure <code style={{ color: ACCENT, fontSize: "0.8125rem" }}>DEMO_VIDEO_ID</code> em <code style={{ color: ACCENT, fontSize: "0.8125rem" }}>Landing.tsx</code> com o ID do seu vídeo no YouTube.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
