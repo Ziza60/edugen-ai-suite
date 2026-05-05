@@ -440,7 +440,10 @@ async function generatePptxZip(
         )
       : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n<Relationship Id="${rId}" Type="${IMAGE_REL_TYPE}" Target="../media/${mediaName}"/>\n</Relationships>`;
 
-    // Inject <p:pic> into <p:spTree> — right-panel image (right 44% of widescreen slide)
+    // Image covers right 44% of widescreen slide (12192000 × 6858000 EMU)
+    // Injected AFTER </p:grpSpPr> so it sits BEHIND all template text/shapes (z-order = bottom)
+    const IMG_X = 6858000; const IMG_W = 5334000; const IMG_H = 6858000;
+
     const picXml =
       `<p:pic>` +
       `<p:nvPicPr>` +
@@ -453,12 +456,32 @@ async function generatePptxZip(
         `<a:stretch><a:fillRect/></a:stretch>` +
       `</p:blipFill>` +
       `<p:spPr>` +
-        `<a:xfrm><a:off x="6858000" y="0"/><a:ext cx="5334000" cy="6858000"/></a:xfrm>` +
+        `<a:xfrm><a:off x="${IMG_X}" y="0"/><a:ext cx="${IMG_W}" cy="${IMG_H}"/></a:xfrm>` +
         `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
       `</p:spPr>` +
       `</p:pic>`;
 
-    const xmlWithImage = s.xml.replace("</p:spTree>", picXml + "</p:spTree>");
+    // Semi-transparent white overlay on the image area — 35% opaque (alpha=35000)
+    // This ensures any overlapping template text remains legible
+    const overlayXml =
+      `<p:sp>` +
+      `<p:nvSpPr>` +
+        `<p:cNvPr id="202" name="ImgOverlay"/>` +
+        `<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>` +
+        `<p:nvPr/>` +
+      `</p:nvSpPr>` +
+      `<p:spPr>` +
+        `<a:xfrm><a:off x="${IMG_X}" y="0"/><a:ext cx="${IMG_W}" cy="${IMG_H}"/></a:xfrm>` +
+        `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
+        `<a:solidFill><a:srgbClr val="FFFFFF"><a:alpha val="35000"/></a:srgbClr></a:solidFill>` +
+        `<a:ln><a:noFill/></a:ln>` +
+      `</p:spPr>` +
+      `</p:sp>`;
+
+    // Insert image + overlay right after </p:grpSpPr> so they render BEHIND all other shapes
+    const xmlWithImage = s.xml.includes("</p:grpSpPr>")
+      ? s.xml.replace("</p:grpSpPr>", `</p:grpSpPr>${picXml}${overlayXml}`)
+      : s.xml.replace("</p:spTree>", picXml + overlayXml + "</p:spTree>");
     return { xml: xmlWithImage, rel: relWithImage };
   });
 
