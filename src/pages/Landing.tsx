@@ -144,14 +144,14 @@ export default function Landing() {
             </div>
           </motion.div>
 
-          <motion.h1 variants={fadeUp} style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.8rem, 6vw, 5rem)", fontWeight: 600, lineHeight: 1.08, letterSpacing: "-0.02em", marginBottom: "1.5rem", maxWidth: "820px", marginLeft: "auto", marginRight: "auto", color: "#E8E3DC" }}>
-            Transforme qualquer ideia em um{" "}
-            <em style={{ color: ACCENT, fontStyle: "italic" }}>curso completo</em>{" "}
-            e pronto para vender
+          <motion.h1 variants={fadeUp} style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2.8rem, 6vw, 5rem)", fontWeight: 600, lineHeight: 1.08, letterSpacing: "-0.02em", marginBottom: "1.5rem", maxWidth: "860px", marginLeft: "auto", marginRight: "auto", color: "#E8E3DC" }}>
+            Transforme conteúdos em{" "}
+            <em style={{ color: ACCENT, fontStyle: "italic" }}>cursos completos</em>
+            , prontos para vender ou treinar equipes
           </motion.h1>
 
-          <motion.p variants={fadeUp} style={{ fontSize: "1.125rem", lineHeight: 1.7, color: "rgba(232,227,220,0.5)", maxWidth: "580px", margin: "0 auto 2.5rem", fontWeight: 300 }}>
-            Você traz o tema, a IA cria a estrutura pedagógica, o material didático e as apresentações profissionais. Tudo automático, elegante e pronto para seus alunos.
+          <motion.p variants={fadeUp} style={{ fontSize: "1.125rem", lineHeight: 1.7, color: "rgba(232,227,220,0.5)", maxWidth: "640px", margin: "0 auto 2.5rem", fontWeight: 300 }}>
+            Uma plataforma que transforma conhecimento, PDFs, aulas, vídeos e materiais internos em cursos completos — com aulas, materiais e certificação prontos para uso.
           </motion.p>
 
           <motion.div variants={fadeUp} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px", marginBottom: "2.5rem" }}>
