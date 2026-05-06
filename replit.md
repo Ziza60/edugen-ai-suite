@@ -64,8 +64,18 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~4160 lines, ENGINE_VERSION=5.0.0).
-Pipeline: Parse → Segment → LayoutVariety → SemanticQualityGate → TemplateSplits → **PPTX QA Engine** → Render → Export.
+`supabase/functions/export-pptx-v4/index.ts` (~4763 lines, ENGINE_VERSION=5.0.0).
+Pipeline: Parse → Segment → **VisualPlanner** → LayoutVariety → SemanticQualityGate → TemplateSplits → **PPTX QA Engine** → Render → Export.
+
+### Visual Planner (Section 5B)
+Pure-heuristic editorial layer — no AI, no coordinates, no renderer changes.
+- **Type**: `SlideVisualPlan { slideId, intent, emotionalWeight, focalElement, pacingRole, densityTolerance, preferredLayout?, fallbackLayouts? }`
+- **Function**: `createVisualPlan(slide, prevSlides, moduleContext)` — heuristic analysis of title keywords, item count, layout, SQL content, density
+- **Intent detection**: `code` (SQL/code layout), `comparison` (vs/contraste titles), `process` (passo/etapa/fluxo), `summary` (resumo/takeaways), `impact` (≤3 items + numbers/strong words), `example` (cenário/caso), `concept` (definição/introdução), `educational` (default)
+- **PacingRole**: `module_transition` (covers), `recap` (takeaways), `deep_dive` (dense code), `visual_break` (after 2+ dense slides), `normal` (default)
+- **Integration**: `applyLayoutVariety` calls `createVisualPlan` per slide (silent try/catch fallback) → passes `plan` to `chooseLayout`
+- **chooseLayout** uses plan in 3 ways: preferred layout hint (only when existing heuristics find no signal), visual break enforcement (redirects bullets/twocol to cards/diagram), anti-repetition fallback list (`plan.fallbackLayouts` tried before static rules)
+- **Guarantee**: plan=null → 100% original behavior; all layout changes still pass `isRenderableSlide`
 
 ### PPTX QA Engine (Section 6C) + Resolution Cascade (Section 6D)
 Full QA pipeline: `runPptxQA` (initial 11-point pass) → `resolveQAIssues` (3-level cascade if issues remain).

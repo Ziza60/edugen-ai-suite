@@ -2792,7 +2792,155 @@ const SKIP_HEURISTIC: Layout[] = ["cover","toc","module_cover","closing","code",
 // SQL keyword detection — items that look like commands/queries
 const SQL_ITEM_RE = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE|JOIN|GROUP\s+BY|ORDER\s+BY|WHERE|HAVING|GRANT|REVOKE)\b/i;
 
-function chooseLayout(slide: Slide, prevLayouts: Layout[]): Slide {
+// ═══════════════════════════════════════════════════════════
+// SECTION 5B: VISUAL PLANNER
+// Pure-heuristic editorial layer. Defines INTENT and PACING for each
+// slide so that chooseLayout can make richer, context-aware decisions.
+// NO coordinates, NO AI calls, NO renderer changes.
+// If createVisualPlan throws for any reason, chooseLayout falls back
+// to its original behavior (plan=null path).
+// ═══════════════════════════════════════════════════════════
+
+interface SlideVisualPlan {
+  slideId: string;
+  intent: "educational" | "comparison" | "process" | "code" | "impact" | "summary" | "concept" | "example";
+  emotionalWeight: "low" | "medium" | "high";
+  focalElement: "title" | "code" | "big_number" | "comparison" | "steps" | "cards" | "none";
+  pacingRole: "normal" | "visual_break" | "module_transition" | "deep_dive" | "recap";
+  densityTolerance: "low" | "medium" | "high";
+  preferredLayout?: string;
+  fallbackLayouts?: string[];
+}
+
+/**
+ * Build a SlideVisualPlan for a single slide given the preceding slides
+ * and an optional module context string.
+ * Pure heuristic — no AI, no side effects.
+ */
+function createVisualPlan(
+  slide: Slide,
+  prevSlides: Slide[],
+  _moduleContext: string,
+): SlideVisualPlan {
+  const title  = (slide.title || "").toLowerCase();
+  const useful = nonEmpty(slide.items);
+  const n      = useful.length;
+  const avgLen = n > 0 ? useful.reduce((a, t) => a + t.length, 0) / n : 0;
+  const allHaveColon = n >= 2 && useful.every((t) => t.includes(": "));
+
+  // ── Intent ────────────────────────────────────────────────
+  const hasSqlContent      = slide.layout === "code" || useful.some((t) => SQL_ITEM_RE.test(t));
+  const isComparisonTitle  = /\bvs\.?\b|versus|\bdiferença|\bcomparação|\bcontraste|\bantes.+depois\b|\bpros.+cons\b|\bvantagens.+desvan/i.test(title);
+  const isProcessTitle     = /\bpasso\b|\betapa\b|\bsequência\b|\bciclo\b|\bpipeline\b|\bcomo funciona\b|\bfluxo\b|\bprocesso\b/i.test(title);
+  const isSummaryTitle     = /\bresumo\b|\bconclusão\b|\btakeaway\b|\bo que (aprendemos|você aprendeu)\b|\bprincipais pontos\b|\brecap\b/i.test(title);
+  const isConceptTitle     = /\bconceito\b|\bdefinição\b|\bo que [eé]\b|\bintrodução\b|\bfundamentos\b|\bvisão geral\b/i.test(title);
+  const isExampleTitle     = /\bexemplo\b|\bcase study\b|\bestudo de caso\b|\bcenário\b|\bna prática\b/i.test(title);
+  const hasImpactSignal    = n <= 3 && (
+    useful.some((t) => /\d+\s*%|\d+x\b|\d{4,}\b/.test(t)) ||
+    (avgLen < 60 && n <= 2 && useful.some((t) => /\b(sempre|nunca|obrigatório|crítico|essencial)\b/i.test(t)))
+  );
+
+  let intent: SlideVisualPlan["intent"] = "educational";
+  if      (hasSqlContent)                                                  intent = "code";
+  else if (slide.layout === "comparison" || isComparisonTitle)             intent = "comparison";
+  else if (["process","timeline"].includes(slide.layout) || isProcessTitle) intent = "process";
+  else if (slide.layout === "takeaways" || isSummaryTitle)                 intent = "summary";
+  else if (hasImpactSignal)                                                intent = "impact";
+  else if (isExampleTitle)                                                 intent = "example";
+  else if (isConceptTitle)                                                 intent = "concept";
+
+  // ── Emotional weight ───────────────────────────────────────
+  let emotionalWeight: SlideVisualPlan["emotionalWeight"] = "low";
+  if (intent === "impact" || /\bcrítico\b|\bmuito importante\b|\bnunca\b|\bsempre\b|\bobrigatório\b/i.test(title)) {
+    emotionalWeight = "high";
+  } else if (["comparison","process","example"].includes(intent)) {
+    emotionalWeight = "medium";
+  }
+
+  // ── Focal element ──────────────────────────────────────────
+  let focalElement: SlideVisualPlan["focalElement"] = "none";
+  if      (intent === "code")                                               focalElement = "code";
+  else if (intent === "comparison")                                         focalElement = "comparison";
+  else if (intent === "process")                                            focalElement = "steps";
+  else if (intent === "impact" && useful.some((t) => /\d+\s*%|\d+x\b|\d{4,}\b/.test(t))) focalElement = "big_number";
+  else if (allHaveColon && n >= 2 && n <= 4)                               focalElement = "cards";
+  else if (emotionalWeight === "high")                                      focalElement = "title";
+
+  // ── Density tolerance ──────────────────────────────────────
+  let densityTolerance: SlideVisualPlan["densityTolerance"] = "medium";
+  if      (intent === "code" || slide.layout === "twocol") densityTolerance = "high";
+  else if (intent === "impact" || emotionalWeight === "high") densityTolerance = "low";
+
+  // ── Pacing role ────────────────────────────────────────────
+  let pacingRole: SlideVisualPlan["pacingRole"] = "normal";
+  if (["module_cover","closing"].includes(slide.layout)) {
+    pacingRole = "module_transition";
+  } else if (intent === "summary" || slide.layout === "takeaways") {
+    pacingRole = "recap";
+  } else if (intent === "code" || (n >= 6 && avgLen > 80)) {
+    pacingRole = "deep_dive";
+  } else if (prevSlides.length >= 2) {
+    // Visual break: previous 2 slides both dense bullets/twocol
+    const prevDense = prevSlides.slice(-2).every((s) => {
+      const pi = nonEmpty(s.items);
+      return (
+        ["bullets","twocol"].includes(s.layout) &&
+        pi.length >= 4 &&
+        pi.reduce((a, t) => a + t.length, 0) / Math.max(pi.length, 1) > 70
+      );
+    });
+    const prevSameLayout = prevSlides.slice(-2).every((s) => s.layout === slide.layout);
+    if (
+      (prevDense || prevSameLayout) &&
+      !SKIP_HEURISTIC.includes(slide.layout as Layout)
+    ) {
+      pacingRole = "visual_break";
+    }
+  }
+
+  // ── Preferred layout & fallbacks ──────────────────────────
+  // Only set when slide is not in SKIP_HEURISTIC (structural slides)
+  let preferredLayout: string | undefined;
+  let fallbackLayouts: string[] | undefined;
+
+  if (!SKIP_HEURISTIC.includes(slide.layout as Layout)) {
+    if (intent === "process" && n >= 3 && n <= 5) {
+      preferredLayout = "process";
+      fallbackLayouts = ["timeline", "bullets"];
+    } else if (intent === "comparison" && n >= 4) {
+      preferredLayout = "twocol";
+      fallbackLayouts = ["bullets", "cards"];
+    } else if (intent === "impact" && n <= 3) {
+      preferredLayout = "cards";
+      fallbackLayouts = ["bullets"];
+    } else if (intent === "example" && allHaveColon && n >= 2 && n <= 4) {
+      preferredLayout = "cards";
+      fallbackLayouts = ["process", "bullets"];
+    } else if (intent === "concept" && n >= 4) {
+      preferredLayout = "bullets";
+      fallbackLayouts = ["diagram", "cards"];
+    } else if (pacingRole === "visual_break") {
+      preferredLayout = (n >= 2 && n <= 4) ? "cards" : "diagram";
+      fallbackLayouts = ["process", "bullets"];
+    } else if (focalElement === "cards") {
+      preferredLayout = "cards";
+      fallbackLayouts = ["bullets", "twocol"];
+    }
+  }
+
+  return {
+    slideId: `${(slide.title || "untitled").slice(0, 20)}_${slide.layout}`,
+    intent,
+    emotionalWeight,
+    focalElement,
+    pacingRole,
+    densityTolerance,
+    preferredLayout,
+    fallbackLayouts,
+  };
+}
+
+function chooseLayout(slide: Slide, prevLayouts: Layout[], plan?: SlideVisualPlan | null): Slide {
   if (SKIP_HEURISTIC.includes(slide.layout)) return slide;
 
   const title = (slide.title || "").toLowerCase();
@@ -2830,29 +2978,75 @@ function chooseLayout(slide: Slide, prevLayouts: Layout[]): Slide {
   else if (allHaveColon && n >= 2 && n <= 4) {
     chosen = "cards";
   }
+  // ── Visual Plan guidance (activates only when existing heuristics left no signal) ──
+  // Strong heuristics (SQL, comparison regex, process regex, 6+ items, allHaveColon)
+  // already set chosen ≠ slide.layout. This branch only fires when chosen === slide.layout.
+  else if (plan?.preferredLayout && !SKIP_HEURISTIC.includes(plan.preferredLayout as Layout)) {
+    const preferred = plan.preferredLayout as Layout;
+    const trial = { ...slide, layout: preferred };
+    if (isRenderableSlide(trial)) {
+      chosen = preferred;
+    }
+  }
 
-  // Anti-repetition: if this would make 3 consecutive same-layout, force variety
+  // ── Visual break: override dense layout for pacing ─────────────────
+  // If plan says this slide should be a visual break, steer away from
+  // dense layouts (bullets/twocol) toward lighter ones.
+  if (plan?.pacingRole === "visual_break" && ["bullets","twocol"].includes(chosen)) {
+    const breakAlts: Layout[] = (plan.fallbackLayouts as Layout[] | undefined) ?? ["cards","diagram"];
+    for (const alt of breakAlts) {
+      if (SKIP_HEURISTIC.includes(alt) || alt === chosen) continue;
+      const t = { ...slide, layout: alt };
+      if (isRenderableSlide(t)) {
+        console.log(`[V5-VP] visual_break: "${slide.title}" ${chosen}→${alt}`);
+        chosen = alt;
+        break;
+      }
+    }
+  }
+
+  // ── Anti-repetition: 3 consecutive same-layout → force variety ──────
+  // Uses plan.fallbackLayouts as first candidates before falling back to
+  // the original static rules.
   if (
-    chosen !== "code" && // never override code layout for anti-repetition
+    chosen !== "code" &&
     prevLayouts.length >= 2 &&
     prevLayouts[prevLayouts.length - 1] === chosen &&
     prevLayouts[prevLayouts.length - 2] === chosen
   ) {
-    if      (chosen === "bullets" && n >= 5)      chosen = "twocol";
-    else if (chosen === "bullets" && n >= 2)      chosen = "cards";
-    else if (chosen === "twocol")                 chosen = "bullets";
-    else if (chosen === "process")                chosen = "timeline";
-    else if (chosen === "diagram")                chosen = "process";
-    else                                          chosen = "bullets";
+    let antiRepeatApplied = false;
+    if (plan?.fallbackLayouts?.length) {
+      for (const fb of plan.fallbackLayouts as Layout[]) {
+        if (fb === chosen || SKIP_HEURISTIC.includes(fb)) continue;
+        const t = { ...slide, layout: fb };
+        if (isRenderableSlide(t)) {
+          console.log(`[V5-VP] anti-repeat via plan: "${slide.title}" ${chosen}→${fb}`);
+          chosen = fb;
+          antiRepeatApplied = true;
+          break;
+        }
+      }
+    }
+    if (!antiRepeatApplied) {
+      if      (chosen === "bullets" && n >= 5) chosen = "twocol";
+      else if (chosen === "bullets" && n >= 2) chosen = "cards";
+      else if (chosen === "twocol")            chosen = "bullets";
+      else if (chosen === "process")           chosen = "timeline";
+      else if (chosen === "diagram")           chosen = "process";
+      else                                     chosen = "bullets";
+    }
   }
 
   if (chosen === slide.layout) return slide;
 
-  // Guard: make sure the new layout will pass isRenderableSlide
+  // Guard: new layout must pass isRenderableSlide
   const candidate = { ...slide, layout: chosen as Layout };
-  if (!isRenderableSlide(candidate)) return slide; // revert if not renderable
+  if (!isRenderableSlide(candidate)) return slide;
 
-  console.log(`[V5] chooseLayout: "${slide.title}" ${slide.layout}→${chosen} (${n} items)`);
+  console.log(
+    `[V5] chooseLayout: "${slide.title}" ${slide.layout}→${chosen} (${n} items)` +
+    (plan ? ` [intent=${plan.intent} pacing=${plan.pacingRole}]` : ""),
+  );
   return candidate;
 }
 
@@ -2861,11 +3055,19 @@ function chooseLayout(slide: Slide, prevLayouts: Layout[]): Slide {
 const VARIETY_SWAPPABLE: Layout[] = ["bullets", "twocol", "diagram"];
 
 function applyLayoutVariety(slides: Slide[]): Slide[] {
-  // Pass 1 — heuristic layout selection with running history
+  // Pass 1 — heuristic layout selection with visual plan guidance
   const withHeuristic: Slide[] = [];
   const history: Layout[] = [];
-  for (const s of slides) {
-    const picked = chooseLayout(s, history);
+  for (let i = 0; i < slides.length; i++) {
+    const s = slides[i];
+    // Build visual plan; any error falls back to null → old behavior
+    let plan: SlideVisualPlan | null = null;
+    try {
+      plan = createVisualPlan(s, slides.slice(Math.max(0, i - 3), i), "");
+    } catch (_) {
+      /* visual plan is advisory — silent fallback */
+    }
+    const picked = chooseLayout(s, history, plan);
     withHeuristic.push(picked);
     history.push(picked.layout);
   }
