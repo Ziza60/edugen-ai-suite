@@ -703,10 +703,29 @@ class PdfRenderer {
     this.y = MARGIN_T;
 
     // Normalise literal escape sequences stored in DB (\\n → real newline, \\t → space)
-    const normContent = content
+    let normContent = content
       .replace(/\\n/g, "\n")
       .replace(/\\t/g, " ")
       .replace(/:\n+\d+\./g, ":");  // remove list-number artefacts after colons
+
+    // ── PRE-EXTRACT code fences (Bug #2 + #5 fix) ─────────────────────────
+    // Extract ALL fenced code blocks BEFORE any line-by-line processing.
+    // This guarantees:
+    //   • The language identifier (```sql, ```python…) is never emitted as text.
+    //   • Operators like > and < inside code are never stripped by stripMarkdown.
+    // Each block is replaced by a single-line placeholder and stored verbatim.
+    const codeBlockStore: string[] = [];
+    const CB_START = "[[CODEBLOCK_";
+    const CB_END   = "]]";
+    normContent = normContent.replace(
+      /```(\w*)[^\n]*\n([\s\S]*?)```/gm,
+      (_fullMatch, _lang, code) => {
+        const idx = codeBlockStore.length;
+        codeBlockStore.push(code.replace(/\n$/, "")); // store verbatim, strip final newline only
+        return `${CB_START}${idx}${CB_END}`;
+      }
+    );
+    // ── END pre-extraction ─────────────────────────────────────────────────
 
     const lines = normContent.split("\n");
     const normModuleTitle = normalizeTitle(moduleTitle);
@@ -723,19 +742,14 @@ class PdfRenderer {
         continue;
       }
 
-      // BUG #2 + #5 FIX: fenced code block detection
-      // The opening fence line (```sql, ```python, etc.) is consumed entirely —
-      // the language identifier is discarded, never rendered as text.
-      if (trimmed.startsWith("```")) {
-        const codeLines: string[] = [];
-        let j = i + 1;
-        while (j < lines.length && !lines[j].trim().startsWith("```")) {
-          codeLines.push(lines[j]);
-          j++;
+      // Code block placeholder — restored verbatim, no stripMarkdown applied
+      if (trimmed.startsWith(CB_START) && trimmed.endsWith(CB_END)) {
+        const idxStr = trimmed.slice(CB_START.length, -CB_END.length);
+        const idx = parseInt(idxStr, 10);
+        if (!isNaN(idx) && codeBlockStore[idx] !== undefined) {
+          this.renderCodeBlock(codeBlockStore[idx]);
         }
-        if (j < lines.length) j++; // skip closing ```
-        this.renderCodeBlock(codeLines.join("\n"));
-        i = j;
+        i++;
         continue;
       }
 
