@@ -2366,7 +2366,12 @@ function globalSanitize(text: string): string {
 
 // Safe title: never cuts mid-word, max 60 chars by default
 function sanitizeTitle(title: string, max = 60): string {
-  const t = globalSanitize(title);
+  let t = globalSanitize(title);
+  // Remove leading colon (truncation artifact like ": Funções Avançadas")
+  t = t.replace(/^:\s*/, "").trim();
+  // Remove leading preposition that survived other filters
+  t = t.replace(/^(e\s+|ou\s+|,\s*)/i, "").trim();
+  if (!t) return "Conteúdo";
   if (t.length <= max) return t;
   const boundary = t.slice(0, max + 15).lastIndexOf(" ");
   return boundary > max * 0.6 ? t.slice(0, boundary) : t.slice(0, max);
@@ -2472,7 +2477,9 @@ function expandVagueObjective(text: string, moduleTitle: string): string {
     .replace(/\bconceitos (gerais|avançados|básicos)\b/gi, `conceitos de ${topicLabel}`)
     .replace(/\bcoisas avançadas\b/gi,            "técnicas avançadas de SQL")
     .replace(/\bfundamentos (gerais|básicos)\b/gi,"fundamentos de banco de dados relacionais")
-    .replace(/\bRelacionamentos e Funções Avançadas\b/gi,
+    .replace(/\bCompreender relacionamentos e Funções Avançadas\.?\b/gi,
+             "Compreender relacionamentos entre tabelas e funções SQL avançadas")
+    .replace(/\bRelacionamentos e Funções Avançadas\.?\b/gi,
              "relacionamentos entre tabelas e funções SQL avançadas")
     .replace(/\brelacionamentos e funções\b/gi,   "relacionamentos entre tabelas e funções SQL")
     .replace(/\brelacionamentos\b(?!\s+(entre|de|com|e\s))/gi, "relacionamentos entre tabelas")
@@ -2623,9 +2630,9 @@ function chooseLayout(slide: Slide, prevLayouts: Layout[]): Slide {
   if (hasSqlItems && slide.layout === "bullets" && n <= 5) {
     chosen = "code";
   }
-  // Comparison triggers (expanded — use aggressively for contrasts)
+  // Comparison disabled — route contrasts to twocol for reliability
   else if (/\bvs\.?\b|versus|\bdiferença|\bcomparação|\bcontraste|\bantes.+depois\b|\bpros.+cons\b|\btipos de\b|\bmodelos de\b|\bDELETE vs\b|\bDROP vs\b|\bTRUNCATE vs\b|\bINNER.+LEFT\b|\bvantagens.+desvan/i.test(title)) {
-    chosen = "comparison";
+    chosen = n >= 4 ? "twocol" : "cards";
   }
   // Diagram triggers: data flow / architecture
   else if (/\bfluxo de\b|\barquitetura\b|\brequest.+response\b|\bETL\b|\bclient.+server\b|\bcliente.+servidor\b|\bentrada.+sa[íi]da\b|\bpipeline de dados\b|\bfluxo de consulta\b|\bfluxo de dados\b/i.test(title)) {
@@ -2798,29 +2805,21 @@ const COMPARISON_MAX_CHARS = 68; // max chars per comparison bullet before fallb
 function splitOverflowSlides(slides: Slide[]): Slide[] {
   const out: Slide[] = [];
   for (const s of slides) {
-    // ── Comparison overflow → twocol ──
+    // ── Comparison always → twocol (renderComparison disabled) ──
     if (s.layout === "comparison") {
       const lItems = nonEmpty(s.leftItems);
       const rItems = nonEmpty(s.rightItems);
-      const hasTooMany  = lItems.length > COMPARISON_MAX_ITEMS || rItems.length > COMPARISON_MAX_ITEMS;
-      const hasLongText = [...lItems, ...rItems].some((t) => t.length > COMPARISON_MAX_CHARS);
-
-      if (hasTooMany || hasLongText) {
-        // Merge both sides into combined items list for twocol
-        const combined = [...lItems, ...rItems]
-          .map((t) => safeItemText(t, COMPARISON_MAX_CHARS))
-          .slice(0, 8);
-        console.log(`[V5] Comparison overflow → twocol: "${s.title}" (l=${lItems.length} r=${rItems.length} longText=${hasLongText})`);
-        out.push({
-          ...s,
-          layout: "twocol",
-          items: combined,
-          leftItems: undefined,
-          rightItems: undefined,
-        });
-      } else {
-        out.push(s);
-      }
+      const combined = [...lItems, ...rItems]
+        .map((t) => safeItemText(t, COMPARISON_MAX_CHARS))
+        .slice(0, 8);
+      console.log(`[V5] Comparison → twocol (disabled): "${s.title}" (l=${lItems.length} r=${rItems.length})`);
+      out.push({
+        ...s,
+        layout: "twocol",
+        items: combined.length >= 4 ? combined : [...combined, ...lItems.slice(0, 4 - combined.length)].slice(0, 4),
+        leftItems: undefined,
+        rightItems: undefined,
+      });
       continue;
     }
 
@@ -3199,9 +3198,15 @@ async function runPipeline(
         case "twocol":
           renderTwocol(pptx, s, design, ++slideNum, totalSlides);
           break;
-        case "comparison":
-          renderComparison(pptx, s, design, ++slideNum, totalSlides);
+        case "comparison": {
+          // renderComparison disabled — fallback to twocol with merged items
+          const lI = nonEmpty(s.leftItems);
+          const rI = nonEmpty(s.rightItems);
+          const merged = [...lI, ...rI].slice(0, 8);
+          const fallback: Slide = { ...s, layout: "twocol", items: merged.length >= 4 ? merged : merged.concat(lI).slice(0, 4), leftItems: undefined, rightItems: undefined };
+          renderTwocol(pptx, fallback, design, ++slideNum, totalSlides);
           break;
+        }
         case "timeline":
           renderTimeline(pptx, s, design, ++slideNum, totalSlides);
           break;
