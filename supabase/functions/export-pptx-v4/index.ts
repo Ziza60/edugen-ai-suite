@@ -3689,6 +3689,370 @@ function runPptxQA(
   return { repairedSlides: repaired, report };
 }
 
+// ═══════════════════════════════════════════════════════════
+// SECTION 6D: QA RESOLUTION CASCADE
+// Three-level resolution pipeline for issues that runPptxQA could not
+// fix in a single pass.
+//   Level 1 — Visual auto-correction  (no structural changes)
+//   Level 2 — Layout replanning       (may split slides)
+//   Level 3 — Local LLM rewrite       (CRITICALs only, per slide)
+// Max 2 full cycles of L1+L2 before escalating to L3.
+// ═══════════════════════════════════════════════════════════
+
+// ── Cascade helpers ──────────────────────────────────────────
+
+/** Parse "module_2_slide_4" → {mi:1, si:3}. Returns null on bad format. */
+function parseSlideId(id: string): { mi: number; si: number } | null {
+  const m = id.match(/^module_(\d+)_slide_(\d+)$/);
+  if (!m) return null;
+  return { mi: parseInt(m[1], 10) - 1, si: parseInt(m[2], 10) - 1 };
+}
+
+/**
+ * Trim text to maxChars but NEVER cut SQL aggregate expressions
+ * like SELECT *, COUNT(*), SUM(*), MAX(*), MIN(*), AVG(*).
+ * Also avoids breaking mid-word.
+ */
+const SQL_STAR_PRESERVE_RE = /\b(?:SELECT\s+\*|COUNT\s*\(\s*\*\s*\)|SUM\s*\(\s*\*\s*\)|AVG\s*\(\s*\*\s*\)|MAX\s*\(\s*\*\s*\)|MIN\s*\(\s*\*\s*\))/i;
+
+function safeSliceText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  if (SQL_STAR_PRESERVE_RE.test(text)) return text;
+  const cut = text.slice(0, maxChars).trimEnd();
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > maxChars * 0.65 ? cut.slice(0, lastSpace) : cut).trimEnd();
+}
+
+function normalizeItemPunctuation(text: string): string {
+  return text
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,;:.])/g, "$1")
+    .trim();
+}
+
+// ── Level 1 — Visual auto-correction ────────────────────────
+/**
+ * Apply a targeted visual fix to a single slide for the given issue.
+ * Never changes layout or splits the slide.
+ */
+function l1VisualFix(s: Slide, issue: QAIssue, moduleContent: string): Slide {
+  switch (issue.type) {
+    case "EMPTY_SLIDE": {
+      const rep = repairEmptySlide(s, moduleContent);
+      if (isRenderableSlide(rep)) return rep;
+      return {
+        ...s, layout: "bullets",
+        title: s.label || s.title || "Conteúdo",
+        items: ["Consulte o material do módulo para este tópico."],
+      };
+    }
+    case "PLACEHOLDER_RESIDUAL": {
+      const ci = (s.items ?? []).filter((t) => !PLACEHOLDER_RE.test(t.trim())).map(normalizeItemPunctuation);
+      const cl = (s.leftItems  ?? []).filter((t) => !PLACEHOLDER_RE.test(t.trim())).map(normalizeItemPunctuation);
+      const cr = (s.rightItems ?? []).filter((t) => !PLACEHOLDER_RE.test(t.trim())).map(normalizeItemPunctuation);
+      const ct = PLACEHOLDER_RE.test((s.title || "").trim()) ? (s.label || "Conteúdo do Módulo") : s.title;
+      const fixed: Slide = { ...s, title: ct, items: ci, leftItems: cl, rightItems: cr };
+      return isRenderableSlide(fixed) ? fixed : repairEmptySlide(fixed, moduleContent);
+    }
+    case "TITLE_FRAGMENT": {
+      let t = (s.title || "").trim()
+        .replace(TITLE_PREP_RE, "")
+        .replace(FRAG_CONJ_RE, "")
+        .trim();
+      if (t.length < 3) t = s.label || "Conteúdo do Módulo";
+      return { ...s, title: t.charAt(0).toUpperCase() + t.slice(1) };
+    }
+    case "SQL_CODE_INCOMPLETE":
+      return { ...s, code: validateCodeIntegrity(s.code || "") };
+    case "CONTENT_DENSITY_OVERFLOW": {
+      const capped = nonEmpty(s.items)
+        .map((t) => normalizeItemPunctuation(safeSliceText(t, 60)));
+      return { ...s, items: capped.slice(0, QA.MAX_BULLETS) };
+    }
+    case "TOO_MANY_BULLETS": {
+      const trimmed = nonEmpty(s.items)
+        .map((t) => normalizeItemPunctuation(safeSliceText(t, 70)));
+      return { ...s, items: trimmed.slice(0, QA.MAX_BULLETS) };
+    }
+    case "CODE_TOO_LONG": {
+      const lines = (s.code || "").split("\n").slice(0, QA.MAX_CODE_LINES);
+      return { ...s, code: lines.join("\n") + "\n-- ... (ver continuação)" };
+    }
+    case "LAYOUT_REPETITION": {
+      const items = nonEmpty(s.items);
+      const swapped: Slide = s.layout === "bullets"
+        ? { ...s, layout: items.length >= 5 ? "twocol" : "cards" }
+        : s.layout === "twocol" ? { ...s, layout: "bullets" }
+        : { ...s, layout: "bullets" };
+      return isRenderableSlide(swapped) ? swapped : s;
+    }
+    case "COMPARISON_UNSAFE": {
+      const lI = nonEmpty(s.leftItems);
+      const rI = nonEmpty(s.rightItems);
+      const merged = [...lI, ...rI].slice(0, 8);
+      return { ...s, layout: "twocol", items: merged, leftItems: undefined, rightItems: undefined };
+    }
+    case "FONT_TOO_SMALL_RISK":
+      return { ...s, items: nonEmpty(s.items).map((t) => safeSliceText(t, 80)) };
+    case "GENERIC_LEARNING_OBJECTIVE": {
+      if (s.layout !== "module_cover" || !Array.isArray(s.items)) return s;
+      const expanded = s.items
+        .map((item, idx) =>
+          withPeriod(normalizeLearningObjective(expandVagueObjective(item, s.title), s.title, idx))
+        )
+        .filter((item) => item.length > 8 && !BAD_OBJECTIVE_RE.test(item));
+      return expanded.length >= 2 ? { ...s, items: expanded } : s;
+    }
+    default:
+      return s;
+  }
+}
+
+// ── Level 2 — Layout replanning ─────────────────────────────
+/**
+ * Resolve density/structural issues that Level 1 could not fix.
+ * May return 2 slides (split) or 0 slides (drop) instead of 1.
+ * Never returns empty array unless drop is the only safe option.
+ */
+function l2Replan(s: Slide, issue: QAIssue, moduleContent: string): Slide[] {
+  switch (issue.type) {
+    case "TOO_MANY_BULLETS":
+    case "CONTENT_DENSITY_OVERFLOW": {
+      const all = nonEmpty(s.items);
+      if (all.length < 4) return [{ ...s, items: all.slice(0, QA.MAX_BULLETS) }];
+      const mid = Math.ceil(all.length / 2);
+      const p1: Slide = { ...s, title: `${s.title} (1/2)`, items: all.slice(0, mid) };
+      const p2: Slide = { ...s, title: `${s.title} (2/2)`, items: all.slice(mid) };
+      if (isRenderableSlide(p1) && isRenderableSlide(p2)) return [p1, p2];
+      return [{ ...s, items: all.slice(0, QA.MAX_BULLETS) }];
+    }
+    case "CODE_TOO_LONG": {
+      const lines = (s.code || "").split("\n");
+      if (lines.length <= QA.MAX_CODE_LINES * 2) {
+        const mid = Math.ceil(lines.length / 2);
+        const p1: Slide = { ...s, title: `${s.title} (1/2)`, code: lines.slice(0, mid).join("\n") };
+        const p2: Slide = { ...s, title: `${s.title} (2/2)`, code: lines.slice(mid).join("\n") };
+        if (isRenderableSlide(p1) && isRenderableSlide(p2)) return [p1, p2];
+      }
+      return [{ ...s, code: lines.slice(0, QA.MAX_CODE_LINES).join("\n") + "\n-- ... (ver material)" }];
+    }
+    case "LAYOUT_REPETITION": {
+      const candidates: Layout[] = ["cards", "diagram", "process", "timeline", "twocol", "bullets"];
+      for (const candidate of candidates) {
+        if (candidate === s.layout) continue;
+        const attempt: Slide = { ...s, layout: candidate };
+        if (isRenderableSlide(attempt)) return [attempt];
+      }
+      return [s];
+    }
+    case "COMPARISON_UNSAFE": {
+      const lI = nonEmpty(s.leftItems);
+      const rI = nonEmpty(s.rightItems);
+      const merged = [...lI, ...rI].slice(0, 8);
+      const twocol: Slide = { ...s, layout: "twocol", items: merged, leftItems: undefined, rightItems: undefined };
+      if (isRenderableSlide(twocol)) return [twocol];
+      return [{ ...s, layout: "bullets", items: merged.slice(0, QA.MAX_BULLETS), leftItems: undefined, rightItems: undefined }];
+    }
+    case "EMPTY_SLIDE": {
+      const rep = repairEmptySlide(s, moduleContent);
+      // Return empty array to signal "drop this slide"
+      return isRenderableSlide(rep) ? [rep] : [];
+    }
+    default:
+      return [s];
+  }
+}
+
+// ── Level 3 — Local LLM rewrite ─────────────────────────────
+/**
+ * Call Gemini to rewrite a single problematic slide's content.
+ * Only triggered for CRITICAL issues surviving L1+L2.
+ * Falls back silently to the original slide if Gemini fails.
+ */
+async function l3LocalRewrite(
+  s: Slide,
+  issue: QAIssue,
+  geminiKey: string,
+): Promise<Slide> {
+  const contentSummary = [
+    s.code   ? `CODE:\n${s.code.slice(0, 400)}`                               : null,
+    s.items?.length  ? `ITEMS:\n${(s.items || []).slice(0, 8).join("\n")}`     : null,
+    s.leftItems?.length  ? `LEFT:\n${(s.leftItems  || []).join("\n")}`         : null,
+    s.rightItems?.length ? `RIGHT:\n${(s.rightItems || []).join("\n")}`        : null,
+  ].filter(Boolean).join("\n");
+
+  const safeTitle = (s.title || "Slide").replace(/"/g, "'");
+  const prompt = `Você é editor de slides educativos. O slide abaixo tem problema: "${issue.type}: ${issue.message}".
+
+Slide atual — título: "${safeTitle}" | layout: ${s.layout}
+${contentSummary}
+
+Reescreva APENAS o conteúdo como 4-5 bullets concisos (máx 20 palavras cada) em português, preservando todo conteúdo técnico essencial. NUNCA corte SELECT *, COUNT(*), SUM(*).
+
+Responda SOMENTE com JSON válido sem markdown:
+{"title":"${safeTitle}","items":["item1","item2","item3","item4"]}`;
+
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 400 },
+        }),
+      },
+    );
+    if (!resp.ok) throw new Error(`Gemini HTTP ${resp.status}`);
+    const data = await resp.json();
+    const raw = (data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON in Gemini L3 response");
+    const parsed = JSON.parse(jsonMatch[0]);
+    const newItems: string[] = Array.isArray(parsed.items)
+      ? parsed.items
+          .filter((t: unknown): t is string => typeof t === "string" && t.trim().length > 3)
+          .slice(0, 6)
+      : [];
+    if (newItems.length >= 3) {
+      console.log(`[V5-QA-L3] Rewrote "${s.title}" via Gemini (${newItems.length} items)`);
+      return { ...s, layout: "bullets", items: newItems };
+    }
+    throw new Error(`LLM returned only ${newItems.length} items`);
+  } catch (err) {
+    console.warn(`[V5-QA-L3] Rewrite failed for "${s.title}": ${err instanceof Error ? err.message : String(err)}`);
+    return s; // unchanged — runPptxQA final pass will handle it
+  }
+}
+
+// ── Cascade orchestrator ─────────────────────────────────────
+/**
+ * resolveQAIssues — three-level QA resolution cascade.
+ *
+ * Receives the QA-repaired slides and the initial QAReport.
+ * Runs up to 2 cycles of (L1 → QA → L2 → QA).
+ * After 2 cycles, applies L3 (local Gemini rewrite) for remaining CRITICALs.
+ * Final runPptxQA pass ensures no broken slide reaches the renderer.
+ */
+async function resolveQAIssues(
+  slides: Slide[][],
+  qaReport: QAReport,
+  moduleContents: string[],
+  geminiKey: string,
+): Promise<{ resolvedSlides: Slide[][]; finalReport: QAReport }> {
+  if (qaReport.issues.length === 0) {
+    return { resolvedSlides: slides, finalReport: qaReport };
+  }
+
+  let current: Slide[][] = slides.map((mod) => mod.map((s) => ({ ...s })));
+  let lastReport = qaReport;
+
+  for (let cycle = 0; cycle < 2; cycle++) {
+    if (lastReport.issues.length === 0) break;
+    console.log(`[V5-QA-CASCADE] Cycle ${cycle + 1} start | unfixed=${lastReport.issues.length}`);
+
+    // ── Level 1: visual fixes (no splits) ─────────────────
+    for (const issue of lastReport.issues) {
+      const pos = parseSlideId(issue.slideId);
+      if (!pos) continue;
+      const { mi, si } = pos;
+      if (!current[mi] || si >= current[mi].length) continue;
+      current[mi][si] = l1VisualFix(current[mi][si], issue, moduleContents[mi] ?? "");
+    }
+    const { repairedSlides: afterL1, report: reportL1 } = runPptxQA(current, moduleContents);
+    current = afterL1;
+    console.log(`[V5-QA-CASCADE] After L1 (cycle ${cycle + 1}): unfixed=${reportL1.issues.length}`);
+    if (reportL1.issues.length === 0) { lastReport = reportL1; break; }
+
+    // ── Level 2: layout replanning (may split/drop slides) ─
+    for (let mi = 0; mi < current.length; mi++) {
+      // Collect replacements for this module, indexed by current si
+      const mIssues = reportL1.issues.filter((iss) => {
+        const p = parseSlideId(iss.slideId);
+        return p !== null && p.mi === mi && p.si < current[mi].length;
+      });
+      if (mIssues.length === 0) continue;
+
+      // Deduplicate: one replacement per si (first issue wins)
+      const seen = new Set<number>();
+      const replacements: Array<{ si: number; slides: Slide[] }> = [];
+      for (const issue of mIssues) {
+        const pos = parseSlideId(issue.slideId)!;
+        if (seen.has(pos.si)) continue;
+        seen.add(pos.si);
+        const repl = l2Replan(current[mi][pos.si], issue, moduleContents[mi] ?? "");
+        if (repl.length !== 1 || repl[0] !== current[mi][pos.si]) {
+          replacements.push({ si: pos.si, slides: repl });
+        }
+      }
+
+      // Apply in descending order so earlier indices stay valid
+      for (const { si, slides: repl } of replacements.sort((a, b) => b.si - a.si)) {
+        current[mi].splice(si, 1, ...repl); // repl=[] drops the slide
+      }
+    }
+
+    const { repairedSlides: afterL2, report: reportL2 } = runPptxQA(current, moduleContents);
+    current = afterL2;
+    lastReport = reportL2;
+    console.log(`[V5-QA-CASCADE] After L2 (cycle ${cycle + 1}): unfixed=${lastReport.issues.length}`);
+  }
+
+  // ── Level 3: local LLM rewrite for surviving CRITICALs ──
+  const criticals = lastReport.issues.filter((i) => i.severity === "CRITICAL");
+  if (criticals.length > 0) {
+    console.log(`[V5-QA-CASCADE] Level 3 LLM rewrite: ${criticals.length} critical slide(s)`);
+
+    const tasks = criticals
+      .map((issue) => {
+        const pos = parseSlideId(issue.slideId);
+        if (!pos) return null;
+        const { mi, si } = pos;
+        if (!current[mi] || si >= current[mi].length) return null;
+        return { issue, mi, si };
+      })
+      .filter((t): t is { issue: QAIssue; mi: number; si: number } => t !== null);
+
+    // Batch in groups of 3 (avoid overwhelming Gemini quota)
+    for (let b = 0; b < tasks.length; b += 3) {
+      const batch = tasks.slice(b, b + 3);
+      const settled = await Promise.allSettled(
+        batch.map(({ issue, mi, si }) =>
+          l3LocalRewrite(current[mi][si], issue, geminiKey).then((s) => ({ mi, si, s }))
+        ),
+      );
+      for (const res of settled) {
+        if (res.status === "fulfilled") {
+          current[res.value.mi][res.value.si] = res.value.s;
+        }
+      }
+    }
+
+    // Final QA pass after L3
+    const { repairedSlides: afterL3, report: reportL3 } = runPptxQA(current, moduleContents);
+    current = afterL3;
+    lastReport = reportL3;
+    console.log(`[V5-QA-CASCADE] After L3: status=${lastReport.status} unfixed=${lastReport.issues.length}`);
+  }
+
+  // ── Final safety net: isRenderableSlide hard filter ──────
+  // runPptxQA already enforces this, but we double-check here.
+  for (let mi = 0; mi < current.length; mi++) {
+    const before = current[mi].length;
+    current[mi] = current[mi].filter(isRenderableSlide);
+    const dropped = before - current[mi].length;
+    if (dropped > 0) {
+      console.warn(`[V5-QA-CASCADE] Safety filter: dropped ${dropped} unrenderable slide(s) in module ${mi + 1}`);
+    }
+  }
+
+  console.log(
+    `[V5-QA-CASCADE] Complete: status=${lastReport.status} | unfixed=${lastReport.issues.length} | fixed=${lastReport.fixedIssues.length}`,
+  );
+  return { resolvedSlides: current, finalReport: lastReport };
+}
+
 /**
  * Returns true if any slide in any module still contains an un-filled
  * placeholder like {{COURSE_TITLE}} or {{BULLET_1}}.
@@ -3823,10 +4187,12 @@ async function runPipeline(
   );
   // ─────────────────────────────────────────────────────────────────────────
 
-  // ── PPTX QA ENGINE ───────────────────────────────────────────────────────
-  // Runs after all template splits but before render loop.
-  // Repairs or drops slides that fail the 11-point quality checklist.
-  // WARNINGs are auto-fixed; un-repairable CRITICALs remove the slide.
+  // ── PPTX QA ENGINE + RESOLUTION CASCADE ─────────────────────────────────
+  // Step 1: initial 11-point QA pass (auto-fixes WARNINGs in-place).
+  // Step 2: if unfixed issues remain, run 3-level resolution cascade:
+  //   L1 visual fixes → re-QA → L2 layout replanning → re-QA (×2 cycles)
+  //   L3 local Gemini rewrite for surviving CRITICALs.
+  // Final isRenderableSlide filter guarantees no broken slide reaches renderer.
   const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
     allModuleSlides,
     modules.map((m) => m.content),
@@ -3835,8 +4201,26 @@ async function runPipeline(
     allModuleSlides[i] = qaSlides[i];
   }
   console.log(
-    `[V5-QA] Pipeline QA complete: status=${qaReport.status} | issues=${qaReport.issues.length} | fixed=${qaReport.fixedIssues.length}`,
+    `[V5-QA] Initial pass: status=${qaReport.status} | issues=${qaReport.issues.length} | fixed=${qaReport.fixedIssues.length}`,
   );
+
+  if (qaReport.issues.length > 0) {
+    // Unfixed issues remain — run resolution cascade
+    const { resolvedSlides, finalReport } = await resolveQAIssues(
+      allModuleSlides,
+      qaReport,
+      modules.map((m) => m.content),
+      geminiKey,
+    );
+    for (let i = 0; i < resolvedSlides.length; i++) {
+      allModuleSlides[i] = resolvedSlides[i];
+    }
+    console.log(
+      `[V5-QA-CASCADE] Final: status=${finalReport.status} | unfixed=${finalReport.issues.length} | fixed=${finalReport.fixedIssues.length}`,
+    );
+  } else {
+    console.log("[V5-QA] All issues resolved in initial pass — cascade skipped");
+  }
   // ─────────────────────────────────────────────────────────────────────────
 
   // Count actual total slides from generated content (for accurate footer numbers)

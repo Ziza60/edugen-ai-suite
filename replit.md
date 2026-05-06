@@ -67,14 +67,21 @@ Public URL where students access a course without registration. Shares the same 
 `supabase/functions/export-pptx-v4/index.ts` (~4160 lines, ENGINE_VERSION=5.0.0).
 Pipeline: Parse → Segment → LayoutVariety → SemanticQualityGate → TemplateSplits → **PPTX QA Engine** → Render → Export.
 
-### PPTX QA Engine (Section 6C)
-Formal quality validation layer — runs after template splits, before render. Based on `runPptxQA(allSlides, moduleContents)`.
-- **QA Thresholds**: `MAX_WORDS_PER_SLIDE=50`, `MAX_BULLETS=6`, `MAX_CODE_LINES=12`, `MAX_TABLE_CELLS=16`, `MIN_BODY_FONT_SIZE=18pt`, `MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE=2`, `MIN_REQUIRED_WHITESPACE_RATIO=0.20`
-- **11 checks**: `EMPTY_SLIDE`, `PLACEHOLDER_RESIDUAL`, `TITLE_FRAGMENT`, `GENERIC_LEARNING_OBJECTIVE`, `CONTENT_DENSITY_OVERFLOW`, `TOO_MANY_BULLETS`, `CODE_TOO_LONG`, `SQL_CODE_INCOMPLETE`, `LAYOUT_REPETITION`, `COMPARISON_UNSAFE`, `FONT_TOO_SMALL_RISK`
-- **CRITICAL** issues (EMPTY_SLIDE, PLACEHOLDER_RESIDUAL, TITLE_FRAGMENT, SQL_CODE_INCOMPLETE, COMPARISON_UNSAFE): auto-repaired or slide removed
-- **WARNING** issues: auto-fixed in-place (trim bullets, truncate code, swap layout, cap item length)
-- Returns `QAReport { status: "PASSED"|"WARNING"|"FAILED", issues[], fixedIssues[] }` — logged per export
-- No PPTX final can contain: empty slide, visible placeholder, title fragment, incomplete SQL code
+### PPTX QA Engine (Section 6C) + Resolution Cascade (Section 6D)
+Full QA pipeline: `runPptxQA` (initial 11-point pass) → `resolveQAIssues` (3-level cascade if issues remain).
+
+**QA Thresholds** (`const QA`): `MAX_WORDS_PER_SLIDE=50`, `MAX_BULLETS=6`, `MAX_CODE_LINES=12`, `MAX_TABLE_CELLS=16`, `MIN_BODY_FONT_SIZE=18pt`, `MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE=2`, `MIN_REQUIRED_WHITESPACE_RATIO=0.20`
+
+**11 QA checks**: `EMPTY_SLIDE`, `PLACEHOLDER_RESIDUAL`, `TITLE_FRAGMENT`, `GENERIC_LEARNING_OBJECTIVE`, `CONTENT_DENSITY_OVERFLOW`, `TOO_MANY_BULLETS`, `CODE_TOO_LONG`, `SQL_CODE_INCOMPLETE`, `LAYOUT_REPETITION`, `COMPARISON_UNSAFE`, `FONT_TOO_SMALL_RISK`
+
+**Resolution Cascade** (`resolveQAIssues`): runs if any issue survives initial QA pass. Max 2 cycles of:
+- **Level 1** (`l1VisualFix`): visual fixes per-slide — spacing, text trim (SQL-safe), title normalisation, placeholder removal, label swap, punctuation; never splits or changes layout
+- **Level 2** (`l2Replan`): layout replanning — splits bullets/code into (1/2)+(2/2) slides, converts comparison→twocol, rotates repeated layouts, drops unfixable empties
+- **Level 3** (`l3LocalRewrite`): Gemini rewrite of individual slide (CRITICAL only, max 3 concurrent) — narrow prompt, JSON response, 4-5 bullets
+- Final `isRenderableSlide` hard filter after all levels
+
+**SQL preservation**: `safeSliceText()` never trims `SELECT *`, `COUNT(*)`, `SUM(*)`, `AVG(*)`, `MAX(*)`, `MIN(*)`
+**Guarantee**: no PPTX exits with empty slide, visible placeholder, title fragment, or incomplete SQL code
 
 ### Visual Skins (SKIN_REGISTRY)
 5 skin templates: `default_v5` (navy/blue), `futuristic_background` (neon/cyber), `dark_theme` (gold/dark), `dark_elegance_xl` (violet/gold), `dark_style_theme` (red/fire). Each defines palette + coverStyle + headerStyle + cardStyle + accentBarPos.
