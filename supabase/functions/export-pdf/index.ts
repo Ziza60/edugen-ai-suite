@@ -69,15 +69,22 @@ function parseMarkdownTable(lines: string[], startIndex: number): { table: Parse
   if (!lines[startIndex]?.includes("|")) return { table: null, endIndex: startIndex };
   const parsePipeRow = (line: string): string[] =>
     line.split("|").map((c) => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length);
-  const headers = parsePipeRow(lines[startIndex]);
+  // BUG #4 FIX: filter empty header cells to prevent ghost columns from AI-generated trailing pipes
+  const headers = parsePipeRow(lines[startIndex]).filter((h) => h !== "");
   if (headers.length < 2) return { table: null, endIndex: startIndex };
+  const numCols = headers.length;
   const sepLine = lines[startIndex + 1];
   if (!sepLine || !/^[\s|:-]+$/.test(sepLine)) return { table: null, endIndex: startIndex };
   const rows: string[][] = [];
   let i = startIndex + 2;
   while (i < lines.length && lines[i].includes("|")) {
     const cells = parsePipeRow(lines[i]);
-    if (cells.length >= 2) rows.push(cells);
+    if (cells.length >= 1) {
+      // Normalize each row to exactly numCols cells — prevents missing or extra columns
+      const normalized = cells.slice(0, numCols);
+      while (normalized.length < numCols) normalized.push("");
+      rows.push(normalized);
+    }
     i++;
   }
   if (rows.length === 0) return { table: null, endIndex: startIndex };
@@ -213,7 +220,10 @@ class PdfRenderer {
     this.doc.setFont("helvetica", "bold");
     this.doc.setTextColor(...C.WHITE);
     this.doc.text(`${this.pageNum}`, PAGE_W / 2, PAGE_H - 3, { align: "center" });
+    // BUG #6 FIX: reset font/size after footer so first element on new page never inherits 8pt Bold
     this.doc.setTextColor(...C.TEXT_BODY);
+    this.doc.setFont("helvetica", "normal");
+    this.doc.setFontSize(FONT.BODY);
   }
 
   // ── Cover page ──────────────────────────────────────────────────────
@@ -261,23 +271,7 @@ class PdfRenderer {
       this.doc.text(descLines.slice(0, maxDescLines), PAGE_W / 2, descY, { align: "center" });
     }
 
-    // Metadata box at bottom
-    const metaBoxY = PAGE_H - 45;
-    this.doc.setFillColor(245, 246, 252);
-    this.doc.roundedRect(MARGIN_L, metaBoxY, CONTENT_W, 22, 2, 2, "F");
-    this.doc.setDrawColor(...C.BORDER);
-    this.doc.setLineWidth(0.3);
-    this.doc.roundedRect(MARGIN_L, metaBoxY, CONTENT_W, 22, 2, 2);
-
-    this.doc.setFontSize(9);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(...C.NAVY_MID);
-    this.doc.text("Idioma", MARGIN_L + 12, metaBoxY + 8);
-    this.doc.text("Gerado em", PAGE_W / 2 + 10, metaBoxY + 8);
-    this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(...C.TEXT_BODY);
-    this.doc.text(language || "pt-BR", MARGIN_L + 12, metaBoxY + 15);
-    this.doc.text(new Date().toLocaleDateString("pt-BR"), PAGE_W / 2 + 10, metaBoxY + 15);
+    // BUG #1 FIX: metadata box (Idioma + Gerado em) removed — not relevant for students
 
     // Footer
     this.doc.setFillColor(...C.NAVY);
@@ -430,7 +424,9 @@ class PdfRenderer {
     const textX = MARGIN_L + 10 + indentMm;
     const availW = CONTENT_W - 10 - indentMm;
     const lines = this.doc.splitTextToSize(cleanText, availW);
-    this.checkPage(lines.length * SP.LINE_H + SP.BULLET_GAP);
+    // BUG #3 FIX: +8mm orphan buffer — any bullet that can't fit with room for one sibling
+    // moves to the next page, preventing isolated last-bullets on near-blank pages
+    this.checkPage(lines.length * SP.LINE_H + SP.BULLET_GAP + 8);
 
     this.doc.setFillColor(...C.NAVY_MID);
     this.doc.circle(bulletX, this.y - 1.2, 0.85, "F");
@@ -526,6 +522,58 @@ class PdfRenderer {
     }
 
     this.y = boxY + totalH + 8;
+  }
+
+  // ── Code block (BUG #2 + #5 FIX) ───────────────────────────────────
+  // Renders fenced code verbatim — no stripMarkdown, no HTML escape,
+  // so operators like > and < are preserved exactly as written.
+  renderCodeBlock(code: string) {
+    const rawLines = code.split("\n");
+    // Trim trailing blank lines
+    while (rawLines.length && !rawLines[rawLines.length - 1].trim()) rawLines.pop();
+    if (!rawLines.length) return;
+
+    const lineH = 4.2;
+    const padV = 5;
+    const padH = 8;
+    const totalH = rawLines.length * lineH + padV * 2;
+
+    this.checkPage(Math.min(totalH + 6, 55));
+    this.y += 3;
+
+    // Dark background box (sized to available space on current page)
+    const availH = MAX_Y - this.y - padV;
+    this.doc.setFillColor(30, 36, 55);
+    this.doc.roundedRect(MARGIN_L, this.y - padV, CONTENT_W, Math.min(totalH, availH + padV), 2, 2, "F");
+
+    this.doc.setFontSize(8.5);
+    this.doc.setFont("courier", "normal");
+    this.doc.setTextColor(210, 215, 240);
+
+    let codeY = this.y;
+    for (const line of rawLines) {
+      if (codeY + lineH > MAX_Y - 4) {
+        this.addPage();
+        // Re-draw background on continuation page
+        const remLines = rawLines.slice(rawLines.indexOf(line));
+        const remH = remLines.length * lineH + padV * 2;
+        this.doc.setFillColor(30, 36, 55);
+        this.doc.roundedRect(MARGIN_L, this.y - padV, CONTENT_W, Math.min(remH, MAX_Y - this.y - padV + padV), 2, 2, "F");
+        this.doc.setFontSize(8.5);
+        this.doc.setFont("courier", "normal");
+        this.doc.setTextColor(210, 215, 240);
+        codeY = this.y;
+      }
+      // Use sanitizeText (removes emojis/bad chars) but NOT stripMarkdown — preserves > < operators
+      this.doc.text(sanitizeText(line), MARGIN_L + padH, codeY);
+      codeY += lineH;
+    }
+
+    this.y = codeY + padV + 5;
+    // Reset to body style after code block
+    this.doc.setTextColor(...C.TEXT_BODY);
+    this.doc.setFont("helvetica", "normal");
+    this.doc.setFontSize(FONT.BODY);
   }
 
   renderHorizontalRule() {
@@ -643,7 +691,8 @@ class PdfRenderer {
       this.doc.line(colX, this.y + headerH, colX, this.y + totalH);
     }
 
-    this.y = currentY + SP.SECTION_GAP;
+    // BUG #7 FIX: increase post-table spacing so text never collides with table border
+    this.y = currentY + SP.SECTION_GAP + 4;
   }
 
   // ── Module content ───────────────────────────────────────────────────
@@ -671,6 +720,22 @@ class PdfRenderer {
       if (!trimmed) {
         if (this.y + 2.5 < MAX_Y - 10) this.y += 2.5;
         i++;
+        continue;
+      }
+
+      // BUG #2 + #5 FIX: fenced code block detection
+      // The opening fence line (```sql, ```python, etc.) is consumed entirely —
+      // the language identifier is discarded, never rendered as text.
+      if (trimmed.startsWith("```")) {
+        const codeLines: string[] = [];
+        let j = i + 1;
+        while (j < lines.length && !lines[j].trim().startsWith("```")) {
+          codeLines.push(lines[j]);
+          j++;
+        }
+        if (j < lines.length) j++; // skip closing ```
+        this.renderCodeBlock(codeLines.join("\n"));
+        i = j;
         continue;
       }
 
