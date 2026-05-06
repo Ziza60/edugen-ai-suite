@@ -2051,10 +2051,9 @@ async function generateModuleSlides(
       layout: (VALID_LAYOUTS.includes(s.layout)
         ? s.layout
         : "bullets") as Layout,
-      title: cleanSlideTitle(
-        String(s.title || mod.title).slice(0, 80),
-        mod.title,
-      ),
+      title: s.layout === "takeaways"
+        ? cleanTakeawayTitle(String(s.title || ""), mod.title)
+        : cleanSlideTitle(String(s.title || mod.title).slice(0, 80), mod.title),
       label: String(s.label || "CONTEÚDO")
         .slice(0, 32)
         .toUpperCase(),
@@ -2280,28 +2279,30 @@ const MODULE_NOISE_RE    =
   /\b(m[oó]dulo\s+\d+|objetivo\s+do\s+m[oó]dulo|fundamentos|como\s+funciona|conceitos\s+b[aá]sicos)\b/gi;
 
 // SQL wildcard patterns that must never be mangled by markdown strippers
-// e.g. SELECT *, COUNT(*), SUM(*), FROM *
+// e.g. SELECT *, COUNT(*), SUM(*), FROM *, SELECT DISTINCT *
 const SQL_WILDCARD_RE =
-  /\b(COUNT|SUM|AVG|MAX|MIN|COALESCE|NULLIF|ISNULL)\s*\(\s*\*\s*\)|\bSELECT\s+\*|\bFROM\s+\*/gi;
+  /\b(COUNT|SUM|AVG|MAX|MIN|COALESCE|NULLIF|ISNULL)\s*\(\s*\*\s*\)|\bSELECT\s+DISTINCT\s+\*|\bSELECT\s+\*|\bFROM\s+\*/gi;
 
+// IMPORTANT: slot markers use printable ASCII [[...]] notation.
+// Control chars (\x00-\x1F) ARE erased by san() — never use them as markers here.
 function globalSanitize(text: string): string {
   if (!text || typeof text !== "string") return "";
 
-  // Step 1a: protect SQL wildcard expressions (SELECT *, COUNT(*), etc.)
+  // Step 1a: protect SQL wildcard expressions using printable-ASCII markers [[SQLW_N]]
   const sqlSlots: string[] = [];
   const withSqlProt = text.replace(SQL_WILDCARD_RE, (match) => {
     sqlSlots.push(match);
-    return `\x01SQL${sqlSlots.length - 1}\x01`;
+    return `[[SQLW_${sqlSlots.length - 1}]]`;
   });
 
-  // Step 1b: protect content inside backticks
+  // Step 1b: protect backtick-quoted content using printable-ASCII markers [[BT_N]]
   const backtickSlots: string[] = [];
   const slotted = withSqlProt.replace(/`([^`]*)`/g, (_full, inner: string) => {
     backtickSlots.push(inner);
-    return `\x00SLOT${backtickSlots.length - 1}\x00`;
+    return `[[BT_${backtickSlots.length - 1}]]`;
   });
 
-  // Step 2: apply sanitisation to non-protected sections
+  // Step 2: clean markdown & noise — san() is safe here (markers are ASCII printable)
   const cleaned = san(
     slotted
       .replace(/\\n/g, " ").replace(/\\t/g, " ")   // literal escape sequences
@@ -2315,11 +2316,11 @@ function globalSanitize(text: string): string {
 
   // Step 3: restore protected content (backticks first, then SQL wildcards)
   const withBt = cleaned.replace(
-    /\x00SLOT(\d+)\x00/g,
+    /\[\[BT_(\d+)\]\]/g,
     (_m, idx: string) => backtickSlots[Number(idx)] ?? "",
   );
   return withBt.replace(
-    /\x01SQL(\d+)\x01/g,
+    /\[\[SQLW_(\d+)\]\]/g,
     (_m, idx: string) => sqlSlots[Number(idx)] ?? "",
   );
 }
@@ -2332,20 +2333,67 @@ function sanitizeTitle(title: string, max = 60): string {
   return boundary > max * 0.6 ? t.slice(0, boundary) : t.slice(0, max);
 }
 
+// ── SLIDE TITLE NORMALIZATION ──
+// Prevents titles starting with bare prepositions/articles (truncation artifact)
+// and adds context prefixes when the title looks like a fragment.
+const TITLE_PREP_RE = /^(da|de|do|das|dos|na|no|nas|nos|ao|à|às|em|pelo|pela|pelos|pelas|para|com|por|num|numa|sobre|entre|após|desde|sem|um|uma|uns|umas)\s+/i;
+
+// Extract common uppercase acronyms from a string (DDL, SQL, DML, SGBD, etc.)
+function extractTitleAcronym(text: string): string {
+  const m = text.match(/\b([A-Z]{2,6})\b/);
+  return m ? m[1] : "";
+}
+
+// Generic takeaway titles the AI tends to generate — we'll replace these
+const GENERIC_TAKEAWAY_RE =
+  /^(o que você (aprenderá|aprendeu|vai aprender|aprendemos)|takeaways?|resumo geral|vis[aã]o geral|overview|summary|o que aprendemos|principais pontos|pontos( chave)?|key (takeaways?|points?))$/i;
+
+// Normalize a slide title: fix fragments, preposition-starts, truncation.
+function normalizeSlideTitle(title: string, moduleTitle: string): string {
+  const raw = (title || "").trim();
+  if (!raw) return sanitizeTitle(moduleTitle || "Conteúdo");
+
+  // Fix title that starts with a bare preposition (looks like a truncated fragment)
+  if (TITLE_PREP_RE.test(raw)) {
+    const acronym = extractTitleAcronym(moduleTitle);
+    const stripped = raw.replace(TITLE_PREP_RE, "").trim();
+    // Capitalize first letter of stripped
+    const cap = stripped.charAt(0).toUpperCase() + stripped.slice(1);
+    const candidate = acronym ? `${acronym}: ${cap}` : cap;
+    return sanitizeTitle(candidate || moduleTitle);
+  }
+
+  return sanitizeTitle(raw);
+}
+
+// Clean a takeaway slide title — replace generic AI-generated titles with
+// meaningful, context-aware alternatives.
+function cleanTakeawayTitle(title: string, moduleTitle: string): string {
+  const t = (title || "").trim();
+  if (!t || GENERIC_TAKEAWAY_RE.test(t)) {
+    const mod = moduleTitle.trim();
+    const opts = [
+      "Principais Aprendizados",
+      `Síntese: ${mod}`,
+      "Aprendizados Essenciais",
+      "Resumo do Módulo",
+    ];
+    return sanitizeTitle(opts[mod.length % opts.length]);
+  }
+  return sanitizeTitle(t);
+}
+
 // ── TITLE GARBAGE CLEANUP ──
 const GARBAGE_TITLE_RE =
   /^(m[oó]dulo\s+\d+|objetivo\s+(do\s+)?m[oó]dulo|introdu[cç][aã]o\s+ao\s+m[oó]dulo|vis[aã]o\s+geral\s+do\s+m[oó]dulo|conte[uú]do\s+do\s+m[oó]dulo|overview|introduction|module\s+\d+|fundamentos|conceitos\s+b[aá]sicos)$/i;
 
 function cleanSlideTitle(title: string, moduleTitle: string): string {
-  const t = sanitizeTitle(title.trim());
-  if (
-    !t ||
-    GARBAGE_TITLE_RE.test(t) ||
-    t.toLowerCase() === moduleTitle.trim().toLowerCase()
-  ) {
+  const raw = (title || "").trim();
+  if (!raw || GARBAGE_TITLE_RE.test(raw) || raw.toLowerCase() === moduleTitle.trim().toLowerCase()) {
     return sanitizeTitle(moduleTitle);
   }
-  return t;
+  // Apply full normalization (preposition fix, etc.)
+  return normalizeSlideTitle(raw, moduleTitle);
 }
 
 // ── LAYOUT HEURISTIC SELECTOR ──
@@ -2670,32 +2718,42 @@ function detectModuleTopic(title: string): string {
   return "generic";
 }
 
+// Ensure a learning objective ends with a period.
+function withPeriod(text: string): string {
+  const t = text.trim();
+  if (!t) return t;
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
+// Trim text to max chars at a word boundary.
+function trimAt(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.lastIndexOf(" ", max - 1);
+  return cut > max * 0.5 ? text.slice(0, cut) : text.slice(0, max);
+}
+
 // Returns a grammatically correct, complete learning objective.
+// Pattern enforced: VERB + OBJECT + CONTEXT, ending with period, ≤110 chars.
 // Never prepends a verb mechanically — validates or rewrites the whole phrase.
 function normalizeLearningObjective(text: string, moduleTitle: string, idx: number): string {
   const t = text.trim();
 
-  // Already a complete, grammatical objective: starts with verb, long enough, not broken
+  // Already a complete, grammatical objective: starts with verb, substantial, not broken
   if (VERB_START_RE.test(t) && t.length >= 20 && !BAD_OBJECTIVE_RE.test(t)) {
-    if (t.length <= 82) return t;
-    const cut = t.lastIndexOf(" ", 79);
-    return cut > 30 ? t.slice(0, cut) + "." : t.slice(0, 80) + ".";
+    return withPeriod(trimAt(t, 110));
   }
 
-  // Use topic-specific template if available
+  // Use topic-specific template if available (curated, always grammatical)
   const topic = detectModuleTopic(moduleTitle);
   const templates = TOPIC_COMPETENCIES[topic];
-  if (templates) return templates[idx % templates.length];
+  if (templates) return templates[idx % templates.length]; // already ends with period
 
-  // Last resort: verb + lowercased module title as a sentence
+  // Last resort: verb + lowercased module title
   const verb = ACTION_VERBS_PT[idx % ACTION_VERBS_PT.length];
   const body = moduleTitle.trim().length > 0
     ? moduleTitle.trim().charAt(0).toLowerCase() + moduleTitle.trim().slice(1)
     : "os conceitos principais do módulo";
-  const candidate = `${verb} ${body}.`;
-  if (candidate.length <= 82) return candidate;
-  const cut = candidate.lastIndexOf(" ", 79);
-  return cut > 30 ? candidate.slice(0, cut) + "." : candidate.slice(0, 80) + ".";
+  return withPeriod(trimAt(`${verb} ${body}`, 110));
 }
 
 function extractCompetencies(content: string, moduleTitle?: string): string[] {

@@ -1,0 +1,145 @@
+A versão atual do PPTX v5 melhorou bastante, mas ainda existem problemas semânticos e de acabamento que precisam ser corrigidos para atingir nível realmente profissional/premium.
+
+Corrigir os seguintes pontos sem alterar a arquitetura principal do v5:
+
+1. CORRIGIR DEFINITIVAMENTE O PROBLEMA DO "SELECT *"
+
+Atualmente o deck está transformando:
+- "SELECT *"
+em:
+- "SQL0"
+ou removendo o asterisco.
+
+Isso é um bug crítico.
+
+Implementar proteção explícita para expressões SQL técnicas antes da sanitização.
+
+Proteger especialmente:
+- SELECT *
+- COUNT(*)
+- SUM(*)
+- AVG(*)
+- FROM *
+- JOIN *
+- SELECT DISTINCT *
+- qualquer conteúdo entre crases relacionado a SQL.
+
+Nunca substituir "*" por "0".
+Nunca remover "*" quando fizer parte de sintaxe SQL.
+
+Criar função:
+protectTechnicalExpressions(text)
+
+Executar antes de:
+- sanitizeMarkdown
+- cleanupText
+- regex de markdown.
+
+Depois da limpeza, restaurar os tokens protegidos.
+
+Critério:
+O PPTX nunca pode exibir "SQL0".
+
+2. MELHORAR TÍTULOS TRUNCADOS OU INCOMPLETOS
+
+Exemplo ruim atual:
+- "da Linguagem de Definição de Dados"
+
+O título perdeu o início semântico.
+
+Implementar:
+- títulos nunca podem começar com preposição isolada ("de", "da", "do", etc.);
+- se o título parecer fragmento incompleto, reescrever semanticamente;
+- fallback baseado no conteúdo do slide.
+
+Exemplo correto:
+- "DDL: Linguagem de Definição de Dados"
+
+Criar:
+normalizeSlideTitle(title, content)
+
+Regras:
+- máximo 60 caracteres;
+- nunca cortar palavra no meio;
+- nunca iniciar por artigo/preposição isolada;
+- preferir títulos curtos e semanticamente completos.
+
+3. MELHORAR CAPAS DE MÓDULO
+
+Os objetivos melhoraram, mas ainda existem frases fracas ou genéricas.
+
+Exemplo ruim:
+- "Compreender relacionamentos e Funções Avançadas."
+
+Melhor:
+- "Compreender relacionamentos entre tabelas e funções SQL avançadas."
+
+Implementar:
+- todo objetivo deve ter:
+  VERBO + OBJETO + CONTEXTO.
+- evitar termos vagos como:
+  "coisas avançadas",
+  "fundamentos gerais",
+  "funções avançadas" sem contexto.
+
+Criar:
+normalizeLearningObjective(text, moduleTitle)
+
+Regras:
+- começar com verbo de ação;
+- frase completa;
+- contexto técnico claro;
+- máximo ~110 caracteres;
+- terminar com ponto final.
+
+4. PADRONIZAR PONTUAÇÃO E ACABAMENTO
+
+Atualmente alguns bullets terminam com ponto e outros não.
+
+Padronizar:
+- objetivos → sempre com ponto final;
+- bullets curtos → sem ponto;
+- frases completas → com ponto;
+- evitar mistura inconsistente.
+
+5. MELHORAR TÍTULOS DE TAKEAWAYS E RESUMOS
+
+Evitar títulos genéricos como:
+- "O que você aprenderá neste módulo"
+
+Substituir automaticamente por:
+- "Principais Aprendizados"
+- "Resumo do Módulo"
+- "Aprendizados Essenciais"
+- ou título contextual do módulo.
+
+6. AUMENTAR SENSAÇÃO PREMIUM
+
+Sem adicionar excesso visual.
+
+Implementar pequenas melhorias:
+- mais espaço vertical entre blocos;
+- melhor alinhamento dos códigos SQL;
+- destaque visual leve para palavras-chave SQL:
+  SELECT
+  INSERT
+  UPDATE
+  DELETE
+  JOIN
+  WHERE
+  GROUP BY
+- manter visual limpo e corporativo;
+- evitar excesso de texto em um único slide.
+
+7. CRITÉRIO DE ACEITE
+
+Após implementação:
+- nenhum "SQL0";
+- SELECT * preservado corretamente;
+- nenhum título truncado ou começando com preposição;
+- capas de módulo semanticamente naturais;
+- pontuação consistente;
+- PPTX continua estável;
+- nenhum slide vazio;
+- manter a densidade adaptativa;
+- manter layouts diagram/process/comparison/code.
