@@ -40,55 +40,55 @@ interface VisualTemplate {
 }
 
 const VISUAL_TEMPLATES: Record<string, VisualTemplate> = {
-  modern: {
-    label: "Moderno Escuro",
-    tagline: "Sofisticado e impactante",
+  default_v5: {
+    label: "Padrão v5",
+    tagline: "Navy & Blue — corporativo clássico",
     theme: "dark",
     visualStyle: "classic",
-    colors: ["#4F46E5", "#7C3AED", "#0891B2"],
-    bgColor: "#070C1C",
-    textColor: "#E8EDF5",
-    accentColor: "#4F46E5",
-  },
-  band: {
-    label: "Faixa Colorida",
-    tagline: "Header colorido — estilo McKinsey",
-    theme: "light",
-    visualStyle: "band",
-    colors: ["#4F46E5", "#E11D48", "#0891B2"],
-    bgColor: "#FFFFFF",
-    textColor: "#1E293B",
-    accentColor: "#4F46E5",
-  },
-  minimal: {
-    label: "Minimalista",
-    tagline: "Limpo e focado no conteúdo",
-    theme: "light",
-    visualStyle: "minimal",
-    colors: ["#1E293B", "#475569", "#94A3B8"],
-    bgColor: "#FFFFFF",
-    textColor: "#1E293B",
-    accentColor: "#1E293B",
-  },
-  tech: {
-    label: "Tech / Dev",
-    tagline: "Ideal para cursos de tecnologia",
-    theme: "dark",
-    visualStyle: "classic",
-    colors: ["#2563EB", "#06B6D4", "#10B981"],
-    bgColor: "#0A0E1A",
-    textColor: "#E2E8F0",
-    accentColor: "#2563EB",
-  },
-  executive: {
-    label: "Executivo",
-    tagline: "Corporativo — treinamentos e relatórios",
-    theme: "light",
-    visualStyle: "band",
-    colors: ["#1E3A5F", "#2563EB", "#475569"],
-    bgColor: "#F8FAFC",
-    textColor: "#0F172A",
+    colors: ["#1E3A5F", "#2E6DA4", "#C47F17"],
+    bgColor: "#0A1628",
+    textColor: "#F1F5F9",
     accentColor: "#1E3A5F",
+  },
+  futuristic_background: {
+    label: "Futuristic",
+    tagline: "Neon & Cyber — dark tech",
+    theme: "dark",
+    visualStyle: "classic",
+    colors: ["#00AAFF", "#7B2FFF", "#00FFD4"],
+    bgColor: "#030B18",
+    textColor: "#C8E6FF",
+    accentColor: "#00AAFF",
+  },
+  dark_theme: {
+    label: "Dark Premium",
+    tagline: "Gold & Dark — elegante e sofisticado",
+    theme: "dark",
+    visualStyle: "band",
+    colors: ["#F0A500", "#D97706", "#B45309"],
+    bgColor: "#0D1117",
+    textColor: "#E6EDF3",
+    accentColor: "#F0A500",
+  },
+  dark_elegance_xl: {
+    label: "Dark Elegance",
+    tagline: "Violet & Gold — premium e luxuoso",
+    theme: "dark",
+    visualStyle: "minimal",
+    colors: ["#8B2FC9", "#C2185B", "#D4AF37"],
+    bgColor: "#0B0912",
+    textColor: "#ECE8F5",
+    accentColor: "#8B2FC9",
+  },
+  dark_style_theme: {
+    label: "Dark Style",
+    tagline: "Red & Fire — ousado e impactante",
+    theme: "dark",
+    visualStyle: "classic",
+    colors: ["#E53E3E", "#DD6B20", "#D69E2E"],
+    bgColor: "#0F1219",
+    textColor: "#F0F4F8",
+    accentColor: "#E53E3E",
   },
 };
 
@@ -226,7 +226,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [palette, setPalette]                         = useState<PptxExportOptions["palette"]>("default");
   const [density, setDensity]                         = useState<PptxExportOptions["density"]>("standard");
   const [includeImages, setIncludeImages]             = useState(true);
-  const [template, setTemplate]                       = useState("modern");
+  const [template, setTemplate]                       = useState("default_v5");
   const [courseType, setCourseType]                   = useState("CURSO COMPLETO");
   const [footerBrandEnabled, setFooterBrandEnabled]   = useState(true);
   const [footerBrandValue, setFooterBrandValue]       = useState("EduGenAI");
@@ -239,7 +239,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [usePresenton, setUsePresenton]               = useState(false);
   const [twoSlidesTheme, setTwoSlidesTheme]           = useState("blue-gradient");
 
-  const selectedTpl = VISUAL_TEMPLATES[template] || VISUAL_TEMPLATES.modern;
+  const selectedTpl = VISUAL_TEMPLATES[template] || VISUAL_TEMPLATES.default_v5;
   const theme = selectedTpl.theme;
 
   const slideEstimates: Record<string, [number, number]> = {

@@ -189,6 +189,12 @@ interface Design {
   titleFont: string;
   bodyFont: string;
   footerBrand: string;
+  // Skin layout tokens — drive structural variation per template
+  skinId: string;
+  coverStyle: "sidebar" | "full" | "diagonal" | "centered";
+  headerStyle: "chip" | "band" | "line";
+  cardStyle: "rounded" | "glow" | "sharp" | "bordered";
+  accentBarPos: "left" | "top";
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -219,48 +225,94 @@ const PALETTE_MAP: Record<string, [string, string, string, string, string]> = {
   slate:      ["1D4ED8", "2563EB", "3B82F6", "93C5FD", "080D1A"],
 };
 
+// ═══════════════════════════════════════════════════════════
+// SECTION 2B: SKIN REGISTRY
+// Full visual identity (colors + layout tokens) per template.
+// When a template key matches here, buildDesign uses it entirely,
+// ignoring the palette/theme parameters.
+// ═══════════════════════════════════════════════════════════
+
+interface SkinOverride {
+  bg: string; surface: string; text: string; subtext: string; border: string;
+  coverBg: string; accent: string; accent2: string; accent3: string; highlight: string;
+  titleFont: string; bodyFont: string;
+  coverStyle: "sidebar" | "full" | "diagonal" | "centered";
+  headerStyle: "chip" | "band" | "line";
+  cardStyle: "rounded" | "glow" | "sharp" | "bordered";
+  accentBarPos: "left" | "top";
+}
+
+const SKIN_REGISTRY: Record<string, SkinOverride> = {
+  futuristic_background: {
+    bg: "030B18", surface: "071525", text: "C8E6FF", subtext: "4A7A9E",
+    border: "0A2540", coverBg: "010407",
+    accent: "00AAFF", accent2: "7B2FFF", accent3: "00FFD4", highlight: "00FFD4",
+    titleFont: "Trebuchet MS", bodyFont: "Calibri",
+    coverStyle: "full", headerStyle: "band", cardStyle: "glow", accentBarPos: "top",
+  },
+  dark_theme: {
+    bg: "0D1117", surface: "161B22", text: "E6EDF3", subtext: "7D8590",
+    border: "21262D", coverBg: "04080F",
+    accent: "F0A500", accent2: "D97706", accent3: "B45309", highlight: "FCD34D",
+    titleFont: "Georgia", bodyFont: "Calibri",
+    coverStyle: "diagonal", headerStyle: "line", cardStyle: "sharp", accentBarPos: "left",
+  },
+  dark_elegance_xl: {
+    bg: "0B0912", surface: "140F1F", text: "ECE8F5", subtext: "7A6898",
+    border: "201535", coverBg: "060309",
+    accent: "8B2FC9", accent2: "C2185B", accent3: "D4AF37", highlight: "E8D5B7",
+    titleFont: "Palatino Linotype", bodyFont: "Calibri",
+    coverStyle: "centered", headerStyle: "chip", cardStyle: "bordered", accentBarPos: "left",
+  },
+  dark_style_theme: {
+    bg: "0F1219", surface: "171D27", text: "F0F4F8", subtext: "718096",
+    border: "1E2533", coverBg: "070B12",
+    accent: "E53E3E", accent2: "DD6B20", accent3: "D69E2E", highlight: "FAF089",
+    titleFont: "Trebuchet MS", bodyFont: "Calibri",
+    coverStyle: "sidebar", headerStyle: "band", cardStyle: "rounded", accentBarPos: "left",
+  },
+};
+
 function buildDesign(
   theme: "light" | "dark",
   palette: string,
   template: string,
   footerBrand: string,
 ): Design {
+  const defaultTokens = {
+    skinId: "default_v5",
+    coverStyle: "sidebar" as const,
+    headerStyle: "chip" as const,
+    cardStyle: "rounded" as const,
+    accentBarPos: "left" as const,
+  };
+
+  // Registered skin — overrides ALL colors and layout tokens
+  const skin = SKIN_REGISTRY[template];
+  if (skin) {
+    return { theme: "dark", ...skin, skinId: template, footerBrand };
+  }
+
   const colors = PALETTE_MAP[palette] || PALETTE_MAP.default;
   const [accent, accent2, accent3, highlight, palettecover] = colors;
 
   if (theme === "dark") {
     return {
-      theme,
-      accent,
-      accent2,
-      accent3,
-      highlight,
-      bg: "0A0E1A",
-      surface: "111827",
-      text: "F1F5F9",
-      subtext: "94A3B8",
-      border: "1E293B",
+      theme, accent, accent2, accent3, highlight,
+      bg: "0A0E1A", surface: "111827",
+      text: "F1F5F9", subtext: "94A3B8", border: "1E293B",
       coverBg: palettecover,
-      titleFont: "Cambria",
-      bodyFont: "Calibri",
-      footerBrand,
+      titleFont: "Cambria", bodyFont: "Calibri",
+      footerBrand, ...defaultTokens,
     };
   }
   return {
-    theme,
-    accent,
-    accent2,
-    accent3,
-    highlight,
-    bg: "FFFFFF",
-    surface: "F8FAFC",
-    text: "0F172A",
-    subtext: "475569",
-    border: "E2E8F0",
+    theme, accent, accent2, accent3, highlight,
+    bg: "FFFFFF", surface: "F8FAFC",
+    text: "0F172A", subtext: "475569", border: "E2E8F0",
     coverBg: "0F172A",
-    titleFont: "Cambria",
-    bodyFont: "Calibri",
-    footerBrand,
+    titleFont: "Cambria", bodyFont: "Calibri",
+    footerBrand, ...defaultTokens,
   };
 }
 
@@ -332,8 +384,35 @@ function footer(slide: any, d: Design, num: number, total: number) {
   });
 }
 
-// Standard slide header: chip label + accent line + title
+// Standard slide header — 3 variants driven by d.headerStyle
 function header(slide: any, d: Design, label: string, title: string) {
+  // ── BAND: full-width surface bar with left accent stripe ──
+  if (d.headerStyle === "band") {
+    const bandH = 1.38;
+    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: bandH, fill: { color: d.surface } });
+    slide.addShape("rect" as any, { x: 0, y: 0, w: 0.07, h: bandH, fill: { color: d.accent } });
+    slide.addShape("rect" as any, { x: 0, y: bandH - 0.03, w: SLIDE_W, h: 0.03, fill: { color: d.accent, transparency: 40 } });
+    if (label) {
+      slide.addText(san(label).toUpperCase(), { x: ML, y: 0.18, w: CW, h: 0.26, fontSize: T.SECTION_LABEL, fontFace: d.bodyFont, bold: true, color: d.accent, charSpacing: 4 });
+    }
+    const tY = label ? 0.52 : 0.26;
+    slide.addText(san(title), { x: ML, y: tY, w: CW, h: bandH - tY - 0.14, fontSize: T.SLIDE_TITLE, fontFace: d.titleFont, bold: true, color: d.text, valign: "middle", fit: "shrink" as any });
+    return;
+  }
+
+  // ── LINE: left vertical accent stripe ──
+  if (d.headerStyle === "line") {
+    slide.addShape("rect" as any, { x: ML, y: 0.18, w: 0.045, h: 1.15, fill: { color: d.accent } });
+    if (label) {
+      slide.addText(san(label).toUpperCase(), { x: ML + 0.18, y: 0.20, w: CW - 0.22, h: 0.28, fontSize: T.SECTION_LABEL, fontFace: d.bodyFont, bold: true, color: d.subtext, charSpacing: 4 });
+    }
+    const tY2 = label ? 0.55 : 0.22;
+    const tH2 = label ? 0.74 : 1.05;
+    slide.addText(san(title), { x: ML + 0.18, y: tY2, w: CW - 0.22, h: tH2, fontSize: T.SLIDE_TITLE, fontFace: d.titleFont, bold: true, color: d.text, valign: "middle", fit: "shrink" as any });
+    return;
+  }
+
+  // ── CHIP (default): pill label + short accent underline ──
   if (label) {
     const chipW = Math.min(4.2, label.length * 0.105 + 0.4);
     slide.addShape("roundRect" as any, {
@@ -393,94 +472,80 @@ function renderCover(
   totalSlides: number,
 ) {
   const slide = pptx.addSlide();
-  bg(slide, d.coverBg);
 
-  // Left accent bar gradient
-  slide.addShape("rect" as any, {
-    x: 0,
-    y: 0,
-    w: 0.12,
-    h: SLIDE_H,
-    fill: { color: d.accent },
-  });
-  slide.addShape("rect" as any, {
-    x: 0.12,
-    y: 0,
-    w: 0.06,
-    h: SLIDE_H,
-    fill: { color: d.accent2, transparency: 60 },
-  });
-
-  // Course type badge
-  if (slide_.subtitle) {
-    slide.addShape("roundRect" as any, {
-      x: 1.0,
-      y: 1.1,
-      w: Math.min(4.0, slide_.subtitle.length * 0.18 + 0.5),
-      h: 0.34,
-      fill: { color: d.accent },
-      rectRadius: 0.04,
-    });
-    slide.addText(san(slide_.subtitle).toUpperCase(), {
-      x: 1.0,
-      y: 1.1,
-      w: 4.5,
-      h: 0.34,
-      fontSize: 10,
-      fontFace: d.bodyFont,
-      bold: true,
-      color: "FFFFFF",
-      charSpacing: 3,
-      valign: "middle",
-    });
+  // ── FUTURISTIC: centered title, grid dots, dual neon strips ──
+  if (d.coverStyle === "full") {
+    bg(slide, d.coverBg);
+    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: 0.046, fill: { color: d.accent } });
+    slide.addShape("rect" as any, { x: 0, y: SLIDE_H - 0.046, w: SLIDE_W, h: 0.046, fill: { color: d.accent2 } });
+    for (let gx = 0; gx < 11; gx++) {
+      for (let gy = 0; gy < 6; gy++) {
+        slide.addShape("ellipse" as any, { x: 0.7 + gx * 1.15, y: 0.4 + gy * 1.15, w: 0.032, h: 0.032, fill: { color: d.accent, transparency: 88 } });
+      }
+    }
+    if (slide_.subtitle) {
+      slide.addShape("roundRect" as any, { x: SLIDE_W / 2 - 1.8, y: 1.35, w: 3.6, h: 0.36, fill: { color: d.accent, transparency: 22 }, line: { color: d.accent, width: 0.8 }, rectRadius: 0.04 });
+      slide.addText(san(slide_.subtitle).toUpperCase(), { x: SLIDE_W / 2 - 1.8, y: 1.35, w: 3.6, h: 0.36, fontSize: 10, fontFace: d.bodyFont, bold: true, color: d.accent, charSpacing: 3, align: "center", valign: "middle" });
+    }
+    slide.addText(san(slide_.title), { x: 0.9, y: 1.9, w: SLIDE_W - 1.8, h: 2.5, fontSize: 44, fontFace: d.titleFont, bold: true, color: "FFFFFF", align: "center", valign: "middle", fit: "shrink" as any, lineSpacingMultiple: 1.15 });
+    slide.addShape("rect" as any, { x: SLIDE_W / 2 - 1.6, y: 4.55, w: 3.2, h: 0.03, fill: { color: d.accent } });
+    slide.addText("Curso completo com material profissional", { x: 0.9, y: 4.65, w: SLIDE_W - 1.8, h: 0.38, fontSize: 12, fontFace: d.bodyFont, color: d.subtext, align: "center", valign: "middle" });
+    return;
   }
 
-  // Title
-  slide.addText(san(slide_.title), {
-    x: 1.0,
-    y: 1.65,
-    w: SLIDE_W - 1.6,
-    h: 2.4,
-    fontSize: 44,
-    fontFace: d.titleFont,
-    bold: true,
-    color: "FFFFFF",
-    valign: "middle",
-    fit: "shrink" as any,
-    lineSpacingMultiple: 1.15,
-  });
+  // ── DARK PREMIUM: right-side gold accent panel ──
+  if (d.coverStyle === "diagonal") {
+    bg(slide, d.coverBg);
+    const panelW = 3.8;
+    slide.addShape("rect" as any, { x: SLIDE_W - panelW, y: 0, w: panelW, h: SLIDE_H, fill: { color: d.accent, transparency: 88 } });
+    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: 0.055, fill: { color: d.accent } });
+    if (slide_.subtitle) {
+      slide.addText(san(slide_.subtitle).toUpperCase(), { x: ML, y: 1.0, w: SLIDE_W - panelW - ML - 0.2, h: 0.3, fontSize: 9, fontFace: d.bodyFont, bold: true, color: d.accent, charSpacing: 5 });
+    }
+    slide.addText(san(slide_.title), { x: ML, y: slide_.subtitle ? 1.42 : 1.1, w: SLIDE_W - panelW - ML - 0.3, h: 2.6, fontSize: 44, fontFace: d.titleFont, bold: true, color: "FFFFFF", valign: "middle", fit: "shrink" as any, lineSpacingMultiple: 1.15 });
+    slide.addShape("rect" as any, { x: ML, y: 4.2, w: 2.6, h: 0.04, fill: { color: d.accent } });
+    slide.addText("Curso completo com material profissional", { x: ML, y: 4.36, w: SLIDE_W - panelW - ML - 0.3, h: 0.38, fontSize: 12, fontFace: d.bodyFont, color: "94A3B8", valign: "middle" });
+    for (let i = 0; i < 4; i++) {
+      slide.addShape("rect" as any, { x: SLIDE_W - panelW + 0.5, y: 1.2 + i * 1.1, w: panelW - 1.0, h: 0.03, fill: { color: d.accent, transparency: 70 } });
+    }
+    return;
+  }
 
-  // Divider line
-  slide.addShape("rect" as any, {
-    x: 1.0,
-    y: 4.25,
-    w: 3.0,
-    h: 0.04,
-    fill: { color: d.accent },
-  });
+  // ── DARK ELEGANCE: centered, top accent band, ornamental lines ──
+  if (d.coverStyle === "centered") {
+    bg(slide, d.coverBg);
+    const headerH = 1.72;
+    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: headerH, fill: { color: d.accent, transparency: 25 } });
+    slide.addShape("rect" as any, { x: 0, y: headerH - 0.04, w: SLIDE_W, h: 0.04, fill: { color: d.accent } });
+    if (slide_.subtitle) {
+      slide.addText(san(slide_.subtitle).toUpperCase(), { x: 0, y: 0.62, w: SLIDE_W, h: 0.32, fontSize: 10, fontFace: d.bodyFont, bold: true, color: "FFFFFF", charSpacing: 6, align: "center" });
+    }
+    slide.addShape("rect" as any, { x: SLIDE_W / 2 - 2.2, y: headerH + 0.28, w: 4.4, h: 0.02, fill: { color: d.accent3 } });
+    slide.addText(san(slide_.title), { x: 0.9, y: headerH + 0.38, w: SLIDE_W - 1.8, h: 2.3, fontSize: 42, fontFace: d.titleFont, bold: true, color: "FFFFFF", align: "center", valign: "middle", fit: "shrink" as any, lineSpacingMultiple: 1.15 });
+    slide.addShape("rect" as any, { x: SLIDE_W / 2 - 2.2, y: 4.84, w: 4.4, h: 0.02, fill: { color: d.accent3 } });
+    slide.addText("Curso completo com material profissional", { x: 0.9, y: 4.95, w: SLIDE_W - 1.8, h: 0.38, fontSize: 12, fontFace: d.bodyFont, color: d.subtext, align: "center" });
+    for (let i = 0; i < 3; i++) {
+      const sz = 0.5 + i * 0.35;
+      slide.addShape("ellipse" as any, { x: -sz * 0.5, y: SLIDE_H - sz * 0.9, w: sz, h: sz, fill: { color: d.accent2, transparency: 84 + i * 3 } });
+      slide.addShape("ellipse" as any, { x: SLIDE_W - sz * 0.5, y: SLIDE_H - sz * 0.9, w: sz, h: sz, fill: { color: d.accent3, transparency: 84 + i * 3 } });
+    }
+    return;
+  }
 
-  // Subtitle / tagline
-  slide.addText("Curso completo com material profissional", {
-    x: 1.0,
-    y: 4.42,
-    w: SLIDE_W - 2.0,
-    h: 0.4,
-    fontSize: 14,
-    fontFace: d.bodyFont,
-    color: "94A3B8",
-    valign: "middle",
-  });
-
-  // Bottom right decoration circles
+  // ── DEFAULT SIDEBAR ──
+  bg(slide, d.coverBg);
+  slide.addShape("rect" as any, { x: 0, y: 0, w: 0.12, h: SLIDE_H, fill: { color: d.accent } });
+  slide.addShape("rect" as any, { x: 0.12, y: 0, w: 0.06, h: SLIDE_H, fill: { color: d.accent2, transparency: 60 } });
+  if (slide_.subtitle) {
+    slide.addShape("roundRect" as any, { x: 1.0, y: 1.1, w: Math.min(4.0, slide_.subtitle.length * 0.18 + 0.5), h: 0.34, fill: { color: d.accent }, rectRadius: 0.04 });
+    slide.addText(san(slide_.subtitle).toUpperCase(), { x: 1.0, y: 1.1, w: 4.5, h: 0.34, fontSize: 10, fontFace: d.bodyFont, bold: true, color: "FFFFFF", charSpacing: 3, valign: "middle" });
+  }
+  slide.addText(san(slide_.title), { x: 1.0, y: 1.65, w: SLIDE_W - 1.6, h: 2.4, fontSize: 44, fontFace: d.titleFont, bold: true, color: "FFFFFF", valign: "middle", fit: "shrink" as any, lineSpacingMultiple: 1.15 });
+  slide.addShape("rect" as any, { x: 1.0, y: 4.25, w: 3.0, h: 0.04, fill: { color: d.accent } });
+  slide.addText("Curso completo com material profissional", { x: 1.0, y: 4.42, w: SLIDE_W - 2.0, h: 0.4, fontSize: 14, fontFace: d.bodyFont, color: "94A3B8", valign: "middle" });
   for (let i = 0; i < 4; i++) {
     const sz = 0.8 + i * 0.5;
-    slide.addShape("ellipse" as any, {
-      x: SLIDE_W - sz - 0.3,
-      y: SLIDE_H - sz - 0.2,
-      w: sz,
-      h: sz,
-      fill: { color: d.accent, transparency: 82 + i * 4 },
-    });
+    slide.addShape("ellipse" as any, { x: SLIDE_W - sz - 0.3, y: SLIDE_H - sz - 0.2, w: sz, h: sz, fill: { color: d.accent, transparency: 82 + i * 4 } });
   }
 }
 
@@ -660,6 +725,37 @@ function renderModuleCover(
   total: number,
 ) {
   const slide = pptx.addSlide();
+  const modNum = String((slide_.moduleIndex ?? 0) + 1).padStart(2, "0");
+
+  // ── FUTURISTIC: horizontal top band ──
+  if (d.accentBarPos === "top") {
+    bg(slide, d.coverBg);
+    const topH = 1.05;
+    slide.addShape("rect" as any, { x: 0, y: 0, w: SLIDE_W, h: topH, fill: { color: d.accent } });
+    slide.addShape("rect" as any, { x: 0, y: topH - 0.03, w: SLIDE_W, h: 0.03, fill: { color: d.accent2 } });
+    slide.addText("MÓDULO " + ((slide_.moduleIndex ?? 0) + 1), { x: ML, y: 0.14, w: CW * 0.65, h: 0.28, fontSize: 10, fontFace: d.bodyFont, bold: true, color: "FFFFFF", charSpacing: 5 });
+    slide.addText(modNum, { x: SLIDE_W - 2.6, y: -0.2, w: 2.2, h: 1.5, fontSize: 110, fontFace: d.titleFont, bold: true, color: "FFFFFF", transparency: 82, align: "right", valign: "top" });
+    for (let gx = 0; gx < 9; gx++) {
+      for (let gy = 0; gy < 4; gy++) {
+        slide.addShape("ellipse" as any, { x: 0.8 + gx * 1.35, y: topH + 0.5 + gy * 1.45, w: 0.025, h: 0.025, fill: { color: d.accent, transparency: 88 } });
+      }
+    }
+    slide.addText(san(slide_.title), { x: ML, y: topH + 0.35, w: SLIDE_W - ML - MR, h: 2.1, fontSize: 34, fontFace: d.titleFont, bold: true, color: d.text, valign: "top", fit: "shrink" as any, lineSpacingMultiple: 1.2 });
+    slide.addShape("rect" as any, { x: ML, y: topH + 2.6, w: 1.4, h: 0.04, fill: { color: d.accent } });
+    const competenciesTop = (slide_.competencies || []).slice(0, 3);
+    if (competenciesTop.length > 0) {
+      slide.addText("O QUE VOCÊ VAI APRENDER", { x: ML, y: topH + 2.78, w: CW, h: 0.22, fontSize: 8, fontFace: d.bodyFont, bold: true, color: d.accent, charSpacing: 4 });
+      for (let i = 0; i < competenciesTop.length; i++) {
+        const cy = topH + 3.1 + i * 0.76;
+        slide.addShape("ellipse" as any, { x: ML, y: cy + 0.07, w: 0.12, h: 0.12, fill: { color: d.accent } });
+        slide.addText(san(competenciesTop[i]), { x: ML + 0.22, y: cy, w: CW - 0.28, h: 0.32, fontSize: 12, fontFace: d.bodyFont, color: d.text, valign: "middle", fit: "shrink" as any });
+      }
+    }
+    footer(slide, d, num, total);
+    return;
+  }
+
+  // ── DEFAULT (left sidebar) ──
   bg(slide, d.coverBg);
 
   const sideW = 0.55;
@@ -672,7 +768,6 @@ function renderModuleCover(
   });
 
   // Large watermark number — top-right corner
-  const modNum = String((slide_.moduleIndex ?? 0) + 1).padStart(2, "0");
   slide.addText(modNum, {
     x: SLIDE_W - 3.8,
     y: 0.1,
@@ -791,26 +886,20 @@ function renderBullets(
     const y = startY + i * (itemH + gap);
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
 
-    // Card background
-    slide.addShape("roundRect" as any, {
-      x: ML,
-      y,
-      w: CW,
-      h: itemH,
-      fill: { color: d.surface },
-      line: { color: d.border, width: 0.4 },
-      rectRadius: 0.06,
-    });
-
-    // Left color strip
-    slide.addShape("roundRect" as any, {
-      x: ML,
-      y,
-      w: 0.055,
-      h: itemH,
-      fill: { color: pal },
-      rectRadius: 0.06,
-    });
+    // Card background + left accent — varies by skin
+    if (d.cardStyle === "glow") {
+      slide.addShape("roundRect" as any, { x: ML, y, w: CW, h: itemH, fill: { color: d.surface }, line: { color: pal, width: 1.6 }, rectRadius: 0.06 });
+      slide.addShape("rect" as any, { x: ML, y: y + itemH * 0.2, w: 0.04, h: itemH * 0.6, fill: { color: pal } });
+    } else if (d.cardStyle === "sharp") {
+      slide.addShape("roundRect" as any, { x: ML, y, w: CW, h: itemH, fill: { color: d.surface }, line: { color: d.border, width: 0.5 }, rectRadius: 0.02 });
+      slide.addShape("rect" as any, { x: ML, y, w: 0.055, h: itemH, fill: { color: pal } });
+    } else if (d.cardStyle === "bordered") {
+      slide.addShape("roundRect" as any, { x: ML, y, w: CW, h: itemH, fill: { color: d.surface, transparency: 55 }, line: { color: pal, width: 1.0 }, rectRadius: 0.07 });
+      slide.addShape("rect" as any, { x: ML, y: y + 0.08, w: 0.04, h: itemH - 0.16, fill: { color: pal, transparency: 15 } });
+    } else {
+      slide.addShape("roundRect" as any, { x: ML, y, w: CW, h: itemH, fill: { color: d.surface }, line: { color: d.border, width: 0.4 }, rectRadius: 0.06 });
+      slide.addShape("roundRect" as any, { x: ML, y, w: 0.055, h: itemH, fill: { color: pal }, rectRadius: 0.06 });
+    }
 
     // Bullet dot
     const dotSz = 0.1;
@@ -881,53 +970,43 @@ function renderCards(
     const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
     const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
 
-    // Shadow
-    slide.addShape("roundRect" as any, {
-      x: x + 0.03,
-      y: y + 0.04,
-      w: cardW,
-      h: cardH,
-      fill: { color: "000000", transparency: 88 },
-      rectRadius: 0.1,
-    });
+    // Shadow (omit for glow — bright border provides depth)
+    if (d.cardStyle !== "glow") {
+      slide.addShape("roundRect" as any, {
+        x: x + 0.03, y: y + 0.04, w: cardW, h: cardH,
+        fill: { color: "000000", transparency: 88 }, rectRadius: 0.1,
+      });
+    }
 
-    // Card body
+    // Card body — varies by skin
+    const cardR = d.cardStyle === "sharp" ? 0.02 : 0.1;
     slide.addShape("roundRect" as any, {
-      x,
-      y,
-      w: cardW,
-      h: cardH,
-      fill: { color: d.surface },
-      line: { color: d.border, width: 0.4 },
-      rectRadius: 0.1,
+      x, y, w: cardW, h: cardH,
+      fill: d.cardStyle === "bordered" ? { color: d.surface, transparency: 55 } : { color: d.surface },
+      line: d.cardStyle === "glow"     ? { color: pal, width: 2.0 }
+           : d.cardStyle === "bordered" ? { color: pal, width: 1.4 }
+           : d.cardStyle === "sharp"    ? { color: d.border, width: 0.5 }
+           : { color: d.border, width: 0.4 },
+      rectRadius: cardR,
     });
 
     // Top color bar
     const topBarH = 0.1;
-    slide.addShape("roundRect" as any, {
-      x,
-      y,
-      w: cardW,
-      h: topBarH,
-      fill: { color: pal },
-      rectRadius: 0.1,
-    });
-    slide.addShape("rect" as any, {
-      x,
-      y: y + topBarH * 0.4,
-      w: cardW,
-      h: topBarH * 0.6,
-      fill: { color: pal },
-    });
+    if (d.cardStyle === "glow" || d.cardStyle === "bordered") {
+      // Thin neon strip for glow/bordered
+      slide.addShape("rect" as any, { x, y, w: cardW, h: 0.055, fill: { color: pal } });
+    } else {
+      slide.addShape("roundRect" as any, { x, y, w: cardW, h: topBarH, fill: { color: pal }, rectRadius: cardR });
+      slide.addShape("rect" as any, { x, y: y + topBarH * 0.4, w: cardW, h: topBarH * 0.6, fill: { color: pal } });
+    }
 
-    // Color left stripe
-    slide.addShape("rect" as any, {
-      x,
-      y: y + topBarH,
-      w: 0.055,
-      h: cardH - topBarH,
-      fill: { color: pal, transparency: 60 },
-    });
+    // Color left stripe (standard styles only)
+    if (d.cardStyle !== "glow" && d.cardStyle !== "bordered") {
+      slide.addShape("rect" as any, {
+        x, y: y + topBarH, w: 0.055, h: cardH - topBarH,
+        fill: { color: pal, transparency: 60 },
+      });
+    }
 
     // Number badge in top-left of color bar
     const badgeSz = 0.36;
@@ -3551,12 +3630,17 @@ Deno.serve(async (req: Request) => {
       density = "standard",
       theme = "light",
       template = "modern",
-      selectedTemplate = "default_v5",  // multi-template support
       includeImages = false,
       courseType = "CURSO COMPLETO",
       footerBrand = "EduGenAI",
       language = "Português (Brasil)",
     } = body;
+    // Multi-template: if body.template matches a registered skin, use it as the selected template.
+    // body.selectedTemplate takes priority when explicitly provided.
+    const selectedTemplate: string =
+      (body.selectedTemplate && body.selectedTemplate !== "default_v5")
+        ? body.selectedTemplate
+        : (SKIN_REGISTRY[template] ? template : "default_v5");
 
     if (!course_id) {
       return new Response(JSON.stringify({ error: "course_id required" }), {
@@ -3598,7 +3682,7 @@ Deno.serve(async (req: Request) => {
     const design = buildDesign(
       theme === "dark" ? "dark" : "light",
       palette,
-      template,
+      selectedTemplate,
       footerBrand || "EduGenAI",
     );
 
