@@ -2279,13 +2279,24 @@ const MARKDOWN_ITALIC_RE = /_{1,2}([^_]+)_{1,2}/g;
 const MODULE_NOISE_RE    =
   /\b(m[oó]dulo\s+\d+|objetivo\s+do\s+m[oó]dulo|fundamentos|como\s+funciona|conceitos\s+b[aá]sicos)\b/gi;
 
+// SQL wildcard patterns that must never be mangled by markdown strippers
+// e.g. SELECT *, COUNT(*), SUM(*), FROM *
+const SQL_WILDCARD_RE =
+  /\b(COUNT|SUM|AVG|MAX|MIN|COALESCE|NULLIF|ISNULL)\s*\(\s*\*\s*\)|\bSELECT\s+\*|\bFROM\s+\*/gi;
+
 function globalSanitize(text: string): string {
   if (!text || typeof text !== "string") return "";
 
-  // Step 1: protect content inside backticks so technical expressions like
-  // `SELECT *`, `COUNT(*)`, function names etc. are never mangled.
+  // Step 1a: protect SQL wildcard expressions (SELECT *, COUNT(*), etc.)
+  const sqlSlots: string[] = [];
+  const withSqlProt = text.replace(SQL_WILDCARD_RE, (match) => {
+    sqlSlots.push(match);
+    return `\x01SQL${sqlSlots.length - 1}\x01`;
+  });
+
+  // Step 1b: protect content inside backticks
   const backtickSlots: string[] = [];
-  const slotted = text.replace(/`([^`]*)`/g, (_full, inner: string) => {
+  const slotted = withSqlProt.replace(/`([^`]*)`/g, (_full, inner: string) => {
     backtickSlots.push(inner);
     return `\x00SLOT${backtickSlots.length - 1}\x00`;
   });
@@ -2302,10 +2313,14 @@ function globalSanitize(text: string): string {
       .trim()
   );
 
-  // Step 3: restore protected backtick content
-  return cleaned.replace(
+  // Step 3: restore protected content (backticks first, then SQL wildcards)
+  const withBt = cleaned.replace(
     /\x00SLOT(\d+)\x00/g,
     (_m, idx: string) => backtickSlots[Number(idx)] ?? "",
+  );
+  return withBt.replace(
+    /\x01SQL(\d+)\x01/g,
+    (_m, idx: string) => sqlSlots[Number(idx)] ?? "",
   );
 }
 
@@ -2571,28 +2586,116 @@ function splitOverflowSlides(slides: Slide[]): Slide[] {
   return out;
 }
 
-// ── ACTION VERB ENFORCEMENT (module cover competencies) ──
+// ── LEARNING OBJECTIVE NORMALISATION (module cover competencies) ──
+
 const ACTION_VERBS_PT = [
   "Compreender", "Aplicar", "Identificar", "Configurar", "Executar",
-  "Construir",   "Analisar", "Definir",   "Utilizar",   "Diferenciar",
+  "Construir",   "Analisar", "Definir",    "Utilizar",   "Diferenciar",
 ];
 const VERB_START_RE = new RegExp(
   `^(${ACTION_VERBS_PT.map((v) => v.toLowerCase()).join("|")})\\b`,
   "i",
 );
 
-function enforceActionVerb(text: string, moduleTitle: string, idx: number): string {
+// Detects the broken pattern: action verb immediately followed by another verb
+// e.g. "Compreender fornece", "Aplicar modificar", "Identificar conectar-se"
+const BAD_OBJECTIVE_RE = new RegExp(
+  `^(${ACTION_VERBS_PT.map((v) => v.toLowerCase()).join("|")})\\s+` +
+  `(fornece|conectar|selecionar|inserir|criar|modificar|deletar|fazer|realizar|` +
+  `gerar|acessar|instalar|consultar|atualizar|remover|retornar|usar|permite|serve|` +
+  `refere|significa|indica|representa|demonstra|apresenta|exibe|é |são |tem |têm )`,
+  "i",
+);
+
+// Topic-specific curated competencies (used when extracted text is not grammatical)
+const TOPIC_COMPETENCIES: Record<string, string[]> = {
+  select: [
+    "Aplicar SELECT para consultar dados em tabelas.",
+    "Filtrar resultados com cláusulas WHERE e condições lógicas.",
+    "Ordenar e limitar resultados com ORDER BY e LIMIT.",
+  ],
+  dml: [
+    "Inserir novos registros em tabelas com INSERT INTO.",
+    "Atualizar dados existentes de forma segura com UPDATE.",
+    "Remover registros com segurança utilizando DELETE e filtros.",
+  ],
+  ddl: [
+    "Criar estruturas de banco de dados com CREATE TABLE.",
+    "Alterar tabelas e colunas existentes com ALTER TABLE.",
+    "Remover objetos do banco de dados com DROP e TRUNCATE.",
+  ],
+  joins: [
+    "Combinar dados de múltiplas tabelas utilizando JOIN.",
+    "Diferenciar INNER JOIN, LEFT JOIN e seus casos de uso.",
+    "Agrupar e agregar resultados com GROUP BY e funções de agregação.",
+  ],
+  configuracao: [
+    "Compreender os conceitos de bancos de dados relacionais e SGBDs.",
+    "Configurar um ambiente SQL com servidor e ferramenta cliente.",
+    "Executar os primeiros comandos SQL básicos com segurança.",
+  ],
+  funcoes: [
+    "Utilizar funções de agregação como COUNT, SUM e AVG em consultas.",
+    "Aplicar funções de texto, data e matemáticas em resultados.",
+    "Analisar dados agrupados com GROUP BY, HAVING e funções de janela.",
+  ],
+  subquery: [
+    "Construir subconsultas para resolver problemas complexos de dados.",
+    "Utilizar subqueries em cláusulas WHERE, FROM e SELECT.",
+    "Analisar o impacto de subconsultas na performance da query.",
+  ],
+  index: [
+    "Compreender o papel dos índices na performance de consultas.",
+    "Criar e gerenciar índices com CREATE INDEX.",
+    "Identificar quando e como usar índices de forma eficiente.",
+  ],
+  transacao: [
+    "Compreender o conceito de transações e propriedades ACID.",
+    "Utilizar COMMIT e ROLLBACK para controlar transações.",
+    "Identificar problemas de concorrência e como evitá-los.",
+  ],
+};
+
+function detectModuleTopic(title: string): string {
+  const t = title.toLowerCase();
+  if (/\bselect\b|consulta|busca|query|\bleitura\b/i.test(t))     return "select";
+  if (/\binsert\b|\bupdate\b|\bdelete\b|\bdml\b|modificar dados|alterar dados/i.test(t)) return "dml";
+  if (/\bcreate\b|\bdrop\b|\balter\b|\btruncate\b|\bddl\b|estrutura|esquema/i.test(t))   return "ddl";
+  if (/\bjoin\b|combinar|agregaç|group by|having/i.test(t))       return "joins";
+  if (/configur|instalar|ambiente|servidor|ferramenta|cliente/i.test(t)) return "configuracao";
+  if (/fun[cç][aã]|count|sum|avg|max|min|agregaç/i.test(t))      return "funcoes";
+  if (/subquery|subconsulta|subselect/i.test(t))                  return "subquery";
+  if (/[ií]ndice|index|performance|otimiz/i.test(t))              return "index";
+  if (/transaç|commit|rollback|acid/i.test(t))                    return "transacao";
+  return "generic";
+}
+
+// Returns a grammatically correct, complete learning objective.
+// Never prepends a verb mechanically — validates or rewrites the whole phrase.
+function normalizeLearningObjective(text: string, moduleTitle: string, idx: number): string {
   const t = text.trim();
-  if (!t) return `${ACTION_VERBS_PT[idx % ACTION_VERBS_PT.length]} ${moduleTitle}`;
-  if (VERB_START_RE.test(t)) return t; // already starts with valid verb
-  // Prepend rotating verb, lower-case the first char of original text
+
+  // Already a complete, grammatical objective: starts with verb, long enough, not broken
+  if (VERB_START_RE.test(t) && t.length >= 20 && !BAD_OBJECTIVE_RE.test(t)) {
+    if (t.length <= 82) return t;
+    const cut = t.lastIndexOf(" ", 79);
+    return cut > 30 ? t.slice(0, cut) + "." : t.slice(0, 80) + ".";
+  }
+
+  // Use topic-specific template if available
+  const topic = detectModuleTopic(moduleTitle);
+  const templates = TOPIC_COMPETENCIES[topic];
+  if (templates) return templates[idx % templates.length];
+
+  // Last resort: verb + lowercased module title as a sentence
   const verb = ACTION_VERBS_PT[idx % ACTION_VERBS_PT.length];
-  const body = t.charAt(0).toLowerCase() + t.slice(1);
-  const candidate = `${verb} ${body}`;
-  // Trim to 80 chars at word boundary
-  if (candidate.length <= 80) return candidate;
-  const cut = candidate.lastIndexOf(" ", 77);
-  return cut > 30 ? candidate.slice(0, cut) : candidate.slice(0, 80);
+  const body = moduleTitle.trim().length > 0
+    ? moduleTitle.trim().charAt(0).toLowerCase() + moduleTitle.trim().slice(1)
+    : "os conceitos principais do módulo";
+  const candidate = `${verb} ${body}.`;
+  if (candidate.length <= 82) return candidate;
+  const cut = candidate.lastIndexOf(" ", 79);
+  return cut > 30 ? candidate.slice(0, cut) + "." : candidate.slice(0, 80) + ".";
 }
 
 function extractCompetencies(content: string, moduleTitle?: string): string[] {
@@ -2600,45 +2703,60 @@ function extractCompetencies(content: string, moduleTitle?: string): string[] {
   const titleLower = modTitle.toLowerCase();
   const normalised = content.replace(/\\n/g, "\n").replace(/\\t/g, " ");
 
-  const isCleanText = (s: string): boolean =>
-    !Array.from(s).some((c) => {
+  const hasEmoji = (s: string): boolean =>
+    Array.from(s).some((c) => {
       const cp = c.codePointAt(0) ?? 0;
       return (cp >= 0x1F300 && cp <= 0x1FFFF) ||
              (cp >= 0x2600  && cp <= 0x27BF)  ||
              (cp >= 0xFE00  && cp <= 0xFE0F);
     });
 
-  // Try bullet points first
-  const bullets = [...normalised.matchAll(/^[-*•]\s+(.+)$/gm)]
-    .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
-    .filter((b) => b.length >= 12 && b.length <= 80)
-    .filter(isCleanText)
+  // Extract bullet points — strip only PAIRED markdown asterisks, NOT standalone *
+  const bullets = [...normalised.matchAll(/^[-•]\s+(.+)$/gm)]
+    .map((m) => m[1].replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1").trim())
+    .filter((b) => b.length >= 12 && b.length <= 90)
+    .filter((b) => !hasEmoji(b))
     .filter((b) => b.toLowerCase() !== titleLower)
-    .slice(0, 3);
+    .slice(0, 4);
 
-  // Try sub-headings
+  // Extract sub-headings
   const headings = [...normalised.matchAll(/^#{2,4}\s+(.+)$/gm)]
-    .map((m) => m[1].trim())
+    .map((m) => m[1].replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1").trim())
     .filter((h) => h.length >= 10 && h.length <= 70)
-    .filter(isCleanText)
+    .filter((h) => !hasEmoji(h))
     .filter((h) => h.toLowerCase() !== titleLower)
-    .slice(0, 3);
+    .slice(0, 4);
 
-  // Fallback: first short sentences
+  // Extract first short sentences — preserve SQL wildcards, only strip paired markdown
   const sentences = normalised
     .replace(/#{1,6}\s*/g, "")
-    .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
-    .replace(/[`_]/g, "")
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")   // only paired **bold** / *italic*
+    .replace(/`([^`]+)`/g, "$1")                // strip backticks but keep content
     .split(/[.!?\n]+/)
     .map((s) => s.trim())
-    .filter((s) => s.length >= 12 && s.length <= 70)
-    .slice(0, 3);
+    .filter((s) => s.length >= 12 && s.length <= 80)
+    .filter((s) => !hasEmoji(s))
+    .filter((s) => s.toLowerCase() !== titleLower)
+    .slice(0, 4);
 
   const pool = bullets.length >= 2 ? bullets : headings.length >= 2 ? headings : sentences;
   const raw  = pool.slice(0, 3);
 
-  // Enforce: every item must start with an action verb
-  return raw.map((text, i) => enforceActionVerb(text, modTitle, i));
+  // Normalize each item — ensures grammatically correct "VERB + OBJECT + COMPLEMENT"
+  const normalized = raw.map((text, i) => normalizeLearningObjective(text, modTitle, i));
+
+  // Final validation: if ALL items are still broken (matched BAD pattern), use topic fallback
+  const allBad = normalized.every((obj) => BAD_OBJECTIVE_RE.test(obj) || obj.length < 15);
+  if (allBad) {
+    const topic = detectModuleTopic(modTitle);
+    const templates = TOPIC_COMPETENCIES[topic];
+    if (templates) return templates.slice(0, 3);
+    return ACTION_VERBS_PT.slice(0, 3).map((v, i) =>
+      `${v} os conceitos principais de ${modTitle || "este módulo"}.`
+    );
+  }
+
+  return normalized;
 }
 
 async function runPipeline(

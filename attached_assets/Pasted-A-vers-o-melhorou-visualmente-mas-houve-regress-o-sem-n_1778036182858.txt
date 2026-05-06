@@ -1,0 +1,44 @@
+A versão melhorou visualmente, mas houve regressão semântica nas capas de módulo e o SELECT * ainda não foi preservado.
+
+Corrigir sem alterar a arquitetura do v5:
+
+1. Corrigir objetivos das capas de módulo:
+- Não prefixar verbos mecanicamente em frases existentes.
+- Gerar ou reescrever objetivos como frases completas e gramaticais.
+- Cada objetivo deve seguir o padrão:
+  VERBO DE AÇÃO + OBJETO + COMPLEMENTO.
+- Exemplos bons:
+  "Compreender os conceitos de bancos de dados relacionais e SGBDs."
+  "Configurar um ambiente SQL com servidor e ferramenta cliente."
+  "Executar consultas SELECT com filtros e ordenação."
+- Exemplos ruins a evitar:
+  "Compreender fornece a fundação..."
+  "Identificar conectar-se..."
+  "Aplicar modificar..."
+  "Compreender selecionar..."
+
+2. Criar função normalizeLearningObjective(text, moduleTitle):
+- Se a frase já começa com verbo e é gramatical, manter.
+- Se não for gramatical, reescrever com fallback baseado no título do módulo.
+- Não apenas adicionar verbo no início.
+
+3. Criar fallback fixo para capas quando os objetivos extraídos forem ruins:
+- Para módulo sobre configuração: compreender conceitos, configurar ambiente, executar primeiros comandos.
+- Para SELECT: aplicar SELECT, filtrar com WHERE, ordenar com ORDER BY/LIMIT.
+- Para DML: inserir, atualizar e remover dados com segurança.
+- Para DDL: criar, alterar e remover estruturas de banco.
+- Para JOINs/agregações: combinar tabelas, agrupar dados e otimizar consultas.
+
+4. Corrigir preservação de SELECT *:
+- Proteger expressões técnicas antes da limpeza de markdown:
+  SELECT *
+  COUNT(*)
+  SUM(*)
+  FROM *
+- Não remover * quando estiver dentro de código, crases ou expressão SQL.
+- O slide não pode exibir `SELECT` e `` vazio.
+
+5. Critério de aceite:
+- Nenhuma capa de módulo pode exibir frase como "Compreender fornece", "Identificar conectar-se" ou "Aplicar modificar".
+- SELECT * deve aparecer corretamente quando for o caso.
+- Manter os avanços visuais: diagram, comparison, code, process e densidade adaptativa.
