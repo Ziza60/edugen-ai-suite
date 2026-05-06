@@ -1543,7 +1543,7 @@ function renderTwocol(
   footer(slide, d, num, total);
 }
 
-// ── COMPARISON ── McKinsey-style two-column comparison
+// ── COMPARISON ── Premium two-column comparison with VS badge and icon rows
 function renderComparison(
   pptx: PptxGenJS,
   slide_: Slide,
@@ -1560,84 +1560,101 @@ function renderComparison(
   const lHeader = slide_.leftHeader || "A";
   const rHeader = slide_.rightHeader || "B";
 
-  const colW = (CW - 0.3) / 2;
-  const areaY = CONTENT_Y + 0.1;
-  const areaH = FOOTER_Y - areaY - 0.1;
-  const hdrH = 0.46;
+  // Layout constants — wider gap for cleaner separation
+  const gapW   = 0.52;
+  const colW   = (CW - gapW) / 2;
+  const lX     = ML;
+  const rX     = ML + colW + gapW;
+  const areaY  = CONTENT_Y + 0.08;
+  const areaH  = FOOTER_Y - areaY - 0.08;
+  const hdrH   = 0.52;
   const maxRows = Math.max(lItems.length, rItems.length, 1);
-  const rowH = Math.min(0.78, (areaH - hdrH - 0.16) / maxRows);
+  const rowGap = 0.07;
+  const rowH   = Math.min(0.82, (areaH - hdrH - 0.12 - rowGap * (maxRows - 1)) / maxRows);
 
-  const renderCol = (
-    items: string[],
-    x: number,
-    pal: string,
-    colLabel: string,
-  ) => {
-    // Column header pill
+  // ── Column header renderer ──
+  const renderHeader = (x: number, pal: string, label: string) => {
+    // Shadow
     slide.addShape("roundRect" as any, {
-      x,
-      y: areaY,
-      w: colW,
-      h: hdrH,
+      x: x + 0.02, y: areaY + 0.03, w: colW, h: hdrH,
+      fill: { color: "000000", transparency: 90 }, rectRadius: 0.10,
+    });
+    // Header pill
+    slide.addShape("roundRect" as any, {
+      x, y: areaY, w: colW, h: hdrH,
+      fill: { color: pal }, rectRadius: 0.10,
+    });
+    // Bottom square-off
+    slide.addShape("rect" as any, {
+      x, y: areaY + hdrH - 0.12, w: colW, h: 0.12,
       fill: { color: pal },
-      rectRadius: 0.08,
     });
-    slide.addText(san(colLabel).toUpperCase(), {
-      x: x + 0.12,
-      y: areaY,
-      w: colW - 0.24,
-      h: hdrH,
-      fontSize: T.SUBHEADER - 4,
-      fontFace: d.titleFont,
-      bold: true,
-      color: "FFFFFF",
-      align: "center",
-      valign: "middle",
+    slide.addText(san(label), {
+      x: x + 0.15, y: areaY, w: colW - 0.30, h: hdrH,
+      fontSize: 15, fontFace: d.titleFont, bold: true,
+      color: "FFFFFF", align: "center", valign: "middle",
     });
-    // Row items
+  };
+
+  // ── Row renderer ──
+  const renderRows = (items: string[], x: number, pal: string) => {
     for (let i = 0; i < items.length; i++) {
-      const y = areaY + hdrH + 0.08 + i * (rowH + 0.06);
-      slide.addShape("rect" as any, {
-        x,
-        y,
-        w: colW,
-        h: rowH,
-        fill: { color: i % 2 === 0 ? d.surface : d.bg },
-        line: { color: d.border, width: 0.3 },
+      const y = areaY + hdrH + 0.10 + i * (rowH + rowGap);
+      const even = i % 2 === 0;
+
+      // Row card
+      slide.addShape("roundRect" as any, {
+        x, y, w: colW, h: rowH,
+        fill: { color: even ? d.surface : d.bg },
+        line: { color: d.border, width: 0.35 },
+        rectRadius: 0.06,
       });
-      // Left accent stripe
-      slide.addShape("rect" as any, {
-        x,
-        y,
-        w: 0.04,
-        h: rowH,
-        fill: { color: pal },
+      // Left accent bar
+      slide.addShape("roundRect" as any, {
+        x, y, w: 0.05, h: rowH,
+        fill: { color: pal, transparency: even ? 0 : 30 },
+        rectRadius: 0.06,
       });
+      // Small icon dot (✓ style) — subtle premium touch
+      const iconSz = 0.18;
+      slide.addShape("ellipse" as any, {
+        x: x + 0.13, y: y + rowH / 2 - iconSz / 2,
+        w: iconSz, h: iconSz,
+        fill: { color: pal, transparency: even ? 20 : 50 },
+      });
+      // Text
       slide.addText(san(items[i]), {
-        x: x + 0.14,
-        y: y + 0.04,
-        w: colW - 0.22,
-        h: rowH - 0.08,
+        x: x + 0.38, y: y + 0.04, w: colW - 0.46, h: rowH - 0.08,
         fontSize: maxRows <= 3 ? T.BODY : T.BODY_SM,
-        fontFace: d.bodyFont,
-        color: d.text,
-        valign: "middle",
-        lineSpacingMultiple: 1.15,
-        fit: "shrink" as any,
+        fontFace: d.bodyFont, color: d.text,
+        valign: "middle", lineSpacingMultiple: 1.15, fit: "shrink" as any,
       });
     }
   };
 
-  renderCol(lItems, ML, d.accent, lHeader);
-  renderCol(rItems, ML + colW + 0.3, d.accent2, rHeader);
+  renderHeader(lX, d.accent,  lHeader);
+  renderHeader(rX, d.accent2, rHeader);
+  renderRows(lItems, lX, d.accent);
+  renderRows(rItems, rX, d.accent2);
 
-  // Vertical divider between columns
+  // ── VS badge in centre gap ──
+  const vsY   = areaY + hdrH / 2 - 0.22;
+  const vsCX  = ML + colW + gapW / 2;
+  const vsSz  = 0.44;
+  // Vertical spine
   slide.addShape("rect" as any, {
-    x: ML + colW + 0.14,
-    y: areaY + 0.06,
-    w: 0.02,
-    h: areaH - 0.12,
+    x: vsCX - 0.012, y: areaY + 0.08, w: 0.024, h: areaH - 0.16,
     fill: { color: d.border },
+  });
+  // VS diamond
+  slide.addShape("ellipse" as any, {
+    x: vsCX - vsSz / 2, y: vsY, w: vsSz, h: vsSz,
+    fill: { color: d.accent3 }, line: { color: d.bg, width: 1.5 },
+  });
+  slide.addText("VS", {
+    x: vsCX - vsSz / 2, y: vsY, w: vsSz, h: vsSz,
+    fontSize: 10, fontFace: d.titleFont, bold: true,
+    color: "FFFFFF", align: "center", valign: "middle",
   });
 
   footer(slide, d, num, total);
@@ -2054,12 +2071,12 @@ async function generateModuleSlides(
       title: s.layout === "takeaways"
         ? cleanTakeawayTitle(String(s.title || ""), mod.title)
         : cleanSlideTitle(String(s.title || mod.title).slice(0, 80), mod.title),
-      label: String(s.label || "CONTEÚDO")
-        .slice(0, 32)
-        .toUpperCase(),
+      label: s.layout === "takeaways"
+        ? rotateSummaryLabel(moduleIndex)
+        : String(s.label || "CONTEÚDO").slice(0, 32).toUpperCase(),
       items: Array.isArray(s.items)
         ? s.items.slice(0, 6)
-            .map((x: any) => globalSanitize(String(x)).slice(0, 110))
+            .map((x: any) => safeItemText(globalSanitize(String(x)), 105))
             .filter((x: string) => x.length > 0)
         : [],
       code: s.code ? String(s.code).slice(0, 1200) : undefined,
@@ -2394,6 +2411,78 @@ function cleanSlideTitle(title: string, moduleTitle: string): string {
   }
   // Apply full normalization (preposition fix, etc.)
   return normalizeSlideTitle(raw, moduleTitle);
+}
+
+// ─────────────────────────────────────────────────────────
+// POLISHING UTILITIES
+// ─────────────────────────────────────────────────────────
+
+// Ensure text is cut only at a word boundary (never mid-word).
+function safeItemText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const cut = text.lastIndexOf(" ", maxChars - 1);
+  return cut > maxChars * 0.55 ? text.slice(0, cut) + "…" : text.slice(0, maxChars) + "…";
+}
+
+// Rotating labels for takeaway/summary slides — avoids repetition across modules.
+const SUMMARY_LABELS = [
+  "PRINCIPAIS CONCEITOS",
+  "APRENDIZADOS",
+  "RESUMO",
+  "TAKEAWAYS",
+  "O QUE VOCÊ APRENDEU",
+  "RESULTADOS",
+  "SÍNTESE",
+  "PONTOS-CHAVE",
+];
+function rotateSummaryLabel(moduleIndex: number): string {
+  return SUMMARY_LABELS[moduleIndex % SUMMARY_LABELS.length];
+}
+
+// Expand vague objective terms using module context.
+// e.g. "funções avançadas" → "funções SQL avançadas em consultas"
+function expandVagueObjective(text: string, moduleTitle: string): string {
+  const topic = detectModuleTopic(moduleTitle);
+  return text
+    .replace(/\bfunções avançadas\b/gi, "funções SQL avançadas")
+    .replace(/\bconceitos (gerais|avançados)\b/gi, `conceitos de ${moduleTitle || "SQL"}`)
+    .replace(/\bcoisas avançadas\b/gi, "técnicas avançadas de SQL")
+    .replace(/\bfundamentos (gerais|básicos)\b/gi, "fundamentos de banco de dados relacionais")
+    .replace(/\bRelacionamentos e Funções Avançadas\b/gi, "relacionamentos entre tabelas e funções SQL avançadas")
+    .replace(/\best(a|e) módulo\b/gi, moduleTitle || "este módulo");
+}
+
+// Detect simple title/content mismatches and correct the title.
+// Prevents "Criando e Modificando Estruturas" when slide only shows CREATE.
+function validateSemanticAlignment(slide: Slide, moduleTitle: string): Slide {
+  if (["cover","toc","module_cover","closing","takeaways"].includes(slide.layout)) return slide;
+  const title = slide.title || "";
+  const body  = [...(slide.items || []), slide.code || ""].join(" ");
+
+  // DDL compound title but only one operation present
+  if (/criando e (modificando|alterando)/i.test(title)) {
+    const hasCreate   = /\bCREATE\b/i.test(body);
+    const hasAlter    = /\bALTER\b/i.test(body);
+    const hasDrop     = /\bDROP\b|\bTRUNCATE\b/i.test(body);
+    if (hasCreate && !hasAlter && !hasDrop) {
+      return { ...slide, title: cleanSlideTitle("Criando Tabelas com CREATE TABLE", moduleTitle) };
+    }
+    if (hasAlter && !hasCreate && !hasDrop) {
+      return { ...slide, title: cleanSlideTitle("Alterando Estruturas com ALTER TABLE", moduleTitle) };
+    }
+    if (hasDrop && !hasCreate && !hasAlter) {
+      return { ...slide, title: cleanSlideTitle("Removendo Objetos com DROP e TRUNCATE", moduleTitle) };
+    }
+  }
+  // DML compound title but only one operation present
+  if (/insert.*update|update.*insert/i.test(title)) {
+    const hasInsert = /\bINSERT\b/i.test(body);
+    const hasUpdate = /\bUPDATE\b/i.test(body);
+    if (hasInsert && !hasUpdate) return { ...slide, title: cleanSlideTitle("Inserindo Dados com INSERT INTO", moduleTitle) };
+    if (!hasInsert && hasUpdate) return { ...slide, title: cleanSlideTitle("Atualizando Dados com UPDATE", moduleTitle) };
+  }
+
+  return slide;
 }
 
 // ── LAYOUT HEURISTIC SELECTOR ──
@@ -2801,7 +2890,10 @@ function extractCompetencies(content: string, moduleTitle?: string): string[] {
   const raw  = pool.slice(0, 3);
 
   // Normalize each item — ensures grammatically correct "VERB + OBJECT + COMPLEMENT"
-  const normalized = raw.map((text, i) => normalizeLearningObjective(text, modTitle, i));
+  // Also expand vague terms before normalization
+  const normalized = raw
+    .map((text) => expandVagueObjective(text, modTitle))
+    .map((text, i) => normalizeLearningObjective(text, modTitle, i));
 
   // Final validation: if ALL items are still broken (matched BAD pattern), use topic fallback
   const allBad = normalized.every((obj) => BAD_OBJECTIVE_RE.test(obj) || obj.length < 15);
@@ -2860,14 +2952,16 @@ async function runPipeline(
         const rawSlides = await generateModuleSlides(
           courseTitle, mod, i, density, language, geminiKey,
         );
-        const splitSlides  = splitOverflowSlides(rawSlides);
-        const variedSlides = applyLayoutVariety(splitSlides);
+        const splitSlides   = splitOverflowSlides(rawSlides);
+        const variedSlides  = applyLayoutVariety(splitSlides);
+        // Semantic alignment: correct title/content mismatches per slide
+        const polishedSlides = variedSlides.map((s) => validateSemanticAlignment(s, mod.title));
         console.log(
-          `[V5] Module ${i + 1}: ${rawSlides.length} raw → ${splitSlides.length} split → ${variedSlides.length} final`,
+          `[V5] Module ${i + 1}: ${rawSlides.length} raw → ${splitSlides.length} split → ${polishedSlides.length} final`,
         );
 
-        slideCache.set(cacheKey, variedSlides);
-        return { i, slides: variedSlides };
+        slideCache.set(cacheKey, polishedSlides);
+        return { i, slides: polishedSlides };
       }),
     );
 

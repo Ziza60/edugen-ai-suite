@@ -1,0 +1,162 @@
+A versão atual do PPTX v5 evoluiu bastante e já está estável, mas ainda existem pequenos problemas de acabamento visual, semântico e de percepção premium.
+
+Objetivo desta etapa:
+fazer polimento fino do motor PPTX v5 sem alterar a arquitetura principal.
+
+Corrigir e melhorar os seguintes pontos:
+
+1. EVITAR TRUNCAMENTO/CORTE DE TEXTO
+
+Problema identificado:
+- "Durabilida" no slide sobre ACID.
+
+Implementar:
+- nenhum texto pode terminar abruptamente no meio da palavra;
+- detectar truncamento visual provável;
+- reduzir automaticamente:
+  - tamanho da fonte;
+  - número de bullets;
+  - ou dividir conteúdo.
+
+Criar:
+safeTextFit(text, box, options)
+
+Regras:
+- nunca cortar palavra no meio;
+- preferir shrink leve antes de truncar;
+- se o conteúdo ainda exceder:
+  - dividir em novo slide;
+  - ou resumir semanticamente.
+
+Aplicar especialmente em:
+- cards;
+- comparison;
+- bullets;
+- labels técnicos.
+
+2. MELHORAR TÍTULOS E COERÊNCIA SEMÂNTICA
+
+Exemplo atual:
+- slide diz "Criando e Modificando Estruturas com DDL"
+mas só mostra CREATE TABLE.
+
+Implementar:
+- validar coerência entre:
+  título,
+  bullets,
+  código,
+  comparação.
+
+Se o slide só mostrar CREATE:
+- ajustar automaticamente o título.
+
+Criar:
+validateSemanticAlignment(slide)
+
+Exemplos:
+- se mostrar apenas CREATE TABLE:
+  "Criando Tabelas com CREATE TABLE"
+- se mostrar ALTER:
+  "Alterando Estruturas com ALTER TABLE"
+
+Evitar títulos genéricos demais.
+
+3. MELHORAR CAPAS DE MÓDULO
+
+Problema atual:
+- "Compreender relacionamentos e Funções Avançadas."
+
+Melhorar:
+- objetivos devem ter contexto técnico claro;
+- evitar termos vagos.
+
+Exemplo ideal:
+- "Compreender relacionamentos entre tabelas e funções SQL avançadas."
+
+Implementar:
+- normalizeLearningObjective() mais inteligente;
+- detectar termos genéricos como:
+  "funções avançadas",
+  "conceitos gerais",
+  "coisas avançadas";
+- expandir semanticamente usando o contexto do módulo.
+
+4. MELHORAR LABELS DE RESUMO/TAKEAWAYS
+
+Evitar repetição excessiva de:
+- OBJETIVOS
+- RESULTADOS
+
+Variar automaticamente:
+- RESUMO
+- APRENDIZADOS
+- PRINCIPAIS CONCEITOS
+- TAKEAWAYS
+- RESULTADOS
+- O QUE VOCÊ APRENDEU
+
+Implementar:
+rotateSummaryLabels()
+
+Evitar repetir o mesmo label em módulos consecutivos.
+
+5. DEIXAR COMPARAÇÕES MAIS PREMIUM
+
+Os slides comparison melhoraram, mas ainda parecem tabelas simples.
+
+Melhorar:
+- maior separação visual entre colunas;
+- destacar títulos LEFT/RIGHT;
+- usar contraste leve;
+- alinhar melhor os bullets;
+- adicionar ícones leves opcionais:
+  ✓ ⚠ ⚡
+
+Sem exagerar visualmente.
+
+6. MELHORAR SLIDES DE JOIN E SQL
+
+JOINs:
+- usar layout mais visual;
+- destacar:
+  INNER
+  LEFT
+  RIGHT
+  FULL
+
+SQL:
+- manter indentação consistente;
+- alinhar melhor código;
+- destacar palavras-chave SQL:
+  SELECT
+  FROM
+  WHERE
+  GROUP BY
+  JOIN
+  ORDER BY
+  LIMIT
+
+Sem transformar em editor de código pesado.
+
+7. AUMENTAR PERCEPÇÃO PREMIUM
+
+Implementar pequenos refinamentos globais:
+- mais respiro vertical;
+- alinhamento mais consistente;
+- evitar blocos muito comprimidos;
+- manter padrão corporativo limpo;
+- evitar slides excessivamente densos.
+
+8. CRITÉRIO DE ACEITE
+
+Após implementação:
+- nenhum texto truncado;
+- nenhum título semanticamente incoerente;
+- objetivos de aprendizagem mais naturais;
+- labels mais variados;
+- comparisons mais elegantes;
+- SQL visualmente mais profissional;
+- PPTX continua estável;
+- nenhum slide vazio;
+- manter densidade adaptativa;
+- manter diagram/process/comparison/code.
