@@ -1,0 +1,195 @@
+Quero implementar suporte a múltiplos templates no exportador PPTX v5, mas sem substituir o motor atual.
+
+Objetivo:
+Manter o v5 como motor principal e estável, adicionando templates visuais opcionais como “skins inteligentes”.
+
+Não migrar para v6.
+Não fazer refactor grande.
+Não alterar billing, rotas públicas ou schema do Supabase sem necessidade.
+
+Implementar em etapas:
+
+1. Manter o template v5 atual como fallback padrão
+
+O v5 atual deve continuar funcionando como engine principal.
+Se qualquer template externo falhar, gerar o PPTX com o estilo padrão atual do v5.
+
+2. Criar registro de capacidades por template
+
+Criar uma configuração central:
+
+TEMPLATE_CAPABILITIES = {
+  default_v5: {
+    tocModules: Infinity,
+    takeaways: 5,
+    processSteps: 5,
+    cards: 4,
+    supportsPagination: true,
+    fallback: null
+  },
+  futuristic_background: {
+    tocModules: 3,
+    takeaways: 6,
+    processSteps: 6,
+    cards: 3,
+    supportsPagination: true,
+    fallback: "default_v5"
+  },
+  dark_theme: {
+    tocModules: 6,
+    takeaways: 8,
+    processSteps: 4,
+    cards: 3,
+    supportsPagination: true,
+    fallback: "default_v5"
+  },
+  dark_elegance_xl: {
+    tocModules: 4,
+    takeaways: 3,
+    processSteps: 6,
+    cards: 3,
+    supportsPagination: true,
+    fallback: "default_v5"
+  },
+  dark_style_theme: {
+    tocModules: 6,
+    takeaways: 4,
+    processSteps: 6,
+    cards: 3,
+    supportsPagination: true,
+    fallback: "default_v5"
+  }
+}
+
+3. Implementar seleção segura de template
+
+Criar função:
+
+resolveTemplateForCourse(selectedTemplate, courseStructure)
+
+Ela deve:
+- verificar número de módulos;
+- verificar takeaways;
+- verificar process steps;
+- verificar cards;
+- verificar se o template suporta paginação;
+- retornar o template selecionado se for seguro;
+- retornar fallback default_v5 se houver risco de quebra.
+
+Importante:
+Não bloquear o usuário de forma agressiva.
+Preferir adaptação automática.
+Só usar fallback quando o template não puder renderizar com qualidade.
+
+4. Implementar TOC paginado
+
+Se o curso tiver mais módulos que o template suporta no TOC:
+
+Exemplo:
+- curso com 5 módulos;
+- template suporta 3 módulos.
+
+Gerar:
+- TOC página 1: módulos 1–3;
+- TOC página 2: módulos 4–5.
+
+Nunca cortar módulos.
+Nunca deixar módulo fora do índice.
+Nunca deixar placeholders vazios.
+
+5. Implementar split automático para PROCESS
+
+Se um slide process tiver mais steps que o template suporta:
+
+Exemplo:
+- template suporta 4 steps;
+- slide tem 6 steps.
+
+Gerar:
+- slide process parte 1: steps 1–4;
+- slide process parte 2: steps 5–6.
+
+Nunca cortar etapas.
+Nunca renderizar step vazio.
+Nunca mostrar número sem texto.
+
+6. Implementar split/limite para TAKEAWAYS
+
+Se houver mais takeaways que o template suporta:
+- dividir em múltiplos slides;
+OU
+- resumir semanticamente quando apropriado.
+
+Se houver menos takeaways:
+- preencher apenas os existentes;
+- esconder placeholders extras;
+- se não for possível esconder, usar fallback default_v5.
+
+Nunca renderizar placeholders vazios.
+
+7. Implementar adaptação para CARDS
+
+Se o template suporta 3 cards e o slide tem 4:
+- dividir em 2 slides;
+OU
+- converter para bullets/twocol se ficar melhor.
+
+Se o template suporta 4 e há só 2:
+- renderizar apenas 2;
+- esconder extras;
+- se não for possível esconder, usar layout alternativo.
+
+8. Criar camada de limpeza de placeholders
+
+Antes de exportar:
+- verificar se sobrou qualquer placeholder no PPTX:
+  {{COURSE_TITLE}}
+  {{MODULE_1_TITLE}}
+  {{BULLET_1}}
+  {{STEP_1_TITLE}}
+  etc.
+
+Se sobrar placeholder:
+- tentar remover;
+- se não conseguir, abortar template externo e usar default_v5.
+
+Critério:
+Nenhum PPTX final pode conter placeholders visíveis.
+
+9. Criar fallback automático robusto
+
+Se qualquer erro ocorrer no template externo:
+- erro de preenchimento;
+- placeholder residual;
+- incompatibilidade;
+- slide vazio;
+- ausência de layout;
+- overflow provável;
+
+Então:
+- logar o erro;
+- gerar com default_v5;
+- retornar PPTX válido.
+
+O usuário nunca deve receber PPTX quebrado por causa de template externo.
+
+10. Critério de aceite
+
+Após implementação:
+
+- default_v5 continua funcionando normalmente;
+- usuário pode escolher um template visual;
+- curso com mais módulos que o TOC do template gera TOC paginado;
+- process steps acima do limite são divididos;
+- takeaways acima do limite são divididos;
+- cards acima do limite são divididos ou convertidos;
+- nenhum módulo é cortado;
+- nenhum placeholder fica visível;
+- nenhum slide vazio é gerado;
+- se template falhar, fallback default_v5 gera PPTX;
+- não alterar billing;
+- não alterar rotas públicas;
+- não quebrar o exportador atual.
+
+Implementar de forma incremental e segura.
+Priorizar estabilidade acima de variedade visual.

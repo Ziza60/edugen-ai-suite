@@ -6,6 +6,71 @@ import JSZip from "npm:jszip@3.10.1";
 const ENGINE_VERSION = "5.0.0";
 
 // ═══════════════════════════════════════════════════════════
+// TEMPLATE CAPABILITIES — capacity limits per visual template
+// "default_v5" is the current v5 engine and the universal fallback.
+// External templates (futuristic_background, dark_theme, etc.) reuse the
+// same renderers but may impose lower item limits per slide / TOC page.
+// ═══════════════════════════════════════════════════════════
+
+interface TemplateCaps {
+  /** Max modules shown per TOC page (Infinity = no limit). */
+  tocModules: number;
+  /** Max takeaway items per slide. */
+  takeaways: number;
+  /** Max process steps per slide. */
+  processSteps: number;
+  /** Max cards per slide. */
+  cards: number;
+  /** Whether TOC can span multiple pages when limit is exceeded. */
+  supportsPagination: boolean;
+  /** Key of the fallback template, or null for the root fallback. */
+  fallback: string | null;
+}
+
+const TEMPLATE_CAPABILITIES: Record<string, TemplateCaps> = {
+  default_v5: {
+    tocModules: Infinity,
+    takeaways: 5,
+    processSteps: 5,
+    cards: 4,
+    supportsPagination: true,
+    fallback: null,
+  },
+  futuristic_background: {
+    tocModules: 3,
+    takeaways: 6,
+    processSteps: 6,
+    cards: 3,
+    supportsPagination: true,
+    fallback: "default_v5",
+  },
+  dark_theme: {
+    tocModules: 6,
+    takeaways: 8,
+    processSteps: 4,
+    cards: 3,
+    supportsPagination: true,
+    fallback: "default_v5",
+  },
+  dark_elegance_xl: {
+    tocModules: 4,
+    takeaways: 3,
+    processSteps: 6,
+    cards: 3,
+    supportsPagination: true,
+    fallback: "default_v5",
+  },
+  dark_style_theme: {
+    tocModules: 6,
+    takeaways: 4,
+    processSteps: 6,
+    cards: 3,
+    supportsPagination: true,
+    fallback: "default_v5",
+  },
+};
+
+// ═══════════════════════════════════════════════════════════
 // XML SAFETY — must run on ALL text before passing to PptxGenJS
 // ═══════════════════════════════════════════════════════════
 
@@ -548,6 +613,42 @@ function renderTOC(
   }
 
   footer(slide, d, num, total);
+}
+
+// ── TOC PAGINATED ──
+// Renders one or more TOC slides, paginating when modules exceed maxPerPage.
+// Returns the count of slides added (so the caller can advance slideNum correctly).
+function renderTOCPaginated(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  startNum: number,
+  total: number,
+  modules: { title: string }[],
+  maxPerPage: number,
+): number {
+  // Single page: no limit or everything fits
+  if (!isFinite(maxPerPage) || modules.length <= maxPerPage) {
+    renderTOC(pptx, slide_, d, startNum, total, modules);
+    return 1;
+  }
+
+  // Multi-page: split modules into pages of maxPerPage each
+  const pageCount = Math.ceil(modules.length / maxPerPage);
+  for (let p = 0; p < pageCount; p++) {
+    const chunk = modules.slice(p * maxPerPage, (p + 1) * maxPerPage);
+    // Show pagination label when more than one TOC page is needed
+    const pageLabel = `ÍNDICE (${p + 1}/${pageCount})`;
+    renderTOC(
+      pptx,
+      { ...slide_, label: pageLabel },
+      d,
+      startNum + p,
+      total,
+      chunk,
+    );
+  }
+  return pageCount;
 }
 
 // ── MODULE COVER ──
@@ -3049,6 +3150,127 @@ function extractCompetencies(content: string, moduleTitle?: string): string[] {
   return normalized;
 }
 
+// ═══════════════════════════════════════════════════════════
+// SECTION 6B: TEMPLATE SYSTEM HELPERS
+// ═══════════════════════════════════════════════════════════
+
+// Regex that matches any un-filled placeholder like {{COURSE_TITLE}}, {{BULLET_1}}, etc.
+const PLACEHOLDER_RE = /\{\{[A-Z_0-9]+\}\}/;
+
+/**
+ * Picks the best template for this course.
+ * Falls back to "default_v5" when the selected template is unknown or
+ * cannot paginate its TOC.  All other capacity overflows are handled
+ * adaptively by splitSlidesForTemplate — they never force a fallback.
+ */
+function resolveTemplateForCourse(
+  selectedTemplate: string,
+  numModules: number,
+): string {
+  const key = selectedTemplate || "default_v5";
+  const caps = TEMPLATE_CAPABILITIES[key];
+
+  if (!caps) {
+    console.log(`[V5-TEMPLATE] Unknown template "${key}", using default_v5`);
+    return "default_v5";
+  }
+  if (key === "default_v5") return "default_v5";
+
+  // Only hard-fallback when the template can't paginate TOC at all
+  if (!caps.supportsPagination && numModules > caps.tocModules) {
+    const fb = caps.fallback ?? "default_v5";
+    console.log(
+      `[V5-TEMPLATE] "${key}" cannot paginate TOC (${numModules} > ${caps.tocModules}) → fallback "${fb}"`,
+    );
+    return fb;
+  }
+
+  console.log(
+    `[V5-TEMPLATE] Resolved template: "${key}" | modules=${numModules} | tocLimit=${caps.tocModules}`,
+  );
+  return key;
+}
+
+/**
+ * Splits process / takeaways / cards slides that exceed template limits.
+ * Never drops items — always distributes them across additional slides.
+ * A single leftover card is converted to bullets to avoid a 1-card slide.
+ */
+function splitSlidesForTemplate(slides: Slide[], caps: TemplateCaps): Slide[] {
+  const out: Slide[] = [];
+
+  for (const s of slides) {
+    if (s.layout === "process") {
+      const items = (s.items ?? []).filter(Boolean);
+      if (caps.processSteps > 0 && items.length > caps.processSteps) {
+        const chunkCount = Math.ceil(items.length / caps.processSteps);
+        for (let i = 0; i < items.length; i += caps.processSteps) {
+          const chunk = items.slice(i, i + caps.processSteps);
+          const part = Math.floor(i / caps.processSteps) + 1;
+          out.push({
+            ...s,
+            title:
+              chunkCount > 1 ? `${s.title} (${part}/${chunkCount})` : s.title,
+            items: chunk,
+          });
+        }
+        continue;
+      }
+    } else if (s.layout === "takeaways") {
+      const items = (s.items ?? []).filter(Boolean);
+      if (caps.takeaways > 0 && items.length > caps.takeaways) {
+        for (let i = 0; i < items.length; i += caps.takeaways) {
+          out.push({ ...s, items: items.slice(i, i + caps.takeaways) });
+        }
+        continue;
+      }
+    } else if (s.layout === "cards") {
+      const items = (s.items ?? []).filter(Boolean);
+      if (caps.cards > 0 && items.length > caps.cards) {
+        for (let i = 0; i < items.length; i += caps.cards) {
+          const chunk = items.slice(i, i + caps.cards);
+          // A single orphan card renders poorly — convert to bullets
+          out.push(
+            chunk.length >= 2
+              ? { ...s, items: chunk }
+              : { ...s, layout: "bullets", items: chunk },
+          );
+        }
+        continue;
+      }
+    }
+    out.push(s);
+  }
+  return out;
+}
+
+/**
+ * Returns true if any slide in any module still contains an un-filled
+ * placeholder like {{COURSE_TITLE}} or {{BULLET_1}}.
+ * When detected, the pipeline logs a warning and forces default_v5 caps.
+ */
+function hasResidualPlaceholders(slides: Slide[][]): boolean {
+  for (const module of slides) {
+    for (const s of module) {
+      const texts: (string | undefined)[] = [
+        s.title,
+        s.subtitle,
+        s.label,
+        ...(s.items ?? []),
+        s.code,
+        s.leftHeader,
+        s.rightHeader,
+        ...(s.leftItems ?? []),
+        ...(s.rightItems ?? []),
+      ];
+      for (const t of texts) {
+        if (t && PLACEHOLDER_RE.test(t)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 async function runPipeline(
   courseTitle: string,
   modules: { title: string; content: string }[],
@@ -3056,6 +3278,7 @@ async function runPipeline(
   density: string,
   language: string,
   geminiKey: string,
+  selectedTemplate: string,
 ): Promise<PptxGenJS> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
@@ -3132,12 +3355,39 @@ async function runPipeline(
     }
   }
 
+  // ── TEMPLATE RESOLUTION ──────────────────────────────────────────────────
+  // Resolve which template to use, then apply adaptive splits so that no slide
+  // exceeds the template's item limits.  This runs AFTER allModuleSlides is
+  // fully built so we can also run the placeholder safety check.
+  const resolvedTemplate = resolveTemplateForCourse(selectedTemplate, modules.length);
+  let caps = TEMPLATE_CAPABILITIES[resolvedTemplate] ?? TEMPLATE_CAPABILITIES.default_v5;
+
+  // Placeholder safety gate: if any slide contains un-filled {{PLACEHOLDERS}},
+  // force the most permissive (default_v5) capabilities.
+  if (hasResidualPlaceholders(allModuleSlides)) {
+    console.warn("[V5-TEMPLATE] Residual placeholders detected — forcing default_v5 caps");
+    caps = TEMPLATE_CAPABILITIES.default_v5;
+  }
+
+  // Apply splits for process / takeaways / cards per template limits
+  for (let i = 0; i < allModuleSlides.length; i++) {
+    allModuleSlides[i] = splitSlidesForTemplate(allModuleSlides[i], caps);
+  }
+  console.log(
+    `[V5-TEMPLATE] Splits applied | template=${resolvedTemplate} | processMax=${caps.processSteps} | takeawaysMax=${caps.takeaways} | cardsMax=${caps.cards}`,
+  );
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Count actual total slides from generated content (for accurate footer numbers)
   const contentSlideCount = allModuleSlides.reduce(
     (s, m) => s + m.filter(isRenderableSlide).length + 1,
     0,
   ); // +1 per module cover
-  const totalSlides = 1 + 1 + contentSlideCount + 1; // cover + toc + modules + closing
+  // Compute how many TOC slides pagination will produce
+  const tocPageCount = isFinite(caps.tocModules) && modules.length > caps.tocModules
+    ? Math.ceil(modules.length / caps.tocModules)
+    : 1;
+  const totalSlides = 1 + tocPageCount + contentSlideCount + 1; // cover + toc page(s) + modules + closing
   let slideNum = 0;
 
   // Cover
@@ -3153,15 +3403,17 @@ async function runPipeline(
   );
   slideNum++;
 
-  // TOC
-  renderTOC(
+  // TOC — single or multi-page depending on template capability
+  const tocPagesAdded = renderTOCPaginated(
     pptx,
     { layout: "toc", title: "Conteúdo" },
     design,
-    ++slideNum,
+    slideNum + 1,           // first TOC page number
     totalSlides,
     modules,
+    isFinite(caps.tocModules) ? caps.tocModules : Infinity,
   );
+  slideNum += tocPagesAdded; // advance past all TOC pages
 
   // Modules
   for (let i = 0; i < modules.length; i++) {
@@ -3298,6 +3550,7 @@ Deno.serve(async (req: Request) => {
       density = "standard",
       theme = "light",
       template = "modern",
+      selectedTemplate = "default_v5",  // multi-template support
       includeImages = false,
       courseType = "CURSO COMPLETO",
       footerBrand = "EduGenAI",
@@ -3365,6 +3618,7 @@ Deno.serve(async (req: Request) => {
       density,
       language,
       geminiKey,
+      selectedTemplate,
     );
 
     const rawData = await pptx.write({ outputType: "uint8array" });
