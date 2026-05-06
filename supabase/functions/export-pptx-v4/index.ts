@@ -79,7 +79,8 @@ type Layout =
   | "twocol"
   | "comparison"
   | "timeline"
-  | "process";
+  | "process"
+  | "diagram";
 
 interface Slide {
   layout: Layout;
@@ -1748,6 +1749,91 @@ function renderTimeline(
   footer(slide, d, num, total);
 }
 
+// ── DIAGRAM ── Horizontal flow mini-diagram: Input → Process → Output
+function renderDiagram(
+  pptx: PptxGenJS,
+  slide_: Slide,
+  d: Design,
+  num: number,
+  total: number,
+) {
+  const slide = pptx.addSlide();
+  bg(slide, d.bg);
+  header(slide, d, slide_.label || "FLUXO", slide_.title);
+
+  const rawItems = (slide_.items || []).slice(0, 5);
+  if (rawItems.length === 0) { footer(slide, d, num, total); return; }
+
+  // Parse items — support "Label: description" format for richer boxes
+  const stages = rawItems.map((item) => {
+    const ci = item.indexOf(": ");
+    if (ci > 2 && ci < 42) {
+      return { label: item.slice(0, ci).trim(), body: item.slice(ci + 2).trim() };
+    }
+    return { label: item.trim(), body: "" };
+  });
+
+  const n       = stages.length;
+  const arrowW  = n <= 3 ? 0.40 : 0.30;
+  const boxW    = (CW - (n - 1) * arrowW) / n;
+  const boxH    = 2.2;
+  const areaY   = CONTENT_Y + (CONTENT_H - boxH) / 2;
+
+  for (let i = 0; i < n; i++) {
+    const x   = ML + i * (boxW + arrowW);
+    const pal = ([d.accent, d.accent2, d.accent3, d.highlight] as string[])[i % 4];
+    const { label, body } = stages[i];
+
+    // Shadow
+    slide.addShape("roundRect" as any, {
+      x: x + 0.025, y: areaY + 0.03, w: boxW, h: boxH,
+      fill: { color: "000000", transparency: 92 }, rectRadius: 0.08,
+    });
+    // Box surface
+    slide.addShape("roundRect" as any, {
+      x, y: areaY, w: boxW, h: boxH,
+      fill: { color: d.surface }, line: { color: pal, width: 1.5 }, rectRadius: 0.08,
+    });
+    // Accent top band
+    slide.addShape("roundRect" as any, { x, y: areaY, w: boxW, h: 0.30, fill: { color: pal }, rectRadius: 0.08 });
+    slide.addShape("rect" as any,      { x, y: areaY + 0.16, w: boxW, h: 0.14, fill: { color: pal } });
+
+    // Label inside accent band
+    const labelFs = label.length > 16 ? 7 : 9;
+    slide.addText(san(label).toUpperCase(), {
+      x: x + 0.08, y: areaY + 0.02, w: boxW - 0.16, h: 0.26,
+      fontSize: labelFs, fontFace: d.bodyFont, bold: true,
+      color: "FFFFFF", charSpacing: 1, align: "center", valign: "middle",
+    });
+
+    // Body description (if available)
+    if (body) {
+      slide.addText(san(body), {
+        x: x + 0.1, y: areaY + 0.38, w: boxW - 0.2, h: boxH - 0.52,
+        fontSize: n <= 3 ? T.BODY : T.BODY_SM,
+        fontFace: d.bodyFont, color: d.text,
+        valign: "top", lineSpacingMultiple: 1.3, fit: "shrink" as any,
+      });
+    }
+
+    // Arrow connector to next box
+    if (i < n - 1) {
+      const aX  = x + boxW + 0.05;
+      const aCY = areaY + boxH / 2;
+      slide.addShape("rect" as any, {
+        x: aX, y: aCY - 0.022, w: arrowW - 0.12, h: 0.044,
+        fill: { color: pal, transparency: 20 },
+      });
+      slide.addText("\u25BA", {
+        x: aX + arrowW - 0.24, y: aCY - 0.16, w: 0.22, h: 0.32,
+        fontSize: 13, color: pal, bold: true, align: "center", valign: "middle",
+      });
+    }
+  }
+
+  footer(slide, d, num, total);
+}
+
 // ═══════════════════════════════════════════════════════════
 // SECTION 5: AI GENERATION
 // ═══════════════════════════════════════════════════════════
@@ -1776,6 +1862,31 @@ async function callGemini(prompt: string, geminiKey: string): Promise<string> {
   return data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
 }
 
+// ── ADAPTIVE SLIDE COUNT ──
+// Calculates target slide count from content word-count + technical density.
+// Principle: fewer well-filled slides beats more mediocre slides.
+function adaptiveSlideCount(
+  content: string,
+  density: string,
+): { min: number; max: number; target: number } {
+  const words = content.trim().split(/\s+/).filter((w) => w.length > 1).length;
+  const isTechnical =
+    /SELECT\s|INSERT\s|UPDATE\s|DELETE\s|CREATE\s|function\s*\(|import\s+|class\s+|`[^`]+`/i.test(content);
+
+  // Base count driven by content richness
+  let base: number;
+  if (words <= 800)  base = isTechnical ? 4 : 3;
+  else if (words <= 1500) base = 5;
+  else               base = 6;
+
+  // Density nudge
+  let target = base;
+  if (density === "compact")  target = Math.max(3, base - 1);
+  if (density === "detailed") target = Math.min(7, base + 1);
+
+  return { min: Math.max(2, target - 1), max: target, target };
+}
+
 function buildPrompt(
   courseTitle: string,
   moduleTitle: string,
@@ -1784,7 +1895,8 @@ function buildPrompt(
   density: string,
   language: string,
 ): string {
-  const nSlides = density === "compact" ? 4 : density === "detailed" ? 7 : 5;
+  const { min: minSlides, max: maxSlides, target: nSlides } =
+    adaptiveSlideCount(moduleContent, density);
   const maxItems = density === "compact" ? 4 : density === "detailed" ? 6 : 5;
   const maxCodeLines = 10;
 
@@ -1814,11 +1926,11 @@ ${contentSnippet}
 
 ════ GLOBAL RULES ════
 1. Output language: ${language}. Every word of every field must be in ${language}.
-2. Generate EXACTLY ${nSlides} slide objects — no more, no less.
+2. Generate between ${minSlides} and ${maxSlides} slide objects. Target: ${nSlides}. QUALITY OVER QUANTITY: if the source content does not justify ${maxSlides} slides, generate fewer high-quality slides — never pad with weak or repeated content.
 3. Each slide title: 5–60 chars, specific and descriptive. FORBIDDEN titles: "Introdução", "Visão Geral", "Overview", "Introduction", "Módulo ${moduleIndex + 1}", or any title that merely repeats the module name.
 4. Items: concrete, single-idea statements. Max 15 words each. No bullet prefixes, no numbering.
 5. Max ${maxItems} items per non-code slide; max 3 items on code slides.
-6. VARIETY RULE: never place the same layout in more than 2 consecutive slides.
+6. VARIETY RULE: never place the same layout in more than 2 consecutive slides. Each module should combine bullets, comparison/process/diagram, cards, code, and takeaways where appropriate.
 7. The LAST slide of the array MUST use layout "takeaways".
 
 ════ SEMANTIC CURATION RULES ════
@@ -1832,19 +1944,25 @@ Each slide must be semantically uniform — never mix different categories of kn
 • If content naturally covers multiple categories, create separate slides for each.
 
 ════ LAYOUT GUIDE ════
-"bullets"    — default for explanations, definitions, principles (3–5 items).
+"bullets"    — default for explanations, definitions, principles (3–5 items). Avoid >2 consecutive.
 "cards"      — 3–4 distinct named concepts. Each item MUST follow "Term: one-line explanation" (≤15 words after ":").
 "twocol"     — 6–8 short facts that naturally split into two parallel groups.
 "process"    — ordered steps / pipeline / workflow. 3–5 items, each starting with an action verb.
-              TRIGGERS: passo, etapa, fluxo, pipeline, sequência, ciclo, como funciona, how to, steps, request→response.
+              USE when: passo a passo, etapas, fluxo, ciclo, sequência, como funciona, pipeline, how to, steps.
 "timeline"   — time-ordered milestones or historical events. 3–5 items.
-"comparison" — exactly two things contrasted side by side.
-              TRIGGERS: vs, versus, diferença, antes/depois, pros/cons, vantagens/desvantagens, A x B.
+"comparison" — exactly two things contrasted side by side. USE FREQUENTLY.
+              USE when: vs, versus, diferença, contraste, tipos, modelos, antes/depois, pros/cons, vantagens/desvantagens.
+              Examples: DELETE vs TRUNCATE, INNER JOIN vs LEFT JOIN, SQL vs NoSQL, síncrono vs assíncrono.
               Requires leftHeader, rightHeader, up to 4 leftItems, up to 4 rightItems.
-"code"       — MANDATORY when the content covers syntax, functions, loops, classes, API calls, or operators.
+"diagram"    — horizontal flow architecture: Stage1 → Stage2 → Stage3 (2–5 stages). USE for data flows, system architecture.
+              USE when: request/response, ETL, cliente-servidor, arquitetura, fluxo de dados, entrada→saída, pipeline de dados.
+              Items can be "StageName: brief description" for richer boxes.
+"code"       — MANDATORY when content covers SQL commands, syntax, functions, loops, classes, API calls, CLI, operators.
+              SQL: always use code layout for SELECT, INSERT, UPDATE, DELETE, JOIN, CREATE TABLE, DROP, TRUNCATE, GROUP BY.
               Provide real, runnable code. Max ${maxCodeLines} lines (\\n separated). Max 3 context items.
-              IMPORTANT: preserve SQL wildcards (SELECT *, COUNT(*)) and function signatures exactly as-is.
-"takeaways"  — LAST slide only. 3–5 key learning outcomes from this module.
+              CRITICAL: preserve SQL wildcards exactly — SELECT *, COUNT(*), SUM(*) must appear as-is in code field.
+              SQL keywords to highlight in code: SELECT, FROM, WHERE, JOIN, GROUP BY, ORDER BY, HAVING, INSERT, UPDATE, DELETE.
+"takeaways"  — LAST slide only. 3–5 key learning outcomes from this module, each starting with an action verb.
 
 ════ OUTPUT FORMAT ════
 Return ONLY a valid JSON array — no markdown fences, no commentary.
@@ -1873,6 +1991,12 @@ Schema (use the matching shape per layout):
     "rightHeader": "Concept B",
     "leftItems": ["point 1", "point 2", "point 3"],
     "rightItems": ["point 1", "point 2", "point 3"]
+  },
+  {
+    "layout": "diagram",
+    "label": "FLUXO",
+    "title": "Fluxo de consulta SQL",
+    "items": ["Cliente: envia query", "Parser: valida sintaxe", "Executor: processa", "Storage: retorna dados"]
   }
 ]`;
 }
@@ -1917,6 +2041,7 @@ async function generateModuleSlides(
       "cards",
       "takeaways",
       "code",
+      "diagram",
       "twocol",
       "comparison",
       "timeline",
@@ -2213,6 +2338,9 @@ function cleanSlideTitle(title: string, moduleTitle: string): string {
 // item count. Never changes structural or code slides.
 const SKIP_HEURISTIC: Layout[] = ["cover","toc","module_cover","closing","code","takeaways"];
 
+// SQL keyword detection — items that look like commands/queries
+const SQL_ITEM_RE = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE|JOIN|GROUP\s+BY|ORDER\s+BY|WHERE|HAVING|GRANT|REVOKE)\b/i;
+
 function chooseLayout(slide: Slide, prevLayouts: Layout[]): Slide {
   if (SKIP_HEURISTIC.includes(slide.layout)) return slide;
 
@@ -2221,14 +2349,26 @@ function chooseLayout(slide: Slide, prevLayouts: Layout[]): Slide {
   const n = useful.length;
   const allHaveColon = n >= 2 && useful.every((i) => i.includes(": "));
 
+  // Check if items look like SQL commands → prefer code
+  const hasSqlItems = slide.layout !== "code" &&
+    useful.some((item) => SQL_ITEM_RE.test(item));
+
   let chosen: Layout = slide.layout;
 
-  // Comparison triggers
-  if (/\bvs\.?\b|versus|\bdiferença|\bcomparação|\bcontraste|\bantes.+depois\b|\bpros.+cons\b/i.test(title)) {
+  // SQL content → code layout
+  if (hasSqlItems && slide.layout === "bullets" && n <= 5) {
+    chosen = "code";
+  }
+  // Comparison triggers (expanded — use aggressively for contrasts)
+  else if (/\bvs\.?\b|versus|\bdiferença|\bcomparação|\bcontraste|\bantes.+depois\b|\bpros.+cons\b|\btipos de\b|\bmodelos de\b|\bDELETE vs\b|\bDROP vs\b|\bTRUNCATE vs\b|\bINNER.+LEFT\b|\bvantagens.+desvan/i.test(title)) {
     chosen = "comparison";
   }
-  // Process / flow triggers
-  else if (/\bpasso\b|\betapa\b|\bfluxo\b|\bprocesso\b|\bprimeiro\b|\bdepois\b|\bpor fim\b|\bsequência\b|\bciclo\b|\bpipeline\b/i.test(title)) {
+  // Diagram triggers: data flow / architecture
+  else if (/\bfluxo de\b|\barquitetura\b|\brequest.+response\b|\bETL\b|\bclient.+server\b|\bcliente.+servidor\b|\bentrada.+sa[íi]da\b|\bpipeline de dados\b|\bfluxo de consulta\b|\bfluxo de dados\b/i.test(title)) {
+    if (n >= 2 && n <= 5) chosen = "diagram";
+  }
+  // Process / flow triggers (ordered steps)
+  else if (/\bpasso\b|\betapa\b|\bsequência\b|\bciclo\b|\bpipeline\b|\bcomo funciona\b|\bhow to\b|\bfluxo\b|\bprocesso\b/i.test(title)) {
     if (n >= 3 && n <= 5) chosen = "process";
   }
   // 6+ items → two columns
@@ -2240,23 +2380,24 @@ function chooseLayout(slide: Slide, prevLayouts: Layout[]): Slide {
     chosen = "cards";
   }
 
-  // Anti-repetition: if this would make 3 consecutive same-layout, revert
+  // Anti-repetition: if this would make 3 consecutive same-layout, force variety
   if (
+    chosen !== "code" && // never override code layout for anti-repetition
     prevLayouts.length >= 2 &&
     prevLayouts[prevLayouts.length - 1] === chosen &&
     prevLayouts[prevLayouts.length - 2] === chosen
   ) {
-    // Force variety: bullets↔twocol, process↔timeline
-    if (chosen === "bullets" && n >= 5) chosen = "twocol";
-    else if (chosen === "bullets" && n >= 2) chosen = "cards";
-    else if (chosen === "twocol") chosen = "bullets";
-    else if (chosen === "process") chosen = "timeline";
-    else chosen = "bullets"; // last resort
+    if      (chosen === "bullets" && n >= 5)      chosen = "twocol";
+    else if (chosen === "bullets" && n >= 2)      chosen = "cards";
+    else if (chosen === "twocol")                 chosen = "bullets";
+    else if (chosen === "process")                chosen = "timeline";
+    else if (chosen === "diagram")                chosen = "process";
+    else                                          chosen = "bullets";
   }
 
   if (chosen === slide.layout) return slide;
 
-  // Guard: make sure the new layout will actually pass isRenderableSlide
+  // Guard: make sure the new layout will pass isRenderableSlide
   const candidate = { ...slide, layout: chosen as Layout };
   if (!isRenderableSlide(candidate)) return slide; // revert if not renderable
 
@@ -2266,7 +2407,7 @@ function chooseLayout(slide: Slide, prevLayouts: Layout[]): Slide {
 
 // ── LAYOUT VARIETY ENFORCEMENT ──
 // Prevents more than 2 consecutive slides with the same layout
-const VARIETY_SWAPPABLE: Layout[] = ["bullets", "twocol"];
+const VARIETY_SWAPPABLE: Layout[] = ["bullets", "twocol", "diagram"];
 
 function applyLayoutVariety(slides: Slide[]): Slide[] {
   // Pass 1 — heuristic layout selection with running history
@@ -2327,8 +2468,9 @@ function isRenderableSlide(s: Slide): boolean {
       return nonEmpty(s.items).length >= 3;
     case "process":
     case "timeline":
-      // Need ≥3 steps so step badges aren't empty
-      return nonEmpty(s.items).length >= 3;
+    case "diagram":
+      // Need ≥2 items so flow/step shapes aren't empty (diagram allows 2)
+      return nonEmpty(s.items).length >= 2;
     case "twocol":
       // Need ≥4 items to populate both columns meaningfully
       return nonEmpty(s.items).length >= 4;
@@ -2650,6 +2792,9 @@ async function runPipeline(
           break;
         case "process":
           renderProcess(pptx, s, design, ++slideNum, totalSlides);
+          break;
+        case "diagram":
+          renderDiagram(pptx, s, design, ++slideNum, totalSlides);
           break;
         default:
           renderBullets(pptx, s, design, ++slideNum, totalSlides);

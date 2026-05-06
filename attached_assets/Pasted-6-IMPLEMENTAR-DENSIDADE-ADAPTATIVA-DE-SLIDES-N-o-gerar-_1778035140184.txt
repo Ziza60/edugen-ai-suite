@@ -1,0 +1,107 @@
+6. IMPLEMENTAR DENSIDADE ADAPTATIVA DE SLIDES
+
+Não gerar número fixo de slides por módulo.
+
+Hoje o sistema ainda tende a gerar slides demais para conteúdos curtos, causando:
+- repetição visual;
+- conteúdo fraco;
+- slides artificiais;
+- placeholders quase vazios;
+- sensação de PPTX inflado.
+
+Implementar densidade adaptativa baseada no tamanho e riqueza do conteúdo do módulo.
+
+Regra sugerida:
+
+- módulos curtos (até ~800 palavras):
+  gerar 3–4 slides úteis;
+
+- módulos médios (~800–1500):
+  gerar 4–5 slides;
+
+- módulos ricos/técnicos:
+  gerar 5–6 slides;
+
+- nunca forçar 6 slides para todos os módulos.
+
+Priorizar:
+- menos slides bons
+em vez de
+- mais slides medianos ou vazios.
+
+O último slide pode continuar sendo TAKEAWAYS quando houver conteúdo suficiente.
+
+7. MELHORAR DIREÇÃO VISUAL (“PREMIUM DESIGN”)
+
+O deck ainda parece “PPTX standard” em muitos casos.
+
+Objetivo:
+aumentar percepção visual premium sem exageros.
+
+Implementar:
+
+a) MAIS PROCESSOS VISUAIS
+- usar layout PROCESS com mais frequência;
+- detectar automaticamente:
+  "etapas", "fluxo", "pipeline", "ciclo", "primeiro/depois";
+- renderizar sequências visuais claras.
+
+b) MAIS COMPARAÇÕES
+- aumentar uso do layout COMPARISON;
+- detectar:
+  vs, versus, diferença, contraste, tipos, modelos;
+- ideal para:
+  DELETE vs TRUNCATE,
+  DROP vs TRUNCATE,
+  INNER JOIN vs LEFT JOIN,
+  SQL procedural vs declarativo,
+  etc.
+
+c) MINI-DIAGRAMAS
+Criar layout simples de diagrama horizontal:
+Input → Process → Output
+
+Usar para:
+- fluxo de consulta SQL;
+- arquitetura cliente-servidor;
+- request/response;
+- ETL;
+- processamento de dados.
+
+Não usar gráficos complexos.
+Usar apenas shapes simples e setas.
+
+d) MELHOR USO DE EXEMPLOS SQL
+- quando houver comandos SQL relevantes,
+  preferir layout CODE ou CODE_SPLIT;
+- preservar indentação;
+- destacar visualmente:
+  SELECT
+  INSERT
+  UPDATE
+  DELETE
+  JOIN
+  WHERE
+  GROUP BY
+
+- evitar transformar exemplos SQL em bullets comuns.
+
+e) VARIAÇÃO VISUAL POR MÓDULO
+Evitar:
+- mais de 2 slides BULLETS seguidos;
+- módulos inteiros visualmente iguais.
+
+Objetivo:
+cada módulo deve combinar:
+- bullets;
+- comparison;
+- process;
+- cards;
+- code/code_split;
+- takeaways.
+
+Critério de aceite:
+- deck mais variado visualmente;
+- menos sensação de “slides iguais”;
+- mais sensação de apresentação profissional/premium;
+- sem aumentar artificialmente o número de slides.
