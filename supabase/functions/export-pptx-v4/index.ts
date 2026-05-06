@@ -1821,6 +1821,16 @@ ${contentSnippet}
 6. VARIETY RULE: never place the same layout in more than 2 consecutive slides.
 7. The LAST slide of the array MUST use layout "takeaways".
 
+════ SEMANTIC CURATION RULES ════
+Each slide must be semantically uniform — never mix different categories of knowledge in the same slide:
+• COMMAND slides (commands, functions, operators, syntax) → use layout "code" or "bullets" with only commands/functions.
+• APPLICATION slides (real-world use cases, practical examples) → use layout "bullets" or "cards" with only practical uses.
+• OBJECTIVE slides (learning goals, outcomes) → use layout "takeaways" only.
+• CONCEPT slides (definitions, principles, theory) → use layout "bullets" or "cards" with only conceptual items.
+• Do NOT mix a command with a learning objective in the same slide.
+• Do NOT mix a practical use case with a definition in the same slide.
+• If content naturally covers multiple categories, create separate slides for each.
+
 ════ LAYOUT GUIDE ════
 "bullets"    — default for explanations, definitions, principles (3–5 items).
 "cards"      — 3–4 distinct named concepts. Each item MUST follow "Term: one-line explanation" (≤15 words after ":").
@@ -1833,6 +1843,7 @@ ${contentSnippet}
               Requires leftHeader, rightHeader, up to 4 leftItems, up to 4 rightItems.
 "code"       — MANDATORY when the content covers syntax, functions, loops, classes, API calls, or operators.
               Provide real, runnable code. Max ${maxCodeLines} lines (\\n separated). Max 3 context items.
+              IMPORTANT: preserve SQL wildcards (SELECT *, COUNT(*)) and function signatures exactly as-is.
 "takeaways"  — LAST slide only. 3–5 key learning outcomes from this module.
 
 ════ OUTPUT FORMAT ════
@@ -2145,15 +2156,31 @@ const MODULE_NOISE_RE    =
 
 function globalSanitize(text: string): string {
   if (!text || typeof text !== "string") return "";
-  return san(
-    text
-      .replace(/\\n/g, " ").replace(/\\t/g, " ")     // literal escape sequences
-      .replace(STRUCTURAL_EMOJI_RE, "")               // structural emojis
-      .replace(MARKDOWN_BOLD_RE,   "$1")              // **bold** → plain
-      .replace(MARKDOWN_ITALIC_RE, "$1")              // _italic_ → plain
-      .replace(MODULE_NOISE_RE,    "")                // noise phrases
+
+  // Step 1: protect content inside backticks so technical expressions like
+  // `SELECT *`, `COUNT(*)`, function names etc. are never mangled.
+  const backtickSlots: string[] = [];
+  const slotted = text.replace(/`([^`]*)`/g, (_full, inner: string) => {
+    backtickSlots.push(inner);
+    return `\x00SLOT${backtickSlots.length - 1}\x00`;
+  });
+
+  // Step 2: apply sanitisation to non-protected sections
+  const cleaned = san(
+    slotted
+      .replace(/\\n/g, " ").replace(/\\t/g, " ")   // literal escape sequences
+      .replace(STRUCTURAL_EMOJI_RE, "")              // structural emojis
+      .replace(MARKDOWN_BOLD_RE,   "$1")             // **bold** → plain text
+      .replace(MARKDOWN_ITALIC_RE, "$1")             // _italic_ → plain text
+      .replace(MODULE_NOISE_RE,    "")               // noise phrases
       .replace(/\s{2,}/g, " ")
       .trim()
+  );
+
+  // Step 3: restore protected backtick content
+  return cleaned.replace(
+    /\x00SLOT(\d+)\x00/g,
+    (_m, idx: string) => backtickSlots[Number(idx)] ?? "",
   );
 }
 
@@ -2402,32 +2429,61 @@ function splitOverflowSlides(slides: Slide[]): Slide[] {
   return out;
 }
 
-function extractCompetencies(content: string, moduleTitle?: string): string[] {
-  const normalised = content
-    .replace(/\\n/g, "\n")
-    .replace(/\\t/g, " ");
+// ── ACTION VERB ENFORCEMENT (module cover competencies) ──
+const ACTION_VERBS_PT = [
+  "Compreender", "Aplicar", "Identificar", "Configurar", "Executar",
+  "Construir",   "Analisar", "Definir",   "Utilizar",   "Diferenciar",
+];
+const VERB_START_RE = new RegExp(
+  `^(${ACTION_VERBS_PT.map((v) => v.toLowerCase()).join("|")})\\b`,
+  "i",
+);
 
-  const titleLower = (moduleTitle ?? "").trim().toLowerCase();
+function enforceActionVerb(text: string, moduleTitle: string, idx: number): string {
+  const t = text.trim();
+  if (!t) return `${ACTION_VERBS_PT[idx % ACTION_VERBS_PT.length]} ${moduleTitle}`;
+  if (VERB_START_RE.test(t)) return t; // already starts with valid verb
+  // Prepend rotating verb, lower-case the first char of original text
+  const verb = ACTION_VERBS_PT[idx % ACTION_VERBS_PT.length];
+  const body = t.charAt(0).toLowerCase() + t.slice(1);
+  const candidate = `${verb} ${body}`;
+  // Trim to 80 chars at word boundary
+  if (candidate.length <= 80) return candidate;
+  const cut = candidate.lastIndexOf(" ", 77);
+  return cut > 30 ? candidate.slice(0, cut) : candidate.slice(0, 80);
+}
+
+function extractCompetencies(content: string, moduleTitle?: string): string[] {
+  const modTitle = (moduleTitle ?? "").trim();
+  const titleLower = modTitle.toLowerCase();
+  const normalised = content.replace(/\\n/g, "\n").replace(/\\t/g, " ");
+
+  const isCleanText = (s: string): boolean =>
+    !Array.from(s).some((c) => {
+      const cp = c.codePointAt(0) ?? 0;
+      return (cp >= 0x1F300 && cp <= 0x1FFFF) ||
+             (cp >= 0x2600  && cp <= 0x27BF)  ||
+             (cp >= 0xFE00  && cp <= 0xFE0F);
+    });
+
   // Try bullet points first
   const bullets = [...normalised.matchAll(/^[-*•]\s+(.+)$/gm)]
     .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
     .filter((b) => b.length >= 12 && b.length <= 80)
-    .filter((b) => !Array.from(b).some((c) => { const cp = c.codePointAt(0) ?? 0; return (cp >= 0x1F300 && cp <= 0x1FFFF) || (cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0xFE00 && cp <= 0xFE0F); }))
+    .filter(isCleanText)
     .filter((b) => b.toLowerCase() !== titleLower)
     .slice(0, 3);
-  if (bullets.length >= 2) return bullets;
 
-  // Fallback: sub-headings
+  // Try sub-headings
   const headings = [...normalised.matchAll(/^#{2,4}\s+(.+)$/gm)]
     .map((m) => m[1].trim())
     .filter((h) => h.length >= 10 && h.length <= 70)
-    .filter((h) => !Array.from(h).some((c) => { const cp = c.codePointAt(0) ?? 0; return (cp >= 0x1F300 && cp <= 0x1FFFF) || (cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0xFE00 && cp <= 0xFE0F); }))
+    .filter(isCleanText)
     .filter((h) => h.toLowerCase() !== titleLower)
     .slice(0, 3);
-  if (headings.length >= 2) return headings;
 
   // Fallback: first short sentences
-  return normalised
+  const sentences = normalised
     .replace(/#{1,6}\s*/g, "")
     .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
     .replace(/[`_]/g, "")
@@ -2435,6 +2491,12 @@ function extractCompetencies(content: string, moduleTitle?: string): string[] {
     .map((s) => s.trim())
     .filter((s) => s.length >= 12 && s.length <= 70)
     .slice(0, 3);
+
+  const pool = bullets.length >= 2 ? bullets : headings.length >= 2 ? headings : sentences;
+  const raw  = pool.slice(0, 3);
+
+  // Enforce: every item must start with an action verb
+  return raw.map((text, i) => enforceActionVerb(text, modTitle, i));
 }
 
 async function runPipeline(
@@ -2450,34 +2512,58 @@ async function runPipeline(
   pptx.author = "EduGenAI v5";
   pptx.title = courseTitle;
 
-  // Process modules in parallel batches (max 3 concurrent Gemini calls)
+  // ── MODULE SLIDE CACHE (per export run, keyed by content hash + density + lang) ──
+  // Prevents re-calling Gemini for identical modules within the same request.
+  const slideCache = new Map<string, Slide[]>();
+
+  function moduleHashKey(mod: { title: string; content: string }): string {
+    // Fast deterministic key — length + first/last 120 chars + title
+    const c = (mod.content || "").trim();
+    return `${mod.title}|${density}|${language}|${c.length}|${c.slice(0, 120)}|${c.slice(-120)}`;
+  }
+
+  // Process modules in parallel batches (max 3 concurrent Gemini calls).
+  // Uses Promise.allSettled so a single module failure never aborts the batch.
   async function processBatch(
     indices: number[],
   ): Promise<{ i: number; slides: Slide[] }[]> {
-    return Promise.all(
+    const settled = await Promise.allSettled(
       indices.map(async (i) => {
-        console.log(
-          `[V5] Generating slides for module ${i + 1}/${modules.length}: "${modules[i].title}"`,
-        );
+        const mod = modules[i];
+        const cacheKey = moduleHashKey(mod);
+
+        // Cache hit
+        if (slideCache.has(cacheKey)) {
+          console.log(`[V5] Module ${i + 1} cache hit: "${mod.title}"`);
+          return { i, slides: slideCache.get(cacheKey)! };
+        }
+
+        console.log(`[V5] Generating slides for module ${i + 1}/${modules.length}: "${mod.title}"`);
         const rawSlides = await generateModuleSlides(
-          courseTitle,
-          modules[i],
-          i,
-          density,
-          language,
-          geminiKey,
+          courseTitle, mod, i, density, language, geminiKey,
         );
-        const splitSlides = splitOverflowSlides(rawSlides);
+        const splitSlides  = splitOverflowSlides(rawSlides);
         const variedSlides = applyLayoutVariety(splitSlides);
         console.log(
           `[V5] Module ${i + 1}: ${rawSlides.length} raw → ${splitSlides.length} split → ${variedSlides.length} final`,
         );
+
+        slideCache.set(cacheKey, variedSlides);
         return { i, slides: variedSlides };
       }),
     );
+
+    // Map results — use per-module fallback on rejection
+    return settled.map((result, idx) => {
+      const i = indices[idx];
+      if (result.status === "fulfilled") return result.value;
+      console.error(`[V5] Module ${i + 1} failed, using fallback:`, result.reason?.message ?? result.reason);
+      const fallback = fallbackModuleSlides(modules[i].title, modules[i].content, i, density);
+      return { i, slides: fallback };
+    });
   }
 
-  const BATCH_SIZE = 3;
+  const BATCH_SIZE = 3; // max concurrent Gemini calls
   const allModuleSlides: Slide[][] = new Array(modules.length);
   for (let b = 0; b < modules.length; b += BATCH_SIZE) {
     const batchIndices = Array.from(
