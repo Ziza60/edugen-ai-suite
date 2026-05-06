@@ -63,11 +63,24 @@ Public URL where students access a course without registration. Shares the same 
 - **Fluxo**: TemplateSelector → card YouTube → YouTubeImportScreen → auto-preenche formulário (title/theme/audience/language/modules) + ativa useSources com a transcrição como fonte → wizard pré-preenchido
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
-## PPTX Exporter v3 (Current Engine)
-Production exporter at `supabase/functions/export-pptx-v3/index.ts` (2284 lines, v3.4.1).
-Pipeline: Parse → Segment → Distribute → Merge Sparse → Visual Fit → Anti-Repetition → Image Fetch → Render → Export.
-v3 is the active engine; v1 remains untouched as emergency fallback; v2 at 5173 lines (v2.8.1).
-- Bug fixes applied (v3.4.1): gradient bar overflows, summary numSize, objectives height, colonIdx thresholds, image fallback, per_page random selection
+## PPTX Exporter v5 (Active Engine — export-pptx-v4)
+`supabase/functions/export-pptx-v4/index.ts` (~4160 lines, ENGINE_VERSION=5.0.0).
+Pipeline: Parse → Segment → LayoutVariety → SemanticQualityGate → TemplateSplits → **PPTX QA Engine** → Render → Export.
+
+### PPTX QA Engine (Section 6C)
+Formal quality validation layer — runs after template splits, before render. Based on `runPptxQA(allSlides, moduleContents)`.
+- **QA Thresholds**: `MAX_WORDS_PER_SLIDE=50`, `MAX_BULLETS=6`, `MAX_CODE_LINES=12`, `MAX_TABLE_CELLS=16`, `MIN_BODY_FONT_SIZE=18pt`, `MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE=2`, `MIN_REQUIRED_WHITESPACE_RATIO=0.20`
+- **11 checks**: `EMPTY_SLIDE`, `PLACEHOLDER_RESIDUAL`, `TITLE_FRAGMENT`, `GENERIC_LEARNING_OBJECTIVE`, `CONTENT_DENSITY_OVERFLOW`, `TOO_MANY_BULLETS`, `CODE_TOO_LONG`, `SQL_CODE_INCOMPLETE`, `LAYOUT_REPETITION`, `COMPARISON_UNSAFE`, `FONT_TOO_SMALL_RISK`
+- **CRITICAL** issues (EMPTY_SLIDE, PLACEHOLDER_RESIDUAL, TITLE_FRAGMENT, SQL_CODE_INCOMPLETE, COMPARISON_UNSAFE): auto-repaired or slide removed
+- **WARNING** issues: auto-fixed in-place (trim bullets, truncate code, swap layout, cap item length)
+- Returns `QAReport { status: "PASSED"|"WARNING"|"FAILED", issues[], fixedIssues[] }` — logged per export
+- No PPTX final can contain: empty slide, visible placeholder, title fragment, incomplete SQL code
+
+### Visual Skins (SKIN_REGISTRY)
+5 skin templates: `default_v5` (navy/blue), `futuristic_background` (neon/cyber), `dark_theme` (gold/dark), `dark_elegance_xl` (violet/gold), `dark_style_theme` (red/fire). Each defines palette + coverStyle + headerStyle + cardStyle + accentBarPos.
+
+## PPTX Exporter v3 (Legacy)
+`supabase/functions/export-pptx-v3/index.ts` (2284 lines, v3.4.1). Superseded by v5.
 
 ## PPTX Exporter v2 (Legacy)
 `supabase/functions/export-pptx-v2/index.ts` (5173 lines, v2.8.1). Bug fixes applied but superseded by v3.

@@ -3324,6 +3324,371 @@ function splitSlidesForTemplate(slides: Slide[], caps: TemplateCaps): Slide[] {
   return out;
 }
 
+// ═══════════════════════════════════════════════════════════
+// SECTION 6C: PPTX QA ENGINE
+// Formal quality validation layer — runs after template splits,
+// before final render.  Inspired by Design Validation Report.
+// WARNINGs auto-fixed in-place; CRITICALs repaired or slide removed.
+// ═══════════════════════════════════════════════════════════
+
+// ── QA Global Thresholds ────────────────────────────────────
+const QA = {
+  MAX_WORDS_PER_SLIDE:               50,
+  MAX_BULLETS:                        6,
+  MAX_CODE_LINES:                    12,
+  MAX_TABLE_CELLS:                   16,
+  MIN_BODY_FONT_SIZE:                18, // pt — used for risk detection only
+  MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE:  2,
+  MIN_REQUIRED_WHITESPACE_RATIO:    0.20,
+} as const;
+
+// ── QA Issue Types & Severity ───────────────────────────────
+type QAIssueType =
+  | "EMPTY_SLIDE"
+  | "PLACEHOLDER_RESIDUAL"
+  | "TITLE_FRAGMENT"
+  | "GENERIC_LEARNING_OBJECTIVE"
+  | "CONTENT_DENSITY_OVERFLOW"
+  | "TOO_MANY_BULLETS"
+  | "CODE_TOO_LONG"
+  | "SQL_CODE_INCOMPLETE"
+  | "LAYOUT_REPETITION"
+  | "COMPARISON_UNSAFE"
+  | "FONT_TOO_SMALL_RISK";
+
+interface QAIssue {
+  slideId:            string;
+  type:               QAIssueType;
+  severity:           "WARNING" | "CRITICAL";
+  message:            string;
+  metric?:            number;
+  context?:           string;
+  resolutionStrategy: string;
+}
+
+interface QAReport {
+  status:      "PASSED" | "WARNING" | "FAILED";
+  issues:      QAIssue[];      // un-fixed (CRITICAL that could not be repaired)
+  fixedIssues: QAIssue[];     // auto-repaired
+}
+
+// ── SQL completeness probe (QA-specific, narrower than validateCodeIntegrity) ──
+const QA_SQL_PROMISE_RE = /^\s*--\s*(remove?|drop|trunca|deleta|exclui|insert|update|select|altera|cria)\b/i;
+const QA_SQL_STMT_RE    = /^\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE|WITH)\b/i;
+
+function qaHasSqlIncomplete(code: string): boolean {
+  if (!code) return false;
+  const lines = code.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!QA_SQL_PROMISE_RE.test(lines[i])) continue;
+    let nx = i + 1;
+    while (nx < lines.length && !lines[nx].trim()) nx++;
+    if (!QA_SQL_STMT_RE.test((lines[nx] ?? "").trim())) return true;
+  }
+  return false;
+}
+
+function qaCountWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * runPptxQA — formal QA pass over all generated module slides.
+ *
+ * Checks performed (per slide):
+ *   CRITICAL: EMPTY_SLIDE, PLACEHOLDER_RESIDUAL, TITLE_FRAGMENT,
+ *             SQL_CODE_INCOMPLETE, COMPARISON_UNSAFE
+ *   WARNING:  GENERIC_LEARNING_OBJECTIVE, CONTENT_DENSITY_OVERFLOW,
+ *             TOO_MANY_BULLETS, CODE_TOO_LONG, LAYOUT_REPETITION,
+ *             FONT_TOO_SMALL_RISK
+ *
+ * Returns repaired slide arrays + a QAReport for logging.
+ */
+function runPptxQA(
+  allSlides: Slide[][],
+  moduleContents: string[],
+): { repairedSlides: Slide[][]; report: QAReport } {
+  const unfixedIssues: QAIssue[] = [];
+  const fixedIssues:   QAIssue[] = [];
+
+  // Deep-copy each slide so mutations don't corrupt the originals
+  const repaired: Slide[][] = allSlides.map((mod) => mod.map((s) => ({ ...s })));
+
+  // Global layout sequence — spans all modules for LAYOUT_REPETITION
+  const globalLayouts: Layout[] = [];
+
+  for (let mi = 0; mi < repaired.length; mi++) {
+    const modSlides  = repaired[mi];
+    const modContent = moduleContents[mi] ?? "";
+    const keepMask: boolean[] = new Array(modSlides.length).fill(true);
+
+    for (let si = 0; si < modSlides.length; si++) {
+      let s  = modSlides[si];
+      const id = `module_${mi + 1}_slide_${si + 1}`;
+
+      // ──────────────────────────────────────────────────────
+      // 1. EMPTY_SLIDE  [CRITICAL]
+      // ──────────────────────────────────────────────────────
+      if (!isRenderableSlide(s)) {
+        const repS = repairEmptySlide(s, modContent);
+        if (isRenderableSlide(repS)) {
+          fixedIssues.push({
+            slideId: id, type: "EMPTY_SLIDE", severity: "CRITICAL",
+            message: `Slide vazio reparado: "${s.title}" (${s.layout})`,
+            context: s.layout,
+            resolutionStrategy: "Extraídos bullets do conteúdo do módulo como fallback",
+          });
+          modSlides[si] = repS;
+          s = repS;
+        } else {
+          unfixedIssues.push({
+            slideId: id, type: "EMPTY_SLIDE", severity: "CRITICAL",
+            message: `Slide vazio sem reparo possível: "${s.title}" — removido`,
+            context: s.layout,
+            resolutionStrategy: "Slide removido do deck final",
+          });
+          keepMask[si] = false;
+          continue;
+        }
+      }
+
+      // ──────────────────────────────────────────────────────
+      // 2. PLACEHOLDER_RESIDUAL  [CRITICAL]
+      // ──────────────────────────────────────────────────────
+      const allTexts = [
+        s.title, s.subtitle, s.label, s.code,
+        s.leftHeader, s.rightHeader,
+        ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+      ].filter(Boolean) as string[];
+
+      if (allTexts.some((t) => PLACEHOLDER_RE.test(t.trim()))) {
+        const ci = (s.items ?? []).filter((t) => !PLACEHOLDER_RE.test(t.trim()));
+        const cl = (s.leftItems  ?? []).filter((t) => !PLACEHOLDER_RE.test(t.trim()));
+        const cr = (s.rightItems ?? []).filter((t) => !PLACEHOLDER_RE.test(t.trim()));
+        const ct = PLACEHOLDER_RE.test((s.title || "").trim()) ? (s.label || "Conteúdo") : s.title;
+        const fixed: Slide = { ...s, title: ct, items: ci, leftItems: cl, rightItems: cr };
+        const issue: QAIssue = {
+          slideId: id, type: "PLACEHOLDER_RESIDUAL", severity: "CRITICAL",
+          message: `Placeholder residual em "${s.title}"`,
+          context: allTexts.find((t) => PLACEHOLDER_RE.test(t.trim())),
+          resolutionStrategy: "Textos placeholder filtrados; slide descartado se ficar vazio",
+        };
+        if (isRenderableSlide(fixed)) {
+          fixedIssues.push(issue);
+          modSlides[si] = fixed;
+          s = fixed;
+        } else {
+          unfixedIssues.push({ ...issue, message: `Placeholder residual — slide removido: "${s.title}"`, resolutionStrategy: "Slide removido após remoção dos placeholders" });
+          keepMask[si] = false;
+          continue;
+        }
+      }
+
+      // ──────────────────────────────────────────────────────
+      // 3. TITLE_FRAGMENT  [CRITICAL — auto-fixed]
+      // ──────────────────────────────────────────────────────
+      const rawTitle = (s.title || "").trim();
+      if (rawTitle.length < 3 || TITLE_PREP_RE.test(rawTitle) || FRAG_CONJ_RE.test(rawTitle)) {
+        const stripped = rawTitle.replace(TITLE_PREP_RE, "").replace(FRAG_CONJ_RE, "").trim();
+        const normalized = stripped.length >= 3
+          ? stripped.charAt(0).toUpperCase() + stripped.slice(1)
+          : (s.label || "Conteúdo do Módulo");
+        fixedIssues.push({
+          slideId: id, type: "TITLE_FRAGMENT", severity: "CRITICAL",
+          message: `Título fragmentado corrigido: "${rawTitle}" → "${normalized}"`,
+          context: rawTitle,
+          resolutionStrategy: "Preposição/conjunção inicial removida; título capitalizado",
+        });
+        modSlides[si] = { ...s, title: normalized };
+        s = modSlides[si];
+      }
+
+      // ──────────────────────────────────────────────────────
+      // 4. GENERIC_LEARNING_OBJECTIVE  [WARNING — already fixed upstream]
+      // ──────────────────────────────────────────────────────
+      if (s.layout === "module_cover" && Array.isArray(s.items)) {
+        const generic = s.items.filter((item) => BAD_OBJECTIVE_RE.test(item));
+        if (generic.length > 0) {
+          fixedIssues.push({
+            slideId: id, type: "GENERIC_LEARNING_OBJECTIVE", severity: "WARNING",
+            message: `${generic.length} objetivo(s) genérico(s) em "${s.title}"`,
+            metric: generic.length,
+            context: generic[0],
+            resolutionStrategy: "Objetivos expandidos por expandVagueObjective() upstream",
+          });
+        }
+      }
+
+      const items = nonEmpty(s.items);
+
+      // ──────────────────────────────────────────────────────
+      // 5. CONTENT_DENSITY_OVERFLOW  [WARNING → auto-fix]
+      // ──────────────────────────────────────────────────────
+      const DENSITY_SKIP: Layout[] = ["code","module_cover","cover","toc","closing"];
+      if (!DENSITY_SKIP.includes(s.layout)) {
+        const totalWords = items.reduce((acc, t) => acc + qaCountWords(t), 0);
+        if (totalWords > QA.MAX_WORDS_PER_SLIDE) {
+          fixedIssues.push({
+            slideId: id, type: "CONTENT_DENSITY_OVERFLOW", severity: "WARNING",
+            message: `Slide com ${totalWords} palavras (máx ${QA.MAX_WORDS_PER_SLIDE}): "${s.title}"`,
+            metric: totalWords,
+            context: s.layout,
+            resolutionStrategy: `Items truncados para ${QA.MAX_BULLETS}`,
+          });
+          modSlides[si] = { ...s, items: items.slice(0, QA.MAX_BULLETS) };
+          s = modSlides[si];
+        }
+      }
+
+      // ──────────────────────────────────────────────────────
+      // 6. TOO_MANY_BULLETS  [WARNING → auto-fix]
+      // ──────────────────────────────────────────────────────
+      if (["bullets","takeaways"].includes(s.layout) && items.length > QA.MAX_BULLETS) {
+        fixedIssues.push({
+          slideId: id, type: "TOO_MANY_BULLETS", severity: "WARNING",
+          message: `${items.length} bullets em "${s.title}" (máx ${QA.MAX_BULLETS})`,
+          metric: items.length,
+          resolutionStrategy: `Items cortados para ${QA.MAX_BULLETS}`,
+        });
+        modSlides[si] = { ...s, items: items.slice(0, QA.MAX_BULLETS) };
+        s = modSlides[si];
+      }
+
+      // ──────────────────────────────────────────────────────
+      // 7. CODE_TOO_LONG  [WARNING → auto-fix]
+      // ──────────────────────────────────────────────────────
+      if (s.layout === "code" && s.code) {
+        const codeLines = s.code.split("\n");
+        if (codeLines.length > QA.MAX_CODE_LINES) {
+          fixedIssues.push({
+            slideId: id, type: "CODE_TOO_LONG", severity: "WARNING",
+            message: `Código com ${codeLines.length} linhas (máx ${QA.MAX_CODE_LINES}): "${s.title}"`,
+            metric: codeLines.length,
+            resolutionStrategy: `Código truncado para ${QA.MAX_CODE_LINES} linhas`,
+          });
+          modSlides[si] = {
+            ...s,
+            code: codeLines.slice(0, QA.MAX_CODE_LINES).join("\n") + "\n-- ... (truncado)",
+          };
+          s = modSlides[si];
+        }
+      }
+
+      // ──────────────────────────────────────────────────────
+      // 8. SQL_CODE_INCOMPLETE  [CRITICAL → auto-fix]
+      // ──────────────────────────────────────────────────────
+      if (s.layout === "code" && s.code && qaHasSqlIncomplete(s.code)) {
+        const repaired_code = validateCodeIntegrity(s.code);
+        fixedIssues.push({
+          slideId: id, type: "SQL_CODE_INCOMPLETE", severity: "CRITICAL",
+          message: `SQL incompleto reparado em "${s.title}"`,
+          resolutionStrategy: "Instrução SQL sintetizada a partir do comentário indicativo",
+        });
+        modSlides[si] = { ...s, code: repaired_code };
+        s = modSlides[si];
+      }
+
+      // ──────────────────────────────────────────────────────
+      // 9. LAYOUT_REPETITION  [WARNING → swap layout]
+      // ──────────────────────────────────────────────────────
+      const REPETITION_SKIP: Layout[] = ["module_cover","cover","toc","closing","code"];
+      globalLayouts.push(s.layout);
+      if (
+        !REPETITION_SKIP.includes(s.layout) &&
+        globalLayouts.length > QA.MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE
+      ) {
+        const tail = globalLayouts.slice(-(QA.MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE + 1));
+        if (tail.every((l) => l === s.layout)) {
+          const curItems = nonEmpty(s.items);
+          const swapped: Slide = s.layout === "bullets"
+            ? { ...s, layout: curItems.length >= 5 ? "twocol" : "cards" }
+            : s.layout === "twocol"
+            ? { ...s, layout: "bullets" }
+            : { ...s, layout: "bullets" };
+          if (isRenderableSlide(swapped)) {
+            fixedIssues.push({
+              slideId: id, type: "LAYOUT_REPETITION", severity: "WARNING",
+              message: `Layout "${s.layout}" repetido ${QA.MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE + 1}x — variado para "${swapped.layout}"`,
+              metric: QA.MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE + 1,
+              context: s.layout,
+              resolutionStrategy: `Layout variado: ${s.layout} → ${swapped.layout}`,
+            });
+            modSlides[si] = swapped;
+            globalLayouts[globalLayouts.length - 1] = swapped.layout;
+            s = swapped;
+          }
+        }
+      }
+
+      // ──────────────────────────────────────────────────────
+      // 10. COMPARISON_UNSAFE  [CRITICAL → convert to twocol]
+      // ──────────────────────────────────────────────────────
+      if (s.layout === "comparison") {
+        const lI = nonEmpty(s.leftItems);
+        const rI = nonEmpty(s.rightItems);
+        const hasLong = [...lI, ...rI].some((t) => t.length > 80);
+        const tooMany = lI.length > COMPARISON_MAX_ITEMS || rI.length > COMPARISON_MAX_ITEMS;
+        if (hasLong || tooMany) {
+          const merged = [...lI, ...rI].slice(0, 8);
+          fixedIssues.push({
+            slideId: id, type: "COMPARISON_UNSAFE", severity: "CRITICAL",
+            message: `Comparison visualmente inseguro em "${s.title}" (l=${lI.length} r=${rI.length} hasLong=${hasLong})`,
+            metric: lI.length + rI.length,
+            resolutionStrategy: "Convertido para twocol com items mesclados",
+          });
+          modSlides[si] = { ...s, layout: "twocol", items: merged, leftItems: undefined, rightItems: undefined };
+          s = modSlides[si];
+        }
+      }
+
+      // ──────────────────────────────────────────────────────
+      // 11. FONT_TOO_SMALL_RISK  [WARNING → cap item length]
+      // ──────────────────────────────────────────────────────
+      const FONT_SKIP: Layout[] = ["code","module_cover","cover","toc","closing"];
+      const renderItems = nonEmpty(s.items);
+      if (!FONT_SKIP.includes(s.layout) && renderItems.length >= 5) {
+        const avgLen = renderItems.reduce((a, t) => a + t.length, 0) / renderItems.length;
+        if (avgLen > 120) {
+          fixedIssues.push({
+            slideId: id, type: "FONT_TOO_SMALL_RISK", severity: "WARNING",
+            message: `Risco de fonte <${QA.MIN_BODY_FONT_SIZE}pt em "${s.title}" (${renderItems.length} items, avg ${Math.round(avgLen)} chars)`,
+            metric: Math.round(avgLen),
+            context: `${renderItems.length} items`,
+            resolutionStrategy: "Items truncados a 100 chars para preservar legibilidade",
+          });
+          modSlides[si] = { ...s, items: renderItems.map((t) => t.slice(0, 100)) };
+          s = modSlides[si];
+        }
+      }
+    } // end slide loop
+
+    // Apply drop mask for CRITICALs that could not be repaired
+    repaired[mi] = modSlides.filter((_, si) => keepMask[si]);
+  } // end module loop
+
+  // ── Build report ─────────────────────────────────────────
+  const allFound = [...unfixedIssues, ...fixedIssues];
+  const hasCritical = unfixedIssues.some((i) => i.severity === "CRITICAL");
+  const hasWarning  = allFound.some((i) => i.severity === "WARNING");
+  const status: QAReport["status"] = hasCritical ? "FAILED" : hasWarning ? "WARNING" : "PASSED";
+  const report: QAReport = { status, issues: unfixedIssues, fixedIssues };
+
+  console.log(
+    `[V5-QA] status=${status} | unfixed=${unfixedIssues.length} | fixed=${fixedIssues.length} | total_checks=${allFound.length}`,
+  );
+  for (const issue of unfixedIssues) {
+    console.warn(`[V5-QA] UNFIXED ${issue.severity}:${issue.type} @ ${issue.slideId} — ${issue.message}`);
+  }
+  for (const fix of fixedIssues.slice(0, 10)) { // cap log volume
+    console.log(`[V5-QA] FIXED ${fix.type} @ ${fix.slideId} — ${fix.message}`);
+  }
+  if (fixedIssues.length > 10) {
+    console.log(`[V5-QA] ... and ${fixedIssues.length - 10} more fixed issues`);
+  }
+
+  return { repairedSlides: repaired, report };
+}
+
 /**
  * Returns true if any slide in any module still contains an un-filled
  * placeholder like {{COURSE_TITLE}} or {{BULLET_1}}.
@@ -3455,6 +3820,22 @@ async function runPipeline(
   }
   console.log(
     `[V5-TEMPLATE] Splits applied | template=${resolvedTemplate} | processMax=${caps.processSteps} | takeawaysMax=${caps.takeaways} | cardsMax=${caps.cards}`,
+  );
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // ── PPTX QA ENGINE ───────────────────────────────────────────────────────
+  // Runs after all template splits but before render loop.
+  // Repairs or drops slides that fail the 11-point quality checklist.
+  // WARNINGs are auto-fixed; un-repairable CRITICALs remove the slide.
+  const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
+    allModuleSlides,
+    modules.map((m) => m.content),
+  );
+  for (let i = 0; i < qaSlides.length; i++) {
+    allModuleSlides[i] = qaSlides[i];
+  }
+  console.log(
+    `[V5-QA] Pipeline QA complete: status=${qaReport.status} | issues=${qaReport.issues.length} | fixed=${qaReport.fixedIssues.length}`,
   );
   // ─────────────────────────────────────────────────────────────────────────
 
