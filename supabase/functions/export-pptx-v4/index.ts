@@ -1543,7 +1543,8 @@ function renderTwocol(
   footer(slide, d, num, total);
 }
 
-// ── COMPARISON ── Premium two-column comparison with VS badge and icon rows
+// ── COMPARISON ── Two independent full-height column panels with VS badge
+// Each column is a single panel box (not stacked rows) — clean, corporate look.
 function renderComparison(
   pptx: PptxGenJS,
   slide_: Slide,
@@ -1555,105 +1556,126 @@ function renderComparison(
   bg(slide, d.bg);
   header(slide, d, slide_.label || "COMPARAÇÃO", slide_.title);
 
-  const lItems = (slide_.leftItems || []).slice(0, 4);
-  const rItems = (slide_.rightItems || []).slice(0, 4);
-  const lHeader = slide_.leftHeader || "A";
-  const rHeader = slide_.rightHeader || "B";
+  const lItems  = (slide_.leftItems  || []).slice(0, 4);
+  const rItems  = (slide_.rightItems || []).slice(0, 4);
+  const lHeader = san(slide_.leftHeader  || "A");
+  const rHeader = san(slide_.rightHeader || "B");
 
-  // Layout constants — wider gap for cleaner separation
-  const gapW   = 0.52;
-  const colW   = (CW - gapW) / 2;
-  const lX     = ML;
-  const rX     = ML + colW + gapW;
-  const areaY  = CONTENT_Y + 0.08;
-  const areaH  = FOOTER_Y - areaY - 0.08;
-  const hdrH   = 0.52;
-  const maxRows = Math.max(lItems.length, rItems.length, 1);
-  const rowGap = 0.07;
-  const rowH   = Math.min(0.82, (areaH - hdrH - 0.12 - rowGap * (maxRows - 1)) / maxRows);
+  // ── Layout: two full-height panels flanking a narrow VS spine ──
+  const vsBadgeW = 0.58;                     // total width of centre VS zone
+  const colW     = (CW - vsBadgeW) / 2;      // ≈ 5.727 each
+  const lX       = ML;                        // left panel X
+  const rX       = ML + colW + vsBadgeW;      // right panel X
+  const panelY   = CONTENT_Y + 0.05;
+  const panelH   = FOOTER_Y - panelY - 0.06;
+  const hdrH     = 0.54;                      // coloured header band height
+  const padX     = 0.20;                      // inner horizontal padding
+  const padTop   = 0.16;                      // gap between header and first bullet
+  const dotSz    = 0.11;
+  const maxRows  = Math.max(lItems.length, rItems.length, 1);
+  const bodyH    = panelH - hdrH - padTop;
+  const itemH    = bodyH / Math.max(maxRows, 1);
+  const fontSize = maxRows <= 2 ? 15 : maxRows <= 3 ? T.BODY : T.BODY_SM;
 
-  // ── Column header renderer ──
-  const renderHeader = (x: number, pal: string, label: string) => {
-    // Shadow
+  // ── Draw a single full-height column panel ──
+  const drawPanel = (x: number, pal: string, label: string, items: string[]) => {
+    // Panel shadow (slight depth)
     slide.addShape("roundRect" as any, {
-      x: x + 0.02, y: areaY + 0.03, w: colW, h: hdrH,
-      fill: { color: "000000", transparency: 90 }, rectRadius: 0.10,
+      x: x + 0.03, y: panelY + 0.04, w: colW, h: panelH,
+      fill: { color: "000000", transparency: 92 }, rectRadius: 0.12,
     });
-    // Header pill
+    // Panel body
     slide.addShape("roundRect" as any, {
-      x, y: areaY, w: colW, h: hdrH,
-      fill: { color: pal }, rectRadius: 0.10,
+      x, y: panelY, w: colW, h: panelH,
+      fill: { color: d.surface },
+      line: { color: d.border, width: 0.5 },
+      rectRadius: 0.12,
     });
-    // Bottom square-off
+
+    // Coloured header band (top-rounded, bottom flat via overlay)
+    slide.addShape("roundRect" as any, {
+      x, y: panelY, w: colW, h: hdrH,
+      fill: { color: pal }, rectRadius: 0.12,
+    });
     slide.addShape("rect" as any, {
-      x, y: areaY + hdrH - 0.12, w: colW, h: 0.12,
+      x, y: panelY + hdrH - 0.15, w: colW, h: 0.15,
       fill: { color: pal },
     });
-    slide.addText(san(label), {
-      x: x + 0.15, y: areaY, w: colW - 0.30, h: hdrH,
-      fontSize: 15, fontFace: d.titleFont, bold: true,
+
+    // Header text
+    slide.addText(label, {
+      x: x + padX, y: panelY, w: colW - padX * 2, h: hdrH,
+      fontSize: 16, fontFace: d.titleFont, bold: true,
       color: "FFFFFF", align: "center", valign: "middle",
     });
-  };
 
-  // ── Row renderer ──
-  const renderRows = (items: string[], x: number, pal: string) => {
+    // Thin left accent stripe running down the body
+    slide.addShape("rect" as any, {
+      x: x + 0.015, y: panelY + hdrH, w: 0.04, h: panelH - hdrH - 0.015,
+      fill: { color: pal, transparency: 60 },
+    });
+
+    // Bullet items — clean text with leading dots
     for (let i = 0; i < items.length; i++) {
-      const y = areaY + hdrH + 0.10 + i * (rowH + rowGap);
-      const even = i % 2 === 0;
+      const itemY = panelY + hdrH + padTop + i * itemH;
 
-      // Row card
-      slide.addShape("roundRect" as any, {
-        x, y, w: colW, h: rowH,
-        fill: { color: even ? d.surface : d.bg },
-        line: { color: d.border, width: 0.35 },
-        rectRadius: 0.06,
-      });
-      // Left accent bar
-      slide.addShape("roundRect" as any, {
-        x, y, w: 0.05, h: rowH,
-        fill: { color: pal, transparency: even ? 0 : 30 },
-        rectRadius: 0.06,
-      });
-      // Small icon dot (✓ style) — subtle premium touch
-      const iconSz = 0.18;
+      // Subtle alternating row tint
+      if (i % 2 === 0 && items.length >= 3) {
+        slide.addShape("rect" as any, {
+          x: x + 0.06, y: itemY, w: colW - 0.07, h: itemH,
+          fill: { color: pal, transparency: 94 },
+        });
+      }
+
+      // Bullet dot
       slide.addShape("ellipse" as any, {
-        x: x + 0.13, y: y + rowH / 2 - iconSz / 2,
-        w: iconSz, h: iconSz,
-        fill: { color: pal, transparency: even ? 20 : 50 },
+        x: x + 0.14, y: itemY + itemH / 2 - dotSz / 2,
+        w: dotSz, h: dotSz,
+        fill: { color: pal, transparency: i % 2 === 0 ? 10 : 45 },
       });
-      // Text
+
+      // Item text
       slide.addText(san(items[i]), {
-        x: x + 0.38, y: y + 0.04, w: colW - 0.46, h: rowH - 0.08,
-        fontSize: maxRows <= 3 ? T.BODY : T.BODY_SM,
-        fontFace: d.bodyFont, color: d.text,
-        valign: "middle", lineSpacingMultiple: 1.15, fit: "shrink" as any,
+        x: x + 0.32, y: itemY + 0.04,
+        w: colW - 0.40, h: itemH - 0.08,
+        fontSize, fontFace: d.bodyFont, color: d.text,
+        valign: "middle", lineSpacingMultiple: 1.2, fit: "shrink" as any,
       });
+
+      // Hairline separator (not after last item)
+      if (i < items.length - 1) {
+        slide.addShape("rect" as any, {
+          x: x + padX, y: itemY + itemH - 0.008,
+          w: colW - padX * 2, h: 0.012,
+          fill: { color: d.border },
+        });
+      }
     }
   };
 
-  renderHeader(lX, d.accent,  lHeader);
-  renderHeader(rX, d.accent2, rHeader);
-  renderRows(lItems, lX, d.accent);
-  renderRows(rItems, rX, d.accent2);
+  drawPanel(lX, d.accent,  lHeader, lItems);
+  drawPanel(rX, d.accent2, rHeader, rItems);
 
-  // ── VS badge in centre gap ──
-  const vsY   = areaY + areaH / 2 - 0.22; // centered vertically in full content area
-  const vsCX  = ML + colW + gapW / 2;
-  const vsSz  = 0.44;
-  // Vertical spine
+  // ── VS badge — vertically centred between the two panels ──
+  const vsCX = ML + colW + vsBadgeW / 2;   // horizontal centre of gap
+  const vsSz = 0.46;
+  const vsY  = panelY + panelH / 2 - vsSz / 2;
+
+  // Spine line
   slide.addShape("rect" as any, {
-    x: vsCX - 0.012, y: areaY + 0.08, w: 0.024, h: areaH - 0.16,
+    x: vsCX - 0.01, y: panelY + 0.10,
+    w: 0.02, h: panelH - 0.20,
     fill: { color: d.border },
   });
-  // VS diamond
+  // Circle badge
   slide.addShape("ellipse" as any, {
     x: vsCX - vsSz / 2, y: vsY, w: vsSz, h: vsSz,
-    fill: { color: d.accent3 }, line: { color: d.bg, width: 1.5 },
+    fill: { color: d.accent3 },
+    line: { color: d.bg, width: 2.0 },
   });
   slide.addText("VS", {
     x: vsCX - vsSz / 2, y: vsY, w: vsSz, h: vsSz,
-    fontSize: 10, fontFace: d.titleFont, bold: true,
+    fontSize: 11, fontFace: d.titleFont, bold: true,
     color: "FFFFFF", align: "center", valign: "middle",
   });
 
@@ -2765,14 +2787,43 @@ function repairEmptySlide(s: Slide, moduleContent: string): Slide {
 }
 
 // ── OVERFLOW GUARD ──
-// If a code slide has too many items OR too many code lines → split into
-// Slide A (bullets explanation) + Slide B (code with minimal context)
+// Handles two overflow cases:
+//   1. comparison: >4 items per side or long text → convert to twocol
+//   2. code: too many items or lines → split into explanation + code slides
 const CODE_MAX_LINES = 12;
 const CODE_MAX_ITEMS_WITH_CODE = 3;
+const COMPARISON_MAX_ITEMS = 4;
+const COMPARISON_MAX_CHARS = 68; // max chars per comparison bullet before fallback
 
 function splitOverflowSlides(slides: Slide[]): Slide[] {
   const out: Slide[] = [];
   for (const s of slides) {
+    // ── Comparison overflow → twocol ──
+    if (s.layout === "comparison") {
+      const lItems = nonEmpty(s.leftItems);
+      const rItems = nonEmpty(s.rightItems);
+      const hasTooMany  = lItems.length > COMPARISON_MAX_ITEMS || rItems.length > COMPARISON_MAX_ITEMS;
+      const hasLongText = [...lItems, ...rItems].some((t) => t.length > COMPARISON_MAX_CHARS);
+
+      if (hasTooMany || hasLongText) {
+        // Merge both sides into combined items list for twocol
+        const combined = [...lItems, ...rItems]
+          .map((t) => safeItemText(t, COMPARISON_MAX_CHARS))
+          .slice(0, 8);
+        console.log(`[V5] Comparison overflow → twocol: "${s.title}" (l=${lItems.length} r=${rItems.length} longText=${hasLongText})`);
+        out.push({
+          ...s,
+          layout: "twocol",
+          items: combined,
+          leftItems: undefined,
+          rightItems: undefined,
+        });
+      } else {
+        out.push(s);
+      }
+      continue;
+    }
+
     if (s.layout !== "code") {
       out.push(s);
       continue;

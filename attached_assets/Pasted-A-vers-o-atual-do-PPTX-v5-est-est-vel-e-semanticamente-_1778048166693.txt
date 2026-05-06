@@ -1,0 +1,142 @@
+A versão atual do PPTX v5 está estável e semanticamente muito melhor, mas o layout COMPARISON piorou visualmente e está reduzindo a percepção premium do deck.
+
+O problema principal agora NÃO é conteúdo técnico.
+É qualidade visual e composição dos slides comparison.
+
+Objetivo desta etapa:
+corrigir definitivamente o layout comparison e finalizar o polimento premium do motor.
+
+1. REFAZER O LAYOUT COMPARISON
+
+O layout atual está errado visualmente:
+- conteúdo empilhado;
+- colunas sem separação clara;
+- VS deslocado;
+- leitura confusa;
+- aparência de tabela improvisada.
+
+Isso deve ser tratado como bug de renderização.
+
+REFAZER o layout comparison usando estrutura REAL de duas colunas.
+
+Estrutura obrigatória:
+
+┌───────────────┐   VS   ┌───────────────┐
+│ Coluna Esquerda│       │Coluna Direita │
+│ bullets        │       │bullets        │
+└───────────────┘       └───────────────┘
+
+Implementar:
+
+- duas caixas independentes;
+- alinhamento vertical consistente;
+- largura equilibrada;
+- spacing interno;
+- padding;
+- cabeçalhos fortes;
+- VS centralizado verticalmente;
+- contraste leve entre os lados;
+- bullets alinhados;
+- evitar empilhamento vertical.
+
+Nunca renderizar comparison como:
+- bloco único;
+- tabela textual;
+- sequência vertical.
+
+2. MELHORAR HIERARQUIA VISUAL DO COMPARISON
+
+Aplicar:
+- títulos mais destacados;
+- separação clara entre lados;
+- contraste leve;
+- mais respiro horizontal;
+- bullets curtos;
+- máximo 4 bullets por lado.
+
+Opcional:
+- ícones leves:
+  ✓
+  ⚡
+  ⚠
+
+Sem exagero visual.
+
+Objetivo:
+aparência corporativa moderna e limpa.
+
+3. REGRAS DE FALLBACK
+
+Se o comparison tiver:
+- mais de 4 bullets por lado;
+- texto muito longo;
+- desalinhamento visual provável;
+
+ENTÃO:
+- dividir em dois slides;
+OU
+- converter automaticamente para TWOCOL.
+
+Nunca manter comparison visualmente quebrado.
+
+4. CORRIGIR OBJETIVO PERSISTENTE DO MÓDULO 5
+
+Problema atual:
+"Compreender relacionamentos e Funções Avançadas."
+
+Substituir automaticamente por algo semanticamente correto:
+- "Compreender relacionamentos entre tabelas e funções SQL avançadas."
+
+Implementar:
+- normalizeLearningObjective() mais rígido para tópicos vagos;
+- detectar:
+  "funções avançadas"
+  "conceitos gerais"
+  "tópicos avançados"
+sem contexto técnico.
+
+5. PADRONIZAR TAKEAWAYS/RESUMOS
+
+Os slides finais dos módulos estão bons, mas ainda variam pouco.
+
+Melhorar:
+- alternar automaticamente:
+  TAKEAWAYS
+  APRENDIZADOS
+  PRINCIPAIS CONCEITOS
+  O QUE VOCÊ APRENDEU
+  RESULTADOS
+
+Sem repetir excessivamente.
+
+6. POLIMENTO PREMIUM FINAL
+
+Aplicar refinamentos globais:
+
+- mais alinhamento;
+- spacing consistente;
+- padding equilibrado;
+- evitar blocos comprimidos;
+- manter padrão corporativo;
+- melhorar leitura dos exemplos SQL;
+- melhorar consistência visual entre módulos.
+
+7. CRITÉRIO DE ACEITE
+
+Após implementação:
+- comparison obrigatoriamente em duas colunas reais;
+- VS centralizado;
+- nenhum comparison empilhado;
+- nenhum código SQL incompleto;
+- nenhum objetivo genérico;
+- nenhum texto truncado;
+- nenhum placeholder residual;
+- PPTX continua estável;
+- manter diagram/process/code/twocol;
+- manter densidade adaptativa;
+- aumentar percepção premium geral.
+
+IMPORTANTE:
+Não fazer refactor grande.
+Não migrar para v6.
+Fazer apenas patch cirúrgico no v5 atual.
