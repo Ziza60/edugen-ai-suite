@@ -1923,43 +1923,23 @@ async function generateModuleSlides(
         .slice(0, 32)
         .toUpperCase(),
       items: Array.isArray(s.items)
-        ? s.items.slice(0, 6).map((x: any) =>
-            String(x)
-              .replace(/\\n\s*\d*\.?/g, "")
-              .replace(/\n\s*\d*\.?/g, "")
-              .replace(/\\t/g, " ")
-              .replace(/\s{2,}/g, " ")
-              .trim()
-              .slice(0, 110)
-          )
+        ? s.items.slice(0, 6)
+            .map((x: any) => globalSanitize(String(x)).slice(0, 110))
+            .filter((x: string) => x.length > 0)
         : [],
       code: s.code ? String(s.code).slice(0, 1200) : undefined,
       codeLabel: s.codeLabel ? String(s.codeLabel).slice(0, 20) : "Python",
-      leftHeader: s.leftHeader ? String(s.leftHeader).slice(0, 40) : undefined,
-      rightHeader: s.rightHeader
-        ? String(s.rightHeader).slice(0, 40)
-        : undefined,
+      leftHeader: s.leftHeader ? globalSanitize(String(s.leftHeader)).slice(0, 40) : undefined,
+      rightHeader: s.rightHeader ? globalSanitize(String(s.rightHeader)).slice(0, 40) : undefined,
       leftItems: Array.isArray(s.leftItems)
-        ? s.leftItems.slice(0, 4).map((x: any) =>
-            String(x)
-              .replace(/\\n\s*\d*\.?/g, "")
-              .replace(/\n\s*\d*\.?/g, "")
-              .replace(/\\t/g, " ")
-              .replace(/\s{2,}/g, " ")
-              .trim()
-              .slice(0, 90)
-          )
+        ? s.leftItems.slice(0, 4)
+            .map((x: any) => globalSanitize(String(x)).slice(0, 90))
+            .filter((x: string) => x.length > 0)
         : undefined,
       rightItems: Array.isArray(s.rightItems)
-        ? s.rightItems.slice(0, 4).map((x: any) =>
-            String(x)
-              .replace(/\\n\s*\d*\.?/g, "")
-              .replace(/\n\s*\d*\.?/g, "")
-              .replace(/\\t/g, " ")
-              .replace(/\s{2,}/g, " ")
-              .trim()
-              .slice(0, 90)
-          )
+        ? s.rightItems.slice(0, 4)
+            .map((x: any) => globalSanitize(String(x)).slice(0, 90))
+            .filter((x: string) => x.length > 0)
         : undefined,
       moduleIndex,
     }));
@@ -2153,21 +2133,108 @@ async function repairPptxPackage(
 // SECTION 6: PIPELINE
 // ═══════════════════════════════════════════════════════════
 
+// ── GLOBAL SANITISATION ──
+// Strips literal escape sequences, structural emojis, markdown markers and
+// noise phrases before any text reaches a renderer or validator.
+const STRUCTURAL_EMOJI_RE =
+  /[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}\uFE00-\uFE0F\u200D\u{20D0}-\u{20FF}]/gu;
+const MARKDOWN_BOLD_RE   = /\*{1,2}([^*]+)\*{1,2}/g;
+const MARKDOWN_ITALIC_RE = /_{1,2}([^_]+)_{1,2}/g;
+const MODULE_NOISE_RE    =
+  /\b(m[oó]dulo\s+\d+|objetivo\s+do\s+m[oó]dulo|fundamentos|como\s+funciona|conceitos\s+b[aá]sicos)\b/gi;
+
+function globalSanitize(text: string): string {
+  if (!text || typeof text !== "string") return "";
+  return san(
+    text
+      .replace(/\\n/g, " ").replace(/\\t/g, " ")     // literal escape sequences
+      .replace(STRUCTURAL_EMOJI_RE, "")               // structural emojis
+      .replace(MARKDOWN_BOLD_RE,   "$1")              // **bold** → plain
+      .replace(MARKDOWN_ITALIC_RE, "$1")              // _italic_ → plain
+      .replace(MODULE_NOISE_RE,    "")                // noise phrases
+      .replace(/\s{2,}/g, " ")
+      .trim()
+  );
+}
+
+// Safe title: never cuts mid-word, max 60 chars by default
+function sanitizeTitle(title: string, max = 60): string {
+  const t = globalSanitize(title);
+  if (t.length <= max) return t;
+  const boundary = t.slice(0, max + 15).lastIndexOf(" ");
+  return boundary > max * 0.6 ? t.slice(0, boundary) : t.slice(0, max);
+}
+
 // ── TITLE GARBAGE CLEANUP ──
-// Removes generic AI-generated structural titles that add no value
 const GARBAGE_TITLE_RE =
   /^(m[oó]dulo\s+\d+|objetivo\s+(do\s+)?m[oó]dulo|introdu[cç][aã]o\s+ao\s+m[oó]dulo|vis[aã]o\s+geral\s+do\s+m[oó]dulo|conte[uú]do\s+do\s+m[oó]dulo|overview|introduction|module\s+\d+|fundamentos|conceitos\s+b[aá]sicos)$/i;
 
 function cleanSlideTitle(title: string, moduleTitle: string): string {
-  const t = title.trim();
+  const t = sanitizeTitle(title.trim());
   if (
+    !t ||
     GARBAGE_TITLE_RE.test(t) ||
     t.toLowerCase() === moduleTitle.trim().toLowerCase()
   ) {
-    // Try to form a more specific title from the module title
-    return moduleTitle.slice(0, 60);
+    return sanitizeTitle(moduleTitle);
   }
   return t;
+}
+
+// ── LAYOUT HEURISTIC SELECTOR ──
+// Applies BEFORE render to pick a better layout based on title keywords and
+// item count. Never changes structural or code slides.
+const SKIP_HEURISTIC: Layout[] = ["cover","toc","module_cover","closing","code","takeaways"];
+
+function chooseLayout(slide: Slide, prevLayouts: Layout[]): Slide {
+  if (SKIP_HEURISTIC.includes(slide.layout)) return slide;
+
+  const title = (slide.title || "").toLowerCase();
+  const useful = nonEmpty(slide.items);
+  const n = useful.length;
+  const allHaveColon = n >= 2 && useful.every((i) => i.includes(": "));
+
+  let chosen: Layout = slide.layout;
+
+  // Comparison triggers
+  if (/\bvs\.?\b|versus|\bdiferença|\bcomparação|\bcontraste|\bantes.+depois\b|\bpros.+cons\b/i.test(title)) {
+    chosen = "comparison";
+  }
+  // Process / flow triggers
+  else if (/\bpasso\b|\betapa\b|\bfluxo\b|\bprocesso\b|\bprimeiro\b|\bdepois\b|\bpor fim\b|\bsequência\b|\bciclo\b|\bpipeline\b/i.test(title)) {
+    if (n >= 3 && n <= 5) chosen = "process";
+  }
+  // 6+ items → two columns
+  else if (n >= 6) {
+    chosen = "twocol";
+  }
+  // 2-4 items all "Term: explanation" → cards
+  else if (allHaveColon && n >= 2 && n <= 4) {
+    chosen = "cards";
+  }
+
+  // Anti-repetition: if this would make 3 consecutive same-layout, revert
+  if (
+    prevLayouts.length >= 2 &&
+    prevLayouts[prevLayouts.length - 1] === chosen &&
+    prevLayouts[prevLayouts.length - 2] === chosen
+  ) {
+    // Force variety: bullets↔twocol, process↔timeline
+    if (chosen === "bullets" && n >= 5) chosen = "twocol";
+    else if (chosen === "bullets" && n >= 2) chosen = "cards";
+    else if (chosen === "twocol") chosen = "bullets";
+    else if (chosen === "process") chosen = "timeline";
+    else chosen = "bullets"; // last resort
+  }
+
+  if (chosen === slide.layout) return slide;
+
+  // Guard: make sure the new layout will actually pass isRenderableSlide
+  const candidate = { ...slide, layout: chosen as Layout };
+  if (!isRenderableSlide(candidate)) return slide; // revert if not renderable
+
+  console.log(`[V5] chooseLayout: "${slide.title}" ${slide.layout}→${chosen} (${n} items)`);
+  return candidate;
 }
 
 // ── LAYOUT VARIETY ENFORCEMENT ──
@@ -2175,35 +2242,41 @@ function cleanSlideTitle(title: string, moduleTitle: string): string {
 const VARIETY_SWAPPABLE: Layout[] = ["bullets", "twocol"];
 
 function applyLayoutVariety(slides: Slide[]): Slide[] {
-  const out: Slide[] = [...slides];
+  // Pass 1 — heuristic layout selection with running history
+  const withHeuristic: Slide[] = [];
+  const history: Layout[] = [];
+  for (const s of slides) {
+    const picked = chooseLayout(s, history);
+    withHeuristic.push(picked);
+    history.push(picked.layout);
+  }
+
+  // Pass 2 — anti-repetition safety net (same as before)
+  const out: Slide[] = [...withHeuristic];
   for (let i = 2; i < out.length - 1; i++) {
-    // skip last (takeaways)
-    const cur = out[i].layout;
+    const cur   = out[i].layout;
     const prev1 = out[i - 1].layout;
     const prev2 = out[i - 2].layout;
-    if (!VARIETY_SWAPPABLE.includes(cur) || cur !== prev1 || cur !== prev2)
-      continue;
+    if (!VARIETY_SWAPPABLE.includes(cur) || cur !== prev1 || cur !== prev2) continue;
 
-    const items = out[i].items || [];
+    const items = nonEmpty(out[i].items);
     if (cur === "bullets") {
-      if (items.length >= 3 && items.length <= 4) {
-        // Convert to cards if items fit "Term: Description" style — just use as-is
-        out[i] = { ...out[i], layout: "cards" };
-        console.log(`[V5] Variety: converted slide ${i + 1} bullets→cards`);
-      } else if (items.length >= 5) {
+      if (items.length >= 5) {
         out[i] = { ...out[i], layout: "twocol" };
-        console.log(`[V5] Variety: converted slide ${i + 1} bullets→twocol`);
+        console.log(`[V5] Variety pass2: slide ${i + 1} bullets→twocol`);
+      } else if (items.length >= 2) {
+        out[i] = { ...out[i], layout: "cards" };
+        console.log(`[V5] Variety pass2: slide ${i + 1} bullets→cards`);
       }
     } else if (cur === "twocol") {
       out[i] = { ...out[i], layout: "bullets" };
-      console.log(`[V5] Variety: converted slide ${i + 1} twocol→bullets`);
+      console.log(`[V5] Variety pass2: slide ${i + 1} twocol→bullets`);
     }
   }
   return out;
 }
 
 // ── CONTENT VALIDATION & REPAIR ──
-// Layouts that are self-sufficient (no items/code required)
 const SELF_SUFFICIENT_LAYOUTS: Layout[] = [
   "cover",
   "toc",
@@ -2211,22 +2284,41 @@ const SELF_SUFFICIENT_LAYOUTS: Layout[] = [
   "closing",
 ];
 
+// Helper: non-empty strings from an array
+function nonEmpty(arr: string[] | undefined): string[] {
+  return (arr || []).filter((s) => s.trim().length > 0);
+}
+
+// Per-layout minimum thresholds — stricter than v4 to prevent empty shapes.
 function isRenderableSlide(s: Slide): boolean {
   if (!s.title?.trim()) return false;
   if (SELF_SUFFICIENT_LAYOUTS.includes(s.layout)) return true;
-  if (s.layout === "comparison") {
-    const hasLeft =
-      Array.isArray(s.leftItems) &&
-      s.leftItems.some((i) => i.trim().length > 0);
-    const hasRight =
-      Array.isArray(s.rightItems) &&
-      s.rightItems.some((i) => i.trim().length > 0);
-    return hasLeft || hasRight;
+  switch (s.layout) {
+    case "bullets":
+    case "takeaways":
+      // Need ≥3 real items so numbered rows don't render blank
+      return nonEmpty(s.items).length >= 3;
+    case "process":
+    case "timeline":
+      // Need ≥3 steps so step badges aren't empty
+      return nonEmpty(s.items).length >= 3;
+    case "twocol":
+      // Need ≥4 items to populate both columns meaningfully
+      return nonEmpty(s.items).length >= 4;
+    case "cards":
+      // Need ≥2 cards with content (title or body)
+      return nonEmpty(s.items).length >= 2;
+    case "comparison":
+      // Need ≥2 items in EACH column
+      return nonEmpty(s.leftItems).length >= 2 && nonEmpty(s.rightItems).length >= 2;
+    case "code":
+      return typeof s.code === "string" && s.code.trim().length > 0;
+    default: {
+      const hasItems = nonEmpty(s.items).length > 0;
+      const hasCode  = typeof s.code === "string" && s.code.trim().length > 0;
+      return hasItems || hasCode;
+    }
   }
-  const hasItems =
-    Array.isArray(s.items) && s.items.some((i) => i.trim().length > 0);
-  const hasCode = typeof s.code === "string" && s.code.trim().length > 0;
-  return hasItems || hasCode;
 }
 
 function repairEmptySlide(s: Slide, moduleContent: string): Slide {
@@ -2234,8 +2326,8 @@ function repairEmptySlide(s: Slide, moduleContent: string): Slide {
 
   // Extract fallback bullets from module content
   const bullets = [...(moduleContent || "").matchAll(/^[-*•]\s+(.+)$/gm)]
-    .map((m) => m[1].replace(/\*{1,2}/g, "").trim())
-    .filter((b) => b.length >= 15 && b.length <= 90);
+    .map((m) => globalSanitize(m[1]))
+    .filter((b) => b.length >= 15 && b.length <= 100);
 
   const sentences = (moduleContent || "")
     .replace(/#{1,6}\s*/g, "")
@@ -2243,16 +2335,20 @@ function repairEmptySlide(s: Slide, moduleContent: string): Slide {
     .replace(/[`_]/g, "")
     .split(/[.!?]\s+/)
     .map((s) => s.trim())
-    .filter((s) => s.length >= 20 && s.length <= 90)
-    .slice(0, 6);
+    .filter((s) => s.length >= 20 && s.length <= 100)
+    .slice(0, 8);
 
-  const pool = bullets.length >= 2 ? bullets : sentences;
-  const repaired = pool.slice(0, 4);
+  const pool = bullets.length >= 3 ? bullets : sentences;
+  // Need at least 3 items to satisfy new isRenderableSlide threshold
+  const repaired = pool.slice(0, 5);
 
-  if (repaired.length === 0) return s; // Can't repair, will be filtered out
+  if (repaired.length < 3) {
+    console.warn(`[V5] Cannot repair slide "${s.title}" — insufficient content, dropping`);
+    return s; // will be filtered out
+  }
 
   console.warn(
-    `[V5] Repaired empty slide: "${s.title}" → injected ${repaired.length} fallback bullets`,
+    `[V5] Repaired slide "${s.title}" (${s.layout}) → bullets with ${repaired.length} items`,
   );
   return { ...s, layout: "bullets", items: repaired };
 }
