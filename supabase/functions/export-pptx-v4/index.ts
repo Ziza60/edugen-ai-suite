@@ -3154,8 +3154,9 @@ function extractCompetencies(content: string, moduleTitle?: string): string[] {
 // SECTION 6B: TEMPLATE SYSTEM HELPERS
 // ═══════════════════════════════════════════════════════════
 
-// Regex that matches any un-filled placeholder like {{COURSE_TITLE}}, {{BULLET_1}}, etc.
-const PLACEHOLDER_RE = /\{\{[A-Z_0-9]+\}\}/;
+// Regex that matches un-filled template placeholders like {{COURSE_TITLE}}, {{BULLET_1}}.
+// NOTE: different from PLACEHOLDER_RE (line ~2662) which filters bad content items.
+const TEMPLATE_PH_RE = /\{\{[A-Z_0-9]+\}\}/;
 
 /**
  * Picks the best template for this course.
@@ -3264,7 +3265,7 @@ function hasResidualPlaceholders(slides: Slide[][]): boolean {
         ...(s.rightItems ?? []),
       ];
       for (const t of texts) {
-        if (t && PLACEHOLDER_RE.test(t)) return true;
+        if (t && TEMPLATE_PH_RE.test(t)) return true;
       }
     }
   }
