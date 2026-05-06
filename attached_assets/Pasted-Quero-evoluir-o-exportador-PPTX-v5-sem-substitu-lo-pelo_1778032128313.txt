@@ -1,0 +1,92 @@
+Quero evoluir o exportador PPTX v5 sem substituí-lo pelo v6 inteiro.
+
+Objetivo:
+Manter o v5 como base estável e trazer apenas 3 melhorias do v6, sem criar regressões, sem slides vazios e sem alterar billing, rotas públicas ou schema do Supabase.
+
+Implementar nesta ordem:
+
+1. VALIDAÇÃO FORTE DE SLIDES ANTES DO RENDER
+
+Criar uma função isRenderableSlide(slide) para impedir que slides comuns sejam renderizados sem conteúdo útil.
+
+Regras:
+- COVER, TOC, MODULE_COVER e CLOSING sempre podem renderizar.
+- BULLETS e TAKEAWAYS precisam ter pelo menos 3 items não vazios.
+- PROCESS precisa ter pelo menos 3 steps não vazios.
+- CARDS_2, CARDS_3 e CARDS_4 precisam ter pelo menos 2 cards com title ou body útil.
+- COMPARISON precisa ter pelo menos 2 itens válidos em cada coluna.
+- TWOCOL precisa ter pelo menos 4 itens totais.
+- TIMELINE precisa ter pelo menos 3 itens.
+
+Nunca usar while(...push("")) para preencher slots vazios se o template ainda exibir shape, número ou card sem texto.
+
+Se um slide comum vier vazio:
+- tentar reparar com repairSlideFromModuleContent(slide, moduleContent);
+- se não for possível reparar, remover o slide;
+- recalcular o total de slides depois da filtragem.
+
+2. TRAZER TEMPLATE PPTX FIXO DO V6 DE FORMA CONTROLADA
+
+Adicionar suporte a template .pptx com placeholders, mas inicialmente apenas para estes layouts:
+- COVER
+- TOC
+- MODULE_COVER
+- BULLETS
+- TAKEAWAYS
+- CLOSING
+
+Não habilitar ainda PROCESS, COMPARISON, TWOCOL, TIMELINE e CARDS no template fixo até a validação estar estável.
+
+A ideia é trocar gradualmente o render visual, não trocar o pipeline inteiro.
+
+Manter o v5 como pipeline principal:
+Markdown do banco
+→ normalização
+→ SlidePlan
+→ validação/reparo
+→ render usando template quando disponível
+→ fallback v5 antigo se o template falhar.
+
+3. SELEÇÃO AUTOMÁTICA DE LAYOUT COM HEURÍSTICA SIMPLES
+
+Adicionar função chooseLayout(slide), aplicada antes do render, para aumentar variedade visual sem depender totalmente do Gemini.
+
+Regras:
+- Se detectar termos como "vs", "versus", "diferença", "comparação", "contraste", usar COMPARISON.
+- Se detectar "passo", "etapa", "fluxo", "processo", "primeiro", "depois", "por fim", usar PROCESS.
+- Se houver 6 ou mais items úteis, usar TWOCOL.
+- Se houver 2 a 4 conceitos curtos, usar CARDS_2, CARDS_3 ou CARDS_4.
+- Caso contrário, manter BULLETS.
+- Nunca repetir o mesmo layout mais de 2 vezes seguidas, salvo quando houver código real.
+
+4. SANITIZAÇÃO GLOBAL
+
+Antes de validar e renderizar, limpar:
+- "\n" literal;
+- emojis estruturais;
+- "Módulo X";
+- "Objetivo do Módulo";
+- "Fundamentos";
+- "Como funciona";
+- markdown residual como "**texto**", quando não for renderizado como negrito;
+- itens vazios;
+- títulos cortados no meio da palavra.
+
+Títulos:
+- nunca cortar palavra no meio;
+- máximo de 60 caracteres;
+- se precisar encurtar, reescrever semanticamente.
+
+5. CRITÉRIO DE ACEITE
+
+Depois da implementação:
+- nenhum slide comum vazio;
+- nenhum número/etapa/card sem texto;
+- nenhum título cortado;
+- rodapé com total correto;
+- v5 continua funcionando mesmo se o template falhar;
+- gerar um PPTX de teste com SQL e comparar com o v5 anterior.
+
+E acrescente esta instrução final para evitar que ele faça mudança grande demais:
+
+Não migre o v5 inteiro para v6. Faça um patch incremental e seguro. Primeiro implemente validação/reparo
