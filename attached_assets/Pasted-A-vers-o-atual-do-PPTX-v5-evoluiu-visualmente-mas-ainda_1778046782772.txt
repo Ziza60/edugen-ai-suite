@@ -1,0 +1,178 @@
+A versão atual do PPTX v5 evoluiu visualmente, mas ainda existem erros persistentes que NÃO podem mais acontecer em um exportador profissional.
+
+Esta etapa é focada em:
+- robustez semântica;
+- integridade do conteúdo;
+- qualidade premium consistente.
+
+Os problemas abaixo devem ser tratados como BUGS CRÍTICOS do pipeline, não como ajustes cosméticos.
+
+1. PROIBIR CÓDIGO SQL INCOMPLETO
+
+Problema atual:
+- o slide termina com:
+  "-- Remove a tabela Autores"
+  mas NÃO mostra:
+  "DROP TABLE Autores;"
+
+Isso é inaceitável em material técnico.
+
+Implementar:
+validateCodeIntegrity(code)
+
+Regras:
+- exemplos SQL devem ser semanticamente completos;
+- comandos iniciados devem terminar corretamente;
+- comentários explicativos não podem substituir o comando real;
+- se houver:
+  CREATE
+  ALTER
+  DROP
+  DELETE
+  UPDATE
+  INSERT
+  JOIN
+  GROUP BY
+  etc.,
+  validar fechamento lógico.
+
+Se detectar exemplo incompleto:
+- completar automaticamente;
+- ou remover o trecho inválido.
+
+Nunca renderizar código técnico incompleto.
+
+2. MELHORAR LAYOUT DE COMPARAÇÃO (COMPARISON)
+
+Problema atual:
+- slide DELETE vs TRUNCATE ficou visualmente confuso;
+- o “VS” ficou deslocado;
+- os blocos perderam separação clara.
+
+Implementar redesign do layout comparison:
+
+Estrutura obrigatória:
+[COLUNA ESQUERDA]  VS  [COLUNA DIREITA]
+
+Regras:
+- colunas simétricas;
+- largura equilibrada;
+- alinhamento vertical consistente;
+- bullets alinhados;
+- VS centralizado;
+- contraste leve entre lados;
+- espaçamento maior;
+- nunca deixar visual “misturado”.
+
+Adicionar:
+- cabeçalhos mais fortes;
+- opcionalmente ícones leves:
+  ⚡
+  ✓
+  ⚠
+
+Objetivo:
+parecer slide corporativo/profissional, não tabela improvisada.
+
+3. CORRIGIR OBJETIVOS DE APRENDIZAGEM PERSISTENTES
+
+Problema atual:
+- “Compreender relacionamentos e Funções Avançadas.”
+
+Ainda está genérico e mal contextualizado.
+
+Implementar:
+normalizeLearningObjective() mais rígido.
+
+Regras:
+- objetivo deve ter:
+  VERBO + OBJETO + CONTEXTO TÉCNICO;
+- proibir frases vagas;
+- detectar termos genéricos como:
+  "funções avançadas"
+  "conceitos gerais"
+  "tópicos avançados"
+sem contexto.
+
+Exemplo correto:
+- “Compreender relacionamentos entre tabelas e funções SQL avançadas.”
+
+Nunca deixar objetivo genérico passar para renderização.
+
+4. PROIBIR TÍTULOS FRAGMENTADOS
+
+Problema atual:
+- “de Relacionamento e Análise SQL”
+
+Isso parece fragmento residual.
+
+Implementar:
+validateTitleIntegrity(title)
+
+Regras:
+- título nunca pode começar com:
+  de
+  da
+  do
+  para
+  com
+  e
+- se detectar fragmento:
+  reconstruir semanticamente;
+- fallback usando conteúdo do slide.
+
+Exemplo correto:
+- “Relacionamentos e Análise SQL”
+
+5. VALIDAR CONTEÚDO ANTES DO RENDER
+
+Criar etapa obrigatória:
+semanticQualityGate(slide)
+
+Essa etapa deve bloquear slides que tenham:
+- títulos fragmentados;
+- código incompleto;
+- objetivos vagos;
+- comparação desalinhada;
+- texto truncado;
+- placeholders vazios;
+- conteúdo residual.
+
+Se o slide falhar:
+- reparar automaticamente;
+- ou regenerar;
+- ou remover.
+
+Nunca renderizar slide claramente defeituoso.
+
+6. MELHORAR PERCEPÇÃO PREMIUM
+
+Sem exageros gráficos.
+
+Implementar:
+- mais respiro vertical;
+- melhor alinhamento;
+- padding consistente;
+- comparação mais elegante;
+- SQL melhor formatado;
+- evitar sensação de “texto empilhado”.
+
+Objetivo:
+aparência corporativa moderna.
+
+7. CRITÉRIO DE ACEITE (OBRIGATÓRIO)
+
+Após implementação:
+- nenhum código SQL incompleto;
+- nenhum slide comparison visualmente confuso;
+- nenhum objetivo genérico;
+- nenhum título fragmentado;
+- nenhum texto truncado;
+- nenhum placeholder residual;
+- nenhum slide vazio;
+- PPTX continua estável;
+- manter densidade adaptativa;
+- manter diagram/process/comparison/code.
+
+Não tratar isso como refinamento opcional.
+Tratar como correção obrigatória de qualidade do motor.

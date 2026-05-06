@@ -679,9 +679,9 @@ function renderBullets(
     return;
   }
 
-  const gap = 0.1;
+  const gap = 0.13;
   const totalGap = gap * (items.length - 1);
-  const itemH = Math.min(1.4, Math.max(0.55, (CONTENT_H - totalGap) / items.length));
+  const itemH = Math.min(1.4, Math.max(0.58, (CONTENT_H - totalGap) / items.length));
   const totalBlockH = items.length * itemH + totalGap;
   const startY = CONTENT_Y + Math.max(0, (CONTENT_H - totalBlockH) / 2);
   const fontSize = items.length <= 3 ? 18 : items.length <= 4 ? 16 : 14;
@@ -1638,7 +1638,7 @@ function renderComparison(
   renderRows(rItems, rX, d.accent2);
 
   // ── VS badge in centre gap ──
-  const vsY   = areaY + hdrH / 2 - 0.22;
+  const vsY   = areaY + areaH / 2 - 0.22; // centered vertically in full content area
   const vsCX  = ML + colW + gapW / 2;
   const vsSz  = 0.44;
   // Vertical spine
@@ -2079,7 +2079,7 @@ async function generateModuleSlides(
             .map((x: any) => safeItemText(globalSanitize(String(x)), 105))
             .filter((x: string) => x.length > 0)
         : [],
-      code: s.code ? String(s.code).slice(0, 1200) : undefined,
+      code: s.code ? validateCodeIntegrity(String(s.code).slice(0, 1200)) : undefined,
       codeLabel: s.codeLabel ? String(s.codeLabel).slice(0, 20) : "Python",
       leftHeader: s.leftHeader ? globalSanitize(String(s.leftHeader)).slice(0, 40) : undefined,
       rightHeader: s.rightHeader ? globalSanitize(String(s.rightHeader)).slice(0, 40) : undefined,
@@ -2413,18 +2413,18 @@ function cleanSlideTitle(title: string, moduleTitle: string): string {
   return normalizeSlideTitle(raw, moduleTitle);
 }
 
-// ─────────────────────────────────────────────────────────
-// POLISHING UTILITIES
-// ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// POLISHING UTILITIES  (Patches 5–12 + Quality Gate)
+// ═══════════════════════════════════════════════════════════
 
-// Ensure text is cut only at a word boundary (never mid-word).
+// ── 1. Safe word-boundary truncation ──
 function safeItemText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const cut = text.lastIndexOf(" ", maxChars - 1);
   return cut > maxChars * 0.55 ? text.slice(0, cut) + "…" : text.slice(0, maxChars) + "…";
 }
 
-// Rotating labels for takeaway/summary slides — avoids repetition across modules.
+// ── 2. Rotating takeaway/summary labels ──
 const SUMMARY_LABELS = [
   "PRINCIPAIS CONCEITOS",
   "APRENDIZADOS",
@@ -2439,48 +2439,138 @@ function rotateSummaryLabel(moduleIndex: number): string {
   return SUMMARY_LABELS[moduleIndex % SUMMARY_LABELS.length];
 }
 
-// Expand vague objective terms using module context.
-// e.g. "funções avançadas" → "funções SQL avançadas em consultas"
+// ── 3. Vague objective expansion ──
+// Enriches generic phrases with technical context BEFORE normalization.
 function expandVagueObjective(text: string, moduleTitle: string): string {
-  const topic = detectModuleTopic(moduleTitle);
+  const topicLabel = moduleTitle || "SQL";
   return text
-    .replace(/\bfunções avançadas\b/gi, "funções SQL avançadas")
-    .replace(/\bconceitos (gerais|avançados)\b/gi, `conceitos de ${moduleTitle || "SQL"}`)
-    .replace(/\bcoisas avançadas\b/gi, "técnicas avançadas de SQL")
-    .replace(/\bfundamentos (gerais|básicos)\b/gi, "fundamentos de banco de dados relacionais")
-    .replace(/\bRelacionamentos e Funções Avançadas\b/gi, "relacionamentos entre tabelas e funções SQL avançadas")
-    .replace(/\best(a|e) módulo\b/gi, moduleTitle || "este módulo");
+    .replace(/\bFunções Avançadas\b/g,           "funções SQL avançadas e agregações")
+    .replace(/\bfunções avançadas\b/gi,           "funções SQL avançadas")
+    .replace(/\btópicos avançados\b/gi,           `técnicas avançadas de ${topicLabel}`)
+    .replace(/\bconceitos (gerais|avançados|básicos)\b/gi, `conceitos de ${topicLabel}`)
+    .replace(/\bcoisas avançadas\b/gi,            "técnicas avançadas de SQL")
+    .replace(/\bfundamentos (gerais|básicos)\b/gi,"fundamentos de banco de dados relacionais")
+    .replace(/\bRelacionamentos e Funções Avançadas\b/gi,
+             "relacionamentos entre tabelas e funções SQL avançadas")
+    .replace(/\brelacionamentos e funções\b/gi,   "relacionamentos entre tabelas e funções SQL")
+    .replace(/\brelacionamentos\b(?!\s+(entre|de|com|e\s))/gi, "relacionamentos entre tabelas")
+    .replace(/\best(a|e) módulo\b/gi,             topicLabel);
 }
 
-// Detect simple title/content mismatches and correct the title.
-// Prevents "Criando e Modificando Estruturas" when slide only shows CREATE.
+// ── 4. Semantic title ↔ content alignment ──
+// Corrects compound DDL/DML titles when only one command is present in the body.
 function validateSemanticAlignment(slide: Slide, moduleTitle: string): Slide {
   if (["cover","toc","module_cover","closing","takeaways"].includes(slide.layout)) return slide;
   const title = slide.title || "";
   const body  = [...(slide.items || []), slide.code || ""].join(" ");
 
-  // DDL compound title but only one operation present
   if (/criando e (modificando|alterando)/i.test(title)) {
-    const hasCreate   = /\bCREATE\b/i.test(body);
-    const hasAlter    = /\bALTER\b/i.test(body);
-    const hasDrop     = /\bDROP\b|\bTRUNCATE\b/i.test(body);
-    if (hasCreate && !hasAlter && !hasDrop) {
+    const hasCreate = /\bCREATE\b/i.test(body);
+    const hasAlter  = /\bALTER\b/i.test(body);
+    const hasDrop   = /\bDROP\b|\bTRUNCATE\b/i.test(body);
+    if (hasCreate && !hasAlter && !hasDrop)
       return { ...slide, title: cleanSlideTitle("Criando Tabelas com CREATE TABLE", moduleTitle) };
-    }
-    if (hasAlter && !hasCreate && !hasDrop) {
+    if (hasAlter && !hasCreate && !hasDrop)
       return { ...slide, title: cleanSlideTitle("Alterando Estruturas com ALTER TABLE", moduleTitle) };
-    }
-    if (hasDrop && !hasCreate && !hasAlter) {
+    if (hasDrop && !hasCreate && !hasAlter)
       return { ...slide, title: cleanSlideTitle("Removendo Objetos com DROP e TRUNCATE", moduleTitle) };
-    }
   }
-  // DML compound title but only one operation present
   if (/insert.*update|update.*insert/i.test(title)) {
     const hasInsert = /\bINSERT\b/i.test(body);
     const hasUpdate = /\bUPDATE\b/i.test(body);
-    if (hasInsert && !hasUpdate) return { ...slide, title: cleanSlideTitle("Inserindo Dados com INSERT INTO", moduleTitle) };
-    if (!hasInsert && hasUpdate) return { ...slide, title: cleanSlideTitle("Atualizando Dados com UPDATE", moduleTitle) };
+    if (hasInsert && !hasUpdate)
+      return { ...slide, title: cleanSlideTitle("Inserindo Dados com INSERT INTO", moduleTitle) };
+    if (!hasInsert && hasUpdate)
+      return { ...slide, title: cleanSlideTitle("Atualizando Dados com UPDATE", moduleTitle) };
   }
+  return slide;
+}
+
+// ── 5. Code integrity validator ──
+// Detects comment lines that imply a SQL command but are NOT followed by the
+// actual statement (e.g. "-- Remove a tabela Autores" with no DROP TABLE after).
+// Auto-completes the missing command so code blocks are never left truncated.
+function validateCodeIntegrity(code: string): string {
+  if (!code || !code.trim()) return code;
+  const lines = code.split("\n");
+  const output: string[] = [];
+  const HAS_SQL = /^\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE|WITH|BEGIN|COMMIT|ROLLBACK)\b/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    output.push(line);
+
+    if (!/^\s*--/.test(line)) continue; // only process comment lines
+    const comment = line.replace(/^\s*--\s*/, "").trim();
+
+    // Find the next non-empty line
+    let nextIdx = i + 1;
+    while (nextIdx < lines.length && !lines[nextIdx].trim()) nextIdx++;
+    const nextLine = (lines[nextIdx] ?? "").trim();
+    if (HAS_SQL.test(nextLine)) continue; // already followed by a valid SQL statement
+
+    // Extract the most likely object name (last PascalCase/UPPER token in comment)
+    const objMatch = comment.match(/\b([A-Z][a-zA-Z0-9_]*)\s*$/);
+    const objName  = objMatch?.[1] ?? null;
+    if (!objName) continue;
+
+    if (/\b(remove?s?|drop|apaga|exclu[ií]|elimina)\b/i.test(comment)) {
+      output.push(`DROP TABLE ${objName};`);
+    } else if (/\b(trunca|limpa|esvaz|zera registros)\b/i.test(comment)) {
+      output.push(`TRUNCATE TABLE ${objName};`);
+    } else if (/\b(deleta|exclui registro|remove registro)\b/i.test(comment)) {
+      output.push(`DELETE FROM ${objName} WHERE id = 1; -- Adapte o filtro`);
+    }
+  }
+  return output.join("\n");
+}
+
+// ── 6. Semantic Quality Gate ──
+// Final check applied after validateSemanticAlignment in processBatch.
+// Repairs or drops slides that still fail quality criteria.
+// Returns null → caller must filter the slide out.
+const PLACEHOLDER_RE = /^\[.*\]$|^(TODO|TBD|PLACEHOLDER|CONTEÚDO AQUI|ITEM \d+)$/i;
+const FRAG_CONJ_RE   = /^(e|é|ou|mas|porém|então)\s+/i;
+
+function semanticQualityGate(slide: Slide, moduleTitle: string): Slide | null {
+  // ── Title integrity: fix fragment / conjunction-start titles ──
+  let title = (slide.title || "").trim();
+  if (!title || title.length < 3) {
+    title = moduleTitle;
+  } else if (TITLE_PREP_RE.test(title) || FRAG_CONJ_RE.test(title)) {
+    const fixed = title
+      .replace(TITLE_PREP_RE, "")
+      .replace(FRAG_CONJ_RE, "")
+      .trim();
+    title = (fixed.charAt(0).toUpperCase() + fixed.slice(1)) || moduleTitle;
+  }
+  slide = { ...slide, title };
+
+  // ── Code integrity ──
+  if (slide.code) {
+    slide = { ...slide, code: validateCodeIntegrity(slide.code) };
+  }
+
+  // ── Module cover: expand + normalize AI-generated objectives ──
+  if (slide.layout === "module_cover" && Array.isArray(slide.items) && slide.items.length > 0) {
+    const expanded = slide.items
+      .map((item, idx) =>
+        withPeriod(normalizeLearningObjective(
+          expandVagueObjective(item, moduleTitle), moduleTitle, idx,
+        )),
+      )
+      .filter((item) => item.length > 8 && !BAD_OBJECTIVE_RE.test(item));
+    if (expanded.length >= 2) slide = { ...slide, items: expanded };
+  }
+
+  // ── Placeholder / residual content guard ──
+  if (Array.isArray(slide.items)) {
+    const cleaned = slide.items.filter((item) => !PLACEHOLDER_RE.test(item.trim()));
+    if (cleaned.length !== slide.items.length) slide = { ...slide, items: cleaned };
+  }
+
+  // ── Drop if still un-renderable after all repairs ──
+  if (!isRenderableSlide(slide)) return null;
 
   return slide;
 }
@@ -2955,7 +3045,11 @@ async function runPipeline(
         const splitSlides   = splitOverflowSlides(rawSlides);
         const variedSlides  = applyLayoutVariety(splitSlides);
         // Semantic alignment: correct title/content mismatches per slide
-        const polishedSlides = variedSlides.map((s) => validateSemanticAlignment(s, mod.title));
+        const alignedSlides  = variedSlides.map((s) => validateSemanticAlignment(s, mod.title));
+        // Quality gate: repair or drop slides that still fail quality criteria
+        const polishedSlides = alignedSlides
+          .map((s) => semanticQualityGate(s, mod.title))
+          .filter((s): s is Slide => s !== null);
         console.log(
           `[V5] Module ${i + 1}: ${rawSlides.length} raw → ${splitSlides.length} split → ${polishedSlides.length} final`,
         );
