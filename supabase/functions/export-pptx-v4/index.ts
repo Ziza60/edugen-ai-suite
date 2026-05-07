@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.0";
+const ENGINE_VERSION = "5.1.2";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -613,6 +613,7 @@ function renderTOC(
   num: number,
   total: number,
   modules: { title: string }[],
+  pagination?: { page: number; pageCount: number; firstModule: number; lastModule: number; totalModules: number },
 ) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
@@ -626,7 +627,11 @@ function renderTOC(
     h: SLIDE_H - 0.06,
     fill: { color: d.surface },
   });
-  slide.addText("ÍNDICE", {
+  // ── Header label: "ÍNDICE" or "ÍNDICE — PARTE X/Y" when paginated
+  const headerLabel = pagination && pagination.pageCount > 1
+    ? `ÍNDICE — PARTE ${pagination.page}/${pagination.pageCount}`
+    : "ÍNDICE";
+  slide.addText(headerLabel, {
     x: ML,
     y: 0.3,
     w: panelW - ML,
@@ -637,6 +642,8 @@ function renderTOC(
     color: d.accent,
     charSpacing: 5,
   });
+  // ── Title: "Conteúdo do Curso" — same on every page so it reads
+  // as the same course rather than a separate one.
   slide.addText("Conteúdo\ndo Curso", {
     x: ML,
     y: 0.64,
@@ -650,19 +657,28 @@ function renderTOC(
     lineSpacingMultiple: 1.1,
     fit: "shrink" as any,
   });
-  // Module count chip
+  // ── Bottom chip: module range (e.g. "Módulos 7–8 de 8") when paginated,
+  // else the simple total count. Never just "{n} Módulos" alone on page 2+,
+  // which previously read like a different deck.
+  const chipLabel = pagination && pagination.pageCount > 1
+    ? (pagination.firstModule === pagination.lastModule
+        ? `Módulo ${pagination.firstModule} de ${pagination.totalModules}`
+        : `Módulos ${pagination.firstModule}–${pagination.lastModule} de ${pagination.totalModules}`)
+    : `${modules.length} Módulo${modules.length !== 1 ? "s" : ""}`;
+  // Wider chip for paginated label (it can be long like "Módulos 11–15 de 20")
+  const chipW = pagination && pagination.pageCount > 1 ? 2.4 : 1.7;
   slide.addShape("roundRect" as any, {
     x: ML,
     y: FOOTER_Y - 0.54,
-    w: 1.7,
+    w: chipW,
     h: 0.36,
     fill: { color: d.accent },
     rectRadius: 0.04,
   });
-  slide.addText(`${modules.length} Módulo${modules.length !== 1 ? "s" : ""}`, {
+  slide.addText(chipLabel, {
     x: ML,
     y: FOOTER_Y - 0.54,
-    w: 1.7,
+    w: chipW,
     h: 0.36,
     fontSize: 12,
     fontFace: d.bodyFont,
@@ -670,6 +686,7 @@ function renderTOC(
     color: "FFFFFF",
     align: "center",
     valign: "middle",
+    fit: "shrink" as any,
   });
 
   // Module list — 2 columns when > 5 modules
@@ -757,9 +774,13 @@ function renderTOCPaginated(
   // Multi-page: split modules into pages of maxPerPage each
   const pageCount = Math.ceil(modules.length / maxPerPage);
   for (let p = 0; p < pageCount; p++) {
-    const chunk = modules.slice(p * maxPerPage, (p + 1) * maxPerPage);
-    // Show pagination label when more than one TOC page is needed
-    const pageLabel = `ÍNDICE (${p + 1}/${pageCount})`;
+    const firstIdx = p * maxPerPage;
+    const lastIdx  = Math.min((p + 1) * maxPerPage, modules.length);
+    const chunk = modules.slice(firstIdx, lastIdx);
+    // Pagination metadata so renderTOC can show "ÍNDICE — PARTE 2/2"
+    // and "Módulos 7–8 de 8" instead of just "{n} Módulos" (which on
+    // page 2+ looked like a separate course in v5.1).
+    const pageLabel = `ÍNDICE — PARTE ${p + 1}/${pageCount}`;
     renderTOC(
       pptx,
       { ...slide_, label: pageLabel },
@@ -767,6 +788,13 @@ function renderTOCPaginated(
       startNum + p,
       total,
       chunk,
+      {
+        page: p + 1,
+        pageCount,
+        firstModule: firstIdx + 1,
+        lastModule:  lastIdx,
+        totalModules: modules.length,
+      },
     );
   }
   return pageCount;
@@ -4117,16 +4145,20 @@ function stripCommentsAndStrings(code: string): string {
     .replace(/`(?:\\.|[^`\\])*`/g, "``");
 }
 
+// Hard SQL DDL/DML patterns — keywords that are extremely unlikely to
+// appear in legitimate prose of a non-SQL course. Scanned across title
+// + items + code (not only code) because the v5.0 leak showed
+// "CREATE TABLE", "ALTER TABLE", "DROP TABLE", "TRUNCATE" appearing as
+// bullets inside Python module slides.
+const HARD_SQL_PROSE_RE =
+  /\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE|TRUNCATE\b(?!\s*\()|DELETE\s+FROM|INSERT\s+INTO|FOREIGN\s+KEY|PRIMARY\s+KEY)\b/i;
+
 function detectDomainContamination(
   slide: Slide,
   domain: ContentDomain,
   moduleTitle: string,
 ): { contaminated: boolean; reason?: string } {
   // ── Conservative gating (v5.1 hardening) ─────────────────
-  // When the inferred course domain is "generic" we cannot safely
-  // distinguish a foreign tech block from intended content, so we
-  // skip contamination detection entirely (avoids false 422s on
-  // mixed-topic / business / data-analysis courses).
   if (domain === "generic") return { contaminated: false };
 
   // Expanded module allow-lists — ecosystem-aware (Postgres/MySQL/Oracle
@@ -4138,63 +4170,189 @@ function detectDomainContamination(
   const moduleAllowsJs =
     /\bjavascript\b|\btypescript\b|\bnode\b|\bnodejs\b|\breact\b|\bvue\b|\bnext\b|\bnuxt\b|\bangular\b|\bdeno\b/i.test(moduleTitle);
 
-  // Only inspect the `code` field — titles and bullets often contain
-  // legitimate mentions of SELECT / INSERT / class / def in prose.
+  // ── Layer 1: HARD prose check (title + bullets + code) ───
+  // Targets the regression observed in v5.1: SQL DDL/DML keywords
+  // leaking as bullet points inside a Python module. These patterns
+  // virtually never appear in legitimate Python pedagogy.
+  if (domain !== "sql" && !moduleAllowsSql) {
+    const proseText = [
+      slide.title, slide.subtitle, slide.label,
+      ...(slide.items ?? []),
+      ...(slide.leftItems ?? []), ...(slide.rightItems ?? []),
+    ].filter(Boolean).join("\n");
+    if (HARD_SQL_PROSE_RE.test(proseText)) {
+      return { contaminated: true, reason: `SQL DDL/DML em prose de curso ${domain}` };
+    }
+  }
+
+  // ── Layer 2: code-block analysis (only when slide has code) ─
   if (!slide.code || !slide.code.trim()) return { contaminated: false };
   const sanitisedCode = stripCommentsAndStrings(slide.code);
   if (!sanitisedCode.trim()) return { contaminated: false };
 
-  // SQL DDL/DML appearing inside non-SQL course/module
   if (domain !== "sql" && !moduleAllowsSql) {
     if (SQL_DDL_RE.test(sanitisedCode)) return { contaminated: true, reason: `SQL DDL em curso ${domain}` };
     if (SQL_DML_RE.test(sanitisedCode)) return { contaminated: true, reason: `SQL DML em curso ${domain}` };
   }
-  // Python in non-Python course
   if (domain !== "python" && !moduleAllowsPython) {
     if (PYTHON_HINTS_RE.test(sanitisedCode)) return { contaminated: true, reason: `Código Python em curso ${domain}` };
   }
-  // JS in non-JS course
   if (domain !== "javascript" && !moduleAllowsJs) {
     if (JS_HINTS_RE.test(sanitisedCode)) return { contaminated: true, reason: `Código JS em curso ${domain}` };
   }
   return { contaminated: false };
 }
 
+// ── Generic learning objective detector (v5.1 hardening) ────
+// Catches non-pedagogical bullets like "Compreender X", "Aplicar X",
+// "Identificar X" where X is just a fragment of the module title and
+// no concrete technical verb/operation is present.
+const FILLER_VERBS_RE =
+  /^(compreender|conhecer|entender|aprender|saber|estudar|explorar|descobrir|aplicar|identificar|reconhecer|familiarizar(-se)?|introduzir|apresentar|abordar|revisar)\s+/i;
+
+const CONCRETE_TECH_VERBS_RE =
+  /\b(criar|definir|implementar|construir|configurar|instalar|executar|chamar|invocar|escrever|ler|abrir|fechar|salvar|carregar|importar|exportar|inserir|atualizar|remover|deletar|consultar|filtrar|agrupar|ordenar|tratar|capturar|lançar|gerar|retornar|receber|enviar|conectar|autenticar|validar|testar|depurar|iterar|percorrer|mapear|reduzir|filtrar|combinar|comparar|calcular|somar|contar|converter|serializar|desserializar|parsear|formatar|renderizar|publicar|fazer\s+deploy|usar|utilizar|manipular)\b/i;
+
+const CONCRETE_TECH_NOUNS_RE =
+  /\b(função|funções|método|métodos|classe|classes|objeto|objetos|variável|variáveis|lista|listas|dicionário|dicionários|tupla|tuplas|conjunto|conjuntos|array|arrays|loop|loops|for|while|if|else|try|except|finally|with|lambda|map|filter|reduce|comprehension|decorador|generator|iterator|módulo|pacote|biblioteca|framework|api|endpoint|requisição|resposta|json|csv|xml|sql|select|insert|update|delete|join|índice|tabela|coluna|chave|exceção|erro|log|teste|unitário|integração|debug|depuração|parâmetro|argumento|retorno|callback|promise|async|await|thread|processo|arquivo|diretório|stream|buffer|socket|http|tcp|udp|rest|graphql)\b/i;
+
+function isGenericLearningObjective(text: string, moduleTitle: string): boolean {
+  if (!text || text.length < 10) return false;
+  const t = text.trim();
+
+  // Only items that BEGIN with a filler verb are candidates for generic.
+  if (!FILLER_VERBS_RE.test(t)) return false;
+
+  const tail = t.replace(FILLER_VERBS_RE, "").trim();
+  const hasConcreteVerb = CONCRETE_TECH_VERBS_RE.test(tail);
+  const hasConcreteNoun = CONCRETE_TECH_NOUNS_RE.test(tail);
+
+  // Pattern 1: filler + no concrete tech verb AND no concrete tech noun.
+  // ("Compreender fundamentos", "Aplicar conceitos", "Identificar tópicos").
+  if (!hasConcreteVerb && !hasConcreteNoun) return true;
+
+  // Pattern 2: filler + tail is essentially a verbatim restatement of the
+  // module title (no extra concrete content). Only fires when there is
+  // ALSO no purpose clause (no "para", "com", "usando", etc).
+  // This avoids false positives like "Aplicar listas e dicionários para
+  // armazenar dados" against module "Listas e Dicionários".
+  const hasPurposeClause = /\b(para|com|usando|através|via|em|de\s+modo|de\s+forma)\b/i.test(tail);
+  if (hasPurposeClause) return false;
+
+  if (moduleTitle && !hasConcreteVerb) {
+    const moduleWords = moduleTitle.toLowerCase()
+      .replace(/[^\wáéíóúâêîôûãõç\s]/g, " ")
+      .split(/\s+/).filter((w) => w.length > 3);
+    const tailLower = tail.toLowerCase();
+    const overlap = moduleWords.filter((w) => tailLower.includes(w)).length;
+    // ≥80% overlap with no purpose clause AND no concrete verb = restatement.
+    if (moduleWords.length >= 2 && overlap / moduleWords.length >= 0.8 && tail.length < 60) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// ── Technical-sanitization damage detector (v5.1 hardening) ─
+// Detects the SPECIFIC symptom of stripped function calls: orphan empty
+// parens following a Portuguese action word that pedagogical content
+// would normally pair with a function name. Examples we want to catch:
+//   "Realize leitura () e escrita ()."   ← read()/write() were stripped
+//   "Use a função () para ..."          ← function name was stripped
+//   "Chame . () no objeto"               ← method call dot+name stripped
+// Examples we must NOT flag (legitimate prose):
+//   "Use parênteses () para agrupar expressões."
+//   "Explique a notação callback () no pseudocódigo."
+//
+// Strategy: only trigger when the empty parens follow one of a small set
+// of "calling" verbs/nouns AND the surrounding text doesn't explicitly
+// reference the parentheses themselves as a topic.
+const CALLING_TRIGGER_WORDS = [
+  "leitura", "escrita", "abertura", "fechamento", "execução", "execucao",
+  "invocação", "invocacao", "chamada", "definição", "definicao",
+  "função", "funcao", "método", "metodo",
+  "ler", "escrever", "abrir", "fechar", "executar", "invocar", "chamar",
+];
+const DAMAGED_CALL_RE = new RegExp(
+  `\\b(${CALLING_TRIGGER_WORDS.join("|")})\\s+\\(\\s*\\)`,
+  "i",
+);
+const DAMAGED_DOT_RE = /\b\w+\s*\.\s*\(\s*\)/;        // "obj. ()" — method call w/ name stripped
+const DAMAGED_DOUBLE_PARENS_RE = /\b(?:e|ou|,)\s+\(\s*\)/i; // "..., ()" or "... e ()"
+
+// Topics that legitimately discuss empty parens — exempt from damage flag.
+const PARENS_TOPIC_RE = /\bparêntese|\bparentese|\bnotação|\bnotacao|\bsintaxe\b|\bsímbolo|\bsimbolo\b/i;
+
+function detectTechnicalDamage(text: string): boolean {
+  if (!text || text.length < 8) return false;
+  // Exempt prose that explicitly discusses parens/notation/syntax as a topic.
+  if (PARENS_TOPIC_RE.test(text)) return false;
+
+  // Calling verb/noun directly followed by "()" with no name in between.
+  if (DAMAGED_CALL_RE.test(text)) return true;
+  // Method-call dot pattern with stripped name.
+  if (DAMAGED_DOT_RE.test(text)) return true;
+  // Conjunction followed by isolated "()" — pattern of two stripped calls.
+  if (DAMAGED_DOUBLE_PARENS_RE.test(text)) return true;
+  return false;
+}
+
 // ── Final placeholder sanitizer ────────────────────────────
-// Hard-removes ANY residual placeholder marker that survived earlier
-// pipeline stages. This is the LAST line of defence before render.
-const RESIDUAL_PLACEHOLDER_PATTERNS: RegExp[] = [
-  /\[\[BT_?\d+\]\]/gi,         // [[BT_0]], [[BT0]], [[BT1]]
-  /\[\[SQLW_?\d+\]\]/gi,       // [[SQLW_0]], [[SQLW0]]
-  /\[\[[A-Z_0-9]+\]\]/g,       // any other [[XYZ_1]] marker
-  /\{\{[A-Z_0-9]+\}\}/g,       // {{COURSE_TITLE}}, {{BULLET_1}}, etc.
+// IMPORTANT (v5.1 hardening): We DO NOT strip [[BT_N]] or [[SQLW_N]] here —
+// those are protected backtick / SQL-wildcard slots managed by
+// globalSanitize(). Stripping them out-of-band destroys legitimate code
+// like `read()`, `write()`, `except`, `finally`. The rule is:
+//   - Use globalSanitize() to clean text (it restores BT/SQLW slots safely).
+//   - Use removeOrBlockPlaceholders() to strip ONLY foreign template tokens
+//     that were never produced by globalSanitize ({{TOKEN}}, lorem ipsum,
+//     stale [[CAPS_TOKEN]] patterns NOT matching BT_N or SQLW_N).
+const FOREIGN_PLACEHOLDER_PATTERNS: RegExp[] = [
+  /\{\{[A-Z_0-9]+\}\}/g,                      // {{COURSE_TITLE}}, {{BULLET_1}}
   /\blorem\s+ipsum\b/gi,
-  /\bplaceholder\b/gi,
   /\bTODO\b:/g,
+];
+
+// Stricter patterns used ONLY by the residual-placeholder veto check.
+// These DO include BT_N/SQLW_N because by the time the veto runs, all
+// globalSanitize calls are complete, so any surviving marker is genuine
+// leakage that must block export.
+const RESIDUAL_PLACEHOLDER_PATTERNS: RegExp[] = [
+  /\[\[BT_?\d+\]\]/gi,
+  /\[\[SQLW_?\d+\]\]/gi,
+  /\[\[[A-Z_0-9]{2,}\]\]/g,
+  /\{\{[A-Z_0-9]+\}\}/g,
+  /\blorem\s+ipsum\b/gi,
 ];
 
 function removeOrBlockPlaceholders(text: string): string {
   if (!text || typeof text !== "string") return text;
   let out = text;
-  for (const re of RESIDUAL_PLACEHOLDER_PATTERNS) out = out.replace(re, "");
+  for (const re of FOREIGN_PLACEHOLDER_PATTERNS) out = out.replace(re, "");
   return out.replace(/\s{2,}/g, " ").trim();
 }
 
+// sanitizeSlidePlaceholders pipes every text field through globalSanitize
+// FIRST (which safely restores BT_N/SQLW_N slots and strips orphan markers),
+// then through removeOrBlockPlaceholders (which only kills foreign tokens
+// like {{...}} and lorem ipsum). Code blocks are never touched.
 function sanitizeSlidePlaceholders(s: Slide): Slide {
-  const sanItem = (t: string) => removeOrBlockPlaceholders(t);
+  const cleanText = (t?: string) => {
+    if (!t) return t;
+    return removeOrBlockPlaceholders(globalSanitize(t));
+  };
   const cleanItems = (arr?: string[]) =>
-    arr ? arr.map(sanItem).filter((t) => t.trim().length > 0) : arr;
+    arr ? arr.map((t) => cleanText(t) ?? "").filter((t) => t.trim().length > 0) : arr;
   return {
     ...s,
-    title:       removeOrBlockPlaceholders(s.title || ""),
-    subtitle:    s.subtitle ? removeOrBlockPlaceholders(s.subtitle) : s.subtitle,
-    label:       s.label    ? removeOrBlockPlaceholders(s.label)    : s.label,
-    leftHeader:  s.leftHeader  ? removeOrBlockPlaceholders(s.leftHeader)  : s.leftHeader,
-    rightHeader: s.rightHeader ? removeOrBlockPlaceholders(s.rightHeader) : s.rightHeader,
+    title:       cleanText(s.title) ?? "",
+    subtitle:    cleanText(s.subtitle),
+    label:       cleanText(s.label),
+    leftHeader:  cleanText(s.leftHeader),
+    rightHeader: cleanText(s.rightHeader),
     items:       cleanItems(s.items),
     leftItems:   cleanItems(s.leftItems),
     rightItems:  cleanItems(s.rightItems),
-    code:        s.code ? s.code : s.code, // never touch code (preserves [[ ]] inside strings)
+    code:        s.code, // never sanitise code
   };
 }
 
@@ -4300,7 +4458,9 @@ type QAIssueType =
   | "EXTREME_DENSITY"
   | "BROKEN_COMPARISON"
   | "UNREADABLE_SLIDE"
-  | "GENERIC_OBJECTIVE";
+  | "GENERIC_OBJECTIVE"
+  // ── v5.1 hardening pass 2 ───────────────────────────────────
+  | "TECHNICAL_SANITIZATION_DAMAGE";
 
 interface QAIssue {
   slideId:            string;
@@ -4754,6 +4914,58 @@ function runPptxQA(
         });
         keepMask[si] = false;
         continue;
+      }
+
+      // 17. GENERIC_OBJECTIVE  [CRITICAL → drop bad items, drop slide if empty]
+      // Strict pedagogical check — strips bullets like "Compreender Python",
+      // "Aplicar fundamentos", "Identificar testes" that are non-actionable.
+      const genericSkipLayouts: Layout[] = ["code", "module_cover", "cover", "toc", "closing"];
+      if (!genericSkipLayouts.includes(s.layout) && s.items?.length) {
+        const moduleTitle17 = moduleTitles[mi] ?? "";
+        const goodItems = s.items.filter((it) => !isGenericLearningObjective(it, moduleTitle17));
+        const removedCount = s.items.length - goodItems.length;
+        if (removedCount > 0) {
+          if (goodItems.length >= 3) {
+            fixedIssues.push({
+              slideId: id, type: "GENERIC_OBJECTIVE", severity: "CRITICAL",
+              message: `${removedCount} objetivo(s) genérico(s) removidos de "${s.title}"`,
+              metric: removedCount,
+              resolutionStrategy: "Bullets genéricos removidos; restantes preservados",
+            });
+            modSlides[si] = { ...s, items: goodItems };
+            s = modSlides[si];
+          } else {
+            unfixedIssues.push({
+              slideId: id, type: "GENERIC_OBJECTIVE", severity: "CRITICAL",
+              message: `Slide majoritariamente genérico: "${s.title}" (${removedCount}/${s.items.length})`,
+              metric: removedCount,
+              resolutionStrategy: "Slide removido — sem objetivos pedagógicos concretos",
+            });
+            keepMask[si] = false;
+            continue;
+          }
+        }
+      }
+
+      // 18. TECHNICAL_SANITIZATION_DAMAGE  [CRITICAL → flag for veto]
+      // Catches the symptom of valid Python/JS function calls being
+      // stripped (e.g. "Realize leitura ()" instead of "leitura `read()`").
+      // We cannot recover the lost name here — the only safe action is to
+      // mark CRITICAL and let qaVeto block the export.
+      const allTextFields = [
+        s.title, s.subtitle, ...(s.items ?? []),
+        ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+      ].filter(Boolean) as string[];
+      let damaged = false;
+      for (const t of allTextFields) {
+        if (detectTechnicalDamage(t)) { damaged = true; break; }
+      }
+      if (damaged) {
+        unfixedIssues.push({
+          slideId: id, type: "TECHNICAL_SANITIZATION_DAMAGE", severity: "CRITICAL",
+          message: `Sintaxe técnica destruída em "${s.title}" (parênteses vazios após verbo)`,
+          resolutionStrategy: "Slide marcado para regeneração",
+        });
       }
     } // end slide loop
 
@@ -5219,6 +5431,8 @@ const HARD_CRITICAL_TYPES: ReadonlySet<QAIssueType> = new Set<QAIssueType>([
   "TITLE_FRAGMENT",
   "GENERIC_OBJECTIVE",
   "GENERIC_LEARNING_OBJECTIVE",
+  // v5.1 hardening pass 2:
+  "TECHNICAL_SANITIZATION_DAMAGE",
 ]);
 
 function qaVeto(
@@ -5241,6 +5455,7 @@ function qaVeto(
           type: "PLACEHOLDER_RESIDUAL",
           severity: "CRITICAL",
           message: `Placeholder residual "${ph.sample}" em "${s.title}"`,
+          resolutionStrategy: "Bloqueio de export — sanitizer não conseguiu remover marker",
         });
       }
     }
@@ -5258,6 +5473,7 @@ function qaVeto(
     blockingIssues.push({
       slideId: "DECK", type: "EMPTY_SLIDE", severity: "CRITICAL",
       message: "Deck final ficou sem slides após QA",
+      resolutionStrategy: "Bloqueio de export — todos os slides removidos pelo cascade",
     });
   }
 

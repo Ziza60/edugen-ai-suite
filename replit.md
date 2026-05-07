@@ -64,7 +64,17 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~5800 lines, ENGINE_VERSION=5.1.0).
+`supabase/functions/export-pptx-v4/index.ts` (~6000 lines, ENGINE_VERSION=5.1.1).
+
+### Hardening Pass 2 (v5.1.1)
+- **DOMAIN_CONTAMINATION two-layer**: Layer 1 = HARD prose check (title+items+code) for SQL DDL/DML keywords (`CREATE/ALTER/DROP/TRUNCATE TABLE`, `DELETE FROM`, `INSERT INTO`, `FOREIGN/PRIMARY KEY`) when course is non-SQL — virtually never legitimate in Python prose; Layer 2 = code-block analysis (with `stripCommentsAndStrings`) as before
+- **`isGenericLearningObjective(text, moduleTitle)`**: detects filler verbs (`compreender/aplicar/identificar/conhecer/...`) without concrete tech action — checks for concrete tech verb (criar/implementar/executar/tratar/...) or concrete tech noun (função/classe/lista/exceção/loop/...). Also flags items that are ≥60% restatement of the module title. Wired into QA check #17 (CRITICAL → drop bad items, drop slide if <3 valid items remain)
+- **Sanitizer fix (root cause of `read()`/`write()` loss)**: `removeOrBlockPlaceholders()` no longer strips `[[BT_N]]`/`[[SQLW_N]]` (those are protected backtick/SQL-wildcard slots from `globalSanitize`). Now `sanitizeSlidePlaceholders` pipes every text field through `globalSanitize` FIRST (which restores slots safely) THEN through `removeOrBlockPlaceholders` (which only kills foreign tokens like `{{...}}`/`lorem ipsum`/`TODO:`). `FOREIGN_PLACEHOLDER_PATTERNS` (used by sanitizer) is separate from `RESIDUAL_PLACEHOLDER_PATTERNS` (used by veto)
+- **`detectTechnicalDamage()` + QA check #18**: detects "verb ()" / ". ()" / "() e ()" patterns as symptom of stripped function names → `TECHNICAL_SANITIZATION_DAMAGE` CRITICAL → veto (cannot recover the lost name, only block export)
+- **TOC pagination redesign**: `renderTOC` accepts optional `pagination` object. Multi-page TOC now shows header `ÍNDICE — PARTE 2/2` (instead of `(2/2)`) and bottom chip `Módulos 7–8 de 8` (instead of `2 Módulos` which read like a separate course). Single-page TOC unchanged. Chip width auto-expands for paginated label
+- **1 new QA issue type**: `TECHNICAL_SANITIZATION_DAMAGE` — added to `HARD_CRITICAL_TYPES` (qaVeto blocks export when surviving)
+- **False-positive guards (v5.1.2)**: `isGenericLearningObjective` exempts items with purpose clauses (`para/com/usando/...`) and only triggers title-overlap rule when the tail has no concrete tech verb. `detectTechnicalDamage` only fires after a small set of calling verbs/nouns (`leitura/escrita/função/chamar/...`) and is exempted when the prose explicitly discusses parens/notation/sintaxe as a topic
+
 Pipeline: Parse → Segment → **VisualPlanner** → LayoutVariety → SemanticQualityGate → TemplateSplits → **Sanitize** → **PPTX QA Engine** → **Cascade** → **Sanitize** → **QA Veto** → Render → Export.
 
 ### Architectural Correction v5.1 (Section 5C + 6E)
