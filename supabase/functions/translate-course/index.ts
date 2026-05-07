@@ -48,6 +48,27 @@ Deno.serve(async (req: Request) => {
 
     const userId = userData.user.id;
 
+    // Check PRO entitlement
+    const { data: sub } = await userClient
+      .from("subscriptions")
+      .select("plan")
+      .eq("user_id", userId)
+      .single();
+
+    const { data: profile } = await userClient
+      .from("profiles")
+      .select("is_dev")
+      .eq("user_id", userId)
+      .single();
+
+    const isPro = sub?.plan === "pro" || profile?.is_dev === true;
+    if (!isPro) {
+      return new Response(JSON.stringify({ error: "Feature exclusiva do plano Pro" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { course_id, target_language, adaptation = "adapted" } = await req.json();
     if (!course_id || !target_language) {
       return new Response(JSON.stringify({ error: "course_id and target_language required" }), {
@@ -254,7 +275,7 @@ async function translateText(
   if (!text || text.trim().length < 2) return text;
 
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  const model = "gemini-2.5-flash";
+  const model = "gemini-3-flash-preview";
 
   const response = await fetch(url, {
     method: "POST",

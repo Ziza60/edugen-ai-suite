@@ -1,10 +1,40 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { PLAN_LIMITS, getPlanLimits, type PlanType, type PlanLimits } from "@/lib/plans";
 
-export type { PlanType, PlanLimits };
-export { PLAN_LIMITS };
+export type PlanType = "free" | "starter" | "pro";
+
+export interface PlanLimits {
+  maxCourses: number;
+  maxModules: number;
+  images: boolean;
+  pdfExport: boolean;
+  customCertificate: boolean;
+}
+
+const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
+  free: {
+    maxCourses: 3,
+    maxModules: 5,
+    images: false,
+    pdfExport: false,
+    customCertificate: false,
+  },
+  starter: {
+    maxCourses: 5,
+    maxModules: 10,
+    images: true,
+    pdfExport: true,
+    customCertificate: true,
+  },
+  pro: {
+    maxCourses: 5,
+    maxModules: 10,
+    images: true,
+    pdfExport: true,
+    customCertificate: true,
+  },
+};
 
 export function useSubscription() {
   const { user } = useAuth();
@@ -13,18 +43,19 @@ export function useSubscription() {
     queryKey: ["subscription", user?.id],
     queryFn: async () => {
       if (!user) return null;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("subscriptions")
         .select("*")
         .eq("user_id", user.id)
-        .maybeSingle();
-      return data ?? null;
+        .single();
+      if (error) throw error;
+      return data;
     },
     enabled: !!user,
   });
 
-  const plan: PlanType = (subscription?.plan as PlanType) ?? "pro";
-  const limits = getPlanLimits(plan);
+  const plan: PlanType = (subscription?.plan as PlanType) ?? "free";
+  const limits = PLAN_LIMITS[plan];
 
   return { subscription, plan, limits, isLoading };
 }
