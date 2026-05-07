@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.12";
+const ENGINE_VERSION = "5.1.13";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4880,7 +4880,9 @@ type BrokenLangPattern = {
 
 const BROKEN_LANG_PATTERNS: BrokenLangPattern[] = [
   // "Que Adotar...", "Que Usar...", "POO: Que Aprender..." — missing "Por"
-  { re: /(^|[\s:])Que\s+(Adotar|Usar|Utilizar|Aplicar|Escolher|Implementar|Aprender|Estudar|Conhecer|Iniciar|Começar|Comecar|Programar|Desenvolver|Criar|Adotamos|Escolhemos|Usamos)\b/,
+  // Negative lookbehind (?<!\bPor\s) ensures we DON'T re-flag already-fixed
+  // "Por Que Usar..." (otherwise the verify step rejects the repair).
+  { re: /(?<!\bPor\s)\bQue\s+(Adotar|Usar|Utilizar|Aplicar|Escolher|Implementar|Aprender|Estudar|Conhecer|Iniciar|Começar|Comecar|Programar|Desenvolver|Criar|Adotamos|Escolhemos|Usamos)\b/,
     key: "missing_por_que", describe: "'Que <verbo>' sem 'Por'" },
   // "POO: É Importante?" / "POR: É Necessário?" — fragmented questions starting with isolated "É"
   { re: /(^|[\s:])É\s+(Importante|Necessário|Necessária|Útil|Fundamental|Essencial)\?/,
@@ -4909,8 +4911,8 @@ function detectBrokenNaturalLanguage(
 const BROKEN_LANG_REPAIRS: Record<string, (t: string) => string | null> = {
   missing_por_que: (t) =>
     t.replace(
-      /(^|[\s:])Que\s+(Adotar|Usar|Utilizar|Aplicar|Escolher|Implementar|Aprender|Estudar|Conhecer|Iniciar|Começar|Comecar|Programar|Desenvolver|Criar|Adotamos|Escolhemos|Usamos)\b/,
-      "$1Por Que $2",
+      /(?<!\bPor\s)\bQue(\s+(?:Adotar|Usar|Utilizar|Aplicar|Escolher|Implementar|Aprender|Estudar|Conhecer|Iniciar|Começar|Comecar|Programar|Desenvolver|Criar|Adotamos|Escolhemos|Usamos)\b)/,
+      "Por Que$1",
     ),
   missing_por_que_e: (t) =>
     t.replace(
