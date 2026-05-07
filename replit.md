@@ -64,7 +64,17 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~6000 lines, ENGINE_VERSION=5.1.1).
+`supabase/functions/export-pptx-v4/index.ts` (~6100 lines, ENGINE_VERSION=5.1.3).
+
+### Hardening Pass 3 (v5.1.3) — Veto enforcement + broader damage detection
+- **Frontend fallback bug fix (root cause of "veto não funciona")**: `src/components/course/ExportButtons.tsx` was silently falling back to v3 (no QA) on ANY non-2xx from v4 — including the intentional 422 from QA veto. Now distinguishes `res.status === 422 && v4data.code === "PPTX_QA_VETO"` (semantic block — hard stop, surfaces structured `blockingIssues` to user, does NOT export) vs infra failures (timeout/5xx/network — falls back to v3 as before)
+- **`detectTechnicalDamage` broadened**: original detector only caught empty parens (`leitura ()`). Added 5 punctuation-only damage patterns:
+  - `ORPHAN_COMMAS_RE` (`,\s*,`) — "Estruture em , , , ."
+  - `STRIPPED_VERB_PHRASE_RE` — "Use e ." / "Use X e ." (action verb + missing item)
+  - `ORPHAN_CONJ_PERIOD_RE` (`\s(e|ou)\s+\.`) — conjunction directly before period
+  - `STRIPPED_TAIL_AFTER_COLON_RE` (`:\s*[,\s\.]+$`) — colon followed by nothing meaningful
+  - `STRIPPED_ENUMERATION_AFTER_PREP_RE` — preposition + commas + period with stripped content
+  - All 5 still gated by `PARENS_TOPIC_RE` exemption
 
 ### Hardening Pass 2 (v5.1.1)
 - **DOMAIN_CONTAMINATION two-layer**: Layer 1 = HARD prose check (title+items+code) for SQL DDL/DML keywords (`CREATE/ALTER/DROP/TRUNCATE TABLE`, `DELETE FROM`, `INSERT INTO`, `FOREIGN/PRIMARY KEY`) when course is non-SQL — virtually never legitimate in Python prose; Layer 2 = code-block analysis (with `stripCommentsAndStrings`) as before

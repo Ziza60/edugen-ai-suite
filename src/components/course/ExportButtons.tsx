@@ -417,7 +417,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 const EXPORT_TIMEOUT_MS = 480000;
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
-                let res: Response;
+                let res: Response | null = null;
                 try {
                   res = await fetch(url, {
                     method: "POST",
@@ -438,18 +438,44 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                     }),
                     signal: controller.signal,
                   });
+                } catch (errV4) {
+                  // Network error / timeout / AbortError — treat as infra failure
+                  // and fall through to v3. Semantic vetos always come back as a
+                  // real HTTP 422 response and are handled below.
+                  console.warn("[PPTX] v4 erro de rede/timeout, tentando v3:", errV4);
+                  toast({ title: "v4 indisponível, usando v3", description: String((errV4 as Error)?.message ?? errV4), duration: 4000 });
                 } finally {
                   clearTimeout(timeoutId);
                 }
-                const responseText = await res.text();
+                const responseText = res ? await res.text() : "";
                 let v4data: any = {};
                 try { v4data = responseText ? JSON.parse(responseText) : {}; } catch { /* ignore */ }
-                if (res.ok && v4data?.url) {
+                if (res && res.ok && v4data?.url) {
                   data = v4data;
                   engineUsed = "v4-native";
                   console.log("[PPTX] v4 diag:", JSON.stringify(v4data._diag));
-                } else {
-                  console.warn("[PPTX] v4 failed, falling back to v3:", v4data?.error || res.status);
+                } else if (res && res.status === 422 && v4data?.code === "PPTX_QA_VETO") {
+                  // ── SEMANTIC VETO — DO NOT FALL BACK ──
+                  // The QA engine intentionally blocked this export because critical
+                  // content issues (domain contamination, generic objectives, stripped
+                  // technical names) survived all repair cycles. Falling back to v3
+                  // would silently produce a corrupt PPTX. Surface the error instead.
+                  console.error("[PPTX] v4 BLOQUEOU export (QA veto):", v4data);
+                  const issues: Array<{slideId:string;type:string;message:string}> =
+                    v4data?.blockingIssues ?? [];
+                  const summary = issues.slice(0, 3)
+                    .map((i) => `• ${i.slideId}: ${i.type}`)
+                    .join("\n") || "Conteúdo gerado pela IA tem problemas críticos.";
+                  toast({
+                    title: "Geração bloqueada — qualidade insuficiente",
+                    description: `O motor detectou problemas que não puderam ser corrigidos:\n${summary}\n\nRegenere o curso ou ajuste o conteúdo antes de exportar.`,
+                    duration: 12000,
+                    variant: "destructive",
+                  });
+                  setExportingPptx(false);
+                  return; // hard stop — do NOT fall back to legacy engines
+                } else if (res) {
+                  console.warn("[PPTX] v4 falhou (infra), tentando v3:", v4data?.error || res.status);
                   toast({ title: "v4 indisponível, usando v3", description: v4data?.error || "", duration: 4000 });
                 }
               }

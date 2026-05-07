@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.2";
+const ENGINE_VERSION = "5.1.3";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4280,20 +4280,46 @@ const DAMAGED_CALL_RE = new RegExp(
 const DAMAGED_DOT_RE = /\b\w+\s*\.\s*\(\s*\)/;        // "obj. ()" — method call w/ name stripped
 const DAMAGED_DOUBLE_PARENS_RE = /\b(?:e|ou|,)\s+\(\s*\)/i; // "..., ()" or "... e ()"
 
+// ── PUNCTUATION-only damage (no parens) ─────────────────────
+// Catches: "Estruture em , , , .", "Use e .", "Use X e ."
+// Symptom: words got stripped, leaving orphan punctuation/conjunctions.
+const ORPHAN_COMMAS_RE = /,\s*,/;
+const ORPHAN_CONJ_PERIOD_RE = /\s(e|ou)\s+\.(\s|$)/i;
+const STRIPPED_VERB_PHRASE_RE =
+  /\b(use|usar|chame|chamar|invoque|invocar|execute|executar|defina|definir|configure|configurar|estruture|estruturar|importe|importar|crie|criar)\s+(?:\w+\s+)?(?:e|ou)\s+\.(\s|$)/i;
+// "X em : ." or ": ." (colon then nothing meaningful) at end of sentence
+const STRIPPED_TAIL_AFTER_COLON_RE = /:\s*[,\s\.]+$/;
+// (Removed STRIPPED_ENUMERATION_AFTER_PREP_RE — too broad. The ", ,"
+//  pattern covered by ORPHAN_COMMAS_RE catches the real damage case
+//  "em , , , ." while normal enumerations like "em módulos, classes."
+//  contain only single commas between words and are correctly ignored.)
+
 // Topics that legitimately discuss empty parens — exempt from damage flag.
 const PARENS_TOPIC_RE = /\bparêntese|\bparentese|\bnotação|\bnotacao|\bsintaxe\b|\bsímbolo|\bsimbolo\b/i;
 
 function detectTechnicalDamage(text: string): boolean {
-  if (!text || text.length < 8) return false;
+  // Min length 6 — catches short stripped phrases like "Use e ." (7 chars).
+  if (!text || text.length < 6) return false;
   // Exempt prose that explicitly discusses parens/notation/syntax as a topic.
   if (PARENS_TOPIC_RE.test(text)) return false;
 
+  // ── Empty-parens damage ───────────────────────────────────
   // Calling verb/noun directly followed by "()" with no name in between.
   if (DAMAGED_CALL_RE.test(text)) return true;
   // Method-call dot pattern with stripped name.
   if (DAMAGED_DOT_RE.test(text)) return true;
   // Conjunction followed by isolated "()" — pattern of two stripped calls.
   if (DAMAGED_DOUBLE_PARENS_RE.test(text)) return true;
+
+  // ── Orphan-punctuation damage (no parens) ─────────────────
+  // ", ," — at least one list item was stripped.
+  if (ORPHAN_COMMAS_RE.test(text)) return true;
+  // "Use e ." or "Use X e ." — enumeration verb missing trailing item.
+  if (STRIPPED_VERB_PHRASE_RE.test(text)) return true;
+  // " e ." / " ou ." — conjunction followed by period (item after conj stripped).
+  if (ORPHAN_CONJ_PERIOD_RE.test(text)) return true;
+  // ": ." or ": , , ." — colon then nothing meaningful after.
+  if (STRIPPED_TAIL_AFTER_COLON_RE.test(text)) return true;
   return false;
 }
 
