@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.7";
+const ENGINE_VERSION = "5.1.11";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4188,6 +4188,137 @@ function extractAllStrings(value: unknown, out: string[] = [], depth = 0): strin
   return out;
 }
 
+// v5.1.8 — GLOBAL FIELD SAFETY NET
+// Runs ALL hard detectors against EVERY string field of EVERY slide via
+// extractAllStrings(). This catches contamination/genericity that per-field
+// QA checks miss (e.g. competencies on module_cover, cards.title/text,
+// takeaways subtitle, comparison left/right text, process.steps).
+// Returns issues with precise (slideId + matched substring) so qaVeto can
+// hard-block AND the developer can see exactly which field escaped.
+const MODULE_SQL_ALLOW_RE =
+  /\bsql\b|banco de dados|\bbd\b|\bdatabase\b|\bquery\b|\bconsulta\b|postgres|mysql|oracle|sqlite|mariadb|nosql/i;
+const MODULE_PYTHON_ALLOW_RE =
+  /\bpython\b|pandas|numpy|django|flask|jupyter|scikit|matplotlib|seaborn|pytorch|tensorflow/i;
+
+function runGlobalFieldSafetyNet(
+  allModuleSlides: Slide[][],
+  courseDomain: ContentDomain,
+  moduleTitlesArr: string[],
+): QAIssue[] {
+  const issues: QAIssue[] = [];
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const moduleTitle = moduleTitlesArr[mi] ?? "";
+    const moduleAllowsSql    = MODULE_SQL_ALLOW_RE.test(moduleTitle);
+    const moduleAllowsPython = MODULE_PYTHON_ALLOW_RE.test(moduleTitle);
+    const looksLikePython = courseDomain === "python" || moduleAllowsPython;
+    const checkSql = (courseDomain !== "sql" && !moduleAllowsSql) || looksLikePython;
+
+    for (let si = 0; si < allModuleSlides[mi].length; si++) {
+      const s = allModuleSlides[mi][si];
+      const id = `M${mi + 1}.S${si + 1}`;
+      const title = s.title ?? id;
+      const strs = extractAllStrings(s).filter((x) => !x.startsWith("[["));
+
+      for (const txt of strs) {
+        if (typeof txt !== "string" || txt.length < 4) continue;
+
+        // ── SQL leakage in non-SQL course ────────────────────
+        if (checkSql) {
+          const m1 = HARD_SQL_PROSE_RE.exec(txt);
+          if (m1) {
+            issues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `[SAFETY-NET] SQL DDL/DML escapou em "${title}" — match="${m1[0].slice(0, 60)}" no campo "${txt.slice(0, 80)}"`,
+              context: txt.slice(0, 160),
+              resolutionStrategy: "Bloqueio absoluto — campo escapou do detector per-layout",
+            });
+            continue;
+          }
+          const m2 = PT_SQL_DDL_RE.exec(txt);
+          if (m2) {
+            issues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `[SAFETY-NET] Pedagogia SQL (PT) escapou em "${title}" — match="${m2[0].slice(0, 60)}" no campo "${txt.slice(0, 80)}"`,
+              context: txt.slice(0, 160),
+              resolutionStrategy: "Bloqueio absoluto",
+            });
+            continue;
+          }
+          const m3 = BARE_SQL_UPPER_RE.exec(txt);
+          if (m3) {
+            issues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `[SAFETY-NET] SQL keyword UPPERCASE escapou em "${title}" — match="${m3[0].slice(0, 60)}" no campo "${txt.slice(0, 80)}"`,
+              context: txt.slice(0, 160),
+              resolutionStrategy: "Bloqueio absoluto",
+            });
+            continue;
+          }
+        }
+
+        // (Generic-objective check moved out of the per-string loop —
+        //  it runs only on items/competencies below to avoid false
+        //  positives on cover titles that legitimately start with verbs.)
+
+        // ── Broken Portuguese language ────────────────────────
+        const broken = detectBrokenNaturalLanguage(txt);
+        if (broken.broken) {
+          issues.push({
+            slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
+            message: `[SAFETY-NET] Linguagem quebrada em "${title}" (${broken.describe}): "${txt.slice(0, 80)}"`,
+            context: txt.slice(0, 160),
+            resolutionStrategy: "Bloqueio absoluto",
+          });
+        }
+
+        // ── Unresolved technical damage ("verb ()", ", ,", "Use e .") ──
+        if (detectTechnicalDamage(txt)) {
+          issues.push({
+            slideId: id, type: "TECHNICAL_SANITIZATION_DAMAGE", severity: "CRITICAL",
+            message: `[SAFETY-NET] Dano técnico não reparado em "${title}": "${txt.slice(0, 80)}"`,
+            context: txt.slice(0, 160),
+            resolutionStrategy: "Bloqueio absoluto — repair determinístico falhou",
+          });
+        }
+
+        // ── Incomplete technical sentence ─────────────────────
+        const inc = detectIncompleteTechnicalSentence(txt);
+        if (inc.broken) {
+          issues.push({
+            slideId: id, type: "TECHNICAL_SEMANTIC_BREAK", severity: "CRITICAL",
+            message: `[SAFETY-NET] Frase técnica incompleta em "${title}" (${inc.key}): "${txt.slice(0, 80)}"`,
+            context: txt.slice(0, 160),
+            resolutionStrategy: "Bloqueio absoluto",
+          });
+        }
+      }
+
+      // ── Generic objective check: ONLY items + competencies on module_cover ──
+      // Restricted to objective-bearing fields to avoid false positives on
+      // titles that legitimately start with verbs ("Aplicar Loops em Python").
+      if (s.layout === "module_cover") {
+        const sCov = s as Slide & { competencies?: string[] };
+        const objFields = [
+          ...(Array.isArray(s.items) ? s.items : []),
+          ...(Array.isArray(sCov.competencies) ? sCov.competencies : []),
+        ];
+        for (const txt of objFields) {
+          if (typeof txt !== "string" || txt.length < 4) continue;
+          if (isGenericLearningObjective(txt, moduleTitle)) {
+            issues.push({
+              slideId: id, type: "GENERIC_LEARNING_OBJECTIVE", severity: "CRITICAL",
+              message: `[SAFETY-NET] Objetivo genérico escapou em "${title}": "${txt.slice(0, 100)}"`,
+              context: txt.slice(0, 160),
+              resolutionStrategy: "Bloqueio absoluto — repair não atingiu o campo",
+            });
+          }
+        }
+      }
+    }
+  }
+  return issues;
+}
+
 function detectDomainContamination(
   slide: Slide,
   domain: ContentDomain,
@@ -4601,7 +4732,7 @@ function repairSlideSemanticBreaks(
     }
     return r.repaired;
   };
-  return {
+  const out: Slide = {
     ...s,
     title:    fix(s.title) ?? s.title,
     subtitle: fix(s.subtitle),
@@ -4609,6 +4740,12 @@ function repairSlideSemanticBreaks(
     leftItems:  s.leftItems?.map((t) => fix(t) ?? t),
     rightItems: s.rightItems?.map((t) => fix(t) ?? t),
   };
+  // v5.1.8: also repair competencies on module_cover
+  const comps = (s as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    (out as Slide & { competencies?: string[] }).competencies = comps.map((t) => fix(t) ?? t);
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4687,11 +4824,20 @@ function repairSlideLearningObjectives(
   moduleTitle: string,
   courseTopic: string,
 ): Slide {
-  if (s.layout !== "module_cover" || !Array.isArray(s.items)) return s;
-  const fixed = s.items.map((it, i) =>
-    repairLearningObjective(it, moduleTitle || s.title || "", courseTopic, i),
-  );
-  return { ...s, items: fixed };
+  if (s.layout !== "module_cover") return s;
+  const mt = moduleTitle || s.title || "";
+  const out: Slide = { ...s };
+  if (Array.isArray(s.items)) {
+    out.items = s.items.map((it, i) => repairLearningObjective(it, mt, courseTopic, i));
+  }
+  // v5.1.8: also repair competencies (separate field on module_cover)
+  if (Array.isArray((s as Slide & { competencies?: string[] }).competencies)) {
+    const comps = (s as Slide & { competencies?: string[] }).competencies as string[];
+    (out as Slide & { competencies?: string[] }).competencies = comps.map(
+      (it, i) => repairLearningObjective(it, mt, courseTopic, i),
+    );
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4779,7 +4925,7 @@ function repairSlideBrokenLanguage(s: Slide, slideId: string): Slide {
     }
     return r.repaired;
   };
-  return {
+  const out: Slide = {
     ...s,
     title:    fix(s.title) ?? s.title,
     subtitle: fix(s.subtitle),
@@ -4787,6 +4933,12 @@ function repairSlideBrokenLanguage(s: Slide, slideId: string): Slide {
     leftItems:  s.leftItems?.map((t) => fix(t) ?? t),
     rightItems: s.rightItems?.map((t) => fix(t) ?? t),
   };
+  // v5.1.8: also repair competencies on module_cover
+  const comps = (s as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    (out as Slide & { competencies?: string[] }).competencies = comps.map((t) => fix(t) ?? t);
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4906,7 +5058,7 @@ function sanitizeSlidePlaceholders(s: Slide): Slide {
   };
   const cleanItems = (arr?: string[]) =>
     arr ? arr.map((t) => cleanText(t) ?? "").filter((t) => t.trim().length > 0) : arr;
-  return {
+  const out: Slide = {
     ...s,
     title:       cleanText(s.title) ?? "",
     subtitle:    cleanText(s.subtitle),
@@ -4918,6 +5070,12 @@ function sanitizeSlidePlaceholders(s: Slide): Slide {
     rightItems:  cleanItems(s.rightItems),
     code:        s.code, // never sanitise code
   };
+  // v5.1.9: also sanitise competencies (module_cover field)
+  const comps = (s as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    (out as Slide & { competencies?: string[] }).competencies = cleanItems(comps);
+  }
+  return out;
 }
 
 // ── Technical sanitization damage REPAIR (v5.1.4) ──────────
@@ -5101,7 +5259,7 @@ function repairSlideTechnicalDamage(
   };
   const repairArr = (arr?: string[]) =>
     arr ? arr.map((t) => repair(t) ?? "").filter((t) => t.trim().length > 0) : arr;
-  return {
+  const out: Slide = {
     ...s,
     title:       repair(s.title) ?? s.title,
     subtitle:    repair(s.subtitle),
@@ -5113,12 +5271,20 @@ function repairSlideTechnicalDamage(
     rightItems:  repairArr(s.rightItems),
     code:        s.code,
   };
+  // v5.1.9: also repair competencies (module_cover field)
+  const comps = (s as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    (out as Slide & { competencies?: string[] }).competencies = repairArr(comps);
+  }
+  return out;
 }
 
 function slideHasResidualPlaceholder(s: Slide): { found: boolean; sample?: string } {
+  const sCov = s as Slide & { competencies?: string[] };
   const candidates = [
     s.title, s.subtitle, s.label, s.leftHeader, s.rightHeader,
     ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+    ...(sCov.competencies ?? []),
   ].filter(Boolean) as string[];
   for (const t of candidates) {
     for (const re of RESIDUAL_PLACEHOLDER_PATTERNS) {
@@ -5384,9 +5550,15 @@ function runPptxQA(
       // CRITICAL so L1 cascade replaces with concrete objectives via
       // repairSlideLearningObjectives.
       // ──────────────────────────────────────────────────────
-      if (s.layout === "module_cover" && Array.isArray(s.items)) {
+      if (s.layout === "module_cover") {
         const moduleTitle4 = moduleTitles[mi] ?? s.title ?? "";
-        const generic = s.items.filter((item) => isGenericLearningObjective(item, moduleTitle4));
+        // v5.1.8: scan BOTH items and competencies (module_cover usually has competencies, not items).
+        const sCov = s as Slide & { competencies?: string[] };
+        const fields: string[] = [
+          ...(Array.isArray(s.items) ? s.items : []),
+          ...(Array.isArray(sCov.competencies) ? sCov.competencies : []),
+        ];
+        const generic = fields.filter((item) => isGenericLearningObjective(item, moduleTitle4));
         if (generic.length > 0) {
           unfixedIssues.push({
             slideId: id, type: "GENERIC_LEARNING_OBJECTIVE", severity: "CRITICAL",
@@ -5934,18 +6106,28 @@ function l1VisualFix(
     }
     case "GENERIC_OBJECTIVE":
     case "GENERIC_LEARNING_OBJECTIVE": {
-      if (s.layout !== "module_cover" || !Array.isArray(s.items)) return s;
+      if (s.layout !== "module_cover") return s;
       // v5.1.5: deterministic concrete-objective rewrite using
       // PYTHON_OBJECTIVE_TAILS dictionary (tied to module subdomain).
+      // v5.1.9: works for items AND competencies (module_cover usually has competencies, no items).
       const repaired = repairSlideLearningObjectives(s, moduleTitle || s.title || "", courseTopic);
       // Keep the legacy normalisation as a final pass for any remaining
       // items that weren't generic (it normalises capitalisation).
-      const finalItems = (repaired.items ?? [])
-        .map((item, idx) =>
-          withPeriod(normalizeLearningObjective(item, s.title, idx))
-        )
-        .filter((item) => item.length > 8);
-      return finalItems.length >= 2 ? { ...repaired, items: finalItems } : repaired;
+      const out: Slide = { ...repaired };
+      if (Array.isArray(repaired.items)) {
+        const finalItems = repaired.items
+          .map((item, idx) => withPeriod(normalizeLearningObjective(item, s.title, idx)))
+          .filter((item) => item.length > 8);
+        if (finalItems.length >= 2) out.items = finalItems;
+      }
+      const repCov = (repaired as Slide & { competencies?: string[] }).competencies;
+      if (Array.isArray(repCov)) {
+        const finalComps = repCov
+          .map((item, idx) => withPeriod(normalizeLearningObjective(item, s.title, idx)))
+          .filter((item) => item.length > 8);
+        if (finalComps.length >= 2) (out as Slide & { competencies?: string[] }).competencies = finalComps;
+      }
+      return out;
     }
     default:
       return s;
@@ -6288,6 +6470,7 @@ function qaVeto(
   finalReport: QAReport,
   finalSlides: Slide[][],
   originalCount: number,
+  extraCovers?: Slide[],
 ): QAVetoResult {
   const totalSlides   = finalSlides.reduce((a, m) => a + m.length, 0);
   const removedSlides = Math.max(0, originalCount - totalSlides);
@@ -6304,6 +6487,22 @@ function qaVeto(
           type: "PLACEHOLDER_RESIDUAL",
           severity: "CRITICAL",
           message: `Placeholder residual "${ph.sample}" em "${s.title}"`,
+          resolutionStrategy: "Bloqueio de export — sanitizer não conseguiu remover marker",
+        });
+      }
+    }
+  }
+  // v5.1.9: also scan module covers for residual placeholders
+  if (extraCovers) {
+    for (let mi = 0; mi < extraCovers.length; mi++) {
+      const c = extraCovers[mi];
+      const ph = slideHasResidualPlaceholder(c);
+      if (ph.found) {
+        placeholderIssues.push({
+          slideId: `M${mi + 1}.COVER`,
+          type: "PLACEHOLDER_RESIDUAL",
+          severity: "CRITICAL",
+          message: `Placeholder residual "${ph.sample}" em cover "${c.title}"`,
           resolutionStrategy: "Bloqueio de export — sanitizer não conseguiu remover marker",
         });
       }
@@ -6458,6 +6657,22 @@ async function runPipeline(
     }
   }
 
+  // ── v5.1.9 — PRE-BUILD MODULE COVER SLIDES ─────────────────
+  // Module covers were previously constructed inline at render time
+  // via extractCompetencies(...), bypassing QA/repair/safety entirely.
+  // Build them upfront so the repair pipeline + safety net inspect
+  // (and can block) the actual competency strings that will render.
+  const moduleCovers: Slide[] = modules.map((m, i) => {
+    const cleanTitle =
+      m.title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || m.title;
+    return {
+      layout: "module_cover",
+      title: cleanTitle,
+      moduleIndex: i,
+      competencies: extractCompetencies(m.content, cleanTitle),
+    } as Slide & { moduleIndex: number; competencies: string[] };
+  });
+
   // ── TEMPLATE RESOLUTION ──────────────────────────────────────────────────
   // Resolve which template to use, then apply adaptive splits so that no slide
   // exceeds the template's item limits.  This runs AFTER allModuleSlides is
@@ -6517,6 +6732,18 @@ async function runPipeline(
       out = repairSlideBrokenLanguage(out, sid);
       return out;
     });
+  }
+
+  // v5.1.9: same repair pipeline for pre-built module covers
+  for (let mi = 0; mi < moduleCovers.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    const sid = `module_${mi + 1}_cover`;
+    let c = sanitizeSlidePlaceholders(moduleCovers[mi]);
+    c = repairSlideTechnicalDamage(c, mTitle, courseTitle, sid);
+    c = repairSlideSemanticBreaks(c, mTitle, courseTitle, sid);
+    c = repairSlideLearningObjectives(c, mTitle, courseTitle);
+    c = repairSlideBrokenLanguage(c, sid);
+    moduleCovers[mi] = c;
   }
 
   const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
@@ -6602,11 +6829,56 @@ async function runPipeline(
     `[V5-QA-POSTREPAIR] After final repair: status=${postRepairReport.status} | unfixed=${postRepairReport.issues.length} | fixed=${postRepairReport.fixedIssues.length}`,
   );
 
+  // ── v5.1.8 — GLOBAL FIELD SAFETY NET ──────────────────────────────
+  // Final pass: scan EVERY string field (extractAllStrings) of EVERY slide
+  // against ALL hard detectors. Catches contamination/genericity/brokenness
+  // that field-specific QA checks missed (competencies, takeaways subtitle,
+  // cards/process nested, comparison left/right, etc).
+  // v5.1.9: also re-run final repair pass on covers, then include them in safety net.
+  for (let mi = 0; mi < moduleCovers.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    const sid = `module_${mi + 1}_cover`;
+    let c = sanitizeSlidePlaceholders(moduleCovers[mi]);
+    c = repairSlideTechnicalDamage(c, mTitle, courseTitle, sid);
+    c = repairSlideSemanticBreaks(c, mTitle, courseTitle, sid);
+    c = repairSlideLearningObjectives(c, mTitle, courseTitle);
+    c = repairSlideBrokenLanguage(c, sid);
+    moduleCovers[mi] = c;
+  }
+  // Wrap each cover as its own pseudo-module so safety-net indexing keeps
+  // the original module title aligned with each cover.
+  const coverGroups: Slide[][] = moduleCovers.map((c) => [c]);
+  const safetyNetIssues = [
+    ...runGlobalFieldSafetyNet(
+      allModuleSlides,
+      inferCourseDomain(courseTitle),
+      moduleTitlesArr,
+    ),
+    ...runGlobalFieldSafetyNet(
+      coverGroups,
+      inferCourseDomain(courseTitle),
+      moduleTitlesArr,
+    ).map((iss) => ({ ...iss, slideId: iss.slideId.replace(/^M(\d+)\.S1$/, "M$1.COVER") })),
+  ];
+  if (safetyNetIssues.length > 0) {
+    console.log(`[V5-SAFETY-NET] ${safetyNetIssues.length} issue(s) escaped per-field checks:`);
+    for (const i of safetyNetIssues.slice(0, 20)) {
+      console.log(`[V5-SAFETY-NET]   - ${i.slideId} | ${i.type} | ${i.message.slice(0, 200)}`);
+    }
+    cascadeReport = {
+      ...cascadeReport,
+      status: "FAILED",
+      issues: [...cascadeReport.issues, ...safetyNetIssues],
+    };
+  } else {
+    console.log(`[V5-SAFETY-NET] Clean — no leakage detected by global field scan`);
+  }
+
   // ── QA VETO ─────────────────────────────────────────────────────────────
   // Hard gate — blocks export if any CRITICAL hard-constraint issue
   // survives the cascade. The handler converts this into a 422 response
   // with structured details.
-  const veto = qaVeto(cascadeReport, allModuleSlides, originalSlideCount);
+  const veto = qaVeto(cascadeReport, allModuleSlides, originalSlideCount, moduleCovers);
   if (veto.blocked) {
     throw new PptxQAVetoError(veto);
   }
@@ -6655,15 +6927,11 @@ async function runPipeline(
       modules[i].title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() ||
       modules[i].title;
 
-    // Module cover with competencies extracted from content
+    // v5.1.9: cover was pre-built and passed through repair + safety net + veto.
+    // Render uses the QA'd version, NOT a fresh extractCompetencies() call.
     renderModuleCover(
       pptx,
-      {
-        layout: "module_cover",
-        title: cleanTitle,
-        moduleIndex: i,
-        competencies: extractCompetencies(modules[i].content, cleanTitle),
-      },
+      moduleCovers[i],
       design,
       ++slideNum,
       totalSlides,
