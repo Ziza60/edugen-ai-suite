@@ -1,0 +1,265 @@
+v5.1.5 melhorou significativamente:
+- deduplicação funcionando;
+- reparo semântico funcionando parcialmente;
+- QA veto estável;
+- export v4/v5 consistente;
+- placeholders sumiram;
+- slides estão mais limpos e menos redundantes.
+
+O PPTX evoluiu de forma real.
+
+Porém ainda existem 4 problemas importantes que impedem qualidade de produção.
+
+Agora NÃO precisamos de novas features.
+Precisamos consolidar o motor.
+
+PROBLEMAS RESTANTES
+
+1. DOMAIN_CONTAMINATION ainda NÃO está sendo bloqueado corretamente
+
+No módulo:
+"Estruturas de Dados Fundamentais"
+
+Ainda aparecem:
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- TRUNCATE
+
+Isso continua absolutamente inválido para um curso introdutório de Python.
+
+O detector atual ainda está deixando passar SQL/DDL.
+
+Isso deve virar:
+HARD BLOCKING ABSOLUTO.
+
+2. GENERIC_OBJECTIVE ainda não foi eliminado
+
+Ainda aparecem objetivos como:
+- "Compreender fundamentos Essenciais de Python."
+- "Aplicar controle de Fluxo e Funções."
+- "Identificar testes, Logs e Depuração."
+
+Isso ainda é:
+verbo genérico + nome do módulo.
+
+Precisamos eliminar isso definitivamente.
+
+3. Alguns reparos técnicos continuam semanticamente incompletos
+
+Exemplos:
+
+Slide 15:
+- "Realize leitura (, ) e escrita (write())."
+
+Slide 31:
+- "Use com classes e métodos assert."
+
+O sistema está parcialmente reparando,
+mas ainda não reconstruindo corretamente o contexto técnico.
+
+4. Pequenos problemas linguísticos continuam
+
+Exemplo:
+- "POO: Que Adotar a Programação Orientada a Objetos?"
+
+O correto:
+- "POO: Por Que Adotar a Programação Orientada a Objetos?"
+
+AÇÃO OBRIGATÓRIA
+
+1. Tornar DOMAIN_CONTAMINATION um bloqueio absoluto
+
+Para cursos não-SQL:
+
+Bloquear:
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- TRUNCATE
+- SELECT
+- INSERT
+- UPDATE
+- DELETE
+- JOIN
+- GROUP BY
+- ORDER BY
+- HAVING
+- UNION
+
+Regra:
+Se aparecerem em:
+- título;
+- bullets;
+- objetivos;
+- resumo;
+- processo;
+- cards;
+- exemplos;
+
+Então:
+- issue CRITICAL;
+- regenerar slide;
+- fallback seguro;
+- remover slide;
+- bloquear export se persistir.
+
+Não exportar PPTX com SQL em módulo Python introdutório.
+
+2. Eliminar GENERIC_OBJECTIVE definitivamente
+
+Criar regra:
+Objetivos inválidos:
+- compreender + título
+- aplicar + título
+- identificar + título
+
+Sem habilidade técnica concreta.
+
+repairLearningObjective() deve obrigatoriamente gerar:
+- verbo técnico;
+- habilidade prática;
+- conceito específico.
+
+Exemplos válidos:
+
+py_basics:
+- "Utilizar variáveis, operadores e tipos primitivos."
+
+py_flow:
+- "Criar estruturas condicionais com if, elif e else."
+
+py_datastructs:
+- "Manipular listas, dicionários e conjuntos."
+
+py_files:
+- "Ler e escrever arquivos usando open() e with."
+
+py_oop:
+- "Criar classes e objetos com __init__()."
+
+py_tests:
+- "Implementar testes unitários com unittest."
+
+Adicionar:
+GENERIC_OBJECTIVE
+ao HARD_CRITICAL_TYPES.
+
+Nunca exportar objetivo genérico.
+
+3. Melhorar repairSemanticBreak()
+
+Adicionar reconstruções mais inteligentes:
+
+ruim:
+"Realize leitura (, ) e escrita (write())."
+
+bom:
+"Realize leitura com read() e escrita com write()."
+
+ruim:
+"Use com classes e métodos assert."
+
+bom:
+"Use unittest com classes TestCase e métodos assert."
+
+ruim:
+"Use com."
+
+bom:
+"Use requests.get() para consumir APIs."
+
+ruim:
+"Utilize com."
+
+bom:
+"Utilize with open() para gerenciamento seguro de arquivos."
+
+Regra:
+Nunca remover apenas tokens.
+Sempre reconstruir semanticamente.
+
+4. Criar detector de frase linguisticamente inválida
+
+Criar:
+detectBrokenNaturalLanguage()
+
+Detectar:
+- "Que Adotar..."
+- frases sem preposição;
+- frases sem sujeito/verbo coerente;
+- frases truncadas;
+- perguntas sem "Por";
+- frases com pontuação quebrada.
+
+Gerar:
+BROKEN_LANGUAGE_STRUCTURE
+
+Adicionar ao HARD_CRITICAL_TYPES se a frase ficar incompreensível.
+
+5. Melhorar QA pós-reparo
+
+Depois de:
+- repairSemanticBreak
+- repairLearningObjective
+- dedupe
+
+Executar:
+- detectIncompleteTechnicalSentence
+- detectBrokenNaturalLanguage
+- detectDomainContamination
+- validateLearningObjective
+
+novamente.
+
+Nenhum reparo pode criar nova frase quebrada.
+
+6. Logs obrigatórios
+
+Adicionar logs:
+[V5-OBJECTIVE-REPAIR]
+[V5-DOMAIN-BLOCK]
+[V5-LANGUAGE-REPAIR]
+
+Exemplo:
+[V5-OBJECTIVE-REPAIR]
+"Aplicar controle de Fluxo e Funções."
+→
+"Criar estruturas condicionais com if, elif e else."
+
+[V5-DOMAIN-BLOCK]
+Removed SQL DDL from py_datastructs slide.
+
+[V5-LANGUAGE-REPAIR]
+"Que Adotar..."
+→
+"Por Que Adotar..."
+
+7. Critério de aceite final
+
+Gerar novamente:
+"Introdução à Programação em Python"
+
+O PPTX só é aceitável se:
+- não houver SQL em módulos Python;
+- não houver objetivos genéricos;
+- não houver frases truncadas;
+- não houver reparos incompletos;
+- não houver linguagem quebrada;
+- não houver placeholders;
+- não houver código incompleto;
+- não houver redundância excessiva;
+- QA continue funcionando;
+- export continue vindo do v4/v5;
+- fallback v3 continue bloqueado para veto semântico.
+
+Prioridade absoluta:
+1. Integridade semântica
+2. Qualidade pedagógica
+3. Linguagem natural correta
+4. QA veto
+5. Estabilidade
+6. Visual
+
+Não adicionar novas funcionalidades visuais.
+Consolidar a qualidade semântica do motor.

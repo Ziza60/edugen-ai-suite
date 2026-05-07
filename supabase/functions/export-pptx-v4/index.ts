@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.5";
+const ENGINE_VERSION = "5.1.6";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4157,16 +4157,33 @@ const HARD_SQL_PROSE_RE =
 const BARE_SQL_UPPER_RE =
   /(?<![A-Za-z])(SELECT|INSERT|UPDATE|DELETE|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|GROUP\s+BY|ORDER\s+BY|HAVING|UNION)(?![A-Za-z])/;
 
+// v5.1.6: exhaustive string extraction — recursively pulls every
+// string-valued field from a slide so SQL leakage can't hide inside
+// nested arrays (caseStudy.phases, process.steps, cards, tableData...).
+function extractAllStrings(value: unknown, out: string[] = [], depth = 0): string[] {
+  if (depth > 6) return out;
+  if (value == null) return out;
+  if (typeof value === "string") { if (value.trim()) out.push(value); return out; }
+  if (Array.isArray(value)) {
+    for (const v of value) extractAllStrings(v, out, depth + 1);
+    return out;
+  }
+  if (typeof value === "object") {
+    for (const k of Object.keys(value as Record<string, unknown>)) {
+      // Skip known non-textual / structural keys to keep the pass fast.
+      if (k === "layout" || k === "image" || k === "src" || k === "url" || k === "color") continue;
+      extractAllStrings((value as Record<string, unknown>)[k], out, depth + 1);
+    }
+  }
+  return out;
+}
+
 function detectDomainContamination(
   slide: Slide,
   domain: ContentDomain,
   moduleTitle: string,
 ): { contaminated: boolean; reason?: string } {
-  // ── Conservative gating (v5.1 hardening) ─────────────────
-  if (domain === "generic") return { contaminated: false };
-
-  // Expanded module allow-lists — ecosystem-aware (Postgres/MySQL/Oracle
-  // for SQL; pandas/numpy/django/flask for Python; node/react/vue/ts for JS).
+  // Module/course allow-lists — ecosystem-aware.
   const moduleAllowsSql =
     /\bsql\b|banco de dados|\bbd\b|\bdatabase\b|\bquery\b|\bconsulta\b|postgres|mysql|oracle|sqlite|mariadb|nosql/i.test(moduleTitle);
   const moduleAllowsPython =
@@ -4174,25 +4191,29 @@ function detectDomainContamination(
   const moduleAllowsJs =
     /\bjavascript\b|\btypescript\b|\bnode\b|\bnodejs\b|\breact\b|\bvue\b|\bnext\b|\bnuxt\b|\bangular\b|\bdeno\b/i.test(moduleTitle);
 
-  // ── Layer 1: HARD prose check (title + bullets + code) ───
-  // Targets the regression observed in v5.1: SQL DDL/DML keywords
-  // leaking as bullet points inside a Python module. These patterns
-  // virtually never appear in legitimate Python pedagogy.
-  if (domain !== "sql" && !moduleAllowsSql) {
-    const proseText = [
-      slide.title, slide.subtitle, slide.label,
-      ...(slide.items ?? []),
-      ...(slide.leftItems ?? []), ...(slide.rightItems ?? []),
-    ].filter(Boolean).join("\n");
+  // v5.1.6: also infer python from module title/slide content even when
+  // courseDomain is "generic" (e.g. when the course title doesn't have
+  // "Python" but a module clearly does). This makes the SQL block
+  // ABSOLUTE for any python module regardless of inferred domain.
+  const looksLikePython = domain === "python" || moduleAllowsPython;
+
+  // ── Layer 1: HARD prose check (EXHAUSTIVE — all string fields) ───
+  // Concatenates EVERY string-valued field reachable in the slide, not
+  // just title/items. Catches SQL leaking into process.steps, cards,
+  // caseStudy.phases, tableData, etc.
+  if ((domain !== "sql" && !moduleAllowsSql) || looksLikePython) {
+    const allStrs = extractAllStrings(slide).filter((s) => !s.startsWith("[[")); // skip protected slots
+    const proseText = allStrs.join("\n");
     if (HARD_SQL_PROSE_RE.test(proseText)) {
+      console.log(`[V5-DOMAIN-BLOCK] SQL DDL/DML detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}"`);
       return { contaminated: true, reason: `SQL DDL/DML em prose de curso ${domain}` };
     }
-    // Bare uppercase SQL keywords — Python pedagogy never uses ALL-CAPS
-    // SELECT/JOIN/etc. (uses lowercase verbs); their presence is leakage.
     if (BARE_SQL_UPPER_RE.test(proseText)) {
+      console.log(`[V5-DOMAIN-BLOCK] Bare uppercase SQL detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}"`);
       return { contaminated: true, reason: `SQL bare keywords em prose de curso ${domain}` };
     }
   }
+  if (domain === "generic" && !looksLikePython) return { contaminated: false };
 
   // ── Layer 2: code-block analysis (only when slide has code) ─
   if (!slide.code || !slide.code.trim()) return { contaminated: false };
@@ -4656,6 +4677,101 @@ function repairSlideLearningObjectives(
 }
 
 // ═══════════════════════════════════════════════════════════
+// BROKEN NATURAL LANGUAGE DETECTOR + REPAIR (v5.1.6 hardening pass 6)
+// Catches Portuguese grammar damage that survives every other check —
+// e.g. "POO: Que Adotar a Programação Orientada a Objetos?" (missing
+// "Por"), questions starting with "Que" + verb without "Por", missing
+// prepositions, etc.
+// ═══════════════════════════════════════════════════════════
+
+type BrokenLangPattern = {
+  re: RegExp;
+  key: string;
+  describe: string;
+};
+
+const BROKEN_LANG_PATTERNS: BrokenLangPattern[] = [
+  // "Que Adotar...", "Que Usar...", "POO: Que Aprender..." — missing "Por"
+  { re: /(^|[\s:])Que\s+(Adotar|Usar|Utilizar|Aplicar|Escolher|Implementar|Aprender|Estudar|Conhecer|Iniciar|Começar|Comecar|Programar|Desenvolver|Criar|Adotamos|Escolhemos|Usamos)\b/,
+    key: "missing_por_que", describe: "'Que <verbo>' sem 'Por'" },
+  // "POO: É Importante?" / "POR: É Necessário?" — fragmented questions starting with isolated "É"
+  { re: /(^|[\s:])É\s+(Importante|Necessário|Necessária|Útil|Fundamental|Essencial)\?/,
+    key: "missing_por_que_e", describe: "'É <adj>?' provavelmente faltando 'Por que'" },
+  // Title ends with isolated preposition: "Introdução a", "Conceitos de", "Trabalhando com"
+  { re: /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ][^.?!]*\b(a|de|com|para|em|por)\s*$/,
+    key: "trailing_preposition_title", describe: "título termina em preposição isolada" },
+  // Double conjunction: "que que", "de de", "com com"
+  { re: /\b(que|de|com|para|em|por)\s+\1\b/i,
+    key: "duplicate_word", describe: "palavra duplicada" },
+  // "?:" or ":?" or ":?:" — broken question/colon punctuation
+  { re: /[?:]\s*[?:]/,
+    key: "broken_question_colon", describe: "pontuação de pergunta/dois-pontos quebrada" },
+];
+
+function detectBrokenNaturalLanguage(
+  text: string,
+): { broken: boolean; key?: string; describe?: string } {
+  if (!text || text.length < 4) return { broken: false };
+  for (const p of BROKEN_LANG_PATTERNS) {
+    if (p.re.test(text)) return { broken: true, key: p.key, describe: p.describe };
+  }
+  return { broken: false };
+}
+
+const BROKEN_LANG_REPAIRS: Record<string, (t: string) => string | null> = {
+  missing_por_que: (t) =>
+    t.replace(
+      /(^|[\s:])Que\s+(Adotar|Usar|Utilizar|Aplicar|Escolher|Implementar|Aprender|Estudar|Conhecer|Iniciar|Começar|Comecar|Programar|Desenvolver|Criar|Adotamos|Escolhemos|Usamos)\b/,
+      "$1Por Que $2",
+    ),
+  missing_por_que_e: (t) =>
+    t.replace(
+      /(^|[\s:])É\s+(Importante|Necessário|Necessária|Útil|Fundamental|Essencial)\?/,
+      "$1Por que é $2?",
+    ),
+  trailing_preposition_title: (t) =>
+    // Drop the trailing preposition (safer than guessing the missing word)
+    t.replace(/\s+\b(a|de|com|para|em|por)\s*$/, ""),
+  duplicate_word: (t) =>
+    t.replace(/\b(que|de|com|para|em|por)\s+\1\b/gi, "$1"),
+  broken_question_colon: (t) => t.replace(/[?:]\s*[?:]/g, "?"),
+};
+
+function repairBrokenLanguage(text: string): { repaired: string; changed: boolean; key?: string } {
+  if (!text) return { repaired: text, changed: false };
+  const det = detectBrokenNaturalLanguage(text);
+  if (!det.broken || !det.key) return { repaired: text, changed: false };
+  const fn = BROKEN_LANG_REPAIRS[det.key];
+  if (!fn) return { repaired: text, changed: false };
+  const out = fn(text);
+  if (out && out !== text && !detectBrokenNaturalLanguage(out).broken) {
+    return { repaired: out, changed: true, key: det.key };
+  }
+  return { repaired: text, changed: false };
+}
+
+function repairSlideBrokenLanguage(s: Slide, slideId: string): Slide {
+  const fix = (txt: string | undefined): string | undefined => {
+    if (!txt) return txt;
+    const r = repairBrokenLanguage(txt);
+    if (r.changed) {
+      console.log(
+        `[V5-LANGUAGE-REPAIR] ${slideId} | "${txt.slice(0, 80)}" → "${r.repaired.slice(0, 80)}" [${r.key}]`,
+      );
+    }
+    return r.repaired;
+  };
+  return {
+    ...s,
+    title:    fix(s.title) ?? s.title,
+    subtitle: fix(s.subtitle),
+    items:      s.items?.map((t) => fix(t) ?? t),
+    leftItems:  s.leftItems?.map((t) => fix(t) ?? t),
+    rightItems: s.rightItems?.map((t) => fix(t) ?? t),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
 // SEMANTIC DUPLICATE DETECTOR (v5.1.5)
 // Finds slide pairs whose normalized bullet/title content overlaps
 // ≥70% and drops the weaker one (fewer items, shorter total text).
@@ -4838,6 +4954,13 @@ const PY_FILES_DICT: RepairRule[] = [
   [/\bblocos?\s+try\s+e\s+\(\s*\)/gi, "blocos `try` e `except`"],
   // "try ()" / "except ()" / "finally ()" — drop empty parens (these are statements, not calls)
   [/\b(try|except|finally|raise)\s*\(\s*\)/gi, "`$1`"],
+  // v5.1.6: stripped function name with surviving comma — "leitura (, )" / "escrita (, )"
+  [/\b(leitura|ler)\s*\(\s*,\s*\)/gi, "leitura com `read()`"],
+  [/\b(escrita|escrever)\s*\(\s*,\s*\)/gi, "escrita com `write()`"],
+  // "função (, )" / "method (, )" → drop the orphan parens
+  [/\b(função|funcao|m[ée]todo|chamada)\s*\(\s*,+\s*\)/gi, "$1 correspondente"],
+  // "Use com." / "Utilize com." (terminal "com.") in files context → with open
+  [/\b(use|usar|utilize|utilizar)\s+com\s*\.\s*$/i, "$1 `with open(...)` para gerenciamento seguro de arquivos."],
 ];
 
 const PY_OOP_DICT: RepairRule[] = [
@@ -4853,6 +4976,16 @@ const PY_OOP_DICT: RepairRule[] = [
 ];
 
 const PY_TESTS_DICT: RepairRule[] = [
+  // v5.1.6: "Use com classes e métodos assert" → "Use `unittest` com classes `TestCase` e métodos `assert*`"
+  [/\b(use|usar|usando|utilize|utilizar)\s+com\s+classes?\s+e\s+m[ée]todos?\s+assert\w*\b/gi,
+    "$1 `unittest` com classes `TestCase` e métodos `assert*`"],
+  // "Use com classes" alone (sem assert)
+  [/\b(use|usar|usando|utilize|utilizar)\s+com\s+classes?\b(?!\s+\w)/gi,
+    "$1 `unittest` com classes `TestCase`"],
+  // "métodos assert." (terminal) → métodos assert*
+  [/\bm[ée]todos?\s+assert\s*\.(\s|$)/gi, "métodos `assert*`.$1"],
+  // "Use com." (terminal) in tests context → use unittest
+  [/\b(use|usar|utilize|utilizar)\s+com\s*\.\s*$/i, "$1 `unittest` para escrever testes."],
   // "classes com e métodos" → "classes com `unittest.TestCase` e métodos `test_*`"
   [/\bclasses?\s+com\s+e\s+m[ée]todos/gi,
     "classes com `unittest.TestCase` e métodos `test_*`"],
@@ -5071,7 +5204,9 @@ type QAIssueType =
   | "TECHNICAL_SANITIZATION_DAMAGE"
   // ── v5.1.5 hardening pass 5 ─────────────────────────────────
   | "TECHNICAL_SEMANTIC_BREAK"
-  | "REDUNDANT_SLIDE";
+  | "REDUNDANT_SLIDE"
+  // ── v5.1.6 hardening pass 6 ─────────────────────────────────
+  | "BROKEN_LANGUAGE_STRUCTURE";
 
 interface QAIssue {
   slideId:            string;
@@ -5224,17 +5359,23 @@ function runPptxQA(
       }
 
       // ──────────────────────────────────────────────────────
-      // 4. GENERIC_LEARNING_OBJECTIVE  [WARNING — already fixed upstream]
+      // 4. GENERIC_LEARNING_OBJECTIVE  [CRITICAL — auto-repair via cascade]
+      // v5.1.6: was WARNING-only and used BAD_OBJECTIVE_RE (only catches
+      // double-verb patterns). Now uses isGenericLearningObjective which
+      // catches "Compreender X", "Aplicar X", "Identificar X" — emits
+      // CRITICAL so L1 cascade replaces with concrete objectives via
+      // repairSlideLearningObjectives.
       // ──────────────────────────────────────────────────────
       if (s.layout === "module_cover" && Array.isArray(s.items)) {
-        const generic = s.items.filter((item) => BAD_OBJECTIVE_RE.test(item));
+        const moduleTitle4 = moduleTitles[mi] ?? s.title ?? "";
+        const generic = s.items.filter((item) => isGenericLearningObjective(item, moduleTitle4));
         if (generic.length > 0) {
-          fixedIssues.push({
-            slideId: id, type: "GENERIC_LEARNING_OBJECTIVE", severity: "WARNING",
+          unfixedIssues.push({
+            slideId: id, type: "GENERIC_LEARNING_OBJECTIVE", severity: "CRITICAL",
             message: `${generic.length} objetivo(s) genérico(s) em "${s.title}"`,
             metric: generic.length,
             context: generic[0],
-            resolutionStrategy: "Objetivos expandidos por expandVagueObjective() upstream",
+            resolutionStrategy: "L1 cascade aplicará repairSlideLearningObjectives()",
           });
         }
       }
@@ -5596,6 +5737,26 @@ function runPptxQA(
           resolutionStrategy: "Reparo semântico via repairSemanticBreak() ou bloqueio do export",
         });
       }
+
+      // 20. BROKEN_LANGUAGE_STRUCTURE  [CRITICAL → repair via cascade or veto]
+      // v5.1.6: catches Portuguese grammar damage like "Que Adotar..."
+      // (missing "Por"), missing prepositions, etc. L1 cascade will try
+      // repairBrokenLanguage(); persistent damage blocks the export.
+      let brokenLang: { txt: string; describe: string } | null = null;
+      const langFields = [s.title, ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? [])]
+        .filter((x): x is string => typeof x === "string");
+      for (const t of langFields) {
+        const det = detectBrokenNaturalLanguage(t);
+        if (det.broken) { brokenLang = { txt: t, describe: det.describe ?? det.key ?? "?" }; break; }
+      }
+      if (brokenLang) {
+        unfixedIssues.push({
+          slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
+          message: `Linguagem natural quebrada em "${s.title}" (${brokenLang.describe})`,
+          context: brokenLang.txt.slice(0, 120),
+          resolutionStrategy: "Reparo via repairBrokenLanguage() ou bloqueio do export",
+        });
+      }
     } // end slide loop
 
     // Apply drop mask for CRITICALs that could not be repaired
@@ -5747,6 +5908,11 @@ function l1VisualFix(
       const mTitle = moduleTitle || s.label || "";
       const cTopic = courseTopic || mTitle;
       return repairSlideSemanticBreaks(s, mTitle, cTopic, issue.slideId);
+    }
+    case "BROKEN_LANGUAGE_STRUCTURE": {
+      // v5.1.6: deterministic Portuguese-grammar repair ("Que Adotar..."
+      // → "Por Que Adotar..."). Failures stay flagged; veto blocks.
+      return repairSlideBrokenLanguage(s, issue.slideId);
     }
     case "GENERIC_OBJECTIVE":
     case "GENERIC_LEARNING_OBJECTIVE": {
@@ -6096,6 +6262,8 @@ const HARD_CRITICAL_TYPES: ReadonlySet<QAIssueType> = new Set<QAIssueType>([
   // (e.g. "Capture erros específicos como.", "Verifica X com.") that
   // cannot be auto-repaired must block export rather than ship truncated.
   "TECHNICAL_SEMANTIC_BREAK",
+  // v5.1.6 hardening pass 6 — broken Portuguese ("Que Adotar..." sem "Por")
+  "BROKEN_LANGUAGE_STRUCTURE",
 ]);
 
 function qaVeto(
@@ -6317,11 +6485,20 @@ async function runPipeline(
   // BEFORE qa runs. The QA still runs afterwards and the veto still blocks
   // anything we couldn't fix — we never loosen the gate, we just give the
   // repairer a chance to recover known damage from context.
+  // ── Pre-QA repair pass (v5.1.6) ───────────────────────────
+  // Mirrors the post-cascade pipeline so initial QA sees already-cleaned
+  // slides. Catches damage from sanitization/LLM before it gets logged
+  // as an issue.
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     const mTitle = moduleTitlesArr[mi] ?? "";
-    allModuleSlides[mi] = allModuleSlides[mi].map((s, si) =>
-      repairSlideTechnicalDamage(s, mTitle, courseTitle, `module_${mi + 1}_slide_${si + 1}`),
-    );
+    allModuleSlides[mi] = allModuleSlides[mi].map((s, si) => {
+      const sid = `module_${mi + 1}_slide_${si + 1}`;
+      let out = repairSlideTechnicalDamage(s, mTitle, courseTitle, sid);
+      out = repairSlideSemanticBreaks(out, mTitle, courseTitle, sid);
+      out = repairSlideLearningObjectives(out, mTitle, courseTitle);
+      out = repairSlideBrokenLanguage(out, sid);
+      return out;
+    });
   }
 
   const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
@@ -6365,11 +6542,12 @@ async function runPipeline(
     allModuleSlides[mi] = allModuleSlides[mi].map(sanitizeSlidePlaceholders);
   }
 
-  // ── Final technical + semantic repair pass (v5.1.5) ──────────────────
-  // Last chance before the veto. Runs:
-  //   (a) repairSlideTechnicalDamage  — empty-paren / orphan-punct fixes
-  //   (b) repairSlideSemanticBreaks   — "como.", "com.", "(Ex: )" fixes
-  //   (c) repairSlideLearningObjectives — concrete objective rewrite
+  // ── Final repair pass (v5.1.6) ─────────────────────────────────────
+  // Last chance before the veto. Runs sequentially:
+  //   (a) repairSlideTechnicalDamage     — empty-paren / orphan-punct
+  //   (b) repairSlideSemanticBreaks      — "como.", "com.", "(Ex: )"
+  //   (c) repairSlideLearningObjectives  — concrete objective rewrite
+  //   (d) repairSlideBrokenLanguage      — "Que Adotar..." → "Por Que..."
   // Then dedupeSemanticDuplicates collapses any near-duplicate slides.
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     const mTitle = moduleTitlesArr[mi] ?? "";
@@ -6378,6 +6556,7 @@ async function runPipeline(
       let out = repairSlideTechnicalDamage(s, mTitle, courseTitle, sid);
       out = repairSlideSemanticBreaks(out, mTitle, courseTitle, sid);
       out = repairSlideLearningObjectives(out, mTitle, courseTitle);
+      out = repairSlideBrokenLanguage(out, sid);
       return out;
     });
   }
