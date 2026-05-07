@@ -64,7 +64,21 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~6100 lines, ENGINE_VERSION=5.1.3).
+`supabase/functions/export-pptx-v4/index.ts` (~6300 lines, ENGINE_VERSION=5.1.4).
+
+### Hardening Pass 4 (v5.1.4) — Deterministic technical-damage repair
+- **`repairTechnicalSanitizationDamage(text, moduleTitle, courseTopic, language)`**: domain-aware reconstruction of stripped technical tokens. Runs in 3 places: (1) pre-QA (after sanitize, before runPptxQA), (2) cascade L1 case `TECHNICAL_SANITIZATION_DAMAGE`, (3) post-cascade safety pass before veto. Re-runs `runPptxQA` after the post-cascade repair so `qaVeto` consumes the up-to-date report (no longer stale `cascadeReport`)
+- **Domain dictionaries** (gated by module-title detection — `detectModuleDomain`):
+  - `PY_FILES_DICT` — `leitura ()`→`leitura com read()`, `escrita ()`→`escrita com write()`, `abrir/abertura ()`→``open()``, `fechar/fechamento ()`→``close()``, `with open ()`→``with open(...)``, `try/except/finally/raise ()`→``$1`` (statements, not calls), `FileNotFound ()`→``FileNotFoundError``, `IOError ()`→``IOError``, `encoding ()`→``encoding='utf-8'``, `modo de abertura ()`→`(`'r'`, `'w'`, `'a'`)`, `trata erros e para limpeza`→`Use except para tratar erros e finally para limpeza`, `blocos try e ()`→`blocos try e except`, "Use () para abrir/ler/escrever/fechar" → restored verb mapping
+  - `PY_OOP_DICT` — `construtor ()`→``__init__()``, `método ()`→`método correspondente`, `instanciar ()`→`instanciar a classe`, `use () para criar/instanciar`→`use o construtor para criar/instanciar`
+  - `PY_TESTS_DICT` — `classes com e métodos`→`classes com unittest.TestCase e métodos test_*`, `use () para asserções`→`use assertEqual() para asserções`, `teste ()`→`função de teste`
+  - `PY_GENERIC_DICT` — fallback when no specific match: `verb () e ()`→`verb as funções correspondentes`, `verb ()`→`verb a função apropriada`, `função ()`→`função correspondente`, `() e ()`→`as funções correspondentes`, bare `()` → drop
+  - `ORPHAN_PUNCT_DICT` — gated by `detectTechnicalDamage` (only fires on flagged fields): `, ,`→`,`, ` e .`→`.`, ` ou .`→`.`, `: .`→`.`, collapse whitespace
+- **`l1VisualFix` signature extended**: now takes `moduleTitle` and `courseTopic` (passed by `resolveQAIssues`) so the L1 repair sees real domain context (not inferred from `s.label`/module text)
+- **Repair logging**: `[V5-REPAIR] {slideId} | "{before}" → "{after}"` per fixed field. `[V5-QA-POSTREPAIR] After final repair: status=... | unfixed=N | fixed=N` summary. Veto remains identical — no relaxation; only repair coverage expanded
+
+### Diagnostic Payload (v5.1.3+)
+Both 200 and 422 responses include: `engine`, `engine_version`, `status` (`exported`|`blocked`), `fallback_used`, `cache` (`miss`), `slide_count`, `blocking_issues`, plus on success a `qa` summary: `qa_status` (`PASSED`|`WARNING`|`FAILED`), `issues_unfixed`, `issues_fixed`, `original_slides`, `rendered_slides`, `removed_slides`, and per-type `fixed_breakdown`/`unfixed_breakdown`. Frontend `ExportButtons.tsx` logs unified `[PPTX][DIAG] {...}` line on every export end (success or veto).
 
 ### Hardening Pass 3 (v5.1.3) — Veto enforcement + broader damage detection
 - **Frontend fallback bug fix (root cause of "veto não funciona")**: `src/components/course/ExportButtons.tsx` was silently falling back to v3 (no QA) on ANY non-2xx from v4 — including the intentional 422 from QA veto. Now distinguishes `res.status === 422 && v4data.code === "PPTX_QA_VETO"` (semantic block — hard stop, surfaces structured `blockingIssues` to user, does NOT export) vs infra failures (timeout/5xx/network — falls back to v3 as before)

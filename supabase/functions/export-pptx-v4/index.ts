@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.3";
+const ENGINE_VERSION = "5.1.4";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4382,6 +4382,184 @@ function sanitizeSlidePlaceholders(s: Slide): Slide {
   };
 }
 
+// ── Technical sanitization damage REPAIR (v5.1.4) ──────────
+// Deterministic, domain-aware repair of "verb ()" / ", ," / "Use e ."
+// patterns that survive globalSanitize. Runs BEFORE the QA detector,
+// then again after the cascade. Never loosens the veto — only attempts
+// to reconstruct the lost technical token from context.
+//
+// Domain dictionaries are conservative: they only fire when the module
+// title clearly belongs to a known domain (Python file I/O, Python OOP,
+// Python tests). Generic Python repairs apply to any Python course.
+
+type RepairRule = [RegExp, string];
+
+const PY_FILES_DICT: RepairRule[] = [
+  // "leitura ()" / "ler ()" → "leitura com `read()`"
+  [/\b(leitura|ler)\s*\(\s*\)/gi, "leitura com `read()`"],
+  // "escrita ()" / "escrever ()" → "escrita com `write()`"
+  [/\b(escrita|escrever)\s*\(\s*\)/gi, "escrita com `write()`"],
+  // "abrir ()" / "abertura ()" → "`open()`"
+  [/\b(abrir|abertura)\s*\(\s*\)/gi, "`open()`"],
+  // "fechar ()" / "fechamento ()" → "`close()`"
+  [/\b(fechar|fechamento)\s*\(\s*\)/gi, "`close()`"],
+  // "Use () para abrir arquivos" → "Use `open()` para abrir arquivos"
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+abrir/gi, "$1 `open()` para abrir"],
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+(ler|leitura)/gi, "$1 `read()` para $2"],
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+(escrever|escrita)/gi, "$1 `write()` para $2"],
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+fechar/gi, "$1 `close()` para fechar"],
+  // "trata erros e para limpeza" → "Use `except` para tratar erros e `finally` para limpeza"
+  [/\btrata(r)?\s+(erros?|exce[çc][õo]es?)\s+e\s+para\s+limpeza/gi,
+    "Use `except` para tratar erros e `finally` para limpeza"],
+  // "blocos e para tratamento" → "blocos `try`/`except` para tratamento"
+  [/\bblocos?\s+e\s+para\s+tratamento/gi, "blocos `try`/`except` para tratamento"],
+  // "with open ()" → "`with open(...)`"
+  [/\bwith\s+open\s*\(\s*\)/gi, "`with open(...)`"],
+  // "use with ()" → "use `with open(...)`"
+  [/\b(use|usar|usando)\s+with\s+\(\s*\)/gi, "$1 `with open(...)`"],
+  // "context manager ()" → "context manager `with`"
+  [/\bcontext\s*manager\s*\(\s*\)/gi, "context manager `with`"],
+  // "exceção FileNotFound" / "FileNotFound ()" → "`FileNotFoundError`"
+  [/\bFileNotFound(?:Error)?\s*\(\s*\)/g, "`FileNotFoundError`"],
+  [/\bexce[çc][aã]o\s+FileNotFound\b/gi, "exceção `FileNotFoundError`"],
+  // "IOError ()" / "IO Error ()" → "`IOError`"
+  [/\bIO\s*Error\s*\(\s*\)/g, "`IOError`"],
+  // "encoding ()" → "`encoding='utf-8'`"
+  [/\bencoding\s*\(\s*\)/gi, "`encoding='utf-8'`"],
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+codifica[çc][aã]o/gi,
+    "$1 `encoding='utf-8'` para codificação"],
+  // "modo de abertura ()" → "modo de abertura (`'r'`, `'w'`, `'a'`)"
+  [/\bmodo(s)?\s+de\s+abertura\s*\(\s*\)/gi, "modos de abertura (`'r'`, `'w'`, `'a'`)"],
+  // "blocos try e ()" → "blocos `try` e `except`"
+  [/\bblocos?\s+try\s+e\s+\(\s*\)/gi, "blocos `try` e `except`"],
+  // "try ()" / "except ()" / "finally ()" — drop empty parens (these are statements, not calls)
+  [/\b(try|except|finally|raise)\s*\(\s*\)/gi, "`$1`"],
+];
+
+const PY_OOP_DICT: RepairRule[] = [
+  // "construtor ()" → "`__init__()`"
+  [/\bconstrutor\s*\(\s*\)/gi, "`__init__()`"],
+  // "método ()" / "metodo ()" → "método correspondente"
+  [/\b(m[ée]todo|metodo)\s*\(\s*\)/gi, "método correspondente"],
+  // "instanciar ()" → "instanciar a classe"
+  [/\binstanciar\s*\(\s*\)/gi, "instanciar a classe"],
+  // "use () para criar objetos" → "use o construtor para criar objetos"
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+(criar|instanciar)/gi,
+    "$1 o construtor para $2"],
+];
+
+const PY_TESTS_DICT: RepairRule[] = [
+  // "classes com e métodos" → "classes com `unittest.TestCase` e métodos `test_*`"
+  [/\bclasses?\s+com\s+e\s+m[ée]todos/gi,
+    "classes com `unittest.TestCase` e métodos `test_*`"],
+  // "use () para asserções" → "use `assertEqual()` para asserções"
+  [/\b(use|usar)\s+\(\s*\)\s+para\s+asser[çc][õo]es/gi,
+    "$1 `assertEqual()` para asserções"],
+  // "testes" pattern: bare "()" near "teste"
+  [/\bteste\s*\(\s*\)/gi, "função de teste"],
+];
+
+const PY_GENERIC_DICT: RepairRule[] = [
+  // "Realize leitura () e escrita ()." → handled by FILES first; this is fallback
+  // Generic "verb ()" with no obvious tech mapping → drop empty parens
+  [/\b(usar|use|usando|chamar|chame|chamando|invocar|invoque|executar|execute|aplicar|aplique|realize|realizar|fazer|faça|implementar|implemente)\s+\(\s*\)\s+e\s+\(\s*\)/gi,
+    "$1 as funções correspondentes"],
+  [/\b(usar|use|usando|chamar|chame|chamando|invocar|invoque|executar|execute|aplicar|aplique|realize|realizar|fazer|faça|implementar|implemente)\s+\(\s*\)/gi,
+    "$1 a função apropriada"],
+  // "função ()" / "funcao ()" → "função correspondente"
+  [/\b(fun[çc][aã]o|chamada)\s*\(\s*\)/gi, "$1 correspondente"],
+  // ". ()" → ". " (orphan parens at sentence break)
+  [/\.\s*\(\s*\)/g, "."],
+  // "() e ()" anywhere → "as funções correspondentes"
+  [/\(\s*\)\s+e\s+\(\s*\)/g, "as funções correspondentes"],
+  // Bare leftover "()" — drop
+  [/\s+\(\s*\)/g, ""],
+];
+
+const ORPHAN_PUNCT_DICT: RepairRule[] = [
+  // "X em , , , ." → "X em itens diversos."
+  [/\bem\s+(,\s*){2,}\.?/gi, "em itens diversos."],
+  // ", ," → ","
+  [/,\s*,+/g, ","],
+  // " ," → ","
+  [/\s+,/g, ","],
+  // " e ." → "."
+  [/\s+e\s+\./g, "."],
+  // " ou ." → "."
+  [/\s+ou\s+\./g, "."],
+  // ": ." or ": , ." → "."
+  [/:\s*[,\s]*\./g, "."],
+  // collapse whitespace
+  [/\s{2,}/g, " "],
+];
+
+function detectModuleDomain(moduleTitle: string, courseTopic: string): {
+  isPython: boolean; isFiles: boolean; isOOP: boolean; isTests: boolean;
+} {
+  const ml = (moduleTitle || "").toLowerCase();
+  const ct = (courseTopic  || "").toLowerCase();
+  const isPython = /\bpython\b/.test(ml) || /\bpython\b/.test(ct);
+  const isFiles  = isPython && /(arquiv|except|exce[çc][aã]o|erro|i\/?o|recurs|file|leitura|escrita)/.test(ml);
+  const isOOP    = isPython && /(orient|objeto|classe|poo|construtor|hera[nñ][cç]a|encapsul|polimorf)/.test(ml);
+  const isTests  = isPython && /(teste|test\b|unitt|pytest|tdd)/.test(ml);
+  return { isPython, isFiles, isOOP, isTests };
+}
+
+function repairTechnicalSanitizationDamage(
+  text: string,
+  moduleTitle: string,
+  courseTopic: string,
+  _language: string = "pt-BR",
+): string {
+  if (!text || typeof text !== "string") return text;
+  const { isPython, isFiles, isOOP, isTests } = detectModuleDomain(moduleTitle, courseTopic);
+  let out = text;
+  const apply = (dict: RepairRule[]) => { for (const [re, rep] of dict) out = out.replace(re, rep); };
+  // Domain-specific dictionaries first (so "leitura ()" → "leitura com `read()`"
+  // wins over the generic "verb ()" → "verb a função apropriada").
+  if (isFiles) apply(PY_FILES_DICT);
+  if (isOOP)   apply(PY_OOP_DICT);
+  if (isTests) apply(PY_TESTS_DICT);
+  if (isPython) apply(PY_GENERIC_DICT);
+  // Always run orphan-punctuation cleanup last.
+  apply(ORPHAN_PUNCT_DICT);
+  return out.trim();
+}
+
+// Slide-level wrapper. Logs before/after when a damaged field was repaired.
+function repairSlideTechnicalDamage(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+  slideId?: string,
+): Slide {
+  const repair = (t?: string) => {
+    if (!t) return t;
+    if (!detectTechnicalDamage(t)) return t;
+    const fixed = repairTechnicalSanitizationDamage(t, moduleTitle, courseTopic);
+    if (fixed !== t) {
+      console.log(
+        `[V5-REPAIR] ${slideId ?? "?"} | "${t.slice(0, 80)}" → "${fixed.slice(0, 80)}"`,
+      );
+    }
+    return fixed;
+  };
+  const repairArr = (arr?: string[]) =>
+    arr ? arr.map((t) => repair(t) ?? "").filter((t) => t.trim().length > 0) : arr;
+  return {
+    ...s,
+    title:       repair(s.title) ?? s.title,
+    subtitle:    repair(s.subtitle),
+    label:       repair(s.label),
+    leftHeader:  repair(s.leftHeader),
+    rightHeader: repair(s.rightHeader),
+    items:       repairArr(s.items),
+    leftItems:   repairArr(s.leftItems),
+    rightItems:  repairArr(s.rightItems),
+    code:        s.code,
+  };
+}
+
 function slideHasResidualPlaceholder(s: Slide): { found: boolean; sample?: string } {
   const candidates = [
     s.title, s.subtitle, s.label, s.leftHeader, s.rightHeader,
@@ -5068,7 +5246,13 @@ function normalizeItemPunctuation(text: string): string {
  * Apply a targeted visual fix to a single slide for the given issue.
  * Never changes layout or splits the slide.
  */
-function l1VisualFix(s: Slide, issue: QAIssue, moduleContent: string): Slide {
+function l1VisualFix(
+  s: Slide,
+  issue: QAIssue,
+  moduleContent: string,
+  moduleTitle: string = "",
+  courseTopic: string = "",
+): Slide {
   switch (issue.type) {
     case "EMPTY_SLIDE": {
       const rep = repairEmptySlide(s, moduleContent);
@@ -5127,6 +5311,14 @@ function l1VisualFix(s: Slide, issue: QAIssue, moduleContent: string): Slide {
     }
     case "FONT_TOO_SMALL_RISK":
       return { ...s, items: nonEmpty(s.items).map((t) => safeSliceText(t, 80)) };
+    case "TECHNICAL_SANITIZATION_DAMAGE": {
+      // Deterministic repair using domain dictionaries with the REAL
+      // moduleTitle and courseTopic (passed in by resolveQAIssues).
+      // Falls back to s.label only when the cascade didn't supply context.
+      const mTitle = moduleTitle || s.label || "";
+      const cTopic = courseTopic || mTitle;
+      return repairSlideTechnicalDamage(s, mTitle, cTopic, issue.slideId);
+    }
     case "GENERIC_LEARNING_OBJECTIVE": {
       if (s.layout !== "module_cover" || !Array.isArray(s.items)) return s;
       const expanded = s.items
@@ -5336,7 +5528,13 @@ async function resolveQAIssues(
       if (!pos) continue;
       const { mi, si } = pos;
       if (!current[mi] || si >= current[mi].length) continue;
-      current[mi][si] = l1VisualFix(current[mi][si], issue, moduleContents[mi] ?? "");
+      current[mi][si] = l1VisualFix(
+        current[mi][si],
+        issue,
+        moduleContents[mi] ?? "",
+        moduleTitles[mi] ?? "",
+        courseTopic,
+      );
     }
     const { repairedSlides: afterL1, report: reportL1 } = runPptxQA(current, moduleContents, courseTopic, moduleTitles);
     current = afterL1;
@@ -5675,6 +5873,18 @@ async function runPipeline(
     allModuleSlides[mi] = allModuleSlides[mi].map(sanitizeSlidePlaceholders);
   }
 
+  // ── Pre-QA TECHNICAL DAMAGE REPAIR (v5.1.4) ──────────────────────────
+  // Deterministic, domain-aware reconstruction of "verb ()" / ", ," patterns
+  // BEFORE qa runs. The QA still runs afterwards and the veto still blocks
+  // anything we couldn't fix — we never loosen the gate, we just give the
+  // repairer a chance to recover known damage from context.
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    allModuleSlides[mi] = allModuleSlides[mi].map((s, si) =>
+      repairSlideTechnicalDamage(s, mTitle, courseTitle, `module_${mi + 1}_slide_${si + 1}`),
+    );
+  }
+
   const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
     allModuleSlides,
     moduleContentsArr,
@@ -5715,6 +5925,34 @@ async function runPipeline(
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     allModuleSlides[mi] = allModuleSlides[mi].map(sanitizeSlidePlaceholders);
   }
+
+  // ── Final technical-damage repair pass (v5.1.4) ──────────────────────
+  // Last chance before the veto. If the L3 Gemini rewrite (or any cascade
+  // step) introduced new damage, this catches it.
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    allModuleSlides[mi] = allModuleSlides[mi].map((s, si) =>
+      repairSlideTechnicalDamage(s, mTitle, courseTitle, `module_${mi + 1}_slide_${si + 1}.post`),
+    );
+  }
+
+  // ── RE-RUN QA after the final repair so qaVeto sees the current state.
+  // Without this, the veto consumes the stale cascadeReport and would
+  // (a) block slides we just fixed, or (b) miss damage introduced after
+  // cascade. We reuse runPptxQA's full battery of CRITICAL checks.
+  const { repairedSlides: postRepairSlides, report: postRepairReport } = runPptxQA(
+    allModuleSlides,
+    moduleContentsArr,
+    courseTitle,
+    moduleTitlesArr,
+  );
+  for (let i = 0; i < postRepairSlides.length; i++) {
+    allModuleSlides[i] = postRepairSlides[i];
+  }
+  cascadeReport = postRepairReport;
+  console.log(
+    `[V5-QA-POSTREPAIR] After final repair: status=${postRepairReport.status} | unfixed=${postRepairReport.issues.length} | fixed=${postRepairReport.fixedIssues.length}`,
+  );
 
   // ── QA VETO ─────────────────────────────────────────────────────────────
   // Hard gate — blocks export if any CRITICAL hard-constraint issue
