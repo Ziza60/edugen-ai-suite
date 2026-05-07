@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.0.0";
+const ENGINE_VERSION = "5.1.0";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -2906,10 +2906,22 @@ function globalSanitize(text: string): string {
     /\[\[BT_(\d+)\]\]/g,
     (_m, idx: string) => backtickSlots[Number(idx)] ?? "",
   );
-  return withBt.replace(
+  const restored = withBt.replace(
     /\[\[SQLW_(\d+)\]\]/g,
     (_m, idx: string) => sqlSlots[Number(idx)] ?? "",
   );
+
+  // Final safety net (v5.1) — strip ANY residual placeholder marker that
+  // survived the restore step (e.g. stale [[BT0]], [[BT1]] from prompt
+  // examples baked into LLM output, orphan {{TOKEN}}, lorem ipsum, etc.)
+  return restored
+    .replace(/\[\[BT_?\d+\]\]/gi, "")
+    .replace(/\[\[SQLW_?\d+\]\]/gi, "")
+    .replace(/\[\[[A-Z_0-9]{2,}\]\]/g, "")
+    .replace(/\{\{[A-Z_0-9]{2,}\}\}/g, "")
+    .replace(/\blorem\s+ipsum\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 // Safe title: never cuts mid-word, max 60 chars by default
@@ -3106,7 +3118,7 @@ function validateCodeIntegrity(code: string): string {
 // Final check applied after validateSemanticAlignment in processBatch.
 // Repairs or drops slides that still fail quality criteria.
 // Returns null → caller must filter the slide out.
-const PLACEHOLDER_RE = /^\[.*\]$|^(TODO|TBD|PLACEHOLDER|CONTEÚDO AQUI|ITEM \d+)$/i;
+const PLACEHOLDER_RE = /^\[.*\]$|^(TODO|TBD|PLACEHOLDER|CONTEÚDO AQUI|ITEM \d+|LOREM\s+IPSUM)$|\[\[[A-Z_0-9]+\]\]|\{\{[A-Z_0-9]+\}\}|\[\[BT_?\d+\]\]/i;
 const FRAG_CONJ_RE   = /^(e|é|ou|mas|porém|então)\s+/i;
 
 function semanticQualityGate(slide: Slide, moduleTitle: string): Slide | null {
@@ -3901,6 +3913,362 @@ function splitSlidesForTemplate(slides: Slide[], caps: TemplateCaps): Slide[] {
 // WARNINGs auto-fixed in-place; CRITICALs repaired or slide removed.
 // ═══════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════
+// SECTION 5C: SCENE BLUEPRINT + HARD CONSTRAINTS + DOMAIN GUARD
+// Architectural correction (v5.1) — adds an intermediate semantic layer
+// between the LLM-generated Slide and the renderer, with explicit
+// hard/soft constraint separation, domain contamination detection, a
+// final placeholder sanitizer and Python/SQL code completeness checks.
+//
+// Hard constraints ALWAYS win over soft constraints. The qaVeto
+// function (Section 6E) blocks the final export if any CRITICAL issue
+// survives the resolution cascade.
+// ═══════════════════════════════════════════════════════════
+
+type ContentDomain =
+  | "python"
+  | "sql"
+  | "javascript"
+  | "java"
+  | "data_analysis"
+  | "business"
+  | "marketing"
+  | "design"
+  | "legal"
+  | "education"
+  | "generic";
+
+type SceneIntent =
+  | "concept"
+  | "example"
+  | "code"
+  | "process"
+  | "comparison"
+  | "summary"
+  | "module_cover"
+  | "toc"
+  | "closing";
+
+type ScenePriority = "low" | "medium" | "high";
+
+type FocalElement =
+  | "title"
+  | "bullets"
+  | "code"
+  | "steps"
+  | "cards"
+  | "comparison"
+  | "none";
+
+interface HardConstraints {
+  noPlaceholders:        true;
+  noEmptySlides:         true;
+  noIncompleteCode:      true;
+  noDomainContamination: true;
+  maxWords:              number;
+  maxBullets:            number;
+  maxCodeLines:          number;
+  minFontSafe:           true;
+  noFragmentTitle:       true;
+  noGenericObjective:    true;
+}
+
+interface SoftConstraints {
+  preferPremiumVisual: boolean;
+  preferHero:          boolean;
+  preferComparison:    boolean;
+  preferCards:         boolean;
+  preferLayoutBold:    boolean;
+  preferVariation:     boolean;
+}
+
+interface SceneBlueprint {
+  slideId:           string;
+  moduleId:          string;
+  courseTopic:       string;
+  contentDomain:     ContentDomain;
+  intent:            SceneIntent;
+  priority:          ScenePriority;
+  focalElement:      FocalElement;
+  layoutCandidates:  Layout[];
+  hardConstraints:   HardConstraints;
+  softConstraints:   SoftConstraints;
+}
+
+const DEFAULT_HARD: HardConstraints = {
+  noPlaceholders:        true,
+  noEmptySlides:         true,
+  noIncompleteCode:      true,
+  noDomainContamination: true,
+  maxWords:              80,
+  maxBullets:             6,
+  maxCodeLines:          12,
+  minFontSafe:           true,
+  noFragmentTitle:       true,
+  noGenericObjective:    true,
+};
+
+const DEFAULT_SOFT: SoftConstraints = {
+  preferPremiumVisual: true,
+  preferHero:          false,
+  preferComparison:    false,
+  preferCards:         true,
+  preferLayoutBold:    false,
+  preferVariation:     true,
+};
+
+// ── Course-topic → ContentDomain inference ──────────────────
+function inferCourseDomain(courseTopic: string, moduleTitle = ""): ContentDomain {
+  const t = `${courseTopic} ${moduleTitle}`.toLowerCase();
+  if (/\bpython\b|\bdjango\b|\bflask\b|\bpandas\b|\bnumpy\b/.test(t)) return "python";
+  if (/\bsql\b|\bpostgres|\bmysql\b|\boracle\b|banco de dados|database/.test(t)) return "sql";
+  if (/\bjavascript\b|\bnode\b|\breact\b|\btypescript\b|\bvue\b/.test(t)) return "javascript";
+  if (/\bjava\b(?!\s*script)|spring\b|maven|gradle/.test(t)) return "java";
+  if (/análise de dados|data analy|business intelligence|\bbi\b|power\s*bi/.test(t)) return "data_analysis";
+  if (/marketing|publicidade|branding|propaganda/.test(t)) return "marketing";
+  if (/design|ux|ui|figma|adobe/.test(t)) return "design";
+  if (/jurídic|legal|direito|contrato/.test(t)) return "legal";
+  if (/empresa|gestão|negóci|liderança|vendas/.test(t)) return "business";
+  if (/educação|ensino|pedagog|didátic/.test(t)) return "education";
+  return "generic";
+}
+
+// ── Domain-aware intent inference ──────────────────────────
+function inferSceneIntent(slide: Slide): SceneIntent {
+  if (slide.layout === "module_cover") return "module_cover";
+  if (slide.layout === "toc")          return "toc";
+  if (slide.layout === "closing")      return "closing";
+  if (slide.layout === "code" || (slide.code && slide.code.trim().length > 0)) return "code";
+  if (slide.layout === "comparison") return "comparison";
+  if (slide.layout === "process" || slide.layout === "timeline") return "process";
+  if (slide.layout === "takeaways") return "summary";
+  const t = (slide.title || "").toLowerCase();
+  if (/exemplo|caso|cenário|prática/.test(t)) return "example";
+  return "concept";
+}
+
+function buildSceneBlueprint(
+  slide: Slide,
+  moduleId: string,
+  moduleTitle: string,
+  courseTopic: string,
+  slideId: string,
+): SceneBlueprint {
+  const domain = inferCourseDomain(courseTopic, moduleTitle);
+  const intent = inferSceneIntent(slide);
+  const focalElement: FocalElement =
+    intent === "code"          ? "code" :
+    intent === "process"       ? "steps" :
+    intent === "comparison"    ? "comparison" :
+    nonEmpty(slide.items).length >= 4 ? "bullets" :
+    nonEmpty(slide.items).length > 0   ? "cards" :
+    slide.title                ? "title" : "none";
+  const layoutCandidates: Layout[] = (() => {
+    if (intent === "code")       return ["code", "twocol", "bullets"];
+    if (intent === "process")    return ["process", "timeline", "diagram", "bullets"];
+    if (intent === "comparison") return ["comparison", "twocol", "cards"];
+    if (intent === "summary")    return ["takeaways", "bullets", "cards"];
+    if (intent === "example")    return ["cards", "twocol", "bullets"];
+    return [slide.layout, "bullets", "cards", "twocol"];
+  })();
+  const priority: ScenePriority =
+    intent === "code" || intent === "comparison" ? "high" :
+    intent === "module_cover" || intent === "summary" ? "medium" :
+    "low";
+  return {
+    slideId,
+    moduleId,
+    courseTopic,
+    contentDomain: domain,
+    intent,
+    priority,
+    focalElement,
+    layoutCandidates,
+    hardConstraints: DEFAULT_HARD,
+    softConstraints: DEFAULT_SOFT,
+  };
+}
+
+// ── Domain contamination detector ──────────────────────────
+// Returns true if a slide contains content from a foreign technical
+// domain (e.g. SQL/DDL appearing inside a Python course module).
+const SQL_DDL_RE = /\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE|CREATE\s+INDEX|CREATE\s+VIEW|FOREIGN\s+KEY|PRIMARY\s+KEY)\b/i;
+const SQL_DML_RE = /\b(SELECT\s+\*|SELECT\s+\w+\s+FROM|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|JOIN\s+\w+\s+ON)\b/i;
+const PYTHON_HINTS_RE = /\b(def\s+\w+\s*\(|class\s+\w+|import\s+\w+|from\s+\w+\s+import|print\s*\(|elif\b|lambda\s+|self\.)/;
+const JS_HINTS_RE = /\b(function\s+\w+\s*\(|const\s+\w+\s*=|let\s+\w+\s*=|=>|console\.log|require\s*\()/;
+
+// Strip line/block comments + string/template literals so we don't flag
+// SQL/Python/JS keywords that only appear inside docstrings, examples,
+// regex tutorials, etc.  This makes contamination detection conservative.
+function stripCommentsAndStrings(code: string): string {
+  return code
+    // Python triple-quoted docstrings
+    .replace(/'''[\s\S]*?'''/g, "")
+    .replace(/"""[\s\S]*?"""/g, "")
+    // C-family block comments
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    // line comments (#, //, --)
+    .replace(/(^|\s)#[^\n]*/g, "$1")
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/--[^\n]*/g, "")
+    // string literals
+    .replace(/'(?:\\.|[^'\\])*'/g, "''")
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/`(?:\\.|[^`\\])*`/g, "``");
+}
+
+function detectDomainContamination(
+  slide: Slide,
+  domain: ContentDomain,
+  moduleTitle: string,
+): { contaminated: boolean; reason?: string } {
+  // ── Conservative gating (v5.1 hardening) ─────────────────
+  // When the inferred course domain is "generic" we cannot safely
+  // distinguish a foreign tech block from intended content, so we
+  // skip contamination detection entirely (avoids false 422s on
+  // mixed-topic / business / data-analysis courses).
+  if (domain === "generic") return { contaminated: false };
+
+  // Expanded module allow-lists — ecosystem-aware (Postgres/MySQL/Oracle
+  // for SQL; pandas/numpy/django/flask for Python; node/react/vue/ts for JS).
+  const moduleAllowsSql =
+    /\bsql\b|banco de dados|\bbd\b|\bdatabase\b|\bquery\b|\bconsulta\b|postgres|mysql|oracle|sqlite|mariadb|nosql/i.test(moduleTitle);
+  const moduleAllowsPython =
+    /\bpython\b|pandas|numpy|django|flask|jupyter|scikit|matplotlib|seaborn|pytorch|tensorflow/i.test(moduleTitle);
+  const moduleAllowsJs =
+    /\bjavascript\b|\btypescript\b|\bnode\b|\bnodejs\b|\breact\b|\bvue\b|\bnext\b|\bnuxt\b|\bangular\b|\bdeno\b/i.test(moduleTitle);
+
+  // Only inspect the `code` field — titles and bullets often contain
+  // legitimate mentions of SELECT / INSERT / class / def in prose.
+  if (!slide.code || !slide.code.trim()) return { contaminated: false };
+  const sanitisedCode = stripCommentsAndStrings(slide.code);
+  if (!sanitisedCode.trim()) return { contaminated: false };
+
+  // SQL DDL/DML appearing inside non-SQL course/module
+  if (domain !== "sql" && !moduleAllowsSql) {
+    if (SQL_DDL_RE.test(sanitisedCode)) return { contaminated: true, reason: `SQL DDL em curso ${domain}` };
+    if (SQL_DML_RE.test(sanitisedCode)) return { contaminated: true, reason: `SQL DML em curso ${domain}` };
+  }
+  // Python in non-Python course
+  if (domain !== "python" && !moduleAllowsPython) {
+    if (PYTHON_HINTS_RE.test(sanitisedCode)) return { contaminated: true, reason: `Código Python em curso ${domain}` };
+  }
+  // JS in non-JS course
+  if (domain !== "javascript" && !moduleAllowsJs) {
+    if (JS_HINTS_RE.test(sanitisedCode)) return { contaminated: true, reason: `Código JS em curso ${domain}` };
+  }
+  return { contaminated: false };
+}
+
+// ── Final placeholder sanitizer ────────────────────────────
+// Hard-removes ANY residual placeholder marker that survived earlier
+// pipeline stages. This is the LAST line of defence before render.
+const RESIDUAL_PLACEHOLDER_PATTERNS: RegExp[] = [
+  /\[\[BT_?\d+\]\]/gi,         // [[BT_0]], [[BT0]], [[BT1]]
+  /\[\[SQLW_?\d+\]\]/gi,       // [[SQLW_0]], [[SQLW0]]
+  /\[\[[A-Z_0-9]+\]\]/g,       // any other [[XYZ_1]] marker
+  /\{\{[A-Z_0-9]+\}\}/g,       // {{COURSE_TITLE}}, {{BULLET_1}}, etc.
+  /\blorem\s+ipsum\b/gi,
+  /\bplaceholder\b/gi,
+  /\bTODO\b:/g,
+];
+
+function removeOrBlockPlaceholders(text: string): string {
+  if (!text || typeof text !== "string") return text;
+  let out = text;
+  for (const re of RESIDUAL_PLACEHOLDER_PATTERNS) out = out.replace(re, "");
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+
+function sanitizeSlidePlaceholders(s: Slide): Slide {
+  const sanItem = (t: string) => removeOrBlockPlaceholders(t);
+  const cleanItems = (arr?: string[]) =>
+    arr ? arr.map(sanItem).filter((t) => t.trim().length > 0) : arr;
+  return {
+    ...s,
+    title:       removeOrBlockPlaceholders(s.title || ""),
+    subtitle:    s.subtitle ? removeOrBlockPlaceholders(s.subtitle) : s.subtitle,
+    label:       s.label    ? removeOrBlockPlaceholders(s.label)    : s.label,
+    leftHeader:  s.leftHeader  ? removeOrBlockPlaceholders(s.leftHeader)  : s.leftHeader,
+    rightHeader: s.rightHeader ? removeOrBlockPlaceholders(s.rightHeader) : s.rightHeader,
+    items:       cleanItems(s.items),
+    leftItems:   cleanItems(s.leftItems),
+    rightItems:  cleanItems(s.rightItems),
+    code:        s.code ? s.code : s.code, // never touch code (preserves [[ ]] inside strings)
+  };
+}
+
+function slideHasResidualPlaceholder(s: Slide): { found: boolean; sample?: string } {
+  const candidates = [
+    s.title, s.subtitle, s.label, s.leftHeader, s.rightHeader,
+    ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+  ].filter(Boolean) as string[];
+  for (const t of candidates) {
+    for (const re of RESIDUAL_PLACEHOLDER_PATTERNS) {
+      const m = t.match(re);
+      if (m) return { found: true, sample: m[0] };
+    }
+  }
+  return { found: false };
+}
+
+// ── Code completeness validator ────────────────────────────
+// Per-language structural completeness check. Returns true when the
+// code block looks safe to render (closed brackets, balanced quotes,
+// no truncation marker like "...", etc.).
+function validateCodeCompleteness(code: string, language: ContentDomain): boolean {
+  if (!code || !code.trim()) return false;
+  const trimmed = code.trim();
+
+  // Universal: no obvious truncation marker at end
+  if (/\.{3,}$|…\s*$/.test(trimmed)) return false;
+
+  // Strip strings, template literals AND comments before structural checks
+  // so legitimate `if (x > "}")` or `// {` etc don't trip the validator.
+  const stripped = stripCommentsAndStrings(trimmed);
+
+  // Bracket balance — applies to most C-family + Python expressions
+  const pairs: Array<[string, string]> = [["(", ")"], ["[", "]"], ["{", "}"]];
+  for (const [open, close] of pairs) {
+    const opens  = (stripped.match(new RegExp(`\\${open}`, "g")) ?? []).length;
+    const closes = (stripped.match(new RegExp(`\\${close}`, "g")) ?? []).length;
+    if (opens !== closes) return false;
+  }
+
+  // Unbalanced triple-quoted strings (Python) — count on the raw code
+  const tripleSingle = (trimmed.match(/'''/g) ?? []).length;
+  const tripleDouble = (trimmed.match(/"""/g) ?? []).length;
+  if (tripleSingle % 2 !== 0 || tripleDouble % 2 !== 0) return false;
+
+  // Python-specific: def/class with no body
+  if (language === "python") {
+    const lines = trimmed.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*(def|class|if|elif|else|for|while|try|except|finally|with)\b.*:\s*$/.test(line)) {
+        // Must have an indented next line OR same-line body (already on this line before colon)
+        const next = lines[i + 1] ?? "";
+        const indent = (line.match(/^\s*/)?.[0].length) ?? 0;
+        const nextIndent = (next.match(/^\s*/)?.[0].length) ?? 0;
+        if (!next.trim() || nextIndent <= indent) return false;
+      }
+    }
+  }
+
+  // SQL-specific: statement must terminate with `;` OR have valid FROM / WHERE / VALUES
+  if (language === "sql") {
+    const upper = trimmed.toUpperCase();
+    if (/^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/.test(upper)) {
+      if (!/;\s*(--[^\n]*\s*)?$/.test(trimmed) && !/--/.test(trimmed)) {
+        // No semicolon and no comment-only fallback
+        if (!/(FROM|WHERE|VALUES|SET|TABLE)\s+\w+/i.test(trimmed)) return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 // ── QA Global Thresholds ────────────────────────────────────
 const QA = {
   MAX_WORDS_PER_SLIDE:               50,
@@ -3910,6 +4278,7 @@ const QA = {
   MIN_BODY_FONT_SIZE:                18, // pt — used for risk detection only
   MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE:  2,
   MIN_REQUIRED_WHITESPACE_RATIO:    0.20,
+  MAX_WORDS_HARD_VETO:               80, // hard cap for veto (blueprint hard constraint)
 } as const;
 
 // ── QA Issue Types & Severity ───────────────────────────────
@@ -3924,7 +4293,14 @@ type QAIssueType =
   | "SQL_CODE_INCOMPLETE"
   | "LAYOUT_REPETITION"
   | "COMPARISON_UNSAFE"
-  | "FONT_TOO_SMALL_RISK";
+  | "FONT_TOO_SMALL_RISK"
+  // ── Architectural correction (v5.1) ─────────────────────────
+  | "DOMAIN_CONTAMINATION"
+  | "INCOMPLETE_CODE"
+  | "EXTREME_DENSITY"
+  | "BROKEN_COMPARISON"
+  | "UNREADABLE_SLIDE"
+  | "GENERIC_OBJECTIVE";
 
 interface QAIssue {
   slideId:            string;
@@ -3977,7 +4353,10 @@ function qaCountWords(text: string): number {
 function runPptxQA(
   allSlides: Slide[][],
   moduleContents: string[],
+  courseTopic = "",
+  moduleTitles: string[] = [],
 ): { repairedSlides: Slide[][]; report: QAReport } {
+  const courseDomain = inferCourseDomain(courseTopic);
   const unfixedIssues: QAIssue[] = [];
   const fixedIssues:   QAIssue[] = [];
 
@@ -4230,6 +4609,152 @@ function runPptxQA(
           s = modSlides[si];
         }
       }
+
+      // ══════════════════════════════════════════════════════
+      // ARCHITECTURAL CORRECTION (v5.1) — additional CRITICAL checks
+      // ══════════════════════════════════════════════════════
+
+      // 12. DOMAIN_CONTAMINATION  [CRITICAL → drop or strip code]
+      // Prevents SQL/DDL leaking into Python courses, etc.
+      const moduleTitle = moduleTitles[mi] ?? "";
+      const contam = detectDomainContamination(s, courseDomain, moduleTitle);
+      if (contam.contaminated) {
+        // If contamination is confined to the code field, strip the code
+        // and demote layout to bullets. Otherwise mark slide for removal.
+        if (s.layout === "code" && s.code) {
+          const itemsFallback = nonEmpty(s.items);
+          if (itemsFallback.length >= 3) {
+            fixedIssues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `Domínio contaminado em "${s.title}": ${contam.reason}`,
+              context: contam.reason,
+              resolutionStrategy: "Código contaminado removido; slide convertido para bullets",
+            });
+            modSlides[si] = { ...s, layout: "bullets", code: undefined };
+            s = modSlides[si];
+          } else {
+            unfixedIssues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `Slide com domínio incompatível removido: "${s.title}" (${contam.reason})`,
+              context: contam.reason,
+              resolutionStrategy: "Slide removido — não havia conteúdo alternativo válido",
+            });
+            keepMask[si] = false;
+            continue;
+          }
+        } else {
+          unfixedIssues.push({
+            slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+            message: `Slide com domínio incompatível: "${s.title}" (${contam.reason})`,
+            context: contam.reason,
+            resolutionStrategy: "Slide removido para preservar coerência do curso",
+          });
+          keepMask[si] = false;
+          continue;
+        }
+      }
+
+      // 13. INCOMPLETE_CODE  [CRITICAL → drop code or split]
+      // Per-language structural validation (Python def/class body, brackets, quotes).
+      if (s.layout === "code" && s.code) {
+        const lang: ContentDomain =
+          courseDomain === "python" || courseDomain === "sql" ||
+          courseDomain === "javascript" || courseDomain === "java"
+            ? courseDomain : "generic";
+        if (!validateCodeCompleteness(s.code, lang)) {
+          const itemsFallback = nonEmpty(s.items);
+          if (itemsFallback.length >= 3) {
+            fixedIssues.push({
+              slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
+              message: `Código incompleto em "${s.title}" (${lang}) — convertido para bullets`,
+              context: lang,
+              resolutionStrategy: "Bloco de código removido; slide renderizado como bullets",
+            });
+            modSlides[si] = { ...s, layout: "bullets", code: undefined };
+            s = modSlides[si];
+          } else {
+            unfixedIssues.push({
+              slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
+              message: `Código incompleto sem fallback em "${s.title}" (${lang})`,
+              context: lang,
+              resolutionStrategy: "Slide removido — código truncado e sem alternativa",
+            });
+            keepMask[si] = false;
+            continue;
+          }
+        }
+      }
+
+      // 14. EXTREME_DENSITY  [CRITICAL → split or trim hard]
+      // Hard veto threshold (80 words) — overrides MAX_WORDS_PER_SLIDE.
+      const HARD_DENSITY_SKIP: Layout[] = ["code","module_cover","cover","toc","closing"];
+      if (!HARD_DENSITY_SKIP.includes(s.layout)) {
+        const itemsNow = nonEmpty(s.items);
+        const totalWords = itemsNow.reduce((a, t) => a + qaCountWords(t), 0);
+        if (totalWords > QA.MAX_WORDS_HARD_VETO) {
+          const trimmed = itemsNow
+            .map((t) => safeSliceText(t, 70))
+            .slice(0, QA.MAX_BULLETS);
+          const trimmedWords = trimmed.reduce((a, t) => a + qaCountWords(t), 0);
+          if (trimmedWords <= QA.MAX_WORDS_HARD_VETO) {
+            fixedIssues.push({
+              slideId: id, type: "EXTREME_DENSITY", severity: "CRITICAL",
+              message: `Densidade extrema (${totalWords} palavras) em "${s.title}" — comprimida para ${trimmedWords}`,
+              metric: totalWords,
+              resolutionStrategy: "Itens comprimidos e truncados ao limite duro",
+            });
+            modSlides[si] = { ...s, items: trimmed };
+            s = modSlides[si];
+          } else {
+            unfixedIssues.push({
+              slideId: id, type: "EXTREME_DENSITY", severity: "CRITICAL",
+              message: `Densidade extrema sem reparo em "${s.title}" (${totalWords} palavras)`,
+              metric: totalWords,
+              resolutionStrategy: "Será dividido pelo cascade L2",
+            });
+          }
+        }
+      }
+
+      // 15. BROKEN_COMPARISON  [CRITICAL → convert to twocol]
+      // Comparison with one or both columns empty / single-item.
+      if (s.layout === "comparison") {
+        const lI2 = nonEmpty(s.leftItems);
+        const rI2 = nonEmpty(s.rightItems);
+        if (lI2.length < 2 || rI2.length < 2) {
+          const merged = [...lI2, ...rI2].slice(0, 6);
+          if (merged.length >= 3) {
+            fixedIssues.push({
+              slideId: id, type: "BROKEN_COMPARISON", severity: "CRITICAL",
+              message: `Comparison quebrado em "${s.title}" (l=${lI2.length} r=${rI2.length})`,
+              resolutionStrategy: "Convertido para twocol com itens mesclados",
+            });
+            modSlides[si] = { ...s, layout: "twocol", items: merged, leftItems: undefined, rightItems: undefined };
+            s = modSlides[si];
+          } else {
+            unfixedIssues.push({
+              slideId: id, type: "BROKEN_COMPARISON", severity: "CRITICAL",
+              message: `Comparison quebrado sem conteúdo: "${s.title}"`,
+              resolutionStrategy: "Slide removido",
+            });
+            keepMask[si] = false;
+            continue;
+          }
+        }
+      }
+
+      // 16. UNREADABLE_SLIDE  [CRITICAL → drop]
+      // Final readability check — if after all fixes the slide is still
+      // un-renderable OR has zero meaningful content, mark CRITICAL.
+      if (!isRenderableSlide(s)) {
+        unfixedIssues.push({
+          slideId: id, type: "UNREADABLE_SLIDE", severity: "CRITICAL",
+          message: `Slide ilegível após todos os reparos: "${s.title}" (${s.layout})`,
+          resolutionStrategy: "Slide removido do deck final",
+        });
+        keepMask[si] = false;
+        continue;
+      }
     } // end slide loop
 
     // Apply drop mask for CRITICALs that could not be repaired
@@ -4443,7 +4968,32 @@ async function l3LocalRewrite(
   s: Slide,
   issue: QAIssue,
   geminiKey: string,
+  courseTopic = "",
+  moduleTitle = "",
 ): Promise<Slide> {
+  // ── Domain-aware skip list (v5.1) ─────────────────────────
+  // Some issue types are dangerous for LLM rewrite because they tend
+  // to produce generic content or contaminate the course domain.
+  // For these, we keep the deterministic L1/L2 fix and skip the LLM.
+  const SKIP_LLM: QAIssueType[] = [
+    "DOMAIN_CONTAMINATION", // already structurally fixed
+    "INCOMPLETE_CODE",      // code rewrite is too risky without source
+    "GENERIC_LEARNING_OBJECTIVE",
+    "GENERIC_OBJECTIVE",
+  ];
+  if (SKIP_LLM.includes(issue.type)) {
+    console.log(`[V5-QA-L3] Skipping LLM rewrite for ${issue.type} (deterministic fix already applied)`);
+    return s;
+  }
+
+  const allowedDomain = inferCourseDomain(courseTopic, moduleTitle);
+  const domainHint =
+    allowedDomain === "python" ? "Python (NUNCA gere SQL/DDL como CREATE TABLE, ALTER, DROP)." :
+    allowedDomain === "sql"    ? "SQL." :
+    allowedDomain === "javascript" ? "JavaScript/TypeScript." :
+    allowedDomain === "java"   ? "Java." :
+    "do tema do curso (NÃO mude de assunto).";
+
   const contentSummary = [
     s.code   ? `CODE:\n${s.code.slice(0, 400)}`                               : null,
     s.items?.length  ? `ITEMS:\n${(s.items || []).slice(0, 8).join("\n")}`     : null,
@@ -4452,12 +5002,21 @@ async function l3LocalRewrite(
   ].filter(Boolean).join("\n");
 
   const safeTitle = (s.title || "Slide").replace(/"/g, "'");
-  const prompt = `Você é editor de slides educativos. O slide abaixo tem problema: "${issue.type}: ${issue.message}".
+  const prompt = `Você é editor de slides educativos do curso "${courseTopic}".
+Módulo atual: "${moduleTitle}".
+Domínio permitido: ${domainHint}
+
+O slide abaixo tem problema: "${issue.type}: ${issue.message}".
 
 Slide atual — título: "${safeTitle}" | layout: ${s.layout}
 ${contentSummary}
 
-Reescreva APENAS o conteúdo como 4-5 bullets concisos (máx 20 palavras cada) em português, preservando todo conteúdo técnico essencial. NUNCA corte SELECT *, COUNT(*), SUM(*).
+Regras OBRIGATÓRIAS:
+- Mantenha o domínio do curso. Não introduza tecnologias de outro tema.
+- 4-5 bullets concisos (máx 20 palavras cada) em português.
+- Sem placeholders, sem [[...]], sem {{...}}, sem "lorem ipsum".
+- Sem objetivos genéricos como "Compreender X" ou "Aprender sobre Y".
+- Preserve conteúdo técnico essencial. NUNCA corte SELECT *, COUNT(*), SUM(*).
 
 Responda SOMENTE com JSON válido sem markdown:
 {"title":"${safeTitle}","items":["item1","item2","item3","item4"]}`;
@@ -4483,13 +5042,22 @@ Responda SOMENTE com JSON válido sem markdown:
     const newItems: string[] = Array.isArray(parsed.items)
       ? parsed.items
           .filter((t: unknown): t is string => typeof t === "string" && t.trim().length > 3)
+          .map((t: string) => removeOrBlockPlaceholders(t))
+          .filter((t: string) => t.length > 3 && !BAD_OBJECTIVE_RE.test(t))
           .slice(0, 6)
       : [];
-    if (newItems.length >= 3) {
-      console.log(`[V5-QA-L3] Rewrote "${s.title}" via Gemini (${newItems.length} items)`);
-      return { ...s, layout: "bullets", items: newItems };
+    if (newItems.length < 3) {
+      throw new Error(`LLM returned only ${newItems.length} usable items`);
     }
-    throw new Error(`LLM returned only ${newItems.length} items`);
+    // ── Post-rewrite domain veto ─────────────────────────────
+    const candidate: Slide = { ...s, layout: "bullets", items: newItems, code: undefined };
+    const contam2 = detectDomainContamination(candidate, allowedDomain, moduleTitle);
+    if (contam2.contaminated) {
+      console.warn(`[V5-QA-L3] Rejected rewrite (domain contamination: ${contam2.reason})`);
+      return s;
+    }
+    console.log(`[V5-QA-L3] Rewrote "${s.title}" via Gemini (${newItems.length} items)`);
+    return candidate;
   } catch (err) {
     console.warn(`[V5-QA-L3] Rewrite failed for "${s.title}": ${err instanceof Error ? err.message : String(err)}`);
     return s; // unchanged — runPptxQA final pass will handle it
@@ -4510,6 +5078,8 @@ async function resolveQAIssues(
   qaReport: QAReport,
   moduleContents: string[],
   geminiKey: string,
+  courseTopic = "",
+  moduleTitles: string[] = [],
 ): Promise<{ resolvedSlides: Slide[][]; finalReport: QAReport }> {
   if (qaReport.issues.length === 0) {
     return { resolvedSlides: slides, finalReport: qaReport };
@@ -4530,7 +5100,7 @@ async function resolveQAIssues(
       if (!current[mi] || si >= current[mi].length) continue;
       current[mi][si] = l1VisualFix(current[mi][si], issue, moduleContents[mi] ?? "");
     }
-    const { repairedSlides: afterL1, report: reportL1 } = runPptxQA(current, moduleContents);
+    const { repairedSlides: afterL1, report: reportL1 } = runPptxQA(current, moduleContents, courseTopic, moduleTitles);
     current = afterL1;
     console.log(`[V5-QA-CASCADE] After L1 (cycle ${cycle + 1}): unfixed=${reportL1.issues.length}`);
     if (reportL1.issues.length === 0) { lastReport = reportL1; break; }
@@ -4563,7 +5133,7 @@ async function resolveQAIssues(
       }
     }
 
-    const { repairedSlides: afterL2, report: reportL2 } = runPptxQA(current, moduleContents);
+    const { repairedSlides: afterL2, report: reportL2 } = runPptxQA(current, moduleContents, courseTopic, moduleTitles);
     current = afterL2;
     lastReport = reportL2;
     console.log(`[V5-QA-CASCADE] After L2 (cycle ${cycle + 1}): unfixed=${lastReport.issues.length}`);
@@ -4589,7 +5159,8 @@ async function resolveQAIssues(
       const batch = tasks.slice(b, b + 3);
       const settled = await Promise.allSettled(
         batch.map(({ issue, mi, si }) =>
-          l3LocalRewrite(current[mi][si], issue, geminiKey).then((s) => ({ mi, si, s }))
+          l3LocalRewrite(current[mi][si], issue, geminiKey, courseTopic, moduleTitles[mi] ?? "")
+            .then((s) => ({ mi, si, s }))
         ),
       );
       for (const res of settled) {
@@ -4600,7 +5171,7 @@ async function resolveQAIssues(
     }
 
     // Final QA pass after L3
-    const { repairedSlides: afterL3, report: reportL3 } = runPptxQA(current, moduleContents);
+    const { repairedSlides: afterL3, report: reportL3 } = runPptxQA(current, moduleContents, courseTopic, moduleTitles);
     current = afterL3;
     lastReport = reportL3;
     console.log(`[V5-QA-CASCADE] After L3: status=${lastReport.status} unfixed=${lastReport.issues.length}`);
@@ -4621,6 +5192,94 @@ async function resolveQAIssues(
     `[V5-QA-CASCADE] Complete: status=${lastReport.status} | unfixed=${lastReport.issues.length} | fixed=${lastReport.fixedIssues.length}`,
   );
   return { resolvedSlides: current, finalReport: lastReport };
+}
+
+// ═══════════════════════════════════════════════════════════
+// SECTION 6E: QA VETO (Architectural correction v5.1)
+// Final hard gate — blocks export if any CRITICAL issue from the
+// hard-constraint set survives the resolution cascade.
+// ═══════════════════════════════════════════════════════════
+
+interface QAVetoResult {
+  blocked:        boolean;
+  blockingIssues: QAIssue[];
+  totalSlides:    number;
+  removedSlides:  number;
+}
+
+const HARD_CRITICAL_TYPES: ReadonlySet<QAIssueType> = new Set<QAIssueType>([
+  "DOMAIN_CONTAMINATION",
+  "INCOMPLETE_CODE",
+  "PLACEHOLDER_RESIDUAL",
+  "EMPTY_SLIDE",
+  "UNREADABLE_SLIDE",
+  "EXTREME_DENSITY",
+  "BROKEN_COMPARISON",
+  // Spec-required additions (architect review v5.1):
+  "TITLE_FRAGMENT",
+  "GENERIC_OBJECTIVE",
+  "GENERIC_LEARNING_OBJECTIVE",
+]);
+
+function qaVeto(
+  finalReport: QAReport,
+  finalSlides: Slide[][],
+  originalCount: number,
+): QAVetoResult {
+  const totalSlides   = finalSlides.reduce((a, m) => a + m.length, 0);
+  const removedSlides = Math.max(0, originalCount - totalSlides);
+
+  // Per-slide residual placeholder check (defence in depth)
+  const placeholderIssues: QAIssue[] = [];
+  for (let mi = 0; mi < finalSlides.length; mi++) {
+    for (let si = 0; si < finalSlides[mi].length; si++) {
+      const s = finalSlides[mi][si];
+      const ph = slideHasResidualPlaceholder(s);
+      if (ph.found) {
+        placeholderIssues.push({
+          slideId: `M${mi + 1}.S${si + 1}`,
+          type: "PLACEHOLDER_RESIDUAL",
+          severity: "CRITICAL",
+          message: `Placeholder residual "${ph.sample}" em "${s.title}"`,
+        });
+      }
+    }
+  }
+
+  const blockingIssues = [
+    ...finalReport.issues.filter(
+      (i) => i.severity === "CRITICAL" && HARD_CRITICAL_TYPES.has(i.type),
+    ),
+    ...placeholderIssues,
+  ];
+
+  // Empty deck is also a veto trigger
+  if (totalSlides === 0) {
+    blockingIssues.push({
+      slideId: "DECK", type: "EMPTY_SLIDE", severity: "CRITICAL",
+      message: "Deck final ficou sem slides após QA",
+    });
+  }
+
+  const blocked = blockingIssues.length > 0;
+  console.log(
+    `[V5-QA-VETO] blocked=${blocked} | blockingIssues=${blockingIssues.length} | totalSlides=${totalSlides} | removedSlides=${removedSlides}`,
+  );
+  for (const i of blockingIssues.slice(0, 12)) {
+    console.warn(`[V5-QA-VETO] BLOCK ${i.type} @ ${i.slideId} — ${i.message}`);
+  }
+  return { blocked, blockingIssues, totalSlides, removedSlides };
+}
+
+// Custom error thrown when qaVeto blocks the export. Caught by the
+// HTTP handler and converted into a structured 422 response.
+class PptxQAVetoError extends Error {
+  result: QAVetoResult;
+  constructor(result: QAVetoResult) {
+    super(`PPTX QA Veto: ${result.blockingIssues.length} blocking issue(s)`);
+    this.name = "PptxQAVetoError";
+    this.result = result;
+  }
 }
 
 /**
@@ -4763,33 +5422,65 @@ async function runPipeline(
   //   L1 visual fixes → re-QA → L2 layout replanning → re-QA (×2 cycles)
   //   L3 local Gemini rewrite for surviving CRITICALs.
   // Final isRenderableSlide filter guarantees no broken slide reaches renderer.
+  const moduleTitlesArr = modules.map((m) => m.title);
+  const moduleContentsArr = modules.map((m) => m.content);
+  const originalSlideCount = allModuleSlides.reduce((a, m) => a + m.length, 0);
+
+  // Pre-QA placeholder sanitization pass (architectural correction v5.1).
+  // Strips orphan [[BT0]]/[[BT1]]/{{TOKEN}}/lorem ipsum from every text
+  // field BEFORE QA runs, so subsequent checks see clean content.
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    allModuleSlides[mi] = allModuleSlides[mi].map(sanitizeSlidePlaceholders);
+  }
+
   const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
     allModuleSlides,
-    modules.map((m) => m.content),
+    moduleContentsArr,
+    courseTitle,
+    moduleTitlesArr,
   );
   for (let i = 0; i < qaSlides.length; i++) {
     allModuleSlides[i] = qaSlides[i];
   }
   console.log(
-    `[V5-QA] Initial pass: status=${qaReport.status} | issues=${qaReport.issues.length} | fixed=${qaReport.fixedIssues.length}`,
+    `[V5-QA] Initial pass: status=${qaReport.status} | issues=${qaReport.issues.length} | fixed=${qaReport.fixedIssues.length} | courseDomain=${inferCourseDomain(courseTitle)}`,
   );
 
+  let cascadeReport: QAReport = qaReport;
   if (qaReport.issues.length > 0) {
     // Unfixed issues remain — run resolution cascade
     const { resolvedSlides, finalReport } = await resolveQAIssues(
       allModuleSlides,
       qaReport,
-      modules.map((m) => m.content),
+      moduleContentsArr,
       geminiKey,
+      courseTitle,
+      moduleTitlesArr,
     );
     for (let i = 0; i < resolvedSlides.length; i++) {
       allModuleSlides[i] = resolvedSlides[i];
     }
+    cascadeReport = finalReport;
     console.log(
       `[V5-QA-CASCADE] Final: status=${finalReport.status} | unfixed=${finalReport.issues.length} | fixed=${finalReport.fixedIssues.length}`,
     );
   } else {
     console.log("[V5-QA] All issues resolved in initial pass — cascade skipped");
+  }
+
+  // Post-cascade safety sanitization pass — guarantees no residual
+  // placeholder reaches the renderer even if a cascade level produced one.
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    allModuleSlides[mi] = allModuleSlides[mi].map(sanitizeSlidePlaceholders);
+  }
+
+  // ── QA VETO ─────────────────────────────────────────────────────────────
+  // Hard gate — blocks export if any CRITICAL hard-constraint issue
+  // survives the cascade. The handler converts this into a 422 response
+  // with structured details.
+  const veto = qaVeto(cascadeReport, allModuleSlides, originalSlideCount);
+  if (veto.blocked) {
+    throw new PptxQAVetoError(veto);
   }
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -5119,6 +5810,33 @@ Deno.serve(async (req: Request) => {
       },
     );
   } catch (error: any) {
+    // ── QA VETO → 422 with structured details (architectural correction v5.1) ──
+    if (error instanceof PptxQAVetoError) {
+      const v = error.result;
+      console.warn(
+        `[V5-QA-VETO] HTTP 422 — blocking=${v.blockingIssues.length} totalSlides=${v.totalSlides}`,
+      );
+      return new Response(
+        JSON.stringify({
+          error:           "PPTX export blocked by quality veto",
+          code:            "PPTX_QA_VETO",
+          engine_version:  ENGINE_VERSION,
+          totalSlides:     v.totalSlides,
+          removedSlides:   v.removedSlides,
+          blockingIssues:  v.blockingIssues.map((i) => ({
+            slideId: i.slideId,
+            type:    i.type,
+            message: i.message,
+          })),
+          hint:
+            "O conteúdo gerado contém problemas críticos (placeholders, código incompleto, contaminação de domínio ou densidade extrema). Tente regenerar o curso ou ajustar os módulos.",
+        }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
     console.error("[V5] Export error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Internal server error" }),

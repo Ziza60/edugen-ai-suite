@@ -64,8 +64,19 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~4763 lines, ENGINE_VERSION=5.0.0).
-Pipeline: Parse → Segment → **VisualPlanner** → LayoutVariety → SemanticQualityGate → TemplateSplits → **PPTX QA Engine** → Render → Export.
+`supabase/functions/export-pptx-v4/index.ts` (~5800 lines, ENGINE_VERSION=5.1.0).
+Pipeline: Parse → Segment → **VisualPlanner** → LayoutVariety → SemanticQualityGate → TemplateSplits → **Sanitize** → **PPTX QA Engine** → **Cascade** → **Sanitize** → **QA Veto** → Render → Export.
+
+### Architectural Correction v5.1 (Section 5C + 6E)
+Adds an intermediate semantic guarantee layer between LLM output and renderer:
+- **Scene Blueprint**: per-slide semantic descriptor with `ContentDomain`, `SceneIntent`, `priority`, `focalElement`, `layoutCandidates`, `HardConstraints` (always win), `SoftConstraints` (preferences)
+- **Domain guard**: `inferCourseDomain()` + `detectDomainContamination()` blocks SQL/DDL leaking into Python courses (and vice versa). Inspects ONLY `slide.code` after `stripCommentsAndStrings()` (avoids false positives on prose/comments). Skipped when `domain === "generic"`. Module allow-lists are ecosystem-aware (postgres/mysql/oracle/pandas/numpy/django/flask/node/react/etc.)
+- **Placeholder sanitizer**: `removeOrBlockPlaceholders()` strips `[[BT_N]]/[[BT0]]/[[SQLW_N]]/[[ANY_TOKEN]]/{{TOKEN}}/lorem ipsum` — applied pre-QA + post-cascade. Strengthened `globalSanitize()` adds final residual-strip pass after restore step
+- **Code completeness validator**: per-language structural check (bracket balance after stripping comments/strings/template literals; Python def/class body presence; SQL statement termination)
+- **6 new QA issue types**: `DOMAIN_CONTAMINATION`, `INCOMPLETE_CODE`, `EXTREME_DENSITY` (>80 word hard cap), `BROKEN_COMPARISON`, `UNREADABLE_SLIDE`, `GENERIC_OBJECTIVE`
+- **5 new CRITICAL checks** inside `runPptxQA` loop (#12-16) — fix or drop strategy
+- **Domain-safe L3 rewrite**: `l3LocalRewrite` accepts `courseTopic + moduleTitle`, prompts include domain hint, post-rewrite contamination veto rejects bad output. Skips LLM for `DOMAIN_CONTAMINATION/INCOMPLETE_CODE/GENERIC_OBJECTIVE` (deterministic fix already applied)
+- **QA Veto (Section 6E)**: hard gate after cascade. `HARD_CRITICAL_TYPES` includes `DOMAIN_CONTAMINATION`, `INCOMPLETE_CODE`, `PLACEHOLDER_RESIDUAL`, `EMPTY_SLIDE`, `UNREADABLE_SLIDE`, `EXTREME_DENSITY`, `BROKEN_COMPARISON`, `TITLE_FRAGMENT`, `GENERIC_OBJECTIVE`, `GENERIC_LEARNING_OBJECTIVE`. Throws `PptxQAVetoError` → HTTP 422 with structured `blockingIssues` array (slideId/type/message) so client can show actionable feedback to the user instead of a corrupt PPTX
 
 ### Visual Planner (Section 5B)
 Pure-heuristic editorial layer — no AI, no coordinates, no renderer changes.
