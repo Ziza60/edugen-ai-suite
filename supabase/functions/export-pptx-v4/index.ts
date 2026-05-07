@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.4";
+const ENGINE_VERSION = "5.1.5";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4145,13 +4145,17 @@ function stripCommentsAndStrings(code: string): string {
     .replace(/`(?:\\.|[^`\\])*`/g, "``");
 }
 
-// Hard SQL DDL/DML patterns — keywords that are extremely unlikely to
-// appear in legitimate prose of a non-SQL course. Scanned across title
-// + items + code (not only code) because the v5.0 leak showed
-// "CREATE TABLE", "ALTER TABLE", "DROP TABLE", "TRUNCATE" appearing as
-// bullets inside Python module slides.
+// Hard SQL DDL/DML patterns — keywords extremely unlikely to appear in
+// legitimate prose of a non-SQL course. Scanned across title + items
+// + code. v5.1.5 strengthening: also flags BARE uppercase SQL keywords
+// (SELECT/INSERT/UPDATE/DELETE/JOIN) when they appear as standalone
+// uppercase tokens — Python pedagogy uses lowercase verbs ("selecionar",
+// "atualizar"), so uppercase SQL is foreign-domain leakage.
 const HARD_SQL_PROSE_RE =
   /\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE|TRUNCATE\b(?!\s*\()|DELETE\s+FROM|INSERT\s+INTO|FOREIGN\s+KEY|PRIMARY\s+KEY)\b/i;
+// Bare uppercase SQL — case-sensitive; only blocks ALL-CAPS variants.
+const BARE_SQL_UPPER_RE =
+  /(?<![A-Za-z])(SELECT|INSERT|UPDATE|DELETE|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|GROUP\s+BY|ORDER\s+BY|HAVING|UNION)(?![A-Za-z])/;
 
 function detectDomainContamination(
   slide: Slide,
@@ -4182,6 +4186,11 @@ function detectDomainContamination(
     ].filter(Boolean).join("\n");
     if (HARD_SQL_PROSE_RE.test(proseText)) {
       return { contaminated: true, reason: `SQL DDL/DML em prose de curso ${domain}` };
+    }
+    // Bare uppercase SQL keywords — Python pedagogy never uses ALL-CAPS
+    // SELECT/JOIN/etc. (uses lowercase verbs); their presence is leakage.
+    if (BARE_SQL_UPPER_RE.test(proseText)) {
+      return { contaminated: true, reason: `SQL bare keywords em prose de curso ${domain}` };
     }
   }
 
@@ -4321,6 +4330,401 @@ function detectTechnicalDamage(text: string): boolean {
   // ": ." or ": , , ." — colon then nothing meaningful after.
   if (STRIPPED_TAIL_AFTER_COLON_RE.test(text)) return true;
   return false;
+}
+
+// ═══════════════════════════════════════════════════════════
+// SEMANTIC BREAK DETECTOR (v5.1.5 hardening pass 5)
+// Detects sentences whose syntax is intact but whose meaning was
+// destroyed by sanitization — e.g. "Capture erros específicos como.",
+// "Verifica partes isoladas com.", "Definir Classes: Usar com nome
+// (Ex: ).". These pass detectTechnicalDamage (no orphan parens, no
+// orphan commas) but are pedagogically broken.
+// ═══════════════════════════════════════════════════════════
+
+// Pattern → (matcher, repair-context-key). Repair attempts come from
+// the per-domain dictionaries below.
+type SemanticBreakPattern = {
+  re: RegExp;
+  key: string;          // semantic kind (used to look up repair phrases)
+  describe: string;     // human-readable name for logging
+};
+
+const SEMANTIC_BREAK_PATTERNS: SemanticBreakPattern[] = [
+  // ── Truncated terminal connectives ──────────────────────────
+  // "...específicos como." / "...trate como."
+  { re: /\b(como|tais\s+como|tipo|tipos\s+de|exemplos?\s+de)\s*\.\s*$/i,
+    key: "trailing_as_example", describe: "termina com 'como.'" },
+  // "...partes isoladas com." / "...trabalha com."
+  { re: /\b(com|usando|através\s+de|via|por\s+meio\s+de)\s*\.\s*$/i,
+    key: "trailing_with_tool", describe: "termina com 'com.' ou 'usando.'" },
+  // "...feito a partir de."
+  { re: /\b(a\s+partir\s+de|para|de)\s*\.\s*$/i,
+    key: "trailing_preposition", describe: "termina com preposição isolada" },
+
+  // ── Empty parenthetical examples ────────────────────────────
+  // "(Ex: )" / "(Exemplo: )" / "(ex: ).
+  { re: /\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i,
+    key: "empty_example_parens", describe: "(Ex: ) sem exemplo" },
+  // "Ex: ." / "Exemplo: ." (no parens)
+  { re: /\b(?:ex|exemplo|exemplos)\s*:\s*\.(\s|$)/i,
+    key: "empty_example_colon", describe: "Ex: . sem exemplo" },
+
+  // ── Anonymous "Usar com nome" / "objeto ()" patterns ────────
+  // "Usar com nome (Ex: )" / "Definir com nome"
+  { re: /\busa(?:r|ndo)?\s+com\s+nome\b/i,
+    key: "use_with_name", describe: "'Usar com nome' sem keyword" },
+  // "Inicializa atributos do objeto ()" — pseudo-call with empty parens
+  { re: /\bobjeto\s*\(\s*\)/i,
+    key: "object_empty_parens", describe: "objeto () pseudo-chamada" },
+  // "Criar Construtor :" — colon without method body indication
+  { re: /\bcriar\s+construtor\s*:/i,
+    key: "create_constructor_label", describe: "Criar Construtor sem __init__()" },
+  // "Definir Classes:" or "Definir Classe :" without keyword
+  { re: /\bdefinir\s+classes?\s*:\s*usar\b(?!.*\bclass\b)/i,
+    key: "define_classes_no_class", describe: "Definir Classes sem keyword 'class'" },
+
+  // ── Generic verb stranded by missing complement ─────────────
+  // "Verifica partes isoladas." (verb + isolated noun + period, no tool)
+  // — only flagged when a known "X com Y" framing got truncated to "X."
+  { re: /\b(verifica|valida|testa|garante|assegura|implementa)\s+\w+(?:\s+\w+){0,3}\s+com\s*\.\s*$/i,
+    key: "verb_isolated_with_dot", describe: "verbo + 'com.' truncado" },
+];
+
+function detectIncompleteTechnicalSentence(
+  text: string,
+): { broken: boolean; key?: string; describe?: string } {
+  if (!text || text.length < 8) return { broken: false };
+  // Exempt prose explicitly discussing parentheses/notation as a topic
+  if (PARENS_TOPIC_RE.test(text)) return { broken: false };
+  for (const p of SEMANTIC_BREAK_PATTERNS) {
+    if (p.re.test(text)) {
+      return { broken: true, key: p.key, describe: p.describe };
+    }
+  }
+  return { broken: false };
+}
+
+// ── Domain-aware semantic reconstructions ───────────────────
+// For each (domain, pattern_key) we provide a substitution function.
+// If no rule matches, returns null and the field stays broken (will be
+// blocked by qaVeto via TECHNICAL_SEMANTIC_BREAK).
+
+type SemanticRepairFn = (text: string) => string | null;
+
+function detectModuleDomainPython(moduleTitle: string, courseTopic: string): string {
+  const t = `${moduleTitle} ${courseTopic}`.toLowerCase();
+  if (/\barquivos?|\bfiles?\b|\bi\/o\b|\bleitura|\bescrita/.test(t)) return "py_files";
+  if (/\bclasses?|\boop\b|\bobjetos?|\bherança|\bencapsul/.test(t)) return "py_oop";
+  if (/\btestes?|\bunittest|\bpytest|\btdd\b/.test(t)) return "py_tests";
+  if (/\bexce[çc][õo]es?|\berros?|\btry|\bexcept/.test(t)) return "py_errors";
+  if (/\bfunções?|\bfunctions?|\bdef\b/.test(t)) return "py_functions";
+  if (/\bestruturas?\s+de\s+dados|listas?|dicionários?|tuplas?|conjuntos?/.test(t)) return "py_datastructs";
+  if (/\bcontrole\s+de\s+fluxo|condicionais|laços|loops|while|for/.test(t)) return "py_flow";
+  if (/\bvariáveis|\btipos\s+primitivos|\boperadores|\bfundamentos|introdução/.test(t)) return "py_basics";
+  return "py_generic";
+}
+
+const SEMANTIC_REPAIRS: Record<string, Record<string, SemanticRepairFn>> = {
+  // ── Python • Errors / Exceptions ──────────────────────────
+  py_errors: {
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `FileNotFoundError` e `IOError`."),
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `try`/`except`."),
+    trailing_preposition: null as unknown as SemanticRepairFn,
+    verb_isolated_with_dot: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `try`/`except`."),
+  },
+  // ── Python • Classes / OOP ────────────────────────────────
+  py_oop: {
+    use_with_name: (t) =>
+      t.replace(/\busa(r|ndo)?\s+com\s+nome\b/i, "usar `class` seguido do nome da classe"),
+    define_classes_no_class: (t) =>
+      t.replace(/\bdefinir\s+classes?\s*:\s*usar\b/i, "Definir Classes: usar `class` seguido do nome"),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `class Livro:`)"),
+    empty_example_colon: (t) =>
+      t.replace(/\b(ex|exemplo|exemplos)\s*:\s*\.(\s|$)/i, "$1: `class Livro:`.$2"),
+    object_empty_parens: (t) =>
+      t.replace(/\bobjeto\s*\(\s*\)/i, "objeto"),
+    create_constructor_label: (t) =>
+      t.replace(/\bcriar\s+construtor\s*:/i, "Criar Construtor `__init__()`:"),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `__init__()` e atributos."),
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `class` e `__init__()`."),
+  },
+  // ── Python • Tests ────────────────────────────────────────
+  py_tests: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `unittest` ou `pytest`."),
+    verb_isolated_with_dot: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `unittest` ou `pytest`."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `assertEqual()` e `assertTrue()`."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `assertEqual(a, b)`)"),
+    empty_example_colon: (t) =>
+      t.replace(/\b(ex|exemplo|exemplos)\s*:\s*\.(\s|$)/i, "$1: `assertEqual(a, b)`.$2"),
+  },
+  // ── Python • Files / I/O ──────────────────────────────────
+  py_files: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `open()` e `with`."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `'r'`, `'w'` e `'a'`."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `open('file.txt', 'r')`)"),
+  },
+  // ── Python • Functions ────────────────────────────────────
+  py_functions: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `def` e parâmetros."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `def`, `return` e parâmetros."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `def soma(a, b): return a + b`)"),
+  },
+  // ── Python • Data structures ──────────────────────────────
+  py_datastructs: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com listas, dicionários e tuplas."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `list`, `dict` e `tuple`."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `[1, 2, 3]` ou `{'a': 1}`)"),
+  },
+  // ── Python • Flow control ─────────────────────────────────
+  py_flow: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `if`/`elif`/`else` e `for`/`while`."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `if`, `for` e `while`."),
+  },
+  // ── Python • Basics ───────────────────────────────────────
+  py_basics: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com variáveis, tipos e operadores."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `int`, `str`, `float` e `bool`."),
+  },
+  // ── Python • Generic fallback ─────────────────────────────
+  py_generic: {
+    empty_example_parens: (t) =>
+      t.replace(/\s*\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, ""),
+    empty_example_colon: (t) =>
+      t.replace(/\s*\b(ex|exemplo|exemplos)\s*:\s*\.(\s|$)/i, ".$2"),
+  },
+};
+
+function repairSemanticBreak(
+  text: string,
+  moduleTitle: string,
+  courseTopic: string,
+): { repaired: string; changed: boolean; appliedKey?: string } {
+  if (!text) return { repaired: text, changed: false };
+  const detect = detectIncompleteTechnicalSentence(text);
+  if (!detect.broken || !detect.key) return { repaired: text, changed: false };
+
+  const subdomain = detectModuleDomainPython(moduleTitle, courseTopic);
+  const dictsToTry = [
+    SEMANTIC_REPAIRS[subdomain],
+    SEMANTIC_REPAIRS["py_generic"],
+  ].filter(Boolean);
+
+  for (const dict of dictsToTry) {
+    const fn = dict[detect.key];
+    if (typeof fn !== "function") continue;
+    const out = fn(text);
+    if (out && out !== text) {
+      // Verify the repair actually fixed the break
+      if (!detectIncompleteTechnicalSentence(out).broken) {
+        return { repaired: out, changed: true, appliedKey: detect.key };
+      }
+    }
+  }
+  return { repaired: text, changed: false };
+}
+
+function repairSlideSemanticBreaks(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+  slideId: string,
+): Slide {
+  const fix = (txt: string | undefined): string | undefined => {
+    if (!txt) return txt;
+    const r = repairSemanticBreak(txt, moduleTitle, courseTopic);
+    if (r.changed) {
+      console.log(
+        `[V5-SEMANTIC-REPAIR] ${slideId} | "${txt.slice(0, 80)}" → "${r.repaired.slice(0, 80)}" [${r.appliedKey}]`,
+      );
+    }
+    return r.repaired;
+  };
+  return {
+    ...s,
+    title:    fix(s.title) ?? s.title,
+    subtitle: fix(s.subtitle),
+    items:      s.items?.map((t) => fix(t) ?? t),
+    leftItems:  s.leftItems?.map((t) => fix(t) ?? t),
+    rightItems: s.rightItems?.map((t) => fix(t) ?? t),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// LEARNING OBJECTIVE REPAIR (v5.1.5)
+// Rewrites generic objectives like "Compreender fundamentos
+// Essenciais de Python" into concrete pedagogical statements
+// using a domain-aware tail dictionary.
+// ═══════════════════════════════════════════════════════════
+
+const PYTHON_OBJECTIVE_TAILS: Record<string, string[]> = {
+  py_basics: [
+    "Utilizar variáveis, tipos primitivos e operadores básicos.",
+    "Criar expressões e atribuições corretas em Python.",
+    "Aplicar entrada e saída com `input()` e `print()`.",
+  ],
+  py_flow: [
+    "Criar estruturas condicionais com `if`, `elif` e `else`.",
+    "Implementar laços com `for` e `while` para iteração.",
+    "Combinar operadores lógicos em condições compostas.",
+  ],
+  py_functions: [
+    "Definir funções reutilizáveis com `def` e parâmetros.",
+    "Retornar valores e usar argumentos posicionais e nomeados.",
+    "Aplicar escopo local e global em funções Python.",
+  ],
+  py_datastructs: [
+    "Manipular listas, tuplas e dicionários para armazenar dados.",
+    "Acessar, inserir e remover elementos de coleções.",
+    "Aplicar métodos como `append()`, `pop()` e `keys()`.",
+  ],
+  py_oop: [
+    "Definir classes com `class` e atributos no `__init__()`.",
+    "Criar objetos e invocar métodos sobre instâncias.",
+    "Aplicar herança e encapsulamento em classes Python.",
+  ],
+  py_files: [
+    "Abrir, ler e escrever arquivos com `open()` e `with`.",
+    "Tratar exceções de I/O como `FileNotFoundError`.",
+    "Usar modos de abertura `'r'`, `'w'` e `'a'` corretamente.",
+  ],
+  py_errors: [
+    "Capturar exceções específicas com `try`/`except`.",
+    "Diferenciar `FileNotFoundError`, `ValueError` e `IOError`.",
+    "Aplicar `finally` para liberar recursos com segurança.",
+  ],
+  py_tests: [
+    "Escrever testes unitários com `unittest` ou `pytest`.",
+    "Validar resultados com `assertEqual()` e `assertTrue()`.",
+    "Organizar testes em classes `TestCase` e métodos `test_*`.",
+  ],
+  py_generic: [
+    "Aplicar conceitos práticos com exemplos de código Python.",
+    "Implementar pequenas rotinas utilizando boas práticas.",
+    "Resolver exercícios reforçando os fundamentos do tópico.",
+  ],
+};
+
+function repairLearningObjective(
+  text: string,
+  moduleTitle: string,
+  courseTopic: string,
+  idx: number,
+): string {
+  if (!isGenericLearningObjective(text, moduleTitle)) return text;
+  const sub = detectModuleDomainPython(moduleTitle, courseTopic);
+  const tails = PYTHON_OBJECTIVE_TAILS[sub] ?? PYTHON_OBJECTIVE_TAILS["py_generic"];
+  const replacement = tails[idx % tails.length];
+  console.log(
+    `[V5-SEMANTIC-REPAIR] objective | "${text.slice(0, 80)}" → "${replacement}" [${sub}]`,
+  );
+  return replacement;
+}
+
+function repairSlideLearningObjectives(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+): Slide {
+  if (s.layout !== "module_cover" || !Array.isArray(s.items)) return s;
+  const fixed = s.items.map((it, i) =>
+    repairLearningObjective(it, moduleTitle || s.title || "", courseTopic, i),
+  );
+  return { ...s, items: fixed };
+}
+
+// ═══════════════════════════════════════════════════════════
+// SEMANTIC DUPLICATE DETECTOR (v5.1.5)
+// Finds slide pairs whose normalized bullet/title content overlaps
+// ≥70% and drops the weaker one (fewer items, shorter total text).
+// ═══════════════════════════════════════════════════════════
+
+function slideSemanticSignature(s: Slide): string {
+  const all = [
+    s.title || "",
+    ...(s.items ?? []),
+    ...(s.leftItems ?? []),
+    ...(s.rightItems ?? []),
+  ].join(" | ").toLowerCase()
+    .replace(/[`*_~\-•]/g, " ")
+    .replace(/[^a-z0-9áéíóúâêîôûãõç\s]/gi, " ")
+    .replace(/\s+/g, " ").trim();
+  return all;
+}
+
+function jaccardSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const tokA = new Set(a.split(/\s+/).filter((w) => w.length > 3));
+  const tokB = new Set(b.split(/\s+/).filter((w) => w.length > 3));
+  if (!tokA.size || !tokB.size) return 0;
+  let inter = 0;
+  for (const w of tokA) if (tokB.has(w)) inter++;
+  return inter / (tokA.size + tokB.size - inter);
+}
+
+function slideContentWeight(s: Slide): number {
+  const items = [
+    ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+  ];
+  return items.length * 100 + items.reduce((a, b) => a + (b?.length ?? 0), 0);
+}
+
+function dedupeSemanticDuplicates(allModuleSlides: Slide[][]): {
+  result: Slide[][]; removed: number;
+} {
+  const SIM_THRESHOLD = 0.70;
+  let removedCount = 0;
+  const result = allModuleSlides.map((modSlides) => {
+    if (modSlides.length < 2) return modSlides;
+    const keep = new Array(modSlides.length).fill(true);
+    const sigs = modSlides.map(slideSemanticSignature);
+    for (let i = 0; i < modSlides.length; i++) {
+      if (!keep[i]) continue;
+      // Skip structural slides — they intentionally repeat patterns.
+      if (["module_cover", "toc", "closing", "cover"].includes(modSlides[i].layout)) continue;
+      for (let j = i + 1; j < modSlides.length; j++) {
+        if (!keep[j]) continue;
+        if (["module_cover", "toc", "closing", "cover"].includes(modSlides[j].layout)) continue;
+        const sim = jaccardSimilarity(sigs[i], sigs[j]);
+        if (sim >= SIM_THRESHOLD) {
+          // Drop the weaker (less content); tie-break: keep earlier.
+          const wi = slideContentWeight(modSlides[i]);
+          const wj = slideContentWeight(modSlides[j]);
+          const dropIdx = wj > wi ? i : j;
+          keep[dropIdx] = false;
+          removedCount++;
+          console.log(
+            `[V5-DEDUPE] dropped slide #${dropIdx + 1} (sim=${sim.toFixed(2)} with #${(dropIdx === i ? j : i) + 1}): "${modSlides[dropIdx].title}"`,
+          );
+          if (dropIdx === i) break; // i is gone, move on
+        }
+      }
+    }
+    return modSlides.filter((_, i) => keep[i]);
+  });
+  return { result, removed: removedCount };
 }
 
 // ── Final placeholder sanitizer ────────────────────────────
@@ -4664,7 +5068,10 @@ type QAIssueType =
   | "UNREADABLE_SLIDE"
   | "GENERIC_OBJECTIVE"
   // ── v5.1 hardening pass 2 ───────────────────────────────────
-  | "TECHNICAL_SANITIZATION_DAMAGE";
+  | "TECHNICAL_SANITIZATION_DAMAGE"
+  // ── v5.1.5 hardening pass 5 ─────────────────────────────────
+  | "TECHNICAL_SEMANTIC_BREAK"
+  | "REDUNDANT_SLIDE";
 
 interface QAIssue {
   slideId:            string;
@@ -5171,6 +5578,24 @@ function runPptxQA(
           resolutionStrategy: "Slide marcado para regeneração",
         });
       }
+
+      // 19. TECHNICAL_SEMANTIC_BREAK  [CRITICAL → repair via cascade or veto]
+      // Catches sentences whose syntax survived but whose meaning was
+      // destroyed (e.g. "Capture erros específicos como.", "Verifica
+      // partes isoladas com.", "Definir Classes: Usar com nome (Ex: ).").
+      let semanticBreak: { txt: string; describe: string } | null = null;
+      for (const t of allTextFields) {
+        const det = detectIncompleteTechnicalSentence(t);
+        if (det.broken) { semanticBreak = { txt: t, describe: det.describe ?? det.key ?? "?" }; break; }
+      }
+      if (semanticBreak) {
+        unfixedIssues.push({
+          slideId: id, type: "TECHNICAL_SEMANTIC_BREAK", severity: "CRITICAL",
+          message: `Frase tecnicamente incompleta em "${s.title}" (${semanticBreak.describe})`,
+          context: semanticBreak.txt.slice(0, 120),
+          resolutionStrategy: "Reparo semântico via repairSemanticBreak() ou bloqueio do export",
+        });
+      }
     } // end slide loop
 
     // Apply drop mask for CRITICALs that could not be repaired
@@ -5312,21 +5737,31 @@ function l1VisualFix(
     case "FONT_TOO_SMALL_RISK":
       return { ...s, items: nonEmpty(s.items).map((t) => safeSliceText(t, 80)) };
     case "TECHNICAL_SANITIZATION_DAMAGE": {
-      // Deterministic repair using domain dictionaries with the REAL
-      // moduleTitle and courseTopic (passed in by resolveQAIssues).
-      // Falls back to s.label only when the cascade didn't supply context.
       const mTitle = moduleTitle || s.label || "";
       const cTopic = courseTopic || mTitle;
       return repairSlideTechnicalDamage(s, mTitle, cTopic, issue.slideId);
     }
+    case "TECHNICAL_SEMANTIC_BREAK": {
+      // Domain-aware semantic reconstruction. If repair fails, the slide
+      // remains broken and qaVeto blocks the export (HARD_CRITICAL).
+      const mTitle = moduleTitle || s.label || "";
+      const cTopic = courseTopic || mTitle;
+      return repairSlideSemanticBreaks(s, mTitle, cTopic, issue.slideId);
+    }
+    case "GENERIC_OBJECTIVE":
     case "GENERIC_LEARNING_OBJECTIVE": {
       if (s.layout !== "module_cover" || !Array.isArray(s.items)) return s;
-      const expanded = s.items
+      // v5.1.5: deterministic concrete-objective rewrite using
+      // PYTHON_OBJECTIVE_TAILS dictionary (tied to module subdomain).
+      const repaired = repairSlideLearningObjectives(s, moduleTitle || s.title || "", courseTopic);
+      // Keep the legacy normalisation as a final pass for any remaining
+      // items that weren't generic (it normalises capitalisation).
+      const finalItems = (repaired.items ?? [])
         .map((item, idx) =>
-          withPeriod(normalizeLearningObjective(expandVagueObjective(item, s.title), s.title, idx))
+          withPeriod(normalizeLearningObjective(item, s.title, idx))
         )
-        .filter((item) => item.length > 8 && !BAD_OBJECTIVE_RE.test(item));
-      return expanded.length >= 2 ? { ...s, items: expanded } : s;
+        .filter((item) => item.length > 8);
+      return finalItems.length >= 2 ? { ...repaired, items: finalItems } : repaired;
     }
     default:
       return s;
@@ -5657,6 +6092,10 @@ const HARD_CRITICAL_TYPES: ReadonlySet<QAIssueType> = new Set<QAIssueType>([
   "GENERIC_LEARNING_OBJECTIVE",
   // v5.1 hardening pass 2:
   "TECHNICAL_SANITIZATION_DAMAGE",
+  // v5.1.5 hardening pass 5 — semantically broken technical sentences
+  // (e.g. "Capture erros específicos como.", "Verifica X com.") that
+  // cannot be auto-repaired must block export rather than ship truncated.
+  "TECHNICAL_SEMANTIC_BREAK",
 ]);
 
 function qaVeto(
@@ -5926,14 +6365,26 @@ async function runPipeline(
     allModuleSlides[mi] = allModuleSlides[mi].map(sanitizeSlidePlaceholders);
   }
 
-  // ── Final technical-damage repair pass (v5.1.4) ──────────────────────
-  // Last chance before the veto. If the L3 Gemini rewrite (or any cascade
-  // step) introduced new damage, this catches it.
+  // ── Final technical + semantic repair pass (v5.1.5) ──────────────────
+  // Last chance before the veto. Runs:
+  //   (a) repairSlideTechnicalDamage  — empty-paren / orphan-punct fixes
+  //   (b) repairSlideSemanticBreaks   — "como.", "com.", "(Ex: )" fixes
+  //   (c) repairSlideLearningObjectives — concrete objective rewrite
+  // Then dedupeSemanticDuplicates collapses any near-duplicate slides.
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     const mTitle = moduleTitlesArr[mi] ?? "";
-    allModuleSlides[mi] = allModuleSlides[mi].map((s, si) =>
-      repairSlideTechnicalDamage(s, mTitle, courseTitle, `module_${mi + 1}_slide_${si + 1}.post`),
-    );
+    allModuleSlides[mi] = allModuleSlides[mi].map((s, si) => {
+      const sid = `module_${mi + 1}_slide_${si + 1}.post`;
+      let out = repairSlideTechnicalDamage(s, mTitle, courseTitle, sid);
+      out = repairSlideSemanticBreaks(out, mTitle, courseTitle, sid);
+      out = repairSlideLearningObjectives(out, mTitle, courseTitle);
+      return out;
+    });
+  }
+  const dedupe = dedupeSemanticDuplicates(allModuleSlides);
+  if (dedupe.removed > 0) {
+    for (let i = 0; i < dedupe.result.length; i++) allModuleSlides[i] = dedupe.result[i];
+    console.log(`[V5-DEDUPE] Total redundant slides removed: ${dedupe.removed}`);
   }
 
   // ── RE-RUN QA after the final repair so qaVeto sees the current state.
