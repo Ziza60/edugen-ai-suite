@@ -1,0 +1,227 @@
+injected.js:37 [PPTX] v4 BLOQUEOU export (QA veto): 
+Object
+blockingIssues
+: 
+Array(4)
+0
+: 
+{slideId: 'M2.COVER', type: 'GENERIC_LEARNING_OBJECTIVE', message: '[SAFETY-NET] Objetivo genérico escapou em "Control…Aplicar escopo local e global em funções Python."'}
+1
+: 
+{slideId: 'M3.COVER', type: 'DOMAIN_CONTAMINATION', message: '[SAFETY-NET] SQL DDL/DML escapou em "Estruturas de…r estruturas de banco de dados com CREATE TABLE."'}
+2
+: 
+{slideId: 'M3.COVER', type: 'DOMAIN_CONTAMINATION', message: '[SAFETY-NET] SQL DDL/DML escapou em "Estruturas de…ar tabelas e colunas existentes com ALTER TABLE."'}
+3
+: 
+{slideId: 'M6.COVER', type: 'GENERIC_LEARNING_OBJECTIVE', message: '[SAFETY-NET] Objetivo genérico escapou em "Introdu…icar herança e encapsulamento em classes Python."'}
+length
+: 
+4
+[[Prototype]]
+: 
+Array(0)
+at
+: 
+ƒ at()
+concat
+: 
+ƒ concat()
+constructor
+: 
+ƒ Array()
+copyWithin
+: 
+ƒ copyWithin()
+entries
+: 
+ƒ entries()
+every
+: 
+ƒ every()
+fill
+: 
+ƒ fill()
+filter
+: 
+ƒ filter()
+find
+: 
+ƒ find()
+findIndex
+: 
+ƒ findIndex()
+findLast
+: 
+ƒ findLast()
+findLastIndex
+: 
+ƒ findLastIndex()
+flat
+: 
+ƒ flat()
+flatMap
+: 
+ƒ flatMap()
+forEach
+: 
+ƒ forEach()
+includes
+: 
+ƒ includes()
+indexOf
+: 
+ƒ indexOf()
+join
+: 
+ƒ join()
+keys
+: 
+ƒ keys()
+lastIndexOf
+: 
+ƒ lastIndexOf()
+length
+: 
+0
+map
+: 
+ƒ map()
+pop
+: 
+ƒ pop()
+push
+: 
+ƒ push()
+reduce
+: 
+ƒ reduce()
+reduceRight
+: 
+ƒ reduceRight()
+reverse
+: 
+ƒ reverse()
+shift
+: 
+ƒ shift()
+slice
+: 
+ƒ slice()
+some
+: 
+ƒ some()
+sort
+: 
+ƒ sort()
+splice
+: 
+ƒ splice()
+toLocaleString
+: 
+ƒ toLocaleString()
+toReversed
+: 
+ƒ toReversed()
+toSorted
+: 
+ƒ toSorted()
+toSpliced
+: 
+ƒ toSpliced()
+toString
+: 
+ƒ toString()
+unshift
+: 
+ƒ unshift()
+values
+: 
+ƒ values()
+with
+: 
+ƒ with()
+Symbol(Symbol.iterator)
+: 
+ƒ values()
+Symbol(Symbol.unscopables)
+: 
+{at: true, copyWithin: true, entries: true, fill: true, find: true, …}
+[[Prototype]]
+: 
+Object
+cache
+: 
+"miss"
+code
+: 
+"PPTX_QA_VETO"
+engine
+: 
+"export-pptx-v4"
+engine_version
+: 
+"5.1.11"
+error
+: 
+"PPTX export blocked by quality veto"
+fallback_used
+: 
+false
+hint
+: 
+"O conteúdo gerado contém problemas críticos (placeholders, código incompleto, contaminação de domínio ou densidade extrema). Tente regenerar o curso ou ajustar os módulos."
+removedSlides
+: 
+6
+status
+: 
+"blocked"
+totalSlides
+: 
+36
+[[Prototype]]
+: 
+Object
+constructor
+: 
+ƒ Object()
+hasOwnProperty
+: 
+ƒ hasOwnProperty()
+isPrototypeOf
+: 
+ƒ isPrototypeOf()
+propertyIsEnumerable
+: 
+ƒ propertyIsEnumerable()
+toLocaleString
+: 
+ƒ toLocaleString()
+toString
+: 
+ƒ toString()
+valueOf
+: 
+ƒ valueOf()
+__defineGetter__
+: 
+ƒ __defineGetter__()
+__defineSetter__
+: 
+ƒ __defineSetter__()
+__lookupGetter__
+: 
+ƒ __lookupGetter__()
+__lookupSetter__
+: 
+ƒ __lookupSetter__()
+__proto__
+: 
+(...)
+get __proto__
+: 
+ƒ __proto__()
+set __proto__
+: 
+ƒ __proto__()
