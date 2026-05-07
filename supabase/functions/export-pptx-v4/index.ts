@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.14";
+const ENGINE_VERSION = "5.1.15";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4207,13 +4207,61 @@ const MODULE_PYTHON_ALLOW_RE =
 // whole export. Now we drop ONLY the offending strings so the cover survives.
 // If a list goes empty after stripping, we leave it empty (renderer handles
 // sparse covers; cleaner than fabricating fake content).
+// v5.1.15 — broader SQL detection (Pass 14 missed bare DROP/TRUNCATE/CREATE/ALTER
+// without "TABLE", and "banco de dados" without "relacional").
+// v5.1.15 — exclude `_` and digits from the boundary so identifiers like
+// `CREATE_ACTION`, `DROP_TABLE_NAME`, `ALTER2` (constants/var names that
+// happen to embed an SQL verb) don't trip the detector.
+const BARE_SQL_DDL_VERBS_RE =
+  /(?<![A-Za-z0-9_])(DROP|TRUNCATE|CREATE|ALTER)(?![A-Za-z0-9_])/;
+const BROADER_PT_DB_RE =
+  /\b(banco\s+de\s+dados|tabela[s]?\s+(do\s+)?banco|colunas?\s+(da|de)\s+tabela|registros?\s+(da|na|de)\s+tabela|consulta[s]?\s+SQL)\b/i;
+
 function isSqlContaminatedString(txt: string): boolean {
   if (!txt || typeof txt !== "string") return false;
   return HARD_SQL_PROSE_RE.test(txt) ||
     PT_SQL_DDL_RE.test(txt) ||
-    BARE_SQL_UPPER_RE.test(txt);
+    BARE_SQL_UPPER_RE.test(txt) ||
+    BARE_SQL_DDL_VERBS_RE.test(txt) ||
+    BROADER_PT_DB_RE.test(txt);
 }
 
+// v5.1.15 — cross-module objective contamination
+// Module 8 ("Boas Práticas e Implantação") receiving Module 1 objectives
+// ("Utilizar variáveis, tipos primitivos..."). Detect when an advanced
+// module title contains advanced/practice/deploy keywords AND an item
+// mentions clearly basic-fundamental concepts.
+const ADVANCED_MODULE_RE =
+  /\b(boas\s+pr[áa]ticas|implanta[çc][ãa]o|deploy|avan[çc]ad[oa]s?|otimiza[çc][ãa]o|performance|ci\/cd|monitora|seguran[çc]a|refactor|arquitetura|escalabilidade)\b/i;
+const BASIC_FUNDAMENTALS_RE =
+  /\b(vari[áa]veis\s+(b[áa]sicas|e\s+tipos\s+primitivos|e\s+operadores\s+b[áa]sicos)|tipos\s+primitivos|primeiros\s+passos|hello\s+world|sintaxe\s+b[áa]sica|expressões\s+b[áa]sicas|atribuições\s+b[áa]sicas|operadores\s+b[áa]sicos|conceitos\s+iniciais)\b/i;
+
+function isCrossModuleBasicLeak(txt: string, moduleTitle: string): boolean {
+  if (!txt || !moduleTitle) return false;
+  if (!ADVANCED_MODULE_RE.test(moduleTitle)) return false;
+  return BASIC_FUNDAMENTALS_RE.test(txt);
+}
+
+// v5.1.15 — raw code leaking as bullet/text
+// Slide 11 had `{pizza['nome']} - R${pizza['preco']:.2f}") print(...)` as
+// a bullet item. Detect template-string / dangling-print / unbalanced
+// quote patterns that reveal source-code fragments leaked into prose.
+const RAW_CODE_LEAK_PATTERNS: RegExp[] = [
+  /\{[a-zA-Z_]\w*\[['"][^'"]+['"]\][^}]*\}/,        // {var['key']:fmt}
+  /["')]\s*print\s*\(/,                              // ") print(  or  ) print(
+  /\bprint\s*\(\s*[fr]?["'][^"']*$/,                 // print("...   (unterminated)
+  /\.\d+f\}["')]/,                                   // :.2f}")
+  /\)\s*\.\s*print\s*\(/,                            // ).print(
+];
+function detectRawCodeLeak(text: string): boolean {
+  if (!text || text.length < 8) return false;
+  return RAW_CODE_LEAK_PATTERNS.some((re) => re.test(text));
+}
+
+// v5.1.15 — generalised contamination strip. Drops items matching ANY of:
+//   - SQL leakage in non-SQL/non-DB module
+//   - cross-module basic-fundamental leak in advanced module
+//   - raw code leak (template strings, dangling print, etc.)
 function stripSqlContaminationFromSlide(
   slide: Slide,
   courseDomain: ContentDomain,
@@ -4224,18 +4272,28 @@ function stripSqlContaminationFromSlide(
   const moduleAllowsPython = MODULE_PYTHON_ALLOW_RE.test(moduleTitle);
   const looksLikePython = courseDomain === "python" || moduleAllowsPython;
   const checkSql = (courseDomain !== "sql" && !moduleAllowsSql) || looksLikePython;
-  if (!checkSql) return slide;
+
+  const isContaminated = (t: string): string | null => {
+    if (typeof t !== "string") return null;
+    if (checkSql && isSqlContaminatedString(t)) return "sql";
+    if (isCrossModuleBasicLeak(t, moduleTitle)) return "cross_module_basic";
+    if (detectRawCodeLeak(t)) return "raw_code_leak";
+    return null;
+  };
 
   const out = { ...slide } as Slide & { competencies?: string[] };
   let dropped = 0;
+  const reasons: string[] = [];
 
   for (const key of ["items", "leftItems", "rightItems"] as const) {
     const arr = (out as unknown as Record<string, unknown>)[key];
     if (Array.isArray(arr)) {
       const before = arr.length;
-      const cleaned = (arr as string[]).filter(
-        (t) => typeof t !== "string" || !isSqlContaminatedString(t),
-      );
+      const cleaned = (arr as string[]).filter((t) => {
+        const r = isContaminated(t);
+        if (r) reasons.push(r);
+        return r === null;
+      });
       dropped += before - cleaned.length;
       (out as unknown as Record<string, unknown>)[key] = cleaned;
     }
@@ -4243,13 +4301,17 @@ function stripSqlContaminationFromSlide(
   const comps = (slide as Slide & { competencies?: string[] }).competencies;
   if (Array.isArray(comps)) {
     const before = comps.length;
-    const cleaned = comps.filter((t) => !isSqlContaminatedString(t));
+    const cleaned = comps.filter((t) => {
+      const r = isContaminated(t);
+      if (r) reasons.push(r);
+      return r === null;
+    });
     dropped += before - cleaned.length;
     out.competencies = cleaned;
   }
   if (dropped > 0) {
     console.log(
-      `[V5-SQL-STRIP] ${slideId} | "${moduleTitle}" | ${dropped} contaminated item(s) removed`,
+      `[V5-CONTAM-STRIP] ${slideId} | "${moduleTitle}" | dropped=${dropped} reasons=[${reasons.join(",")}]`,
     );
   }
   return out;
@@ -4555,6 +4617,17 @@ const STRIPPED_TAIL_AFTER_COLON_RE = /:\s*[,\s\.]+$/;
 // Topics that legitimately discuss empty parens — exempt from damage flag.
 const PARENS_TOPIC_RE = /\bparêntese|\bparentese|\bnotação|\bnotacao|\bsintaxe\b|\bsímbolo|\bsimbolo\b/i;
 
+// v5.1.15 — additional gap patterns from Pass 15 user report:
+//   "Usar modos de abertura , e 'a' corretamente."  → STRIPPED_LEADING_COMMA_RE
+//   "Definir classes com e atributos no ."          → BARE_COM_E_RE / NO_DOT_TAIL_RE
+//   "Organizar testes em classes e métodos ."       → TRAILING_NOUN_DOT_RE
+//   "Testes Unitários com : Crie classes..."        → COM_COLON_GAP_RE
+const STRIPPED_LEADING_COMMA_RE = /[a-zA-ZÀ-ÿ]\s+,\s+/;          // word + space + ", "
+const BARE_COM_E_RE = /\bcom\s+e\s+[a-zA-ZÀ-ÿ]/;                  // "com e atributos"
+const NO_DOT_TAIL_RE = /\b(no|na|nos|nas|de|do|da)\s*\.\s*$/i;    // "no ."
+const TRAILING_NOUN_DOT_RE = /\b(m[ée]todos|classes|fun[çc][õo]es|atributos|par[âa]metros|argumentos|m[óo]dulos)\s+\.\s*$/i;
+const COM_COLON_GAP_RE = /\bcom\s*:\s*[A-ZÀ-Ÿ]/;                  // "com : Crie"
+
 function detectTechnicalDamage(text: string): boolean {
   // Min length 6 — catches short stripped phrases like "Use e ." (7 chars).
   if (!text || text.length < 6) return false;
@@ -4578,6 +4651,13 @@ function detectTechnicalDamage(text: string): boolean {
   if (ORPHAN_CONJ_PERIOD_RE.test(text)) return true;
   // ": ." or ": , , ." — colon then nothing meaningful after.
   if (STRIPPED_TAIL_AFTER_COLON_RE.test(text)) return true;
+
+  // ── v5.1.15 new gap patterns ──────────────────────────────
+  if (STRIPPED_LEADING_COMMA_RE.test(text)) return true;
+  if (BARE_COM_E_RE.test(text)) return true;
+  if (NO_DOT_TAIL_RE.test(text)) return true;
+  if (TRAILING_NOUN_DOT_RE.test(text)) return true;
+  if (COM_COLON_GAP_RE.test(text)) return true;
   return false;
 }
 
@@ -5062,6 +5142,10 @@ function dedupeSemanticDuplicates(allModuleSlides: Slide[][]): {
   result: Slide[][]; removed: number;
 } {
   const SIM_THRESHOLD = 0.70;
+  // v5.1.15 — adjacent slides (same module, consecutive index) get a more
+  // aggressive threshold because real consecutive slides should advance the
+  // narrative; near-identical pairs are almost always accidental redundancy.
+  const ADJACENT_SIM_THRESHOLD = 0.55;
   let removedCount = 0;
   const result = allModuleSlides.map((modSlides) => {
     if (modSlides.length < 2) return modSlides;
@@ -5075,7 +5159,8 @@ function dedupeSemanticDuplicates(allModuleSlides: Slide[][]): {
         if (!keep[j]) continue;
         if (["module_cover", "toc", "closing", "cover"].includes(modSlides[j].layout)) continue;
         const sim = jaccardSimilarity(sigs[i], sigs[j]);
-        if (sim >= SIM_THRESHOLD) {
+        const threshold = (j === i + 1) ? ADJACENT_SIM_THRESHOLD : SIM_THRESHOLD;
+        if (sim >= threshold) {
           // Drop the weaker (less content); tie-break: keep earlier.
           const wi = slideContentWeight(modSlides[i]);
           const wj = slideContentWeight(modSlides[j]);
