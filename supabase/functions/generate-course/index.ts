@@ -7,47 +7,43 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Plan limits — keep in sync with supabase/functions/_shared/plans.ts
-const PLAN_LIMITS: Record<string, { maxCoursesPerMonth: number; maxModules: number }> = {
-  free:    { maxCoursesPerMonth: 1,  maxModules: 6  },
-  starter: { maxCoursesPerMonth: 2,  maxModules: 8  },
-  pro:     { maxCoursesPerMonth: 5,  maxModules: 12 },
+const PLAN_LIMITS = {
+  free: { maxCourses: 3, maxModules: 5, images: false },
+  pro: { maxCourses: 5, maxModules: 10, images: true },
 };
-const DEFAULT_LIMITS = PLAN_LIMITS.free;
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
-async function callAI(model: string, prompt: string, maxTokens = 4000, isJson = false) {
+async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false) {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-
-  // gemini-2.5-flash for all calls (gemini-2.0 not available for new API keys).
-  // High max_tokens ensures thinking tokens don't crowd out output for JSON calls.
+  
+  // Use gemini-2.5-flash as requested
   const aiModel = "gemini-2.5-flash";
 
-  console.log(`[callAI] model=${aiModel} maxTokens=${maxTokens} isJson=${isJson}`);
+  console.log(`Calling Gemini API directly with model: ${aiModel}`);
 
   if (!geminiKey) {
     throw new Error("GEMINI_API_KEY não configurada.");
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${geminiKey}`,
-    },
-    body: JSON.stringify({
-      model: aiModel,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens,
-      temperature: 0.1,
-      ...(isJson ? { response_format: { type: "json_object" } } : {}),
-    }),
-  });
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${geminiKey}`,
+      },
+      body: JSON.stringify({
+        model: aiModel,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxTokens,
+        temperature: 0.1, // Even lower temperature for more predictable structure
+        ...(isJson ? { response_format: { type: "json_object" } } : {})
+      }),
+    });
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error(`Gemini call failed (${aiModel}): ${errText}`);
+    console.error(`Gemini call failed: ${errText}`);
     throw new Error(`Erro na API do Gemini (${res.status}): ${errText}`);
   }
 
@@ -124,12 +120,12 @@ Todo módulo DEVE terminar com:
 ### 🧾 Resumo do Módulo
 [1 parágrafo curto — máximo 3 frases — sintetizando o essencial]
 
-### 📌 Principais Aprendizados
-- [aprendizado 1 — começa com verbo, contém ação específica]
-- [aprendizado 2 — começa com verbo, contém ação específica]
-- [aprendizado 3 — começa com verbo, contém ação específica]
-- [aprendizado 4 — começa com verbo, contém ação específica]
-- [aprendizado 5 — começa com verbo, contém ação específica]
+### 📌 Key Takeaways
+- [takeaway 1 — começa com verbo, contém ação específica]
+- [takeaway 2 — começa com verbo, contém ação específica]
+- [takeaway 3 — começa com verbo, contém ação específica]
+- [takeaway 4 — começa com verbo, contém ação específica]
+- [takeaway 5 — começa com verbo, contém ação específica]
 (mínimo 5, máximo 6 bullets — cada um UMA única ideia, NUNCA duas frases colapsadas com ponto e vírgula ou " e ")
 
 ---
@@ -335,18 +331,49 @@ Deno.serve(async (req: Request) => {
 
       sendSSE({ type: "status", message: "Verificando permissões..." });
 
-      // Get subscription — default to "pro" when no record exists
+      // Get subscription
       const { data: sub } = await serviceClient
-        .from("subscriptions").select("plan").eq("user_id", userId).maybeSingle();
-      const plan = sub?.plan || "pro";
-      const limits = PLAN_LIMITS[plan] ?? DEFAULT_LIMITS;
+        .from("subscriptions").select("plan").eq("user_id", userId).single();
+      const plan = (sub?.plan || "free") as "free" | "pro";
+      const limits = PLAN_LIMITS[plan];
 
       // Check dev status
-      const { data: profile } = await serviceClient
+      const { data: profile, error: profileError } = await serviceClient
         .from("profiles").select("is_dev").eq("user_id", userId).maybeSingle();
-      const isDev = profile?.is_dev === true;
+      let isDev = profile?.is_dev === true;
+      if (!isDev && profileError) {
+        const { data: profileById } = await serviceClient
+          .from("profiles").select("is_dev").eq("id", userId).maybeSingle();
+        isDev = profileById?.is_dev === true;
+      }
+
+      // Check monthly usage
+      if (!isDev) {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const { count: usageCount } = await serviceClient
+          .from("usage_events").select("*", { count: "exact", head: true })
+          .eq("user_id", userId).eq("event_type", "COURSE_GENERATED").gte("created_at", startOfMonth);
+        if ((usageCount ?? 0) >= limits.maxCourses) {
+          sendSSE({ type: "error", message: "Limite mensal de cursos atingido. Faça upgrade do plano." });
+          controller?.close();
+          return;
+        }
+      }
 
       const actualModules = Math.min(num_modules || 3, limits.maxModules);
+
+      if (include_images && !limits.images && !isDev) {
+        sendSSE({ type: "error", message: "Imagens IA disponíveis apenas no plano Pro." });
+        controller?.close();
+        return;
+      }
+
+      if (use_sources && plan !== "pro" && !isDev) {
+        sendSSE({ type: "error", message: "Fontes próprias disponíveis apenas no plano Pro." });
+        controller?.close();
+        return;
+      }
 
       // Retrieve sources if needed
       let sourcesBlock = "";
@@ -391,120 +418,82 @@ ${sourcesBlock}
 </SOURCES>`
         : "";
 
-      // LEAN structure prompt: only titles + summaries (quiz/flashcards generated per-module separately)
-      const structurePrompt = `You are an educational course designer.
+      const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
+      
+      STRICT JSON RULE:
+      - Return ONLY the JSON object. 
+      - Do NOT include any markdown formatting like \`\`\`json.
+      - Ensure the JSON is valid and NOT truncated.
+      
+      CRITICAL HARD CONSTRAINT — MODULE COUNT:
+      - You MUST generate EXACTLY ${actualModules} modules. Not fewer, not more.
+      - The "modules" array MUST contain exactly ${actualModules} items.
 
-RULES:
-- Return ONLY valid JSON. No markdown, no explanation, no code fences.
-- The "modules" array MUST have EXACTLY ${actualModules} items.
-- Keep summaries short (1-2 sentences each).
-${use_sources ? `- Use ONLY content from <SOURCES> below.\n${sourcesInstruction}` : ""}
+CRITICAL QUALITY RULES:
+- All text must have PERFECT spelling and grammar in ${language || "pt-BR"}.
+- Module titles must be complete, grammatically correct phrases.
+${sourcesInstruction}
 
-Course: "${title}"
-Theme: ${theme}
-Audience: ${target_audience || "general"}
-Tone: ${tone || "professional"}
-Language: ${language || "pt-BR"}
+Course details:
+- Title: ${title}
+- Theme: ${theme}
+- Target audience: ${target_audience || "general"}
+- Tone: ${tone || "professional"}
+- Language: ${language || "pt-BR"}
+- EXACTLY ${actualModules} modules
+${use_sources ? "- Base the course structure EXCLUSIVELY on the content in <SOURCES>" : ""}
+${include_quiz ? "- Include 3 quiz questions per module" : ""}
+${include_flashcards ? "- Include 5 flashcards per module" : ""}
 
-Return EXACTLY this JSON shape:
-{"description":"<1-sentence course description>","modules":[{"title":"<module title>","summary":"<1-2 sentence summary>"}]}`;
+Return ONLY valid JSON with this structure:
+{
+  "description": "course description",
+  "modules": [
+    {
+      "title": "Module title",
+      "summary": "brief summary for content generation"
+      ${include_quiz ? ',"quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "..."}]' : ""}
+      ${include_flashcards ? ',"flashcards": [{"front": "Pergunta EXPLÍCITA com verbo e ponto de interrogação (?)", "back": "Resposta completa e pedagógica"}]' : ""}
+    }
+  ]
+}`;
 
-      sendSSE({ type: "status", message: "Aguardando resposta da IA..." });
-      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 8000, true);
-      console.log("[generate-course] structureRaw length:", structureRaw.length);
-      console.log("[generate-course] structureRaw preview:", structureRaw.substring(0, 300));
-
-      // Robust JSON parser: handles objects, arrays, and markdown-wrapped responses
-      function parseStructureJSON(raw: string): { description?: string; modules: any[] } | null {
-        const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-
-        // Try direct parse first
-        try {
-          const parsed = JSON.parse(cleaned);
-          if (Array.isArray(parsed)) {
-            // Gemini returned an array of modules directly
-            return { description: "", modules: parsed };
-          }
-          if (parsed && typeof parsed === "object") {
-            // Has modules key → perfect
-            if (Array.isArray(parsed.modules)) return parsed;
-            // Has some array value → find it
-            const arrVal = Object.values(parsed).find((v) => Array.isArray(v));
-            if (arrVal) return { description: parsed.description || "", modules: arrVal as any[] };
-          }
-        } catch { /* fall through */ }
-
-        // Try extracting the outermost JSON array
-        const arrMatch = cleaned.match(/\[[\s\S]*\]/);
-        if (arrMatch) {
-          try {
-            const arr = JSON.parse(arrMatch[0]);
-            if (Array.isArray(arr) && arr.length > 0) return { description: "", modules: arr };
-          } catch { /* fall through */ }
-        }
-
-        // Try extracting the outermost JSON object
-        const objMatch = cleaned.match(/\{[\s\S]*\}/);
-        if (objMatch) {
-          try {
-            const obj = JSON.parse(objMatch[0]);
-            if (obj && typeof obj === "object") {
-              if (Array.isArray(obj.modules)) return obj;
-              const arrVal = Object.values(obj).find((v) => Array.isArray(v));
-              if (arrVal) return { description: obj.description || "", modules: arrVal as any[] };
-            }
-          } catch { /* fall through */ }
-        }
-
-        return null;
+      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 4000, true);
+      let structure;
+      try {
+        const cleaned = structureRaw.trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        const jsonString = jsonMatch ? jsonMatch[0] : cleaned;
+        structure = JSON.parse(jsonString);
+      } catch (parseErr) {
+        console.error("[generate-course] Failed to parse structure. Raw response length:", structureRaw.length);
+        console.error("[generate-course] Start of response:", structureRaw.substring(0, 500));
+        throw new Error("Falha ao processar a estrutura do curso gerada pela IA. Por favor, tente novamente.");
       }
-
-      let structure = parseStructureJSON(structureRaw);
-      if (!structure) {
-        console.error("[generate-course] PARSE FAILED. Raw start:", structureRaw.substring(0, 400));
-        sendSSE({ type: "debug", raw_preview: structureRaw.substring(0, 200), raw_length: structureRaw.length });
-        throw new Error(`Falha ao processar a estrutura do curso (resposta inválida da IA). Tente novamente.`);
-      }
-
-      console.log("[generate-course] Parsed modules:", structure.modules?.length);
-
-      // Normalize module fields (Gemini sometimes uses 'description' instead of 'summary')
-      structure.modules = structure.modules.map((m: any) => ({
-        ...m,
-        title: m.title || m.name || "Módulo",
-        summary: m.summary || m.description || m.content || m.title || "",
-        quiz: m.quiz || [],
-        flashcards: m.flashcards || [],
-      }));
 
       // Hard validation: enforce exact module count
-      if (structure.modules.length !== actualModules) {
-        console.warn(`[generate-course] Module count mismatch: got ${structure.modules.length}, expected ${actualModules}. Retrying...`);
-        sendSSE({ type: "status", message: "Ajustando número de módulos..." });
+      if (!structure.modules || structure.modules.length !== actualModules) {
+        console.warn(`Module count mismatch: got ${structure.modules?.length ?? 0}, expected ${actualModules}. Retrying...`);
+        sendSSE({ type: "status", message: "Ajustando estrutura..." });
 
-        const retryPrompt = `Create a course structure in JSON format.
-CRITICAL: Return EXACTLY ${actualModules} modules, no more, no less.
-Course: "${title}" | Theme: ${theme} | Language: ${language || "pt-BR"}
-Return ONLY this JSON structure (no markdown, no explanation):
-{"description":"brief course description","modules":[{"title":"Module Title","summary":"1-2 sentence summary"}]}
-The modules array MUST have EXACTLY ${actualModules} items.`;
+        const retryPrompt = `Generate a course structure with EXACTLY ${actualModules} modules for "${title}" (${theme}).
+Language: ${language || "pt-BR"}. Target audience: ${target_audience || "general"}. Tone: ${tone || "professional"}.
+${include_quiz ? "Include 3 quiz questions per module." : ""}
+${include_flashcards ? "Include 5 flashcards per module." : ""}
+Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
 
-        const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 8000, true);
-        console.log("[generate-course] retryRaw length:", retryRaw.length, "preview:", retryRaw.substring(0, 200));
-        const retryStructure = parseStructureJSON(retryRaw);
-        if (!retryStructure || retryStructure.modules.length === 0) {
-          throw new Error("Não foi possível gerar a estrutura do curso após segunda tentativa. Tente novamente.");
+        const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 1000, true);
+        try {
+          const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
+          structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
+        } catch {
+          throw new Error("Failed to parse AI retry response");
         }
-        // Accept retry even if count differs (trim or extend)
-        structure = retryStructure;
-      }
 
-      // Final: ensure we have exactly actualModules (trim excess, repeat if too few)
-      while (structure.modules.length < actualModules) {
-        const last = structure.modules[structure.modules.length - 1];
-        structure.modules.push({ title: `Módulo ${structure.modules.length + 1}`, summary: last?.summary || "" });
+        if (!structure.modules || structure.modules.length !== actualModules) {
+          throw new Error(`Failed to generate exactly ${actualModules} modules after retry.`);
+        }
       }
-      structure.modules = structure.modules.slice(0, actualModules);
 
       sendSSE({ type: "structure_done", modules: actualModules });
 
@@ -530,111 +519,162 @@ The modules array MUST have EXACTLY ${actualModules} items.`;
           .eq("course_id", body.temp_course_id).eq("user_id", userId);
       }
 
-      // ── STAGE 3: Generate all modules fully in parallel (1 AI call each) ──
-      const sourceContentInstruction = use_sources
-        ? `\n\nCRITICAL: Use ONLY the content in <SOURCES> below.\n<SOURCES>\n${sourcesBlock}\n</SOURCES>`
-        : "";
+      // ── STAGE 3: Generate content per module (parallel batches of 3) ──
+      const BATCH_SIZE = 3;
+      for (let batchStart = 0; batchStart < structure.modules.length; batchStart += BATCH_SIZE) {
+        const batch = structure.modules.slice(batchStart, batchStart + BATCH_SIZE);
 
-      await Promise.all(structure.modules.map(async (mod: any, i: number) => {
-        sendSSE({ type: "module_start", module: i + 1, total: actualModules, title: mod.title });
+        await Promise.all(batch.map(async (mod: any, batchIdx: number) => {
+          const i = batchStart + batchIdx;
 
-        // Single combined prompt: content + quiz + flashcards in one JSON call
-        const combinedPrompt = `You are an expert educational content creator.
+          sendSSE({
+            type: "module_start",
+            module: i + 1,
+            total: actualModules,
+            title: mod.title,
+          });
 
-Generate complete content for module ${i + 1} of ${actualModules} in the course "${title}".
+          // Step A: Generate raw content
+          const sourceContentInstruction = use_sources
+            ? `\n\nCRITICAL: Use ONLY the content in <SOURCES> below.\n<SOURCES>\n${sourcesBlock}\n</SOURCES>`
+            : "";
 
-Module: "${mod.title}"
+          const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
+
+Course: ${title}
+Module ${i + 1}: ${mod.title}
 Summary: ${mod.summary || mod.title}
-Course theme: ${theme}
-Target audience: ${target_audience || "profissionais da área"}
+Target audience: ${target_audience || "general"}
 Tone: ${tone || "professional"}
-Language: ${language || "pt-BR"}
 ${sourceContentInstruction}
 
-Return ONLY valid JSON (no markdown fences, no explanation):
-{
-  "content": "<800-1200 word educational markdown content with ## headings, bullet points, examples>",
-  "quiz": ${include_quiz ? '[{"question":"...","options":["A) ...","B) ...","C) ...","D) ..."],"correct":0,"explanation":"..."},{"question":"...","options":["A) ...","B) ...","C) ...","D) ..."],"correct":1,"explanation":"..."},{"question":"...","options":["A) ...","B) ...","C) ...","D) ..."],"correct":2,"explanation":"..."}]' : "[]"},
-  "flashcards": ${include_flashcards ? '[{"front":"Question?","back":"Answer."},{"front":"Question?","back":"Answer."},{"front":"Question?","back":"Answer."},{"front":"Question?","back":"Answer."},{"front":"Question?","back":"Answer."}]' : "[]"}
-}
+Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
+Write 800-1200 words. Be thorough and educational.`;
 
-Rules for content:
-- Start with ## ${mod.title}
-- Then ### 🎯 Objetivo do Módulo (3 bullets)
-- Then sections: ### 🧠 Fundamentos, ### ⚙️ Como funciona, ### 💡 Exemplo prático, ### 🚀 Aplicação, ### ✅ Resumo
-- Write in ${language || "pt-BR"}
-- Be thorough and educational (800-1200 words)
-${include_quiz ? `Rules for quiz: 3 questions testing real understanding. "correct" is 0-based index. Write in ${language || "pt-BR"}` : ""}
-${include_flashcards ? `Rules for flashcards: 5 cards. "front" ends with "?". "back" is 2-3 sentence answer. Write in ${language || "pt-BR"}` : ""}`;
+          const rawContent = await callAI("google/gemini-3-flash-preview", contentPrompt);
 
-        let moduleContent = "";
-        let quizData: any[] = [];
-        let flashcardData: any[] = [];
+          // Step B: Pedagogical refinement
+          const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
+          const refinedContent = await callAI("google/gemini-3-flash-lite", refinementPrompt, 1500);
 
-        try {
-          const combinedRaw = await callAI("gemini-2.5-flash", combinedPrompt, 8000, true);
-          const cleaned = combinedRaw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-
-          // Extract JSON — try direct parse first, then extract object
-          let parsed: any = null;
-          try { parsed = JSON.parse(cleaned); } catch { /* fall through */ }
-          if (!parsed) {
-            const objMatch = cleaned.match(/\{[\s\S]*\}/);
-            if (objMatch) { try { parsed = JSON.parse(objMatch[0]); } catch { /* ignore */ } }
+          // Step C: Quality Elevation
+          let elevatedContent = refinedContent;
+          try {
+            console.log(`[generate-course] Quality Elevation: module ${i + 1} "${mod.title}"`);
+            const qualityPrompt = buildQualityElevationPrompt(
+              mod.title, refinedContent, title,
+              target_audience || "profissionais da área", language || "pt-BR",
+            );
+            const qualityResult = await callAI("google/gemini-3-flash-preview", qualityPrompt, 2000);
+            // Strip markdown fences AND any preamble before the first ## heading
+            const strippedFences = qualityResult
+              .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
+            const firstHeading = strippedFences.indexOf("\n## ");
+            const cleanedQuality = firstHeading > 0
+              ? strippedFences.slice(firstHeading).trim()
+              : strippedFences.startsWith("## ")
+                ? strippedFences
+                : strippedFences;
+            // Additional preamble guard: if result starts with a conversational line
+            // (no ##), extract from first ## occurrence
+            const preambleGuard = (s: string) => {
+              const idx = s.search(/^## /m);
+              return idx > 0 ? s.slice(idx).trim() : s;
+            };
+            const finalQuality = preambleGuard(cleanedQuality);
+            if (finalQuality.length >= refinedContent.length * 0.75) {
+              elevatedContent = finalQuality;
+              console.log(`[generate-course] Quality Elevation OK: ${refinedContent.length} → ${elevatedContent.length} chars`);
+            } else {
+              console.warn(`[generate-course] Quality Elevation result too short, keeping refined content`);
+            }
+          } catch (elevationErr: any) {
+            console.warn(`[generate-course] Quality Elevation failed (non-blocking): ${elevationErr.message}`);
           }
 
-          if (parsed?.content) {
-            moduleContent = parsed.content;
-            quizData = Array.isArray(parsed.quiz) ? parsed.quiz : [];
-            flashcardData = Array.isArray(parsed.flashcards) ? parsed.flashcards : [];
-          } else {
-            // Fallback: treat whole response as plain markdown content
-            moduleContent = combinedRaw.replace(/^```(?:markdown)?\s*/i, "").replace(/\s*```$/i, "").trim();
+          // Step D: Save
+          const { data: moduleData, error: moduleError } = await serviceClient
+            .from("course_modules")
+            .insert({
+              course_id: course.id, title: mod.title,
+              content: elevatedContent, order_index: i,
+            })
+            .select().single();
+          if (moduleError) throw moduleError;
+
+          // Insert quiz questions
+          if (include_quiz && mod.quiz?.length > 0) {
+            const quizInserts = mod.quiz.map((q: any) => ({
+              module_id: moduleData.id, question: q.question,
+              options: q.options, correct_answer: q.correct ?? 0,
+              explanation: q.explanation || null,
+            }));
+            await serviceClient.from("course_quiz_questions").insert(quizInserts);
           }
-        } catch (contentErr: any) {
-          console.error(`[generate-course] Module ${i + 1} generation failed:`, contentErr.message);
-          moduleContent = `## ${mod.title}\n\nConteúdo em processamento. Por favor, edite este módulo.`;
-        }
 
-        // Ensure content starts with the module heading
-        if (moduleContent && !moduleContent.startsWith(`## ${mod.title}`)) {
-          const idx = moduleContent.search(/^## /m);
-          moduleContent = idx > 0 ? moduleContent.slice(idx).trim() : `## ${mod.title}\n\n${moduleContent}`;
-        }
+          // Insert flashcards
+          if (include_flashcards && mod.flashcards?.length > 0) {
+            const fcInserts = mod.flashcards.map((fc: any) => ({
+              module_id: moduleData.id, front: fc.front, back: fc.back,
+            }));
+            await serviceClient.from("course_flashcards").insert(fcInserts);
+          }
 
-        // Save module
-        const { data: moduleData, error: moduleError } = await serviceClient
-          .from("course_modules")
-          .insert({ course_id: course.id, title: mod.title, content: moduleContent, order_index: i })
-          .select().single();
-        if (moduleError) throw moduleError;
+          // Generate AI image (non-blocking)
+          if (include_images) {
+            try {
+              const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
+STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstract shapes, icons, conceptual diagrams, visual metaphors. Style: modern, minimalist, soft colors, 16:9.`;
 
-        // Save quiz
-        if (include_quiz && quizData.length > 0) {
-          const quizInserts = quizData.map((q: any) => ({
-            module_id: moduleData.id,
-            question: q.question || "",
-            options: q.options || [],
-            correct_answer: q.correct ?? q.correct_answer ?? 0,
-            explanation: q.explanation || null,
-          }));
-          const { error: quizInsertErr } = await serviceClient.from("course_quiz_questions").insert(quizInserts);
-          if (quizInsertErr) console.warn("[generate-course] Quiz insert error:", quizInsertErr.message);
-        }
+              const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-3-flash-image",
+                  messages: [{ role: "user", content: imagePrompt }],
+                  modalities: ["image", "text"],
+                  max_tokens: 500, // Limite para geração de imagem
+                }),
+              });
 
-        // Save flashcards
-        if (include_flashcards && flashcardData.length > 0) {
-          const fcInserts = flashcardData.map((fc: any) => ({
-            module_id: moduleData.id,
-            front: fc.front || fc.question || "",
-            back: fc.back || fc.answer || "",
-          }));
-          const { error: fcInsertErr } = await serviceClient.from("course_flashcards").insert(fcInserts);
-          if (fcInsertErr) console.warn("[generate-course] Flashcard insert error:", fcInsertErr.message);
-        }
+              if (imgRes.ok) {
+                const imgData = await imgRes.json();
+                const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+                if (imageUrl && imageUrl.startsWith("data:image")) {
+                  const base64Data = imageUrl.split(",")[1];
+                  const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+                  const ext = imageUrl.includes("png") ? "png" : "jpg";
+                  const storagePath = `${userId}/module-${moduleData.id}.${ext}`;
 
-        sendSSE({ type: "module_done", module: i + 1, total: actualModules });
-      }));
+                  const { error: uploadErr } = await serviceClient.storage
+                    .from("course-exports")
+                    .upload(storagePath, binaryData, { contentType: `image/${ext}`, upsert: true });
+
+                  if (!uploadErr) {
+                    const { data: signedData } = await serviceClient.storage
+                      .from("course-exports")
+                      .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+                    if (signedData?.signedUrl) {
+                      await serviceClient.from("course_images").insert({
+                        module_id: moduleData.id,
+                        url: signedData.signedUrl,
+                        alt_text: `Ilustração: ${mod.title}`,
+                      });
+                    }
+                  }
+                }
+              }
+            } catch (imgErr) {
+              console.error("Image generation failed for module", mod.title, imgErr);
+            }
+          }
+
+          sendSSE({ type: "module_done", module: i + 1, total: actualModules });
+        }));
+      }
 
       // ── STAGE 4: Log usage ──
       const usageInserts = [

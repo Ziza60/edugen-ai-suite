@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Bold, Italic, List, ListOrdered, Heading2, Heading3,
   Link as LinkIcon, Undo2, Redo2, Sparkles, Loader2,
-  Type, Minus, Quote, Code, Scissors, Layers, Lightbulb,
-  FlaskConical, BookOpen,
+  Type, Minus, Quote, Code,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,9 +17,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 
 // ── Pedagogical section emojis for visual blocks ──
@@ -256,11 +252,9 @@ interface BlockEditorProps {
   content: string; // markdown
   onChange: (markdown: string) => void;
   isPro?: boolean;
-  isStarter?: boolean;
 }
 
-export function BlockEditor({ content, onChange, isPro = false, isStarter = false }: BlockEditorProps) {
-  const hasAI = isPro || isStarter;
+export function BlockEditor({ content, onChange, isPro = false }: BlockEditorProps) {
   const { toast } = useToast();
   const [enhancing, setEnhancing] = useState(false);
   const sections = useMemo(() => parseSections(content), [content]);
@@ -303,69 +297,45 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
     },
   });
 
-  // Default insertion mode per action ("append" = add at end, "replace" = overwrite)
-  const DEFAULT_MODE: Record<string, "append" | "replace"> = {
-    example:   "append",
-    practical: "append",
-    activity:  "append",
-  };
-
-  const ACTION_LABELS: Record<string, string> = {
-    improve:   "Texto melhorado ✨",
-    fix:       "Erros corrigidos ✨",
-    simplify:  "Texto simplificado ✨",
-    shorten:   "Texto encurtado ✨",
-    expand:    "Texto expandido ✨",
-    deepen:    "Conteúdo aprofundado ✨",
-    example:   "Exemplo prático adicionado ✨",
-    practical: "Aula prática gerada ✨",
-    activity:  "Atividade adicionada ✨",
-    regenerate:"Módulo regenerado ✨",
-  };
-
   const handleAIEnhance = useCallback(
-    async (action: string, modeOverride?: "append" | "replace") => {
+    async (action: string) => {
       if (!editor || enhancing) return;
 
       const { from, to } = editor.state.selection;
-      const hasSelection = from !== to;
+      const selectedText =
+        from !== to
+          ? editor.state.doc.textBetween(from, to, "\n")
+          : htmlToMarkdown(editor.getHTML());
 
-      const contextText = hasSelection
-        ? editor.state.doc.textBetween(from, to, "\n")
-        : htmlToMarkdown(editor.getHTML());
-
-      if (!contextText || contextText.trim().length < 5) {
-        toast({ title: "O módulo está vazio — adicione conteúdo antes de usar a IA", variant: "destructive" });
+      if (!selectedText || selectedText.trim().length < 5) {
+        toast({ title: "Selecione texto para melhorar", variant: "destructive" });
         return;
       }
 
       setEnhancing(true);
       try {
         const { data, error } = await supabase.functions.invoke("enhance-paragraph", {
-          body: { text: contextText, action },
+          body: { text: selectedText, action },
         });
 
         if (error) throw error;
-        if (!data?.enhanced) throw new Error("Nenhum conteúdo retornado");
+        if (!data?.enhanced) throw new Error("No enhanced text returned");
 
-        const enhancedHtml = markdownToHtml(data.enhanced);
-        const mode = modeOverride ?? DEFAULT_MODE[action] ?? "replace";
-
-        if (hasSelection) {
+        if (from !== to) {
+          // Replace selection
+          const enhancedHtml = markdownToHtml(data.enhanced);
           editor.chain().focus().deleteRange({ from, to }).insertContent(enhancedHtml).run();
-        } else if (mode === "append") {
-          editor.chain().focus().insertContentAt(editor.state.doc.content.size, enhancedHtml).run();
-          const newMd = htmlToMarkdown(editor.getHTML());
-          onChange(newMd);
         } else {
+          // Replace entire content
+          const enhancedHtml = markdownToHtml(data.enhanced);
           editor.commands.setContent(enhancedHtml);
           onChange(data.enhanced);
         }
 
-        toast({ title: ACTION_LABELS[action] ?? "Pronto ✨" });
+        toast({ title: "Texto melhorado com IA ✨" });
       } catch (err: any) {
         toast({
-          title: "Erro ao processar com IA",
+          title: "Erro ao melhorar texto",
           description: err.message,
           variant: "destructive",
         });
@@ -486,7 +456,7 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
         <div className="flex-1" />
 
         {/* AI Actions */}
-        {hasAI ? (
+        {isPro ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -494,7 +464,6 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
                 size="sm"
                 className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
                 disabled={enhancing}
-                data-testid="button-ai-editor"
               >
                 {enhancing ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -504,55 +473,23 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
                 IA
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem onClick={() => handleAIEnhance("improve")}>
-                <Sparkles className="h-4 w-4 mr-2 text-primary" />
+                <Sparkles className="h-4 w-4 mr-2" />
                 Melhorar texto
                 <span className="ml-auto text-xs text-muted-foreground">⌘↵</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAIEnhance("fix")}>
-                <Code className="h-4 w-4 mr-2" />
-                Corrigir erros
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleAIEnhance("simplify")}>
                 <Type className="h-4 w-4 mr-2" />
-                Simplificar linguagem
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAIEnhance("shorten")}>
-                <Scissors className="h-4 w-4 mr-2" />
-                Encurtar
+                Simplificar
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleAIEnhance("expand")}>
                 <ListOrdered className="h-4 w-4 mr-2" />
                 Expandir
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAIEnhance("deepen")}>
-                <Layers className="h-4 w-4 mr-2" />
-                Aprofundar
-              </DropdownMenuItem>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <Lightbulb className="h-4 w-4 mr-2" />
-                  Gerar exemplo prático
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem onClick={() => handleAIEnhance("example", "append")}>
-                    <ListOrdered className="h-4 w-4 mr-2" />
-                    Adicionar ao módulo
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAIEnhance("example", "replace")}>
-                    <Scissors className="h-4 w-4 mr-2" />
-                    Substituir exemplo existente
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuItem onClick={() => handleAIEnhance("practical")}>
-                <FlaskConical className="h-4 w-4 mr-2" />
-                Transformar em aula prática
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAIEnhance("activity")}>
-                <BookOpen className="h-4 w-4 mr-2" />
-                Adicionar atividade
+              <DropdownMenuItem onClick={() => handleAIEnhance("fix")}>
+                <Code className="h-4 w-4 mr-2" />
+                Corrigir erros
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -562,10 +499,10 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
             size="sm"
             className="h-7 text-xs gap-1.5 text-muted-foreground"
             disabled
-            title="Disponível nos planos Starter e Pro"
+            title="Disponível no plano Pro"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            IA
+            IA (Pro)
           </Button>
         )}
       </div>
@@ -607,7 +544,7 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
       {/* ── Footer status ── */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border bg-muted/20 text-xs text-muted-foreground">
         <span>{sections.length} seções · {content.split("\n").length} linhas</span>
-        {hasAI && (
+        {isPro && (
           <span className="flex items-center gap-1">
             <Sparkles className="h-3 w-3" />
             ⌘+Enter para melhorar com IA
