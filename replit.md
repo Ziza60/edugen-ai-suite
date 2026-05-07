@@ -75,22 +75,13 @@ Pass 12's `generate-course` prompt hardening reduced SQL leakage but didn't elim
 ### Hardening Pass 12 (v5.1.12) — `isGenericLearningObjective` Pattern 3 (application context)
 Pass 11's safety net was over-blocking valid pedagogical objectives like "Aplicar escopo local e global em funções Python" and "Aplicar herança e encapsulamento em classes Python" — both have concrete technical concepts and explicit application context, but the detector's purpose-clause regex only recognised `para|com|usando|através|via|de modo|de forma|a fim de` and missed the application preposition "em". Pass 12 adds **Pattern 3**: when a filler-led sentence contains `em|no|na|nos|nas|sobre|dentro de` followed (anywhere later in the tail) by a `CONCRETE_TECH_NOUNS_RE` match, the item is accepted. Vague topic-restating (`Aplicar IA em saúde`) still gets blocked because "saúde" is not a concrete tech noun. Companion fix in `generate-course/index.ts` adds **CRITICAL DOMAIN INTEGRITY** clauses to both the structure prompt and the per-module content prompt — explicit hard rules that forbid SQL DDL/DML in programming-language courses (e.g. SQL leaking into a Python "Estruturas de Dados" module) and require module summaries to cite the language by name.
 
-### Hardening Pass 11 (v5.1.11) — `detectTechnicalDamage` added to global field safety net
-The post-cascade safety net (Pass 8) walked every string field through SQL/generic-objective/broken-language/incomplete-sentence detectors but skipped `detectTechnicalDamage`, so stripped-function-name symptoms (`leitura ()`, `Use e .`, etc.) could still escape into the PPTX. Pass 11 adds it to the field-by-field scan with a `[SAFETY-NET] TECHNICAL_SANITIZATION_DAMAGE` CRITICAL issue per leak.
-
-### Hardening Pass 10 (v5.1.10) — Competencies fully wired through every gate
-Architect review found `competencies` was still skipped by `sanitizeSlidePlaceholders`, `repairSlideTechnicalDamage`, `slideHasResidualPlaceholder` and the `qaVeto` placeholder scan — cover bullets bypassed cleaning. Pass 10 wires `competencies` through all four helpers, gives `qaVeto` an `extraCovers?` param so callers pass `moduleCovers`, and pulls the safety-net generic-objective check out of the per-string loop so it runs ONLY on `items + competencies` of `module_cover` slides (no more false positives on legitimate cover titles).
-
-### Earlier hardening passes (v5.1.1 — v5.1.9)
-Detail folded; full history in git.
-- **Pass 9 (v5.1.9)** — `moduleCovers: Slide[]` pre-built so covers traverse the full repair pipeline; safety net iterates `moduleCovers.map(c => [c])`; render uses pre-built cover; L1 cascade `GENERIC_LEARNING_OBJECTIVE` repairs `competencies` independently of `items`.
-- **Pass 8 (v5.1.8)** — `runGlobalFieldSafetyNet(allModuleSlides, courseDomain, moduleTitlesArr)` final pass walks EVERY string field via `extractAllStrings` (depth=6) and runs `HARD_SQL_PROSE_RE`+`PT_SQL_DDL_RE`+`BARE_SQL_UPPER_RE`, `isGenericLearningObjective` (covers only), `detectBrokenNaturalLanguage`, `detectIncompleteTechnicalSentence`. Module allow-lists (`MODULE_SQL_ALLOW_RE`/`MODULE_PYTHON_ALLOW_RE`) gate SQL detection. `[V5-SAFETY-NET]` logs.
-- **Pass 7 (v5.1.7)** — Fixed two detector bugs: `isGenericLearningObjective` now requires concrete tech VERB (or purpose clause + noun) in the tail; added `PT_SQL_DDL_RE` for Portuguese SQL pedagogy ("criar tabela", "chave primária") since `HARD_SQL_PROSE_RE` was English-only.
-- **Pass 6 (v5.1.6)** — Absolute SQL block via `extractAllStrings` (depth=6) gated by `looksLikePython`; `GENERIC_OBJECTIVE` upgraded WARN→CRITICAL using `isGenericLearningObjective`; added `PY_FILES_DICT`/`PY_TESTS_DICT` semantic repairs for "leitura ()", "Use com classes"; `detectBrokenNaturalLanguage` (5 patterns) + `BROKEN_LANGUAGE_STRUCTURE` CRITICAL; unified pre-QA + post-cascade repair pipeline.
-- **Pass 5 (v5.1.5)** — `detectIncompleteTechnicalSentence` flags broken-meaning sentences (10 patterns); `repairSemanticBreak` reconstructs via `SEMANTIC_REPAIRS[subdomain][key]`; `repairLearningObjective` rewrites generic objectives via `PYTHON_OBJECTIVE_TAILS`; `dedupeSemanticDuplicates` (jaccard ≥0.70); `BARE_SQL_UPPER_RE` catches uppercase SQL in Python prose; new types `TECHNICAL_SEMANTIC_BREAK`+`REDUNDANT_SLIDE`.
-- **Pass 4 (v5.1.4)** — `repairTechnicalSanitizationDamage` runs in 3 places (pre-QA, L1 cascade, post-cascade) with domain dictionaries `PY_FILES_DICT`/`PY_OOP_DICT`/`PY_TESTS_DICT`/`PY_GENERIC_DICT`/`ORPHAN_PUNCT_DICT`. Re-runs `runPptxQA` after final repair so `qaVeto` consumes fresh report.
-- **Pass 3 (v5.1.3)** — Frontend fallback bug fix: `ExportButtons.tsx` distinguishes `res.status === 422 && code === "PPTX_QA_VETO"` (HARD STOP) from infra failures (5xx/network → fallback v3). `detectTechnicalDamage` broadened with 5 punctuation-damage patterns.
-- **Pass 2 (v5.1.1 + v5.1.2)** — `DOMAIN_CONTAMINATION` two-layer (HARD prose + code-block); `isGenericLearningObjective`; sanitizer fix that no longer strips `[[BT_N]]`/`[[SQLW_N]]` protected slots; `TECHNICAL_SANITIZATION_DAMAGE` CRITICAL + veto; TOC pagination redesign; false-positive guards for purpose clauses and parens-as-topic.
+### Earlier hardening passes (v5.1.1 — v5.1.11) — folded
+Full history in git. Key building blocks introduced and still active:
+- **Detectors**: `HARD_SQL_PROSE_RE` + `PT_SQL_DDL_RE` + `BARE_SQL_UPPER_RE` (SQL leakage in Python prose), `isGenericLearningObjective` (CRITICAL), `detectBrokenNaturalLanguage` (5 patterns), `detectIncompleteTechnicalSentence` (10 patterns), `detectTechnicalDamage` (`leitura ()`, `Use e .`, etc.), `DOMAIN_CONTAMINATION` two-layer (prose + code-block), allow-lists `MODULE_SQL_ALLOW_RE`/`MODULE_PYTHON_ALLOW_RE`.
+- **Repairs**: `repairTechnicalSanitizationDamage` (`PY_FILES_DICT`/`PY_OOP_DICT`/`PY_TESTS_DICT`/`PY_GENERIC_DICT`/`ORPHAN_PUNCT_DICT`), `repairSemanticBreak` (`SEMANTIC_REPAIRS[subdomain][key]`), `repairLearningObjective` (`PYTHON_OBJECTIVE_TAILS`), `dedupeSemanticDuplicates` (jaccard ≥0.70). All run pre-QA + post-cascade; `runPptxQA` re-runs after final repair so `qaVeto` consumes fresh report.
+- **Module covers** (Pass 9 + 10): `moduleCovers: Slide[]` pre-built so covers traverse full repair pipeline; `competencies` wired through `sanitizeSlidePlaceholders`, `repairSlideTechnicalDamage`, `slideHasResidualPlaceholder`, `qaVeto.extraCovers`; safety-net generic-objective check restricted to `items + competencies` of `module_cover` slides (avoids false positives on cover titles).
+- **Global field safety net** (Pass 8 + 11): `runGlobalFieldSafetyNet` walks EVERY string field via `extractAllStrings(depth=6)` and runs all detectors above (incl. `detectTechnicalDamage`). `[V5-SAFETY-NET]` logs each leak.
+- **Frontend** (Pass 3): `ExportButtons.tsx` distinguishes `422 + PPTX_QA_VETO` (HARD STOP) from infra failures (5xx/network → fallback v3). Sanitizer no longer strips `[[BT_N]]`/`[[SQLW_N]]` protected slots. TOC pagination redesigned.
 
 ### Diagnostic Payload (v5.1.3+)
 Both 200 and 422 responses include: `engine`, `engine_version`, `status` (`exported`|`blocked`), `fallback_used`, `cache` (`miss`), `slide_count`, `blocking_issues`, plus on success a `qa` summary (`qa_status`, `issues_unfixed`, `issues_fixed`, `original_slides`, `rendered_slides`, `removed_slides`, `fixed_breakdown`, `unfixed_breakdown`). Frontend `ExportButtons.tsx` logs unified `[PPTX][DIAG] {...}` on every export end (success or veto).
@@ -167,69 +158,7 @@ Full QA pipeline: `runPptxQA` (initial 11-point pass) → `resolveQAIssues` (3-l
 
 **Guarantee**: `d.componentArchetypes?.x ?? "default"` — missing archetype falls back to default behavior silently.
 
-## PPTX Exporter v3 (Legacy)
-`supabase/functions/export-pptx-v3/index.ts` (2284 lines, v3.4.1). Superseded by v5.
-
-## PPTX Exporter v2 (Legacy)
-`supabase/functions/export-pptx-v2/index.ts` (5173 lines, v2.8.1). Bug fixes applied but superseded by v3.
-
-### Image System
-- Fetches thematic images from Unsplash API based on course/module titles
-- Requires `UNSPLASH_ACCESS_KEY` env var in Supabase Edge Functions (set via `supabase secrets set`)
-- Graceful degradation: if no key set, slides render without images (same as before)
-- Diagnostic logging: logs `unsplashKey=SET|MISSING` and `includeImages_raw` at export start
-- Images applied to: cover slide (full-bleed background), module covers (right-side panel), closing slide (background)
-- Overlays for readability: dark overlay on backgrounds, accent-tinted overlay on module image panels
-- Credits: photographer attribution shown at bottom-right of image slides
-- Keyword extraction: Portuguese titles translated to English via PT_EN_MAP for better Unsplash results
-- All images fetched in parallel via Promise.allSettled (max 4 concurrent)
-
-### v2 Visual Design (Premium Layout)
-- **Color palette**: Purple-primary (`6C63FF`), blue (`3B82F6`), green (`10B981`), amber (`F59E0B`), cyan (`06B6D4`)
-- **Backgrounds**: Deep navy (`050A18` cover, `F7F8FC` light, `0C1322` dark)
-- **Card shadows**: Simulated via semi-transparent offset shapes (`addCardShadow`)
-- **Gradient bars**: Simulated via stepped transparency shapes (`addGradientBar`)
-- **Left edge**: Double-line accent (solid + 50% transparency ghost line)
-- **Footer**: Gradient accent bar + branded dot + "EduGenAI" label
-- **Slide title**: Double underline (accent + divider)
-- **Cards**: White backgrounds with left color accent bars, rounded corners, shadows
-- **Number badges**: Adaptive sizing (capped by card dimensions to prevent overflow)
-- **Text autoFit**: All content text boxes use autoFit to prevent text clipping
-- **Images**: `slide.addImage()` used instead of `slide.background` for reliability
-- **Base64 prefix**: `data:image/jpeg;base64,...` (PptxGenJS requires `data:` prefix)
-
-### Example Highlight (Case Study) Layout
-- Dark background with left-side timeline panel
-- Up to 5 phases: Contexto → Desafio → Solução → Implementação → Resultado
-- Numbered circle badges per phase with accent colors
-- Label detection pipeline: "Label: content" parsing with canonical label mapping
-- Unlabeled items get auto-assigned to available phase labels
-- Minimum 3 phases enforced — synthesizes labels from raw content if needed
-- Badge "ESTUDO DE CASO" at top
-
-### Warning Callout Layout
-- Max 4 items (reduced from 6 to prevent dense slides)
-- Items with "Label: content" get separated header/description styling
-- Red accent theme with alternating card backgrounds
-
-### Gender Agreement System
-- Context-aware "amplamente utilizado/a/os/as" with separate masculine/feminine noun groups
-- Feminine nouns: ferramenta, plataforma, tecnologia, técnica, abordagem, etc.
-- Masculine nouns: software, sistema, modelo, método, processo, etc.
-- Broad pattern-based agreement for ~30 feminine nouns × ~30 adjectives
-- "percepções" + masculine adjective → feminine adjective correction
-- Preposition insertion for "gestão/análise/segurança X" → "gestão de X"
-
-### v2 Density Parameters
-- `maxItemsPerSlide: 9` — max content items per slide
-- `maxCharsPerItem: 200` — max text length per bullet
-- `LAYOUT_VISUAL_MAX_ITEMS.bullets: 7`
-- `LAYOUT_VISUAL_MAX_ITEMS.example_highlight: 5`
-- `LAYOUT_VISUAL_MAX_ITEMS.warning_callout: 4`
-- `mergeShortItems` threshold: 90 chars
-- `MIN_CONTINUATION_ITEMS: 4`
-- Stage 3.6: merges adjacent sparse continuation slides
-
-### Critical Constraints
-- NEVER modify `export-pptx/index.ts` (v1) — must remain 100% untouched
-- v1 confirmed untouched across all sessions
+## Legacy PPTX Exporters (do not modify unless asked)
+- **v3** — `export-pptx-v3/index.ts` (2284 lines, v3.4.1). Superseded by v5; kept as fallback for infra failures (5xx/network).
+- **v2** — `export-pptx-v2/index.ts` (5173 lines, v2.8.1). Premium layout with Unsplash image system, gender agreement, case-study/warning layouts. Superseded by v3.
+- **v1** — `export-pptx/index.ts`. **NEVER modify** — must remain 100% untouched.
