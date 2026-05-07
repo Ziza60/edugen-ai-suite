@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.15";
+const ENGINE_VERSION = "5.1.16";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4278,6 +4278,18 @@ function stripSqlContaminationFromSlide(
     if (checkSql && isSqlContaminatedString(t)) return "sql";
     if (isCrossModuleBasicLeak(t, moduleTitle)) return "cross_module_basic";
     if (detectRawCodeLeak(t)) return "raw_code_leak";
+    // v5.1.16 — last-resort drop for items that survived the repair pipeline
+    // with structural damage (stripped function names, "com :", "com e", etc.)
+    // or empty semantic-break shells like "(Ex: )" / "objeto ()" /
+    // "Definir Classes: Usar com nome". These were previously emitted as HARD
+    // CRITICAL by the safety net and vetoed the entire export. Strip-and-keep
+    // is safer: the renderable-slide gate drops the slide if too few items
+    // remain, but the rest of the deck survives.
+    if (detectTechnicalDamage(t)) return "tech_damage_unrepaired";
+    try {
+      const inc = detectIncompleteTechnicalSentence(t);
+      if (inc?.broken) return `semantic_break:${inc.key ?? "unknown"}`;
+    } catch { /* defensive */ }
     return null;
   };
 

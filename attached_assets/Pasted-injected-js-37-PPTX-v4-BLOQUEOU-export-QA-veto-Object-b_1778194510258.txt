@@ -1,0 +1,494 @@
+injected.js:37 [PPTX] v4 BLOQUEOU export (QA veto): 
+Object
+blockingIssues
+: 
+Array(5)
+0
+: 
+message
+: 
+"Frase tecnicamente incompleta em \"Fluxo de Implementação POO em Python\" ((Ex: ) sem exemplo)"
+slideId
+: 
+"module_6_slide_4"
+type
+: 
+"TECHNICAL_SEMANTIC_BREAK"
+[[Prototype]]
+: 
+Object
+constructor
+: 
+ƒ Object()
+hasOwnProperty
+: 
+ƒ hasOwnProperty()
+isPrototypeOf
+: 
+ƒ isPrototypeOf()
+propertyIsEnumerable
+: 
+ƒ propertyIsEnumerable()
+toLocaleString
+: 
+ƒ toLocaleString()
+toString
+: 
+ƒ toString()
+valueOf
+: 
+ƒ valueOf()
+__defineGetter__
+: 
+ƒ __defineGetter__()
+__defineSetter__
+: 
+ƒ __defineSetter__()
+__lookupGetter__
+: 
+ƒ __lookupGetter__()
+__lookupSetter__
+: 
+ƒ __lookupSetter__()
+__proto__
+: 
+(...)
+get __proto__
+: 
+ƒ __proto__()
+set __proto__
+: 
+ƒ __proto__()
+1
+: 
+message
+: 
+"[SAFETY-NET] Frase técnica incompleta em \"Fluxo de Implementação POO em Python\" (empty_example_parens): \"Definir Classes: Usar com nome (Ex: ).\""
+slideId
+: 
+"M6.S4"
+type
+: 
+"TECHNICAL_SEMANTIC_BREAK"
+[[Prototype]]
+: 
+Object
+constructor
+: 
+ƒ Object()
+assign
+: 
+ƒ assign()
+length
+: 
+2
+name
+: 
+"assign"
+arguments
+: 
+(...)
+caller
+: 
+(...)
+[[Prototype]]
+: 
+ƒ ()
+apply
+: 
+ƒ apply()
+arguments
+: 
+(...)
+bind
+: 
+ƒ bind()
+call
+: 
+ƒ call()
+caller
+: 
+(...)
+constructor
+: 
+ƒ Function()
+length
+: 
+0
+name
+: 
+""
+toString
+: 
+ƒ toString()
+Symbol(Symbol.hasInstance)
+: 
+ƒ [Symbol.hasInstance]()
+get arguments
+: 
+ƒ arguments()
+set arguments
+: 
+ƒ arguments()
+get caller
+: 
+ƒ caller()
+set caller
+: 
+ƒ caller()
+[[FunctionLocation]]
+: 
+[[Prototype]]
+: 
+Object
+[[Scopes]]
+: 
+Scopes[0]
+[[Scopes]]
+: 
+Scopes[0]
+create
+: 
+ƒ create()
+defineProperties
+: 
+ƒ defineProperties()
+defineProperty
+: 
+ƒ defineProperty()
+entries
+: 
+ƒ entries()
+freeze
+: 
+ƒ freeze()
+fromEntries
+: 
+ƒ fromEntries()
+getOwnPropertyDescriptor
+: 
+ƒ getOwnPropertyDescriptor()
+getOwnPropertyDescriptors
+: 
+ƒ getOwnPropertyDescriptors()
+getOwnPropertyNames
+: 
+ƒ getOwnPropertyNames()
+getOwnPropertySymbols
+: 
+ƒ getOwnPropertySymbols()
+getPrototypeOf
+: 
+ƒ getPrototypeOf()
+groupBy
+: 
+ƒ groupBy()
+hasOwn
+: 
+ƒ hasOwn()
+is
+: 
+ƒ is()
+isExtensible
+: 
+ƒ isExtensible()
+isFrozen
+: 
+ƒ isFrozen()
+isSealed
+: 
+ƒ isSealed()
+keys
+: 
+ƒ keys()
+length
+: 
+1
+name
+: 
+"Object"
+preventExtensions
+: 
+ƒ preventExtensions()
+prototype
+: 
+{__defineGetter__: ƒ, __defineSetter__: ƒ, hasOwnProperty: ƒ, __lookupGetter__: ƒ, __lookupSetter__: ƒ, …}
+seal
+: 
+ƒ seal()
+setPrototypeOf
+: 
+ƒ setPrototypeOf()
+values
+: 
+ƒ values()
+arguments
+: 
+(...)
+caller
+: 
+(...)
+[[Prototype]]
+: 
+ƒ ()
+[[Scopes]]
+: 
+Scopes[0]
+hasOwnProperty
+: 
+ƒ hasOwnProperty()
+isPrototypeOf
+: 
+ƒ isPrototypeOf()
+propertyIsEnumerable
+: 
+ƒ propertyIsEnumerable()
+toLocaleString
+: 
+ƒ toLocaleString()
+toString
+: 
+ƒ toString()
+valueOf
+: 
+ƒ valueOf()
+__defineGetter__
+: 
+ƒ __defineGetter__()
+__defineSetter__
+: 
+ƒ __defineSetter__()
+__lookupGetter__
+: 
+ƒ __lookupGetter__()
+__lookupSetter__
+: 
+ƒ __lookupSetter__()
+__proto__
+: 
+(...)
+get __proto__
+: 
+ƒ __proto__()
+set __proto__
+: 
+ƒ __proto__()
+2
+: 
+{slideId: 'M6.S4', type: 'TECHNICAL_SEMANTIC_BREAK', message: '[SAFETY-NET] Frase técnica incompleta em "Fluxo de…Construtor : Inicializar atributos do objeto ()."'}
+3
+: 
+{slideId: 'M6.COVER', type: 'TECHNICAL_SANITIZATION_DAMAGE', message: '[SAFETY-NET] Dano técnico não reparado em "Introdu…os (POO)": "Definir classes com e atributos no ."'}
+4
+: 
+{slideId: 'M7.COVER', type: 'TECHNICAL_SANITIZATION_DAMAGE', message: '[SAFETY-NET] Dano técnico não reparado em "Testes,…ração": "Organizar testes em classes e métodos ."'}
+length
+: 
+5
+[[Prototype]]
+: 
+Array(0)
+at
+: 
+ƒ at()
+concat
+: 
+ƒ concat()
+constructor
+: 
+ƒ Array()
+copyWithin
+: 
+ƒ copyWithin()
+entries
+: 
+ƒ entries()
+every
+: 
+ƒ every()
+fill
+: 
+ƒ fill()
+filter
+: 
+ƒ filter()
+find
+: 
+ƒ find()
+findIndex
+: 
+ƒ findIndex()
+findLast
+: 
+ƒ findLast()
+findLastIndex
+: 
+ƒ findLastIndex()
+flat
+: 
+ƒ flat()
+flatMap
+: 
+ƒ flatMap()
+forEach
+: 
+ƒ forEach()
+includes
+: 
+ƒ includes()
+indexOf
+: 
+ƒ indexOf()
+join
+: 
+ƒ join()
+keys
+: 
+ƒ keys()
+lastIndexOf
+: 
+ƒ lastIndexOf()
+length
+: 
+0
+map
+: 
+ƒ map()
+pop
+: 
+ƒ pop()
+push
+: 
+ƒ push()
+reduce
+: 
+ƒ reduce()
+reduceRight
+: 
+ƒ reduceRight()
+reverse
+: 
+ƒ reverse()
+shift
+: 
+ƒ shift()
+slice
+: 
+ƒ slice()
+some
+: 
+ƒ some()
+sort
+: 
+ƒ sort()
+splice
+: 
+ƒ splice()
+toLocaleString
+: 
+ƒ toLocaleString()
+toReversed
+: 
+ƒ toReversed()
+toSorted
+: 
+ƒ toSorted()
+toSpliced
+: 
+ƒ toSpliced()
+toString
+: 
+ƒ toString()
+unshift
+: 
+ƒ unshift()
+values
+: 
+ƒ values()
+with
+: 
+ƒ with()
+Symbol(Symbol.iterator)
+: 
+ƒ values()
+Symbol(Symbol.unscopables)
+: 
+{at: true, copyWithin: true, entries: true, fill: true, find: true, …}
+[[Prototype]]
+: 
+Object
+cache
+: 
+"miss"
+code
+: 
+"PPTX_QA_VETO"
+engine
+: 
+"export-pptx-v4"
+engine_version
+: 
+"5.1.15"
+error
+: 
+"PPTX export blocked by quality veto"
+fallback_used
+: 
+false
+hint
+: 
+"O conteúdo gerado contém problemas críticos (placeholders, código incompleto, contaminação de domínio ou densidade extrema). Tente regenerar o curso ou ajustar os módulos."
+removedSlides
+: 
+8
+status
+: 
+"blocked"
+totalSlides
+: 
+32
+[[Prototype]]
+: 
+Object
+constructor
+: 
+ƒ Object()
+hasOwnProperty
+: 
+ƒ hasOwnProperty()
+isPrototypeOf
+: 
+ƒ isPrototypeOf()
+propertyIsEnumerable
+: 
+ƒ propertyIsEnumerable()
+toLocaleString
+: 
+ƒ toLocaleString()
+toString
+: 
+ƒ toString()
+valueOf
+: 
+ƒ valueOf()
+__defineGetter__
+: 
+ƒ __defineGetter__()
+__defineSetter__
+: 
+ƒ __defineSetter__()
+__lookupGetter__
+: 
+ƒ __lookupGetter__()
+__lookupSetter__
+: 
+ƒ __lookupSetter__()
+__proto__
+: 
+(...)
+get __proto__
+: 
+ƒ __proto__()
+set __proto__
+: 
+ƒ __proto__()
