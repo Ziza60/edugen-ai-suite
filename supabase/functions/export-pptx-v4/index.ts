@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.6";
+const ENGINE_VERSION = "5.1.7";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4151,9 +4151,19 @@ function stripCommentsAndStrings(code: string): string {
 // (SELECT/INSERT/UPDATE/DELETE/JOIN) when they appear as standalone
 // uppercase tokens — Python pedagogy uses lowercase verbs ("selecionar",
 // "atualizar"), so uppercase SQL is foreign-domain leakage.
+// HARD prose SQL — only phrases that are unambiguous SQL even in lowercase.
+// Excludes "GROUP BY"/"ORDER BY"/bare "SELECT"/bare "JOIN" — these are too
+// common in English prose ("group by length", "order by date", "select * from
+// the list"). Those go to BARE_SQL_UPPER_RE (uppercase-only).
 const HARD_SQL_PROSE_RE =
-  /\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE|TRUNCATE\b(?!\s*\()|DELETE\s+FROM|INSERT\s+INTO|FOREIGN\s+KEY|PRIMARY\s+KEY)\b/i;
+  /\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM|INSERT\s+INTO|UPDATE\s+\w+\s+SET|FOREIGN\s+KEY|PRIMARY\s+KEY|REFERENCES\s+\w+\s*\()\b/i;
+// v5.1.7 — Portuguese SQL DDL pedagogy phrases. Python courses NEVER discuss
+// "criar tabela" / "alterar tabela" / "chave estrangeira" / "chave primária"
+// in pedagogical prose. These are SQL-domain concepts.
+const PT_SQL_DDL_RE =
+  /\b(criar|alterar|remover|truncar|excluir)\s+tabela\b|\bchave\s+(estrangeira|prim[áa]ria)\b|\b(inserir|atualizar|deletar)\s+(em|na|de)\s+tabela\b|\bbanco\s+de\s+dados\s+relacional\b|\bschema\s+do\s+banco\b/i;
 // Bare uppercase SQL — case-sensitive; only blocks ALL-CAPS variants.
+// FROM/WHERE alone removed — too common in English prose ("FROM zero to hero").
 const BARE_SQL_UPPER_RE =
   /(?<![A-Za-z])(SELECT|INSERT|UPDATE|DELETE|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|GROUP\s+BY|ORDER\s+BY|HAVING|UNION)(?![A-Za-z])/;
 
@@ -4204,13 +4214,22 @@ function detectDomainContamination(
   if ((domain !== "sql" && !moduleAllowsSql) || looksLikePython) {
     const allStrs = extractAllStrings(slide).filter((s) => !s.startsWith("[[")); // skip protected slots
     const proseText = allStrs.join("\n");
-    if (HARD_SQL_PROSE_RE.test(proseText)) {
-      console.log(`[V5-DOMAIN-BLOCK] SQL DDL/DML detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}"`);
-      return { contaminated: true, reason: `SQL DDL/DML em prose de curso ${domain}` };
+    const sample = (m: RegExpExecArray | null) => m ? m[0].slice(0, 80) : "";
+    const m1 = HARD_SQL_PROSE_RE.exec(proseText);
+    if (m1) {
+      console.log(`[V5-DOMAIN-BLOCK] SQL DDL/DML detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}" | match="${sample(m1)}" | title="${slide.title ?? ""}"`);
+      return { contaminated: true, reason: `SQL DDL/DML em prose de curso ${domain} ("${sample(m1)}")` };
     }
-    if (BARE_SQL_UPPER_RE.test(proseText)) {
-      console.log(`[V5-DOMAIN-BLOCK] Bare uppercase SQL detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}"`);
-      return { contaminated: true, reason: `SQL bare keywords em prose de curso ${domain}` };
+    const m2 = BARE_SQL_UPPER_RE.exec(proseText);
+    if (m2) {
+      console.log(`[V5-DOMAIN-BLOCK] Bare uppercase SQL detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}" | match="${sample(m2)}" | title="${slide.title ?? ""}"`);
+      return { contaminated: true, reason: `SQL bare keywords em prose de curso ${domain} ("${sample(m2)}")` };
+    }
+    // v5.1.7: Portuguese SQL pedagogy phrases — block in non-SQL/python courses
+    const m3 = PT_SQL_DDL_RE.exec(proseText);
+    if (m3) {
+      console.log(`[V5-DOMAIN-BLOCK] Portuguese SQL pedagogy detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}" | match="${sample(m3)}" | title="${slide.title ?? ""}"`);
+      return { contaminated: true, reason: `Pedagogia SQL (PT) em curso ${domain} ("${sample(m3)}")` };
     }
   }
   if (domain === "generic" && !looksLikePython) return { contaminated: false };
@@ -4257,30 +4276,29 @@ function isGenericLearningObjective(text: string, moduleTitle: string): boolean 
   const hasConcreteVerb = CONCRETE_TECH_VERBS_RE.test(tail);
   const hasConcreteNoun = CONCRETE_TECH_NOUNS_RE.test(tail);
 
-  // Pattern 1: filler + no concrete tech verb AND no concrete tech noun.
-  // ("Compreender fundamentos", "Aplicar conceitos", "Identificar tópicos").
-  if (!hasConcreteVerb && !hasConcreteNoun) return true;
+  // v5.1.7 — STRICTER: filler verbs ("Compreender", "Aplicar", "Identificar")
+  // are pedagogically vague by themselves. The presence of a tech NOUN alone
+  // ("Aplicar Funções", "Identificar testes") is just topic restatement, not
+  // a concrete actionable objective. We require either:
+  //   (a) a concrete tech VERB in the tail ("Aplicar criar funções"), OR
+  //   (b) a purpose clause + concrete content ("Aplicar listas para armazenar").
+  // Otherwise the item is generic — block it.
 
-  // Pattern 2: filler + tail is essentially a verbatim restatement of the
-  // module title (no extra concrete content). Only fires when there is
-  // ALSO no purpose clause (no "para", "com", "usando", etc).
-  // This avoids false positives like "Aplicar listas e dicionários para
-  // armazenar dados" against module "Listas e Dicionários".
-  const hasPurposeClause = /\b(para|com|usando|através|via|em|de\s+modo|de\s+forma)\b/i.test(tail);
-  if (hasPurposeClause) return false;
+  // Pattern 1: filler + concrete VERB → not generic (truly actionable).
+  if (hasConcreteVerb) return false;
 
-  if (moduleTitle && !hasConcreteVerb) {
-    const moduleWords = moduleTitle.toLowerCase()
-      .replace(/[^\wáéíóúâêîôûãõç\s]/g, " ")
-      .split(/\s+/).filter((w) => w.length > 3);
-    const tailLower = tail.toLowerCase();
-    const overlap = moduleWords.filter((w) => tailLower.includes(w)).length;
-    // ≥80% overlap with no purpose clause AND no concrete verb = restatement.
-    if (moduleWords.length >= 2 && overlap / moduleWords.length >= 0.8 && tail.length < 60) {
-      return true;
-    }
-  }
-  return false;
+  // Pattern 2: filler + purpose clause + concrete noun → not generic
+  // ("Aplicar listas para armazenar dados").
+  const hasPurposeClause = /\b(para|com|usando|através|via|de\s+modo|de\s+forma|a\s+fim\s+de)\b/i.test(tail);
+  if (hasPurposeClause && hasConcreteNoun) return false;
+
+  // All remaining filler-led items lacking actionable content are generic.
+  // This catches:
+  //   "Compreender fundamentos Essenciais de Python."   (no verb, no noun)
+  //   "Aplicar controle de Fluxo e Funções."           (noun only, no verb, no purpose)
+  //   "Identificar testes, Logs e Depuração."          (noun only, no verb, no purpose)
+  //   "Conhecer estruturas de dados básicas."          (no verb, weak noun without purpose)
+  return true;
 }
 
 // ── Technical-sanitization damage detector (v5.1 hardening) ─

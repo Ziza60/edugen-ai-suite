@@ -64,7 +64,14 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~6900 lines, ENGINE_VERSION=5.1.6).
+`supabase/functions/export-pptx-v4/index.ts` (~6900 lines, ENGINE_VERSION=5.1.7).
+
+### Hardening Pass 7 (v5.1.7) — Detector strictness fix (root cause of survivors)
+v5.1.6 deploy did NOT actually block SQL/generic objectives in production. Root cause analysis on the deployed code found 2 detector bugs that let contamination through every check:
+- **`isGenericLearningObjective` was too lenient** — old logic returned `false` (not generic) whenever the tail had EITHER a concrete tech verb OR a concrete tech noun. So "Aplicar controle de Fluxo e **Funções**." passed because "Funções" matches `CONCRETE_TECH_NOUNS_RE` — even though the sentence is pure topic restatement with no actionable verb. Same for "Identificar **testes**, Logs e Depuração". New logic: filler-led items are generic UNLESS (a) tail has concrete tech VERB, or (b) tail has purpose clause AND concrete noun ("Aplicar listas para armazenar dados"). Removed the now-redundant title-overlap pattern. 8/8 unit tests pass: 4 generic correctly flagged, 4 actionable correctly accepted.
+- **SQL detector missed Portuguese pedagogy** — `HARD_SQL_PROSE_RE` only matched English uppercase keywords (CREATE TABLE, DELETE FROM, etc). Portuguese SQL phrases like "criar tabela", "chave primária", "chave estrangeira" passed through untouched. Added `PT_SQL_DDL_RE` covering: `(criar|alterar|remover|truncar|excluir) tabela`, `chave (estrangeira|prim[áa]ria)`, `(inserir|atualizar|deletar) (em|na|de) tabela`, `banco de dados relacional`, `schema do banco`. Extended HARD_SQL_PROSE_RE with `UPDATE x SET` and `REFERENCES x(...)`. Bare keywords (SELECT/JOIN/GROUP BY/ORDER BY) stay in `BARE_SQL_UPPER_RE` (uppercase-only) — case-insensitive prose detection of those caused false positives ("pandas group by", "order by length", "select values from list"), so they're excluded from HARD prose. `FROM \w+` and `WHERE \w+ =` removed from BARE for the same reason ("FROM zero to hero"). 18/18 tests pass: 8 SQL leaks blocked + 10 legitimate Python prose accepted.
+- **Diagnostic logging upgraded** — `[V5-DOMAIN-BLOCK]` now includes the matched substring (`match="..."`) and slide title, so when contamination passes through anyway we can see EXACTLY what the detector saw vs what landed in the PPTX.
+- **No frontend changes** — fallback to v3 already gated correctly on `res.status === 422 && code === "PPTX_QA_VETO"` (semantic block) vs infra failures.
 
 ### Hardening Pass 6 (v5.1.6) — Absolute domain block + linguistic repair
 Closes the 4 quality gaps observed in v5.1.5: SQL DDL still leaking into Python modules, GENERIC_OBJECTIVE still appearing on covers, semantic repairs incomplete on specific patterns ("leitura (, )", "Use com classes"), broken Portuguese ("POO: Que Adotar..." sem "Por").
