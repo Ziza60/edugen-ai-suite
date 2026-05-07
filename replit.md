@@ -64,7 +64,10 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~6900 lines, ENGINE_VERSION=5.1.11).
+`supabase/functions/export-pptx-v4/index.ts` (~6900 lines, ENGINE_VERSION=5.1.12).
+
+### Hardening Pass 12 (v5.1.12) — `isGenericLearningObjective` Pattern 3 (application context)
+Pass 11's safety net was over-blocking valid pedagogical objectives like "Aplicar escopo local e global em funções Python" and "Aplicar herança e encapsulamento em classes Python" — both have concrete technical concepts and explicit application context, but the detector's purpose-clause regex only recognised `para|com|usando|através|via|de modo|de forma|a fim de` and missed the application preposition "em". Pass 12 adds **Pattern 3**: when a filler-led sentence contains `em|no|na|nos|nas|sobre|dentro de` followed (anywhere later in the tail) by a `CONCRETE_TECH_NOUNS_RE` match, the item is accepted. Vague topic-restating (`Aplicar IA em saúde`) still gets blocked because "saúde" is not a concrete tech noun. Companion fix in `generate-course/index.ts` adds **CRITICAL DOMAIN INTEGRITY** clauses to both the structure prompt and the per-module content prompt — explicit hard rules that forbid SQL DDL/DML in programming-language courses (e.g. SQL leaking into a Python "Estruturas de Dados" module) and require module summaries to cite the language by name.
 
 ### Hardening Pass 11 (v5.1.11) — `detectTechnicalDamage` added to global field safety net
 The post-cascade safety net (Pass 8) walked every string field through SQL/generic-objective/broken-language/incomplete-sentence detectors but skipped `detectTechnicalDamage`, so stripped-function-name symptoms (`leitura ()`, `Use e .`, etc.) could still escape into the PPTX. Pass 11 adds it to the field-by-field scan with a `[SAFETY-NET] TECHNICAL_SANITIZATION_DAMAGE` CRITICAL issue per leak.

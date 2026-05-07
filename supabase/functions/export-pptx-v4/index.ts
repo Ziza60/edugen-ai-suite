@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.11";
+const ENGINE_VERSION = "5.1.12";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4422,6 +4422,30 @@ function isGenericLearningObjective(text: string, moduleTitle: string): boolean 
   // ("Aplicar listas para armazenar dados").
   const hasPurposeClause = /\b(para|com|usando|através|via|de\s+modo|de\s+forma|a\s+fim\s+de)\b/i.test(tail);
   if (hasPurposeClause && hasConcreteNoun) return false;
+
+  // Pattern 3 (v5.1.12) — filler + <concrete concept> + "em/no/na <objeto técnico>"
+  // ACCEPTS: "Aplicar escopo local e global em funções Python"
+  //          "Aplicar herança e encapsulamento em classes Python"
+  // BLOCKS:  "Compreender conceitos sobre funções"  (filler noun before prep)
+  //          "Aplicar fundamentos em classes"        (filler noun before prep)
+  //          "Aplicar IA em saúde"                   (no tech noun after prep)
+  // "sobre" was removed — it usually marks topic restatement, not application
+  // context. `dentro d[aeo]s?` now covers da/de/do/das/des/dos.
+  const APPLICATION_PREP_RE = /\b(em|no|na|nos|nas|dentro\s+d[aeo]s?)\s+/i;
+  const FILLER_NOUNS_RE =
+    /^(conceitos?|fundamentos?|princípios?|princip|noções?|aspectos?|elementos?|tópicos?|temas?|bases?|ideias?|teorias?|introdução|visão\s+geral|panorama|generalidades?)\b/i;
+  const appMatch = tail.match(APPLICATION_PREP_RE);
+  if (appMatch && appMatch.index !== undefined) {
+    const beforePrep = tail.slice(0, appMatch.index).trim();
+    const afterPrep = tail.slice(appMatch.index + appMatch[0].length);
+    // BEFORE-prep must be a real concept, not a filler noun stub.
+    const beforeWords = beforePrep.split(/\s+/).filter(Boolean);
+    const beforeIsFillerStub =
+      beforePrep.length === 0 ||
+      (FILLER_NOUNS_RE.test(beforePrep) && beforeWords.length <= 2);
+    // AFTER-prep must contain a concrete technical noun.
+    if (!beforeIsFillerStub && CONCRETE_TECH_NOUNS_RE.test(afterPrep)) return false;
+  }
 
   // All remaining filler-led items lacking actionable content are generic.
   // This catches:
