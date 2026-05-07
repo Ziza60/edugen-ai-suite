@@ -1,17 +1,25 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useDevMode } from "@/hooks/useDevMode";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Eye, Edit3, Loader2, BookOpen, Brain, Award,
   RefreshCw, Layers, List, FileText, MessageSquare, BrainCircuit,
   Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2,
-  BarChart3, Globe, Rocket, Languages, Save, Cloud, CloudOff
+  BarChart3, Globe, Rocket, Languages, Save, Cloud, CloudOff,
+  Mic, ChevronDown, Wrench, ShieldCheck, AlignLeft, Sparkles, WandSparkles,
 } from "lucide-react";
+import { PexelsPicker } from "@/components/course/PexelsPicker";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { ExportButtons } from "@/components/course/ExportButtons";
 import { useToast } from "@/hooks/use-toast";
@@ -37,6 +45,7 @@ export default function CourseView() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { plan } = useSubscription();
+  const { isDev } = useDevMode();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -44,7 +53,10 @@ export default function CourseView() {
   const [activeModuleIndex, setActiveModuleIndex] = useState(0);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [editTitle, setEditTitle] = useState("");
+  const [regenerating, setRegenerating] = useState(false);
   const [certDialogOpen, setCertDialogOpen] = useState(false);
+  const [scriptOpen, setScriptOpen] = useState(false);
   const [reprocessingFlashcards, setReprocessingFlashcards] = useState(false);
   const [restructuring, setRestructuring] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -71,7 +83,8 @@ export default function CourseView() {
   const [restructuredModules, setRestructuredModules] = useState<any[]>([]);
   const [applyingRestructure, setApplyingRestructure] = useState(false);
 
-  const isPro = plan === "pro";
+  const isPro = plan === "pro" || isDev;
+  const isStarter = plan === "starter";
 
   useEffect(() => {
     if (!isPro) {
@@ -191,9 +204,38 @@ export default function CourseView() {
     retry: false,
   });
 
+  const saveModuleImage = useMutation({
+    mutationFn: async ({ moduleId, url, altText }: { moduleId: string; url: string; altText: string }) => {
+      const { error } = await supabase.from("course_images").upsert(
+        { module_id: moduleId, url, alt_text: altText },
+        { onConflict: "module_id" },
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-images", id] });
+      toast({ title: "Imagem salva!" });
+    },
+    onError: () => toast({ title: "Erro ao salvar imagem", variant: "destructive" }),
+  });
+
+  const removeModuleImage = useMutation({
+    mutationFn: async (moduleId: string) => {
+      const { error } = await supabase.from("course_images").delete().eq("module_id", moduleId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-images", id] });
+      toast({ title: "Imagem removida" });
+    },
+    onError: () => toast({ title: "Erro ao remover imagem", variant: "destructive" }),
+  });
+
   const updateModule = useMutation({
-    mutationFn: async ({ moduleId, content }: { moduleId: string; content: string }) => {
-      const { error } = await supabase.from("course_modules").update({ content }).eq("id", moduleId);
+    mutationFn: async ({ moduleId, content, title }: { moduleId: string; content: string; title?: string }) => {
+      const patch: Record<string, string> = { content };
+      if (title && title.trim()) patch.title = title.trim();
+      const { error } = await supabase.from("course_modules").update(patch).eq("id", moduleId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -369,12 +411,14 @@ export default function CourseView() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Primary actions */}
               <Button
                 variant={isPublished ? "outline" : "default"}
                 size="sm"
                 onClick={() => togglePublish.mutate()}
                 className="h-9"
+                data-testid="btn-publish"
               >
                 <Eye className="h-4 w-4 mr-1.5" />
                 {isPublished ? "Despublicar" : "Publicar"}
@@ -389,94 +433,165 @@ export default function CourseView() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-9 bg-primary/5 border-primary/20 text-primary"
+                className="h-9"
                 onClick={() => navigate(`/app/courses/${id}/landing-page`)}
+                data-testid="btn-landing-page"
               >
                 <Globe className="h-4 w-4 mr-1.5" />
                 Landing Page
               </Button>
+
+              {/* Tools dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9" data-testid="btn-ferramentas">
+                    <Wrench className="h-4 w-4 mr-1.5" />
+                    Ferramentas
+                    <ChevronDown className="h-3.5 w-3.5 ml-1.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  {/* Script */}
+                  <DropdownMenuItem
+                    disabled={!isPublished}
+                    onSelect={() => setScriptOpen(true)}
+                    data-testid="menu-script"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      <Mic className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <div className="flex items-center gap-1.5 font-medium text-sm">
+                          Script de narração
+                          {!isPro && <Badge variant="outline" className="text-[10px] px-1 py-0">PRO</Badge>}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Roteiro para gravar videoaulas</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  {/* Certificate */}
+                  <DropdownMenuItem onSelect={() => setCertDialogOpen(true)} data-testid="menu-certificate">
+                    <div className="flex items-start gap-3 py-0.5">
+                      <GraduationCap className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium text-sm">Certificado</p>
+                        <p className="text-xs text-muted-foreground">Personalizar o certificado do curso</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  {/* Translate */}
+                  <DropdownMenuItem
+                    disabled={modules.length === 0}
+                    onSelect={() => setTranslateOpen(true)}
+                    data-testid="menu-translate"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      <Languages className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium text-sm">Traduzir curso</p>
+                        <p className="text-xs text-muted-foreground">Traduz todos os módulos para outro idioma</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  {/* EduScore */}
+                  <DropdownMenuItem
+                    disabled={calculatingScore || modules.length === 0}
+                    onSelect={async () => {
+                      setCalculatingScore(true);
+                      try {
+                        const { data, error } = await supabase.functions.invoke("calculate-eduscore", {
+                          body: { course_id: id },
+                        });
+                        if (error) throw error;
+                        setEduScore(data);
+                      } catch (err: any) {
+                        toast({ title: "Erro ao calcular EduScore", description: err.message, variant: "destructive" });
+                      } finally {
+                        setCalculatingScore(false);
+                      }
+                    }}
+                    data-testid="menu-eduscore"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      {calculatingScore
+                        ? <Loader2 className="h-4 w-4 mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+                        : <BarChart3 className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />}
+                      <div>
+                        <p className="font-medium text-sm">EduScore™</p>
+                        <p className="text-xs text-muted-foreground">Avalia a qualidade pedagógica do curso</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Verificar qualidade (was "Validar") */}
+                  <DropdownMenuItem
+                    disabled={validating || modules.length === 0}
+                    onSelect={async () => {
+                      setValidating(true);
+                      try {
+                        const { data, error } = await supabase.functions.invoke("restructure-modules", {
+                          body: { course_id: id, validate_only: true },
+                        });
+                        if (error) throw error;
+                        setQualityReport(data?.markdown_quality_report || null);
+                        const summary = data?.markdown_quality_report?.summary;
+                        toast({
+                          title: `Qualidade: ${summary?.modules_passed || 0}/${(summary?.modules_passed || 0) + (summary?.modules_failed || 0)} módulos OK`,
+                          description: summary?.recommendation || "Checklist concluído.",
+                          variant: summary?.modules_failed > 0 ? "destructive" : "default",
+                        });
+                      } catch (err: any) {
+                        toast({ title: "Erro na verificação", description: err.message, variant: "destructive" });
+                      } finally {
+                        setValidating(false);
+                      }
+                    }}
+                    data-testid="menu-validate"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      {validating
+                        ? <Loader2 className="h-4 w-4 mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+                        : <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />}
+                      <div>
+                        <p className="font-medium text-sm">Verificar qualidade</p>
+                        <p className="text-xs text-muted-foreground">Checa se o conteúdo segue padrões pedagógicos</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+
+                  {/* Reformatar conteúdo (was "Padronizar") */}
+                  <DropdownMenuItem
+                    disabled={restructuring || modules.length === 0}
+                    onSelect={handleRestructureWithDiff}
+                    data-testid="menu-restructure"
+                  >
+                    <div className="flex items-start gap-3 py-0.5">
+                      {restructuring
+                        ? <Loader2 className="h-4 w-4 mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+                        : <AlignLeft className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />}
+                      <div>
+                        <p className="font-medium text-sm">Reformatar conteúdo</p>
+                        <p className="text-xs text-muted-foreground">Padroniza títulos, listas e formatação dos módulos</p>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Script dialog (no trigger — opened via dropdown) */}
               <ScriptGeneratorButton
                 courseId={id!}
                 courseTitle={course.title}
                 isPro={isPro}
                 disabled={!isPublished}
+                open={scriptOpen}
+                onOpenChange={setScriptOpen}
+                renderTrigger={false}
               />
-              <Button variant="outline" size="sm" onClick={() => setCertDialogOpen(true)} className="h-9">
-                <GraduationCap className="h-4 w-4 mr-1.5" />
-                Certificado
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                disabled={calculatingScore || modules.length === 0}
-                onClick={async () => {
-                  setCalculatingScore(true);
-                  try {
-                    const { data, error } = await supabase.functions.invoke("calculate-eduscore", {
-                      body: { course_id: id },
-                    });
-                    if (error) throw error;
-                    setEduScore(data);
-                  } catch (err: any) {
-                    toast({ title: "Erro ao calcular EduScore", description: err.message, variant: "destructive" });
-                  } finally {
-                    setCalculatingScore(false);
-                  }
-                }}
-              >
-                {calculatingScore ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <BarChart3 className="h-4 w-4 mr-1.5" />}
-                EduScore™
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                disabled={modules.length === 0}
-                onClick={() => setTranslateOpen(true)}
-              >
-                <Languages className="h-4 w-4 mr-1.5" />
-                Traduzir
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                disabled={validating}
-                onClick={async () => {
-                  setValidating(true);
-                  try {
-                    const { data, error } = await supabase.functions.invoke("restructure-modules", {
-                      body: { course_id: id, validate_only: true },
-                    });
-                    if (error) throw error;
-                    setQualityReport(data?.markdown_quality_report || null);
-                    const summary = data?.markdown_quality_report?.summary;
-                    toast({
-                      title: `Validação: ${summary?.modules_passed || 0}/${summary?.modules_passed + summary?.modules_failed || 0} PASS`,
-                      description: summary?.recommendation || "Checklist concluído.",
-                      variant: summary?.modules_failed > 0 ? "destructive" : "default",
-                    });
-                  } catch (err: any) {
-                    toast({ title: "Erro na validação", description: err.message, variant: "destructive" });
-                  } finally {
-                    setValidating(false);
-                  }
-                }}
-              >
-                {validating ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <FileText className="h-4 w-4 mr-1.5" />}
-                Validar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                disabled={restructuring}
-                onClick={handleRestructureWithDiff}
-              >
-                {restructuring ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <RefreshCw className="h-4 w-4 mr-1.5" />}
-                Padronizar
-              </Button>
             </div>
           </div>
 
@@ -655,6 +770,53 @@ export default function CourseView() {
             </div>
           )}
 
+          {/* ── Portal do Aluno ── */}
+          {isPublished && landing?.slug && (
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border">
+              <div className="flex items-center gap-3">
+                <GraduationCap className="h-5 w-5 text-primary" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Portal do Aluno</span>
+                    <Badge variant="outline" className="text-[10px] border-green-500/40 text-green-600 dark:text-green-400">Público</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Link gratuito — módulos, flashcards, quizzes e certificado
+                  </p>
+                </div>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <code className="hidden sm:block text-xs text-muted-foreground bg-muted/60 px-2 py-1 rounded-md font-mono">
+                  /learn/{landing.slug}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    const url = `${window.location.origin}/learn/${landing.slug}`;
+                    navigator.clipboard.writeText(url);
+                    toast({ title: "Link do portal copiado!", description: url });
+                  }}
+                  data-testid="copy-portal-link"
+                >
+                  <Copy className="h-3 w-3 mr-1.5" />
+                  Copiar link
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => window.open(`/learn/${landing.slug}`, "_blank")}
+                  data-testid="open-portal-link"
+                >
+                  <Link2 className="h-3 w-3 mr-1.5" />
+                  Abrir portal
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* ── Review Panel ── */}
           <ReviewPanel courseId={id!} isPublished={isPublished} />
         </div>
@@ -766,13 +928,32 @@ export default function CourseView() {
             <div className="px-6 lg:px-10 py-8 max-w-[760px]">
               {/* Module header */}
               <div className="flex items-start justify-between gap-4 mb-6">
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">
                     Módulo {activeModuleIndex + 1} de {modules.length}
                   </p>
-                  <h2 className="font-display text-2xl font-bold text-foreground">{activeModule.title}</h2>
+                  {editingModuleId === activeModule.id ? (
+                    <Input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="font-display text-xl font-bold h-auto py-1.5 px-2 border-primary/40 focus-visible:ring-primary/30"
+                      placeholder="Título do módulo"
+                      data-testid="input-module-title"
+                    />
+                  ) : (
+                    <h2 className="font-display text-2xl font-bold text-foreground">{activeModule.title}</h2>
+                  )}
+                  {/* Summary preview — first plain paragraph of content */}
+                  {editingModuleId !== activeModule.id && (() => {
+                    const firstPara = (activeModule.content || "")
+                      .split("\n")
+                      .find((l) => l.trim() && !l.startsWith("#") && !l.startsWith("-") && !l.startsWith("*") && !l.startsWith(">") && !l.startsWith("|"));
+                    return firstPara ? (
+                      <p className="mt-1.5 text-sm text-muted-foreground line-clamp-2 leading-relaxed">{firstPara.replace(/\*\*/g, "")}</p>
+                    ) : null;
+                  })()}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {/* Auto-save indicator */}
                   {editingModuleId === activeModule.id && (
                     <span className={`text-xs flex items-center gap-1 ${
@@ -784,16 +965,50 @@ export default function CourseView() {
                       {saveStatusLabel}
                     </span>
                   )}
+                  {/* Regenerate module button (Starter + Pro, only in edit mode) */}
+                  {editingModuleId === activeModule.id && (isPro || isStarter) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 border-primary/30 text-primary hover:bg-primary/10"
+                      disabled={regenerating}
+                      title="Regenerar conteúdo do módulo com IA"
+                      data-testid="button-regenerate-module"
+                      onClick={async () => {
+                        if (!editContent.trim()) return;
+                        setRegenerating(true);
+                        try {
+                          const { data, error } = await supabase.functions.invoke("enhance-paragraph", {
+                            body: { text: editContent, action: "regenerate" },
+                          });
+                          if (error) throw error;
+                          if (data?.enhanced) {
+                            setEditContent(data.enhanced);
+                            setSaveStatus("unsaved");
+                            toast({ title: "Módulo regenerado com IA ✨" });
+                          }
+                        } catch (err: any) {
+                          toast({ title: "Erro ao regenerar", description: err.message, variant: "destructive" });
+                        } finally {
+                          setRegenerating(false);
+                        }
+                      }}
+                    >
+                      {regenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <WandSparkles className="h-4 w-4 mr-1.5" />}
+                      Regenerar
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
                     className="shrink-0 h-9"
                     onClick={() => {
                       if (editingModuleId === activeModule.id) {
-                        updateModule.mutate({ moduleId: activeModule.id, content: editContent });
+                        updateModule.mutate({ moduleId: activeModule.id, content: editContent, title: editTitle });
                       } else {
                         setEditingModuleId(activeModule.id);
                         setEditContent(activeModule.content || "");
+                        setEditTitle(activeModule.title);
                         setSaveStatus("saved");
                       }
                     }}
@@ -814,20 +1029,28 @@ export default function CourseView() {
                     content={editContent}
                     onChange={handleContentChange}
                     isPro={isPro}
+                    isStarter={isStarter}
                   />
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent })}>
+                    <Button size="sm" onClick={() => updateModule.mutate({ moduleId: activeModule.id, content: editContent, title: editTitle })}>
                       Salvar alterações
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => { setEditingModuleId(null); setSaveStatus("saved"); }}>
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      clearTimeout(saveTimerRef.current);
+                      setEditContent(activeModule.content || "");
+                      setEditTitle(activeModule.title);
+                      setEditingModuleId(null);
+                      setSaveStatus("saved");
+                    }}>
                       Cancelar
                     </Button>
                   </div>
                 </div>
               ) : (
                 <div>
-                  {moduleImage && (
-                    <div className="mb-6 rounded-xl overflow-hidden border border-border relative">
+                  {/* ── Module image ── */}
+                  {moduleImage ? (
+                    <div className="mb-4 rounded-xl overflow-hidden border border-border relative group">
                       <img
                         src={moduleImage.url}
                         alt={moduleImage.alt_text || `Ilustração do módulo ${activeModuleIndex + 1}`}
@@ -842,9 +1065,32 @@ export default function CourseView() {
                           {activeModule.title}
                         </h3>
                       </div>
+                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <PexelsPicker
+                          moduleTitle={activeModule.title}
+                          moduleId={activeModule.id}
+                          currentImageUrl={moduleImage.url}
+                          onSelect={({ url, alt }) =>
+                            saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
+                          }
+                          onRemove={() => removeModuleImage.mutate(activeModule.id)}
+                          disabled={saveModuleImage.isPending || removeModuleImage.isPending}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mb-4">
+                      <PexelsPicker
+                        moduleTitle={activeModule.title}
+                        moduleId={activeModule.id}
+                        onSelect={({ url, alt }) =>
+                          saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
+                        }
+                        disabled={saveModuleImage.isPending}
+                      />
                     </div>
                   )}
-                  <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-display prose-headings:font-bold prose-p:leading-relaxed prose-li:leading-relaxed">
+                  <div className="module-prose">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>
                       {activeModule.content || "*Sem conteúdo ainda*"}
                     </ReactMarkdown>

@@ -27,11 +27,16 @@ interface ScriptGeneratorButtonProps {
   courseTitle: string;
   isPro: boolean;
   disabled?: boolean;
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
+  renderTrigger?: boolean;
 }
 
-export function ScriptGeneratorButton({ courseId, courseTitle, isPro, disabled }: ScriptGeneratorButtonProps) {
+export function ScriptGeneratorButton({ courseId, courseTitle, isPro, disabled, open: openProp, onOpenChange, renderTrigger = true }: ScriptGeneratorButtonProps) {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const [openInternal, setOpenInternal] = useState(false);
+  const open = openProp !== undefined ? openProp : openInternal;
+  const setOpen = onOpenChange ?? setOpenInternal;
   const [generating, setGenerating] = useState(false);
   const [script, setScript] = useState<string | null>(null);
   const [style, setStyle] = useState("professional");
@@ -83,13 +88,15 @@ export function ScriptGeneratorButton({ courseId, courseTitle, isPro, disabled }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9" disabled={disabled}>
-          <Mic className="h-4 w-4 mr-1.5" />
-          Script
-          {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-        </Button>
-      </DialogTrigger>
+      {renderTrigger && (
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm" className="h-9" disabled={disabled}>
+            <Mic className="h-4 w-4 mr-1.5" />
+            Script
+            {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

@@ -23,6 +23,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { TemplateSelector, CourseTemplate } from "@/components/course/TemplateSelector";
+import { YouTubeImportScreen } from "@/components/course/YouTubeImportScreen";
+import { PdfImportScreen, PdfAnalysis } from "@/components/course/PdfImportScreen";
 
 const STEPS = [
   { label: "Sobre o curso", num: 1 },
@@ -44,6 +46,8 @@ interface UploadedSource {
 
 export default function CourseWizard() {
   const [showTemplates, setShowTemplates] = useState(true);
+  const [showYouTube, setShowYouTube] = useState(false);
+  const [showPdf, setShowPdf] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null);
 
   const { user } = useAuth();
@@ -115,9 +119,9 @@ export default function CourseWizard() {
     return m > 0 ? `~${h}h ${m}min de conteúdo` : `~${h}h de conteúdo`;
   };
 
-  const canCreate = isDev || usage < limits.maxCourses;
-  const canUseImages = limits.images;
-  const canUseSources = plan === "pro";
+  const canCreate = true;
+  const canUseImages = true;
+  const canUseSources = true;
   const maxFiles = plan === "pro" ? MAX_FILES_PRO : MAX_FILES_FREE;
   const totalChars = uploadedSources.reduce((sum, s) => sum + s.char_count, 0);
 
@@ -138,8 +142,82 @@ export default function CourseWizard() {
     setShowTemplates(false);
   };
 
+  const handleYouTubeSelect = () => {
+    setShowTemplates(false);
+    setShowYouTube(true);
+  };
+
+  const handlePdfSelect = () => {
+    setShowTemplates(false);
+    setShowPdf(true);
+  };
+
+  const handlePdfComplete = (analysis: PdfAnalysis) => {
+    setForm((prev) => ({
+      ...prev,
+      title: analysis.title,
+      theme: analysis.theme,
+      targetAudience: analysis.targetAudience,
+      numModules: Math.min(analysis.suggestedModules, limits.maxModules),
+      language: analysis.detectedLanguage === "en" ? "en" : analysis.detectedLanguage === "es" ? "es" : "pt-BR",
+    }));
+    setUploadedSources([{ id: analysis.source_id, filename: analysis.filename, char_count: analysis.char_count }]);
+    setUseSources(true);
+    setShowPdf(false);
+  };
+
+  const handleYouTubeComplete = (analysis: {
+    source_id: string;
+    filename: string;
+    char_count: number;
+    title: string;
+    theme: string;
+    targetAudience: string;
+    suggestedModules: number;
+    detectedLanguage: string;
+  }) => {
+    setForm((prev) => ({
+      ...prev,
+      title: analysis.title,
+      theme: analysis.theme,
+      targetAudience: analysis.targetAudience,
+      numModules: Math.min(analysis.suggestedModules, limits.maxModules),
+      language: analysis.detectedLanguage === "en" ? "en" : analysis.detectedLanguage === "es" ? "es" : "pt-BR",
+    }));
+    setUploadedSources([{ id: analysis.source_id, filename: analysis.filename, char_count: analysis.char_count }]);
+    setUseSources(true);
+    setShowYouTube(false);
+  };
+
   if (showTemplates) {
-    return <TemplateSelector onSelect={handleTemplateSelect} onSkip={handleSkipTemplates} />;
+    return (
+      <TemplateSelector
+        onSelect={handleTemplateSelect}
+        onSkip={handleSkipTemplates}
+        onYouTube={handleYouTubeSelect}
+        onPdf={handlePdfSelect}
+      />
+    );
+  }
+
+  if (showYouTube) {
+    return (
+      <YouTubeImportScreen
+        tempCourseId={tempCourseId}
+        onBack={() => { setShowYouTube(false); setShowTemplates(true); }}
+        onComplete={handleYouTubeComplete}
+      />
+    );
+  }
+
+  if (showPdf) {
+    return (
+      <PdfImportScreen
+        tempCourseId={tempCourseId}
+        onBack={() => { setShowPdf(false); setShowTemplates(true); }}
+        onComplete={handlePdfComplete}
+      />
+    );
   }
 
   const updateForm = (key: string, value: any) => {
@@ -288,7 +366,11 @@ export default function CourseWizard() {
               toast({ title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." });
               setTimeout(() => navigate(`/app/courses/${event.courseId}`), 1000);
             }
+            if (event.type === "debug") {
+              console.warn("[CourseGen DEBUG]", event);
+            }
             if (event.type === "error") {
+              console.error("[CourseGen ERROR]", event.message, event);
               throw new Error(event.message);
             }
           } catch (parseErr: any) {
@@ -905,7 +987,7 @@ export default function CourseWizard() {
                         <div className="bg-muted/50 border border-border rounded-xl p-3 text-xs text-muted-foreground flex items-start gap-2">
                           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                           <span>
-                            Você usou <strong>{usage}</strong> de <strong>{limits.maxCourses}</strong> cursos gratuitos este mês. Esta geração usará 1 crédito.
+                            Você usou <strong>{usage}</strong> de <strong>{limits.maxCoursesPerMonth}</strong> cursos gratuitos este mês. Esta geração usará 1 crédito.
                           </span>
                         </div>
                       )}
