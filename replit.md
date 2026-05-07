@@ -93,8 +93,38 @@ Full QA pipeline: `runPptxQA` (initial 11-point pass) → `resolveQAIssues` (3-l
 **SQL preservation**: `safeSliceText()` never trims `SELECT *`, `COUNT(*)`, `SUM(*)`, `AVG(*)`, `MAX(*)`, `MIN(*)`
 **Guarantee**: no PPTX exits with empty slide, visible placeholder, title fragment, or incomplete SQL code
 
-### Visual Skins (SKIN_REGISTRY)
-5 skin templates: `default_v5` (navy/blue), `futuristic_background` (neon/cyber), `dark_theme` (gold/dark), `dark_elegance_xl` (violet/gold), `dark_style_theme` (red/fire). Each defines palette + coverStyle + headerStyle + cardStyle + accentBarPos.
+### Design Systems (Section 2B) — v5.1
+`DESIGN_SYSTEMS` is the canonical source of truth for all 5 visual identities. `SKIN_REGISTRY` is derived from it automatically (excludes `default_v5`).
+
+**`ComponentArchetypes`** — drives per-layout visual style (added to `Design` + `SkinOverride`):
+| Field | Options |
+|---|---|
+| `cards` | `elevated_grid` \| `flat_grid` \| `minimal_blocks` |
+| `process` | `horizontal_chevron` \| `numbered_steps` |
+| `comparison` | `clean_columns` \| `split_panels` \| `subtle_table` |
+| `code` | `terminal_dark` \| `editor_light` |
+| `takeaway` | `numbered_list` \| `highlight_cards` |
+
+**Skin → Archetype mapping**:
+| Skin | cards | process | comparison | code | takeaway |
+|---|---|---|---|---|---|
+| `default_v5` | elevated_grid | horizontal_chevron | clean_columns | terminal_dark | numbered_list |
+| `futuristic_background` | flat_grid | horizontal_chevron | split_panels | terminal_dark | highlight_cards |
+| `dark_theme` | elevated_grid | numbered_steps | clean_columns | terminal_dark | numbered_list |
+| `dark_elegance_xl` | minimal_blocks | numbered_steps | subtle_table | editor_light | highlight_cards |
+| `dark_style_theme` | flat_grid | horizontal_chevron | split_panels | terminal_dark | numbered_list |
+
+**Archetype visual descriptions**:
+- `flat_grid`: flat card, no shadow, bottom accent strip, accent-colored title, index label top-right
+- `minimal_blocks`: translucent bg, ultra-thin left accent bar (0.024w), no badge, editorial typography
+- `numbered_steps`: vertical layout with spine + numbered circle badges + right text cards
+- `editor_light`: surface-colored panel, accent border, accent top stripe, no traffic lights, skin-toned code text
+- `highlight_cards`: cards with colored top band, shadow, no number circle — impactful
+- `split_panels`: each column has a colored header band ("GRUPO A"/"GRUPO B") + stacked mini-cards + center divider
+- `subtle_table`: alternating row tints, hairline dividers, plain text, column divider line
+- `elevated_grid` / `horizontal_chevron` / `clean_columns` / `terminal_dark` / `numbered_list`: existing default behaviors
+
+**Guarantee**: `d.componentArchetypes?.x ?? "default"` — missing archetype falls back to default behavior silently.
 
 ## PPTX Exporter v3 (Legacy)
 `supabase/functions/export-pptx-v3/index.ts` (2284 lines, v3.4.1). Superseded by v5.

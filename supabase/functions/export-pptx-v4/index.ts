@@ -174,6 +174,23 @@ const T = {
   CAPTION: 9, // footer / footnote
 } as const;
 
+// Component-level rendering archetypes — drive per-layout visual style
+interface ComponentArchetypes {
+  cards:      "elevated_grid" | "flat_grid" | "minimal_blocks";
+  process:    "horizontal_chevron" | "numbered_steps";
+  comparison: "clean_columns" | "split_panels" | "subtle_table";
+  code:       "terminal_dark" | "editor_light";
+  takeaway:   "numbered_list" | "highlight_cards";
+}
+
+const DEFAULT_ARCHETYPES: ComponentArchetypes = {
+  cards:      "elevated_grid",
+  process:    "horizontal_chevron",
+  comparison: "clean_columns",
+  code:       "terminal_dark",
+  takeaway:   "numbered_list",
+};
+
 interface Design {
   theme: "light" | "dark";
   accent: string;
@@ -195,6 +212,8 @@ interface Design {
   headerStyle: "chip" | "band" | "line";
   cardStyle: "rounded" | "glow" | "sharp" | "bordered";
   accentBarPos: "left" | "top";
+  // Component rendering archetypes — drive visual style per layout type
+  componentArchetypes: ComponentArchetypes;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -226,10 +245,10 @@ const PALETTE_MAP: Record<string, [string, string, string, string, string]> = {
 };
 
 // ═══════════════════════════════════════════════════════════
-// SECTION 2B: SKIN REGISTRY
-// Full visual identity (colors + layout tokens) per template.
-// When a template key matches here, buildDesign uses it entirely,
-// ignoring the palette/theme parameters.
+// SECTION 2B: DESIGN SYSTEMS
+// Canonical source of truth for all visual identities.
+// SKIN_REGISTRY is derived from DESIGN_SYSTEMS automatically.
+// default_v5 uses the palette-based buildDesign path.
 // ═══════════════════════════════════════════════════════════
 
 interface SkinOverride {
@@ -240,38 +259,74 @@ interface SkinOverride {
   headerStyle: "chip" | "band" | "line";
   cardStyle: "rounded" | "glow" | "sharp" | "bordered";
   accentBarPos: "left" | "top";
+  componentArchetypes: ComponentArchetypes;
 }
 
-const SKIN_REGISTRY: Record<string, SkinOverride> = {
+interface DesignSystemDef extends SkinOverride {
+  name: string;
+  description: string;
+}
+
+const DESIGN_SYSTEMS: Record<string, DesignSystemDef> = {
+  default_v5: {
+    name: "Default V5",
+    description: "Clean navy/blue professional. Elevated cards, horizontal chevron process, terminal code.",
+    bg: "0A0E1A", surface: "111827", text: "F1F5F9", subtext: "94A3B8",
+    border: "1E293B", coverBg: "0A1628",
+    accent: "1E3A5F", accent2: "2E6DA4", accent3: "C47F17", highlight: "E8A020",
+    titleFont: "Cambria", bodyFont: "Calibri",
+    coverStyle: "sidebar", headerStyle: "chip", cardStyle: "rounded", accentBarPos: "left",
+    componentArchetypes: { cards: "elevated_grid", process: "horizontal_chevron", comparison: "clean_columns", code: "terminal_dark", takeaway: "numbered_list" },
+  },
   futuristic_background: {
+    name: "Futuristic",
+    description: "Cyber neon aesthetic. Flat glowing cards, split panels, highlight takeaways.",
     bg: "030B18", surface: "071525", text: "C8E6FF", subtext: "4A7A9E",
     border: "0A2540", coverBg: "010407",
     accent: "00AAFF", accent2: "7B2FFF", accent3: "00FFD4", highlight: "00FFD4",
     titleFont: "Trebuchet MS", bodyFont: "Calibri",
     coverStyle: "full", headerStyle: "band", cardStyle: "glow", accentBarPos: "top",
+    componentArchetypes: { cards: "flat_grid", process: "horizontal_chevron", comparison: "split_panels", code: "terminal_dark", takeaway: "highlight_cards" },
   },
   dark_theme: {
+    name: "Dark Gold",
+    description: "GitHub dark with gold accents. Sharp elevated cards, numbered steps, clean columns.",
     bg: "0D1117", surface: "161B22", text: "E6EDF3", subtext: "7D8590",
     border: "21262D", coverBg: "04080F",
     accent: "F0A500", accent2: "D97706", accent3: "B45309", highlight: "FCD34D",
     titleFont: "Georgia", bodyFont: "Calibri",
     coverStyle: "diagonal", headerStyle: "line", cardStyle: "sharp", accentBarPos: "left",
+    componentArchetypes: { cards: "elevated_grid", process: "numbered_steps", comparison: "clean_columns", code: "terminal_dark", takeaway: "numbered_list" },
   },
   dark_elegance_xl: {
+    name: "Dark Elegance",
+    description: "Violet-gold luxury. Minimal blocks, numbered steps, subtle table, editor code, highlight takeaways.",
     bg: "0B0912", surface: "140F1F", text: "ECE8F5", subtext: "7A6898",
     border: "201535", coverBg: "060309",
     accent: "8B2FC9", accent2: "C2185B", accent3: "D4AF37", highlight: "E8D5B7",
     titleFont: "Palatino Linotype", bodyFont: "Calibri",
     coverStyle: "centered", headerStyle: "chip", cardStyle: "bordered", accentBarPos: "left",
+    componentArchetypes: { cards: "minimal_blocks", process: "numbered_steps", comparison: "subtle_table", code: "editor_light", takeaway: "highlight_cards" },
   },
   dark_style_theme: {
+    name: "Dark Fire",
+    description: "Red-amber energy. Flat grid cards, split panels, numbered list takeaways.",
     bg: "0F1219", surface: "171D27", text: "F0F4F8", subtext: "718096",
     border: "1E2533", coverBg: "070B12",
     accent: "E53E3E", accent2: "DD6B20", accent3: "D69E2E", highlight: "FAF089",
     titleFont: "Trebuchet MS", bodyFont: "Calibri",
     coverStyle: "sidebar", headerStyle: "band", cardStyle: "rounded", accentBarPos: "left",
+    componentArchetypes: { cards: "flat_grid", process: "horizontal_chevron", comparison: "split_panels", code: "terminal_dark", takeaway: "numbered_list" },
   },
 };
+
+// Derive SKIN_REGISTRY from DESIGN_SYSTEMS (excludes default_v5 which uses palette-based path)
+const SKIN_REGISTRY: Record<string, SkinOverride> = {};
+for (const [k, v] of Object.entries(DESIGN_SYSTEMS)) {
+  if (k === "default_v5") continue;
+  const { name: _n, description: _d, ...skinData } = v;
+  SKIN_REGISTRY[k] = skinData;
+}
 
 function buildDesign(
   theme: "light" | "dark",
@@ -285,6 +340,7 @@ function buildDesign(
     headerStyle: "chip" as const,
     cardStyle: "rounded" as const,
     accentBarPos: "left" as const,
+    componentArchetypes: DEFAULT_ARCHETYPES,
   };
 
   // Registered skin — overrides ALL colors and layout tokens
@@ -957,6 +1013,98 @@ function renderCards(
   const totalCardsH = rows * cardH + (rows - 1) * gap;
   const cardsStartY = CONTENT_Y + Math.max(0, (CONTENT_H - totalCardsH) / 2);
 
+  const cardArch = d.componentArchetypes?.cards ?? "elevated_grid";
+
+  // ── flat_grid: no shadow, bottom accent strip, accent title, no badge ──
+  if (cardArch === "flat_grid") {
+    for (let i = 0; i < items.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = ML + col * (cardW + gap);
+      const y = cardsStartY + row * (cardH + gap);
+      const pal = [d.accent, d.accent2, d.accent3][i % 3];
+      const colonIdx = items[i].indexOf(": ");
+      const hasTitle = colonIdx > 0 && colonIdx < 50;
+      const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
+      const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
+      slide.addShape("roundRect" as any, {
+        x, y, w: cardW, h: cardH,
+        fill: { color: d.surface },
+        line: { color: pal, width: 1.4, transparency: 45 },
+        rectRadius: 0.06,
+      });
+      slide.addShape("rect" as any, { x, y: y + cardH - 0.048, w: cardW, h: 0.048, fill: { color: pal } });
+      slide.addText(String(i + 1), {
+        x: x + cardW - 0.40, y: y + 0.07, w: 0.32, h: 0.24,
+        fontSize: 10, fontFace: d.bodyFont, bold: true, color: pal, align: "right",
+      });
+      let fgCY = y + 0.18;
+      if (hasTitle && cardTopText) {
+        slide.addText(san(cardTopText), {
+          x: x + 0.14, y: fgCY, w: cardW - 0.28, h: 0.38,
+          fontSize: items.length <= 2 ? 18 : items.length === 3 ? 16 : 14,
+          fontFace: d.titleFont, bold: true, color: pal,
+          valign: "top", lineSpacingMultiple: 1.1, fit: "shrink" as any,
+        });
+        fgCY += 0.38 + 0.06;
+      }
+      slide.addText(san(cardBodyText), {
+        x: x + 0.14, y: fgCY, w: cardW - 0.28,
+        h: Math.max(0.3, y + cardH - fgCY - 0.10),
+        fontSize: items.length <= 2 ? 15 : items.length === 3 ? 13 : 11,
+        fontFace: d.bodyFont, color: hasTitle ? d.subtext : d.text,
+        align: "left", valign: "top", lineSpacingMultiple: 1.2, fit: "shrink" as any,
+      });
+    }
+    footer(slide, d, num, total);
+    return;
+  }
+
+  // ── minimal_blocks: translucent bg, ultra-thin left bar, no badge ──
+  if (cardArch === "minimal_blocks") {
+    for (let i = 0; i < items.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = ML + col * (cardW + gap);
+      const y = cardsStartY + row * (cardH + gap);
+      const pal = [d.accent, d.accent2, d.accent3][i % 3];
+      const colonIdx = items[i].indexOf(": ");
+      const hasTitle = colonIdx > 0 && colonIdx < 50;
+      const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
+      const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
+      slide.addShape("roundRect" as any, {
+        x, y, w: cardW, h: cardH,
+        fill: { color: d.surface, transparency: 62 },
+        line: { color: d.border, width: 0.4 },
+        rectRadius: 0.08,
+      });
+      slide.addShape("roundRect" as any, {
+        x, y, w: 0.024, h: cardH,
+        fill: { color: pal }, rectRadius: 0.08,
+      });
+      let mbCY = y + 0.18;
+      if (hasTitle && cardTopText) {
+        slide.addText(san(cardTopText), {
+          x: x + 0.11, y: mbCY, w: cardW - 0.22, h: 0.40,
+          fontSize: items.length <= 2 ? 18 : 15,
+          fontFace: d.titleFont, bold: true, color: d.text,
+          valign: "top", lineSpacingMultiple: 1.1, fit: "shrink" as any,
+        });
+        mbCY += 0.40 + 0.08;
+      }
+      slide.addText(san(cardBodyText), {
+        x: x + 0.11, y: mbCY, w: cardW - 0.22,
+        h: Math.max(0.3, y + cardH - mbCY - 0.12),
+        fontSize: items.length <= 2 ? 16 : items.length === 3 ? 13 : 12,
+        fontFace: d.bodyFont, color: hasTitle ? d.subtext : d.text,
+        align: "left", valign: "top", lineSpacingMultiple: 1.3, fit: "shrink" as any,
+      });
+    }
+    footer(slide, d, num, total);
+    return;
+  }
+
+  // ── elevated_grid (default): shadow + top color bar + number badge ──
   for (let i = 0; i < items.length; i++) {
     const col = i % cols;
     const row = Math.floor(i / cols);
@@ -1103,6 +1251,59 @@ function renderProcess(
   const areaY = CONTENT_Y + (CONTENT_H - boxH) / 2;
   const areaH = boxH; // mantido por compatibilidade com o restante do código
 
+  // ── Archetype: numbered_steps — vertical list with numbered circle badges ──
+  const procArch = d.componentArchetypes?.process ?? "horizontal_chevron";
+  if (procArch === "numbered_steps") {
+    const dotSz = n <= 3 ? 0.50 : 0.42;
+    const spineX = ML + 0.28;
+    const stepH = Math.min(1.15, (CONTENT_H - 0.10) / n);
+    const totalH = stepH * n;
+    const startY = CONTENT_Y + (CONTENT_H - totalH) / 2;
+    const textX = spineX + dotSz + 0.20;
+    const textW = CW - (textX - ML);
+    // Vertical spine
+    slide.addShape("rect" as any, {
+      x: spineX + dotSz / 2 - 0.015, y: startY + dotSz * 0.55,
+      w: 0.03, h: Math.max(0.1, totalH - dotSz * 1.1),
+      fill: { color: d.accent, transparency: 68 },
+    });
+    for (let i = 0; i < n; i++) {
+      const pal = [d.accent, d.accent2, d.accent3][i % 3];
+      const dotY = startY + i * stepH;
+      const cH = Math.max(0.40, stepH * 0.76);
+      const cY = dotY + dotSz / 2 - cH / 2;
+      // Number badge
+      slide.addShape("ellipse" as any, {
+        x: spineX, y: dotY, w: dotSz, h: dotSz, fill: { color: pal },
+      });
+      slide.addText(String(i + 1), {
+        x: spineX, y: dotY, w: dotSz, h: dotSz,
+        fontSize: n <= 3 ? 17 : 13, fontFace: d.titleFont, bold: true,
+        color: "FFFFFF", align: "center", valign: "middle",
+      });
+      // Text card
+      slide.addShape("roundRect" as any, {
+        x: textX, y: cY, w: textW, h: cH,
+        fill: { color: d.surface },
+        line: { color: pal, width: 0.8 },
+        rectRadius: 0.07,
+      });
+      slide.addShape("rect" as any, {
+        x: textX, y: cY + cH * 0.22, w: 0.04, h: cH * 0.56,
+        fill: { color: pal },
+      });
+      slide.addText(san(items[i]), {
+        x: textX + 0.12, y: cY + 0.04, w: textW - 0.20, h: cH - 0.08,
+        fontSize: n <= 3 ? 15 : n <= 4 ? 13 : 11,
+        fontFace: d.bodyFont, color: d.text,
+        valign: "middle", lineSpacingMultiple: 1.2, fit: "shrink" as any,
+      });
+    }
+    footer(slide, d, num, total);
+    return;
+  }
+
+  // ── horizontal_chevron (default): boxes with › arrow connectors ──
   for (let i = 0; i < n; i++) {
     const x = ML + i * (boxW + arrowW);
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
@@ -1262,6 +1463,46 @@ function renderTakeaways(
   const availH = FOOTER_Y - contentY2 - 0.1;
   const itemH = (availH - gap * (items.length - 1)) / Math.max(items.length, 1);
 
+  const takeArch = d.componentArchetypes?.takeaway ?? "numbered_list";
+
+  // ── highlight_cards: impactful cards with colored top band ──
+  if (takeArch === "highlight_cards") {
+    const hcGap = 0.12;
+    const hcAvailH = FOOTER_Y - contentY2 - 0.1;
+    const hcItemH = (hcAvailH - hcGap * (items.length - 1)) / Math.max(items.length, 1);
+    for (let i = 0; i < items.length; i++) {
+      const y = contentY2 + i * (hcItemH + hcGap);
+      const pal = [d.accent, d.accent2, d.accent3][i % 3];
+      const topBH = Math.min(0.13, hcItemH * 0.20);
+      // Card shadow
+      slide.addShape("roundRect" as any, {
+        x: ML + 0.02, y: y + 0.03, w: CW, h: hcItemH,
+        fill: { color: "000000", transparency: 90 }, rectRadius: 0.08,
+      });
+      // Card body
+      slide.addShape("roundRect" as any, {
+        x: ML, y, w: CW, h: hcItemH,
+        fill: { color: d.surface },
+        line: { color: pal, width: 0.7 },
+        rectRadius: 0.08,
+      });
+      // Colored top band
+      slide.addShape("roundRect" as any, { x: ML, y, w: CW, h: topBH, fill: { color: pal }, rectRadius: 0.08 });
+      slide.addShape("rect" as any, { x: ML, y: y + topBH / 2, w: CW, h: topBH / 2, fill: { color: pal } });
+      // Text
+      const fontSize = items.length <= 3 ? 16 : 14;
+      slide.addText(san(items[i]), {
+        x: ML + 0.22, y: y + topBH + 0.06, w: CW - 0.44,
+        h: Math.max(0.24, hcItemH - topBH - 0.10),
+        fontSize, fontFace: d.bodyFont, color: d.text,
+        valign: "middle", lineSpacingMultiple: 1.2, fit: "shrink" as any,
+      });
+    }
+    footer(slide, d, num, total);
+    return;
+  }
+
+  // ── numbered_list (default): numbered circles + row bg ──
   for (let i = 0; i < items.length; i++) {
     const y = contentY2 + i * (itemH + gap);
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
@@ -1575,7 +1816,55 @@ function renderCode(
     }
   }
 
-  // Right: code terminal
+  // Right: code panel — branched by archetype
+  const codeArch = d.componentArchetypes?.code ?? "terminal_dark";
+  const lang = slide_.codeLabel || "Code";
+
+  if (codeArch === "editor_light") {
+    // ── editor_light: accent-bordered panel, no traffic lights, skin-colored text ──
+    const edBarH = 0.28;
+    slide.addShape("roundRect" as any, {
+      x: rightX, y: areaY, w: rightW, h: areaH,
+      fill: { color: d.surface },
+      line: { color: d.accent, width: 1.5 },
+      rectRadius: 0.09,
+    });
+    // Accent top stripe
+    slide.addShape("roundRect" as any, {
+      x: rightX, y: areaY, w: rightW, h: edBarH,
+      fill: { color: d.accent, transparency: 20 },
+      rectRadius: 0.09,
+    });
+    slide.addShape("rect" as any, {
+      x: rightX, y: areaY + edBarH / 2, w: rightW, h: edBarH / 2,
+      fill: { color: d.accent, transparency: 20 },
+    });
+    // Right-side accent stripe
+    slide.addShape("rect" as any, {
+      x: rightX + rightW - 0.04, y: areaY, w: 0.04, h: areaH,
+      fill: { color: d.accent, transparency: 80 },
+    });
+    // Language label
+    slide.addText(san(lang), {
+      x: rightX + 0.14, y: areaY + 0.04, w: rightW - 0.28, h: 0.20,
+      fontSize: 9, fontFace: d.bodyFont, bold: true,
+      color: d.accent, align: "left",
+    });
+    // Code text in skin color
+    if (codeText) {
+      slide.addText(sanCode(codeText), {
+        x: rightX + 0.16, y: areaY + edBarH + 0.10,
+        w: rightW - 0.28, h: areaH - edBarH - 0.18,
+        fontSize: 11, fontFace: "Courier New",
+        color: d.text,
+        valign: "top", lineSpacingMultiple: 1.45, fit: "shrink" as any,
+      });
+    }
+    footer(slide, d, num, total);
+    return;
+  }
+
+  // ── terminal_dark (default): slate terminal with traffic lights ──
   const termBg = "1E293B";
   const barH = 0.32;
   slide.addShape("roundRect" as any, {
@@ -1614,7 +1903,6 @@ function renderCode(
     });
   }
   // Language label
-  const lang = slide_.codeLabel || "Python";
   slide.addText(lang, {
     x: rightX,
     y: areaY + 0.06,
@@ -1718,6 +2006,86 @@ function renderTwocol(
     }
   };
 
+  const compArch = d.componentArchetypes?.comparison ?? "clean_columns";
+
+  // ── split_panels: colored column headers + mini-card items ──
+  if (compArch === "split_panels") {
+    const hdrH = 0.42;
+    const listY = CONTENT_Y + hdrH + 0.08;
+    const listH = FOOTER_Y - listY - 0.08;
+    const renderSplitCol = (colItems: string[], colX: number, colColor: string, label: string) => {
+      // Header band
+      slide.addShape("roundRect" as any, { x: colX, y: CONTENT_Y, w: colW, h: hdrH, fill: { color: colColor }, rectRadius: 0.08 });
+      slide.addShape("rect" as any, { x: colX, y: CONTENT_Y + hdrH / 2, w: colW, h: hdrH / 2, fill: { color: colColor } });
+      slide.addText(san(label).toUpperCase(), {
+        x: colX + 0.10, y: CONTENT_Y, w: colW - 0.20, h: hdrH,
+        fontSize: 11, fontFace: d.titleFont, bold: true,
+        color: "FFFFFF", align: "center", valign: "middle", charSpacing: 2,
+      });
+      // Items as mini-cards
+      const spGap = 0.08;
+      const spH = Math.max(0.44, (listH - spGap * (colItems.length - 1)) / Math.max(colItems.length, 1));
+      for (let i = 0; i < colItems.length; i++) {
+        const y = listY + i * (spH + spGap);
+        slide.addShape("roundRect" as any, {
+          x: colX, y, w: colW, h: spH,
+          fill: { color: d.surface }, line: { color: d.border, width: 0.3 }, rectRadius: 0.06,
+        });
+        slide.addShape("rect" as any, { x: colX, y, w: 0.04, h: spH, fill: { color: colColor, transparency: 30 } });
+        slide.addText(san(colItems[i]), {
+          x: colX + 0.14, y: y + 0.04, w: colW - 0.22, h: spH - 0.08,
+          fontSize: colItems.length <= 3 ? 14 : 12, fontFace: d.bodyFont, color: d.text,
+          valign: "middle", lineSpacingMultiple: 1.2, fit: "shrink" as any,
+        });
+      }
+    };
+    renderSplitCol(leftItems, ML, d.accent, "Grupo A");
+    renderSplitCol(rightItems, ML + colW + 0.22, d.accent2, "Grupo B");
+    // Center divider
+    slide.addShape("rect" as any, { x: ML + colW + 0.09, y: CONTENT_Y, w: 0.04, h: FOOTER_Y - CONTENT_Y - 0.08, fill: { color: d.border } });
+    footer(slide, d, num, total);
+    return;
+  }
+
+  // ── subtle_table: alternating row tints, hairline dividers, no accent bars ──
+  if (compArch === "subtle_table") {
+    const maxRows = Math.max(leftItems.length, rightItems.length, 1);
+    const stGap = 0.06;
+    const stH = Math.max(0.44, (CONTENT_H - stGap * (maxRows - 1)) / maxRows);
+    const divX = ML + colW + 0.11;
+    for (let i = 0; i < maxRows; i++) {
+      const y = CONTENT_Y + i * (stH + stGap);
+      // Alternating row tint
+      slide.addShape("rect" as any, {
+        x: ML, y, w: CW, h: stH,
+        fill: { color: i % 2 === 0 ? d.surface : d.bg, transparency: i % 2 === 0 ? 0 : 72 },
+      });
+      // Hairline row divider
+      if (i < maxRows - 1) {
+        slide.addShape("rect" as any, { x: ML, y: y + stH + stGap / 2 - 0.006, w: CW, h: 0.012, fill: { color: d.border } });
+      }
+      if (i < leftItems.length) {
+        slide.addText(san(leftItems[i]), {
+          x: ML + 0.10, y: y + 0.04, w: colW - 0.18, h: stH - 0.08,
+          fontSize: maxRows <= 3 ? 14 : 12, fontFace: d.bodyFont, color: d.text,
+          valign: "middle", lineSpacingMultiple: 1.2, fit: "shrink" as any,
+        });
+      }
+      if (i < rightItems.length) {
+        slide.addText(san(rightItems[i]), {
+          x: divX + 0.10, y: y + 0.04, w: colW - 0.18, h: stH - 0.08,
+          fontSize: maxRows <= 3 ? 14 : 12, fontFace: d.bodyFont, color: d.text,
+          valign: "middle", lineSpacingMultiple: 1.2, fit: "shrink" as any,
+        });
+      }
+    }
+    // Column divider
+    slide.addShape("rect" as any, { x: divX, y: CONTENT_Y, w: 0.022, h: maxRows * (stH + stGap), fill: { color: d.border } });
+    footer(slide, d, num, total);
+    return;
+  }
+
+  // ── clean_columns (default): accent bars per row, two-column list ──
   renderCol(leftItems, ML);
   renderCol(rightItems, ML + colW + 0.22);
   footer(slide, d, num, total);
