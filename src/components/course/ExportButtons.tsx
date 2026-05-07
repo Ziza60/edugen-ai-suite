@@ -453,13 +453,31 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 if (res && res.ok && v4data?.url) {
                   data = v4data;
                   engineUsed = "v4-native";
-                  console.log("[PPTX] v4 diag:", JSON.stringify(v4data._diag));
+                  // Unified diagnostic line — answers: which engine, version,
+                  // fallback, cache, totals, removed, blocking issues, status.
+                  console.log("[PPTX][DIAG]", JSON.stringify({
+                    engine:         v4data.engine ?? "export-pptx-v4",
+                    engine_version: v4data.engine_version,
+                    status:         v4data.status ?? "exported",
+                    fallback_used:  v4data.fallback_used ?? false,
+                    cache:          v4data.cache ?? "miss",
+                    slide_count:    v4data.slide_count,
+                    qa:             v4data.qa,
+                    blocking_issues: v4data.blocking_issues ?? [],
+                  }));
+                  console.log("[PPTX] v4 raw _diag:", JSON.stringify(v4data._diag));
                 } else if (res && res.status === 422 && v4data?.code === "PPTX_QA_VETO") {
                   // ── SEMANTIC VETO — DO NOT FALL BACK ──
-                  // The QA engine intentionally blocked this export because critical
-                  // content issues (domain contamination, generic objectives, stripped
-                  // technical names) survived all repair cycles. Falling back to v3
-                  // would silently produce a corrupt PPTX. Surface the error instead.
+                  console.error("[PPTX][DIAG]", JSON.stringify({
+                    engine:         v4data.engine ?? "export-pptx-v4",
+                    engine_version: v4data.engine_version,
+                    status:         "blocked",
+                    fallback_used:  false,
+                    cache:          v4data.cache ?? "miss",
+                    totalSlides:    v4data.totalSlides,
+                    removedSlides:  v4data.removedSlides,
+                    blocking_issues: v4data.blockingIssues,
+                  }));
                   console.error("[PPTX] v4 BLOQUEOU export (QA veto):", v4data);
                   const issues: Array<{slideId:string;type:string;message:string}> =
                     v4data?.blockingIssues ?? [];

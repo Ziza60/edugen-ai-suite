@@ -5841,7 +5841,29 @@ async function runPipeline(
   );
 
   console.log(`[V5] Pipeline complete: ${slideNum} slides`);
-  return pptx;
+  // Compact QA summary for diagnostic transparency on the success path.
+  // The veto already short-circuits when blocked; here we expose what was
+  // detected and silently auto-repaired (so the user can see the engine
+  // actually did work, even when no PPTX is blocked).
+  const qaSummary = {
+    qa_status: cascadeReport.status,                 // PASSED | WARNING | FAILED
+    issues_unfixed: cascadeReport.issues.length,     // surviving (non-hard-critical)
+    issues_fixed:   cascadeReport.fixedIssues.length,
+    original_slides: originalSlideCount,
+    rendered_slides: slideNum,
+    removed_slides:  Math.max(0, originalSlideCount - allModuleSlides.reduce((a, m) => a + m.filter(isRenderableSlide).length, 0)),
+    fixed_breakdown: (() => {
+      const counts: Record<string, number> = {};
+      for (const i of cascadeReport.fixedIssues) counts[i.type] = (counts[i.type] ?? 0) + 1;
+      return counts;
+    })(),
+    unfixed_breakdown: (() => {
+      const counts: Record<string, number> = {};
+      for (const i of cascadeReport.issues) counts[i.type] = (counts[i.type] ?? 0) + 1;
+      return counts;
+    })(),
+  };
+  return { pptx, qaSummary };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5964,7 +5986,7 @@ Deno.serve(async (req: Request) => {
       `[V5] ENGINE=${ENGINE_VERSION} | "${courseTitle}" | ${moduleData.length} modules | theme=${theme} | density=${density}`,
     );
 
-    const pptx = await runPipeline(
+    const { pptx, qaSummary } = await runPipeline(
       courseTitle,
       moduleData,
       design,
@@ -6038,8 +6060,14 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         url: signedUrl.signedUrl,
         version: "v5",
+        engine: "export-pptx-v4",
         engine_version: ENGINE_VERSION,
+        status: "exported",
+        fallback_used: false,            // v4 never falls back internally
+        cache: "miss",                   // every export is a fresh build (filename has timestamp)
         slide_count: (repairDiag.slide_count as number) ?? 0,
+        blocking_issues: [],             // empty on success path (veto would 422 otherwise)
+        qa: qaSummary,                   // status / fixed / unfixed / removed_slides / breakdowns
         _diag: {
           raw_bytes: rawBytes.byteLength,
           repaired_bytes: pptxData.byteLength,
@@ -6062,7 +6090,11 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           error:           "PPTX export blocked by quality veto",
           code:            "PPTX_QA_VETO",
+          engine:          "export-pptx-v4",
           engine_version:  ENGINE_VERSION,
+          status:          "blocked",
+          fallback_used:   false,
+          cache:           "miss",
           totalSlides:     v.totalSlides,
           removedSlides:   v.removedSlides,
           blockingIssues:  v.blockingIssues.map((i) => ({
