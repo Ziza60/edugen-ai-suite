@@ -64,7 +64,10 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~6900 lines, ENGINE_VERSION=5.1.13).
+`supabase/functions/export-pptx-v4/index.ts` (~6900 lines, ENGINE_VERSION=5.1.14).
+
+### Hardening Pass 14 (v5.1.14) — Deterministic SQL strip on covers + slides
+Pass 12's `generate-course` prompt hardening reduced SQL leakage but didn't eliminate it — the LLM still occasionally emits SQL DDL pedagogy (`Criar tabelas com CREATE TABLE`) in module covers of Python courses. Pass 14 stops blocking the entire export for this: a new `stripSqlContaminationFromSlide(slide, domain, moduleTitle, slideId)` runs in 3 places (pre-QA per-slide loop, pre-QA cover loop, post-cascade cover loop) and drops ONLY the offending strings from `items`/`leftItems`/`rightItems`/`competencies`. Empty lists are left empty (renderer handles sparse covers). `[V5-SQL-STRIP]` log per cover with drop count. Allow-list logic identical to safety net so SQL courses/modules are unaffected.
 
 ### Hardening Pass 13 (v5.1.13) — `missing_por_que` repair self-rejection bug
 `repairBrokenLanguage` runs the detector again on the repaired string to verify the fix; if the detector still flags it, the repair is rolled back. The `missing_por_que` pattern `(^|[\s:])Que\s+(Usar|...)` matched both the broken input ("POO: Que Usar...") AND the fixed output ("POO: Por Que Usar..."), because the leading-anchor `[\s:]` happily matched the space after "Por". The verify step rejected every repair and the broken title leaked all the way to the safety net. Pass 13 rewrites the detector and repair regex with a negative lookbehind `(?<!\bPor\s)\bQue\s+...` so already-fixed strings are no longer matched. Tested 8/8: detects/repairs 3 broken cases, leaves 5 valid cases ("Por Que Usar...", "Aquele que aprender", "Esquecemos algumas regras", etc.) untouched.

@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const ENGINE_VERSION = "5.1.13";
+const ENGINE_VERSION = "5.1.14";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4200,6 +4200,61 @@ const MODULE_SQL_ALLOW_RE =
 const MODULE_PYTHON_ALLOW_RE =
   /\bpython\b|pandas|numpy|django|flask|jupyter|scikit|matplotlib|seaborn|pytorch|tensorflow/i;
 
+// v5.1.14 — DETERMINISTIC SQL STRIP for module covers (items + competencies)
+// When the LLM ignores domain-integrity prompts and emits SQL DDL/DML inside
+// a non-SQL course's module cover (e.g. "Criar tabelas com CREATE TABLE" in a
+// Python "Estruturas de Dados" module), the safety net previously vetoed the
+// whole export. Now we drop ONLY the offending strings so the cover survives.
+// If a list goes empty after stripping, we leave it empty (renderer handles
+// sparse covers; cleaner than fabricating fake content).
+function isSqlContaminatedString(txt: string): boolean {
+  if (!txt || typeof txt !== "string") return false;
+  return HARD_SQL_PROSE_RE.test(txt) ||
+    PT_SQL_DDL_RE.test(txt) ||
+    BARE_SQL_UPPER_RE.test(txt);
+}
+
+function stripSqlContaminationFromSlide(
+  slide: Slide,
+  courseDomain: ContentDomain,
+  moduleTitle: string,
+  slideId: string,
+): Slide {
+  const moduleAllowsSql = MODULE_SQL_ALLOW_RE.test(moduleTitle);
+  const moduleAllowsPython = MODULE_PYTHON_ALLOW_RE.test(moduleTitle);
+  const looksLikePython = courseDomain === "python" || moduleAllowsPython;
+  const checkSql = (courseDomain !== "sql" && !moduleAllowsSql) || looksLikePython;
+  if (!checkSql) return slide;
+
+  const out = { ...slide } as Slide & { competencies?: string[] };
+  let dropped = 0;
+
+  for (const key of ["items", "leftItems", "rightItems"] as const) {
+    const arr = (out as unknown as Record<string, unknown>)[key];
+    if (Array.isArray(arr)) {
+      const before = arr.length;
+      const cleaned = (arr as string[]).filter(
+        (t) => typeof t !== "string" || !isSqlContaminatedString(t),
+      );
+      dropped += before - cleaned.length;
+      (out as unknown as Record<string, unknown>)[key] = cleaned;
+    }
+  }
+  const comps = (slide as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    const before = comps.length;
+    const cleaned = comps.filter((t) => !isSqlContaminatedString(t));
+    dropped += before - cleaned.length;
+    out.competencies = cleaned;
+  }
+  if (dropped > 0) {
+    console.log(
+      `[V5-SQL-STRIP] ${slideId} | "${moduleTitle}" | ${dropped} contaminated item(s) removed`,
+    );
+  }
+  return out;
+}
+
 function runGlobalFieldSafetyNet(
   allModuleSlides: Slide[][],
   courseDomain: ContentDomain,
@@ -6756,6 +6811,8 @@ async function runPipeline(
       out = repairSlideSemanticBreaks(out, mTitle, courseTitle, sid);
       out = repairSlideLearningObjectives(out, mTitle, courseTitle);
       out = repairSlideBrokenLanguage(out, sid);
+      // v5.1.14: deterministic SQL strip (drops contaminated items)
+      out = stripSqlContaminationFromSlide(out, inferCourseDomain(courseTitle), mTitle, sid);
       return out;
     });
   }
@@ -6769,6 +6826,7 @@ async function runPipeline(
     c = repairSlideSemanticBreaks(c, mTitle, courseTitle, sid);
     c = repairSlideLearningObjectives(c, mTitle, courseTitle);
     c = repairSlideBrokenLanguage(c, sid);
+    c = stripSqlContaminationFromSlide(c, inferCourseDomain(courseTitle), mTitle, sid);
     moduleCovers[mi] = c;
   }
 
@@ -6828,6 +6886,7 @@ async function runPipeline(
       out = repairSlideSemanticBreaks(out, mTitle, courseTitle, sid);
       out = repairSlideLearningObjectives(out, mTitle, courseTitle);
       out = repairSlideBrokenLanguage(out, sid);
+      out = stripSqlContaminationFromSlide(out, inferCourseDomain(courseTitle), mTitle, sid);
       return out;
     });
   }
@@ -6869,6 +6928,7 @@ async function runPipeline(
     c = repairSlideSemanticBreaks(c, mTitle, courseTitle, sid);
     c = repairSlideLearningObjectives(c, mTitle, courseTitle);
     c = repairSlideBrokenLanguage(c, sid);
+    c = stripSqlContaminationFromSlide(c, inferCourseDomain(courseTitle), mTitle, sid);
     moduleCovers[mi] = c;
   }
   // Wrap each cover as its own pseudo-module so safety-net indexing keeps
