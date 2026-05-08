@@ -15,6 +15,9 @@ import {
   type ModuleQADiagnostic,
   type ModulePlannerDiagnostic,
   type CourseExportPlan,
+  // v5.5.3 — module isolation guard
+  getModuleRule,
+  computeOopPositivityFraction,
 } from "./presentation-plan.ts";
 import {
   withTechnicalProtection,
@@ -27,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.5.2";
+const ENGINE_VERSION = "5.5.3";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -7999,7 +8002,24 @@ async function runPipeline(
         `[MODULE-PLANNER] module=${i + 1} title="${modules[i].title.slice(0, 40)}" slides=${slideCount} fatals=${fatalsByModule.get(i) ?? 0} blockers=${blockersByModule.get(i) ?? 0} accepted=${inRange && !hasFatal && !hasBlocker}`,
       );
 
-      if (inRange && !hasFatal && !hasBlocker) {
+      // v5.5.3 — OOP positivity check. When the module rule is `oop` but
+      // <30% of the planner's slides mention any OOP keyword, the module
+      // is contaminated even if no individual slide tripped a leak detector.
+      // Force fallback to legacy generation for that module.
+      let oopPositivityFail = false;
+      const moduleRule = getModuleRule(courseTitle, modules[i].title);
+      if (moduleRule?.kind === "oop") {
+        const planSlidesForFraction = plan.modules[i]?.slides ?? [];
+        const frac = computeOopPositivityFraction(planSlidesForFraction);
+        if (frac < 0.3 && planSlidesForFraction.length > 0) {
+          oopPositivityFail = true;
+          console.log(
+            `[MODULE-PLANNER] module=${i + 1} OOP positivity check FAILED: ${(frac * 100).toFixed(0)}% slides mention OOP keywords (need ≥30%) → forcing legacy fallback`,
+          );
+        }
+      }
+
+      if (inRange && !hasFatal && !hasBlocker && !oopPositivityFail) {
         // v5.3.3 — STAGE 1 binding debug: planner output PER SLIDE before any conversion
         for (let psi = 0; psi < (plan.modules[i]?.slides ?? []).length; psi++) {
           const ps = plan.modules[i].slides[psi];
