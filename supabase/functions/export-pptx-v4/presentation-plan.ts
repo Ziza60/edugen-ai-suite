@@ -716,9 +716,11 @@ const MODULE_OBJECTIVE_FALLBACKS: Record<string, string[]> = {
     "Usar context managers para garantir liberação correta de recursos.",
   ],
   json_apis: [
-    "Serializar e desserializar dados com json.dumps() e json.loads().",
-    "Consumir APIs HTTP em Python usando a biblioteca requests.",
-    "Tratar respostas, status codes e erros de rede em chamadas a APIs.",
+    "Interpretar dados JSON recebidos de APIs Web em Python.",
+    "Serializar e desserializar objetos com json.dumps() e json.loads().",
+    "Realizar requisições HTTP com requests.get() e requests.post().",
+    "Validar respostas usando response.status_code antes de processar.",
+    "Converter respostas com response.json() para dicionários e listas Python.",
   ],
   oop: [
     "Modelar entidades com classes, atributos e métodos em Python.",

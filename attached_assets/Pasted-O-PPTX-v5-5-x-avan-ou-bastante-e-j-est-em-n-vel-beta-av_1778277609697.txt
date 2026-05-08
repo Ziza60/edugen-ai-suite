@@ -1,0 +1,253 @@
+O PPTX v5.5.x avançou bastante e já está em nível beta avançado.
+
+Pontos estabilizados:
+- planner modular funcionando;
+- context guard funcionando;
+- Technical Preservation Layer funcionando;
+- títulos artificiais reduzidos;
+- uppercase excessivo reduzido;
+- semantic-region assignment corrigido;
+- POO voltou a ficar coerente;
+- tokens técnicos preservados;
+- export funcionando.
+
+Agora NÃO quero mexer na arquitetura macro.
+
+NÃO alterar:
+- renderer core;
+- billing;
+- rotas públicas;
+- schema Supabase;
+- ExportButtons;
+- fallback v3;
+- planner modular;
+- Technical Preservation Layer;
+- QA veto;
+- semantic-region assignment.
+
+Objetivo desta rodada:
+refinar os últimos gargalos editoriais/técnicos.
+
+Problemas restantes no PPTX:
+1. código ainda termina com `# ...`;
+2. snippets ainda terminam sem fechamento lógico;
+3. slides de JSON/API ainda têm objetivos genéricos;
+4. slides “parte 2” ainda podem ficar genéricos;
+5. alguns exemplos de código são tecnicamente válidos, mas pedagogicamente fracos.
+
+Implementar de forma cirúrgica.
+
+1. Endurecer ELLIPSIS_CODE_PLACEHOLDER
+
+Nenhum slide de código pode exportar com:
+
+```python
+# ...
+
+ou:
+
+...
+continua
+código omitido
+restante omitido
+
+Se detectar:
+
+tentar repair;
+se não conseguir, remover o snippet ou bloquear o slide;
+nunca exportar placeholder.
+
+Adicionar log:
+
+[CODE-ELLIPSIS-BLOCK]
+slide=...
+action=repair|drop|veto
+Melhorar repairIncompleteCodeExample()
+
+O reparo precisa completar semanticamente o exemplo, não apenas remover # ....
+
+Exemplos esperados:
+
+Para desconto/pizzaria:
+
+Antes:
+
+totalliquido = totalbruto - desconto
+# ...
+
+Depois:
+
+totalliquido = totalbruto - desconto
+return totalliquido
+
+pedido = [{"preco": 60.0}, {"preco": 30.0}]
+print(calcularvalortotal(pedido))
+
+Para POO:
+
+Antes:
+
+meu_carro = Carro('Toyota', 'Corolla')
+print(meu_carro)
+
+# ...
+
+Depois:
+
+meu_carro = Carro('Toyota', 'Corolla')
+meu_carro.ligar()
+
+ou, se o método disponível for outro:
+
+print(meu_carro.exibir_info())
+
+Para logging:
+
+Antes:
+
+soma = sum(dados)
+logging.debug(f'Soma calculada: {soma}')
+
+Depois:
+
+soma = sum(dados)
+logging.debug(f'Soma calculada: {soma}')
+return soma
+
+resultado = processar_dados([1, 2, 3])
+print(resultado)
+Fazer repair contextual
+
+repairIncompleteCodeExample deve receber:
+
+repairIncompleteCodeExample({
+  currentSlide,
+  previousSlide,
+  nextSlide,
+  moduleContext,
+  courseContext,
+  contextualSymbols
+})
+
+Usar:
+
+classe já apresentada;
+função já apresentada;
+variáveis já usadas;
+domínio do exemplo;
+imports já usados.
+
+Não inventar Produto se o módulo usa Livro ou Carro.
+Não trocar pizzaria por banco.
+Não trocar biblioteca por ecommerce.
+
+Adicionar logs:
+
+[CODE-CONTEXT]
+slide=...
+classes=["Carro"]
+functions=["calcularvalortotal"]
+variables=["meu_carro"]
+domain="pizzaria|biblioteca|poo|logging"
+Corrigir objetivos genéricos de JSON/API
+
+Ainda aparecem:
+
+Compreender trabalhando com JSON e APIs Web.
+Identificar trabalhando com JSON e APIs Web.
+
+Isso deve ser proibido.
+
+Para módulo py_json_api, objetivos corretos devem ser concretos:
+
+Interpretar dados JSON recebidos de APIs Web.
+Serializar e desserializar objetos Python com json.dumps() e json.loads().
+Realizar requisições HTTP com requests.get() e requests.post().
+Validar respostas usando response.status_code.
+Converter respostas com response.json() para dicionários/listas Python.
+
+Se objetivo contiver:
+
+“Compreender trabalhando”
+“Identificar trabalhando”
+“Aplicar trabalhando”
+
+reparar imediatamente.
+
+Adicionar log:
+
+[OBJECTIVE-JSON-API-REPAIR]
+before=...
+after=...
+Detectar slide “parte 2” fraco
+
+Slides com:
+
+“(II)”
+“Parte 2”
+“2/2”
+
+devem ser aceitos apenas se trouxerem conteúdo novo e concreto.
+
+Se for apenas lista genérica, como:
+
+“organizar projetos...”
+“facilita manutenção...”
+“promove colaboração...”
+
+então:
+
+merge com slide anterior;
+ou reescrever com conteúdo concreto;
+ou remover.
+
+Adicionar log:
+
+[WEAK-CONTINUATION]
+slide=...
+reason=generic_part_2
+action=merge|rewrite|drop
+Code slide integrity
+
+Se slide estiver marcado como CÓDIGO:
+
+deve conter bloco de código real;
+não pode conter apenas bullets;
+não pode conter pseudoexplicação sem snippet;
+snippet deve ter início, ação e resultado.
+
+Se não houver código:
+
+converter para CONCEITO/EXEMPLO;
+ou gerar snippet mínimo real.
+
+Adicionar log:
+
+[CODE-SLIDE-INTEGRITY]
+slide=...
+valid=true|false
+action=keep|convert|repair
+Critérios de aceite
+
+Gerar novamente:
+“Introdução à Programação em Python”.
+
+O PPTX será melhor se:
+
+nenhum código terminar com # ...;
+slide de desconto terminar com return e exemplo de uso;
+slide POO chamar método real, não print(objeto);
+slide logging tiver return ou print(resultado);
+objetivos JSON/API forem concretos;
+slides “parte 2” genéricos forem reduzidos;
+não houver regressão em tokens técnicos;
+não houver regressão no layout;
+POO continuar sem contaminação;
+export continuar funcionando.
+
+Prioridade:
+
+completude dos exemplos de código;
+objetivos concretos;
+redução de slides genéricos;
+não quebrar estabilidade atual.

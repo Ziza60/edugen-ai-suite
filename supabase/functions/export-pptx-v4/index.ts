@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.5.6";
+const ENGINE_VERSION = "5.5.7";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -569,10 +569,44 @@ function repairIncompleteCodeExample(
   const before = code;
   let out = stripTrailingPlaceholderComment(code).replace(/\s*$/, "");
   if (!out.trim()) return null;
+  // v5.5.7 — explicit ellipsis-block log: emitted on EVERY entry where the
+  // input had ellipsis-class damage, regardless of whether repair succeeds.
+  // Action label is updated post-decision via `[CODE-REPAIR]` / Guardrail-4 demote.
+  const initialReason = validateSemanticCodeCompleteness(before);
+  if (initialReason && /^(ellipsis|todo)/.test(initialReason)) {
+    console.warn(
+      `[CODE-ELLIPSIS-BLOCK] slide=${slideNum} reason=${initialReason} action=attempt_repair`,
+    );
+  }
   const reason = validateSemanticCodeCompleteness(out);
   if (reason === null) {
     if (out !== before) console.log(`[CODE-REPAIR] slide=${slideNum} pattern=strip_placeholder_only`);
     return out !== before ? out : null;
+  }
+  // v5.5.7 — print(<inst>) → <inst>.<method>() pattern.
+  // After a class instance is created, planners often emit `print(meu_carro)`
+  // followed by `# ...` (now stripped). That print is pedagogically dead —
+  // it just shows the object's address. Replace with a real method call
+  // when one is available from the module context (moduleCtx.funcs).
+  const printInstMatch = out.match(/^([ \t]*)print\(\s*([a-z_][\w]*)\s*\)\s*$/m);
+  if (printInstMatch) {
+    const [fullMatch, indent, instName] = printInstMatch;
+    // Confirm instName is actually a class instance: was assigned a ClassName(...) call
+    const isInst = new RegExp(`\\b${instName}\\s*=\\s*[A-Z][A-Za-z0-9_]*\\s*\\(`).test(out);
+    if (isInst) {
+      // Pick a method: prefer module-context funcs that aren't __init__/builtin
+      const candidate = moduleCtx.funcs.find(
+        (f) => f !== "__init__" && !["main", "init"].includes(f),
+      );
+      if (candidate) {
+        out = out.replace(fullMatch, `${indent}${instName}.${candidate}()`);
+        console.log(
+          `[CODE-REPAIR] slide=${slideNum} pattern=print_inst_to_method inst=${instName} method=${candidate}`,
+        );
+        const afterPrintFix = validateSemanticCodeCompleteness(out);
+        if (afterPrintFix === null) return out;
+      }
+    }
   }
   const cm = out.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/m);
   if (cm && (reason === "class_defined_but_unused" || reason === "too_few_code_lines")) {
@@ -5440,6 +5474,9 @@ function detectModuleDomainPython(moduleTitle: string, courseTopic: string): str
   const t = `${moduleTitle} ${courseTopic}`.toLowerCase();
   // py_best_practices FIRST — most specific module class
   if (/\bboas\s+pr[áa]ticas|\bbest\s+practices|\bimplant|\bdeploy|\bproduc[aã]o|\bci[\/\-]?cd|\bempacot|\bpep\s*8|\bvenv\b|\bpip\b|\brequirements|\bsetup\.py|\bdocstring|\bestrutura\s+de\s+projeto|\breadme/.test(m)) return "py_best_practices";
+  // v5.5.7 — py_json_api BEFORE py_files: "Trabalhando com JSON e APIs Web"
+  // titles would otherwise miss because they don't mention arquivos/leitura.
+  if (/\bjson\b|\bapis?\b|\brest\b|\bhttp\b|\brequests\b/.test(t)) return "py_json_api";
   if (/\barquivos?|\bfiles?\b|\bi\/o\b|\bleitura|\bescrita/.test(t)) return "py_files";
   if (/\bclasses?|\boop\b|\bobjetos?|\bherança|\bencapsul/.test(t)) return "py_oop";
   if (/\btestes?|\bunittest|\bpytest|\btdd\b/.test(t)) return "py_tests";
@@ -5689,6 +5726,13 @@ const PYTHON_OBJECTIVE_TAILS: Record<string, string[]> = {
     "Validar resultados com `assertEqual()` e `assertTrue()`.",
     "Organizar testes em classes `TestCase` e métodos `test_*`.",
   ],
+  py_json_api: [
+    "Interpretar dados JSON recebidos de APIs Web em Python.",
+    "Serializar e desserializar objetos com `json.dumps()` e `json.loads()`.",
+    "Realizar requisições HTTP com `requests.get()` e `requests.post()`.",
+    "Validar respostas usando `response.status_code` antes de processar.",
+    "Converter respostas com `response.json()` para dicionários e listas Python.",
+  ],
   py_best_practices: [
     "Aplicar PEP 8 e docstrings para manter código legível e padronizado.",
     "Organizar projetos Python com `src/`, `tests/`, `docs/` e `README.md`.",
@@ -5716,6 +5760,13 @@ function repairLearningObjective(
   console.log(
     `[V5-OBJECTIVE-REPAIR] moduleKind=${sub} before="${text.slice(0, 80)}" after="${replacement.slice(0, 80)}"`,
   );
+  // v5.5.7 — dedicated JSON/API repair log so production filters can isolate
+  // the slide-28-class regression independently of generic objective traffic.
+  if (sub === "py_json_api") {
+    console.log(
+      `[OBJECTIVE-JSON-API-REPAIR] before="${text.slice(0, 100)}" after="${replacement.slice(0, 100)}"`,
+    );
+  }
   return replacement;
 }
 
