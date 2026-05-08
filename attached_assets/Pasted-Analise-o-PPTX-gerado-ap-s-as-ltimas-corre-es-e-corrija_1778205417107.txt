@@ -1,0 +1,97 @@
+Analise o PPTX gerado após as últimas correções e corrija o motor de geração PPTX v5/v6 sem trocar a arquitetura principal.
+
+Problemas ainda presentes no arquivo:
+1. Slides com texto truncado ou semanticamente inválido:
+   - “Utiliza e para garantir...”
+   - “como, e 'a'”
+   - “e preparam e limpam recursos...”
+   - “busca dados de um recurso, enquanto envia dados.”
+   - “Usamos para definir...”
+   - “O método é o construtor... como e idade.”
+
+2. Slide 11 contém fragmentos de código soltos em vez de conteúdo didático legível.
+
+3. Há vazamento entre módulos:
+   - No módulo 8, “Boas Práticas e Implantação”, aparecem objetivos do módulo 1:
+     “Criar expressões e atribuições corretas em Python”
+     “Aplicar entrada e saída com variáveis, tipos e operadores”.
+
+4. Há bullets genéricos ou montados por template:
+   - “Compreender trabalhando com JSON e APIs Web.”
+   - “Identificar trabalhando com JSON e APIs Web.”
+
+5. Há duplicação de slides de aprendizados:
+   - Módulo 6 repete “Ganhos e Aplicações da POO”.
+   - Módulo 8 repete “Principais Aprendizados do Módulo”.
+
+6. Há erro técnico:
+   - `super().init()` deve ser `super().__init__()`.
+
+Tarefas obrigatórias:
+
+A) Criar ou reforçar um validador semântico de bullets.
+Rejeitar qualquer bullet que:
+- termine com preposição, artigo ou conjunção;
+- contenha padrões como “e para”, “como, e”, “com, e”, “usando e”, “utiliza e”, “como e idade”;
+- contenha placeholders vazios;
+- tenha verbo sem objeto claro;
+- seja apenas reformulação mecânica do título do módulo;
+- misture termos de outro módulo.
+
+B) Criar validador por módulo.
+Cada módulo deve ter um conjunto de termos permitidos e termos proibidos.
+Exemplo:
+- Módulo 1: variáveis, tipos, operadores, entrada, saída.
+- Módulo 4: arquivos, open, with, try, except, finally, FileNotFoundError, IOError.
+- Módulo 5: JSON, json.loads, json.dumps, API, HTTP, GET, POST, requests, status code.
+- Módulo 6: classe, objeto, instância, __init__, self, método, herança, encapsulamento.
+- Módulo 7: unittest, pytest, logging, debug, assert, TestCase, setUp, tearDown.
+- Módulo 8: PEP 8, docstrings, ambiente virtual, requirements.txt, dependências, estrutura de projeto, deploy, empacotamento.
+
+Se um slide de um módulo contiver termos centrais de outro módulo sem justificativa, ele deve ser regenerado ou substituído por fallback seguro do próprio módulo.
+
+C) Corrigir o sistema de fallback.
+O fallback deve ser por módulo, nunca all-or-nothing.
+Se um slide falhar:
+- regenerar apenas aquele slide;
+- se falhar novamente, substituir por template seguro do módulo;
+- nunca deixar fragmentos soltos de código ou frases incompletas no PPTX.
+
+D) Criar detector de duplicidade.
+Dentro do mesmo módulo:
+- não permitir dois slides com o mesmo título;
+- não permitir dois slides com mais de 65% de similaridade textual;
+- se houver duplicidade, manter o melhor slide e substituir o outro por exercício, exemplo prático ou síntese.
+
+E) Corrigir renderização de código.
+Slides de código devem conter:
+- explicação curta e completa;
+- bloco de código válido;
+- sem fragmentos soltos fora do bloco;
+- sem interpolações quebradas como `{pizza['nome']}` aparecendo isoladas.
+Se o código não couber, dividir em dois slides ou resumir.
+
+F) Adicionar smoke tests obrigatórios antes do deploy.
+Testar explicitamente se o validador rejeita:
+- “Utiliza e para garantir robustez.”
+- “Captura exceções comuns como, e 'a'.”
+- “Usamos para definir um novo tipo de objeto.”
+- “e preparam e limpam recursos para os testes.”
+- “Compreender trabalhando com JSON e APIs Web.”
+- “Criar expressões e atribuições corretas em Python.” dentro do módulo 8.
+
+G) Gerar novamente o PPTX e verificar:
+- nenhum slide com frase truncada;
+- nenhum slide com conteúdo de módulo errado;
+- nenhum código solto;
+- nenhum slide duplicado dentro do módulo;
+- termos técnicos corretos, especialmente `super().__init__()`.
+
+Importante:
+Não substitua o motor inteiro.
+Aplique correções cirúrgicas no pipeline atual: geração → validação → repair → fallback → renderização.
+Ao final, mostre:
+1. arquivos alterados;
+2. resumo das regras adicionadas;
+3. resultado dos smoke tests;
+4. link ou confirmação do novo PPTX gerado.

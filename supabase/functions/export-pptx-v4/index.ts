@@ -8,7 +8,7 @@ import {
   type V5SlideLike,
 } from "./presentation-plan.ts";
 
-const ENGINE_VERSION = "5.2.3";
+const ENGINE_VERSION = "5.2.4";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template

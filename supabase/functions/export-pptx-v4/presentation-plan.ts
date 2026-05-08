@@ -271,6 +271,15 @@ function isGenericObjective(text: string, moduleTitle: string): boolean {
     // Verb + first 2-3 words of module title
     const mtHead = mt.split(/\s+/).slice(0, 3).join(" ");
     if (mtHead.length > 8 && t === `${v} ${mtHead}.`) return true;
+    // v5.2.4 — Verb + gerund-glue + module title (mechanical reformulation)
+    // "Compreender trabalhando com JSON e APIs Web."
+    // "Identificar trabalhando com Estruturas de Dados."
+    const glues = ["trabalhando com", "estudando", "explorando", "atuando em", "atuando com", "lidando com"];
+    for (const g of glues) {
+      if (t === `${v} ${g} ${mt}.` || t === `${v} ${g} ${mt}`) return true;
+      const mtHead2 = mt.split(/\s+/).slice(0, 4).join(" ");
+      if (mtHead2.length > 8 && (t === `${v} ${g} ${mtHead2}.` || t.startsWith(`${v} ${g} ${mtHead2}`))) return true;
+    }
   }
   return false;
 }
@@ -295,7 +304,10 @@ function isTruncatedSentence(text: string): boolean {
   // orphan comma inside parens — "(, ERROR)" / "( ,ERROR)"
   if (/\(\s*,/.test(t)) return true;
   // verb + bare "e" + preposition (no noun between) — "Trata e para garantir", "Captura e para feedback", "Utilizar e para definir"
-  if (/\b(Trata|Tratar|Trate|Use|Usar|Utilize|Utilizar|Realize|Realizar|Define|Definir|Cria|Criar|Configura|Configurar|Aplica|Aplicar|Manipula|Manipular|Implementa|Implementar|Organiza|Organizar|Faz|Faça|Captura|Capturar|Capture|Garante|Garantir|Permite|Permitir|Habilita|Habilitar|Verifica|Verificar|Analisa|Analisar|Identifica|Identificar|Prepara|Preparar|Limpa|Limpar)\s+e\s+(para|com|em|no|na|de|do|da)\b/i.test(t)) return true;
+  if (/\b(Trata|Tratar|Trate|Use|Usar|Usamos|Utiliza|Utilize|Utilizar|Utilizamos|Realize|Realizar|Define|Definir|Definimos|Cria|Criar|Criamos|Configura|Configurar|Configuramos|Aplica|Aplicar|Aplicamos|Manipula|Manipular|Implementa|Implementar|Organiza|Organizar|Faz|Faça|Fazemos|Captura|Capturar|Capture|Capturamos|Garante|Garantir|Garantimos|Permite|Permitir|Habilita|Habilitar|Verifica|Verificar|Analisa|Analisar|Identifica|Identificar|Prepara|Preparar|Limpa|Limpar|Busca|Buscar|Envia|Enviar)\s+e\s+(para|com|em|no|na|de|do|da)\b/i.test(t)) return true;
+  // v5.2.4 — verb + " e <prep>" without conjunction subject ("Utiliza e para garantir robustez.")
+  // Same verb list, allows the second word to be just a verb stem (not necessarily preposition)
+  if (/\b(Utiliza|Usamos|Aplica|Aplicamos|Define|Definimos|Captura|Capturamos|Trata|Cria|Criamos|Faz|Fazemos)\s+e\s+(para|com)\b/i.test(t)) return true;
   // verb directly followed by "para" with no object — "Use para buscar", "Utilizar para enviar"
   // Restricted: must be a short fragment (<70 chars) AND have NO substantive
   // word between the verb and "para" (i.e. literally "Verb para X"). Long
@@ -304,8 +316,15 @@ function isTruncatedSentence(text: string): boolean {
   // flagging conversational "Use para iniciar a sessão e configurar o ambiente."
   if (
     t.length < 50 &&
-    /^\s*(Use|Usar|Utilize|Utilizar|Aplique|Aplicar|Realize|Realizar|Configure|Configurar|Defina|Definir|Crie|Criar)\s+para\b/i.test(t)
+    /^\s*(Use|Usar|Usamos|Utilize|Utilizar|Utilizamos|Aplique|Aplicar|Aplicamos|Realize|Realizar|Configure|Configurar|Configuramos|Defina|Definir|Definimos|Crie|Criar|Criamos)\s+para\b/i.test(t)
   ) return true;
+  // v5.2.4 — verb + "para" mid-sentence with no object before "para" — "O comando X usamos para definir Y" → "Usamos para definir" stand-alone
+  // Catch patterns where the verb-para starts a clause after punctuation (".", ":", ";")
+  if (/(?:^|[.:;]\s+)(Usamos|Utilizamos|Aplicamos|Definimos|Criamos|Configuramos|Capturamos|Tratamos|Garantimos|Buscamos|Enviamos)\s+para\b/i.test(t)) return true;
+  // v5.2.4 — bare "como e <short-noun>." trailing ("O método ... como e idade.")
+  if (/\bcomo\s+e\s+[a-zà-ÿ]{2,15}\s*\.\s*$/i.test(t)) return true;
+  // v5.2.4 — "como, e <short>" trailing ("...exceções comuns como, e 'a'.")
+  if (/\bcomo\s*,\s*e\s+['"]?[a-zà-ÿ]{1,8}['"]?\s*\.\s*$/i.test(t)) return true;
   // leading "e" + verb (orphan conjunction) — "e preparam e limpam recursos."
   // Restricted to high-confidence truncations: short fragment (<60 chars) AND
   // either the verb is in 3rd-person plural ending in -am/-em/-m AND the line
@@ -511,30 +530,48 @@ function validateCodeSnippet(code: string, language: string | undefined): boolea
   return true;
 }
 
+// v5.2.4 — Common Python typos with deterministic fixes (super().init etc.)
+function repairPythonApiTypos(code: string): string {
+  if (!code) return code;
+  let out = code;
+  // super().init(...) → super().__init__(...)
+  out = out.replace(/\bsuper\(\)\.init\b(?=\s*\()/g, "super().__init__");
+  // .init( on instance/class (not already __init__)
+  out = out.replace(/(\w)\.init\s*\(/g, (m, p1) => p1 === "_" ? m : `${p1}.__init__(`);
+  // method definition typo: def init(self, ...) → def __init__(self, ...)
+  out = out.replace(/\bdef\s+init\s*\(/g, "def __init__(");
+  // Single-underscore dunder typos
+  out = out.replace(/\b__init_\(/g, "__init__(");
+  out = out.replace(/\b_init__\(/g, "__init__(");
+  return out;
+}
+
 function repairCodeSnippet(code: string, language: string | undefined): string {
   if (!code) return code;
   const lang = (language ?? "python").toLowerCase();
-  const lines = code.split("\n");
+  // v5.2.4 — fix common API typos FIRST (super().init → super().__init__)
+  let working = lang === "python" ? repairPythonApiTypos(code) : code;
+  const lines = working.split("\n");
   const trimmedLines = lines.map((l) => l.trim()).filter((l) => l.length > 0);
-  if (trimmedLines.length === 0) return code;
+  if (trimmedLines.length === 0) return working;
   // Single bare assignment "X = expr" → append print(X) (Python)
   if (lang === "python" && trimmedLines.length === 1) {
     const m = trimmedLines[0].match(/^([A-Za-z_]\w*)\s*=\s*[^=]/);
     if (m) {
-      return `${code.replace(/\s+$/, "")}\nprint(${m[1]})`;
+      return `${working.replace(/\s+$/, "")}\nprint(${m[1]})`;
     }
   }
   // Last line is dangling header (Python def/class with no body)
   if (lang === "python") {
     const last = trimmedLines[trimmedLines.length - 1];
     if (/^def\s+\w+.*:\s*$/.test(last)) {
-      return `${code.replace(/\s+$/, "")}\n    pass`;
+      return `${working.replace(/\s+$/, "")}\n    pass`;
     }
     if (/^class\s+\w+.*:\s*$/.test(last)) {
-      return `${code.replace(/\s+$/, "")}\n    pass`;
+      return `${working.replace(/\s+$/, "")}\n    pass`;
     }
   }
-  return code;
+  return working;
 }
 
 function looksLikeCodeLine(line: string): boolean {
@@ -1191,6 +1228,16 @@ export function repairPlan(
         if (lines.length > 12) {
           finalCode = lines.slice(0, 12).join("\n");
           stats.capped_code++;
+        }
+      }
+      // v5.2.4 — ALWAYS run Python API typo repair (super().init → super().__init__)
+      // even if the snippet is otherwise complete and valid.
+      if (finalCode && (slide.codeLanguage ?? "python").toLowerCase() === "python") {
+        const fixed = repairPythonApiTypos(finalCode);
+        if (fixed !== finalCode) {
+          console.warn(`[V5-CODE-REPAIR] mod=${mod.moduleIndex + 1} fixed Python API typos (super().init/init etc.)`);
+          finalCode = fixed;
+          stats.repaired_code_snippets++;
         }
       }
       // v5.2.3 — repair incomplete code snippet
