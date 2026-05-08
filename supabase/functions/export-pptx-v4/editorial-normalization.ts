@@ -72,11 +72,14 @@ const PROTECTED_ACRONYMS: Array<{ re: RegExp; canonical: string }> = [
 
 // Preserve dotted/parenthesised technical fragments verbatim:
 //   requests.get(), file.read(), pdb.set_trace(), str.upper()
-const DOTTED_CALL_RE = /\b[a-z_][\w]*(?:\.[a-z_][\w]*)+(?:\s*\([^)]*\))?/g;
+// Case-INsensitive because shouted prose ("REQUESTS.GET()") needs to
+// be captured BEFORE sentence-casing. We then store the lowercased
+// canonical form (Python/JS dotted calls are conventionally lowercase).
+const DOTTED_CALL_RE = /\b[a-z_][\w]*(?:\.[a-z_][\w]*)+(?:\s*\([^)]*\))?/gi;
 // Preserve identifiers in `backticks` and snippets that look like code
 const BACKTICK_RE = /`[^`]+`/g;
 // Preserve filenames with extensions: app.py, main.js, README.md
-const FILENAME_RE = /\b[a-zA-Z_][\w-]*\.[a-z]{1,5}\b/g;
+const FILENAME_RE = /\b[a-zA-Z_][\w-]*\.[a-z]{1,5}\b/gi;
 // Preserve URLs (http(s):// + bare www.)
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 
@@ -228,8 +231,12 @@ function maskAllProtected(text: string): { masked: string; restore: (s: string) 
   // then URLs, dotted calls, filenames, acronyms last.
   out = out.replace(BACKTICK_RE, (m) => mark(m));
   out = out.replace(URL_RE, (m) => mark(m));
-  out = out.replace(DOTTED_CALL_RE, (m) => mark(m));
-  out = out.replace(FILENAME_RE, (m) => mark(m));
+  // Dotted calls: lowercase the captured form so REQUESTS.GET() restores
+  // as requests.get() (canonical Python/JS form, per user spec test #3).
+  out = out.replace(DOTTED_CALL_RE, (m) => mark(m.toLowerCase()));
+  // Filenames: lowercase extension only when whole match is uppercase
+  // (APP.PY → app.py); preserve mixed-case (README.md untouched).
+  out = out.replace(FILENAME_RE, (m) => mark(m === m.toUpperCase() ? m.toLowerCase() : m));
   for (const { re } of PROTECTED_ACRONYMS) {
     re.lastIndex = 0;
     out = out.replace(re, (m) => {
