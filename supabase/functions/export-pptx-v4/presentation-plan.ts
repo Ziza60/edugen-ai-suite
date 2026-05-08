@@ -462,7 +462,7 @@ function isPythonCourse(courseTitle: string): boolean {
   return /\bpython\b/i.test(courseTitle);
 }
 
-function getModuleRule(courseTitle: string, moduleTitle: string): ModuleRule | null {
+export function getModuleRule(courseTitle: string, moduleTitle: string): ModuleRule | null {
   if (!isPythonCourse(courseTitle)) return null;
   for (const r of PYTHON_MODULE_RULES) {
     if (r.matchTitle.test(moduleTitle)) return r;
@@ -584,6 +584,59 @@ function isCrossModuleBasicLeak(text: string, moduleTitle: string): boolean {
   if (!text || !moduleTitle) return false;
   if (!ADVANCED_MODULE_TITLE_RE.test(moduleTitle)) return false;
   return FUNDAMENTALS_TOPIC_RE.test(text);
+}
+
+// v5.5.3 — bare-fundamentals title in an advanced module is contamination.
+// FUNDAMENTALS_TOPIC_RE requires "variáveis" + qualifier ("básicas"/"e tipos"
+// /etc), so a slide titled JUST "Variáveis" or "Operadores" inside the OOP /
+// tests / best_practices module slips through. This detector catches those
+// short, generic titles that are unambiguously fundamentals topics when they
+// appear in a module that should be teaching advanced material.
+const BARE_FUNDAMENTALS_TITLE_RE =
+  /^\s*(vari[áa]veis|operadores|tipos\s+de\s+dados(\s+primitivos)?|tipos\s+primitivos|express[oõ]es(\s+aritm[ée]ticas)?|hello\s+world|sintaxe\s+b[áa]sica(\s+do\s+python)?|entrada\s+e\s+sa[íi]da(\s+com\s+(input|print)\(\))?|input\(\)\s+e\s+print\(\)|print\(\)\s+e\s+input\(\)|atribui[çc][aã]o(\s+(simples|b[áa]sica|de\s+valores))?)\s*[:.!?]?\s*$/i;
+
+function isBareFundamentalsTitleInAdvancedModule(
+  title: string,
+  moduleTitle: string,
+): boolean {
+  if (!title || !moduleTitle) return false;
+  if (!ADVANCED_MODULE_TITLE_RE.test(moduleTitle)) return false;
+  return BARE_FUNDAMENTALS_TITLE_RE.test(title.trim());
+}
+
+// v5.5.3 — repair duplicated/orphan prepositions like "dos de Python",
+// "de de Python", "da da Lista". Common output of cascading sanitizers
+// stripping a noun in the middle. Returns the cleaned string.
+const DUPLICATE_PREP_RE =
+  /\b(de|do|da|dos|das|em|no|na|nos|nas)\s+(de|do|da|dos|das|em|no|na|nos|nas)\b/gi;
+function repairOrphanPrepositions(text: string): string {
+  if (!text) return text;
+  // Collapse "X Y" → "Y" (keep the second, more specific preposition)
+  return text.replace(DUPLICATE_PREP_RE, (_m, _a, b) => b);
+}
+
+// v5.5.3 — OOP positivity check used by the per-module gate.
+// Returns the fraction of slides in this module that mention any OOP
+// keyword (class, classe, objeto, método, atributo, instância, herança,
+// encapsulamento, polimorfismo, self, __init__). When the module is
+// labeled OOP and this fraction falls below the threshold, the module
+// is contaminated and should be rejected.
+const OOP_KEYWORD_RE =
+  /\b(class\b|classe|objeto|m[ée]todo|atributo|inst[âa]ncia|heran[çc]a|encapsulamento|polimorfismo|self\b|__init__|super\(\))/i;
+export function computeOopPositivityFraction(slides: PresentationSlide[]): number {
+  if (!slides || slides.length === 0) return 0;
+  let hits = 0;
+  for (const s of slides) {
+    const blob = [
+      s.title ?? "",
+      ...(s.items ?? []),
+      s.code ?? "",
+      ...((s as any).leftItems ?? []),
+      ...((s as any).rightItems ?? []),
+    ].join(" ");
+    if (OOP_KEYWORD_RE.test(blob)) hits++;
+  }
+  return hits / slides.length;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1292,6 +1345,23 @@ export function validatePresentationPlan(
           slideId: sid, moduleIndex: mod.moduleIndex,
           type: "DOMAIN_CONTAMINATION",
           message: `Título com tópico de fundamentos no módulo "${mod.moduleTitle}": "${slide.title}"`,
+          severity: "fatal",
+        });
+      }
+      // v5.5.3 — 7d. Bare fundamentals title in advanced module.
+      // Catches short, generic titles like "Variáveis", "Operadores",
+      // "Hello World", "Entrada e Saída" inside OOP / tests / best_practices
+      // modules that FUNDAMENTALS_TOPIC_RE doesn't match because it requires
+      // an explicit qualifier (básicas / primitivas / e tipos / etc).
+      // Also catches the Python-deck regression user reported (slides 34/35/37
+      // of module 6 POO showing variáveis/operadores/input-print).
+      if (
+        isBareFundamentalsTitleInAdvancedModule(slide.title, mod.moduleTitle)
+      ) {
+        issues.push({
+          slideId: sid, moduleIndex: mod.moduleIndex,
+          type: "DOMAIN_CONTAMINATION",
+          message: `Título de fundamentos puro no módulo avançado "${mod.moduleTitle}": "${slide.title}"`,
           severity: "fatal",
         });
       }
