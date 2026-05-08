@@ -23,7 +23,7 @@ import {
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.4.4";
+const ENGINE_VERSION = "5.4.5";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -7650,7 +7650,7 @@ async function runPipeline(
           const binding = validateLayoutBinding(
             { ...(s as unknown as Slide), title: baseTitle, layout: s.layout as Layout },
             modules[i].title,
-            (input as any)?.title ?? "",
+            courseTitle,
             intent,
           );
           // v5.3.3 (architect feedback) — emit a DISTINCT diagnostic when the
