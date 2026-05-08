@@ -289,8 +289,33 @@ function isTruncatedSentence(text: string): boolean {
   if (/\s+\.\s*$/.test(t) && /\b(no|na|do|da|em|com)\s+\.\s*$/i.test(t)) return true; // "no ."
   // verb + bare ", e 'X'" — "modos de abertura, e 'a' corretamente"
   if (/,\s+e\s+'[^']{1,3}'/.test(t)) return true;
-  // verb + bare "e" + preposition (no noun between) — "Trata e para garantir"
-  if (/\b(Trata|Use|Realize|Define|Cria|Configura|Aplica|Manipula|Implementa|Organiza|Faz|Faça)\s+e\s+(para|com|em|no|na|de|do|da)\b/i.test(t)) return true;
+  // orphan comma inside parens — "(, ERROR)" / "( ,ERROR)"
+  if (/\(\s*,/.test(t)) return true;
+  // verb + bare "e" + preposition (no noun between) — "Trata e para garantir", "Captura e para feedback", "Utilizar e para definir"
+  if (/\b(Trata|Tratar|Trate|Use|Usar|Utilize|Utilizar|Realize|Realizar|Define|Definir|Cria|Criar|Configura|Configurar|Aplica|Aplicar|Manipula|Manipular|Implementa|Implementar|Organiza|Organizar|Faz|Faça|Captura|Capturar|Capture|Garante|Garantir|Permite|Permitir|Habilita|Habilitar|Verifica|Verificar|Analisa|Analisar|Identifica|Identificar|Prepara|Preparar|Limpa|Limpar)\s+e\s+(para|com|em|no|na|de|do|da)\b/i.test(t)) return true;
+  // verb directly followed by "para" with no object — "Use para buscar", "Utilizar para enviar"
+  // Restricted: must be a short fragment (<70 chars) AND have NO substantive
+  // word between the verb and "para" (i.e. literally "Verb para X"). Long
+  // pedagogical sentences like "Use list comprehensions para filtrar dados" are
+  // already excluded by the `^Verb para` anchor. The 70-char gate avoids
+  // flagging conversational "Use para iniciar a sessão e configurar o ambiente."
+  if (
+    t.length < 50 &&
+    /^\s*(Use|Usar|Utilize|Utilizar|Aplique|Aplicar|Realize|Realizar|Configure|Configurar|Defina|Definir|Crie|Criar)\s+para\b/i.test(t)
+  ) return true;
+  // leading "e" + verb (orphan conjunction) — "e preparam e limpam recursos."
+  // Restricted to high-confidence truncations: short fragment (<60 chars) AND
+  // either the verb is in 3rd-person plural ending in -am/-em/-m AND the line
+  // contains a SECOND "e + verb" (the "...e preparam e limpam..." shape), OR
+  // the line is very short (<35 chars) — both signal a stripped sentence head.
+  // Avoids false positives on legitimate "E permitem a execução de..." prose.
+  if (
+    /^\s*[Ee]\s+[a-zà-ÿ]+(am|em|m)\b/.test(t) &&
+    (
+      (t.length < 60 && /\be\s+[a-zà-ÿ]+(am|em|m)\b/i.test(t.slice(3))) ||
+      t.length < 35
+    )
+  ) return true;
   // bare "Que X" without "Por" — "Que Boas Práticas de Código?"
   // Tightened to avoid false positives on legitimate Portuguese pedagogy
   // text starting with "Que" (e.g. "Que os alunos identifiquem..."):
@@ -314,7 +339,7 @@ function isTruncatedSentence(text: string): boolean {
 const ADVANCED_MODULE_TITLE_RE =
   /(POO|orientad[ao]\s+a\s+objet|object\s*oriented|heran[çc]a|encapsul|polimorf|boas\s+pr[áa]ticas|best\s+practices|implant|deploy|produc|avan[çc]ad|otimiz|performance|ci[\/\-]?cd|monitora|seguran[çc]a|refactor|arquitetura|testes?\s+|tests?\b|logs?\b|depura[çc][aã]o|debug)/i;
 const FUNDAMENTALS_TOPIC_RE =
-  /(\bvari[áa]veis\s+(b[áa]sicas?|primitivas?|e\s+tipos|simples)\b|\btipos\s+primitivos?\b|\boperadores\s+(aritm[ée]ticos|b[áa]sicos|de\s+atribui)|\bexpress[oõ]es\s+aritm[ée]ticas\b|\bhello\s+world\b|\bsintaxe\s+b[áa]sica\s+do\s+python\b|\batribui[çc][aã]o\s+(simples|b[áa]sica|de\s+valores)\b|\b(entrada|sa[íi]da)\s+(b[áa]sica|de\s+dados\s+b[áa]sica)\b|\binput\(\)\s+e\s+print\(\)|\bprint\(\)\s+e\s+input\(\))/i;
+  /(\bvari[áa]veis\s+(b[áa]sicas?|primitivas?|e\s+tipos|simples)\b|\bvari[áa]veis\s*,?\s*tipos\s+e\s+operadores\b|\bcom\s+vari[áa]veis\s*,\s*tipos\s+e\s+operadores\b|\btipos\s+primitivos?\b|\boperadores\s+(aritm[ée]ticos|b[áa]sicos|de\s+atribui)|\bexpress[oõ]es\s+aritm[ée]ticas\b|\bexpress[oõ]es\s+e\s+atribui[çc][oõ]es\b|\bcriar\s+express[oõ]es\b|\bhello\s+world\b|\bsintaxe\s+b[áa]sica\s+do\s+python\b|\batribui[çc][aã]o\s+(simples|b[áa]sica|de\s+valores)\b|\b(entrada|sa[íi]da)\s+(b[áa]sica|de\s+dados\s+b[áa]sica)\b|\bentrada\s+e\s+sa[íi]da\s+com\s+vari[áa]veis\b|\baplicar\s+entrada\s+e\s+sa[íi]da\b|\binput\(\)\s+e\s+print\(\)|\bprint\(\)\s+e\s+input\(\))/i;
 
 function isCrossModuleBasicLeak(text: string, moduleTitle: string): boolean {
   if (!text || !moduleTitle) return false;
@@ -401,8 +426,9 @@ ${ruleBlock}
 
 ════ HARD CONTRACT ════
 1. Output language: ${language}. Every word of every field must be in ${language}.
-2. **Generate EXACTLY 3 to 5 slides. NEVER 6 or more.** Quality over quantity.
+2. **Generate EXACTLY 3 to 4 slides. NEVER 5 or more.** Quality over quantity.
    The deck is for an introductory course — long modules are exhausting.
+   Prefer 3 slides for short/simple modules; use 4 only when truly needed.
 3. **MODULE COHERENCE — CRITICAL.** Every slide MUST teach a concept that
    belongs to "${moduleTitle}". Do NOT teach concepts that belong to other
    modules (e.g. if this module is "POO", do NOT include slides about
@@ -553,13 +579,13 @@ function parsePlannerOutput(
     return [];
   }
 
-  // HARD CAP: max 5 slides per module (regardless of what the LLM returned).
+  // HARD CAP: max 4 slides per module (regardless of what the LLM returned).
   // Keep the LAST slide if it's takeaways/summary so the module ends well.
-  if (parsed.length > 5) {
+  if (parsed.length > 4) {
     const lastIsRecap = parsed.length > 0 &&
       ["takeaways", "summary", "closing"].includes(parsed[parsed.length - 1]?.intent);
     const recap = lastIsRecap ? parsed[parsed.length - 1] : null;
-    parsed = recap ? [...parsed.slice(0, 4), recap] : parsed.slice(0, 5);
+    parsed = recap ? [...parsed.slice(0, 3), recap] : parsed.slice(0, 4);
   }
 
   return parsed.map((s: any, idx: number): PresentationSlide => {

@@ -8,7 +8,7 @@ import {
   type V5SlideLike,
 } from "./presentation-plan.ts";
 
-const ENGINE_VERSION = "5.2.1";
+const ENGINE_VERSION = "5.2.2";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -6889,7 +6889,7 @@ async function runPipeline(
       const slideCount = planSlides.length;
       const hasFatal = (fatalsByModule.get(i) ?? 0) > 0;
       const hasBlocker = (blockersByModule.get(i) ?? 0) > 0;
-      const inRange = slideCount >= 1 && slideCount <= 5;
+      const inRange = slideCount >= 1 && slideCount <= 4;
 
       if (inRange && !hasFatal && !hasBlocker) {
         // Convert this module's slides to v5 Slide shape
@@ -6918,7 +6918,7 @@ async function runPipeline(
         moduleUsesPlanner[i] = false;
         fallbackIndices.push(i);
         console.warn(
-          `[PRESENTATION-PLAN] module ${i + 1} ("${modules[i].title}") rejected: slides=${slideCount} (in 1-5: ${inRange}), fatals=${fatalsByModule.get(i) ?? 0}, blockers=${blockersByModule.get(i) ?? 0} → legacy fallback for this module only`,
+          `[PRESENTATION-PLAN] module ${i + 1} ("${modules[i].title}") rejected: slides=${slideCount} (in 1-4: ${inRange}), fatals=${fatalsByModule.get(i) ?? 0}, blockers=${blockersByModule.get(i) ?? 0} → legacy fallback for this module only`,
         );
       }
     }

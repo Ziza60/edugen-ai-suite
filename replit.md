@@ -66,8 +66,8 @@ Public URL where students access a course without registration. Shares the same 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
 
 **Files**
-- `supabase/functions/export-pptx-v4/index.ts` (~7460 lines, `ENGINE_VERSION="5.2.1"`) — pipeline orchestrator + renderer
-- `supabase/functions/export-pptx-v4/presentation-plan.ts` (~1080 lines) — Presentation Planner (active path)
+- `supabase/functions/export-pptx-v4/index.ts` (~7460 lines, `ENGINE_VERSION="5.2.2"`) — pipeline orchestrator + renderer
+- `supabase/functions/export-pptx-v4/presentation-plan.ts` (~1090 lines) — Presentation Planner (active path)
 
 **Pipeline**
 ```
@@ -79,7 +79,7 @@ Course MD → PresentationPlan (per-module LLM, 3-wide batch)
           → sanitize → QA Veto → Render → Export
 ```
 
-### Active path: Presentation Planner (v5.2.1)
+### Active path: Presentation Planner (v5.2.2)
 
 **Module exports** (`presentation-plan.ts`)
 - `PresentationSlide`, `PresentationPlan`, `PlanIntent` (`module_cover` | `concept` | `example` | `code_walkthrough` | `process` | `comparison` | `cards` | `takeaways` | `summary` | `closing`)
@@ -89,7 +89,7 @@ Course MD → PresentationPlan (per-module LLM, 3-wide batch)
 - `presentationPlanToV5Slides(plan)` — converts to `V5SlideLike[][]`
 
 **Hard rules baked into prompt + parser**
-- Exactly 3-5 slides/module (parser slices to 5, preserves trailing `takeaways`/`summary`/`closing`)
+- Exactly 3-4 slides/module (parser slices to 4, preserves trailing `takeaways`/`summary`/`closing`). Prompt: "Prefer 3 slides for short/simple modules; use 4 only when truly needed."
 - One idea per slide; max 5 items; ≤15 words/item; code in `code` field (≤12 lines); last slide must be `takeaways`
 - "Every slide MUST teach a concept that belongs to '${moduleTitle}'. Do NOT teach concepts that belong to other modules."
 
@@ -107,14 +107,14 @@ Course MD → PresentationPlan (per-module LLM, 3-wide batch)
 | `best_practices` | "boas práticas" / "implantação" / "deploy" / "CI/CD" | SQL + 6 fundamentals patterns |
 
 **Cross-module leak detector** (`isCrossModuleBasicLeak(text, moduleTitle)`)
-`ADVANCED_MODULE_TITLE_RE` (POO / herança / encapsul / polimorf / boas práticas / implant / deploy / avançado / otimiz / performance / CI-CD / monitora / segurança / refactor / arquitetura / testes / logs / depura / debug) × `FUNDAMENTALS_TOPIC_RE` (variáveis básicas/primitivas/e tipos/simples, tipos primitivos, operadores aritméticos/básicos/de atribuição, expressões aritméticas, hello world, sintaxe básica do python, atribuição simples/básica/de valores, entrada/saída básica, input() e print()). Wired into validation 7b (item, fixable) + 7c (title, FATAL) + repair `cleanItems` + `filterColumn` + non-item field guard.
+`ADVANCED_MODULE_TITLE_RE` (POO / herança / encapsul / polimorf / boas práticas / implant / deploy / avançado / otimiz / performance / CI-CD / monitora / segurança / refactor / arquitetura / testes / logs / depura / debug) × `FUNDAMENTALS_TOPIC_RE` (variáveis básicas/primitivas/e tipos/simples, **variáveis,? tipos e operadores**, tipos primitivos, operadores aritméticos/básicos/de atribuição, expressões aritméticas, **expressões e atribuições**, **criar expressões**, hello world, sintaxe básica do python, atribuição simples/básica/de valores, entrada/saída básica, **entrada e saída com variáveis**, **aplicar entrada e saída**, input() e print()). Wired into validation 7b (item, fixable) + 7c (title, FATAL) + repair `cleanItems` + `filterColumn` + non-item field guard.
 
 **Truncation patterns** (`isTruncatedSentence`)
-Catches: ending in `,:\-(`, `,.$` (verdadeiro ou falso,.), stripped tokens (`com e`, `com :`, `(Ex: )`, `objeto ().`), `,\s+e\s+'X'` (abertura, e 'a'), `\bcom\s*,\s+e\s+` (leitura com, e escrita), bare verb+`e`+preposition (Trata e para garantir), bare "Que [Title-Case]" ending in `?` or with 2+ Title-Case words and no "Por Que" anywhere, `(leitura|escrita|abertura|fechamento|entrada|saída)\s+com\s*,`. **23/23 detector tests pass.**
+Catches: ending in `,:\-(`, `,.$` (verdadeiro ou falso,.), stripped tokens (`com e`, `com :`, `(Ex: )`, `objeto ().`), `,\s+e\s+'X'` (abertura, e 'a'), `\bcom\s*,\s+e\s+` (leitura com, e escrita), bare verb+`e`+preposition with **30+ verbs** (Trata/Captura/Utilizar/Garantir/Permite/Habilita/Verifica/Analisa/Identifica/Prepara/Limpa/etc), verb→`para` with no object (`^Use\s+para`, `^Utilizar\s+para`), leading `e` + verb (`^e preparam`), orphan comma in parens (`\(\s*,` — "(, ERROR)"), bare "Que [Title-Case]" ending in `?` or with 2+ Title-Case words and no "Por Que" anywhere, `(leitura|escrita|abertura|fechamento|entrada|saída)\s+com\s*,`. **15/15 truncation tests pass.**
 
-**Per-module gate** (`runPipeline`, index.ts ~line 6843)
+**Per-module gate** (`runPipeline`, index.ts ~line 6892)
 A module is accepted ONLY if all three hold:
-1. `1 ≤ slideCount ≤ 5`
+1. `1 ≤ slideCount ≤ 4`
 2. zero fatal validation issues for this `moduleIndex`
 3. zero residual semantic blockers (`DOMAIN_CONTAMINATION` / `SQL_IN_PYTHON` / `GENERIC_OBJECTIVE` / `CODE_IN_BULLET` / `TRUNCATED_SENTENCE`) for this `moduleIndex`
 
@@ -179,7 +179,8 @@ Both 200 and 422 responses include: `engine`, `engine_version`, `status` (`expor
 **Archetype visuals**: `flat_grid` (no shadow, bottom accent strip, accent title, top-right index); `minimal_blocks` (translucent bg, ultra-thin left accent bar 0.024w, no badge, editorial); `numbered_steps` (vertical spine + numbered circles + right text cards); `editor_light` (surface panel, accent border + top stripe, no traffic lights); `highlight_cards` (colored top band, shadow, no number circle); `split_panels` (colored header bands "GRUPO A"/"GRUPO B" + stacked mini-cards + center divider); `subtle_table` (alternating row tints, hairline dividers); `elevated_grid` / `horizontal_chevron` / `clean_columns` / `terminal_dark` / `numbered_list` (default behaviors).
 
 ### Version history (top-level)
-- **v5.2.1** (current) — Hard cap 5 slides/module + cross-module leak detector + per-module fallback (was all-or-nothing) + 6 new truncation patterns + tightened "Que" pattern. 23/23 detector tests + 7/7 gate tests.
+- **v5.2.2** (current) — Hard cap tightened 5→4 slides/module (target 36-44 deck instead of 52-64); expanded truncation verb list 12→30+ (Captura/Utilizar/Garantir/Permite/Habilita/Verifica/Analisa/Identifica/Prepara/Limpa/etc); added 3 new truncation patterns (verb→para no-object, leading-e+verb, orphan comma in parens); broadened `FUNDAMENTALS_TOPIC_RE` to catch "expressões e atribuições", "variáveis, tipos e operadores", "entrada e saída com variáveis", "criar expressões". 21/21 detector tests pass.
+- **v5.2.1** — Hard cap 5 slides/module + cross-module leak detector + per-module fallback (was all-or-nothing) + 6 new truncation patterns + tightened "Que" pattern. 23/23 detector tests + 7/7 gate tests.
 - **v5.2.0** — Presentation Planner introduced as intermediate semantic stage between course MD and renderer.
 - **v5.1.1 — v5.1.16** — 16 hardening passes building the legacy safety net (detectors, repairs, contamination strip, QA cascade, QA veto, module covers, global safety net). All still active as fallback for both planner-accepted and planner-rejected modules.
 - **v5.1** — Architectural Correction (Scene Blueprint, domain guard, placeholder sanitizer, code completeness, 6 new QA types, 5 critical checks, QA Veto), Visual Planner (heuristic editorial layer), PPTX QA Engine (11 checks) + Resolution Cascade (L1/L2/L3), Design Systems (5 skins × 5 component archetypes).
