@@ -8,7 +8,7 @@ import {
   type V5SlideLike,
 } from "./presentation-plan.ts";
 
-const ENGINE_VERSION = "5.2.2";
+const ENGINE_VERSION = "5.2.3";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -6870,6 +6870,9 @@ async function runPipeline(
     const SEMANTIC_BLOCKERS = new Set([
       "DOMAIN_CONTAMINATION", "SQL_IN_PYTHON", "GENERIC_OBJECTIVE",
       "CODE_IN_BULLET", "TRUNCATED_SENTENCE",
+      // v5.2.3 — new HARD blockers for semantic consolidation
+      "BROKEN_SEMANTIC_SENTENCE", "MODULE_OBJECTIVE_VIOLATION",
+      "INCOMPLETE_CODE_SNIPPET",
     ]);
     const fatalsByModule = new Map<number, number>();
     const blockersByModule = new Map<number, number>();

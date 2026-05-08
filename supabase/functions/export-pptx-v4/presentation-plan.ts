@@ -85,6 +85,9 @@ export interface PlanIssue {
     | "GENERIC_OBJECTIVE"
     | "EMPTY_ITEM"
     | "TRUNCATED_SENTENCE"
+    | "BROKEN_SEMANTIC_SENTENCE"
+    | "MODULE_OBJECTIVE_VIOLATION"
+    | "INCOMPLETE_CODE_SNIPPET"
     | "CODE_IN_BULLET"
     | "DUPLICATE_SLIDE"
     | "TOO_MANY_BULLETS"
@@ -345,6 +348,193 @@ function isCrossModuleBasicLeak(text: string, moduleTitle: string): boolean {
   if (!text || !moduleTitle) return false;
   if (!ADVANCED_MODULE_TITLE_RE.test(moduleTitle)) return false;
   return FUNDAMENTALS_TOPIC_RE.test(text);
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.2.3 — Stronger broken-sentence detection (BROKEN_SEMANTIC_SENTENCE)
+// Patterns user reported as still leaking:
+//   - "Acessar Membros: Usar."                (verb-only after colon)
+//   - "Principais Aprendizados de Arquivos e" (ends in " e")
+//   - "Realize leitura (, )..."               (empty parens "(, )")
+//   - "...usar."                              (one-word predicate after colon)
+// Returns the issue subtype string ("broken" or "truncated") or null.
+// Used to populate BROKEN_SEMANTIC_SENTENCE issues which are HARD blockers.
+// ═══════════════════════════════════════════════════════════
+function detectBrokenSemanticSentence(text: string): string | null {
+  if (!text) return null;
+  const t = text.trim();
+  if (t.length < 6) return null;
+  // Ends with bare " e" or " e." (short fragment only — long bullets ending
+  // in " e" as a deliberate continuation marker are valid pedagogy)
+  if (t.length < 60 && /\s+e\s*\.?\s*$/.test(t)) return "ends_with_bare_e";
+  // Ends with bare " ou" or " ou." (same length guard)
+  if (t.length < 60 && /\s+ou\s*\.?\s*$/.test(t)) return "ends_with_bare_ou";
+  // X: Verb. — short capitalized verb after colon (Acessar Membros: Usar.)
+  if (/:\s*[A-ZÁÉÍÓÚÂÊÔÃÕ][a-zà-ÿ]{1,9}\s*\.\s*$/.test(t)) return "verb_only_after_colon";
+  // Empty parens with comma — "(, )" / "( , )"
+  if (/\(\s*,\s*\)/.test(t)) return "empty_comma_parens";
+  // Single-word imperative with period — "Usar." / "Aplicar."
+  if (/^\s*(Usar|Aplicar|Definir|Configurar|Criar|Realizar|Implementar|Manipular|Tratar|Gerenciar|Organizar|Validar|Verificar|Capturar|Habilitar|Permitir|Garantir)\s*\.\s*$/i.test(t)) return "lone_verb";
+  // Trailing "Verbar." after preposition (de/com/em/no/na/para) — "para usar."
+  if (/\b(de|com|em|no|na|para|sobre|pelo|pela)\s+(usar|aplicar|definir|criar|configurar|implementar|gerenciar|tratar)\s*\.\s*$/i.test(t)) return "verb_only_after_prep";
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.2.3 — Per-module OBJECTIVE rules (covers/takeaways/closing).
+// Stricter than allow/deny used for content slides — these run on
+// objective-class slides where the text MUST sound module-aligned.
+// kind is the same string returned by getModuleRule (Python rules).
+// ═══════════════════════════════════════════════════════════
+const MODULE_OBJECTIVE_FORBIDDEN: Record<string, RegExp> = {
+  best_practices: /(\bvari[áa]ve(is|l)\s+(b[áa]sicas?|primitivas?|simples)?\b|\btipos?\s+primitivos?\b|\boperadores?\s+(aritm[ée]ticos?|b[áa]sicos?|de\s+atribui)|\bexpress[oõ]es\s+(aritm[ée]ticas|e\s+atribui)|\bcriar?\s+express[oõ]es\b|\bhello\s+world\b|\binput\(\)|\bprint\(\)|\bentrada\s+e\s+sa[íi]da\s+(com\s+vari|b[áa]sica)|\baplicar\s+entrada\s+e\s+sa[íi]da\b|\batribui[çc][aã]o\s+(simples|b[áa]sica))/i,
+  oop: /(\bvari[áa]ve(is|l)\s+(b[áa]sicas?|primitivas?|simples)?\b|\btipos?\s+primitivos?\b|\boperadores?\s+(aritm[ée]ticos?|b[áa]sicos?)|\bexpress[oõ]es\s+aritm[ée]ticas\b|\bhello\s+world\b|\binput\(\)\s+e\s+print\(\)|\bsintaxe\s+b[áa]sica\b)/i,
+  tests_logs: /(\bvari[áa]ve(is|l)\s+(b[áa]sicas?|primitivas?)\b|\btipos?\s+primitivos?\b|\boperadores?\s+aritm[ée]ticos?\b|\bexpress[oõ]es\s+aritm[ée]ticas\b|\bhello\s+world\b)/i,
+  json_apis: /(\bvari[áa]ve(is|l)\s+(b[áa]sicas?|primitivas?)\b|\btipos?\s+primitivos?\b|\bhello\s+world\b)/i,
+  files_exceptions: /(\bvari[áa]ve(is|l)\s+(b[áa]sicas?|primitivas?)\b|\bhello\s+world\b)/i,
+  data_structures: /(\bhello\s+world\b)/i,
+  control_flow: /(\bhello\s+world\b)/i,
+};
+
+// Module-aligned objective fallbacks — used by repairModuleObjective
+// when an objective is dropped due to violation. Cycled per slide.
+const MODULE_OBJECTIVE_FALLBACKS: Record<string, string[]> = {
+  fundamentals: [
+    "Compreender variáveis, tipos primitivos e operadores em Python.",
+    "Escrever expressões aritméticas e usar entrada/saída com print() e input().",
+    "Aplicar atribuição e conversão de tipos em pequenos programas.",
+  ],
+  control_flow: [
+    "Aplicar estruturas condicionais if/elif/else para decisões em Python.",
+    "Usar laços for e while com break e continue para repetição controlada.",
+    "Definir funções com parâmetros, retorno e escopo local em Python.",
+  ],
+  data_structures: [
+    "Manipular listas, tuplas e dicionários em Python para organizar dados.",
+    "Aplicar fatiamento, indexação e iteração sobre coleções nativas.",
+    "Escolher entre list, set e dict conforme o caso de uso em Python.",
+  ],
+  files_exceptions: [
+    "Ler e escrever arquivos texto em Python usando open() e with.",
+    "Tratar exceções com try/except/finally para programas robustos.",
+    "Usar context managers para garantir liberação correta de recursos.",
+  ],
+  json_apis: [
+    "Serializar e desserializar dados com json.dumps() e json.loads().",
+    "Consumir APIs HTTP em Python usando a biblioteca requests.",
+    "Tratar respostas, status codes e erros de rede em chamadas a APIs.",
+  ],
+  oop: [
+    "Modelar entidades com classes, atributos e métodos em Python.",
+    "Aplicar herança, encapsulamento e polimorfismo em projetos Python.",
+    "Usar __init__, self e super() corretamente em hierarquias de classes.",
+  ],
+  tests_logs: [
+    "Escrever testes unitários com unittest ou pytest para validar funções.",
+    "Configurar logging com níveis (DEBUG, INFO, WARNING, ERROR) em Python.",
+    "Depurar programas Python com pdb e mensagens de log estruturadas.",
+  ],
+  best_practices: [
+    "Aplicar PEP 8 para estilo, nomes e organização de código Python.",
+    "Gerenciar dependências e ambientes virtuais com venv e pip.",
+    "Estruturar projetos Python com pacotes, módulos e setup/pyproject.",
+    "Documentar funções e classes com docstrings claras e padronizadas.",
+    "Configurar logging em produção e preparar deploy de aplicações Python.",
+  ],
+};
+
+function isObjectiveSlide(intent: PlanIntent): boolean {
+  return intent === "module_cover" || intent === "takeaways" ||
+    intent === "summary" || intent === "closing";
+}
+
+function validateModuleObjective(
+  text: string,
+  moduleKind: string,
+  moduleTitle: string,
+): boolean {
+  if (!text) return true;
+  // Cross-module fundamentals leak
+  if (isCrossModuleBasicLeak(text, moduleTitle)) return false;
+  const re = MODULE_OBJECTIVE_FORBIDDEN[moduleKind];
+  if (re && re.test(text)) return false;
+  return true;
+}
+
+function repairModuleObjective(moduleKind: string, idx: number): string | null {
+  const list = MODULE_OBJECTIVE_FALLBACKS[moduleKind];
+  if (!list || list.length === 0) return null;
+  return list[idx % list.length];
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.2.3 — Code snippet validation/repair
+// A useful snippet has at least 2 non-trivial lines AND demonstrates
+// observable behaviour (print/return/yield/log/raise/assert/output).
+// A single-line bare assignment ("soma = sum(dados)") is INCOMPLETE.
+// ═══════════════════════════════════════════════════════════
+function validateCodeSnippet(code: string, language: string | undefined): boolean {
+  if (!code) return true; // no code is fine
+  const lang = (language ?? "python").toLowerCase();
+  const lines = code.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  if (lines.length === 0) return true;
+  // 1+ line: must show observable behaviour somewhere
+  const observable = lines.some((l) =>
+    /\b(print|return|yield|raise|assert|log(ger|ging)?\.\w+|console\.\w+|sys\.std)\b/.test(l) ||
+    /=>/.test(l) ||
+    /[#]\s*(output|sa[íi]da|resultado|prints?|=>)/i.test(l)
+  );
+  // Comment-only or import-only does not count
+  const meaningfulLines = lines.filter((l) =>
+    !l.startsWith("#") && !l.startsWith("//") && !/^from\s+\w+\s+import\b/.test(l) && !/^import\s+\w+/.test(l)
+  );
+  if (meaningfulLines.length === 0) return false;
+  // Single-line bare assignment without observable result → incomplete
+  if (lines.length <= 1 && !observable) return false;
+  // Multi-line code with ONLY simple assignments and no observable
+  // (no def/class/loop/if/with/try/call) → incomplete demonstration
+  if (!observable) {
+    const hasStructure = meaningfulLines.some((l) =>
+      /^(def|class|for|while|if|elif|else|with|try|except|finally|@\w)\b/.test(l) ||
+      /\w+\s*\([^)]*\)\s*$/.test(l)
+    );
+    if (!hasStructure) return false;
+  }
+  // Multi-line but ends in dangling `=` / `,` / `(` → incomplete
+  const last = lines[lines.length - 1];
+  if (/[=,(]\s*$/.test(last)) return false;
+  // Python def/class with empty body → incomplete
+  if (lang === "python") {
+    const lastIsHeader = /^(def|class)\s+\w+.*:\s*$/.test(last);
+    if (lastIsHeader) return false;
+  }
+  return true;
+}
+
+function repairCodeSnippet(code: string, language: string | undefined): string {
+  if (!code) return code;
+  const lang = (language ?? "python").toLowerCase();
+  const lines = code.split("\n");
+  const trimmedLines = lines.map((l) => l.trim()).filter((l) => l.length > 0);
+  if (trimmedLines.length === 0) return code;
+  // Single bare assignment "X = expr" → append print(X) (Python)
+  if (lang === "python" && trimmedLines.length === 1) {
+    const m = trimmedLines[0].match(/^([A-Za-z_]\w*)\s*=\s*[^=]/);
+    if (m) {
+      return `${code.replace(/\s+$/, "")}\nprint(${m[1]})`;
+    }
+  }
+  // Last line is dangling header (Python def/class with no body)
+  if (lang === "python") {
+    const last = trimmedLines[trimmedLines.length - 1];
+    if (/^def\s+\w+.*:\s*$/.test(last)) {
+      return `${code.replace(/\s+$/, "")}\n    pass`;
+    }
+    if (/^class\s+\w+.*:\s*$/.test(last)) {
+      return `${code.replace(/\s+$/, "")}\n    pass`;
+    }
+  }
+  return code;
 }
 
 function looksLikeCodeLine(line: string): boolean {
@@ -644,6 +834,7 @@ export function validatePresentationPlan(
 
   for (const mod of plan.modules) {
     const rule = getModuleRule(courseTitle, mod.moduleTitle);
+    const moduleKind = rule?.kind ?? "";
     const seen: { title: string; firstItems: string }[] = [];
 
     for (const slide of mod.slides) {
@@ -781,6 +972,26 @@ export function validatePresentationPlan(
             severity: "fixable",
           });
         }
+        // v5.2.3 — broken semantic sentence (HARD blocker)
+        const brokenKind = detectBrokenSemanticSentence(it);
+        if (brokenKind) {
+          issues.push({
+            slideId: sid, moduleIndex: mod.moduleIndex,
+            type: "BROKEN_SEMANTIC_SENTENCE",
+            message: `Frase quebrada (${brokenKind}) em "${slide.title}": "${it.slice(0, 80)}"`,
+            severity: "fixable",
+          });
+        }
+        // v5.2.3 — module-objective violation on objective-class slides
+        if (isObjectiveSlide(slide.intent) && moduleKind &&
+            !validateModuleObjective(it, moduleKind, mod.moduleTitle)) {
+          issues.push({
+            slideId: sid, moduleIndex: mod.moduleIndex,
+            type: "MODULE_OBJECTIVE_VIOLATION",
+            message: `Objetivo desalinhado com "${mod.moduleTitle}" (${moduleKind}): "${it.slice(0, 80)}"`,
+            severity: "fixable",
+          });
+        }
         if (slide.intent !== "code_walkthrough" && looksLikeCodeLine(it)) {
           issues.push({
             slideId: sid, moduleIndex: mod.moduleIndex,
@@ -826,6 +1037,29 @@ export function validatePresentationPlan(
           severity: "fatal",
         });
       }
+      // v5.2.3 — broken semantic sentence in TITLE / headers (hard)
+      for (const f of [slide.title, slide.leftHeader, slide.rightHeader]) {
+        if (!f) continue;
+        const bk = detectBrokenSemanticSentence(f);
+        if (bk) {
+          issues.push({
+            slideId: sid, moduleIndex: mod.moduleIndex,
+            type: "BROKEN_SEMANTIC_SENTENCE",
+            message: `Título/cabeçalho quebrado (${bk}): "${f.slice(0, 80)}"`,
+            severity: "fatal",
+          });
+          break;
+        }
+      }
+      // v5.2.3 — code snippet completeness
+      if (slide.code && !validateCodeSnippet(slide.code, slide.codeLanguage)) {
+        issues.push({
+          slideId: sid, moduleIndex: mod.moduleIndex,
+          type: "INCOMPLETE_CODE_SNIPPET",
+          message: `Snippet incompleto em "${slide.title}": "${slide.code.slice(0, 60).replace(/\n/g, " | ")}"`,
+          severity: "fixable",
+        });
+      }
 
       // 8. Duplicate slide check (within module)
       const firstItems = (slide.items ?? []).slice(0, 3).join("|");
@@ -869,6 +1103,9 @@ export function repairPlan(
     moved_code: 0,
     removed_duplicates: 0,
     removed_truncated: 0,
+    removed_broken_sentence: 0,
+    repaired_module_objectives: 0,
+    repaired_code_snippets: 0,
     capped_bullets: 0,
     capped_code: 0,
   };
@@ -879,14 +1116,17 @@ export function repairPlan(
 
   const repaired: PresentationPlanModule[] = plan.modules.map((mod) => {
     const rule = getModuleRule(courseTitle, mod.moduleTitle);
+    const moduleKind = rule?.kind ?? "";
     const slides: PresentationSlide[] = [];
     const seen: { title: string; firstItems: string }[] = [];
 
     for (const slide of mod.slides) {
       if (fatalSlideIds.has(slide.id)) continue;
 
+      const isObj = isObjectiveSlide(slide.intent);
+
       // Filter items: drop empties, generics, truncated, code-in-bullet,
-      // domain-contaminated.
+      // domain-contaminated, broken-semantic, module-objective-violations.
       const cleanItems = (slide.items ?? []).filter((it) => {
         if (!it || !it.trim()) return false;
         // CRITICAL: domain contamination check runs FIRST so forbidden
@@ -908,6 +1148,19 @@ export function repairPlan(
         }
         if (isTruncatedSentence(it)) {
           stats.removed_truncated++;
+          return false;
+        }
+        // v5.2.3 — broken semantic sentence
+        const bk = detectBrokenSemanticSentence(it);
+        if (bk) {
+          console.warn(`[V5-BROKEN-SENTENCE] mod=${mod.moduleIndex + 1} kind=${bk} text="${it.slice(0, 80)}"`);
+          stats.removed_broken_sentence++;
+          return false;
+        }
+        // v5.2.3 — module-objective violation on objective slides
+        if (isObj && moduleKind && !validateModuleObjective(it, moduleKind, mod.moduleTitle)) {
+          console.warn(`[V5-MODULE-OBJECTIVE-REPAIR] mod=${mod.moduleIndex + 1} (${moduleKind}) drop="${it.slice(0, 80)}"`);
+          stats.repaired_module_objectives++;
           return false;
         }
         if (slide.intent !== "code_walkthrough" && looksLikeCodeLine(it)) {
@@ -940,6 +1193,19 @@ export function repairPlan(
           stats.capped_code++;
         }
       }
+      // v5.2.3 — repair incomplete code snippet
+      if (finalCode && !validateCodeSnippet(finalCode, slide.codeLanguage)) {
+        const repaired = repairCodeSnippet(finalCode, slide.codeLanguage);
+        if (repaired !== finalCode && validateCodeSnippet(repaired, slide.codeLanguage)) {
+          console.warn(`[V5-CODE-REPAIR] mod=${mod.moduleIndex + 1} appended completion to snippet "${finalCode.slice(0, 50).replace(/\n/g, " | ")}"`);
+          finalCode = repaired;
+          stats.repaired_code_snippets++;
+        } else {
+          console.warn(`[V5-CODE-REPAIR] mod=${mod.moduleIndex + 1} snippet still incomplete after repair attempt — dropping code field`);
+          finalCode = undefined;
+          stats.repaired_code_snippets++;
+        }
+      }
 
       // Filter comparison columns with the SAME filter set as items
       // (was: only truncation — too permissive; now: full domain/generic guard).
@@ -959,6 +1225,9 @@ export function repairPlan(
           }
           if (isTruncatedSentence(it)) {
             stats.removed_truncated++; return false;
+          }
+          if (detectBrokenSemanticSentence(it)) {
+            stats.removed_broken_sentence++; return false;
           }
           return true;
         }).slice(0, 5);
@@ -989,9 +1258,27 @@ export function repairPlan(
         continue;
       }
 
+      // v5.2.3 — if an OBJECTIVE slide ended up with no items but has a
+      // valid module kind, inject module-aligned fallbacks instead of
+      // leaving the cover/takeaways empty.
+      let injectedItems = finalItems;
+      if (isObj && injectedItems.length === 0 && !finalCode &&
+          cleanLeft.length === 0 && cleanRight.length === 0 && moduleKind) {
+        const list = MODULE_OBJECTIVE_FALLBACKS[moduleKind];
+        if (list && list.length > 0) {
+          injectedItems = [
+            list[0],
+            list[1 % list.length],
+            list[2 % list.length],
+          ].filter(Boolean);
+          console.warn(`[V5-MODULE-OBJECTIVE-REPAIR] mod=${mod.moduleIndex + 1} (${moduleKind}) injected ${injectedItems.length} fallback objectives`);
+          stats.repaired_module_objectives++;
+        }
+      }
+
       // Drop slide if it's now empty
       const stillHasContent =
-        finalItems.length > 0 ||
+        injectedItems.length > 0 ||
         !!finalCode ||
         cleanLeft.length > 0 ||
         cleanRight.length > 0;
@@ -1008,7 +1295,7 @@ export function repairPlan(
 
       slides.push({
         ...slide,
-        items: finalItems,
+        items: injectedItems,
         code: finalCode,
         leftItems: cleanLeft.length > 0 ? cleanLeft : undefined,
         rightItems: cleanRight.length > 0 ? cleanRight : undefined,
@@ -1115,6 +1402,9 @@ export interface PlannerStats {
   moved_code: number;
   removed_duplicates: number;
   removed_truncated: number;
+  removed_broken_sentence: number;
+  repaired_module_objectives: number;
+  repaired_code_snippets: number;
   capped_bullets: number;
   capped_code: number;
   modules_failed: number;
@@ -1207,6 +1497,9 @@ export async function generatePresentationPlan(
     moved_code: repairStats.moved_code,
     removed_duplicates: repairStats.removed_duplicates,
     removed_truncated: repairStats.removed_truncated,
+    removed_broken_sentence: repairStats.removed_broken_sentence,
+    repaired_module_objectives: repairStats.repaired_module_objectives,
+    repaired_code_snippets: repairStats.repaired_code_snippets,
     capped_bullets: repairStats.capped_bullets,
     capped_code: repairStats.capped_code,
     modules_failed: modulesFailed,

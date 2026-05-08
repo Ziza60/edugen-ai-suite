@@ -1,0 +1,242 @@
+v5.2.1 melhorou a arquitetura:
+- Presentation Planner funcionando;
+- deck voltou para ~43 slides;
+- SQL foi removido do módulo 3;
+- cross-module leak melhorou;
+- fallback por módulo ajudou;
+- deck está mais estável.
+
+Mas ainda existem 3 problemas críticos recorrentes:
+
+1. objetivos contaminados por módulo;
+2. frases truncadas/incompletas;
+3. código incompleto ou superficial.
+
+Agora NÃO queremos expandir arquitetura.
+NÃO queremos novos layouts.
+NÃO queremos mais complexidade visual.
+
+Precisamos consolidar semanticamente o planner.
+
+PROBLEMAS OBSERVADOS NO PPTX
+
+1. Objetivos contaminados por módulo
+
+Slide 37:
+"Módulo 8 — Boas Práticas"
+
+Ainda contém:
+- "Criar expressões e atribuições corretas em Python."
+- "Aplicar entrada e saída com variáveis, tipos e operadores."
+
+Isso pertence ao módulo 1, não ao módulo 8.
+
+O detector de cross-module leak ainda não está validando objetivos de capa adequadamente.
+
+2. Frases truncadas ainda escapam
+
+Exemplos:
+
+- "Usar modos de abertura, e 'a' corretamente."
+- "Realize operações de leitura (, )..."
+- "Acessar Membros: Usar."
+- "Que Boas Práticas de Codificação?"
+- "Principais Aprendizados de Manipulação de Arquivos e"
+
+Essas frases NÃO devem exportar.
+
+3. Código superficial/incompleto
+
+Slide logging:
+termina em:
+
+soma = sum(dados)
+
+sem conclusão lógica.
+
+O planner está criando snippets incompletos ou pouco demonstrativos.
+
+AÇÃO OBRIGATÓRIA
+
+1. Criar validação forte de objetivos por módulo
+
+Criar:
+validateModuleObjectives(moduleTitle, objectives)
+
+O objetivo deve ser semanticamente coerente com o módulo.
+
+Exemplos:
+
+Módulo 1:
+permitido:
+- variáveis
+- tipos
+- operadores
+- input/output
+
+Módulo 8:
+permitido:
+- PEP8
+- venv
+- pip
+- setup.py
+- estrutura de projeto
+- docstrings
+- logging
+- deployment
+- organização
+
+proibido:
+- variáveis básicas
+- operadores
+- input
+- print
+- tipos primitivos
+
+Se objetivo violar domínio:
+- issue FATAL;
+- repairModuleObjectives();
+- fallback por módulo;
+- ou veto.
+
+2. Criar repairModuleObjectives()
+
+Exemplo:
+
+ruim:
+"Criar expressões e atribuições corretas em Python."
+
+bom:
+"Aplicar boas práticas de organização e manutenção de projetos Python."
+
+ruim:
+"Aplicar entrada e saída com variáveis."
+
+bom:
+"Gerenciar dependências e ambientes virtuais com venv e pip."
+
+3. Endurecer detector de frases truncadas
+
+Criar:
+detectBrokenSemanticSentence()
+
+Detectar:
+- termina com "e"
+- termina com ","
+- termina com ":"
+- termina com "usar."
+- termina com "com."
+- termina com "(, )"
+- termina com "Que X?"
+- frases sem objeto técnico
+- frases sem verbo útil
+- frases com placeholders implícitos
+
+Exemplos inválidos:
+- "Acessar Membros: Usar."
+- "Usar modos de abertura, e 'a'."
+- "Realize leitura (, )..."
+- "Que Boas Práticas de Codificação?"
+
+Adicionar:
+BROKEN_SEMANTIC_SENTENCE
+ao HARD_CRITICAL_TYPES.
+
+Nenhum slide com frase quebrada pode exportar.
+
+4. Melhorar geração de snippets de código
+
+Criar:
+validateCodeSnippet()
+
+Regras:
+- snippet precisa demonstrar começo + ação + resultado;
+- snippet não pode terminar abruptamente;
+- snippet deve ser executável/coerente;
+- snippet precisa ter propósito pedagógico claro.
+
+Exemplo inválido:
+soma = sum(dados)
+
+Exemplo válido:
+soma = sum(dados)
+logging.info(f"Soma calculada: {soma}")
+return soma
+
+5. Criar repairCodeSnippet()
+
+Se snippet:
+- estiver incompleto;
+- terminar abruptamente;
+- não demonstrar finalidade;
+- tiver menos de X linhas úteis;
+
+Então:
+- completar semanticamente;
+- adicionar fechamento coerente;
+- adicionar exemplo mínimo funcional.
+
+6. Validar takeaways e covers
+
+Hoje muitos problemas escapam nos:
+- module_cover
+- takeaways
+- summary
+
+Aplicar TODOS os detectores também nesses layouts:
+- cross-module leak
+- broken sentence
+- generic objective
+- truncated sentence
+- code validation
+
+7. Logs obrigatórios
+
+Adicionar:
+[V5-MODULE-OBJECTIVE-REPAIR]
+[V5-BROKEN-SENTENCE]
+[V5-CODE-REPAIR]
+
+Exemplo:
+[V5-MODULE-OBJECTIVE-REPAIR]
+"Módulo 8 recebeu objetivo de fundamentos básicos"
+→
+"Substituído por objetivo de boas práticas"
+
+[V5-BROKEN-SENTENCE]
+"Acessar Membros: Usar."
+→ blocked
+
+[V5-CODE-REPAIR]
+snippet logging incompleto
+→ completado semanticamente
+
+8. Critério de aceite
+
+Gerar novamente:
+"Introdução à Programação em Python"
+
+O PPTX será aceitável somente se:
+- módulo 8 não tiver objetivos de fundamentos;
+- nenhuma frase terminar truncada;
+- nenhum slide tiver placeholders implícitos;
+- snippets forem semanticamente completos;
+- takeaways estiverem íntegros;
+- covers estiverem coerentes;
+- QA continue funcionando;
+- planner continue ativo;
+- export continue via v5;
+- fallback continue por módulo;
+- deck fique entre 36–44 slides.
+
+Prioridade:
+1. Coerência por módulo
+2. Integridade semântica
+3. Qualidade pedagógica
+4. Código funcional
+5. Estabilidade
+6. Design
+
+Não adicionar novos layouts.
+Não expandir visualmente.
+Consolidar semanticamente o Presentation Planner.

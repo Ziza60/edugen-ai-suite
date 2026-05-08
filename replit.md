@@ -66,8 +66,8 @@ Public URL where students access a course without registration. Shares the same 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
 
 **Files**
-- `supabase/functions/export-pptx-v4/index.ts` (~7460 lines, `ENGINE_VERSION="5.2.2"`) — pipeline orchestrator + renderer
-- `supabase/functions/export-pptx-v4/presentation-plan.ts` (~1090 lines) — Presentation Planner (active path)
+- `supabase/functions/export-pptx-v4/index.ts` (~7460 lines, `ENGINE_VERSION="5.2.3"`) — pipeline orchestrator + renderer
+- `supabase/functions/export-pptx-v4/presentation-plan.ts` (~1500 lines) — Presentation Planner (active path)
 
 **Pipeline**
 ```
@@ -79,7 +79,7 @@ Course MD → PresentationPlan (per-module LLM, 3-wide batch)
           → sanitize → QA Veto → Render → Export
 ```
 
-### Active path: Presentation Planner (v5.2.2)
+### Active path: Presentation Planner (v5.2.3)
 
 **Module exports** (`presentation-plan.ts`)
 - `PresentationSlide`, `PresentationPlan`, `PlanIntent` (`module_cover` | `concept` | `example` | `code_walkthrough` | `process` | `comparison` | `cards` | `takeaways` | `summary` | `closing`)
@@ -179,7 +179,8 @@ Both 200 and 422 responses include: `engine`, `engine_version`, `status` (`expor
 **Archetype visuals**: `flat_grid` (no shadow, bottom accent strip, accent title, top-right index); `minimal_blocks` (translucent bg, ultra-thin left accent bar 0.024w, no badge, editorial); `numbered_steps` (vertical spine + numbered circles + right text cards); `editor_light` (surface panel, accent border + top stripe, no traffic lights); `highlight_cards` (colored top band, shadow, no number circle); `split_panels` (colored header bands "GRUPO A"/"GRUPO B" + stacked mini-cards + center divider); `subtle_table` (alternating row tints, hairline dividers); `elevated_grid` / `horizontal_chevron` / `clean_columns` / `terminal_dark` / `numbered_list` (default behaviors).
 
 ### Version history (top-level)
-- **v5.2.2** (current) — Hard cap tightened 5→4 slides/module (target 36-44 deck instead of 52-64); expanded truncation verb list 12→30+ (Captura/Utilizar/Garantir/Permite/Habilita/Verifica/Analisa/Identifica/Prepara/Limpa/etc); added 3 new truncation patterns (verb→para no-object, leading-e+verb, orphan comma in parens); broadened `FUNDAMENTALS_TOPIC_RE` to catch "expressões e atribuições", "variáveis, tipos e operadores", "entrada e saída com variáveis", "criar expressões". 21/21 detector tests pass.
+- **v5.2.3** (current) — Semantic consolidation pass. New issue types: `BROKEN_SEMANTIC_SENTENCE` (ends-with-bare-`e`/`ou`, "X: Verb." after colon, empty `(, )` parens, lone verb, `prep+verb.`), `MODULE_OBJECTIVE_VIOLATION` (per-kind FORBIDDEN map enforced ONLY on objective-class slides — `module_cover`/`takeaways`/`summary`/`closing` — so M8 "Boas Práticas" rejects "expressões e atribuições"/"entrada e saída com variáveis"/etc), `INCOMPLETE_CODE_SNIPPET` (single bare assignment, empty def/class body, multi-line w/o observable + no structure, dangling `=,(`). Repairs: `repairModuleObjective` injects 2-3 module-aligned fallbacks per kind (PEP8/venv/pip/docstring/logging/deploy for `best_practices`, etc.) when a cover/takeaways slide is emptied; `repairCodeSnippet` appends `print(<lhs>)` for single-line bare assignments and `pass` for empty def/class. All 3 new types added to `SEMANTIC_BLOCKERS` in per-module gate (index.ts). Detectors apply to items + comparison columns + slide.title/headers (broken-sentence in title is FATAL). New logs: `[V5-MODULE-OBJECTIVE-REPAIR]`, `[V5-BROKEN-SENTENCE]`, `[V5-CODE-REPAIR]`. New stats: `removed_broken_sentence`, `repaired_module_objectives`, `repaired_code_snippets`. 7/7 broken-sentence + 6/6 module-objective + 7/7 code-validator + 1/1 fallback-injection tests pass.
+- **v5.2.2** — Hard cap tightened 5→4 slides/module (target 36-44 deck instead of 52-64); expanded truncation verb list 12→30+ (Captura/Utilizar/Garantir/Permite/Habilita/Verifica/Analisa/Identifica/Prepara/Limpa/etc); added 3 new truncation patterns (verb→para no-object, leading-e+verb, orphan comma in parens); broadened `FUNDAMENTALS_TOPIC_RE` to catch "expressões e atribuições", "variáveis, tipos e operadores", "entrada e saída com variáveis", "criar expressões". 21/21 detector tests pass.
 - **v5.2.1** — Hard cap 5 slides/module + cross-module leak detector + per-module fallback (was all-or-nothing) + 6 new truncation patterns + tightened "Que" pattern. 23/23 detector tests + 7/7 gate tests.
 - **v5.2.0** — Presentation Planner introduced as intermediate semantic stage between course MD and renderer.
 - **v5.1.1 — v5.1.16** — 16 hardening passes building the legacy safety net (detectors, repairs, contamination strip, QA cascade, QA veto, module covers, global safety net). All still active as fallback for both planner-accepted and planner-rejected modules.
