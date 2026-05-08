@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.5.7";
+const ENGINE_VERSION = "5.5.8";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -668,6 +668,117 @@ function repairIncompleteCodeExample(
   return null;
 }
 
+// v5.5.8 — synthesizeMinimalCompleteExample
+// Produces a known-good 3-7 line snippet for the given module kind, reusing
+// classes/vars/funcs from the module accumulator when available so the new
+// snippet stays in the established domain (Carro/Livro/Pedido). Returns null
+// only when no canonical example exists for the kind — caller then demotes.
+//
+// Source labels emitted in [CODE-SYNTHESIS]:
+//   "module_ctx"  → reused class+method already shown earlier in module
+//   "canonical_<kind>" → fallback canonical snippet for the kind
+function synthesizeMinimalCompleteExample(
+  moduleKind: string | null,
+  ctx: CodeSymbols,
+  slideTitle: string,
+): { code: string; source: string } | null {
+  const title = (slideTitle || "").toLowerCase();
+  const kind = moduleKind ?? "";
+
+  // OOP — strongly prefer reusing module context (Carro/Livro/etc)
+  if (kind === "oop" || /\b(classe|objeto|m[eé]todo|atributo|heran[çc]a|encapsul|self|__init__|poo)\b/i.test(title)) {
+    const cls = ctx.classes[0];
+    const inst = ctx.vars[0];
+    const method = ctx.funcs.find((f) => f !== "__init__" && !["main", "init"].includes(f));
+    if (cls && inst && method) {
+      return {
+        code: `${inst} = ${cls}("Toyota", "Corolla")\n${inst}.${method}()`,
+        source: "module_ctx",
+      };
+    }
+    if (cls && inst) {
+      return {
+        code: `${inst} = ${cls}("Toyota", "Corolla")\nprint(${inst})`,
+        source: "module_ctx",
+      };
+    }
+    return {
+      code: `class Carro:\n    def __init__(self, marca, modelo):\n        self.marca = marca\n        self.modelo = modelo\n    def exibir_info(self):\n        print(f"{self.marca} {self.modelo}")\n\nmeu_carro = Carro("Toyota", "Corolla")\nmeu_carro.exibir_info()`,
+      source: "canonical_oop",
+    };
+  }
+
+  // Tests / Logs / Debug — pick by title keyword, fallback unittest
+  if (kind === "tests_logs" || /\b(teste|unittest|pytest|tdd|log|logging|pdb|debug|depura)\b/i.test(title)) {
+    if (/\bpdb\b|\bdepura/i.test(title)) {
+      return {
+        code: `import pdb\n\ndef calcular(a, b):\n    pdb.set_trace()\n    return a + b\n\nprint(calcular(2, 3))`,
+        source: "canonical_pdb",
+      };
+    }
+    if (/\blog/i.test(title)) {
+      return {
+        code: `import logging\n\nlogging.basicConfig(level=logging.INFO)\nlogging.info("Aplicação iniciada")\nlogging.warning("Operação demorada")`,
+        source: "canonical_logging",
+      };
+    }
+    return {
+      code: `import unittest\n\nclass TestCalculadora(unittest.TestCase):\n    def test_soma(self):\n        self.assertEqual(2 + 2, 4)\n\nif __name__ == "__main__":\n    unittest.main()`,
+      source: "canonical_unittest",
+    };
+  }
+
+  // JSON / APIs
+  if (kind === "json_apis" || /\b(json|api|http|requests|rest)\b/i.test(title)) {
+    return {
+      code: `import requests\n\nurl = "https://api.exemplo.com/dados"\nresponse = requests.get(url)\nif response.status_code == 200:\n    dados = response.json()\n    print(dados)`,
+      source: "canonical_json_api",
+    };
+  }
+
+  // Files / Exceptions
+  if (kind === "files_exceptions" || /\b(arquivo|leitura|escrita|with open|exce[çc][oõ]es?|try.*except)\b/i.test(title)) {
+    return {
+      code: `try:\n    with open("dados.txt", "r") as f:\n        conteudo = f.read()\n    print(conteudo)\nexcept FileNotFoundError:\n    print("Arquivo não encontrado")`,
+      source: "canonical_files_exceptions",
+    };
+  }
+
+  // Control flow / functions
+  if (kind === "control_flow" || /\b(if|elif|else|for|while|fun[çc][aã]o|loop|condicional)\b/i.test(title)) {
+    return {
+      code: `def classificar(nota):\n    if nota >= 7:\n        return "Aprovado"\n    elif nota >= 5:\n        return "Recuperação"\n    return "Reprovado"\n\nprint(classificar(8))`,
+      source: "canonical_control_flow",
+    };
+  }
+
+  // Data structures
+  if (kind === "data_structures" || /\b(lista|dicion[áa]rio|tupla|conjunto|cole[çc][aã]o|estrutura.*dado)\b/i.test(title)) {
+    return {
+      code: `pedido = [{"item": "Pizza", "preco": 60.0}, {"item": "Refri", "preco": 8.0}]\ntotal = sum(p["preco"] for p in pedido)\nprint(f"Total: R$ {total:.2f}")`,
+      source: "canonical_data_structures",
+    };
+  }
+
+  // Fundamentals
+  if (kind === "fundamentals" || /\b(vari[áa]vel|tipo|operador|fundamento|introdu[çc][aã]o|b[áa]sico)\b/i.test(title)) {
+    return {
+      code: `nome = input("Qual é o seu nome? ")\nidade = int(input("Qual é a sua idade? "))\nprint(f"Olá, {nome}! Você tem {idade} anos.")`,
+      source: "canonical_fundamentals",
+    };
+  }
+
+  // Best practices — concrete code rather than abstract bullets
+  if (kind === "best_practices" || /\b(boas pr[áa]ticas|pep|docstring|venv|pip|deploy)\b/i.test(title)) {
+    return {
+      code: `def calcular_media(notas: list[float]) -> float:\n    """Retorna a média aritmética da lista de notas."""\n    if not notas:\n        return 0.0\n    return sum(notas) / len(notas)\n\nprint(calcular_media([7.5, 8.0, 9.2]))`,
+      source: "canonical_best_practices",
+    };
+  }
+
+  return null;
+}
+
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
 // v5.5.5: accepts moduleKind + prevSymbols for semantic code repair.
 // v5.5.6: prevSymbols is now full module accumulator, not just last slide.
@@ -710,12 +821,25 @@ function applyFinalGuardrails(
       out = { ...out, code: stripped };
     }
   }
-  // Guardrail 2: code layout without code → demote to bullets
+  // v5.5.8 — Guardrail 2 INVERTED: code layout without code → try to SYNTHESIZE
+  // a minimal complete example BEFORE demoting. Demotion is the last-resort
+  // fallback and now emits [CODE-SLIDE-CONVERSION] for full visibility.
   if (out.layout === "code" && (!out.code || !out.code.trim())) {
-    console.log(
-      `[LAYOUT-DEMOTE] slide=${slideNum} layout=code→bullets reason=empty_code title="${(out.title ?? "").slice(0, 60)}"`,
-    );
-    out = { ...out, layout: "bullets" as Layout };
+    const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+    if (synth) {
+      console.log(
+        `[CODE-SYNTHESIS] slide=${slideNum} reason=empty_code beforeLines=0 afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
+      );
+      out = { ...out, code: synth.code };
+    } else {
+      console.warn(
+        `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=empty_code_no_synth_available moduleKind=${moduleKind ?? "unknown"}`,
+      );
+      console.log(
+        `[LAYOUT-DEMOTE] slide=${slideNum} layout=code→bullets reason=empty_code title="${(out.title ?? "").slice(0, 60)}"`,
+      );
+      out = { ...out, layout: "bullets" as Layout };
+    }
   }
   // Guardrail 3: dangling Python assignment → append print()
   if (out.code && out.code.trim()) {
@@ -742,15 +866,30 @@ function applyFinalGuardrails(
         }
       } else {
         console.warn(`[CODE-COMPLETE] slide=${slideNum} status=FAILED reason=${reason}`);
+        // v5.5.8 — repair failed. Before demoting layout=code, try to
+        // synthesize a complete minimal example from module context. Only
+        // demote if synthesis is also unavailable (last resort).
         if (out.layout === "code") {
-          console.log(`[LAYOUT-DEMOTE] slide=${slideNum} layout=code→bullets reason=incomplete_unrepairable (${reason})`);
-          out = { ...out, layout: "bullets" as Layout, code: undefined };
+          const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+          if (synth) {
+            console.log(
+              `[CODE-SYNTHESIS] slide=${slideNum} reason=repair_failed (${reason}) beforeLines=${out.code.split("\n").length} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
+            );
+            out = { ...out, code: synth.code };
+          } else {
+            console.warn(
+              `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${reason}) moduleKind=${moduleKind ?? "unknown"}`,
+            );
+            console.log(`[LAYOUT-DEMOTE] slide=${slideNum} layout=code→bullets reason=incomplete_unrepairable (${reason})`);
+            out = { ...out, layout: "bullets" as Layout, code: undefined };
+          }
         }
       }
     }
   }
   // v5.5.5 — Guardrail 5: code-slide integrity. Layout=code with too few
-  // real code lines or no syntax markers is meaningless. Demote.
+  // real code lines or no syntax markers is meaningless.
+  // v5.5.8 — INVERTED: try synth before demote.
   if (out.layout === "code" && out.code && out.code.trim()) {
     const codeLines = out.code.split("\n").filter((l) => {
       const x = l.trim();
@@ -758,8 +897,19 @@ function applyFinalGuardrails(
     }).length;
     const hasSyntax = /[=()\[\]{}:]|^\s*(def|class|import|from|return|print|if|for|while|try)\b/m.test(out.code);
     if (codeLines < 3 || !hasSyntax) {
-      console.warn(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=false codeLines=${codeLines} hasSyntax=${hasSyntax} → demote`);
-      out = { ...out, layout: "bullets" as Layout };
+      console.warn(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=false codeLines=${codeLines} hasSyntax=${hasSyntax}`);
+      const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+      if (synth) {
+        console.log(
+          `[CODE-SYNTHESIS] slide=${slideNum} reason=integrity_fail (codeLines=${codeLines}, hasSyntax=${hasSyntax}) beforeLines=${codeLines} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
+        );
+        out = { ...out, code: synth.code };
+      } else {
+        console.warn(
+          `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=integrity_fail_no_synth moduleKind=${moduleKind ?? "unknown"}`,
+        );
+        out = { ...out, layout: "bullets" as Layout };
+      }
     } else {
       console.log(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=true codeLines=${codeLines}`);
     }

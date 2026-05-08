@@ -1,0 +1,226 @@
+O último PPTX regrediu em um ponto importante:o sistema passou a “resolver” código incompleto removendo o código ou convertendo slides CODE em bullets/processos.Isso NÃO é o comportamento desejado.Exemplos claros no último export:- slide 14 → marcado como CÓDIGO, mas sem snippet real;- slide 20 → exemplo da biblioteca virou bullets;- slide 37 → POO perdeu exemplo real de classe;- módulo 7 perdeu snippets reais de unittest/logging;- o sistema eliminou `# ...`, mas sacrificando os exemplos técnicos.O problema agora NÃO é mais:- SQL contamination;- token destruction;- header promotion;- semantic-region assignment;- module leakage.O problema é:o repair está sendo conservador demais e “desprogramando” o deck.Quero corrigir isso sem destabilizar o pipeline.NÃO mexer em:- planner modular;- preservation layer;- renderer core;- layout engine;- qaVeto;- billing;- rotas;- schema;- ExportButtons;- fallback v3;- semantic-region assignment.Objetivo:fortalecer exemplos técnicos reais.========================================1. NÃO CONVERTER CODE → BULLETS SILENCIOSAMENTE========================================Hoje parece existir lógica assim:```textcódigo incompleto→ fallback→ bullets/processo/conceito
+Isso destrói valor pedagógico.
+Nova regra:
+Se:
+slide.type == CODE
+então:
+
+
+priorizar repair;
+
+
+priorizar completion;
+
+
+priorizar contextual rewrite;
+
+
+priorizar code synthesis;
+
+
+ANTES de converter layout.
+Só converter CODE → CONCEITO como ÚLTIMO fallback.
+Adicionar log obrigatório:
+[CODE-SLIDE-CONVERSION]slide=...from=CODEto=CONCEPT|PROCESSreason=...
+Quero visibilidade total.
+========================================
+2. REFORÇAR CODE SYNTHESIS
+Hoje o repair remove snippets incompletos em vez de completá-los.
+Quero o oposto.
+Criar:
+synthesizeMinimalCompleteExample()
+Objetivo:
+gerar snippet curto porém completo semanticamente.
+Exemplo atual ruim:
+totalliquido = totalbruto - desconto# ...
+Não quero remover.
+Quero completar:
+totalliquido = totalbruto - descontoreturn totalliquidopedido = [{"preco": 60}, {"preco": 30}]print(calcular_total(pedido))
+Outro exemplo:
+RUIM:
+meu_carro = Carro("Toyota")print(meu_carro)
+BOM:
+meu_carro = Carro("Toyota")meu_carro.ligar()
+OU:
+print(meu_carro.exibir_info())
+Outro:
+RUIM:
+logging.debug("Processando")
+BOM:
+logging.debug("Processando")resultado = processar([1,2,3])print(resultado)
+========================================
+3. REPAIR CONTEXTUAL MAIS FORTE
+repairIncompleteCodeExample() precisa usar:
+
+
+slide anterior;
+
+
+próximo slide;
+
+
+contexto do módulo;
+
+
+símbolos já usados;
+
+
+imports já usados;
+
+
+domínio já estabelecido.
+
+
+Problema atual:
+o sistema evita erro removendo contexto.
+Quero:
+continuidade pedagógica.
+Adicionar:
+[CODE-CONTEXTUAL-REPAIR]slide=...reusedClasses=[...]reusedFunctions=[...]reusedVariables=[...]domain=...
+========================================
+4. PROIBIR "CÓDIGO" SEM SNIPPET REAL
+Slide CODE deve conter:
+
+
+bloco real;
+
+
+
+=4 linhas;
+
+
+
+sintaxe detectável;
+
+
+começo/meio/fim;
+
+
+demonstração prática.
+
+
+Exemplo ruim atual:
+slide 14.
+Exemplo ruim:
+
+
+bullets;
+
+
+processo;
+
+
+explicação;
+
+
+sem snippet.
+
+
+Se não houver snippet:
+
+
+gerar snippet;
+OU
+
+
+mudar explicitamente para CONCEITO;
+MAS COM LOG.
+
+
+========================================
+5. MÓDULO 7 PRECISA VOLTAR A TER CÓDIGO
+O módulo 7 regrediu.
+Quero snippets reais de:
+
+
+unittest;
+
+
+logging;
+
+
+pdb.
+
+
+Exemplos mínimos aceitáveis:
+import unittestclass TestCalculadora(unittest.TestCase):    def test_soma(self):        self.assertEqual(2 + 2, 4)
+import logginglogging.basicConfig(level=logging.INFO)logging.info("Aplicação iniciada")
+import pdbpdb.set_trace()
+Não quero apenas explicações conceituais.
+========================================
+6. POO PRECISA DEMONSTRAR COMPORTAMENTO
+Hoje:
+print(meu_carro)
+Isso é fraco pedagogicamente.
+Preferir:
+
+
+métodos;
+
+
+encapsulamento;
+
+
+comportamento do objeto.
+
+
+Exemplo melhor:
+meu_carro.ligar()
+OU:
+print(meu_carro.exibir_info())
+========================================
+7. NÃO QUERO OVER-SANITIZATION
+O pipeline parece excessivamente defensivo.
+Hoje:
+risco de snippet incompleto→ remove snippet
+Quero:
+risco de snippet incompleto→ completar snippet
+Prioridade:
+preservar valor técnico.
+========================================
+8. LOGS OBRIGATÓRIOS
+Adicionar:
+[CODE-SYNTHESIS]slide=...reason=...beforeLines=...afterLines=...[CODE-SLIDE-CONVERSION]slide=...reason=...[CODE-CONTEXTUAL-REPAIR]slide=...domain=...
+========================================
+9. CRITÉRIO DE ACEITE
+Gerar novamente:
+“Introdução à Programação em Python”
+Resultados esperados:
+
+
+slide 14 volta a ter código real;
+
+
+slide 20 volta a ter snippet real;
+
+
+slide 37 mostra classe/método real;
+
+
+módulo 7 volta a ter unittest/logging/pdb reais;
+
+
+nenhum CODE sem código;
+
+
+nenhum "# ...";
+
+
+sem regressão em layout;
+
+
+sem regressão em tokens;
+
+
+sem regressão em POO;
+
+
+sem regressão em modularidade;
+
+
+export continua funcionando.
+
+
+O objetivo agora NÃO é sanitizar mais.
+O objetivo é:
+recuperar riqueza técnica mantendo estabilidade.
