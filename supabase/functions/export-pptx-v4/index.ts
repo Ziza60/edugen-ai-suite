@@ -17,7 +17,7 @@ import {
   type CourseExportPlan,
 } from "./presentation-plan.ts";
 
-const ENGINE_VERSION = "5.3.1";
+const ENGINE_VERSION = "5.3.3";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -5479,6 +5479,17 @@ const TR_FLOW_TOKENS: TokenRepairRule[] = [
   [/\bestruturas\s+e\s+aplicam\b/gi, "Estruturas `if` e `elif` aplicam"],
   // "Use e para iterar" → "Use `for` e `while` para iterar"
   [/\b(use|usar|usando)\s+e\s+para\s+iterar\b/gi, "$1 `for` e `while` para iterar"],
+  // v5.3.3 — TITLE damage: "Repetindo Ações com e" / "Repetindo ações com e"
+  // (LLM rephrase via L3 cascade dropped the quoted 'for'/'while' tokens).
+  // Trailing-period rule is FIRST so it consumes " ." cleanly without leaving
+  // an orphan space before the dot.
+  [/\b(repetindo\s+a[çc][oõ]es|la[çc]os|loops?|itera(ndo|ção)|repeti[çc][aã]o)\s+com\s+e\s*\.\s*$/gim,
+    "$1 com `for` e `while`."],
+  [/\b(repetindo\s+a[çc][oõ]es|la[çc]os|loops?|itera(ndo|ção)|repeti[çc][aã]o)\s+com\s+e\b(?!\s+\w)/gi,
+    "$1 com `for` e `while`"],
+  // "Estruturas de repetição com e" / "controle de fluxo com e"
+  [/\b(estruturas\s+de\s+repeti[çc][aã]o|controle\s+de\s+fluxo)\s+com\s+e\b(?!\s+\w)/gi,
+    "$1 com `for` e `while`"],
 ];
 
 const TR_TESTS_TOKENS: TokenRepairRule[] = [
@@ -5657,6 +5668,166 @@ function applyTokenRepairAndValidate(
     };
   }
   return out;
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.3.3 — HEADER/CONTENT BINDING GUARD
+// ───────────────────────────────────────────────────────────
+// Catches the class of bug where short technical tokens (for,
+// while, if, elif, else, def) were dropped from the TITLE — by
+// L3 LLM rewrite, by an over-eager sanitizer, or by a planner
+// repair — leaving connectives like "com e", "com ,", or
+// "estruturas e aplicam" alone in the header. These read as
+// content leakage into the title region.
+// Returns a report so callers can decide to repair / fall back.
+// ═══════════════════════════════════════════════════════════
+const SHORT_TECHNICAL_TOKENS_RE =
+  /\b(for|while|if|elif|else|def|try|except|finally|with|class|return|yield|lambda|async|await)\b/i;
+
+const HEADER_LEAK_PATTERNS: Array<{ re: RegExp; key: string }> = [
+  // Title ends or contains "com e" with no following noun (lost token between)
+  { re: /\bcom\s+e\b(?!\s+[a-záéíóúâêôãõç])/i, key: "com_e_orphan" },
+  // "com , " orphan comma
+  { re: /\bcom\s*,\s*(e\s+)?$/i, key: "com_comma_orphan" },
+  // " e " sandwiched between two parens/punct, no real word right after
+  { re: /\(\s*,?\s*e\s*\)/, key: "paren_e_orphan" },
+  // Trailing "como e ." / "como , e ."
+  { re: /\bcomo\s*,?\s*e\s*\.\s*$/i, key: "como_e_trailing" },
+  // " e " followed immediately by period/end (fragment)
+  { re: /\s+e\s*\.\s*$/i, key: "e_dot_trailing" },
+  // Title starts with bare connective + verb ("e preparam", "ou criam")
+  { re: /^(e|ou)\s+\w+/i, key: "leading_connective" },
+];
+
+// v5.3.3 (architect feedback) — allowlist for legitimate Portuguese forms that
+// would otherwise trip leak patterns. Checked BEFORE detection runs.
+const HEADER_LEAK_ALLOWLIST: RegExp[] = [
+  /\bE\/S\b/,                                   // "Trabalhando com E/S"
+  /^E\s+se\b/i,                                 // "E se o arquivo não existir?"
+  /^Ou\s+(quando|se|como|por\s*que)\b/i,        // "Ou quando usar..."
+  /\bcom\s+e\s+sem\b/i,                         // "tabelas com e sem índice"
+  /\bcom\s+e\s+contra\b/i,                      // "argumentos com e contra"
+];
+
+function detectHeaderContentLeak(title: string): { leaked: boolean; key?: string } {
+  if (!title || typeof title !== "string") return { leaked: false };
+  const t = title.trim();
+  if (t.length < 5) return { leaked: false };
+  for (const allow of HEADER_LEAK_ALLOWLIST) {
+    if (allow.test(t)) return { leaked: false };
+  }
+  for (const p of HEADER_LEAK_PATTERNS) {
+    if (p.re.test(t)) return { leaked: true, key: p.key };
+  }
+  return { leaked: false };
+}
+
+// v5.3.3 (architect feedback) — DETERMINISTIC short-token preservation.
+// If the slide body / code mentions a Python keyword (for/while/if/elif/
+// else/def/try/except/with/class) but the TITLE no longer contains ANY of
+// them AND the title contains an orphan connective ("com e" / "como e"),
+// flag as `short_token_dropped`. Catches the L3 rephrase damage even when
+// none of the named title patterns above match exactly.
+function detectShortTokenDropped(title: string, body: string): boolean {
+  if (!title || !body) return false;
+  const bodyMentions = SHORT_TECHNICAL_TOKENS_RE.test(body);
+  if (!bodyMentions) return false;
+  if (SHORT_TECHNICAL_TOKENS_RE.test(title)) return false;
+  return /\b(com|como|usando|via)\s+e\b(?!\s+[a-záéíóúâêôãõç])/i.test(title)
+      || /\s+e\s*\.\s*$/i.test(title);
+}
+
+// Reconstruct a safe title from moduleTitle + intent when repair fails.
+function reconstructTitleFromIntent(
+  moduleTitle: string,
+  intent: string | undefined,
+  kind: string,
+): string {
+  const mod = moduleTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim();
+  if (kind === "py_flow") {
+    if (intent === "code_walkthrough" || intent === "example") return `Laços \`for\` e \`while\` em Python`;
+    if (intent === "process") return `Estruturas de Controle de Fluxo`;
+    if (intent === "comparison") return `\`for\` vs \`while\``;
+    return `Controle de Fluxo: \`if\`/\`for\`/\`while\``;
+  }
+  if (kind === "py_oop" && intent) return `Classes e Objetos em Python`;
+  if (kind === "py_files" && intent) return `Arquivos com \`open()\` e \`with\``;
+  if (kind === "py_tests" && intent) return `Testes com \`unittest\``;
+  // Generic fallback
+  return mod || "Conteúdo do Módulo";
+}
+
+// Validates that layouts which RELY on a meaningful title + rich body
+// (process / cards / comparison / twocol / code_walkthrough) are not
+// producing a corrupted header. If the title leaked AND we know the
+// module kind, we attempt token restoration; if still bad, we
+// reconstruct from moduleTitle+intent so the renderer never receives
+// "Repetindo Ações com e".
+type LayoutBindingReport = {
+  ok: boolean;
+  reason?: string;
+  repairedTitle?: string;
+};
+
+// v5.3.3 (architect feedback) — narrowed: dropped `bullets`, `code`,
+// `module_cover` to avoid over-firing on legitimate cover/bullet titles.
+// Module covers go through a dedicated objective-repair pipeline already.
+const LAYOUTS_NEEDING_BINDING_GUARD = new Set<string>([
+  "process",
+  "cards",
+  "comparison",
+  "twocol",
+  "code_walkthrough",
+]);
+
+function validateLayoutBinding(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+  intent?: string,
+): LayoutBindingReport {
+  if (!s || !s.layout) return { ok: true };
+  if (!LAYOUTS_NEEDING_BINDING_GUARD.has(String(s.layout))) return { ok: true };
+  const title = String(s.title ?? "").trim();
+  if (!title) return { ok: false, reason: "empty_title" };
+
+  // Combine body fields for short-token check
+  const bodyText = [
+    ...(s.items ?? []),
+    s.code ?? "",
+    ...((s as any).leftItems ?? []),
+    ...((s as any).rightItems ?? []),
+  ].join(" ");
+
+  let leak = detectHeaderContentLeak(title);
+  if (!leak.leaked && detectShortTokenDropped(title, bodyText)) {
+    leak = { leaked: true, key: "short_token_dropped" };
+  }
+  if (!leak.leaked) return { ok: true };
+
+  // Try token repair first (TR_FLOW_TOKENS et al)
+  const { result, changed } = repairTechnicalTokens(title, moduleTitle, courseTopic);
+  if (changed) {
+    const stillLeaked = detectHeaderContentLeak(result).leaked;
+    if (!stillLeaked) {
+      console.log(
+        `[V5-BINDING-REPAIR] layout=${s.layout} key=${leak.key} before="${title.slice(0, 60)}" after="${result.slice(0, 60)}"`,
+      );
+      return { ok: false, reason: leak.key, repairedTitle: result };
+    }
+  }
+
+  // Fall back to reconstruction
+  const { kind } = detectModuleDomain(moduleTitle, courseTopic);
+  const pyKind = (() => {
+    try { return detectModuleDomainPython(moduleTitle, courseTopic); }
+    catch { return "py_generic"; }
+  })();
+  const reconstructed = reconstructTitleFromIntent(moduleTitle, intent, pyKind || kind || "generic");
+  console.warn(
+    `[V5-BINDING-RECONSTRUCT] layout=${s.layout} key=${leak.key} kind=${pyKind} intent=${intent ?? "?"} before="${title.slice(0, 60)}" after="${reconstructed.slice(0, 60)}"`,
+  );
+  return { ok: false, reason: leak.key, repairedTitle: reconstructed };
 }
 
 function repairTechnicalSanitizationDamage(
@@ -7161,10 +7332,42 @@ async function runPipeline(
       );
 
       if (inRange && !hasFatal && !hasBlocker) {
+        // v5.3.3 — STAGE 1 binding debug: planner output PER SLIDE before any conversion
+        for (let psi = 0; psi < (plan.modules[i]?.slides ?? []).length; psi++) {
+          const ps = plan.modules[i].slides[psi];
+          const slideId = `module_${i + 1}_slide_${psi + 1}`;
+          console.log(
+            `[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=${slideId} intent=${ps.intent} layoutHint=${(ps as any).layoutHint ?? "?"} title="${(ps.title ?? "").slice(0, 60)}" items=${(ps.items ?? []).length} steps=${((ps as any).steps ?? []).length} cards=${((ps as any).cards ?? []).length} hasCode=${!!ps.code}`,
+          );
+        }
         // Convert this module's slides to v5 Slide shape
-        allModuleSlides[i] = v5Like[i].map((s): Slide => ({
+        allModuleSlides[i] = v5Like[i].map((s, vi): Slide => {
+          const baseTitle = cleanSlideTitle(s.title.slice(0, 80), modules[i].title);
+          // v5.3.3 — STAGE 2 binding debug: post-conversion v5 layout/title/items
+          console.log(
+            `[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=${i + 1} slideIdx=${vi} layout=${s.layout} title="${baseTitle.slice(0, 60)}" sectionLabel="${(s.label ?? "").slice(0, 30)}" items=${(s.items ?? []).length} leftItems=${(s.leftItems ?? []).length} rightItems=${(s.rightItems ?? []).length}`,
+          );
+          // v5.3.3 — header/content leak guard BEFORE the slide enters QA
+          const intent = (plan.modules[i]?.slides ?? [])[vi]?.intent;
+          const binding = validateLayoutBinding(
+            { ...(s as unknown as Slide), title: baseTitle, layout: s.layout as Layout },
+            modules[i].title,
+            (input as any)?.title ?? "",
+            intent,
+          );
+          // v5.3.3 (architect feedback) — emit a DISTINCT diagnostic when the
+          // binding repair fires. Module stays on the planner path (we already
+          // reconstructed a safe title), but the flag surfaces planner/L3
+          // corruption so we can audit and route to fallback later if needed.
+          if (!binding.ok) {
+            console.warn(
+              `[PLANNER-BINDING-FAILURE] module=${i + 1} slideIdx=${vi} layout=${s.layout} reason=${binding.reason} reconstructed=${binding.repairedTitle !== baseTitle} before="${baseTitle.slice(0, 60)}" after="${(binding.repairedTitle ?? baseTitle).slice(0, 60)}"`,
+            );
+          }
+          const finalTitle = binding.ok ? baseTitle : (binding.repairedTitle ?? baseTitle);
+          return {
           layout: s.layout as Layout,
-          title: cleanSlideTitle(s.title.slice(0, 80), modules[i].title),
+          title: finalTitle,
           label: (s.label ?? "CONTEÚDO").slice(0, 32).toUpperCase(),
           items: (s.items ?? [])
             .map((x) => safeItemText(globalSanitize(x), 105))
@@ -7180,7 +7383,15 @@ async function runPipeline(
             ? s.rightItems.map((x) => globalSanitize(x).slice(0, 90)).filter((x) => x.length > 0)
             : undefined,
           moduleIndex: i,
-        }));
+          };
+        });
+        // v5.3.3 — STAGE 3 binding debug: final renderer-input slides per module
+        for (let ri = 0; ri < allModuleSlides[i].length; ri++) {
+          const rs = allModuleSlides[i][ri];
+          console.log(
+            `[SLIDE-BINDING-DEBUG] stage=rendererInput module=${i + 1} slideIdx=${ri} layout=${rs.layout} title="${(rs.title ?? "").slice(0, 60)}" itemsCount=${(rs.items ?? []).length} leftCount=${((rs as any).leftItems ?? []).length} rightCount=${((rs as any).rightItems ?? []).length} firstItems="${(rs.items ?? []).slice(0, 2).map((x) => x.slice(0, 30)).join(" | ")}"`,
+          );
+        }
         moduleUsesPlanner[i] = true;
         acceptedCount++;
       } else {
