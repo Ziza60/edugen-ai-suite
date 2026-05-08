@@ -23,7 +23,7 @@ import {
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.4.3";
+const ENGINE_VERSION = "5.4.4";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -7479,6 +7479,19 @@ async function runPipeline(
   geminiKey: string,
   selectedTemplate: string,
 ): Promise<PptxGenJS> {
+  // v5.4.4 — wall-clock timing checkpoints. Edge Function 546 errors mean
+  // CPU/wall-clock/memory limit hit. Without these logs we cannot tell
+  // whether the planner, the per-module QA, the cascade L3, or pptx.write()
+  // is responsible. All checkpoints log [V5-TIMING] phase=... ms=... total=...
+  const t0 = Date.now();
+  const tlog = (phase: string, since?: number): number => {
+    const now = Date.now();
+    const ms = now - (since ?? t0);
+    const total = now - t0;
+    console.log(`[V5-TIMING] phase=${phase} ms=${ms} total=${total} modules=${modules.length}`);
+    return now;
+  };
+  let tCheckpoint = t0;
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "EduGenAI v5";
@@ -7822,6 +7835,8 @@ async function runPipeline(
     moduleCovers[mi] = c;
   }
 
+  tCheckpoint = tlog("planner+pre_QA_pipeline_done", tCheckpoint);
+
   // ── v5.3.0 — PER-MODULE QA WRAPPER ─────────────────────────────────────
   // Architectural shift inspired by Manus: QA runs per-module instead of
   // on the full deck. Each module gets its own QA + cascade so semantic
@@ -7893,6 +7908,7 @@ async function runPipeline(
   console.log(
     `[V5-QA] Per-module aggregate: status=${cascadeReport.status} | unfixed=${cascadeReport.issues.length} | fixed=${cascadeReport.fixedIssues.length} | courseDomain=${inferCourseDomain(courseTitle)}`,
   );
+  tCheckpoint = tlog("per_module_QA_cascade_done", tCheckpoint);
 
   // Post-cascade safety sanitization pass — guarantees no residual
   // placeholder reaches the renderer even if a cascade level produced one.
@@ -7957,6 +7973,7 @@ async function runPipeline(
   console.log(
     `[V5-QA-POSTREPAIR] After final repair: status=${postRepairReport.status} | unfixed=${postRepairReport.issues.length} | fixed=${postRepairReport.fixedIssues.length}`,
   );
+  tCheckpoint = tlog("post_repair_re_QA_done", tCheckpoint);
 
   // ── v5.1.8 — GLOBAL FIELD SAFETY NET ──────────────────────────────
   // Final pass: scan EVERY string field (extractAllStrings) of EVERY slide
@@ -8061,10 +8078,13 @@ async function runPipeline(
   // Hard gate — blocks export if any CRITICAL hard-constraint issue
   // survives the cascade. The handler converts this into a 422 response
   // with structured details.
+  tCheckpoint = tlog("safety_net_done", tCheckpoint);
   const veto = qaVeto(cascadeReport, allModuleSlides, originalSlideCount, moduleCovers);
   if (veto.blocked) {
+    tlog("veto_blocked", tCheckpoint);
     throw new PptxQAVetoError(veto);
   }
+  tCheckpoint = tlog("veto_passed", tCheckpoint);
   // ─────────────────────────────────────────────────────────────────────────
 
   // Count actual total slides from generated content (for accurate footer numbers)
@@ -8177,6 +8197,7 @@ async function runPipeline(
     totalSlides,
   );
 
+  tlog("render_loop_done", tCheckpoint);
   console.log(`[V5] Pipeline complete: ${slideNum} slides`);
   // Compact QA summary for diagnostic transparency on the success path.
   // The veto already short-circuits when blocked; here we expose what was
@@ -8333,16 +8354,31 @@ Deno.serve(async (req: Request) => {
       selectedTemplate,
     );
 
-    const rawData = await pptx.write({ outputType: "uint8array" });
-    const rawBytes = rawData as Uint8Array;
-    console.log(
-      `[V5-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]}`,
-    );
+    // v5.4.4 — wrap pptx.write() in explicit try/catch with timing. This
+    // is the heaviest synchronous step (serializes 30-50 slides + assets)
+    // and a likely culprit for 546 WORKER_LIMIT timeouts. If write fails
+    // or times out, we surface the elapsed time + slide count instead of
+    // dying silently on the runtime kill.
+    const tWriteStart = Date.now();
+    let rawBytes: Uint8Array;
+    try {
+      const rawData = await pptx.write({ outputType: "uint8array" });
+      rawBytes = rawData as Uint8Array;
+      console.log(
+        `[V5-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]} | write_ms=${Date.now() - tWriteStart}`,
+      );
+    } catch (writeErr: any) {
+      console.error(
+        `[V5-WRITE-FAIL] pptx.write() threw after ${Date.now() - tWriteStart}ms — ${writeErr?.message ?? writeErr}`,
+      );
+      throw writeErr;
+    }
+    const tRepairStart = Date.now();
     const repairResult = await repairPptxPackage(rawBytes);
     const pptxData = repairResult.data;
     const repairDiag = repairResult.diag;
     console.log(
-      `[V5-WRITE] repaired_bytes=${pptxData.byteLength} slides=${repairDiag.slide_count}`,
+      `[V5-WRITE] repaired_bytes=${pptxData.byteLength} slides=${repairDiag.slide_count} | repair_ms=${Date.now() - tRepairStart}`,
     );
 
     const dateStr = new Date().toISOString().slice(0, 10);
@@ -8357,6 +8393,7 @@ Deno.serve(async (req: Request) => {
     const fileName = `${userId}/${safeName}-PPTX-v5-${dateStr}-${ts}.pptx`;
 
     // Upload with retry
+    const tUploadStart = Date.now();
     let uploadErr: any = null;
     for (let attempt = 1; attempt <= 4; attempt++) {
       const { error } = await serviceClient.storage
@@ -8377,6 +8414,7 @@ Deno.serve(async (req: Request) => {
         );
     }
     if (uploadErr) throw uploadErr;
+    console.log(`[V5-UPLOAD] upload_ms=${Date.now() - tUploadStart} bytes=${pptxData.byteLength}`);
 
     const { data: signedUrl, error: signErr } = await serviceClient.storage
       .from("course-exports")
