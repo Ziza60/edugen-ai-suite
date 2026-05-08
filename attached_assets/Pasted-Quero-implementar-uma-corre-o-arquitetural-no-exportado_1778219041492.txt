@@ -1,0 +1,502 @@
+Quero implementar uma correção arquitetural no exportador PPTX v5.3.x para resolver o problema recorrente de destruição de tokens técnicos.
+
+Contexto:
+A arquitetura modular inspirada na Manus funcionou:
+- planner por módulo;
+- QA por módulo;
+- merge global;
+- fallback por módulo;
+- redução de contaminação entre módulos.
+
+Mas ainda persiste um problema central:
+tokens técnicos são destruídos durante sanitização, reparo semântico, reflow ou QA.
+
+Exemplos reais:
+- "Criar estruturas condicionais com, e else." deveria ser "com if, elif e else."
+- "Repetindo ações com e" deveria ser "com for e while."
+- "Usar modos de abertura, e 'a'" deveria preservar "'r', 'w' e 'a'."
+- "construtor init" deveria ser "__init__()".
+- "Níveis como, e ERROR" deveria preservar "DEBUG, INFO e ERROR".
+- "Organizar projetos Python com,." deveria preservar "src/ e tests/".
+- "Gerenciar dependências com, e requirements.txt" deveria preservar "venv, pip e requirements.txt".
+
+Diagnóstico:
+O sistema está tentando reparar tokens depois que eles já foram danificados.
+Isso gera uma espiral de regras e regex.
+
+Nova estratégia:
+Não reparar tokens técnicos depois.
+Congelar/proteger tokens técnicos antes de qualquer sanitização/reparo.
+
+Implementar uma camada de:
+
+Technical Preservation Layer
+Semantic Freezing
+Token Masking
+Re-hydration
+Integrity Check
+
+Inspirado na ideia:
+texto técnico → congelar tokens → sanitizer/reparo só no texto natural → reidratar tokens → validar integridade.
+
+NÃO reescrever o renderer.
+NÃO migrar para v6.
+NÃO alterar billing, schema ou rotas públicas.
+NÃO adicionar novos layouts.
+Implementar de forma incremental e segura.
+
+1. Criar arquivo/módulo novo
+
+Criar módulo separado, por exemplo:
+
+supabase/functions/export-pptx-v4/technical-preservation.ts
+
+Com funções principais:
+
+- detectTechnicalTokens(text, context)
+- protectTechnicalTokens(text, context)
+- restoreTechnicalTokens(maskedText, tokenMap)
+- validateTechnicalTokenIntegrity(originalText, restoredText, tokenMap)
+- withTechnicalProtection(text, context, processorFn)
+
+2. Conceito de Technical Token
+
+Criar tipo:
+
+TechnicalToken = {
+  id: string;
+  value: string;
+  kind:
+    | "python_keyword"
+    | "python_builtin"
+    | "python_dunder"
+    | "python_method"
+    | "python_exception"
+    | "python_module"
+    | "test_framework"
+    | "log_level"
+    | "file_path"
+    | "filename"
+    | "shell_command"
+    | "package_tool"
+    | "http_method"
+    | "api_method"
+    | "json_method"
+    | "generic_identifier";
+  start?: number;
+  end?: number;
+  protected: true;
+}
+
+3. Mascaramento
+
+protectTechnicalTokens(text, context) deve substituir tokens técnicos por placeholders temporários neutros:
+
+[[TECH_TOKEN_001]]
+[[TECH_TOKEN_002]]
+[[TECH_TOKEN_003]]
+
+Retornar:
+
+{
+  maskedText,
+  tokenMap,
+  stats
+}
+
+Importante:
+Os placeholders técnicos devem ser diferentes de placeholders de template e nunca aparecer no PPTX final.
+
+4. Reidratação
+
+restoreTechnicalTokens(maskedText, tokenMap) deve reinserir exatamente os valores originais.
+
+Exemplo:
+
+Original:
+"Criar estruturas condicionais com if, elif e else."
+
+Masked:
+"Criar estruturas condicionais com [[TECH_TOKEN_001]], [[TECH_TOKEN_002]] e [[TECH_TOKEN_003]]."
+
+Restored:
+"Criar estruturas condicionais com if, elif e else."
+
+5. Tokens obrigatórios a proteger
+
+Python control flow:
+- if
+- elif
+- else
+- for
+- while
+- break
+- continue
+- return
+- def
+- class
+- try
+- except
+- finally
+- raise
+- import
+- from
+- with
+- as
+- in
+- is
+- not
+- and
+- or
+
+Python builtins/functions:
+- print()
+- input()
+- type()
+- len()
+- range()
+- int()
+- str()
+- float()
+- bool()
+- list()
+- dict()
+- set()
+- tuple()
+- open()
+- read()
+- write()
+- append()
+- keys()
+- values()
+- items()
+- update()
+
+Dunder/magic:
+- __init__()
+- __name__
+- __main__
+- __str__()
+- __repr__()
+
+Exceptions:
+- FileNotFoundError
+- IOError
+- ValueError
+- TypeError
+- Exception
+
+Testing:
+- unittest
+- pytest
+- unittest.TestCase
+- TestCase
+- test_*
+- assert
+- assertEqual()
+- assertTrue()
+- assertFalse()
+- setUp()
+- tearDown()
+
+Logging:
+- logging
+- logging.basicConfig()
+- DEBUG
+- INFO
+- WARNING
+- ERROR
+- CRITICAL
+
+JSON/API:
+- json
+- json.loads()
+- json.dumps()
+- json.load()
+- json.dump()
+- requests
+- requests.get()
+- requests.post()
+- response.json()
+- response.status_code
+- response.raise_for_status()
+- GET
+- POST
+- PUT
+- PATCH
+- DELETE
+- HTTP
+- REST
+- API
+
+Project structure / best practices:
+- PEP 8
+- black
+- flake8
+- docstring
+- docstrings
+- venv
+- pip
+- pip install
+- requirements.txt
+- setup.py
+- pyproject.toml
+- README.md
+- LICENSE
+- src/
+- tests/
+- docs/
+- .venv
+- .py
+- .txt
+- .json
+
+Shell/Bash:
+- python3 -m venv .venv
+- source .venv/bin/activate
+- pip install -r requirements.txt
+- pip freeze > requirements.txt
+- black seu_arquivo.py
+
+6. Regex/context-aware detection
+
+Detectar também padrões:
+
+- palavras entre backticks: `...`
+- trechos entre aspas simples que sejam modos/código: 'r', 'w', 'a', 'b', 'rb', 'wb'
+- identificadores com parênteses: [a-zA-Z_][a-zA-Z0-9_]*()
+- paths com /: src/, tests/, docs/
+- arquivos com extensão: requirements.txt, setup.py, pyproject.toml
+- nomes com underscore duplo: __init__()
+- nomes com ponto: logging.basicConfig(), response.json()
+- prefixo test_: test_soma, test_*
+
+7. Onde aplicar no pipeline
+
+Aplicar a proteção antes de qualquer operação que possa alterar texto:
+
+- sanitizeTechnicalContent
+- repairSemanticBreak
+- repairLearningObjective
+- repairTechnicalTokens
+- detectBrokenSemanticSentence repair
+- dedupe text normalization, se alterar texto final
+- validate/rewrite slide title
+- L1/L2/L3 cascade repairs
+- any LLM rewrite/cascade repair
+
+Fluxo padrão:
+
+const protected = protectTechnicalTokens(text, context)
+const processed = repairOrSanitize(protected.maskedText)
+const restored = restoreTechnicalTokens(processed, protected.tokenMap)
+validateTechnicalTokenIntegrity(text, restored, protected.tokenMap)
+
+8. Criar helper comTechnicalProtection
+
+Exemplo:
+
+withTechnicalProtection(text, context, (masked) => {
+  return repairSemanticBreak(masked, context)
+})
+
+Esse helper deve:
+- mascarar tokens;
+- executar processorFn;
+- reidratar tokens;
+- validar integridade;
+- se reidratação falhar, rejeitar o reparo e manter o texto original ou bloquear.
+
+9. Integrity Check
+
+validateTechnicalTokenIntegrity deve verificar:
+
+- todos os tokens do tokenMap foram reintroduzidos;
+- nenhum placeholder [[TECH_TOKEN_...]] sobrou;
+- nenhum token técnico original foi removido;
+- nenhum token técnico foi duplicado indevidamente;
+- nenhum token foi alterado parcialmente.
+
+Se falhar:
+- logar [TECH-PRESERVE-FAIL]
+- rejeitar reparo;
+- emitir QAIssue CRITICAL: TECHNICAL_TOKEN_LOSS
+- fallback por módulo ou veto.
+
+Adicionar TECHNICAL_TOKEN_LOSS ao HARD_CRITICAL_TYPES.
+
+10. QA específico
+
+Criar detector:
+
+detectTechnicalTokenDamage(text)
+
+Detectar padrões que ainda indiquem perda técnica:
+
+- "com, e"
+- "com e"
+- "com ."
+- "com."
+- "(, )"
+- "(, else)"
+- "Níveis como, e"
+- "Criar estruturas condicionais com, e"
+- "Repetindo Ações com e"
+- "modos de abertura, e"
+- "construtor init" sem "__init__()"
+- "Usar e para interagir"
+- "Organizar projetos Python com,."
+- "Gerenciar dependências com, e"
+- "Crie testes herdando de,"
+- "Níveis como, e ERROR"
+
+Se detectar:
+- tentar repair com proteção;
+- se persistir, bloquear.
+
+11. Renderer/visual
+
+Não alterar renderer agora.
+
+Mas, se possível, marcar TechnicalSpan para render futuro:
+
+{
+  text: "__init__()",
+  isTechnical: true,
+  styleHint: "inline_code"
+}
+
+Por enquanto, pode manter como texto normal se a estrutura atual não suportar inline spans.
+
+12. Logs obrigatórios
+
+Adicionar logs:
+
+[TECH-PRESERVE]
+module=2 slide=M2.S3 tokens=3 kinds=python_keyword,python_keyword,python_keyword
+
+[TECH-MASK]
+before="Criar estruturas condicionais com if, elif e else."
+masked="Criar estruturas condicionais com [[TECH_TOKEN_001]], [[TECH_TOKEN_002]] e [[TECH_TOKEN_003]]."
+
+[TECH-RESTORE]
+after="Criar estruturas condicionais com if, elif e else."
+
+[TECH-PRESERVE-FAIL]
+reason="missing token after restore"
+missing=["if","elif"]
+
+[TECH-TOKEN-QA]
+type=TECHNICAL_TOKEN_LOSS slide=...
+
+13. Testes obrigatórios
+
+Criar smoke tests para garantir:
+
+1.
+Input:
+"Criar estruturas condicionais com if, elif e else."
+Depois de sanitize/repair:
+deve continuar contendo if, elif, else.
+
+2.
+Input:
+"Repetindo ações com for e while."
+Deve preservar for e while.
+
+3.
+Input:
+"Usar modos de abertura 'r', 'w' e 'a'."
+Deve preservar 'r', 'w', 'a'.
+
+4.
+Input:
+"Criar construtor __init__()."
+Deve preservar __init__().
+
+5.
+Input:
+"Níveis como DEBUG, INFO e ERROR."
+Deve preservar DEBUG, INFO, ERROR.
+
+6.
+Input:
+"Organizar projetos Python com src/ e tests/."
+Deve preservar src/ e tests/.
+
+7.
+Input:
+"Gerenciar dependências com venv, pip e requirements.txt."
+Deve preservar venv, pip, requirements.txt.
+
+8.
+Input:
+"Crie testes herdando de unittest.TestCase usando métodos test_*."
+Deve preservar unittest.TestCase e test_*.
+
+9.
+Input:
+"Use requests.get() e response.json()."
+Deve preservar requests.get() e response.json().
+
+10.
+Input:
+"Execute pip install -r requirements.txt."
+Deve preservar o comando.
+
+14. Critério de aceite
+
+Gerar novamente:
+"Introdução à Programação em Python"
+
+O PPTX só será aceitável se não contiver:
+
+- "Criar estruturas condicionais com, e else"
+- "Tomada de Decisão com, else"
+- "Repetindo Ações com e"
+- "Usar modos de abertura, e 'a'"
+- "Realize leitura com, e escrita"
+- "Níveis como, e ERROR"
+- "Organizar projetos Python com,."
+- "Gerenciar dependências com, e requirements.txt"
+- "construtor init" quando deveria ser "__init__()"
+- "Acessar Membros: Usar e"
+- "Crie testes herdando de,"
+
+E deve preservar:
+- if / elif / else
+- for / while
+- 'r' / 'w' / 'a'
+- read() / write()
+- FileNotFoundError / IOError
+- __init__()
+- unittest.TestCase / test_*
+- DEBUG / INFO / ERROR
+- src/ / tests/
+- venv / pip / requirements.txt
+
+15. Estratégia incremental
+
+Não tentar resolver todos os domínios do mundo agora.
+Começar com Python, testes, logging, JSON/API, shell e estrutura de projeto.
+
+Depois, essa camada poderá receber domain dictionaries para:
+- Java
+- Direito
+- Medicina
+- História
+- IA
+- Gestão
+
+16. Prioridade
+
+1. Proteger tokens técnicos antes de reparo/sanitização.
+2. Impedir perda de tokens.
+3. Reduzir regex de reconstrução posterior.
+4. Manter arquitetura modular v5.3.x.
+5. Não mexer no renderer.
+6. Não mexer em design visual.
+7. Não quebrar export atual.
+
+Implementar com fallback seguro:
+se a Technical Preservation Layer falhar, usar pipeline atual, mas manter QA veto ativo para TECHNICAL_TOKEN_LOSS.

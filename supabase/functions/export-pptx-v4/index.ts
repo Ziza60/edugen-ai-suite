@@ -16,8 +16,14 @@ import {
   type ModulePlannerDiagnostic,
   type CourseExportPlan,
 } from "./presentation-plan.ts";
+import {
+  withTechnicalProtection,
+  detectTechnicalTokens,
+  detectTechnicalTokenDamage,
+  scanSlideForTechnicalDamage,
+} from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.3.3";
+const ENGINE_VERSION = "5.4.0";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4940,28 +4946,39 @@ function repairSlideSemanticBreaks(
   courseTopic: string,
   slideId: string,
 ): Slide {
-  const fix = (txt: string | undefined): string | undefined => {
+  // v5.4.0 (architect feedback) — wrap the natural-language repair in
+  // withTechnicalProtection so technical tokens (if/elif/__init__/
+  // unittest.TestCase/DEBUG/etc) are FROZEN with PUA placeholders
+  // before SEMANTIC_REPAIRS rules touch the text. Restoration happens
+  // automatically; if any token is lost during repair, the wrapper
+  // REVERTS to the original text so qaVeto sees real damage and can
+  // emit TECHNICAL_TOKEN_LOSS instead of shipping a half-fixed line.
+  const fix = (txt: string | undefined, field: string): string | undefined => {
     if (!txt) return txt;
-    const r = repairSemanticBreak(txt, moduleTitle, courseTopic);
-    if (r.changed) {
+    const protectedRun = withTechnicalProtection(txt, { slideId, field }, (masked) => {
+      const r = repairSemanticBreak(masked, moduleTitle, courseTopic);
+      return r.changed ? r.repaired : masked;
+    });
+    if (protectedRun.result !== txt) {
       console.log(
-        `[V5-SEMANTIC-REPAIR] ${slideId} | "${txt.slice(0, 80)}" → "${r.repaired.slice(0, 80)}" [${r.appliedKey}]`,
+        `[V5-SEMANTIC-REPAIR] ${slideId} field=${field} | "${txt.slice(0, 80)}" → "${protectedRun.result.slice(0, 80)}" valid=${protectedRun.valid}`,
       );
     }
-    return r.repaired;
+    return protectedRun.result;
   };
   const out: Slide = {
     ...s,
-    title:    fix(s.title) ?? s.title,
-    subtitle: fix(s.subtitle),
-    items:      s.items?.map((t) => fix(t) ?? t),
-    leftItems:  s.leftItems?.map((t) => fix(t) ?? t),
-    rightItems: s.rightItems?.map((t) => fix(t) ?? t),
+    title:    fix(s.title, "title") ?? s.title,
+    subtitle: fix(s.subtitle, "subtitle"),
+    items:      s.items?.map((t, i) => fix(t, `items[${i}]`) ?? t),
+    leftItems:  s.leftItems?.map((t, i) => fix(t, `leftItems[${i}]`) ?? t),
+    rightItems: s.rightItems?.map((t, i) => fix(t, `rightItems[${i}]`) ?? t),
   };
   // v5.1.8: also repair competencies on module_cover
   const comps = (s as Slide & { competencies?: string[] }).competencies;
   if (Array.isArray(comps)) {
-    (out as Slide & { competencies?: string[] }).competencies = comps.map((t) => fix(t) ?? t);
+    (out as Slide & { competencies?: string[] }).competencies =
+      comps.map((t, i) => fix(t, `competencies[${i}]`) ?? t);
   }
   return out;
 }
@@ -6002,7 +6019,9 @@ type QAIssueType =
   | "TECHNICAL_SEMANTIC_BREAK"
   | "REDUNDANT_SLIDE"
   // ── v5.1.6 hardening pass 6 ─────────────────────────────────
-  | "BROKEN_LANGUAGE_STRUCTURE";
+  | "BROKEN_LANGUAGE_STRUCTURE"
+  // ── v5.4.0 Technical Preservation Layer ─────────────────────
+  | "TECHNICAL_TOKEN_LOSS";
 
 interface QAIssue {
   slideId:            string;
@@ -6899,6 +6918,32 @@ Responda SOMENTE com JSON válido sem markdown:
       console.warn(`[V5-QA-L3] Rejected rewrite (domain contamination: ${contam2.reason})`);
       return s;
     }
+    // ── v5.4.0 Technical token preservation veto ────────────
+    // If the original slide TITLE+ITEMS had technical tokens (if/elif/
+    // __init__/unittest.TestCase/DEBUG/etc) and the LLM rewrite dropped
+    // any of them, REJECT the rewrite and keep the original.
+    // (architect feedback) Only compare against fields the candidate
+    // KEEPS — the candidate is bullets-only with code/columns dropped,
+    // so requiring tokens from `s.code` or `s.leftItems` to survive in
+    // `candidate.title + newItems` would over-reject every paraphrase.
+    const originalSurvivableText = [s.title, ...(s.items ?? [])].filter(Boolean).join(" ");
+    const rewrittenText = [candidate.title, ...newItems].join(" ");
+    const originalTokens = detectTechnicalTokens(originalSurvivableText);
+    if (originalTokens.length > 0) {
+      const dropped = originalTokens.filter(t => !rewrittenText.includes(t.value));
+      if (dropped.length > 0) {
+        console.warn(
+          `[TECH-PRESERVE-FAIL] L3 rewrite dropped ${dropped.length} token(s) from title+items: ${dropped.map(t=>t.value).join(", ")} — REJECTED`,
+        );
+        return s;
+      }
+    }
+    // Also reject if the rewrite itself introduced damage signatures
+    const rewriteDamage = detectTechnicalTokenDamage(rewrittenText);
+    if (rewriteDamage.damaged) {
+      console.warn(`[TECH-PRESERVE-FAIL] L3 rewrite produced damage signatures: ${rewriteDamage.keys.join(", ")} — REJECTED`);
+      return s;
+    }
     console.log(`[V5-QA-L3] Rewrote "${s.title}" via Gemini (${newItems.length} items)`);
     return candidate;
   } catch (err) {
@@ -7076,6 +7121,10 @@ const HARD_CRITICAL_TYPES: ReadonlySet<QAIssueType> = new Set<QAIssueType>([
   "TECHNICAL_SEMANTIC_BREAK",
   // v5.1.6 hardening pass 6 — broken Portuguese ("Que Adotar..." sem "Por")
   "BROKEN_LANGUAGE_STRUCTURE",
+  // v5.4.0 — Technical Preservation Layer detected residual technical
+  // token loss after all repair passes. Preservation layer was either
+  // bypassed or input was already corrupted upstream — block export.
+  "TECHNICAL_TOKEN_LOSS",
 ]);
 
 function qaVeto(
@@ -7717,6 +7766,59 @@ async function runPipeline(
     };
   } else {
     console.log(`[V5-SAFETY-NET] Clean — no leakage detected by global field scan`);
+  }
+
+  // ── v5.4.0 TECHNICAL TOKEN DAMAGE SCAN ─────────────────────────────────
+  // Final check: scan every slide + cover for residual technical token
+  // damage signatures ("com, e else", "níveis como, e ERROR", "construtor
+  // init" sans __init__, etc). Each match → TECHNICAL_TOKEN_LOSS issue
+  // (HARD_CRITICAL) so qaVeto blocks the export with structured details.
+  const techDamageIssues: QAIssue[] = [];
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    for (let si = 0; si < allModuleSlides[mi].length; si++) {
+      const s = allModuleSlides[mi][si];
+      const scan = scanSlideForTechnicalDamage(s as any);
+      if (scan.damaged) {
+        for (const m of scan.matches) {
+          techDamageIssues.push({
+            slideId: `M${mi + 1}.S${si + 1}`,
+            type: "TECHNICAL_TOKEN_LOSS",
+            severity: "CRITICAL",
+            message: `Token técnico perdido em ${m.field}${m.index !== undefined ? `[${m.index}]` : ""}: "${m.sample}" (signatures: ${m.keys.join(", ")})`,
+            resolutionStrategy: "Bloqueio de export — preservação técnica falhou ou input já estava corrompido upstream",
+          });
+        }
+      }
+    }
+  }
+  if (moduleCovers) {
+    for (let mi = 0; mi < moduleCovers.length; mi++) {
+      const scan = scanSlideForTechnicalDamage(moduleCovers[mi] as any);
+      if (scan.damaged) {
+        for (const m of scan.matches) {
+          techDamageIssues.push({
+            slideId: `M${mi + 1}.COVER`,
+            type: "TECHNICAL_TOKEN_LOSS",
+            severity: "CRITICAL",
+            message: `Token técnico perdido em cover ${m.field}: "${m.sample}" (signatures: ${m.keys.join(", ")})`,
+            resolutionStrategy: "Bloqueio de export — preservação técnica falhou em module cover",
+          });
+        }
+      }
+    }
+  }
+  if (techDamageIssues.length > 0) {
+    console.warn(`[TECH-TOKEN-QA] ${techDamageIssues.length} technical token loss(es) detected — adding to QA report`);
+    for (const i of techDamageIssues.slice(0, 20)) {
+      console.warn(`[TECH-TOKEN-QA]   - ${i.slideId} | ${i.message}`);
+    }
+    cascadeReport = {
+      ...cascadeReport,
+      status: "FAILED",
+      issues: [...cascadeReport.issues, ...techDamageIssues],
+    };
+  } else {
+    console.log(`[TECH-TOKEN-QA] Clean — no technical token damage detected`);
   }
 
   // ── QA VETO ─────────────────────────────────────────────────────────────
