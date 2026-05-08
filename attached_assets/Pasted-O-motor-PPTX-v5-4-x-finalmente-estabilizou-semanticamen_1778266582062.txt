@@ -1,0 +1,195 @@
+O motor PPTX v5.4.x finalmente estabilizou semanticamente:
+- planner modular funcionando;
+- token preservation funcionando;
+- QA modular funcionando;
+- contaminação entre módulos muito reduzida;
+- export desbloqueado;
+- PPTX já utilizável.
+
+Agora quero avançar para a fase de refinamento editorial/design, sem quebrar a arquitetura atual.
+
+NÃO mexer em:
+- renderer core;
+- billing;
+- rotas públicas;
+- schema Supabase;
+- ExportButtons;
+- fallback v3;
+- Technical Preservation Layer;
+- planner modular;
+- QA veto.
+
+Objetivo:
+Sair de “correto e funcional” para “mais editorial e profissional”.
+
+Implementar em etapas pequenas e seguras.
+
+1. Criar Title Post-Processor
+
+Criar função:
+
+normalizeSlideTitle(title, context)
+
+Objetivo:
+corrigir títulos artificiais ou mal formulados.
+
+Problemas atuais:
+- “Que Representamos Dados?”
+- “Que Manipular Arquivos e Tratar Exceções?”
+- títulos com “Que X?” sem “Por que”
+- títulos genéricos demais
+- títulos que parecem fragmentos do prompt
+
+Regras:
+- se título começar com “Que ” e terminar com “?”:
+  converter para “Por que ...?”
+- se título estiver em formato estranho:
+  “Que Representamos Dados?”
+  → “Por que representar dados?”
+
+- “Que Manipular Arquivos e Tratar Exceções?”
+  → “Por que manipular arquivos e tratar exceções?”
+
+- preservar títulos bons:
+  “O que é Programação Orientada a Objetos (POO)?”
+  “Como Declarar Variáveis em Python”
+  “Tomada de Decisão com if, elif e else”
+
+Não alterar títulos técnicos corretos.
+
+Adicionar log:
+[TITLE-POLISH]
+before="Que Representamos Dados?"
+after="Por que representar dados?"
+
+2. Criar Normalization Layer para uppercase
+
+Criar função:
+
+normalizeEditorialTextCase(text, context)
+
+Objetivo:
+impedir “shout mode” vindo do conteúdo bruto.
+
+Problemas atuais:
+- textos inteiros em caixa alta em slides de processo;
+- frases explicativas renderizadas como:
+  “DEF DEFINE UM BLOCO...”
+  “APIS WEB PERMITEM...”
+  “O MÓDULO LOGGING REGISTRA...”
+
+Regra:
+Conteúdo textual deve chegar ao renderer em sentence case.
+Uppercase deve ser decisão visual do renderer/layout, não do conteúdo bruto.
+
+Aplicar normalização em:
+- titles;
+- subtitles;
+- items;
+- cards;
+- process steps;
+- takeaways;
+- descriptions.
+
+Não aplicar em tokens técnicos protegidos:
+- HTTP;
+- API;
+- JSON;
+- REST;
+- GET;
+- POST;
+- PEP 8;
+- DEBUG;
+- INFO;
+- ERROR;
+- CRITICAL;
+- SQL;
+- HTML;
+- CSS;
+- URLs;
+- nomes de arquivos;
+- código;
+- TechnicalSpan / masked tokens.
+
+Se texto tiver mais de 60% de letras maiúsculas e não for código:
+- converter para sentence case;
+- preservar siglas e tokens técnicos.
+
+Adicionar log:
+[CASE-NORMALIZE]
+before="APIS WEB PERMITEM A COMUNICAÇÃO..."
+after="APIs Web permitem a comunicação..."
+
+3. Aplicar depois da Technical Preservation Layer
+
+Ordem obrigatória:
+
+protectTechnicalTokens()
+→ normalizeSlideTitle()
+→ normalizeEditorialTextCase()
+→ restoreTechnicalTokens()
+→ validateTechnicalTokenIntegrity()
+
+Nunca normalizar tokens técnicos diretamente.
+
+4. Criar teste de regressão
+
+Testes obrigatórios:
+
+Input:
+"QUE MANIPULAR ARQUIVOS E TRATAR EXCEÇÕES?"
+Output:
+"Por que manipular arquivos e tratar exceções?"
+
+Input:
+"APIS WEB PERMITEM A COMUNICAÇÃO ENTRE SOFTWARES VIA HTTP."
+Output:
+"APIs Web permitem a comunicação entre softwares via HTTP."
+
+Input:
+"USE REQUESTS.GET() PARA RECUPERAR DADOS."
+Output deve preservar:
+requests.get()
+
+Input:
+"CONFIGURE NÍVEIS COMO DEBUG, INFO, WARNING, ERROR."
+Output deve preservar:
+DEBUG, INFO, WARNING, ERROR.
+
+Input:
+"Tomada de Decisão com if, elif e else"
+Output:
+não alterar.
+
+5. Não implementar ainda Layout Entropy nem IDE Decorator
+
+Por enquanto NÃO implementar:
+- novos layouts;
+- decorador de código estilo IDE;
+- syntax highlighting;
+- pools visuais;
+- variação dinâmica pesada.
+
+Essas etapas virão depois.
+
+6. Critério de aceite
+
+Gerar novamente:
+“Introdução à Programação em Python”
+
+O PPTX deve:
+- não conter títulos do tipo “Que X?”;
+- reduzir texto gritado em caixa alta;
+- preservar tokens técnicos;
+- manter arquitetura modular;
+- manter export funcionando;
+- manter QA sem novos blockers;
+- manter quantidade de slides próxima ao atual;
+- não piorar layout.
+
+Prioridade:
+1. Não quebrar o que já estabilizou.
+2. Corrigir títulos artificiais.
+3. Normalizar uppercase excessivo.
+4. Preservar tokens técnicos.
+5. Melhorar aparência editorial sem refactor grande.
