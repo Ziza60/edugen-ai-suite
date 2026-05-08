@@ -23,7 +23,7 @@ import {
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.4.1";
+const ENGINE_VERSION = "5.4.2";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -6572,9 +6572,16 @@ function runPptxQA(
         continue;
       }
 
-      // 17. GENERIC_OBJECTIVE  [CRITICAL → drop bad items, drop slide if empty]
+      // 17. GENERIC_OBJECTIVE  [CRITICAL → drop bad items, batch-replace, or drop slide]
       // Strict pedagogical check — strips bullets like "Compreender Python",
       // "Aplicar fundamentos", "Identificar testes" that are non-actionable.
+      // v5.4.2 — three-tier resolution (no UNFIXED CRITICAL ever leaves here):
+      //   1) goodItems >= 3 → keep good ones (FIXED)
+      //   2) title looks like a learning-objective slide ("Objetivos…",
+      //      "O Que Você Aprendeu…", "Aprendizados…", "Competências…") →
+      //      batch-replace with PYTHON_OBJECTIVE_TAILS[moduleKind] sliced to N
+      //   3) otherwise drop the slide as FIXED (no CRITICAL residual — a
+      //      removed slide cannot harm the deck downstream)
       const genericSkipLayouts: Layout[] = ["code", "module_cover", "cover", "toc", "closing"];
       if (!genericSkipLayouts.includes(s.layout) && s.items?.length) {
         const moduleTitle17 = moduleTitles[mi] ?? "";
@@ -6591,14 +6598,42 @@ function runPptxQA(
             modSlides[si] = { ...s, items: goodItems };
             s = modSlides[si];
           } else {
-            unfixedIssues.push({
-              slideId: id, type: "GENERIC_OBJECTIVE", severity: "CRITICAL",
-              message: `Slide majoritariamente genérico: "${s.title}" (${removedCount}/${s.items.length})`,
-              metric: removedCount,
-              resolutionStrategy: "Slide removido — sem objetivos pedagógicos concretos",
-            });
-            keepMask[si] = false;
-            continue;
+            // Tier 2 — title looks like an objectives/recap slide → batch repair
+            const titleLower = (s.title ?? "").toLowerCase();
+            const isObjectiveTitle =
+              /\bobjetiv|\baprendizad|\bo\s+que\s+voc[eê]\s+aprend|\bcompet[eê]nc|\bganhos\b|\bessenci/.test(titleLower);
+            if (isObjectiveTitle) {
+              const sub = detectModuleDomainPython(moduleTitle17, courseTopic);
+              const tails = PYTHON_OBJECTIVE_TAILS[sub] ?? PYTHON_OBJECTIVE_TAILS["py_generic"];
+              const N = Math.min(Math.max(s.items.length, 3), tails.length);
+              const replacement = tails.slice(0, N);
+              fixedIssues.push({
+                slideId: id, type: "GENERIC_OBJECTIVE", severity: "CRITICAL",
+                message: `Slide de objetivos majoritariamente genérico: "${s.title}" (${removedCount}/${s.items.length}) — substituído por tails determinísticas (${sub})`,
+                metric: removedCount,
+                resolutionStrategy: "Itens substituídos em batch por PYTHON_OBJECTIVE_TAILS[moduleKind]",
+              });
+              modSlides[si] = { ...s, items: replacement };
+              s = modSlides[si];
+              console.log(
+                `[V5-OBJECTIVE-REPAIR-BATCH] slide=${id} moduleKind=${sub} ratio=${removedCount}/${s.items.length} title="${(s.title ?? "").slice(0, 60)}" → full replacement (${N} tails)`,
+              );
+            } else {
+              // Tier 3 — slide dropped as FIXED (was UNFIXED CRITICAL pre-v5.4.2,
+              // which left a phantom blocker for qaVeto on a slide that was
+              // already gone from the deck).
+              fixedIssues.push({
+                slideId: id, type: "GENERIC_OBJECTIVE", severity: "CRITICAL",
+                message: `Slide majoritariamente genérico: "${s.title}" (${removedCount}/${s.items.length}) — slide removido`,
+                metric: removedCount,
+                resolutionStrategy: "Slide removido do deck — issue extinta",
+              });
+              keepMask[si] = false;
+              console.log(
+                `[V5-GENERIC-DROP] slide=${id} title="${(s.title ?? "").slice(0, 60)}" — dropped (no objective-title batch repair)`,
+              );
+              continue;
+            }
           }
         }
       }
