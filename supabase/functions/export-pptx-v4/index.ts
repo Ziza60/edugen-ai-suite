@@ -17,7 +17,7 @@ import {
   type CourseExportPlan,
 } from "./presentation-plan.ts";
 
-const ENGINE_VERSION = "5.3.0";
+const ENGINE_VERSION = "5.3.1";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4767,15 +4767,33 @@ function detectIncompleteTechnicalSentence(
 type SemanticRepairFn = (text: string) => string | null;
 
 function detectModuleDomainPython(moduleTitle: string, courseTopic: string): string {
+  // v5.3.1 — CRITICAL FIX: previously this concatenated moduleTitle + courseTopic
+  // and tested the basics regex against the combined text. For ANY course titled
+  // "Introdução à Programação em Python", the word `introdução` from the course
+  // topic matched py_basics → so M8 "Boas Práticas" was wrongly classified as
+  // py_basics and then injected with "Utilizar variáveis, tipos primitivos..."
+  // objectives. Now:
+  //   • The basics branch matches MODULE TITLE ONLY (the only branch that
+  //     was vulnerable to the course-topic leak).
+  //   • py_best_practices is FIRST so M8 wins before any other branch can.
+  //   • The other narrow branches keep matching combined text since their
+  //     patterns are too specific to be hit by a generic course title.
+  const m = (moduleTitle || "").toLowerCase();
   const t = `${moduleTitle} ${courseTopic}`.toLowerCase();
+  // py_best_practices FIRST — most specific module class
+  if (/\bboas\s+pr[áa]ticas|\bbest\s+practices|\bimplant|\bdeploy|\bproduc[aã]o|\bci[\/\-]?cd|\bempacot|\bpep\s*8|\bvenv\b|\bpip\b|\brequirements|\bsetup\.py|\bdocstring|\bestrutura\s+de\s+projeto|\breadme/.test(m)) return "py_best_practices";
   if (/\barquivos?|\bfiles?\b|\bi\/o\b|\bleitura|\bescrita/.test(t)) return "py_files";
   if (/\bclasses?|\boop\b|\bobjetos?|\bherança|\bencapsul/.test(t)) return "py_oop";
   if (/\btestes?|\bunittest|\bpytest|\btdd\b/.test(t)) return "py_tests";
   if (/\bexce[çc][õo]es?|\berros?|\btry|\bexcept/.test(t)) return "py_errors";
+  // py_flow BEFORE py_functions — "Controle de Fluxo e Funções" titles
+  // would otherwise hit the functions branch first.
+  if (/\bcontrole\s+de\s+fluxo|condicionais|la[çc]os|loops|\bwhile\b|\bfor\b/.test(t)) return "py_flow";
   if (/\bfunções?|\bfunctions?|\bdef\b/.test(t)) return "py_functions";
   if (/\bestruturas?\s+de\s+dados|listas?|dicionários?|tuplas?|conjuntos?/.test(t)) return "py_datastructs";
-  if (/\bcontrole\s+de\s+fluxo|condicionais|laços|loops|while|for/.test(t)) return "py_flow";
-  if (/\bvariáveis|\btipos\s+primitivos|\boperadores|\bfundamentos|introdução/.test(t)) return "py_basics";
+  // py_basics: MODULE TITLE ONLY (no course topic) — prevents "Introdução à
+  // Programação em Python" course title from forcing every module into basics.
+  if (/\bvariáveis|\btipos\s+primitivos|\boperadores|\bfundamentos|\bintrodu[çc][aã]o|\bb[áa]sico/.test(m)) return "py_basics";
   return "py_generic";
 }
 
@@ -4862,6 +4880,16 @@ const SEMANTIC_REPAIRS: Record<string, Record<string, SemanticRepairFn>> = {
       t.replace(/\bcom\s*\.\s*$/i, "com variáveis, tipos e operadores."),
     trailing_as_example: (t) =>
       t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `int`, `str`, `float` e `bool`."),
+  },
+  // ── Python • Best Practices / Deployment (v5.3.1) ─────────
+  py_best_practices: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `venv`, `pip` e `requirements.txt`."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como PEP 8, docstrings e `setup.py`."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i,
+        "(Ex: `pip install -r requirements.txt`)"),
   },
   // ── Python • Generic fallback ─────────────────────────────
   py_generic: {
@@ -4981,6 +5009,12 @@ const PYTHON_OBJECTIVE_TAILS: Record<string, string[]> = {
     "Validar resultados com `assertEqual()` e `assertTrue()`.",
     "Organizar testes em classes `TestCase` e métodos `test_*`.",
   ],
+  py_best_practices: [
+    "Aplicar PEP 8 e docstrings para manter código legível e padronizado.",
+    "Organizar projetos Python com `src/`, `tests/`, `docs/` e `README.md`.",
+    "Gerenciar dependências com `venv`, `pip` e `requirements.txt`.",
+    "Preparar pacotes Python para distribuição com `setup.py` e `pyproject.toml`.",
+  ],
   py_generic: [
     "Aplicar conceitos práticos com exemplos de código Python.",
     "Implementar pequenas rotinas utilizando boas práticas.",
@@ -4998,8 +5032,9 @@ function repairLearningObjective(
   const sub = detectModuleDomainPython(moduleTitle, courseTopic);
   const tails = PYTHON_OBJECTIVE_TAILS[sub] ?? PYTHON_OBJECTIVE_TAILS["py_generic"];
   const replacement = tails[idx % tails.length];
+  // v5.3.1 — explicit kind log per spec
   console.log(
-    `[V5-SEMANTIC-REPAIR] objective | "${text.slice(0, 80)}" → "${replacement}" [${sub}]`,
+    `[V5-OBJECTIVE-REPAIR] moduleKind=${sub} before="${text.slice(0, 80)}" after="${replacement.slice(0, 80)}"`,
   );
   return replacement;
 }
@@ -5400,14 +5435,217 @@ const ORPHAN_PUNCT_DICT: RepairRule[] = [
 
 function detectModuleDomain(moduleTitle: string, courseTopic: string): {
   isPython: boolean; isFiles: boolean; isOOP: boolean; isTests: boolean;
+  isBestPractices: boolean; isFlow: boolean; isErrors: boolean;
 } {
   const ml = (moduleTitle || "").toLowerCase();
   const ct = (courseTopic  || "").toLowerCase();
   const isPython = /\bpython\b/.test(ml) || /\bpython\b/.test(ct);
   const isFiles  = isPython && /(arquiv|except|exce[çc][aã]o|erro|i\/?o|recurs|file|leitura|escrita)/.test(ml);
   const isOOP    = isPython && /(orient|objeto|classe|poo|construtor|hera[nñ][cç]a|encapsul|polimorf)/.test(ml);
-  const isTests  = isPython && /(teste|test\b|unitt|pytest|tdd)/.test(ml);
-  return { isPython, isFiles, isOOP, isTests };
+  const isTests  = isPython && /(teste|test\b|unitt|pytest|tdd|log|depura|debug)/.test(ml);
+  // v5.3.1 — new domain flags for token-restoration repairs
+  const isBestPractices = isPython && /(boas\s+pr[áa]ticas|best\s+practices|implant|deploy|produc[aã]o|ci[\/\-]?cd|empacot|pep\s*8|venv|pip|requirements|setup\.py|docstring|estrutura\s+de\s+projeto|readme)/.test(ml);
+  const isFlow   = isPython && /(controle\s+de\s+fluxo|condicionais?|la[çc]os?|loops?|while|for\b)/.test(ml);
+  const isErrors = isPython && /(exce[çc][õo]es?|erros?|try\b|except\b|finally\b)/.test(ml);
+  return { isPython, isFiles, isOOP, isTests, isBestPractices, isFlow, isErrors };
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.3.1 — TECHNICAL TOKEN RESTORATION
+// ───────────────────────────────────────────────────────────
+// The existing `repairTechnicalSanitizationDamage` only cleans
+// punctuation symptoms ("(, , else)" → "(, else)"). That's not a
+// repair — the technical token (if/elif/DEBUG/INFO/...) was lost.
+// `repairTechnicalTokens` RESTORES the missing tokens before any
+// cleanup runs. Mappings are domain-aware (kind from
+// detectModuleDomainPython). Conservative regex: each rule fires
+// only on the exact damage signature the LLM/sanitizer leaves.
+// ═══════════════════════════════════════════════════════════
+type TokenRepairRule = [RegExp, string];
+
+const TR_FLOW_TOKENS: TokenRepairRule[] = [
+  // "Condicionais (, , else)" / "Condicionais (, else)" / "Condicionais (, , )"
+  [/\bcondicionais\s*\(\s*,?\s*,?\s*(?:else)?\s*,?\s*\)/gi, "Condicionais (`if`, `elif`, `else`)"],
+  // "(, , else)" anywhere
+  [/\(\s*,\s*,\s*else\s*\)/gi, "(`if`, `elif`, `else`)"],
+  // "(, else)" or "(, elif, else)"
+  [/\(\s*,\s*(elif\s*,\s*)?else\s*\)/gi, "(`if`, `elif`, `else`)"],
+  // "Estruturas e aplicam" → "Estruturas if e elif aplicam"
+  [/\bestruturas\s+e\s+aplicam\b/gi, "Estruturas `if` e `elif` aplicam"],
+  // "Use e para iterar" → "Use `for` e `while` para iterar"
+  [/\b(use|usar|usando)\s+e\s+para\s+iterar\b/gi, "$1 `for` e `while` para iterar"],
+];
+
+const TR_TESTS_TOKENS: TokenRepairRule[] = [
+  // "Níveis como, e ERROR" / "Níveis como , e ERROR"
+  [/\bn[ií]veis\s+como\s*,?\s*,?\s*e\s+ERROR\b/gi, "Níveis como `DEBUG`, `INFO` e `ERROR`"],
+  // "níveis , e ERROR" (sem "como")
+  [/\bn[ií]veis\s+,?\s*,\s*e\s+ERROR\b/gi, "Níveis `DEBUG`, `INFO` e `ERROR`"],
+  // "Use com métodos e assert" sem unittest.TestCase
+  [/\b(use|usar|usando|utilize|utilizar)\s+com\s+m[ée]todos\s+e\s+assert\b(?!\w)/gi,
+    "$1 `unittest.TestCase` com métodos `test_*` e `assert*`"],
+  // "classes de teste herdando de"
+  [/\bclasses?\s+de\s+teste\s+herdando\s+de\s*\.?\s*$/gim,
+    "classes de teste herdando de `unittest.TestCase`."],
+  [/\bclasses?\s+de\s+teste\s+herdando\s+de\s+(?![\w`])/gi,
+    "classes de teste herdando de `unittest.TestCase` "],
+];
+
+const TR_FILES_TOKENS: TokenRepairRule[] = [
+  // "Realize leitura com, e escrita com ." / "leitura com, e escrita com."
+  [/\b(realize|realizar)\s+leitura\s+com\s*,?\s*e\s+escrita\s+com\s*\.\s*/gi,
+    "$1 leitura com `read()` e escrita com `write()`. "],
+  // "leitura com, e escrita com" (no terminal period)
+  [/\bleitura\s+com\s*,\s*e\s+escrita\s+com\s+(?![\w`])/gi,
+    "leitura com `read()` e escrita com `write()` "],
+  // "Realize leitura (, ) e escrita (write())" → normalize
+  [/\bleitura\s*\(\s*,\s*\)\s+e\s+escrita\b/gi,
+    "leitura com `read()` e escrita"],
+  // "Capture e para feedback" → "Capture FileNotFoundError e IOError"
+  [/\b(capture|capturar|trate|tratar)\s+e\s+para\s+feedback\b/gi,
+    "$1 `FileNotFoundError` e `IOError` para feedback claro"],
+  // "e são comuns em manipulação de arquivos" (leading bare conjunction)
+  [/(^|[.;]\s*)e\s+s[aã]o\s+comuns\s+em\s+manipula[çc][aã]o\s+de\s+arquivos\b/gi,
+    "$1`FileNotFoundError` e `IOError` são comuns em manipulação de arquivos"],
+];
+
+const TR_OOP_TOKENS: TokenRepairRule[] = [
+  // "construtor init" → "construtor __init__()"
+  [/\bconstrutor\s+init\b(?!_)/gi, "construtor `__init__()`"],
+  // "método init" / "metodo init" (sem __)
+  [/\b(m[ée]todo)\s+init\b(?!_)/gi, "$1 `__init__()`"],
+  // "<inst>.init(" → "<inst>.__init__("  (parser-side typo handled by repairPythonApiTypos in presentation-plan; here for prose)
+  [/\b([a-zA-Z_]\w*)\.init\(/g, "$1.__init__("],
+  // "Acessar Membros: Usar." / "Acessar Membros: Usar"
+  [/\bacessar\s+membros\s*:\s*usar\s*\.?\s*$/gim,
+    "Acessar membros usando `objeto.atributo` e `objeto.metodo()`."],
+];
+
+const TR_BEST_PRACTICES_TOKENS: TokenRepairRule[] = [
+  // "Organize o código-fonte em e testes em ."
+  [/\borganize\s+o\s+c[óo]digo[\-\s]?fonte\s+em\s+e\s+testes\s+em\s*\.\s*/gi,
+    "Organize o código-fonte em `src/` e testes em `tests/`. "],
+  // "Inclua e para informações do projeto."
+  [/\binclua\s+e\s+para\s+informa[çc][õo]es\s+do\s+projeto\s*\.\s*/gi,
+    "Inclua `README.md` e `LICENSE` para informações do projeto. "],
+  // "Utilizar e para definir metadados do projeto."
+  [/\b(utilizar|utilize|use|usar)\s+e\s+para\s+definir\s+metadados\s+do\s+projeto\s*\.\s*/gi,
+    "$1 `setup.py` e `pyproject.toml` para definir metadados do projeto. "],
+  // "Gerencie dependências com e ." (venv + pip)
+  [/\bgerenci(e|ar)\s+depend[êe]ncias\s+com\s+e\s*\.\s*/gi,
+    "Gerencie dependências com `venv` e `pip`. "],
+  // "Estruture o projeto com , , e ."
+  [/\bestruture\s+o\s+projeto\s+com\s*(?:,\s*)+e\s*\.\s*/gi,
+    "Estruture o projeto com `src/`, `tests/`, `docs/` e `README.md`. "],
+];
+
+function repairTechnicalTokens(
+  text: string,
+  moduleTitle: string,
+  courseTopic: string,
+): { result: string; changed: boolean } {
+  if (!text || typeof text !== "string") return { result: text, changed: false };
+  const dom = detectModuleDomain(moduleTitle, courseTopic);
+  let out = text;
+  const apply = (rules: TokenRepairRule[]) => {
+    for (const [re, rep] of rules) out = out.replace(re, rep);
+  };
+  // Token restoration is domain-narrow — only apply rules whose domain matches.
+  if (dom.isFlow)         apply(TR_FLOW_TOKENS);
+  if (dom.isTests)        apply(TR_TESTS_TOKENS);
+  if (dom.isFiles || dom.isErrors) apply(TR_FILES_TOKENS);
+  if (dom.isOOP)          apply(TR_OOP_TOKENS);
+  if (dom.isBestPractices) apply(TR_BEST_PRACTICES_TOKENS);
+  return { result: out.trim(), changed: out.trim() !== text };
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.3.1 — REPAIR VALIDATION
+// ───────────────────────────────────────────────────────────
+// After ANY repair, check the OUTPUT for residual damage signatures.
+// If the "repair" still contains broken patterns, REVERT to the
+// original (so qaVeto sees the real damage and can block it instead
+// of shipping a half-fixed sentence).
+// ═══════════════════════════════════════════════════════════
+const BAD_REPAIR_PATTERNS: { re: RegExp; reason: string }[] = [
+  { re: /,\s*,/, reason: "double comma residual" },
+  { re: /\bcom\s*,\s*e\b/i, reason: "'com, e' gap" },
+  { re: /\bcomo\s*,\s*e\b/i, reason: "'como, e' gap" },
+  { re: /\bcom\s*\.\s*$/i, reason: "trailing 'com.'" },
+  { re: /\bem\s*\.\s*$/i, reason: "trailing 'em.'" },
+  { re: /\bde\s*\.\s*$/i, reason: "trailing 'de.'" },
+  { re: /\busar\s*\.\s*$/i, reason: "trailing 'usar.'" },
+  { re: /\(\s*,\s*\)/, reason: "empty (, )" },
+  { re: /\(\s*,\s*else\s*\)/i, reason: "(, else) without if/elif" },
+  { re: /\bem\s+e\s+/i, reason: "'em e' gap" },
+  { re: /\bde\s+e\s+(?![a-zà-ÿ])/i, reason: "'de e' gap (no following word)" },
+  { re: /\bn[ií]veis\s+como\s*,\s*e\b/i, reason: "níveis como, e (DEBUG/INFO missing)" },
+];
+
+function validateRepairedText(after: string, before: string): { valid: boolean; reason?: string } {
+  if (!after || typeof after !== "string") return { valid: true };
+  // Special compound checks
+  if (/\bconstrutor\s+init\b/i.test(after) && !/__init__/.test(after)) {
+    return { valid: false, reason: "'construtor init' without __init__" };
+  }
+  if (/\bcom\s+m[ée]todos\s+e\s+assert\b/i.test(after) && !/unittest\.TestCase/.test(after)) {
+    return { valid: false, reason: "'com métodos e assert' without unittest.TestCase" };
+  }
+  for (const { re, reason } of BAD_REPAIR_PATTERNS) {
+    if (re.test(after)) return { valid: false, reason };
+  }
+  return { valid: true };
+}
+
+// Per-slide wrapper that applies token restoration + validation, with
+// REVERT-on-fail semantics. Returns the repaired slide or the original
+// if the repair couldn't restore the missing tokens (so qaVeto sees
+// the real damage downstream).
+function applyTokenRepairAndValidate(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+  slideId?: string,
+): Slide {
+  const repairField = (t?: string): string | undefined => {
+    if (!t || typeof t !== "string") return t;
+    const { result, changed } = repairTechnicalTokens(t, moduleTitle, courseTopic);
+    if (!changed) return t;
+    const validation = validateRepairedText(result, t);
+    if (!validation.valid) {
+      console.warn(
+        `[V5-REPAIR-REJECTED] ${slideId ?? "?"} before="${t.slice(0, 80)}" after="${result.slice(0, 80)}" reason="${validation.reason}"`,
+      );
+      return t; // revert
+    }
+    console.log(
+      `[V5-TOKEN-REPAIR] ${slideId ?? "?"} before="${t.slice(0, 80)}" after="${result.slice(0, 80)}" valid=true`,
+    );
+    return result;
+  };
+
+  const out: Slide = { ...s };
+  if (typeof s.title === "string") out.title = repairField(s.title)!;
+  if (Array.isArray(s.items)) out.items = s.items.map((it) => repairField(it) ?? it);
+  if (Array.isArray((s as Slide & { competencies?: string[] }).competencies)) {
+    const comps = (s as Slide & { competencies?: string[] }).competencies as string[];
+    (out as Slide & { competencies?: string[] }).competencies = comps.map((c) => repairField(c) ?? c);
+  }
+  // Comparison columns
+  const sx = s as Slide & { left?: { items?: string[] }; right?: { items?: string[] } };
+  if (sx.left?.items) {
+    (out as Slide & { left?: { items?: string[] } }).left = {
+      ...sx.left,
+      items: sx.left.items.map((it) => repairField(it) ?? it),
+    };
+  }
+  if (sx.right?.items) {
+    (out as Slide & { right?: { items?: string[] } }).right = {
+      ...sx.right,
+      items: sx.right.items.map((it) => repairField(it) ?? it),
+    };
+  }
+  return out;
 }
 
 function repairTechnicalSanitizationDamage(
@@ -7045,9 +7283,16 @@ async function runPipeline(
   // as an issue.
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     const mTitle = moduleTitlesArr[mi] ?? "";
+    // v5.3.1 — explicit per-module kind log so we can see which domain the
+    // repair pipeline thinks each module is, and audit misclassifications.
+    const kind = detectModuleDomainPython(mTitle, courseTitle);
+    console.log(`[V5-KIND] module=${mi + 1} moduleTitle="${mTitle}" kind=${kind}`);
     allModuleSlides[mi] = allModuleSlides[mi].map((s, si) => {
       const sid = `module_${mi + 1}_slide_${si + 1}`;
-      let out = repairSlideTechnicalDamage(s, mTitle, courseTitle, sid);
+      // v5.3.1 — token restoration FIRST (architect plan): restore missing
+      // technical tokens before punctuation cleaners can strip the gap.
+      let out = applyTokenRepairAndValidate(s, mTitle, courseTitle, sid);
+      out = repairSlideTechnicalDamage(out, mTitle, courseTitle, sid);
       out = repairSlideSemanticBreaks(out, mTitle, courseTitle, sid);
       out = repairSlideLearningObjectives(out, mTitle, courseTitle);
       out = repairSlideBrokenLanguage(out, sid);
@@ -7159,7 +7404,10 @@ async function runPipeline(
     const mTitle = moduleTitlesArr[mi] ?? "";
     allModuleSlides[mi] = allModuleSlides[mi].map((s, si) => {
       const sid = `module_${mi + 1}_slide_${si + 1}.post`;
-      let out = repairSlideTechnicalDamage(s, mTitle, courseTitle, sid);
+      // v5.3.1 — same token-restoration pass post-cascade, in case L1/L2/L3
+      // re-introduced a known gap.
+      let out = applyTokenRepairAndValidate(s, mTitle, courseTitle, sid);
+      out = repairSlideTechnicalDamage(out, mTitle, courseTitle, sid);
       out = repairSlideSemanticBreaks(out, mTitle, courseTitle, sid);
       out = repairSlideLearningObjectives(out, mTitle, courseTitle);
       out = repairSlideBrokenLanguage(out, sid);

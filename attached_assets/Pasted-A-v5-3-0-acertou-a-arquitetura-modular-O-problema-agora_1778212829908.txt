@@ -1,0 +1,272 @@
+A v5.3.0 acertou a arquitetura modular. O problema agora não é mais escopo global, fallback ou renderer.
+
+Pelos logs do Supabase e pelo PPTX gerado, o Presentation Planner modular funcionou:
+
+[PRESENTATION-PLAN] modules=8 | slides=36
+[PRESENTATION-PLAN-VALIDATION] PASSED
+accepted=8/8
+fallback_indices=[]
+
+Ou seja:
+- planner modular foi usado;
+- nenhum módulo caiu em fallback;
+- a arquitetura Manus-inspired está ativa.
+
+Mas o PPTX ainda saiu com problemas visíveis. Isso indica que o bug agora está no pós-processamento/reparo/validação final, não na arquitetura.
+
+PROBLEMAS CONFIRMADOS PELOS LOGS E PELO PPTX
+
+1. Reparador técnico está removendo sintomas, mas não restaurando tokens
+
+Exemplos vistos:
+
+"Condicionais (, , else)"
+→ "Condicionais (, else)"
+
+Isso não é reparo válido. O correto seria:
+
+"Condicionais (if, elif, else)"
+
+Outro exemplo:
+
+"Níveis como , e ERROR"
+→ "Níveis como, e ERROR"
+
+Também não é reparo válido. O correto seria:
+
+"Níveis como DEBUG, INFO e ERROR"
+
+Regra:
+Se o reparo apenas limpa pontuação, mas não restaura o token técnico ausente, o reparo deve ser considerado inválido e o QA deve bloquear.
+
+2. Módulo 8 está sendo reparado com domínio errado
+
+Logs mostram algo como:
+
+"Compreender boas Práticas e Implantação de Projetos."
+→ "Utilizar variáveis, tipos primitivos e operadores básicos." [py_basics]
+
+e:
+
+"Identificar boas Práticas..."
+→ "Aplicar entrada e saída com input() e print()." [py_basics]
+
+Isso é erro claro.
+
+O módulo:
+"Boas Práticas e Implantação de Projetos"
+
+deve ser classificado como:
+best_practices
+
+Nunca como:
+py_basics
+
+Objetivos corretos para Módulo 8:
+- Aplicar PEP 8, docstrings e organização de projeto.
+- Gerenciar dependências com venv, pip e requirements.txt.
+- Estruturar projetos com src/, tests/, docs/ e README.md.
+- Preparar utilitários Python para distribuição com setup.py.
+
+3. Reparos de leitura/escrita ainda estão incompletos
+
+Exemplo:
+
+"Realize leitura com, e escrita com ."
+→ "Realize leitura com, e escrita com `open()` e `with`."
+
+Isso ainda é semanticamente errado.
+
+O correto seria algo como:
+
+"Realize leitura com read() e escrita com write()."
+
+ou:
+
+"Use open() e with open(...) para abrir arquivos com segurança."
+
+Dependendo do contexto.
+
+4. O QA considera resolvido algo que visualmente continua quebrado
+
+O log mostra módulos com:
+status=WARNING issuesUnfixed=0
+
+Mas o PPTX ainda contém frases quebradas.
+
+Isso significa que o pós-reparo não está revalidando corretamente a qualidade semântica final do texto.
+
+AÇÃO OBRIGATÓRIA
+
+1. Corrigir getModuleKind()
+
+Garantir que:
+
+"Boas Práticas"
+"Implantação"
+"Projetos"
+"PEP 8"
+"venv"
+"pip"
+"requirements"
+"setup.py"
+"docstrings"
+"estrutura de projeto"
+
+sempre indiquem:
+best_practices
+
+e nunca:
+py_basics
+
+2. Corrigir repairLearningObjective()
+
+Se moduleKind = best_practices, usar apenas objetivos deste domínio:
+
+- Aplicar PEP 8 e docstrings para manter código legível.
+- Organizar projetos Python com src/, tests/, docs/ e README.md.
+- Gerenciar dependências com venv, pip e requirements.txt.
+- Preparar pacotes Python para distribuição com setup.py.
+
+Nunca usar:
+- variáveis;
+- tipos primitivos;
+- operadores;
+- input();
+- print();
+- expressões básicas.
+
+3. Criar repairTechnicalTokens()
+
+Este reparador deve restaurar tokens técnicos ausentes, não apenas limpar pontuação.
+
+Mapeamentos obrigatórios:
+
+Fluxo:
+- "Condicionais (, , else)" → "Condicionais (if, elif, else)"
+- "Condicionais (, else)" → "Condicionais (if, elif, else)"
+- "Estruturas e aplicam" → "Estruturas if e elif aplicam"
+
+Logs:
+- "Níveis como, e ERROR" → "Níveis como DEBUG, INFO e ERROR"
+- "Níveis como , e ERROR" → "Níveis como DEBUG, INFO e ERROR"
+
+Arquivos:
+- "Realize leitura com, e escrita com ." → "Realize leitura com read() e escrita com write()."
+- "Realize leitura (, ) e escrita (write())" → "Realize leitura com read() e escrita com write()."
+- "Capture e para feedback" → "Capture FileNotFoundError e IOError para feedback claro."
+- "e são comuns em manipulação de arquivos" → "FileNotFoundError e IOError são comuns em manipulação de arquivos."
+
+POO:
+- "construtor init" → "construtor __init__()"
+- "método init" → "método __init__()"
+- "Acessar Membros: Usar." → "Acessar membros usando objeto.atributo e objeto.metodo()."
+
+Testes:
+- "Use com métodos e assert" → "Use unittest.TestCase com métodos test_* e assert."
+- "classes de teste herdando de" → "classes de teste herdando de unittest.TestCase"
+
+Boas práticas:
+- "Organize o código-fonte em e testes em ." → "Organize o código-fonte em src/ e testes em tests/."
+- "Inclua e para informações do projeto." → "Inclua README.md e LICENSE para informações do projeto."
+- "Utilizar e para definir metadados do projeto." → "Utilizar setup.py e pyproject.toml para definir metadados do projeto."
+
+4. Criar validateRepairedText()
+
+Depois de qualquer reparo, validar que o texto final NÃO contenha:
+
+- ", e"
+- "com, e"
+- "como, e"
+- "com ."
+- "com."
+- "e ."
+- "usar."
+- "Usar."
+- "(, )"
+- "(, else)"
+- "níveis como, e"
+- "em e"
+- "em ."
+- "de e"
+- "de ."
+- "com métodos e assert" sem unittest.TestCase
+- "construtor init" sem __init__()
+
+Se ainda contiver, o reparo falhou.
+
+Regra:
+reparo ruim não pode substituir texto ruim.
+Se não conseguir reparar, bloquear ou regenerar o slide/módulo.
+
+5. Pós-reparo precisa rodar QA novamente de verdade
+
+Após:
+- repairLearningObjective
+- repairTechnicalTokens
+- repairSemanticBreak
+- dedupe
+
+rodar novamente:
+
+- validateModuleSemanticBoundary()
+- validateRepairedText()
+- detectBrokenSemanticSentence()
+- validateModuleObjectives()
+- runPptxQA()
+
+Se qualquer issue crítica persistir:
+- fallback daquele módulo;
+- ou veto;
+- não exportar texto quebrado.
+
+6. Logs obrigatórios
+
+Adicionar logs explícitos:
+
+[V5-KIND]
+moduleTitle="Boas Práticas e Implantação de Projetos"
+kind=best_practices
+
+[V5-OBJECTIVE-REPAIR]
+moduleKind=best_practices
+before="Compreender boas Práticas..."
+after="Gerenciar dependências com venv, pip e requirements.txt."
+
+[V5-TOKEN-REPAIR]
+before="Níveis como, e ERROR"
+after="Níveis como DEBUG, INFO e ERROR"
+valid=true
+
+[V5-REPAIR-REJECTED]
+before="Condicionais (, else)"
+after="Condicionais (, else)"
+reason="missing technical token not restored"
+
+7. Critério de aceite
+
+Gerar novamente:
+"Introdução à Programação em Python"
+
+O PPTX só é aceitável se:
+
+- Módulo 8 tiver objetivos de boas práticas, não fundamentos básicos;
+- não houver "Condicionais (, else)";
+- não houver "Níveis como, e ERROR";
+- não houver "Realize leitura com, e escrita";
+- não houver "construtor init" sem __init__();
+- não houver "Acessar Membros: Usar.";
+- não houver "Organize o código-fonte em e testes em .";
+- não houver SQL no módulo 3;
+- total de slides ficar entre 36 e 44, salvo justificativa no log;
+- [MODULE-PLANNER] e [MODULE-QA] continuem funcionando;
+- fallback continue por módulo;
+- renderer v5 não seja alterado.
+
+Prioridade:
+1. Preservar tokens técnicos
+2. Corrigir classificação de módulo
+3. Validar reparo de verdade
+4. Manter arquitetura modular
+5. Não mexer no renderer
+6. Não adicionar novos layouts
