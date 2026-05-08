@@ -23,7 +23,7 @@ import {
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.4.0";
+const ENGINE_VERSION = "5.4.1";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -4821,10 +4821,21 @@ const SEMANTIC_REPAIRS: Record<string, Record<string, SemanticRepairFn>> = {
   },
   // ── Python • Classes / OOP ────────────────────────────────
   py_oop: {
-    use_with_name: (t) =>
-      t.replace(/\busa(r|ndo)?\s+com\s+nome\b/i, "usar `class` seguido do nome da classe"),
-    define_classes_no_class: (t) =>
-      t.replace(/\bdefinir\s+classes?\s*:\s*usar\b/i, "Definir Classes: usar `class` seguido do nome"),
+    // v5.4.1 — full-sentence replacement (was partial regex consuming only
+    // "usar com nome", leaving "...com nome maiúsculo." dangling and being
+    // concatenated AFTER our injected snippet → garbled "...seguido do
+    // nome a palavra-chave class com nome mai" output in the log).
+    use_with_name: (_t) =>
+      "Usar a palavra-chave `class` seguida do nome da classe em PascalCase.",
+    // v5.4.1 — full-sentence replacement. Previous regex only consumed
+    // "Definir Classes: Usar" prefix, so the original tail
+    // "a palavra-chave class com nome maiúsculo." was concatenated to the
+    // replacement, producing "...seguido do nome a palavra-chave class
+    // com nome maiúsculo." (then truncated mid-word in display logs).
+    // The detector lookahead `(?!.*\bclass\b)` failed to see `class`
+    // because withTechnicalProtection had MASKED it to a PUA placeholder.
+    define_classes_no_class: (_t) =>
+      "Definir Classes: usar a palavra-chave `class` com nome em PascalCase.",
     empty_example_parens: (t) =>
       t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `class Livro:`)"),
     empty_example_colon: (t) =>
@@ -5068,16 +5079,35 @@ function repairSlideLearningObjectives(
 ): Slide {
   if (s.layout !== "module_cover") return s;
   const mt = moduleTitle || s.title || "";
+  const sub = detectModuleDomainPython(mt, courseTopic);
+  const tails = PYTHON_OBJECTIVE_TAILS[sub] ?? PYTHON_OBJECTIVE_TAILS["py_generic"];
+
+  // v5.4.1 — when ≥50% of items in a cover field are generic, item-by-item
+  // repair is unstable: the survivors keep tripping the safety net (residual
+  // GENERIC_OBJECTIVE / GENERIC_LEARNING_OBJECTIVE → qaVeto blocks the export).
+  // Replace the WHOLE field with deterministic tails for the module kind.
+  const repairBatch = (arr: string[], field: string): string[] => {
+    if (!arr.length) return arr;
+    const genericCount = arr.filter((it) => isGenericLearningObjective(it, mt)).length;
+    if (genericCount * 2 >= arr.length) {
+      const N = Math.min(Math.max(arr.length, 2), tails.length);
+      const replacement = tails.slice(0, N);
+      console.log(
+        `[V5-OBJECTIVE-REPAIR-BATCH] field=${field} moduleKind=${sub} ratio=${genericCount}/${arr.length} → full replacement (${N} tails)`,
+      );
+      return replacement;
+    }
+    return arr.map((it, i) => repairLearningObjective(it, mt, courseTopic, i));
+  };
+
   const out: Slide = { ...s };
   if (Array.isArray(s.items)) {
-    out.items = s.items.map((it, i) => repairLearningObjective(it, mt, courseTopic, i));
+    out.items = repairBatch(s.items, "items");
   }
   // v5.1.8: also repair competencies (separate field on module_cover)
   if (Array.isArray((s as Slide & { competencies?: string[] }).competencies)) {
     const comps = (s as Slide & { competencies?: string[] }).competencies as string[];
-    (out as Slide & { competencies?: string[] }).competencies = comps.map(
-      (it, i) => repairLearningObjective(it, mt, courseTopic, i),
-    );
+    (out as Slide & { competencies?: string[] }).competencies = repairBatch(comps, "competencies");
   }
   return out;
 }
@@ -5924,6 +5954,33 @@ function slideHasResidualPlaceholder(s: Slide): { found: boolean; sample?: strin
   return { found: false };
 }
 
+// ── Python `requests` snippet completion (v5.4.1) ──────────
+// User spec: "Se o snippet tiver requests.get/post, ele deve ser
+// completado com response = requests.get(...) + print(response.status_code)
+// + print(response.json())". Returns a fresh, validator-safe 6-7 line
+// snippet whenever the input mentions a `requests.<method>(...)` call;
+// returns null otherwise so the caller can fall back to bullets/drop.
+function repairPythonRequestsSnippet(code: string): string | null {
+  const m = code.match(/requests\.(get|post|put|delete|patch|head)\s*\(/i);
+  if (!m) return null;
+  const method = m[1].toLowerCase();
+  const hasBody = method === "post" || method === "put" || method === "patch";
+  const lines = [
+    "import requests",
+    "",
+    `url = "https://api.example.com/data"`,
+  ];
+  if (hasBody) {
+    lines.push(`payload = {"key": "value"}`);
+    lines.push(`response = requests.${method}(url, json=payload)`);
+  } else {
+    lines.push(`response = requests.${method}(url)`);
+  }
+  lines.push("print(response.status_code)");
+  lines.push("print(response.json())");
+  return lines.join("\n");
+}
+
 // ── Code completeness validator ────────────────────────────
 // Per-language structural completeness check. Returns true when the
 // code block looks safe to render (closed brackets, balanced quotes,
@@ -6387,33 +6444,59 @@ function runPptxQA(
         }
       }
 
-      // 13. INCOMPLETE_CODE  [CRITICAL → drop code or split]
+      // 13. INCOMPLETE_CODE  [CRITICAL → repair snippet, drop code or drop slide]
       // Per-language structural validation (Python def/class body, brackets, quotes).
+      // v5.4.1 — pedagogical-closure repair for Python `requests.get/post`
+      // snippets BEFORE giving up. If repair impossible: convert to bullets
+      // when items≥3, otherwise DROP slide silently (no residual CRITICAL —
+      // a removed slide cannot harm the deck downstream).
       if (s.layout === "code" && s.code) {
         const lang: ContentDomain =
           courseDomain === "python" || courseDomain === "sql" ||
           courseDomain === "javascript" || courseDomain === "java"
             ? courseDomain : "generic";
         if (!validateCodeCompleteness(s.code, lang)) {
-          const itemsFallback = nonEmpty(s.items);
-          if (itemsFallback.length >= 3) {
+          // Try domain-specific snippet completion first
+          let repairedCode: string | null = null;
+          if (lang === "python" || lang === "generic") {
+            repairedCode = repairPythonRequestsSnippet(s.code);
+          }
+          if (repairedCode && validateCodeCompleteness(repairedCode, "python")) {
             fixedIssues.push({
               slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
-              message: `Código incompleto em "${s.title}" (${lang}) — convertido para bullets`,
+              message: `Snippet HTTP completado em "${s.title}" (${lang})`,
               context: lang,
-              resolutionStrategy: "Bloco de código removido; slide renderizado como bullets",
+              resolutionStrategy: "repairPythonRequestsSnippet — fechamento pedagógico injetado",
             });
-            modSlides[si] = { ...s, layout: "bullets", code: undefined };
+            modSlides[si] = { ...s, code: repairedCode };
             s = modSlides[si];
+            console.log(`[V5-CODE-REPAIR] ${id} | requests snippet completed (lang=${lang})`);
           } else {
-            unfixedIssues.push({
-              slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
-              message: `Código incompleto sem fallback em "${s.title}" (${lang})`,
-              context: lang,
-              resolutionStrategy: "Slide removido — código truncado e sem alternativa",
-            });
-            keepMask[si] = false;
-            continue;
+            const itemsFallback = nonEmpty(s.items);
+            if (itemsFallback.length >= 3) {
+              fixedIssues.push({
+                slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
+                message: `Código incompleto em "${s.title}" (${lang}) — convertido para bullets`,
+                context: lang,
+                resolutionStrategy: "Bloco de código removido; slide renderizado como bullets",
+              });
+              modSlides[si] = { ...s, layout: "bullets", code: undefined };
+              s = modSlides[si];
+            } else {
+              // v5.4.1 — register as FIXED (slide removido). Previously this
+              // pushed an UNFIXED CRITICAL into qaVeto's HARD_CRITICAL_TYPES
+              // even though the slide was already gone, blocking the export
+              // for an issue that no longer existed.
+              fixedIssues.push({
+                slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
+                message: `Código incompleto em "${s.title}" (${lang}) — slide removido (sem fallback de bullets)`,
+                context: lang,
+                resolutionStrategy: "Slide removido do deck — issue extinta",
+              });
+              keepMask[si] = false;
+              console.log(`[V5-CODE-DROP] ${id} | "${s.title}" dropped: incomplete code, no bullet fallback (lang=${lang})`);
+              continue;
+            }
           }
         }
       }
