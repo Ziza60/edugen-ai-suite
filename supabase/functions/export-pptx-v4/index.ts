@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.5.5";
+const ENGINE_VERSION = "5.5.6";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -478,19 +478,45 @@ function stripTrailingPlaceholderComment(code: string): string {
   return changed ? lines.join("\n") : code;
 }
 
-// v5.5.5 — extract symbols (class/var names) defined in a previous slide's
-// code so we can synthesize completions that stay coherent with what the
-// student already saw. Pure inspection.
-function extractCodeSymbols(code: string | null | undefined): { classes: string[]; vars: string[] } {
-  const out = { classes: [] as string[], vars: [] as string[] };
+// v5.5.5/v5.5.6 — extract symbols defined in a slide's code so subsequent
+// slides' repairs can stay coherent with what the student already saw.
+// v5.5.6 widens to include funcs/imports for fuller context.
+type CodeSymbols = {
+  classes: string[];
+  vars: string[];
+  funcs: string[];
+  imports: string[];
+};
+function extractCodeSymbols(code: string | null | undefined): CodeSymbols {
+  const out: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] };
   if (!code) return out;
   for (const line of code.split("\n")) {
     const c = line.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/);
     if (c) out.classes.push(c[1]);
     const v = line.match(/^\s*([a-z_][a-z0-9_]*)\s*=\s*[A-Z][A-Za-z0-9_]*\s*\(/);
     if (v) out.vars.push(v[1]);
+    const f = line.match(/^\s*def\s+([a-z_][\w]*)\s*\(/);
+    if (f) out.funcs.push(f[1]);
+    const im = line.match(/^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))/);
+    if (im) out.imports.push(im[1] || im[2]);
   }
   return out;
+}
+
+// v5.5.6 — aggregate semantic context across ALL slides accepted so far
+// in the same module. Used as moduleCtx by repair so completions reuse
+// names introduced earlier in the module — not just the immediate slide.
+function extractSemanticCodeContext(slides: Slide[]): CodeSymbols {
+  const ctx: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] };
+  const seen = { classes: new Set<string>(), vars: new Set<string>(), funcs: new Set<string>(), imports: new Set<string>() };
+  for (const s of slides) {
+    const sy = extractCodeSymbols(s.code);
+    for (const c of sy.classes) if (!seen.classes.has(c)) { seen.classes.add(c); ctx.classes.push(c); }
+    for (const v of sy.vars) if (!seen.vars.has(v)) { seen.vars.add(v); ctx.vars.push(v); }
+    for (const f of sy.funcs) if (!seen.funcs.has(f)) { seen.funcs.add(f); ctx.funcs.push(f); }
+    for (const i of sy.imports) if (!seen.imports.has(i)) { seen.imports.add(i); ctx.imports.push(i); }
+  }
+  return ctx;
 }
 
 // v5.5.5 — semantic completeness check on a code snippet.
@@ -536,7 +562,7 @@ function validateSemanticCodeCompleteness(code: string): string | null {
 function repairIncompleteCodeExample(
   code: string,
   moduleKind: string | null,
-  prevSymbols: { classes: string[]; vars: string[] },
+  moduleCtx: CodeSymbols,
   slideNum: number | string,
 ): string | null {
   if (!code) return null;
@@ -551,13 +577,28 @@ function repairIncompleteCodeExample(
   const cm = out.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/m);
   if (cm && (reason === "class_defined_but_unused" || reason === "too_few_code_lines")) {
     const cls = cm[1];
+    // v5.5.6 — DRIFT GUARD: if the slide defines a class NOT seen in the
+    // module context AND the module already has prior classes, this is the
+    // planner introducing a new domain — refuse to "complete" it because
+    // doing so would cement the drift. Let the layout demote take over.
+    if (moduleCtx.classes.length > 0 && !moduleCtx.classes.includes(cls)) {
+      console.warn(
+        `[CODE-CONTEXT-DRIFT] slide=${slideNum} reason="class '${cls}' is new vs module context [${moduleCtx.classes.slice(0, 4).join(", ")}]" action=refuse_repair`,
+      );
+      return null;
+    }
     const initArgs = (out.match(/def\s+__init__\s*\(\s*self\s*(?:,\s*([^)]*))?\)/) ?? [, ""])[1] ?? "";
     const args = initArgs
       .split(",").map((a) => a.trim().split(/[:=]/)[0].trim()).filter(Boolean)
       .map((a) => /preco|valor|num|qtd|total|count|idade|^[abcnxyij]$/.test(a.toLowerCase()) ? "0" : `"${a}"`)
       .join(", ");
-    // Reuse previous slide's instance name if same class was defined there
-    const inst = prevSymbols.classes.includes(cls) && prevSymbols.vars[0] ? prevSymbols.vars[0] : cls.toLowerCase();
+    // v5.5.6 — Reuse instance name from module context if same class was
+    // already instantiated earlier (e.g. slide N had `livro = Livro(...)` →
+    // slide N+1's repair reuses `livro` instead of inventing a new name).
+    const ctxInstIdx = moduleCtx.classes.indexOf(cls);
+    const inst = ctxInstIdx >= 0 && moduleCtx.vars[ctxInstIdx]
+      ? moduleCtx.vars[ctxInstIdx]
+      : cls.toLowerCase();
     const hasOtherMethod = /^\s*def\s+(?!__init__)[a-z_][\w]*\s*\(/m.test(out);
     const attrMatch = out.match(/self\.(\w+)\s*=/);
     if (!hasOtherMethod && attrMatch) {
@@ -566,6 +607,9 @@ function repairIncompleteCodeExample(
       out += `\n\n${inst} = ${cls}(${args})`;
     }
     console.log(`[CODE-REPAIR] slide=${slideNum} pattern=class_demo cls=${cls} inst=${inst}`);
+    console.log(
+      `[CODE-CONTEXT] slide=${slideNum} reusedClasses=${JSON.stringify([cls])} reusedVariables=${JSON.stringify(ctxInstIdx >= 0 ? [inst] : [])} newSymbols=${JSON.stringify(ctxInstIdx >= 0 ? [] : [inst])} contextualConsistency=${ctxInstIdx >= 0 ? "PASSED" : "NEW_INST"}`,
+    );
     return validateSemanticCodeCompleteness(out) === null ? out : out;
   }
   if (/\btry\s*:\s*\n/.test(out) && !/\bexcept\b/.test(out)) {
@@ -591,12 +635,13 @@ function repairIncompleteCodeExample(
 }
 
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
-// v5.5.5: now accepts moduleKind + prevSymbols for semantic code repair.
+// v5.5.5: accepts moduleKind + prevSymbols for semantic code repair.
+// v5.5.6: prevSymbols is now full module accumulator, not just last slide.
 function applyFinalGuardrails(
   s: Slide,
   slideNum: number | string,
   moduleKind: string | null = null,
-  prevSymbols: { classes: string[]; vars: string[] } = { classes: [], vars: [] },
+  prevSymbols: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] },
 ): Slide {
   let out: Slide = s;
   // Guardrail 1: title polish (catches every bypass path)
@@ -8611,7 +8656,8 @@ async function runPipeline(
     let prevTitleNorm = "";
     let prevItemsNorm = "";
     let prevDisambigSuffix = 1;
-    let prevSymbols: { classes: string[]; vars: string[] } = { classes: [], vars: [] };
+    // v5.5.6 — module-wide context accumulator (not just last slide)
+    let moduleCtx: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] };
     // v5.5.5 — module kind (oop/json_apis/tests_logs/...) for completion hints
     const moduleKind = (() => {
       const r = getModuleRule(courseTitle, moduleTitlesArr[mi] ?? "");
@@ -8624,7 +8670,7 @@ async function runPipeline(
         allModuleSlides[mi][si],
         `M${mi + 1}.S${si + 1}`,
         moduleKind,
-        prevSymbols,
+        moduleCtx,
       );
       // v5.5.4 — Adjacent duplicate dedup: if title matches previous AND
       // items are also similar (jaccard ≥0.6 on first 3 items), DROP this
@@ -8698,9 +8744,10 @@ async function runPipeline(
       }
       prevTitleNorm = curNorm;
       prevItemsNorm = curItemsNorm;
-      // v5.5.5 — feed forward symbol context for next slide's repair
-      prevSymbols = extractCodeSymbols(s.code);
       kept.push(s);
+      // v5.5.6 — accumulate module context across ALL kept slides so
+      // subsequent slides' repairs see the full vocabulary, not just last.
+      moduleCtx = extractSemanticCodeContext(kept);
     }
     allModuleSlides[mi] = kept;
   }
