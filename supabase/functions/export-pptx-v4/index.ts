@@ -23,7 +23,7 @@ import {
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.4.5";
+const ENGINE_VERSION = "5.4.6";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
