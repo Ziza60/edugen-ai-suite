@@ -23,7 +23,7 @@ import {
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.4.8";
+const ENGINE_VERSION = "5.4.9";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -222,6 +222,42 @@ function parseCardItem(
     `${tag} split=accepted promotionDetected=false title="${prefix}" body="${suffix.slice(0, 50)}"`,
   );
   return { title: prefix, body: suffix, split: "accepted", semanticRole: "card_title_body" };
+}
+
+// normalizeSlideLabel — v5.4.9 — protect the slide-level "section badge"
+// region from receiving descriptive prose. Planner sometimes emits the
+// slide title itself (or a full sentence) into `label`, which then gets
+// uppercased + bolded by `header()` and visually dominates the slide as a
+// runaway headline. A real label is a SHORT TAG: ≤4 words AND ≤25 chars,
+// no conjugated verb, no stop-word tail. Anything else falls back to the
+// caller-provided default ("CONTEÚDO" / "FLUXO" / "PROCESSO" / etc.).
+function normalizeSlideLabel(
+  rawLabel: string | undefined | null,
+  defaultLabel: string,
+  ctx?: { slideNum?: number | string },
+): string {
+  const tag = `[LAYOUT-REGION-DEBUG] slide=${ctx?.slideNum ?? "?"} field=slide_label`;
+  const raw = String(rawLabel ?? "").trim();
+  if (!raw) {
+    return defaultLabel.slice(0, 32).toUpperCase();
+  }
+  const words = raw.split(/\s+/).filter(Boolean);
+  let reason: string | null = null;
+  if (raw.length > 25) reason = `label_too_long(${raw.length}>25)`;
+  else if (words.length > 4) reason = `label_too_many_words(${words.length}>4)`;
+  else if (PARSE_STOP_TAIL_RE.test(raw)) reason = "label_ends_with_stopword";
+  else if (words.length >= 2 && words.some((w) => PARSE_VERB_3P_RE.test(w))) {
+    reason = "label_contains_conjugated_verb";
+  }
+  if (reason) {
+    console.log(
+      `${tag} accepted=false reason=${reason} promotionDetected=true ` +
+      `original="${raw.slice(0, 60)}" → fallback="${defaultLabel}"`,
+    );
+    return defaultLabel.slice(0, 32).toUpperCase();
+  }
+  console.log(`${tag} accepted=true promotionDetected=false label="${raw}"`);
+  return raw.slice(0, 32).toUpperCase();
 }
 
 // detectHeaderPromotionLeak — diagnostic scan AFTER region assignment.
@@ -2512,17 +2548,21 @@ function renderDiagram(
   const rawItems = (slide_.items || []).slice(0, 5);
   if (rawItems.length === 0) { footer(slide, d, num, total); return; }
 
-  // v5.4.8 — Parse items via parseCardItem (strict semantic assignment).
-  // Diagram boxes ARE label-first (label is required, body optional), so when
-  // parseCardItem rejects the split we keep the whole text as the label and
-  // leave body empty — same legacy behaviour, just no longer hijacking long
-  // sentences as labels.
+  // v5.4.9 — Parse items via parseCardItem (strict semantic assignment).
+  // The diagram colored top band ALWAYS uppercases its `label` (line ~2555),
+  // so a long sentence in `label` becomes a runaway uppercase headline (the
+  // exact regression seen in slides 45/46 of the Python deck after v5.4.8,
+  // which wrongly sent the full body sentence to the label slot when split
+  // was rejected). Fix: when parseCardItem rejects the split, generate a
+  // SYNTHETIC SHORT LABEL ("Etapa N") and keep the full original sentence
+  // in body — body is rendered in normal case so the explanation is visible
+  // without being promoted to headline. Per user spec.
   const stages = rawItems.map((item, i) => {
     const p = parseCardItem(item, { slideNum: num, layout: "diagram", itemIdx: i });
     if (p.split === "accepted") {
       return { label: p.title, body: p.body };
     }
-    return { label: p.body.trim(), body: "" };
+    return { label: `Etapa ${i + 1}`, body: p.body.trim() };
   });
 
   const n       = stages.length;
@@ -2808,7 +2848,7 @@ async function generateModuleSlides(
         : cleanSlideTitle(String(s.title || mod.title).slice(0, 80), mod.title),
       label: s.layout === "takeaways"
         ? rotateSummaryLabel(moduleIndex)
-        : String(s.label || "CONTEÚDO").slice(0, 32).toUpperCase(),
+        : normalizeSlideLabel(s.label, "CONTEÚDO"),
       items: Array.isArray(s.items)
         ? s.items.slice(0, 6)
             .map((x: any) => safeItemText(globalSanitize(String(x)), 105))
@@ -7792,7 +7832,7 @@ async function runPipeline(
           return {
           layout: s.layout as Layout,
           title: finalTitle,
-          label: (s.label ?? "CONTEÚDO").slice(0, 32).toUpperCase(),
+          label: normalizeSlideLabel(s.label, "CONTEÚDO"),
           items: (s.items ?? [])
             .map((x) => safeItemText(globalSanitize(x), 105))
             .filter((x) => x.length > 0),
