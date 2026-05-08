@@ -23,7 +23,7 @@ import {
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.4.6";
+const ENGINE_VERSION = "5.4.7";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -2923,18 +2923,25 @@ const SQL_WILDCARD_RE =
 function globalSanitize(text: string): string {
   if (!text || typeof text !== "string") return "";
 
-  // Step 1a: protect SQL wildcard expressions using printable-ASCII markers [[SQLW_N]]
+  // Step 1a: protect SQL wildcard expressions using printable-ASCII markers [[SQLWN]]
+  // v5.4.7 — markers MUST NOT contain underscores. MARKDOWN_ITALIC_RE
+  // (/_{1,2}([^_]+)_{1,2}/g) was eating the underscores of two adjacent BT_N/
+  // SQLW_N markers and unifying them, e.g. "[[BT_0]] e [[BT_1]]" became
+  // "[[BT0]] e [[BT1]]" — restore regex then failed and the cleanup pattern
+  // (which accepts optional underscore) deleted the protected content
+  // entirely. Result: titles like "Exibindo com `def` e `for`" rendered as
+  // "Exibindo com  e " → TPL veto: com_e_orphan / com_comma_e.
   const sqlSlots: string[] = [];
   const withSqlProt = text.replace(SQL_WILDCARD_RE, (match) => {
     sqlSlots.push(match);
-    return `[[SQLW_${sqlSlots.length - 1}]]`;
+    return `[[SQLW${sqlSlots.length - 1}]]`;
   });
 
-  // Step 1b: protect backtick-quoted content using printable-ASCII markers [[BT_N]]
+  // Step 1b: protect backtick-quoted content using printable-ASCII markers [[BTN]]
   const backtickSlots: string[] = [];
   const slotted = withSqlProt.replace(/`([^`]*)`/g, (_full, inner: string) => {
     backtickSlots.push(inner);
-    return `[[BT_${backtickSlots.length - 1}]]`;
+    return `[[BT${backtickSlots.length - 1}]]`;
   });
 
   // Step 2: clean markdown & noise — san() is safe here (markers are ASCII printable)
@@ -2950,12 +2957,14 @@ function globalSanitize(text: string): string {
   );
 
   // Step 3: restore protected content (backticks first, then SQL wildcards)
+  // v5.4.7 — accept optional underscore for back-compat with any stale markers
+  // emitted by upstream code (LLM examples, legacy fallback path, etc.)
   const withBt = cleaned.replace(
-    /\[\[BT_(\d+)\]\]/g,
+    /\[\[BT_?(\d+)\]\]/g,
     (_m, idx: string) => backtickSlots[Number(idx)] ?? "",
   );
   const restored = withBt.replace(
-    /\[\[SQLW_(\d+)\]\]/g,
+    /\[\[SQLW_?(\d+)\]\]/g,
     (_m, idx: string) => sqlSlots[Number(idx)] ?? "",
   );
 
