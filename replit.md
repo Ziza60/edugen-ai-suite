@@ -64,7 +64,40 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~6900 lines, ENGINE_VERSION=5.1.16).
+`supabase/functions/export-pptx-v4/index.ts` (~7460 lines, ENGINE_VERSION=5.2.0).
+Companion module: `supabase/functions/export-pptx-v4/presentation-plan.ts` (~700 lines).
+
+### v5.2.0 — Presentation Planner (intermediate semantic stage)
+Strategic shift: instead of letting the renderer + QA cascade try to repair
+raw course markdown, an intermediate **PresentationPlan** stage produces
+already-clean, slide-shaped semantic content BEFORE the renderer sees it.
+
+Pipeline: Course MD → **PresentationPlan** → validate → repair → V5SlideLike → existing v5 pipeline (sanitize / QA / cascade / render).
+
+**New file** `presentation-plan.ts` exports:
+- `PresentationSlide` (id, moduleIndex, title, intent, layoutHint, density, visualPriority, focalElement, items, code, leftHeader/rightHeader/leftItems/rightItems, speakerNotes, sourceModuleTitle)
+- `PresentationPlan` (courseTitle, language, modules)
+- Controlled `PlanIntent` set: `module_cover` | `concept` | `example` | `code_walkthrough` | `process` | `comparison` | `cards` | `takeaways` | `summary` | `closing`
+- `generatePresentationPlan(input)` — per-module Gemini call (3-wide batch) with strict per-module allow/deny lists baked into the prompt
+- `validatePresentationPlan(plan, courseTitle)` — 11 deterministic checks (`MISSING_TITLE`, `EMPTY_SLIDE`, `INVALID_INTENT`, `TOO_MANY_BULLETS`, `CODE_TOO_LONG`, `EMPTY_ITEM`, `GENERIC_OBJECTIVE`, `TRUNCATED_SENTENCE`, `CODE_IN_BULLET`, `DOMAIN_CONTAMINATION`/`SQL_IN_PYTHON`, `DUPLICATE_SLIDE`)
+- `repairPlan(plan, report, courseTitle)` — drops fatals, filters bad items, promotes code-in-bullet to code field, caps bullets/code, dedupes, returns stats
+- `presentationPlanToV5Slides(plan)` — converts to existing Slide-compatible shape
+
+**Per-module Python rules** (`PYTHON_MODULE_RULES`) — title regex matchers + allow/deny + hard `denyPatterns` for: fundamentals, control_flow, data_structures (forbids SQL DDL/DML), files_exceptions, json_apis, oop, tests_logs, best_practices (forbids "variáveis básicas" / "hello world" / etc to prevent cross-module basic leak).
+
+**Wiring in `runPipeline`** (index.ts ~line 6825):
+1. Try planner FIRST. On success (validation passed + every module has ≥1 slide + no module failed) → planner output replaces `processBatch` result.
+2. Planner output still flows through `splitOverflowSlides` + `applyLayoutVariety` + `validateSemanticAlignment` + `semanticQualityGate` so it benefits from existing downstream guards.
+3. Then proceeds normally through pre-QA repair, QA cascade, post-cascade repair, safety net, QA veto, render.
+4. ANY failure (LLM error, fatal validation, empty module) → silent fallback to legacy `generateModuleSlides` path. The QA veto stays active in BOTH paths.
+
+**Logs**:
+- `[PRESENTATION-PLAN]` — module/slide counts, intents breakdown, repaired_objectives, blocked_contamination, moved_code, removed_duplicates, removed_truncated, capped_bullets, capped_code, modules_failed
+- `[PRESENTATION-PLAN-VALIDATION]` — `PASSED`/`FAILED` + issues by type
+
+What this changes vs Pass 16: the planner gives the renderer cleaner input upfront, so the regex-based repair pipeline has less to fix. The previous 16 hardening passes are **kept active** as a safety net for both the planner path and the fallback path.
+
+### Hardening Pass 16 (v5.1.16) — Last-resort drop for unrepaired damage (no more veto)
 
 ### Hardening Pass 16 (v5.1.16) — Last-resort drop for unrepaired damage (no more veto)
 Pass 15's new detectors (`BARE_COM_E_RE`, `TRAILING_NOUN_DOT_RE`, etc.) plus the existing `empty_example_parens` / `object_empty_parens` semantic-break patterns started catching real damage in covers and content slides — but the **repair pipeline didn't know how to fix them**, so the safety net emitted HARD CRITICAL issues and the QA Veto blocked the entire export (5 issues vetoed an otherwise good 32-slide deck). Pass 16 extends `stripSqlContaminationFromSlide`'s `isContaminated` to also drop items matching `detectTechnicalDamage` (`tech_damage_unrepaired`) or `detectIncompleteTechnicalSentence` (`semantic_break:<key>`). Strip runs at 4 call sites (pre-QA + post-cascade × per-slide + cover), so by the time the safety net scans, all unrepairable damage in items/leftItems/rightItems/competencies has been silently removed. The `isRenderableSlide` gate then drops the slide entirely if too few items remain. Net effect: damage that can't be auto-repaired is excised from a single slide instead of vetoing the whole deck.

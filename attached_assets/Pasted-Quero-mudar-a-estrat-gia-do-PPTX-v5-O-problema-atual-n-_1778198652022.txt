@@ -1,0 +1,291 @@
+Quero mudar a estratégia do PPTX v5.
+
+O problema atual não está apenas no renderer. A entrada do exportador ainda é “markdown de curso”, e o motor tenta transformar isso diretamente em slides. Isso gera muitos problemas: objetivos genéricos, conteúdo repetido, trechos longos, código misturado em bullet, contaminação entre módulos e necessidade excessiva de QA/reparo.
+
+Nova direção:
+Criar uma etapa intermediária antes do PPTX:
+
+Course Markdown
+→ Presentation Markdown / Slide Blueprint
+→ Renderer v5
+→ QA
+→ Export
+
+Objetivo:
+Fazer o EduGen partir de uma entrada mais parecida com a da Manus: markdown semântico planejado para apresentação, não markdown bruto de curso.
+
+Não migrar para v6.
+Não reescrever o renderer v5.
+Não alterar billing, rotas públicas ou schema do Supabase sem necessidade.
+Não adicionar novas features visuais agora.
+
+Implementar em etapa incremental e segura.
+
+1. Criar função generatePresentationPlan()
+
+Entrada:
+- courseTitle
+- modules
+- moduleTitle
+- moduleContent markdown atual
+- courseTopic
+- targetAudience, se existir
+- language
+
+Saída:
+PresentationPlan = {
+  courseTitle,
+  modules: [
+    {
+      moduleTitle,
+      moduleIndex,
+      slides: PresentationSlide[]
+    }
+  ]
+}
+
+PresentationSlide = {
+  id,
+  moduleIndex,
+  title,
+  intent,
+  layoutHint,
+  density,
+  visualPriority,
+  focalElement,
+  items,
+  code,
+  speakerNotes,
+  sourceModuleTitle
+}
+
+2. Intents permitidos
+
+Usar somente intents controlados:
+
+- module_cover
+- concept
+- example
+- code_walkthrough
+- process
+- comparison
+- cards
+- takeaways
+- summary
+- closing
+
+3. Regras do Presentation Planner
+
+A etapa deve transformar o conteúdo bruto do curso em conteúdo próprio para slides.
+
+Regras:
+- 1 ideia principal por slide;
+- máximo 5 bullets por slide;
+- máximo 12 linhas de código por slide;
+- objetivos de módulo devem ser concretos;
+- nunca usar “Compreender + título do módulo”;
+- nunca usar “Aplicar + título do módulo”;
+- nunca usar “Identificar + título do módulo”;
+- exemplos devem ficar em slides próprios;
+- código deve ficar em campo code, não como bullet;
+- detalhes longos devem ir para speakerNotes;
+- remover repetição entre slides;
+- impedir contaminação entre módulos.
+
+4. Regras por módulo para Python
+
+Para o curso “Introdução à Programação em Python”:
+
+Módulo Fundamentos:
+permitido:
+- variáveis
+- tipos primitivos
+- operadores
+- input/output
+- expressões
+
+Módulo Controle de Fluxo e Funções:
+permitido:
+- if/elif/else
+- for/while
+- def
+- parâmetros
+- return
+- escopo local/global
+
+Módulo Estruturas de Dados:
+permitido:
+- listas
+- dicionários
+- tuplas
+- conjuntos
+- append()
+- keys()
+- values()
+- set()
+
+proibido:
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- TRUNCATE
+- SELECT
+- INSERT
+- UPDATE
+- DELETE
+- JOIN
+- banco de dados
+- tabela SQL
+- chave primária
+- chave estrangeira
+
+Módulo Arquivos e Exceções:
+permitido:
+- open()
+- with open()
+- read()
+- write()
+- try
+- except
+- finally
+- FileNotFoundError
+- IOError
+- modos 'r', 'w', 'a', 'b'
+
+Módulo JSON e APIs:
+permitido:
+- json.loads()
+- json.dumps()
+- json.load()
+- json.dump()
+- requests.get()
+- requests.post()
+- response.json()
+- HTTP status code
+
+Módulo POO:
+permitido:
+- class
+- __init__()
+- objeto
+- atributo
+- método
+- herança
+- encapsulamento
+- self
+
+Módulo Testes, Logs e Depuração:
+permitido:
+- unittest
+- pytest
+- TestCase
+- test_*
+- assert
+- logging
+- logging.basicConfig()
+- DEBUG/INFO/ERROR
+- pdb
+
+Módulo Boas Práticas:
+permitido:
+- PEP 8
+- black
+- flake8
+- docstrings
+- src/
+- tests/
+- docs/
+- README
+- requirements.txt
+- venv
+- pip
+- setup.py
+
+5. Criar validação do PresentationPlan antes do renderer
+
+Criar validatePresentationPlan(plan)
+
+Bloquear ou reparar antes do renderer se houver:
+- domínio errado no módulo;
+- SQL em módulo Python;
+- objetivo genérico;
+- item vazio;
+- frase truncada;
+- código em bullet;
+- slide duplicado;
+- mais de 5 bullets;
+- code acima de 12 linhas;
+- slide sem título;
+- slide sem conteúdo útil.
+
+6. Renderizar a partir do PresentationPlan
+
+O renderer v5 deve preferir PresentationPlan quando disponível.
+
+Fluxo:
+- gerar ou carregar Course Markdown;
+- criar PresentationPlan;
+- validar PresentationPlan;
+- converter PresentationSlide para Slide v5 atual;
+- renderizar normalmente;
+- manter QA final como safety net.
+
+Importante:
+O QA final continua existindo, mas ele não deve mais ser responsável por salvar entrada ruim. A entrada deve chegar mais limpa ao renderer.
+
+7. Não depender de regex infinita
+
+O objetivo desta etapa não é adicionar mais 50 regexes.
+É reduzir a necessidade de reparo posterior criando uma entrada melhor.
+
+8. Logs obrigatórios
+
+Adicionar logs:
+
+[PRESENTATION-PLAN]
+- module count
+- slide count
+- intents breakdown
+- repaired objectives
+- blocked domain contamination
+- moved code blocks
+- removed duplicates
+
+[PRESENTATION-PLAN-VALIDATION]
+- PASSED / FAILED
+- issues by type
+
+9. Fallback seguro
+
+Se generatePresentationPlan falhar:
+- usar pipeline v5 atual;
+- mas manter QA veto ativo;
+- não cair para v3 em erro semântico.
+
+10. Critério de aceite
+
+Gerar novamente:
+“Introdução à Programação em Python”.
+
+O PPTX será considerado melhor se:
+- Módulo 3 não tiver SQL;
+- Módulo 8 não tiver objetivos de fundamentos básicos;
+- objetivos de módulo forem concretos;
+- código não aparecer como lixo textual em bullet;
+- não houver frases como “usar.”, “com :”, “métodos .”;
+- slides ficarem menos redundantes;
+- o QA final tiver menos trabalho;
+- [PRESENTATION-PLAN-VALIDATION] mostrar PASSED;
+- export continuar via v4/v5.
+
+Prioridade:
+1. Qualidade da entrada
+2. Coerência semântica por módulo
+3. Estabilidade
+4. Redução de reparos posteriores
+5. Design visual
+
+Não adicionar novos layouts agora.
+Não mexer no billing.
+Não mexer em rotas públicas.
+Implementar pequeno, seguro e incremental.

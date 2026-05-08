@@ -2,8 +2,13 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
+import {
+  generatePresentationPlan,
+  presentationPlanToV5Slides,
+  type V5SlideLike,
+} from "./presentation-plan.ts";
 
-const ENGINE_VERSION = "5.1.16";
+const ENGINE_VERSION = "5.2.0";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -6822,16 +6827,109 @@ async function runPipeline(
     });
   }
 
-  const BATCH_SIZE = 3; // max concurrent Gemini calls
+  // Suppress unused-var lint when planner short-circuits processBatch.
+  void slideCache; void moduleHashKey; void processBatch;
+
+  // ── PRESENTATION PLANNER (v5.2.0) ─────────────────────────────────────
+  // Try the new structured planner first. It enforces per-module domain
+  // rules (e.g. no SQL in a Python "Estruturas de Dados" module), concrete
+  // learning objectives, single-idea-per-slide, code-in-code-field, and
+  // dedup — BEFORE the renderer ever sees the slides. Reduces the load on
+  // the regex-heavy QA cascade.
+  //
+  // SAFETY: any failure (planner exception, validation fatal, empty output
+  // for ≥1 module) falls back silently to the legacy generateModuleSlides
+  // pipeline. The QA veto remains active either way.
   const allModuleSlides: Slide[][] = new Array(modules.length);
-  for (let b = 0; b < modules.length; b += BATCH_SIZE) {
-    const batchIndices = Array.from(
-      { length: Math.min(BATCH_SIZE, modules.length - b) },
-      (_, k) => b + k,
+  let plannerUsed = false;
+  try {
+    const { plan, stats, validation } = await generatePresentationPlan({
+      courseTitle, modules, language, geminiKey,
+    });
+    console.log(
+      `[PRESENTATION-PLAN] modules=${stats.module_count} | slides=${stats.slide_count} | intents=${JSON.stringify(stats.intents_breakdown)} | repaired_objectives=${stats.repaired_objectives} | blocked_contamination=${stats.blocked_contamination} | moved_code=${stats.moved_code} | removed_duplicates=${stats.removed_duplicates} | removed_truncated=${stats.removed_truncated} | capped_bullets=${stats.capped_bullets} | capped_code=${stats.capped_code} | modules_failed=${stats.modules_failed}`,
     );
-    const results = await processBatch(batchIndices);
-    for (const { i, slides } of results) {
-      allModuleSlides[i] = slides;
+    console.log(
+      `[PRESENTATION-PLAN-VALIDATION] ${validation.passed ? "PASSED" : "FAILED"} | issues=${JSON.stringify(validation.byType)}`,
+    );
+    // Hard-gate: planner output is only used if
+    //   (a) every module produced ≥1 slide AND
+    //   (b) no fatal validation issue survived repair AND
+    //   (c) no semantic-quality issue survived (DOMAIN_CONTAMINATION /
+    //       SQL_IN_PYTHON / GENERIC_OBJECTIVE / CODE_IN_BULLET /
+    //       TRUNCATED_SENTENCE) — these aren't fatal individually but if
+    //       they're still present after repair we shouldn't trust the plan.
+    const everyModuleHasSlides = plan.modules.every((m) => m.slides.length > 0);
+    const SEMANTIC_BLOCKERS = [
+      "DOMAIN_CONTAMINATION", "SQL_IN_PYTHON", "GENERIC_OBJECTIVE",
+      "CODE_IN_BULLET", "TRUNCATED_SENTENCE",
+    ];
+    const hasResidualSemanticBlocker = SEMANTIC_BLOCKERS.some(
+      (t) => (validation.byType[t] ?? 0) > 0,
+    );
+    if (
+      validation.passed &&
+      !hasResidualSemanticBlocker &&
+      everyModuleHasSlides &&
+      stats.modules_failed === 0
+    ) {
+      const v5Like: V5SlideLike[][] = presentationPlanToV5Slides(plan);
+      for (let i = 0; i < v5Like.length; i++) {
+        // Cast to existing Slide shape — V5SlideLike is structurally
+        // compatible (same field names, layout coerced below).
+        allModuleSlides[i] = v5Like[i].map((s): Slide => ({
+          layout: s.layout as Layout,
+          title: cleanSlideTitle(s.title.slice(0, 80), modules[i].title),
+          label: (s.label ?? "CONTEÚDO").slice(0, 32).toUpperCase(),
+          items: (s.items ?? [])
+            .map((x) => safeItemText(globalSanitize(x), 105))
+            .filter((x) => x.length > 0),
+          code: s.code ? validateCodeIntegrity(s.code.slice(0, 1200)) : undefined,
+          codeLabel: s.codeLabel ? s.codeLabel.slice(0, 20) : (s.code ? "Python" : undefined),
+          leftHeader: s.leftHeader ? globalSanitize(s.leftHeader).slice(0, 40) : undefined,
+          rightHeader: s.rightHeader ? globalSanitize(s.rightHeader).slice(0, 40) : undefined,
+          leftItems: s.leftItems
+            ? s.leftItems.map((x) => globalSanitize(x).slice(0, 90)).filter((x) => x.length > 0)
+            : undefined,
+          rightItems: s.rightItems
+            ? s.rightItems.map((x) => globalSanitize(x).slice(0, 90)).filter((x) => x.length > 0)
+            : undefined,
+          moduleIndex: i,
+        }));
+      }
+      plannerUsed = true;
+      console.log(`[PRESENTATION-PLAN] used | slides will flow through existing v5 pipeline`);
+    } else {
+      console.warn(
+        `[PRESENTATION-PLAN] gate failed (passed=${validation.passed}, residualSemanticBlocker=${hasResidualSemanticBlocker}, everyModuleHasSlides=${everyModuleHasSlides}, modules_failed=${stats.modules_failed}) — falling back to legacy generateModuleSlides`,
+      );
+    }
+  } catch (e: any) {
+    console.warn(`[PRESENTATION-PLAN] threw, falling back: ${e?.message ?? e}`);
+  }
+
+  if (!plannerUsed) {
+    const BATCH_SIZE = 3; // max concurrent Gemini calls
+    for (let b = 0; b < modules.length; b += BATCH_SIZE) {
+      const batchIndices = Array.from(
+        { length: Math.min(BATCH_SIZE, modules.length - b) },
+        (_, k) => b + k,
+      );
+      const results = await processBatch(batchIndices);
+      for (const { i, slides } of results) {
+        allModuleSlides[i] = slides;
+      }
+    }
+  } else {
+    // Planner path — apply layout variety + semantic gate so its output
+    // benefits from the same downstream guards as the legacy path.
+    for (let i = 0; i < allModuleSlides.length; i++) {
+      const split = splitOverflowSlides(allModuleSlides[i]);
+      const varied = applyLayoutVariety(split);
+      const aligned = varied.map((s) => validateSemanticAlignment(s, modules[i].title));
+      allModuleSlides[i] = aligned
+        .map((s) => semanticQualityGate(s, modules[i].title))
+        .filter((s): s is Slide => s !== null);
     }
   }
 
