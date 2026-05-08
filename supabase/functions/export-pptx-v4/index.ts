@@ -4410,15 +4410,17 @@ function runGlobalFieldSafetyNet(
         //  positives on cover titles that legitimately start with verbs.)
 
         // ── Broken Portuguese language ────────────────────────
-        const broken = detectBrokenNaturalLanguage(txt);
-        if (broken.broken) {
-          issues.push({
-            slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
-            message: `[SAFETY-NET] Linguagem quebrada em "${title}" (${broken.describe}): "${txt.slice(0, 80)}"`,
-            context: txt.slice(0, 160),
-            resolutionStrategy: "Bloqueio absoluto",
-          });
-        }
+        // v5.4.3 — REMOVED. The safety net iterates extractAllStrings() which
+        // walks every field including stale leftItems/rightItems on
+        // non-comparison layouts (preserved by repairEmptySlide() and
+        // layout-rotation transforms). That produced phantom CRITICAL
+        // blockers even after check #20 already dropped the offending
+        // rendered content. Check #20 is field-aware (findBrokenLanguageHit
+        // skips non-rendered fields) and runs TWICE in the pipeline
+        // (per-module + post-repair re-QA at line 7829), so any broken
+        // language in actually-rendered fields is already dropped/removed
+        // before the safety net runs. Keeping a non-field-aware detector
+        // here would re-introduce the phantom-blocker pattern v5.4.3 fixes.
 
         // ── Unresolved technical damage ("verb ()", ", ,", "Use e .") ──
         if (detectTechnicalDamage(txt)) {
