@@ -23,7 +23,7 @@ import {
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.4.2";
+const ENGINE_VERSION = "5.4.3";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -5175,17 +5175,86 @@ const BROKEN_LANG_REPAIRS: Record<string, (t: string) => string | null> = {
   broken_question_colon: (t) => t.replace(/[?:]\s*[?:]/g, "?"),
 };
 
-function repairBrokenLanguage(text: string): { repaired: string; changed: boolean; key?: string } {
+// v5.4.3 — bounded iterative repair with progressive acceptance.
+// Old behavior: single pass; if the repaired text still tripped ANY broken
+// pattern (even a different one), the function discarded ALL progress and
+// returned the original damaged string. That left "Que Adotar com" → first
+// pass produces "Por Que Adotar com" (still trailing-preposition) → reverted.
+// New behavior: up to 3 iterations; we keep partial improvements as long as
+// each step actually changes the text. Returns the final state plus a flag
+// indicating whether residual damage remains.
+function repairBrokenLanguage(
+  text: string,
+): { repaired: string; changed: boolean; key?: string; residualBroken?: boolean; residualKey?: string } {
   if (!text) return { repaired: text, changed: false };
-  const det = detectBrokenNaturalLanguage(text);
-  if (!det.broken || !det.key) return { repaired: text, changed: false };
-  const fn = BROKEN_LANG_REPAIRS[det.key];
-  if (!fn) return { repaired: text, changed: false };
-  const out = fn(text);
-  if (out && out !== text && !detectBrokenNaturalLanguage(out).broken) {
-    return { repaired: out, changed: true, key: det.key };
+  let cur = text;
+  let firstKey: string | undefined;
+  let changed = false;
+  const MAX_ITER = 3;
+  for (let i = 0; i < MAX_ITER; i++) {
+    const det = detectBrokenNaturalLanguage(cur);
+    if (!det.broken || !det.key) {
+      return { repaired: cur, changed, key: firstKey, residualBroken: false };
+    }
+    const fn = BROKEN_LANG_REPAIRS[det.key];
+    if (!fn) break;
+    const out = fn(cur);
+    if (!out || out === cur) break;
+    if (firstKey === undefined) firstKey = det.key;
+    cur = out.trim();
+    changed = true;
   }
-  return { repaired: text, changed: false };
+  const finalDet = detectBrokenNaturalLanguage(cur);
+  return {
+    repaired: cur,
+    changed,
+    key: firstKey,
+    residualBroken: finalDet.broken,
+    residualKey: finalDet.key,
+  };
+}
+
+// v5.4.3 — field-aware broken-language scanner. Returns the first hit found
+// across all rendered text fields of a slide, with enough metadata for the
+// QA check #20 to (a) report the actual field in the message and (b) drop
+// the offending bullet (or the whole slide if it's the title) without
+// emitting a phantom UNFIXED CRITICAL.
+type BrokenLangHit =
+  | { kind: "title"; txt: string; key: string; describe: string }
+  | { kind: "subtitle"; txt: string; key: string; describe: string }
+  | { kind: "items" | "leftItems" | "rightItems" | "competencies"; index: number; txt: string; key: string; describe: string };
+
+function findBrokenLanguageHit(s: Slide): BrokenLangHit | null {
+  const isComparison = s.layout === "comparison";
+  const fields: Array<{ kind: BrokenLangHit["kind"]; arr?: string[]; single?: string | undefined }> = [
+    { kind: "title", single: s.title },
+    { kind: "subtitle", single: s.subtitle },
+    { kind: "items", arr: s.items },
+    // Only inspect leftItems/rightItems on the layout that actually renders them
+    // (avoids phantom blockers from stale fields on bullets/process/etc).
+    { kind: "leftItems", arr: isComparison ? s.leftItems : undefined },
+    { kind: "rightItems", arr: isComparison ? s.rightItems : undefined },
+    { kind: "competencies", arr: s.layout === "module_cover" ? (s as Slide & { competencies?: string[] }).competencies : undefined },
+  ];
+  for (const f of fields) {
+    if (f.single && typeof f.single === "string") {
+      const det = detectBrokenNaturalLanguage(f.single);
+      if (det.broken && det.key && det.describe) {
+        return { kind: f.kind as "title" | "subtitle", txt: f.single, key: det.key, describe: det.describe };
+      }
+    }
+    if (Array.isArray(f.arr)) {
+      for (let i = 0; i < f.arr.length; i++) {
+        const t = f.arr[i];
+        if (typeof t !== "string") continue;
+        const det = detectBrokenNaturalLanguage(t);
+        if (det.broken && det.key && det.describe) {
+          return { kind: f.kind as "items" | "leftItems" | "rightItems" | "competencies", index: i, txt: t, key: det.key, describe: det.describe };
+        }
+      }
+    }
+  }
+  return null;
 }
 
 function repairSlideBrokenLanguage(s: Slide, slideId: string): Slide {
@@ -6677,24 +6746,71 @@ function runPptxQA(
         });
       }
 
-      // 20. BROKEN_LANGUAGE_STRUCTURE  [CRITICAL → repair via cascade or veto]
-      // v5.1.6: catches Portuguese grammar damage like "Que Adotar..."
-      // (missing "Por"), missing prepositions, etc. L1 cascade will try
-      // repairBrokenLanguage(); persistent damage blocks the export.
-      let brokenLang: { txt: string; describe: string } | null = null;
-      const langFields = [s.title, ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? [])]
-        .filter((x): x is string => typeof x === "string");
-      for (const t of langFields) {
-        const det = detectBrokenNaturalLanguage(t);
-        if (det.broken) { brokenLang = { txt: t, describe: det.describe ?? det.key ?? "?" }; break; }
-      }
-      if (brokenLang) {
-        unfixedIssues.push({
-          slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
-          message: `Linguagem natural quebrada em "${s.title}" (${brokenLang.describe})`,
-          context: brokenLang.txt.slice(0, 120),
-          resolutionStrategy: "Reparo via repairBrokenLanguage() ou bloqueio do export",
-        });
+      // 20. BROKEN_LANGUAGE_STRUCTURE  [CRITICAL → field-aware drop or veto]
+      // v5.4.3 — three-tier resolution mirroring check #17:
+      //   1) hit on items[n]/leftItems[n]/rightItems[n]/competencies[n] →
+      //      drop that entry; if slide remains renderable → FIXED, else
+      //      drop slide as FIXED.
+      //   2) hit on title/subtitle → drop slide as FIXED (no phantom blocker).
+      //   3) message and context now report the ACTUAL field that matched
+      //      (was always "título…" before — misleading).
+      const hit = findBrokenLanguageHit(s);
+      if (hit) {
+        const fieldLabel = hit.kind === "title" || hit.kind === "subtitle"
+          ? hit.kind
+          : `${hit.kind}[${(hit as { index: number }).index}]`;
+        if (hit.kind === "items" || hit.kind === "leftItems" || hit.kind === "rightItems" || hit.kind === "competencies") {
+          // Drop the offending entry, keep the rest
+          const sCopy: Slide & { competencies?: string[] } = { ...s };
+          const idx = (hit as { index: number }).index;
+          if (hit.kind === "items" && Array.isArray(sCopy.items)) {
+            sCopy.items = sCopy.items.filter((_, i) => i !== idx);
+          } else if (hit.kind === "leftItems" && Array.isArray(sCopy.leftItems)) {
+            sCopy.leftItems = sCopy.leftItems.filter((_, i) => i !== idx);
+          } else if (hit.kind === "rightItems" && Array.isArray(sCopy.rightItems)) {
+            sCopy.rightItems = sCopy.rightItems.filter((_, i) => i !== idx);
+          } else if (hit.kind === "competencies" && Array.isArray(sCopy.competencies)) {
+            sCopy.competencies = sCopy.competencies.filter((_, i) => i !== idx);
+          }
+          if (isRenderableSlide(sCopy)) {
+            modSlides[si] = sCopy;
+            s = modSlides[si];
+            fixedIssues.push({
+              slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
+              message: `Linguagem quebrada em "${s.title}" → field=${fieldLabel} (${hit.describe})`,
+              context: hit.txt.slice(0, 160),
+              resolutionStrategy: `Item ${fieldLabel} removido; slide preservado`,
+            });
+            console.log(
+              `[V5-LANG-DROP-ITEM] slide=${id} field=${fieldLabel} key=${hit.key} txt="${hit.txt.slice(0, 80)}"`,
+            );
+          } else {
+            keepMask[si] = false;
+            fixedIssues.push({
+              slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
+              message: `Linguagem quebrada em "${s.title}" → field=${fieldLabel} (${hit.describe}) — slide removido (sem conteúdo restante)`,
+              context: hit.txt.slice(0, 160),
+              resolutionStrategy: "Slide removido do deck — issue extinta",
+            });
+            console.log(
+              `[V5-LANG-DROP-SLIDE] slide=${id} field=${fieldLabel} reason=not_renderable_after_strip`,
+            );
+            continue;
+          }
+        } else {
+          // title or subtitle — drop the slide entirely as FIXED
+          keepMask[si] = false;
+          fixedIssues.push({
+            slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
+            message: `Linguagem quebrada em "${s.title}" → field=${fieldLabel} (${hit.describe}) — slide removido`,
+            context: hit.txt.slice(0, 160),
+            resolutionStrategy: "Slide removido do deck — issue extinta",
+          });
+          console.log(
+            `[V5-LANG-DROP-SLIDE] slide=${id} field=${fieldLabel} key=${hit.key} txt="${hit.txt.slice(0, 80)}"`,
+          );
+          continue;
+        }
       }
     } // end slide loop
 
