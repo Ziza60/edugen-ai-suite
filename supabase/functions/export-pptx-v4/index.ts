@@ -22,8 +22,12 @@ import {
   detectTechnicalTokenDamage,
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
+import {
+  polishEditorialTitle,
+  polishEditorialText,
+} from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.4.9";
+const ENGINE_VERSION = "5.5.0";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -2851,7 +2855,10 @@ async function generateModuleSlides(
         : normalizeSlideLabel(s.label, "CONTEÚDO"),
       items: Array.isArray(s.items)
         ? s.items.slice(0, 6)
-            .map((x: any) => safeItemText(globalSanitize(String(x)), 105))
+            .map((x: any) => polishEditorialText(
+              safeItemText(globalSanitize(String(x)), 105),
+              { field: "item" },
+            ))
             .filter((x: string) => x.length > 0)
         : [],
       code: s.code ? validateCodeIntegrity(String(s.code).slice(0, 1200)) : undefined,
@@ -3198,7 +3205,8 @@ function cleanTakeawayTitle(title: string, moduleTitle: string): string {
     ];
     return sanitizeTitle(opts[mod.length % opts.length]);
   }
-  return sanitizeTitle(t);
+  // v5.5.0 — editorial polish so "QUE …" / shouted titles get repaired
+  return polishEditorialTitle(sanitizeTitle(t));
 }
 
 // ── TITLE GARBAGE CLEANUP ──
@@ -3210,8 +3218,10 @@ function cleanSlideTitle(title: string, moduleTitle: string): string {
   if (!raw || GARBAGE_TITLE_RE.test(raw) || raw.toLowerCase() === moduleTitle.trim().toLowerCase()) {
     return sanitizeTitle(moduleTitle);
   }
-  // Apply full normalization (preposition fix, etc.)
-  return normalizeSlideTitle(raw, moduleTitle);
+  // Structural normalization (preposition fix, fragment repair, etc.)
+  const structural = normalizeSlideTitle(raw, moduleTitle);
+  // v5.5.0 — editorial polish (Que…? → Por que…?, shout→sentence-case)
+  return polishEditorialTitle(structural);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -7834,7 +7844,10 @@ async function runPipeline(
           title: finalTitle,
           label: normalizeSlideLabel(s.label, "CONTEÚDO"),
           items: (s.items ?? [])
-            .map((x) => safeItemText(globalSanitize(x), 105))
+            .map((x) => polishEditorialText(
+              safeItemText(globalSanitize(x), 105),
+              { field: "item" },
+            ))
             .filter((x) => x.length > 0),
           code: s.code ? validateCodeIntegrity(s.code.slice(0, 1200)) : undefined,
           codeLabel: s.codeLabel ? s.codeLabel.slice(0, 20) : (s.code ? "Python" : undefined),
