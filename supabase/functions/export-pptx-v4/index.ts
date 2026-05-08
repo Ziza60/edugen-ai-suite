@@ -8752,7 +8752,7 @@ async function runPipeline(
       return counts;
     })(),
   };
-  return { pptx, qaSummary };
+  return { pptx, qaSummary, acceptedModuleNumbers, fallbackModuleNumbers, titleDedupDropCount };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -8875,7 +8875,7 @@ Deno.serve(async (req: Request) => {
       `[V5] ENGINE=${ENGINE_VERSION} | "${courseTitle}" | ${moduleData.length} modules | theme=${theme} | density=${density}`,
     );
 
-    const { pptx, qaSummary } = await runPipeline(
+    const { pptx, qaSummary, acceptedModuleNumbers, fallbackModuleNumbers, titleDedupDropCount } = await runPipeline(
       courseTitle,
       moduleData,
       design,
