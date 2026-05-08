@@ -106,6 +106,223 @@ export interface PlanValidationReport {
 }
 
 // ═══════════════════════════════════════════════════════════
+// v5.3.0 — MODULAR EXPORT ARCHITECTURE
+// ───────────────────────────────────────────────────────────
+// Formal types for the per-module mini-deck pipeline. The
+// orchestrator (runPipeline in index.ts) builds one ModuleDeck
+// per source module and merges them with mergeModuleDecks()
+// before the renderer. Each ModuleDeck carries its own planner
+// diagnostics, validation result, gate decision, and QA status —
+// so semantic problems stay scoped to a single module instead
+// of contaminating the whole deck.
+// ═══════════════════════════════════════════════════════════
+
+// HARD CAP: how many slides a single module is allowed to render.
+// Spec target: 3-6 slides/module → deck of 28-42 for an 8-module course.
+// Rollout: started at 4 (v5.2.2), bumped to 5 (v5.3.0).
+// To raise to 6: change here AND the prompt in buildModulePrompt
+// (line ~656) AND the parser slice (line ~815) AND the gate range
+// in index.ts (line ~6895). All four MUST move together.
+export const MAX_PLANNER_SLIDES_PER_MODULE = 5;
+export const MIN_PLANNER_SLIDES_PER_MODULE = 1;
+
+// Visual / typographic / pacing tokens that propagate to every
+// module so the merged deck stays visually coherent. Today the
+// renderer reads DESIGN_SYSTEMS directly; this blueprint is
+// passed through as metadata so future per-module customisation
+// can read it without touching the renderer.
+export interface GlobalBlueprint {
+  theme: string;                  // skin id (default_v5 / dark_theme / etc)
+  language: string;               // pt-BR / en-US / es-ES …
+  tone: "formal" | "didactic" | "casual";
+  density: "compact" | "standard" | "detailed";
+  preferredIntents: PlanIntent[]; // hint for planner prompt
+  visualRhythm: "calm" | "balanced" | "energetic";
+  // Reserved for future expansion — reading the blueprint
+  // is safe even if the renderer ignores these fields.
+  typographyScale?: { titlePt: number; bodyPt: number };
+  spacingScale?:    { gutter: number; gridUnit: number };
+}
+
+export interface ModulePlannerDiagnostic {
+  moduleIndex: number;
+  moduleTitle: string;
+  slidesGenerated: number;
+  fatals: number;
+  blockers: number;
+  repairs: {
+    repaired_objectives?: number;
+    blocked_contamination?: number;
+    moved_code?: number;
+    removed_duplicates?: number;
+    removed_truncated?: number;
+    capped_bullets?: number;
+    capped_code?: number;
+    removed_broken_sentence?: number;
+    repaired_module_objectives?: number;
+    repaired_code_snippets?: number;
+  };
+  crossModuleLeaks: number; // count of items dropped due to cross-module-leak
+}
+
+export interface ModuleQADiagnostic {
+  moduleIndex: number;
+  moduleTitle: string;
+  status: "PASSED" | "FAILED";
+  issuesUnfixed: number;
+  issuesFixed: number;
+  unfixedBreakdown: Record<string, number>;
+}
+
+export type ModuleSource = "planner" | "legacy_fallback";
+
+// ModuleDeck is the per-module unit that flows through the
+// pipeline. The orchestrator owns an array of these; merging
+// concatenates them while preserving each module's diagnostics.
+// We declare `slides` as `unknown[]` here because the renderer's
+// Slide type lives in index.ts — keeping presentation-plan.ts
+// renderer-free per the original architectural rule.
+export interface ModuleDeck<TSlide = unknown> {
+  moduleIndex: number;
+  moduleTitle: string;
+  source: ModuleSource;
+  slides: TSlide[];
+  plannerDiagnostics?: ModulePlannerDiagnostic;
+  validationResult?: PlanValidationReport;
+  qaDiagnostic?: ModuleQADiagnostic;
+  gateAccepted: boolean; // true if planner output was accepted, false if fallback used
+}
+
+export interface CourseExportPlan<TSlide = unknown> {
+  courseTitle: string;
+  blueprint: GlobalBlueprint;
+  moduleDecks: ModuleDeck<TSlide>[];
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODULE CONTEXT GUARD — single entry point that consolidates
+// all the cross-module / per-kind semantic checks that already
+// exist in this file. Returns the issues so callers can decide
+// to drop the slide / repair / fall back.
+// Inputs are renderer-agnostic (PresentationSlide).
+// ═══════════════════════════════════════════════════════════
+export function validateModuleSemanticBoundary(
+  slide: PresentationSlide,
+  moduleTitle: string,
+  courseTitle: string,
+): PlanIssue[] {
+  const issues: PlanIssue[] = [];
+  const rule = getModuleRule(courseTitle, moduleTitle);
+
+  // 1. Cross-module fundamentals leak in title (FATAL)
+  if (slide.title && isCrossModuleBasicLeak(slide.title, moduleTitle)) {
+    issues.push({
+      slideId: slide.id, moduleIndex: slide.moduleIndex,
+      type: "DOMAIN_CONTAMINATION", severity: "fatal",
+      message: `Title "${slide.title}" leaks fundamentals topic into module "${moduleTitle}"`,
+    });
+  }
+
+  // 2. Per-item checks
+  for (const item of slide.items ?? []) {
+    if (!item || !item.trim()) continue;
+
+    // 2a. cross-module fundamentals leak (fixable — repair filters it out)
+    if (isCrossModuleBasicLeak(item, moduleTitle)) {
+      issues.push({
+        slideId: slide.id, moduleIndex: slide.moduleIndex,
+        type: "DOMAIN_CONTAMINATION", severity: "fixable",
+        message: `Item leaks fundamentals into "${moduleTitle}": "${item.slice(0, 60)}"`,
+      });
+    }
+    // 2b. per-kind hard deny patterns (Python module rules)
+    if (rule) {
+      for (const dp of rule.denyPatterns) {
+        if (dp.test(item)) {
+          issues.push({
+            slideId: slide.id, moduleIndex: slide.moduleIndex,
+            type: rule.kind === "fundamentals" || rule.kind === "control_flow" || rule.kind === "data_structures"
+              ? "SQL_IN_PYTHON" : "DOMAIN_CONTAMINATION",
+            severity: "fixable",
+            message: `Item violates "${rule.kind}" deny rule: "${item.slice(0, 60)}"`,
+          });
+          break;
+        }
+      }
+    }
+    // 2c. truncation
+    if (isTruncatedSentence(item)) {
+      issues.push({
+        slideId: slide.id, moduleIndex: slide.moduleIndex,
+        type: "TRUNCATED_SENTENCE", severity: "fixable",
+        message: `Truncated item: "${item.slice(0, 60)}"`,
+      });
+    }
+    // 2d. broken-sentence
+    const brokenKind = detectBrokenSemanticSentence(item);
+    if (brokenKind) {
+      issues.push({
+        slideId: slide.id, moduleIndex: slide.moduleIndex,
+        type: "BROKEN_SEMANTIC_SENTENCE", severity: "fixable",
+        message: `Broken sentence (${brokenKind}): "${item.slice(0, 60)}"`,
+      });
+    }
+    // 2e. generic objective on module-objective slides
+    const isObjectiveSlide = slide.intent === "module_cover"
+      || slide.intent === "takeaways"
+      || slide.intent === "summary"
+      || slide.intent === "closing";
+    if (isObjectiveSlide && isGenericObjective(item, moduleTitle)) {
+      issues.push({
+        slideId: slide.id, moduleIndex: slide.moduleIndex,
+        type: "GENERIC_OBJECTIVE", severity: "fixable",
+        message: `Generic objective: "${item.slice(0, 60)}"`,
+      });
+    }
+  }
+
+  // 3. Code snippet validation (only on code slides)
+  if (slide.code && slide.intent === "code_walkthrough") {
+    if (!validateCodeSnippet(slide.code, slide.codeLanguage)) {
+      issues.push({
+        slideId: slide.id, moduleIndex: slide.moduleIndex,
+        type: "INCOMPLETE_CODE_SNIPPET", severity: "fixable",
+        message: `Incomplete code snippet on slide "${slide.title}"`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+// Re-export so index.ts can call without re-binding
+export function getModuleKind(courseTitle: string, moduleTitle: string): string | undefined {
+  return getModuleRule(courseTitle, moduleTitle)?.kind;
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.3.0 — DEFAULT GLOBAL BLUEPRINT
+// Builds a sensible default blueprint from a skin id + language.
+// Callers (orchestrator) may override fields before passing to
+// the planner / renderer. Reading this is always safe because
+// the renderer ignores unknown fields.
+// ═══════════════════════════════════════════════════════════
+export function buildDefaultBlueprint(opts: {
+  theme: string;
+  language: string;
+  density?: "compact" | "standard" | "detailed";
+}): GlobalBlueprint {
+  return {
+    theme: opts.theme,
+    language: opts.language,
+    tone: "didactic",
+    density: opts.density ?? "standard",
+    preferredIntents: ["module_cover", "concept", "example", "code_walkthrough", "comparison", "takeaways"],
+    visualRhythm: "balanced",
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
 // Per-module domain rules (Python is the spec example, but the
 // architecture supports adding more language families later).
 // ═══════════════════════════════════════════════════════════
@@ -653,9 +870,10 @@ ${ruleBlock}
 
 ════ HARD CONTRACT ════
 1. Output language: ${language}. Every word of every field must be in ${language}.
-2. **Generate EXACTLY 3 to 4 slides. NEVER 5 or more.** Quality over quantity.
+2. **Generate EXACTLY 3 to 5 slides. NEVER 6 or more.** Quality over quantity.
    The deck is for an introductory course — long modules are exhausting.
-   Prefer 3 slides for short/simple modules; use 4 only when truly needed.
+   Prefer 3 slides for short/simple modules; use 4-5 only when the module
+   genuinely needs the extra depth (multi-part concept + example + recap).
 3. **MODULE COHERENCE — CRITICAL.** Every slide MUST teach a concept that
    belongs to "${moduleTitle}". Do NOT teach concepts that belong to other
    modules (e.g. if this module is "POO", do NOT include slides about
@@ -806,13 +1024,16 @@ function parsePlannerOutput(
     return [];
   }
 
-  // HARD CAP: max 4 slides per module (regardless of what the LLM returned).
-  // Keep the LAST slide if it's takeaways/summary so the module ends well.
-  if (parsed.length > 4) {
+  // HARD CAP: max MAX_PLANNER_SLIDES_PER_MODULE slides per module
+  // (regardless of what the LLM returned). Keep the LAST slide if it's
+  // takeaways/summary so the module ends well.
+  if (parsed.length > MAX_PLANNER_SLIDES_PER_MODULE) {
     const lastIsRecap = parsed.length > 0 &&
       ["takeaways", "summary", "closing"].includes(parsed[parsed.length - 1]?.intent);
     const recap = lastIsRecap ? parsed[parsed.length - 1] : null;
-    parsed = recap ? [...parsed.slice(0, 3), recap] : parsed.slice(0, 4);
+    parsed = recap
+      ? [...parsed.slice(0, MAX_PLANNER_SLIDES_PER_MODULE - 1), recap]
+      : parsed.slice(0, MAX_PLANNER_SLIDES_PER_MODULE);
   }
 
   return parsed.map((s: any, idx: number): PresentationSlide => {

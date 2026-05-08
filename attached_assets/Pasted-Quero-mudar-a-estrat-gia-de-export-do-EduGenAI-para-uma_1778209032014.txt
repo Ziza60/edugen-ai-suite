@@ -1,0 +1,294 @@
+Quero mudar a estratégia de export do EduGenAI para uma arquitetura modular inspirada no que aprendemos com a Manus.
+
+Diagnóstico:
+O problema atual não é apenas renderer ou QA.
+Estamos tentando gerar um deck único enorme (40–60 slides) em uma única execução.
+
+Isso causa:
+- contaminação entre módulos;
+- drift semântico;
+- objetivos errados;
+- repetição;
+- QA excessivo;
+- planner sobrecarregado;
+- perda de consistência visual/narrativa.
+
+Nova estratégia:
+Dividir o curso em mini-decks modulares.
+
+Arquitetura desejada:
+
+Course
+→ módulos independentes
+→ mini PresentationPlans
+→ mini-decks
+→ merge opcional
+→ export final
+
+Objetivo:
+Reduzir complexidade semântica e melhorar qualidade do planner.
+
+IMPORTANTE
+- NÃO migrar para v6.
+- NÃO reescrever o renderer v5.
+- NÃO alterar billing.
+- NÃO alterar rotas públicas.
+- NÃO alterar schema do Supabase sem necessidade.
+- NÃO adicionar novos layouts visuais agora.
+- Implementar incrementalmente e com fallback seguro.
+
+1. Criar arquitetura de export modular
+
+Hoje:
+1 curso → 1 PresentationPlan gigante → 1 deck
+
+Novo:
+1 módulo → 1 mini PresentationPlan → 1 mini deck lógico
+
+Estrutura:
+
+CourseExportPlan = {
+  courseTitle,
+  globalTheme,
+  globalDesignTokens,
+  moduleDecks: ModuleDeck[]
+}
+
+ModuleDeck = {
+  moduleIndex,
+  moduleTitle,
+  slides: PresentationSlide[],
+  plannerDiagnostics,
+  validationResult
+}
+
+2. Limitar fortemente escopo por módulo
+
+Cada módulo pode gerar:
+
+mínimo: 3 slides
+máximo: 6 slides
+
+Nunca mais que isso.
+
+Regra:
+- module_cover
+- 1–2 concept/example
+- 1 process/comparison/code
+- takeaways/summary
+
+Objetivo:
+Deck total entre:
+28–42 slides no máximo.
+
+3. Criar planner isolado por módulo
+
+Hoje:
+o planner vê o curso inteiro.
+
+Novo:
+o planner trabalha módulo por módulo.
+
+Input:
+- moduleTitle
+- moduleContent
+- moduleTopic
+- courseTopic
+- previousModuleSummary (opcional)
+- globalTheme
+
+O planner NÃO deve enxergar:
+- conteúdo completo dos outros módulos;
+- bullets completos dos outros módulos;
+- objetivos completos dos outros módulos.
+
+Isso reduz:
+- cross-module contamination;
+- semantic drift;
+- repetição.
+
+4. Criar Global Blueprint leve
+
+Apesar da modularização, manter consistência global:
+
+GlobalBlueprint = {
+  theme,
+  typographyScale,
+  spacingScale,
+  visualRhythm,
+  preferredIntents,
+  tone,
+  densityRules
+}
+
+Todos os módulos usam:
+- mesma paleta;
+- mesma tipografia;
+- mesmos design tokens;
+- mesma identidade visual.
+
+5. Criar Module Context Guard
+
+Criar:
+validateModuleSemanticBoundary()
+
+Objetivo:
+garantir que um módulo não use conceitos de outro.
+
+Exemplo:
+
+Módulo POO:
+permitido:
+- class
+- objeto
+- __init__
+- herança
+
+proibido:
+- tipos primitivos
+- operadores básicos
+- input()
+- print()
+
+Módulo Boas Práticas:
+permitido:
+- PEP8
+- venv
+- pip
+- estrutura de projeto
+
+proibido:
+- variáveis básicas
+- operadores
+- condicionais básicas
+
+Se detectar:
+- issue FATAL;
+- tentar repair;
+- fallback apenas daquele módulo;
+- nunca contaminar o deck inteiro.
+
+6. Criar per-module QA
+
+Hoje:
+QA tenta validar deck inteiro.
+
+Novo:
+cada módulo:
+- planner;
+- validation;
+- repair;
+- QA;
+- fallback.
+
+Fluxo:
+
+module
+→ planner
+→ validation
+→ repair
+→ QA
+→ accepted/rejected
+
+Se módulo falhar:
+- usar legacy fallback apenas naquele módulo;
+- nunca derrubar o curso inteiro.
+
+7. Criar merge layer opcional
+
+Depois que todos os módulos forem aceitos:
+
+mergeModuleDecks()
+
+Objetivo:
+- unir módulos;
+- manter numeração;
+- manter TOC global;
+- manter identidade visual;
+- manter mestres/slides consistentes.
+
+Mas semanticamente:
+cada módulo continua isolado.
+
+8. Reduzir pressão sobre o renderer
+
+O renderer v5 NÃO deve mais:
+- inferir semântica pesada;
+- corrigir planner ruim;
+- salvar conteúdo contaminado.
+
+Agora:
+o planner modular deve entregar entrada muito mais limpa.
+
+O renderer:
+- apenas executa layouts;
+- aplica design system;
+- renderiza visualmente;
+- deixa QA final como safety net.
+
+9. Logs obrigatórios
+
+Adicionar:
+
+[MODULE-PLANNER]
+module=3
+slides=5
+accepted=true
+repairCount=2
+crossModuleLeaks=0
+
+[MODULE-QA]
+module=6
+status=PASSED
+issuesFixed=3
+
+[COURSE-MERGE]
+modules=8
+totalSlides=37
+fallbackModules=[none]
+
+10. Critério de aceite
+
+Gerar novamente:
+"Introdução à Programação em Python"
+
+Esperado:
+- 28–42 slides;
+- módulo 8 sem fundamentos básicos;
+- módulo 6 sem variáveis primitivas;
+- módulo 3 sem SQL;
+- menos repetição;
+- menos frases truncadas;
+- menos drift semântico;
+- QA trabalhando menos;
+- Presentation Planner mais estável;
+- export mais consistente.
+
+11. Importante
+
+O objetivo NÃO é:
+- aumentar features;
+- adicionar efeitos;
+- criar layouts novos.
+
+O objetivo é:
+reduzir complexidade do problema.
+
+A Manus aparentemente mantém qualidade porque:
+- limita escopo;
+- divide apresentações grandes;
+- trabalha em batches pequenos;
+- mantém contexto controlado.
+
+Quero aplicar a mesma filosofia no EduGen.
+
+Prioridade:
+1. Modularidade semântica
+2. Isolamento de contexto
+3. Estabilidade do planner
+4. Redução de contaminação
+5. Consistência global
+6. QA mais simples
+7. Visual
+
+Implementar de forma incremental e segura.

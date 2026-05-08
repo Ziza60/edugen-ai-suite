@@ -6,9 +6,18 @@ import {
   generatePresentationPlan,
   presentationPlanToV5Slides,
   type V5SlideLike,
+  // v5.3.0 — modular export architecture
+  MAX_PLANNER_SLIDES_PER_MODULE,
+  MIN_PLANNER_SLIDES_PER_MODULE,
+  buildDefaultBlueprint,
+  type GlobalBlueprint,
+  type ModuleDeck,
+  type ModuleQADiagnostic,
+  type ModulePlannerDiagnostic,
+  type CourseExportPlan,
 } from "./presentation-plan.ts";
 
-const ENGINE_VERSION = "5.2.4";
+const ENGINE_VERSION = "5.3.0";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -6859,11 +6868,13 @@ async function runPipeline(
 
     // PER-MODULE GATE — accept the planner module-by-module instead of
     // all-or-nothing. A module is accepted ONLY if:
-    //   (a) it has between 1 and 5 slides, AND
+    //   (a) slide count in [MIN..MAX]_PLANNER_SLIDES_PER_MODULE, AND
     //   (b) no fatal validation issue affects this module, AND
     //   (c) no residual semantic blocker (DOMAIN_CONTAMINATION /
     //       SQL_IN_PYTHON / GENERIC_OBJECTIVE / CODE_IN_BULLET /
-    //       TRUNCATED_SENTENCE) affects this module.
+    //       TRUNCATED_SENTENCE / BROKEN_SEMANTIC_SENTENCE /
+    //       MODULE_OBJECTIVE_VIOLATION / INCOMPLETE_CODE_SNIPPET)
+    //       affects this module.
     // Modules that fail the gate fall back to legacy generateModuleSlides
     // for that index ONLY — the rest of the deck still benefits from the
     // planner's clean output.
@@ -6892,7 +6903,13 @@ async function runPipeline(
       const slideCount = planSlides.length;
       const hasFatal = (fatalsByModule.get(i) ?? 0) > 0;
       const hasBlocker = (blockersByModule.get(i) ?? 0) > 0;
-      const inRange = slideCount >= 1 && slideCount <= 4;
+      const inRange = slideCount >= MIN_PLANNER_SLIDES_PER_MODULE
+                   && slideCount <= MAX_PLANNER_SLIDES_PER_MODULE;
+
+      // v5.3.0 — emit per-module planner diagnostic log
+      console.log(
+        `[MODULE-PLANNER] module=${i + 1} title="${modules[i].title.slice(0, 40)}" slides=${slideCount} fatals=${fatalsByModule.get(i) ?? 0} blockers=${blockersByModule.get(i) ?? 0} accepted=${inRange && !hasFatal && !hasBlocker}`,
+      );
 
       if (inRange && !hasFatal && !hasBlocker) {
         // Convert this module's slides to v5 Slide shape
@@ -6921,7 +6938,7 @@ async function runPipeline(
         moduleUsesPlanner[i] = false;
         fallbackIndices.push(i);
         console.warn(
-          `[PRESENTATION-PLAN] module ${i + 1} ("${modules[i].title}") rejected: slides=${slideCount} (in 1-4: ${inRange}), fatals=${fatalsByModule.get(i) ?? 0}, blockers=${blockersByModule.get(i) ?? 0} → legacy fallback for this module only`,
+          `[PRESENTATION-PLAN] module ${i + 1} ("${modules[i].title}") rejected: slides=${slideCount} (in ${MIN_PLANNER_SLIDES_PER_MODULE}-${MAX_PLANNER_SLIDES_PER_MODULE}: ${inRange}), fatals=${fatalsByModule.get(i) ?? 0}, blockers=${blockersByModule.get(i) ?? 0} → legacy fallback for this module only`,
         );
       }
     }
@@ -7053,40 +7070,77 @@ async function runPipeline(
     moduleCovers[mi] = c;
   }
 
-  const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
-    allModuleSlides,
-    moduleContentsArr,
-    courseTitle,
-    moduleTitlesArr,
-  );
-  for (let i = 0; i < qaSlides.length; i++) {
-    allModuleSlides[i] = qaSlides[i];
-  }
-  console.log(
-    `[V5-QA] Initial pass: status=${qaReport.status} | issues=${qaReport.issues.length} | fixed=${qaReport.fixedIssues.length} | courseDomain=${inferCourseDomain(courseTitle)}`,
-  );
+  // ── v5.3.0 — PER-MODULE QA WRAPPER ─────────────────────────────────────
+  // Architectural shift inspired by Manus: QA runs per-module instead of
+  // on the full deck. Each module gets its own QA + cascade so semantic
+  // problems stay scoped to a single module. The aggregated report still
+  // feeds the global safety net + veto downstream (hybrid model — see
+  // architect plan, Phase 5).
+  //
+  // We aggregate the per-module reports into a single QAReport so the
+  // existing downstream code (post-repair re-QA, safety net, veto)
+  // continues to work unchanged.
+  const aggregatedIssues: QAIssue[] = [];
+  const aggregatedFixed: QAIssue[] = [];
+  const moduleQADiagnostics: ModuleQADiagnostic[] = [];
 
-  let cascadeReport: QAReport = qaReport;
-  if (qaReport.issues.length > 0) {
-    // Unfixed issues remain — run resolution cascade
-    const { resolvedSlides, finalReport } = await resolveQAIssues(
-      allModuleSlides,
-      qaReport,
-      moduleContentsArr,
-      geminiKey,
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    const mContent = moduleContentsArr[mi] ?? "";
+    // Run runPptxQA on a single-module slice (it accepts Slide[][])
+    const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
+      [allModuleSlides[mi]],
+      [mContent],
       courseTitle,
-      moduleTitlesArr,
+      [mTitle],
     );
-    for (let i = 0; i < resolvedSlides.length; i++) {
-      allModuleSlides[i] = resolvedSlides[i];
+    allModuleSlides[mi] = qaSlides[0] ?? allModuleSlides[mi];
+
+    let moduleReport: QAReport = qaReport;
+    if (qaReport.issues.length > 0) {
+      const { resolvedSlides, finalReport } = await resolveQAIssues(
+        [allModuleSlides[mi]],
+        qaReport,
+        [mContent],
+        geminiKey,
+        courseTitle,
+        [mTitle],
+      );
+      allModuleSlides[mi] = resolvedSlides[0] ?? allModuleSlides[mi];
+      moduleReport = finalReport;
     }
-    cascadeReport = finalReport;
+
+    // Aggregate
+    aggregatedIssues.push(...moduleReport.issues);
+    aggregatedFixed.push(...moduleReport.fixedIssues);
+
+    // Per-module diagnostic
+    const unfixedBreakdown: Record<string, number> = {};
+    for (const iss of moduleReport.issues) {
+      unfixedBreakdown[iss.type] = (unfixedBreakdown[iss.type] ?? 0) + 1;
+    }
+    const diag: ModuleQADiagnostic = {
+      moduleIndex: mi,
+      moduleTitle: mTitle,
+      status: moduleReport.status,
+      issuesUnfixed: moduleReport.issues.length,
+      issuesFixed: moduleReport.fixedIssues.length,
+      unfixedBreakdown,
+    };
+    moduleQADiagnostics.push(diag);
     console.log(
-      `[V5-QA-CASCADE] Final: status=${finalReport.status} | unfixed=${finalReport.issues.length} | fixed=${finalReport.fixedIssues.length}`,
+      `[MODULE-QA] module=${mi + 1} status=${diag.status} issuesUnfixed=${diag.issuesUnfixed} issuesFixed=${diag.issuesFixed}${diag.issuesUnfixed > 0 ? " unfixed=" + JSON.stringify(unfixedBreakdown) : ""}`,
     );
-  } else {
-    console.log("[V5-QA] All issues resolved in initial pass — cascade skipped");
   }
+
+  let cascadeReport: QAReport = {
+    status: aggregatedIssues.length === 0 ? "PASSED" : "FAILED",
+    issues: aggregatedIssues,
+    fixedIssues: aggregatedFixed,
+  };
+  console.log(
+    `[V5-QA] Per-module aggregate: status=${cascadeReport.status} | unfixed=${cascadeReport.issues.length} | fixed=${cascadeReport.fixedIssues.length} | courseDomain=${inferCourseDomain(courseTitle)}`,
+  );
 
   // Post-cascade safety sanitization pass — guarantees no residual
   // placeholder reaches the renderer even if a cascade level produced one.
@@ -7118,6 +7172,18 @@ async function runPipeline(
     for (let i = 0; i < dedupe.result.length; i++) allModuleSlides[i] = dedupe.result[i];
     console.log(`[V5-DEDUPE] Total redundant slides removed: ${dedupe.removed}`);
   }
+
+  // ── v5.3.0 — COURSE-MERGE LOG ─────────────────────────────────────────
+  // Logical merge step: at this point every ModuleDeck has been QA'd and
+  // deduped. The renderer below treats allModuleSlides + moduleCovers as
+  // the merged deck. Emitting this log makes the pipeline boundary
+  // explicit even though the data structure stays flat for renderer
+  // compatibility.
+  const mergedTotalSlides = allModuleSlides.reduce((a, m) => a + m.length, 0);
+  const fallbackModuleNumbers = fallbackIndices.map((i) => i + 1);
+  console.log(
+    `[COURSE-MERGE] modules=${allModuleSlides.length} totalSlides=${mergedTotalSlides} fallbackModules=${JSON.stringify(fallbackModuleNumbers.length > 0 ? fallbackModuleNumbers : "[none]")} dedupeRemoved=${dedupe.removed}`,
+  );
 
   // ── RE-RUN QA after the final repair so qaVeto sees the current state.
   // Without this, the veto consumes the stale cascadeReport and would
