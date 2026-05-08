@@ -4536,8 +4536,13 @@ const FILLER_VERBS_RE =
 const CONCRETE_TECH_VERBS_RE =
   /\b(criar|definir|implementar|construir|configurar|instalar|executar|chamar|invocar|escrever|ler|abrir|fechar|salvar|carregar|importar|exportar|inserir|atualizar|remover|deletar|consultar|filtrar|agrupar|ordenar|tratar|capturar|lançar|gerar|retornar|receber|enviar|conectar|autenticar|validar|testar|depurar|iterar|percorrer|mapear|reduzir|filtrar|combinar|comparar|calcular|somar|contar|converter|serializar|desserializar|parsear|formatar|renderizar|publicar|fazer\s+deploy|usar|utilizar|manipular)\b/i;
 
+// v5.3.2 — extended with best-practices/I/O/OOP-Python tokens that were missing,
+// causing safety-net false positives on legitimate replacement objectives like
+// "Aplicar PEP 8 e docstrings para manter código legível e padronizado."
+// (M8 cover blocked) and "Aplicar entrada e saída com input() e print()."
+// (M1 cover would block on the next regen).
 const CONCRETE_TECH_NOUNS_RE =
-  /\b(função|funções|método|métodos|classe|classes|objeto|objetos|variável|variáveis|lista|listas|dicionário|dicionários|tupla|tuplas|conjunto|conjuntos|array|arrays|loop|loops|for|while|if|else|try|except|finally|with|lambda|map|filter|reduce|comprehension|decorador|generator|iterator|módulo|pacote|biblioteca|framework|api|endpoint|requisição|resposta|json|csv|xml|sql|select|insert|update|delete|join|índice|tabela|coluna|chave|exceção|erro|log|teste|unitário|integração|debug|depuração|parâmetro|argumento|retorno|callback|promise|async|await|thread|processo|arquivo|diretório|stream|buffer|socket|http|tcp|udp|rest|graphql)\b/i;
+  /\b(função|funções|método|métodos|classe|classes|objeto|objetos|instância|instâncias|atributo|atributos|herança|polimorfismo|encapsulamento|construtor|construtores|variável|variáveis|lista|listas|dicionário|dicionários|tupla|tuplas|conjunto|conjuntos|array|arrays|loop|loops|for|while|if|else|try|except|finally|with|lambda|map|filter|reduce|comprehension|decorador|generator|iterator|módulo|módulos|pacote|pacotes|biblioteca|framework|api|endpoint|requisição|resposta|json|csv|xml|sql|select|insert|update|delete|join|índice|tabela|coluna|chave|exceção|erro|log|teste|unitário|integração|debug|depuração|parâmetro|argumento|retorno|callback|promise|async|await|thread|processo|arquivo|diretório|stream|buffer|socket|http|tcp|udp|rest|graphql|entrada|saída|input|print|read|write|open|pep\s*8|docstring|docstrings|venv|virtualenv|pip|requirements|setup\.py|pyproject(\.toml)?|src|tests|docs|readme|license|distribuição|empacotamento|projeto|projetos|dependência|dependências|repositório|gitignore|ci\/?cd|deploy|implantação|produção)\b/i;
 
 function isGenericLearningObjective(text: string, moduleTitle: string): boolean {
   if (!text || text.length < 10) return false;
@@ -5481,6 +5486,12 @@ const TR_TESTS_TOKENS: TokenRepairRule[] = [
   [/\bn[ií]veis\s+como\s*,?\s*,?\s*e\s+ERROR\b/gi, "Níveis como `DEBUG`, `INFO` e `ERROR`"],
   // "níveis , e ERROR" (sem "como")
   [/\bn[ií]veis\s+,?\s*,\s*e\s+ERROR\b/gi, "Níveis `DEBUG`, `INFO` e `ERROR`"],
+  // v5.3.2 — "Configure níveis de log como e ." / "níveis de log como e."
+  // (sem "ERROR" no final — só a lacuna aberta)
+  [/\bn[ií]veis\s+de\s+log\s+como\s+e\s*\.\s*/gi,
+    "níveis de log como `DEBUG`, `INFO`, `WARNING` e `ERROR`. "],
+  [/\bn[ií]veis\s+de\s+log\s+como\s*\.\s*$/gim,
+    "níveis de log como `DEBUG`, `INFO`, `WARNING` e `ERROR`."],
   // "Use com métodos e assert" sem unittest.TestCase
   [/\b(use|usar|usando|utilize|utilizar)\s+com\s+m[ée]todos\s+e\s+assert\b(?!\w)/gi,
     "$1 `unittest.TestCase` com métodos `test_*` e `assert*`"],
