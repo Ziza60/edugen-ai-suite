@@ -1,0 +1,260 @@
+Problemas que continuam
+•	Slide 13: código incompleto, termina com # .... 
+•	Slides 18–20: há fragmentos de conteúdo “meio código, meio bullet”, especialmente no slide 19. 
+•	Slide 28: objetivos de JSON continuam genéricos: “Compreender trabalhando...” / “Identificar trabalhando...”. 
+•	Slides 36, 44 e 50: ainda há slides “parte 2” com conteúdo genérico demais. 
+•	Slide 37: código POO termina com # .... 
+•	Slide 42: código de logging termina sem fechamento lógico. 
+Veredito
+Houve recuperação da regressão anterior. Nota: 8,0/10.
+O problema agora não é mais token, nem SQL, nem contaminação estrutural. É controle de qualidade de slide de código e eliminação de slides genéricos “parte 2”.
+crie um prompt 
+O pipeline PPTX v5.5.x melhorou bastante:
+- planner modular estável;
+- preservation layer funcionando;
+- module context guard funcionando;
+- semantic-region assignment praticamente resolvido;
+- títulos artificiais reduzidos;
+- tokens técnicos preservados;
+- POO voltou a ficar semanticamente correto.
+
+Agora o gargalo principal NÃO é mais arquitetura macro.
+
+Os problemas restantes são:
+1. slides de código incompletos;
+2. slides “parte 2” genéricos/fracos;
+3. mistura confusa entre bullets e pseudo-código;
+4. objectives ainda genéricos em JSON/APIs;
+5. exemplos que terminam em "# ...";
+6. slides marcados como CÓDIGO sem snippet robusto.
+
+Quero atacar isso de forma cirúrgica, sem destabilizar o pipeline.
+
+NÃO mexer em:
+- renderer core;
+- planner modular;
+- preservation layer;
+- qaVeto;
+- billing;
+- rotas;
+- schema;
+- ExportButtons;
+- fallback v3;
+- layout engine;
+- semantic-region assignment.
+
+Objetivo:
+refinar qualidade editorial e completude técnica.
+
+========================================
+1. CRIAR CODE COMPLETENESS GUARD
+========================================
+
+Criar:
+
+validateSemanticCodeCompleteness(slide)
+
+Problema atual:
+muitos slides de código terminam assim:
+- "# ..."
+- código truncado;
+- função sem retorno;
+- exemplo sem fechamento;
+- snippet incompleto;
+- pseudo-código disfarçado de código real.
+
+Exemplos ruins atuais:
+- slide 13
+- slide 37
+- slide 42
+
+Regras:
+
+Marcar como INCOMPLETE_CODE_SEMANTIC quando:
+- termina com "# ..."
+- termina com comentário aberto;
+- termina imediatamente após lógica parcial;
+- função sem fechamento lógico;
+- classe sem uso;
+- snippet muito curto para o título prometido;
+- exemplo não demonstra o conceito anunciado;
+- há setup sem output/result;
+- exemplo não tem conclusão semântica.
+
+Exemplo ruim:
+```python
+if total > 50:
+    desconto = total * 0.05
+# ...
+Exemplo bom:
+if total > 50:
+    desconto = total * 0.05
+
+totalfinal = total - desconto
+return totalfinal
+========================================
+2. CRIAR CODE COMPLETION REPAIR
+Criar:
+repairIncompleteCodeExample(slide, moduleKind)
+Objetivo:
+completar exemplos truncados automaticamente.
+Regras:
+•	adicionar fechamento lógico mínimo; 
+•	adicionar return; 
+•	adicionar print(); 
+•	adicionar exemplo de uso; 
+•	adicionar fechamento semântico; 
+•	completar try/except; 
+•	completar logging; 
+•	completar init(); 
+•	completar requests.get(); 
+•	completar unittest. 
+Exemplo:
+Antes:
+class Livro:
+    def __init__(self, titulo):
+        self.titulo = titulo
+# ...
+Depois:
+class Livro:
+    def __init__(self, titulo):
+        self.titulo = titulo
+
+    def exibir(self):
+        print(self.titulo)
+
+livro = Livro("Python")
+livro.exibir()
+========================================
+3. PROIBIR "# ..." EM SLIDES DE CÓDIGO
+Nova regra HARD:
+ELLIPSIS_CODE_PLACEHOLDER
+Detectar:
+•	"# ..." 
+•	"// ..." 
+•	"..." 
+•	"continua" 
+•	"restante omitido" 
+•	placeholders de continuação. 
+Se aparecer:
+•	tentar repair; 
+•	se repair falhar:
+qaVeto. 
+Não exportar código placeholder.
+========================================
+4. SLIDE CÓDIGO SEM CÓDIGO = INVÁLIDO
+Problema atual:
+slides marcados:
+"CÓDIGO"
+mas contendo:
+•	bullets; 
+•	explicações; 
+•	pseudo-processos; 
+•	texto editorial; 
+•	nenhum snippet real. 
+Criar:
+validateCodeSlideIntegrity(slide)
+Regra:
+Se:
+slide.type == CODE
+Então deve conter:
+•	bloco real; 
+•	=3 linhas;
+•	sintaxe detectável; 
+•	densidade técnica mínima. 
+Caso contrário:
+•	converter automaticamente para CONCEITO/EXEMPLO;
+OU 
+•	gerar snippet mínimo coerente. 
+========================================
+5. ELIMINAR “PARTE 2” GENÉRICA
+Problema:
+slides:
+•	"(II)" 
+•	"Parte 2" 
+•	continuação genérica; 
+•	takeaways redundantes; 
+•	processo repetido. 
+Criar:
+detectWeakContinuationSlide(slide)
+Detectar:
+•	"(II)" 
+•	conteúdo muito parecido; 
+•	repetição >70%; 
+•	continuação sem novo conceito; 
+•	duplicação sem ganho pedagógico. 
+Ações:
+•	merge; 
+•	drop; 
+•	rewrite; 
+•	compress. 
+========================================
+6. OBJECTIVES JSON/APIs
+Problema atual:
+slide 28:
+•	"Compreender trabalhando..." 
+•	"Identificar trabalhando..." 
+Ainda genérico/artificial.
+Expandir:
+repairLearningObjective()
+Regras específicas:
+py_json_api:
+•	consumir APIs REST; 
+•	interpretar JSON; 
+•	serializar dados; 
+•	usar requests.get(); 
+•	interpretar status HTTP; 
+•	converter JSON para dict/list; 
+•	enviar POST com payload JSON. 
+Exemplo ruim:
+"Compreender trabalhando com JSON"
+Exemplo bom:
+"Consumir APIs REST e interpretar respostas JSON em Python."
+========================================
+7. INSTRUMENTAÇÃO
+Adicionar logs:
+[CODE-COMPLETE]
+slide=...
+status=PASSED|FAILED
+reason=...
+[CODE-REPAIR]
+before="..."
+after="..."
+[WEAK-CONTINUATION]
+slide=...
+similarity=...
+action=merge|drop|rewrite
+[CODE-SLIDE-INTEGRITY]
+slide=...
+valid=true|false
+========================================
+8. NÃO QUERO
+Não quero:
+•	mascarar com layout novo; 
+•	reduzir slides artificialmente; 
+•	esconder código; 
+•	trocar CODE → bullets silenciosamente; 
+•	simplificar o deck; 
+•	remover conteúdo técnico; 
+•	gerar snippets fake genéricos; 
+•	quebrar preservation layer. 
+========================================
+9. CRITÉRIO DE ACEITE
+Gerar novamente:
+“Introdução à Programação em Python”
+Resultados esperados:
+•	slides de código completos; 
+•	nenhum "# ..."; 
+•	nenhum CODE sem código; 
+•	objetivos JSON/APIs concretos; 
+•	menos slides redundantes "(II)"; 
+•	exemplos fechados semanticamente; 
+•	snippets demonstrando conceito completo; 
+•	PPTX continua exportando normalmente; 
+•	sem regressão em POO/tokens/layout. 
+Prioridade:
+1.	qualidade dos exemplos técnicos; 
+2.	integridade semântica dos slides de código; 
+3.	eliminar placeholders/truncamentos; 
+4.	reduzir redundância; 
+5.	manter estabilidade do pipeline.

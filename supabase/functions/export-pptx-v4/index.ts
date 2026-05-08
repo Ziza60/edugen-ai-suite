@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.5.4";
+const ENGINE_VERSION = "5.5.5";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -478,8 +478,126 @@ function stripTrailingPlaceholderComment(code: string): string {
   return changed ? lines.join("\n") : code;
 }
 
+// v5.5.5 — extract symbols (class/var names) defined in a previous slide's
+// code so we can synthesize completions that stay coherent with what the
+// student already saw. Pure inspection.
+function extractCodeSymbols(code: string | null | undefined): { classes: string[]; vars: string[] } {
+  const out = { classes: [] as string[], vars: [] as string[] };
+  if (!code) return out;
+  for (const line of code.split("\n")) {
+    const c = line.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/);
+    if (c) out.classes.push(c[1]);
+    const v = line.match(/^\s*([a-z_][a-z0-9_]*)\s*=\s*[A-Z][A-Za-z0-9_]*\s*\(/);
+    if (v) out.vars.push(v[1]);
+  }
+  return out;
+}
+
+// v5.5.5 — semantic completeness check on a code snippet.
+// Returns null when complete enough to render; otherwise a short reason.
+function validateSemanticCodeCompleteness(code: string): string | null {
+  if (!code || !code.trim()) return "empty";
+  const t = code.trim();
+  const lines = t.split("\n");
+  for (const ln of lines) {
+    const s = ln.trim();
+    if (/^\.{3,}$/.test(s)) return "ellipsis_placeholder";
+    if (/^(#|\/\/|--)\s*\.{2,}/.test(s)) return "ellipsis_comment_placeholder";
+    if (/^(#|\/\/|--)\s*(continua|restante omitido|resto omitido|TODO|FIXME|XXX)/i.test(s)) return "todo_placeholder";
+  }
+  const codeLines = lines.filter((l) => {
+    const x = l.trim();
+    return x && !x.startsWith("#") && !x.startsWith("//") && !x.startsWith("--");
+  }).length;
+  if (codeLines < 2) return "too_few_code_lines";
+  const lastNonBlank = (() => {
+    for (let i = lines.length - 1; i >= 0; i--) if (lines[i].trim()) return lines[i].trim();
+    return "";
+  })();
+  if (/[,:({\[]\s*$/.test(lastNonBlank)) return "trailing_open_bracket";
+  const definesClass = /^\s*class\s+[A-Z]/m.test(t);
+  const hasOutput = /\b(print|return|yield|raise|assert)\s*[\(.]|\blog(?:ger|ging)?\.[a-z]+\s*\(/.test(t);
+  if (definesClass) {
+    const cm = t.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/m);
+    if (cm) {
+      const after = t.slice(t.indexOf(cm[0]) + cm[0].length);
+      const used = new RegExp(`\\b${cm[1]}\\s*\\(`).test(after);
+      if (!used && !hasOutput) return "class_defined_but_unused";
+    }
+  }
+  return null;
+}
+
+// v5.5.5 — try to repair an incomplete code example. Returns the repaired
+// code if able to make it pass `validateSemanticCodeCompleteness`, otherwise
+// returns null so caller can decide to demote/drop. `prevSymbols` carries
+// class/var names from the previous slide so completions reuse them when
+// pedagogically coherent.
+function repairIncompleteCodeExample(
+  code: string,
+  moduleKind: string | null,
+  prevSymbols: { classes: string[]; vars: string[] },
+  slideNum: number | string,
+): string | null {
+  if (!code) return null;
+  const before = code;
+  let out = stripTrailingPlaceholderComment(code).replace(/\s*$/, "");
+  if (!out.trim()) return null;
+  const reason = validateSemanticCodeCompleteness(out);
+  if (reason === null) {
+    if (out !== before) console.log(`[CODE-REPAIR] slide=${slideNum} pattern=strip_placeholder_only`);
+    return out !== before ? out : null;
+  }
+  const cm = out.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/m);
+  if (cm && (reason === "class_defined_but_unused" || reason === "too_few_code_lines")) {
+    const cls = cm[1];
+    const initArgs = (out.match(/def\s+__init__\s*\(\s*self\s*(?:,\s*([^)]*))?\)/) ?? [, ""])[1] ?? "";
+    const args = initArgs
+      .split(",").map((a) => a.trim().split(/[:=]/)[0].trim()).filter(Boolean)
+      .map((a) => /preco|valor|num|qtd|total|count|idade|^[abcnxyij]$/.test(a.toLowerCase()) ? "0" : `"${a}"`)
+      .join(", ");
+    // Reuse previous slide's instance name if same class was defined there
+    const inst = prevSymbols.classes.includes(cls) && prevSymbols.vars[0] ? prevSymbols.vars[0] : cls.toLowerCase();
+    const hasOtherMethod = /^\s*def\s+(?!__init__)[a-z_][\w]*\s*\(/m.test(out);
+    const attrMatch = out.match(/self\.(\w+)\s*=/);
+    if (!hasOtherMethod && attrMatch) {
+      out += `\n\n    def exibir(self):\n        print(self.${attrMatch[1]})\n\n${inst} = ${cls}(${args})\n${inst}.exibir()`;
+    } else {
+      out += `\n\n${inst} = ${cls}(${args})`;
+    }
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=class_demo cls=${cls} inst=${inst}`);
+    return validateSemanticCodeCompleteness(out) === null ? out : out;
+  }
+  if (/\btry\s*:\s*\n/.test(out) && !/\bexcept\b/.test(out)) {
+    out += `\nexcept Exception as e:\n    print(f"Erro: {e}")`;
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=try_without_except`);
+    return out;
+  }
+  if (moduleKind === "json_apis" && /requests\.get\(/.test(out) && !/\.json\(\)/.test(out)) {
+    out += `\nprint(resp.json())`;
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=json_api_response`);
+    return out;
+  }
+  if (moduleKind === "tests_logs" && /import\s+logging|logging\./.test(out) && !/logging\.(info|debug|warning|error|critical)\s*\(/.test(out)) {
+    out += `\nlogging.info("Operação concluída")`;
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=logging_emit`);
+    return out;
+  }
+  if (out !== before) {
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=partial_strip reason=${reason}`);
+    return out;
+  }
+  return null;
+}
+
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
-function applyFinalGuardrails(s: Slide, slideNum: number | string): Slide {
+// v5.5.5: now accepts moduleKind + prevSymbols for semantic code repair.
+function applyFinalGuardrails(
+  s: Slide,
+  slideNum: number | string,
+  moduleKind: string | null = null,
+  prevSymbols: { classes: string[]; vars: string[] } = { classes: [], vars: [] },
+): Slide {
   let out: Slide = s;
   // Guardrail 1: title polish (catches every bypass path)
   if (out.title) {
@@ -524,6 +642,48 @@ function applyFinalGuardrails(s: Slide, slideNum: number | string): Slide {
   if (out.code && out.code.trim()) {
     const newCode = repairDanglingAssignment(out.code, slideNum);
     if (newCode !== out.code) out = { ...out, code: newCode };
+  }
+  // v5.5.5 — Guardrail 4: semantic completeness check + repair attempt.
+  // If code still incomplete after dangling/strip repairs, try
+  // repairIncompleteCodeExample with prev-slide context. If repair fails
+  // and slide is layout=code, demote to bullets so we never render
+  // "# ..." or class-with-no-instance to a student.
+  if (out.code && out.code.trim()) {
+    const reason = validateSemanticCodeCompleteness(out.code);
+    if (reason !== null) {
+      const repaired = repairIncompleteCodeExample(out.code, moduleKind, prevSymbols, slideNum);
+      if (repaired) {
+        const reReason = validateSemanticCodeCompleteness(repaired);
+        if (reReason === null) {
+          out = { ...out, code: repaired };
+          console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair reason_was=${reason}`);
+        } else {
+          out = { ...out, code: repaired };
+          console.warn(`[CODE-COMPLETE] slide=${slideNum} status=PARTIAL repair_left=${reReason}`);
+        }
+      } else {
+        console.warn(`[CODE-COMPLETE] slide=${slideNum} status=FAILED reason=${reason}`);
+        if (out.layout === "code") {
+          console.log(`[LAYOUT-DEMOTE] slide=${slideNum} layout=code→bullets reason=incomplete_unrepairable (${reason})`);
+          out = { ...out, layout: "bullets" as Layout, code: undefined };
+        }
+      }
+    }
+  }
+  // v5.5.5 — Guardrail 5: code-slide integrity. Layout=code with too few
+  // real code lines or no syntax markers is meaningless. Demote.
+  if (out.layout === "code" && out.code && out.code.trim()) {
+    const codeLines = out.code.split("\n").filter((l) => {
+      const x = l.trim();
+      return x && !x.startsWith("#") && !x.startsWith("//") && !x.startsWith("--");
+    }).length;
+    const hasSyntax = /[=()\[\]{}:]|^\s*(def|class|import|from|return|print|if|for|while|try)\b/m.test(out.code);
+    if (codeLines < 3 || !hasSyntax) {
+      console.warn(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=false codeLines=${codeLines} hasSyntax=${hasSyntax} → demote`);
+      out = { ...out, layout: "bullets" as Layout };
+    } else {
+      console.log(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=true codeLines=${codeLines}`);
+    }
   }
   return out;
 }
@@ -8446,16 +8606,25 @@ async function runPipeline(
   let guardrailSlideCounter = 0;
   let titleDedupCount = 0;
   let titleDedupDropCount = 0;
+  let weakContinuationDropCount = 0;
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     let prevTitleNorm = "";
     let prevItemsNorm = "";
     let prevDisambigSuffix = 1;
+    let prevSymbols: { classes: string[]; vars: string[] } = { classes: [], vars: [] };
+    // v5.5.5 — module kind (oop/json_apis/tests_logs/...) for completion hints
+    const moduleKind = (() => {
+      const r = getModuleRule(courseTitle, moduleTitlesArr[mi] ?? "");
+      return r ? r.kind : null;
+    })();
     const kept: Slide[] = [];
     for (let si = 0; si < allModuleSlides[mi].length; si++) {
       guardrailSlideCounter++;
       let s = applyFinalGuardrails(
         allModuleSlides[mi][si],
         `M${mi + 1}.S${si + 1}`,
+        moduleKind,
+        prevSymbols,
       );
       // v5.5.4 — Adjacent duplicate dedup: if title matches previous AND
       // items are also similar (jaccard ≥0.6 on first 3 items), DROP this
@@ -8484,6 +8653,38 @@ async function runPipeline(
           titleDedupDropCount += 1;
           continue; // skip — don't push to kept[]
         }
+      }
+      // v5.5.5 — Weak-continuation detector: catch slides explicitly titled
+      // "(II)", "Parte 2", "Continuação", etc. with content too similar to
+      // a previous slide in the SAME module (jaccard ≥0.45 — looser
+      // threshold because the title already signals redundancy).
+      const isContinuationTitle = /\((II|III|IV|V)\)\s*$|\bparte\s+[2-9]\b|\bcontinua[çc][ãa]o\b|\bparte\s+ii+\b/i.test(s.title || "");
+      if (isContinuationTitle && curNorm) {
+        // Check against ALL previous slides in this module, not just the immediate one
+        let bestJacc = 0;
+        for (const k of kept) {
+          const kItems = (k.items ?? []).slice(0, 5)
+            .map((x) => normalizeTitleForCompare(String(x)))
+            .filter(Boolean);
+          if (!kItems.length || !curItemsNorm) continue;
+          const a = new Set(kItems.filter((x) => x.length > 4));
+          const b = new Set(curItemsNorm.split("|").filter((x) => x.length > 4));
+          if (!a.size || !b.size) continue;
+          let inter = 0;
+          for (const x of a) if (b.has(x)) inter++;
+          const jc = inter / (a.size + b.size - inter);
+          if (jc > bestJacc) bestJacc = jc;
+        }
+        if (bestJacc >= 0.45) {
+          console.log(
+            `[WEAK-CONTINUATION] slide=M${mi + 1}.S${si + 1} similarity=${bestJacc.toFixed(2)} action=drop title="${(s.title ?? "").slice(0, 60)}"`,
+          );
+          weakContinuationDropCount += 1;
+          continue;
+        }
+      }
+      // Continue with normal flow (re-enter the dedup-relabel branch only on direct title dup)
+      if (curNorm && curNorm === prevTitleNorm) {
         prevDisambigSuffix += 1;
         const suffix = ["", "II", "III", "IV", "V", "VI"][prevDisambigSuffix - 1] || `${prevDisambigSuffix}`;
         const newTitle = `${s.title} (${suffix})`;
@@ -8497,12 +8698,14 @@ async function runPipeline(
       }
       prevTitleNorm = curNorm;
       prevItemsNorm = curItemsNorm;
+      // v5.5.5 — feed forward symbol context for next slide's repair
+      prevSymbols = extractCodeSymbols(s.code);
       kept.push(s);
     }
     allModuleSlides[mi] = kept;
   }
   console.log(
-    `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount} | adjacent_dropped=${titleDedupDropCount}`,
+    `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount} | adjacent_dropped=${titleDedupDropCount} | weak_continuation_dropped=${weakContinuationDropCount}`,
   );
   tCheckpoint = tlog("final_guardrails_done", tCheckpoint);
 
