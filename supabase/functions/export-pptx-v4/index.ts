@@ -405,7 +405,10 @@ function repairDanglingAssignment(code: string, slideNum: number | string): stri
       .filter((a) => a && a !== "self")
       .map((a) => {
         const name = a.split(/[:=]/)[0].trim().toLowerCase();
-        if (/preco|valor|num|qtd|total|count|idade|n$|x$|y$|i$/.test(name)) return "0";
+        // Numeric: explicit semantic names + common single-letter math params
+        // (a/b/c/d/m/n/x/y/i/j/k). Defaulting these to None would raise
+        // TypeError on any arithmetic operation inside the function body.
+        if (/preco|valor|num|qtd|total|count|idade|^[abcdmnxyijk]$|n$|x$|y$|i$/.test(name)) return "0";
         if (/nome|name|texto|str|msg|titulo/.test(name)) return '"x"';
         return "None";
       })
