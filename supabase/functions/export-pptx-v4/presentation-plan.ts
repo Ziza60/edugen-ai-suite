@@ -1683,7 +1683,12 @@ export async function generatePresentationPlan(
 ): Promise<{ plan: PresentationPlan; stats: PlannerStats; validation: PlanValidationReport }> {
   const { courseTitle, modules, language, audience, geminiKey } = input;
 
-  const BATCH = 3;
+  // v5.4.6 — was 3 (sequential 3 batches × ~30s = ~90s on 8 modules, blowing
+  // the Edge Function 150s wall-clock). Bumped to 8 so a typical course
+  // (8 modules) completes in ONE Promise.allSettled wave (~25-30s). Gemini
+  // free tier is 60 RPM, so 8 concurrent calls is well within limits.
+  const BATCH = 8;
+  const tPlannerStart = Date.now();
   const moduleResults: PresentationPlanModule[] = new Array(modules.length);
   let modulesFailed = 0;
 
@@ -1772,6 +1777,11 @@ export async function generatePresentationPlan(
     capped_code: repairStats.capped_code,
     modules_failed: modulesFailed,
   };
+
+  // v5.4.6 — isolate planner wall-clock so we can prove the 8-wide batch worked
+  console.log(
+    `[PLANNER-TIMING] total_ms=${Date.now() - tPlannerStart} modules=${modules.length} batch_size=${BATCH} slides=${slideCount} failed=${modulesFailed}`,
+  );
 
   return { plan: repairedPlan, stats, validation: finalValidation };
 }
