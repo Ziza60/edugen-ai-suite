@@ -320,6 +320,13 @@ function rewriteBareQueTitle(rawTitle: string, slideNum: number | string): strin
 // with a meaningful, complete statement.
 function repairDanglingAssignment(code: string, slideNum: number | string): string {
   if (!code || !code.trim()) return code;
+  // Language gate: only safe to append print() in Python-style code.
+  // Skip if SQL (DDL/DML keywords) or JS/TS markers detected — appending
+  // print() to those would introduce syntax errors.
+  const codeUpper = code.toUpperCase();
+  const isSql = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE|COMMIT|ROLLBACK|WITH|FROM|WHERE|JOIN)\b/.test(codeUpper);
+  const isJs = /\b(const|let|var|function|=>|console\.log|require\(|import\s+\{)/.test(code);
+  if (isSql || isJs) return code;
   const lines = code.split("\n");
   // Walk backwards to find the last non-blank, non-comment line
   let lastIdx = -1;
@@ -352,10 +359,15 @@ function repairDanglingAssignment(code: string, slideNum: number | string): stri
   const hasFinalOutput =
     /\b(print|return|yield|raise)\s*[\(:\s]/.test(after) ||
     /\b(print|return|yield|raise)\s*[\(:\s]/.test(lastLine);
-  if (usedElsewhere && hasFinalOutput) return code;
-  if (usedElsewhere && !hasFinalOutput) {
-    // Variable used but never printed/returned — still incomplete, add print
-  }
+  // Snippet is already complete in either of these cases:
+  //   (a) variable is referenced elsewhere AND there's a print/return
+  //       somewhere — the code clearly does something with it.
+  //   (b) the snippet ends with print/return on a different topic —
+  //       appending print(var) would just add noise.
+  // Only repair when the assignment is truly orphaned: nothing uses
+  // the variable AND there is no closing output statement at all.
+  if (hasFinalOutput) return code;
+  if (usedElsewhere) return code;
   // Append a print(<var>) at the same indent to make the snippet complete
   const repaired = lines
     .slice(0, lastIdx + 1)
