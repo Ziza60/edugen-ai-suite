@@ -23,7 +23,7 @@ import {
   scanSlideForTechnicalDamage,
 } from "./technical-preservation.ts";
 
-const ENGINE_VERSION = "5.4.7";
+const ENGINE_VERSION = "5.4.8";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -140,6 +140,115 @@ function san(text: string): string {
     .replace(/\|/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// ═══════════════════════════════════════════════════════════
+// SEMANTIC REGION ASSIGNMENT — v5.4.8
+// ═══════════════════════════════════════════════════════════
+// Bug history: prior renderers split card items on the FIRST ": " whenever
+// `colonIdx < 50`. That promoted long descriptive prose with an embedded
+// colon (e.g. "def define um bloco de código reutilizável: você pode
+// chamá-lo várias vezes") into the BOLD/LARGE title region while a tiny
+// trailing fragment ended up as the body — visually indistinguishable from
+// a runaway headline. This is the "semantic region assignment" defect
+// reported for slides 13/30/43.
+//
+// `parseCardItem` is the SINGLE source of truth for "should this item be
+// rendered as Title + Body, or as Body only?" — used by renderCards (all
+// archetypes) and renderDiagram. Strict acceptance: prefix must look like
+// a real label (≤28 chars, ≤3 words, no conjugated verb, no stop-word
+// tail) AND body must be substantial (≥4 words). Anything else is treated
+// as body-only — NEVER fabricate a header by stealing from body content.
+//
+// All decisions are logged with `[LAYOUT-REGION-DEBUG]` so production
+// traces show exactly which item was split, which was kept whole, and why.
+const PARSE_STOP_TAIL_RE =
+  /\b(de|do|da|dos|das|em|no|na|nos|nas|com|para|por|que|se|é|ou|e|a|o|à|às|aos|um|uma|uns|umas|of|in|on|with|for|by|the|to)$/i;
+const PARSE_VERB_3P_RE =
+  /^(define|definem|registra|registram|permite|permitem|cria|criam|gera|geram|exibe|exibem|aplica|aplicam|envia|enviam|recebe|recebem|valida|validam|trata|tratam|captura|capturam|utiliza|utilizam|garante|garantem|habilita|habilitam|verifica|verificam|analisa|analisam|identifica|identificam|prepara|preparam|limpa|limpam|atribui|atribuem|retorna|retornam|chama|chamam|importa|importam|executa|executam|inicializa|inicializam|herda|herdam|encapsula|encapsulam|sobrescreve|sobrescrevem|implementa|implementam|abstrai|abstraem|modifica|modificam|controla|controlam|gerencia|gerenciam|configura|configuram|monitora|monitoram|otimiza|otimizam|usa|usam|faz|fazem|tem|têm|é|são|está|estão|pode|podem|deve|devem)$/i;
+
+interface ParsedCardItem {
+  title: string;
+  body: string;
+  split: "accepted" | "rejected";
+  reason?: string;
+  semanticRole: "card_title_body" | "body_content";
+}
+
+function parseCardItem(
+  text: string,
+  ctx: { slideNum?: number | string; layout?: string; itemIdx?: number; archetype?: string },
+): ParsedCardItem {
+  const t = (text || "").trim();
+  const tag =
+    `[LAYOUT-REGION-DEBUG] slide=${ctx.slideNum ?? "?"} layout=${ctx.layout ?? "?"}` +
+    `${ctx.archetype ? ` arch=${ctx.archetype}` : ""} itemIdx=${ctx.itemIdx ?? "?"}`;
+
+  const ci = t.indexOf(": ");
+  if (ci <= 0) {
+    console.log(`${tag} split=rejected reason=no_colon promotionDetected=false`);
+    return { title: "", body: t, split: "rejected", reason: "no_colon", semanticRole: "body_content" };
+  }
+
+  const prefix = t.slice(0, ci).trim();
+  const suffix = t.slice(ci + 2).trim();
+  const prefixWords = prefix.split(/\s+/).filter(Boolean);
+  const suffixWords = suffix.split(/\s+/).filter(Boolean);
+
+  // Reject conditions — each protects against semantic body→header promotion.
+  let reason: string | null = null;
+  if (prefix.length > 28) {
+    reason = `prefix_too_long(${prefix.length}>28)`;
+  } else if (prefixWords.length > 3) {
+    reason = `prefix_too_many_words(${prefixWords.length}>3)`;
+  } else if (suffixWords.length < 4) {
+    reason = `body_too_short(${suffixWords.length}<4)`;
+  } else if (PARSE_STOP_TAIL_RE.test(prefix)) {
+    reason = "prefix_ends_with_stopword";
+  } else if (prefixWords.length >= 2 && prefixWords.some((w) => PARSE_VERB_3P_RE.test(w))) {
+    reason = "prefix_contains_conjugated_verb";
+  }
+
+  if (reason) {
+    console.log(
+      `${tag} split=rejected reason=${reason} promotionDetected=false ` +
+      `prefix="${prefix.slice(0, 40)}" body_preview="${suffix.slice(0, 40)}"`,
+    );
+    // Keep entire text as body — semantic protection in action.
+    return { title: "", body: t, split: "rejected", reason, semanticRole: "body_content" };
+  }
+
+  console.log(
+    `${tag} split=accepted promotionDetected=false title="${prefix}" body="${suffix.slice(0, 50)}"`,
+  );
+  return { title: prefix, body: suffix, split: "accepted", semanticRole: "card_title_body" };
+}
+
+// detectHeaderPromotionLeak — diagnostic scan AFTER region assignment.
+// Reports any title region that received sentence-like prose (the symptom
+// users perceive as "content promoted to headline"). Returns leaks for
+// logging; does NOT throw or modify the slide (pure observability).
+function detectHeaderPromotionLeak(
+  parsed: ParsedCardItem[],
+  slideNum: number | string,
+): { itemIdx: number; title: string; reason: string }[] {
+  const leaks: { itemIdx: number; title: string; reason: string }[] = [];
+  parsed.forEach((p, i) => {
+    if (p.split !== "accepted") return;
+    const wc = p.title.split(/\s+/).filter(Boolean).length;
+    if (wc > 3) leaks.push({ itemIdx: i, title: p.title, reason: `title_word_count=${wc}` });
+    else if (p.title.length > 28) leaks.push({ itemIdx: i, title: p.title, reason: `title_length=${p.title.length}` });
+    else if (/[.?!]\s+\w/.test(p.title)) leaks.push({ itemIdx: i, title: p.title, reason: "title_contains_sentence_break" });
+  });
+  if (leaks.length > 0) {
+    console.warn(
+      `[LAYOUT-REGION-DEBUG] slide=${slideNum} HEADER_PROMOTION_LEAK count=${leaks.length} ` +
+      leaks.map((l) => `[#${l.itemIdx} reason=${l.reason} title="${l.title.slice(0, 30)}"]`).join(" "),
+    );
+  } else {
+    console.log(`[LAYOUT-REGION-DEBUG] slide=${slideNum} HEADER_PROMOTION_LEAK count=0 promotionDetected=false`);
+  }
+  return leaks;
 }
 
 const corsHeaders = {
@@ -1063,6 +1172,13 @@ function renderCards(
 
   const cardArch = d.componentArchetypes?.cards ?? "elevated_grid";
 
+  // v5.4.8 — pre-parse all items with strict semantic-region assignment
+  // (single source of truth shared by every card archetype).
+  const parsed: ParsedCardItem[] = items.map((it, i) =>
+    parseCardItem(it, { slideNum: num, layout: "cards", itemIdx: i, archetype: cardArch }),
+  );
+  detectHeaderPromotionLeak(parsed, num);
+
   // ── flat_grid: no shadow, bottom accent strip, accent title, no badge ──
   if (cardArch === "flat_grid") {
     for (let i = 0; i < items.length; i++) {
@@ -1071,10 +1187,9 @@ function renderCards(
       const x = ML + col * (cardW + gap);
       const y = cardsStartY + row * (cardH + gap);
       const pal = [d.accent, d.accent2, d.accent3][i % 3];
-      const colonIdx = items[i].indexOf(": ");
-      const hasTitle = colonIdx > 0 && colonIdx < 50;
-      const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
-      const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
+      const hasTitle = parsed[i].split === "accepted";
+      const cardTopText = parsed[i].title;
+      const cardBodyText = parsed[i].body;
       slide.addShape("roundRect" as any, {
         x, y, w: cardW, h: cardH,
         fill: { color: d.surface },
@@ -1116,10 +1231,9 @@ function renderCards(
       const x = ML + col * (cardW + gap);
       const y = cardsStartY + row * (cardH + gap);
       const pal = [d.accent, d.accent2, d.accent3][i % 3];
-      const colonIdx = items[i].indexOf(": ");
-      const hasTitle = colonIdx > 0 && colonIdx < 50;
-      const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
-      const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
+      const hasTitle = parsed[i].split === "accepted";
+      const cardTopText = parsed[i].title;
+      const cardBodyText = parsed[i].body;
       slide.addShape("roundRect" as any, {
         x, y, w: cardW, h: cardH,
         fill: { color: d.surface, transparency: 62 },
@@ -1160,11 +1274,10 @@ function renderCards(
     const y = cardsStartY + row * (cardH + gap);
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
 
-    // Parse "Title: Description"
-    const colonIdx = items[i].indexOf(": ");
-    const hasTitle = colonIdx > 0 && colonIdx < 50;
-    const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
-    const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
+    // v5.4.8 — semantic region assignment via parseCardItem (no naive < 50 split).
+    const hasTitle = parsed[i].split === "accepted";
+    const cardTopText = parsed[i].title;
+    const cardBodyText = parsed[i].body;
 
     // Shadow (omit for glow — bright border provides depth)
     if (d.cardStyle !== "glow") {
@@ -2399,13 +2512,17 @@ function renderDiagram(
   const rawItems = (slide_.items || []).slice(0, 5);
   if (rawItems.length === 0) { footer(slide, d, num, total); return; }
 
-  // Parse items — support "Label: description" format for richer boxes
-  const stages = rawItems.map((item) => {
-    const ci = item.indexOf(": ");
-    if (ci > 2 && ci < 42) {
-      return { label: item.slice(0, ci).trim(), body: item.slice(ci + 2).trim() };
+  // v5.4.8 — Parse items via parseCardItem (strict semantic assignment).
+  // Diagram boxes ARE label-first (label is required, body optional), so when
+  // parseCardItem rejects the split we keep the whole text as the label and
+  // leave body empty — same legacy behaviour, just no longer hijacking long
+  // sentences as labels.
+  const stages = rawItems.map((item, i) => {
+    const p = parseCardItem(item, { slideNum: num, layout: "diagram", itemIdx: i });
+    if (p.split === "accepted") {
+      return { label: p.title, body: p.body };
     }
-    return { label: item.trim(), body: "" };
+    return { label: p.body.trim(), body: "" };
   });
 
   const n       = stages.length;
