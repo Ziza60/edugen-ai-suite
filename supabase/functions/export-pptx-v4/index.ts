@@ -27,7 +27,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.5.1";
+const ENGINE_VERSION = "5.5.2";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -339,45 +339,97 @@ function repairDanglingAssignment(code: string, slideNum: number | string): stri
   }
   if (lastIdx < 0) return code;
   const lastLine = lines[lastIdx];
-  // Match a bare assignment (not an augmented op, not a comparison)
-  // varname = expression  — varname is plain identifier on the LHS
+
+  // ── Pattern A: bare assignment "varname = expression" at end ──
+  // Repair only when nothing AFTER this line uses the variable AND
+  // there is no terminating output (print/return/yield/raise) anywhere
+  // after. Reassignment earlier in the snippet (varName appearing in
+  // `before`) does NOT count as "used" — that's just shadowing, the
+  // last assignment is still dangling. (v5.5.2 fix for slide 14:
+  // `desconto = bruto * 0.05; desconto = bruto * 0.10` ending.)
   const assignMatch = lastLine.match(/^(\s*)([A-Za-z_][\w]*)\s*=\s*(?!=)(.+\S)\s*$/);
-  if (!assignMatch) return code;
-  const indent = assignMatch[1];
-  const varName = assignMatch[2];
-  // Skip multi-line expressions (parens still open) — too risky to touch
-  const opens = (lastLine.match(/[([{]/g) ?? []).length;
-  const closes = (lastLine.match(/[)\]}]/g) ?? []).length;
-  if (opens !== closes) return code;
-  // Check rest of code: is varName used anywhere ELSE? Is there any
-  // print() or return after? If so, the snippet is already complete.
-  const before = lines.slice(0, lastIdx).join("\n");
-  const after = lines.slice(lastIdx + 1).join("\n");
-  const usedElsewhere =
-    new RegExp(`\\b${varName}\\b`).test(before) ||
-    new RegExp(`\\b${varName}\\b`).test(after);
-  const hasFinalOutput =
-    /\b(print|return|yield|raise)\s*[\(:\s]/.test(after) ||
-    /\b(print|return|yield|raise)\s*[\(:\s]/.test(lastLine);
-  // Snippet is already complete in either of these cases:
-  //   (a) variable is referenced elsewhere AND there's a print/return
-  //       somewhere — the code clearly does something with it.
-  //   (b) the snippet ends with print/return on a different topic —
-  //       appending print(var) would just add noise.
-  // Only repair when the assignment is truly orphaned: nothing uses
-  // the variable AND there is no closing output statement at all.
-  if (hasFinalOutput) return code;
-  if (usedElsewhere) return code;
-  // Append a print(<var>) at the same indent to make the snippet complete
-  const repaired = lines
-    .slice(0, lastIdx + 1)
-    .concat([`${indent}print(${varName})`])
-    .concat(lines.slice(lastIdx + 1))
-    .join("\n");
-  console.log(
-    `[CODE-COMPLETE-REPAIR] slide=${slideNum} dangling_assignment="${varName}" → appended print(${varName})`,
-  );
-  return repaired;
+  if (assignMatch) {
+    const indent = assignMatch[1];
+    const varName = assignMatch[2];
+    const opens = (lastLine.match(/[([{]/g) ?? []).length;
+    const closes = (lastLine.match(/[)\]}]/g) ?? []).length;
+    if (opens !== closes) return code; // multi-line expr — bail
+    const after = lines.slice(lastIdx + 1).join("\n");
+    const usedAfter = new RegExp(`\\b${varName}\\b`).test(after);
+    const hasFinalOutput = /\b(print|return|yield|raise)\s*[\(:\s]/.test(after);
+    if (hasFinalOutput || usedAfter) return code;
+    const repaired = lines
+      .slice(0, lastIdx + 1)
+      .concat([`${indent}print(${varName})`])
+      .concat(lines.slice(lastIdx + 1))
+      .join("\n");
+    console.log(
+      `[CODE-COMPLETE-REPAIR] slide=${slideNum} pattern=dangling_assignment var="${varName}" → appended print(${varName})`,
+    );
+    return repaired;
+  }
+
+  // ── Pattern B: function defined but never called ──
+  // Last meaningful line is `return <expr>` (or just `pass`) — the
+  // snippet defines a function and ends inside it. If we can find the
+  // enclosing `def funcname(...)` and that name is never called below
+  // the def, append a `print(funcname(<placeholder>))` at column 0.
+  // (v5.5.2 fix for slide 47: function ending with `return 0.0`.)
+  const isReturnEnd = /^\s+(return\b|pass\s*$)/.test(lastLine);
+  if (isReturnEnd) {
+    let defIdx = -1;
+    let defIndent = "";
+    let funcName = "";
+    let funcArgs = "";
+    for (let i = lastIdx - 1; i >= 0; i--) {
+      const m = lines[i].match(/^(\s*)def\s+([A-Za-z_][\w]*)\s*\(([^)]*)\)/);
+      if (m) {
+        defIdx = i;
+        defIndent = m[1];
+        funcName = m[2];
+        funcArgs = m[3];
+        break;
+      }
+    }
+    if (defIdx < 0 || !funcName) return code;
+    // Only handle module-level defs (no leading indent on `def`)
+    if (defIndent !== "") return code;
+    // If funcname appears as a call anywhere outside the def body, snippet is fine
+    const callRe = new RegExp(`\\b${funcName}\\s*\\(`);
+    const beforeDef = lines.slice(0, defIdx).join("\n");
+    if (callRe.test(beforeDef)) return code;
+    // Build a placeholder argument list: int args → 0, str-ish → "x", default → None.
+    const argList = funcArgs
+      .split(",")
+      .map((a) => a.trim())
+      .filter((a) => a && a !== "self")
+      .map((a) => {
+        const name = a.split(/[:=]/)[0].trim().toLowerCase();
+        if (/preco|valor|num|qtd|total|count|idade|n$|x$|y$|i$/.test(name)) return "0";
+        if (/nome|name|texto|str|msg|titulo/.test(name)) return '"x"';
+        return "None";
+      })
+      .join(", ");
+    const callLine = `print(${funcName}(${argList}))`;
+    const repaired = code.replace(/\s*$/, "") + "\n" + callLine + "\n";
+    console.log(
+      `[CODE-COMPLETE-REPAIR] slide=${slideNum} pattern=def_without_call func="${funcName}" → appended ${callLine}`,
+    );
+    return repaired;
+  }
+
+  return code;
+}
+
+// Normalize a title for adjacent-duplicate comparison: lowercase, strip
+// punctuation/whitespace, collapse spaces. Two titles that normalize
+// to the same string are considered duplicates.
+function normalizeTitleForCompare(t: string): string {
+  return (t || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
@@ -8293,22 +8345,49 @@ async function runPipeline(
   );
   tCheckpoint = tlog("post_repair_re_QA_done", tCheckpoint);
 
-  // ── v5.5.1 — FINAL GUARDRAILS ─────────────────────────────────────
+  // ── v5.5.1+ — FINAL GUARDRAILS ────────────────────────────────────
   // Last-mile defensive pass before render. Catches damage that survived
   // every prior layer because it was introduced by paths that bypass
   // cleanSlideTitle (template splits / legacy chunks / direct planner
-  // emissions). See `applyFinalGuardrails` for the three checks.
+  // emissions). See `applyFinalGuardrails` for the per-slide checks.
+  // v5.5.2 adds adjacent-duplicate-title dedup at module scope.
   let guardrailSlideCounter = 0;
+  let titleDedupCount = 0;
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    let prevTitleNorm = "";
+    let prevDisambigSuffix = 1;
     for (let si = 0; si < allModuleSlides[mi].length; si++) {
       guardrailSlideCounter++;
-      allModuleSlides[mi][si] = applyFinalGuardrails(
+      let s = applyFinalGuardrails(
         allModuleSlides[mi][si],
         `M${mi + 1}.S${si + 1}`,
       );
+      // Adjacent duplicate-title dedup: if this slide's title (normalized)
+      // matches the previous one in the same module, append a roman-numeral
+      // suffix to disambiguate. Avoids two consecutive slides showing the
+      // identical headline (slide 40/41 user report: both "Depurando Código
+      // com pdb"). We DON'T drop the slide — its content may still differ;
+      // the renderer needs distinct titles for the TOC.
+      const curNorm = normalizeTitleForCompare(s.title || "");
+      if (curNorm && curNorm === prevTitleNorm) {
+        prevDisambigSuffix += 1;
+        const suffix = ["", "II", "III", "IV", "V", "VI"][prevDisambigSuffix - 1] || `${prevDisambigSuffix}`;
+        const newTitle = `${s.title} (${suffix})`;
+        console.log(
+          `[TITLE-DEDUP-FINAL] slide=M${mi + 1}.S${si + 1} duplicate of previous → "${newTitle}"`,
+        );
+        s = { ...s, title: newTitle };
+        titleDedupCount += 1;
+      } else {
+        prevDisambigSuffix = 1;
+      }
+      prevTitleNorm = curNorm;
+      allModuleSlides[mi][si] = s;
     }
   }
-  console.log(`[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides`);
+  console.log(
+    `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount}`,
+  );
   tCheckpoint = tlog("final_guardrails_done", tCheckpoint);
 
   // ── v5.1.8 — GLOBAL FIELD SAFETY NET ──────────────────────────────
