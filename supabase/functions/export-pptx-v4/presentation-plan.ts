@@ -174,31 +174,60 @@ const PYTHON_MODULE_RULES: ModuleRule[] = [
     kind: "oop",
     matchTitle: /(POO|orientad[ao]\s+a\s+objet|object\s*oriented|classes?\s+e\s+objet|heran[çc]a)/i,
     allow: ["class", "__init__()", "objeto", "atributo", "método", "herança", "encapsulamento", "self"],
-    deny: ["SQL", "CREATE TABLE", "JOIN"],
+    deny: [
+      "SQL", "CREATE TABLE", "JOIN",
+      "variáveis básicas", "tipos primitivos", "operadores aritméticos",
+      "expressões aritméticas", "input()/print() como tópico", "hello world",
+    ],
     denyPatterns: [
       /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE|SELECT\s+.+\s+FROM)\b/i,
+      // anti-cross-module: POO module must NOT teach fundamentals topics
+      /\bvari[áa]veis\s+(b[áa]sicas?|primitivas?|e\s+tipos)\b/i,
+      /\btipos\s+(primitivos?|de\s+dados\s+b[áa]sicos?)\b/i,
+      /\boperadores\s+(aritm[ée]ticos|b[áa]sicos|de\s+atribui)/i,
+      /\bexpress[oõ]es\s+aritm[ée]ticas\b/i,
+      /\bentrada\s+(b[áa]sica\s+)?(de|com)\s+input\(\)/i,
+      /\bsa[íi]da\s+(b[áa]sica\s+)?(de|com)\s+print\(\)/i,
+      /\binput\(\)\s+e\s+print\(\)/i,
+      /\bprint\(\)\s+e\s+input\(\)/i,
+      /\batribui[çc][aã]o\s+(simples|b[áa]sica|de\s+valores)\b/i,
+      /\bhello\s+world\b/i,
+      /\bsintaxe\s+b[áa]sica\s+do\s+python\b/i,
     ],
   },
   {
     kind: "tests_logs",
     matchTitle: /(testes?|tests?|logs?|depura[çc][aã]o|debug|loggin)/i,
     allow: ["unittest", "pytest", "TestCase", "test_*", "assert", "logging", "logging.basicConfig()", "DEBUG/INFO/ERROR", "pdb"],
-    deny: ["SQL", "CREATE TABLE", "JOIN"],
+    deny: ["SQL", "CREATE TABLE", "JOIN", "variáveis básicas", "tipos primitivos", "POO básico"],
     denyPatterns: [
       /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE|SELECT\s+.+\s+FROM)\b/i,
+      /\bvari[áa]veis\s+(b[áa]sicas?|primitivas?|e\s+tipos)\b/i,
+      /\btipos\s+primitivos?\b/i,
+      /\bexpress[oõ]es\s+aritm[ée]ticas\b/i,
     ],
   },
   {
     kind: "best_practices",
     matchTitle: /(boas\s+pr[áa]ticas|best\s+practices|implant|deploy|produc|ci[\/\-]?cd|empacot)/i,
     allow: ["PEP 8", "black", "flake8", "docstrings", "src/", "tests/", "docs/", "README", "requirements.txt", "venv", "pip", "setup.py"],
-    deny: ["variáveis básicas", "tipos primitivos", "hello world", "sintaxe básica", "SQL", "CREATE TABLE"],
+    deny: [
+      "variáveis básicas", "tipos primitivos", "operadores aritméticos",
+      "expressões aritméticas", "entrada/saída básica",
+      "hello world", "sintaxe básica", "SQL", "CREATE TABLE",
+    ],
     denyPatterns: [
       /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE)\b/i,
-      // anti-cross-module: a "best practices" module should NOT teach
-      // basic variables/types from scratch
-      /\bvari[áa]veis?\s+b[áa]sicas?\b/i,
-      /\btipos\s+primitivos?\s+(b[áa]sicos?|fundament)/i,
+      // anti-cross-module: a "best practices" module must NOT teach
+      // fundamentals from scratch (variáveis, operadores, print/input topics)
+      /\bvari[áa]veis?\s+(b[áa]sicas?|primitivas?|e\s+tipos)\b/i,
+      /\btipos\s+primitivos?\s*(b[áa]sicos?|fundament)?/i,
+      /\boperadores\s+(aritm[ée]ticos|b[áa]sicos|de\s+atribui)/i,
+      /\bexpress[oõ]es\s+aritm[ée]ticas\b/i,
+      /\b(entrada|sa[íi]da)\s+(b[áa]sica|de\s+dados\s+b[áa]sica|com\s+(input|print)\(\))/i,
+      /\binput\(\)\s+e\s+print\(\)/i,
+      /\bprint\(\)\s+e\s+input\(\)/i,
+      /\batribui[çc][aã]o\s+(simples|b[áa]sica|de\s+valores)\b/i,
       /\bhello\s+world\b/i,
       /\bsintaxe\s+b[áa]sica\s+do\s+python\b/i,
     ],
@@ -249,13 +278,48 @@ function isTruncatedSentence(text: string): boolean {
   if (t.length < 6) return false;
   // ends with comma/colon/dash/open-paren
   if (/[,:\-(]$/.test(t)) return true;
+  // ends with ",." (split-token like "verdadeiro ou falso,.")
+  if (/,\s*\.\s*$/.test(t)) return true;
   // common stripped-token patterns
   if (/\(\s*Ex\s*:\s*\)\s*\.?$/i.test(t)) return true;        // (Ex: )
   if (/\b\w+\s*\(\s*\)\s*\.\s*$/.test(t)) return true;        // "objeto ()."
   if (/\bcom\s+e\s+/i.test(t)) return true;                   // "com e"
+  if (/\bcom\s*,\s+e\s+/i.test(t)) return true;               // "com, e" (leitura com, e escrita)
   if (/\bcom\s+:\s+/i.test(t)) return true;                   // "com :"
   if (/\s+\.\s*$/.test(t) && /\b(no|na|do|da|em|com)\s+\.\s*$/i.test(t)) return true; // "no ."
+  // verb + bare ", e 'X'" — "modos de abertura, e 'a' corretamente"
+  if (/,\s+e\s+'[^']{1,3}'/.test(t)) return true;
+  // verb + bare "e" + preposition (no noun between) — "Trata e para garantir"
+  if (/\b(Trata|Use|Realize|Define|Cria|Configura|Aplica|Manipula|Implementa|Organiza|Faz|Faça)\s+e\s+(para|com|em|no|na|de|do|da)\b/i.test(t)) return true;
+  // bare "Que X" without "Por" — "Que Boas Práticas de Código?"
+  // Tightened to avoid false positives on legitimate Portuguese pedagogy
+  // text starting with "Que" (e.g. "Que os alunos identifiquem..."):
+  // require either (a) the line ends with "?" or (b) at least TWO
+  // consecutive Title-Case words after "Que" (a Title-Case noun phrase).
+  if (
+    /^\s*Que\s+[A-ZÁÉÍÓÚÂÊÔÃÕ]/.test(t) &&
+    !/\bPor\s+Que\b/i.test(t) &&
+    (/\?\s*$/.test(t) || /^\s*Que\s+[A-ZÁÉÍÓÚÂÊÔÃÕ][a-zà-ÿ]+\s+[A-ZÁÉÍÓÚÂÊÔÃÕ][a-zà-ÿ]+/.test(t))
+  ) {
+    return true;
+  }
+  // "X e Y para Z" with bare "e" between same-stem verbs ("leitura com, e escrita...")
+  if (/\b(leitura|escrita|abertura|fechamento|entrada|sa[íi]da)\s+com\s*,/i.test(t)) return true;
   return false;
+}
+
+// Cross-module basic-leak: an advanced module (POO / Boas Práticas / etc)
+// must NOT teach a fundamentals topic (variáveis, operadores, print/input
+// as topic, etc). Used in addition to per-module denyPatterns.
+const ADVANCED_MODULE_TITLE_RE =
+  /(POO|orientad[ao]\s+a\s+objet|object\s*oriented|heran[çc]a|encapsul|polimorf|boas\s+pr[áa]ticas|best\s+practices|implant|deploy|produc|avan[çc]ad|otimiz|performance|ci[\/\-]?cd|monitora|seguran[çc]a|refactor|arquitetura|testes?\s+|tests?\b|logs?\b|depura[çc][aã]o|debug)/i;
+const FUNDAMENTALS_TOPIC_RE =
+  /(\bvari[áa]veis\s+(b[áa]sicas?|primitivas?|e\s+tipos|simples)\b|\btipos\s+primitivos?\b|\boperadores\s+(aritm[ée]ticos|b[áa]sicos|de\s+atribui)|\bexpress[oõ]es\s+aritm[ée]ticas\b|\bhello\s+world\b|\bsintaxe\s+b[áa]sica\s+do\s+python\b|\batribui[çc][aã]o\s+(simples|b[áa]sica|de\s+valores)\b|\b(entrada|sa[íi]da)\s+(b[áa]sica|de\s+dados\s+b[áa]sica)\b|\binput\(\)\s+e\s+print\(\)|\bprint\(\)\s+e\s+input\(\))/i;
+
+function isCrossModuleBasicLeak(text: string, moduleTitle: string): boolean {
+  if (!text || !moduleTitle) return false;
+  if (!ADVANCED_MODULE_TITLE_RE.test(moduleTitle)) return false;
+  return FUNDAMENTALS_TOPIC_RE.test(text);
 }
 
 function looksLikeCodeLine(line: string): boolean {
@@ -337,15 +401,24 @@ ${ruleBlock}
 
 ════ HARD CONTRACT ════
 1. Output language: ${language}. Every word of every field must be in ${language}.
-2. Generate 3–7 slides total. Quality over quantity.
-3. Each slide MUST have ONE main idea. Never mix concept + example + code on
+2. **Generate EXACTLY 3 to 5 slides. NEVER 6 or more.** Quality over quantity.
+   The deck is for an introductory course — long modules are exhausting.
+3. **MODULE COHERENCE — CRITICAL.** Every slide MUST teach a concept that
+   belongs to "${moduleTitle}". Do NOT teach concepts that belong to other
+   modules (e.g. if this module is "POO", do NOT include slides about
+   variables/types/operators/print/input as topics — those belong to
+   the Fundamentals module). Fundamentals concepts may only appear as
+   incidental code, never as the main idea.
+4. Each slide MUST have ONE main idea. Never mix concept + example + code on
    the same slide — split them into multiple slides.
-4. Items: max 5 per slide. Each item ≤ 15 words, complete sentence ending in
-   a period. No truncation. No bullet prefixes ("•", "-", "1.", etc).
-5. Code: max 12 lines. Code MUST go in the "code" field, NEVER inside "items".
-6. Long explanations belong in "speakerNotes", not in items.
-7. NO duplicate slides. Each slide must teach something distinct.
-8. NO generic objectives. FORBIDDEN item shapes:
+5. Items: max 5 per slide. Each item ≤ 15 words, complete sentence ending in
+   a period. **No truncation.** No bullet prefixes ("•", "-", "1.", etc).
+   Avoid split-token artifacts like "verdadeiro ou falso,." or "leitura com, e".
+6. Code: max 12 lines. Code MUST go in the "code" field, NEVER inside "items".
+7. Long explanations belong in "speakerNotes", not in items.
+8. NO duplicate slides. NO consecutive slides covering the same idea. Each
+   slide must teach something distinct.
+9. NO generic objectives. FORBIDDEN item shapes:
      "Compreender ${moduleTitle}"
      "Aplicar ${moduleTitle}"
      "Identificar ${moduleTitle}"
@@ -478,6 +551,15 @@ function parsePlannerOutput(
     if (!Array.isArray(parsed)) throw new Error("Not array");
   } catch {
     return [];
+  }
+
+  // HARD CAP: max 5 slides per module (regardless of what the LLM returned).
+  // Keep the LAST slide if it's takeaways/summary so the module ends well.
+  if (parsed.length > 5) {
+    const lastIsRecap = parsed.length > 0 &&
+      ["takeaways", "summary", "closing"].includes(parsed[parsed.length - 1]?.intent);
+    const recap = lastIsRecap ? parsed[parsed.length - 1] : null;
+    parsed = recap ? [...parsed.slice(0, 4), recap] : parsed.slice(0, 5);
   }
 
   return parsed.map((s: any, idx: number): PresentationSlide => {
@@ -681,7 +763,7 @@ export function validatePresentationPlan(
             severity: "fixable",
           });
         }
-        // 7. Module-scoped domain enforcement
+        // 7a. Module-scoped domain enforcement (allow/deny lists)
         if (rule) {
           for (const dp of rule.denyPatterns) {
             if (dp.test(it)) {
@@ -698,6 +780,25 @@ export function validatePresentationPlan(
             }
           }
         }
+        // 7b. Cross-module basic leak (advanced module teaching fundamentals)
+        if (isCrossModuleBasicLeak(it, mod.moduleTitle)) {
+          issues.push({
+            slideId: sid, moduleIndex: mod.moduleIndex,
+            type: "DOMAIN_CONTAMINATION",
+            message: `Cross-module leak em "${mod.moduleTitle}" (tópico de fundamentos): "${it.slice(0, 80)}"`,
+            severity: "fixable",
+          });
+        }
+      }
+      // 7c. Cross-module leak in slide TITLE (advanced module with
+      // fundamentals topic in the title is a hard fail).
+      if (isCrossModuleBasicLeak(slide.title, mod.moduleTitle)) {
+        issues.push({
+          slideId: sid, moduleIndex: mod.moduleIndex,
+          type: "DOMAIN_CONTAMINATION",
+          message: `Título com tópico de fundamentos no módulo "${mod.moduleTitle}": "${slide.title}"`,
+          severity: "fatal",
+        });
       }
 
       // 8. Duplicate slide check (within module)
@@ -770,6 +871,11 @@ export function repairPlan(
             if (dp.test(it)) { stats.blocked_contamination++; return false; }
           }
         }
+        // Cross-module basic leak (advanced module teaching fundamentals)
+        if (isCrossModuleBasicLeak(it, mod.moduleTitle)) {
+          stats.blocked_contamination++;
+          return false;
+        }
         if (isGenericObjective(it, mod.moduleTitle)) {
           stats.repaired_objectives++;
           return false;
@@ -819,6 +925,9 @@ export function repairPlan(
               if (dp.test(it)) { stats.blocked_contamination++; return false; }
             }
           }
+          if (isCrossModuleBasicLeak(it, mod.moduleTitle)) {
+            stats.blocked_contamination++; return false;
+          }
           if (isGenericObjective(it, mod.moduleTitle)) {
             stats.repaired_objectives++; return false;
           }
@@ -831,10 +940,8 @@ export function repairPlan(
       const cleanRight = filterColumn(slide.rightItems ?? []);
 
       // Drop the slide entirely if any of its non-item fields (code,
-      // title, headers) are contaminated — those are not safely
-      // repairable by truncation. The fatal-issue set already includes
-      // these via the validation pass; this is a belt-and-suspenders
-      // guard in case repair is called without prior validation.
+      // title, headers) are contaminated. Includes both per-module
+      // denyPatterns AND cross-module fundamentals leak in title.
       if (rule) {
         const fields: string[] = [
           slide.title,
@@ -850,6 +957,10 @@ export function repairPlan(
           if (nonItemContaminated) break;
         }
         if (nonItemContaminated) { stats.blocked_contamination++; continue; }
+      }
+      if (isCrossModuleBasicLeak(slide.title, mod.moduleTitle)) {
+        stats.blocked_contamination++;
+        continue;
       }
 
       // Drop slide if it's now empty

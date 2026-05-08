@@ -8,7 +8,7 @@ import {
   type V5SlideLike,
 } from "./presentation-plan.ts";
 
-const ENGINE_VERSION = "5.2.0";
+const ENGINE_VERSION = "5.2.1";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -6841,7 +6841,11 @@ async function runPipeline(
   // for ≥1 module) falls back silently to the legacy generateModuleSlides
   // pipeline. The QA veto remains active either way.
   const allModuleSlides: Slide[][] = new Array(modules.length);
-  let plannerUsed = false;
+  // Per-module decision: which indices get planner output vs legacy fallback.
+  // null = decide later (planner threw); true = planner ok; false = fallback.
+  const moduleUsesPlanner: (boolean | null)[] = new Array(modules.length).fill(null);
+  const fallbackIndices: number[] = [];
+
   try {
     const { plan, stats, validation } = await generatePresentationPlan({
       courseTitle, modules, language, geminiKey,
@@ -6852,31 +6856,43 @@ async function runPipeline(
     console.log(
       `[PRESENTATION-PLAN-VALIDATION] ${validation.passed ? "PASSED" : "FAILED"} | issues=${JSON.stringify(validation.byType)}`,
     );
-    // Hard-gate: planner output is only used if
-    //   (a) every module produced ≥1 slide AND
-    //   (b) no fatal validation issue survived repair AND
-    //   (c) no semantic-quality issue survived (DOMAIN_CONTAMINATION /
+
+    // PER-MODULE GATE — accept the planner module-by-module instead of
+    // all-or-nothing. A module is accepted ONLY if:
+    //   (a) it has between 1 and 5 slides, AND
+    //   (b) no fatal validation issue affects this module, AND
+    //   (c) no residual semantic blocker (DOMAIN_CONTAMINATION /
     //       SQL_IN_PYTHON / GENERIC_OBJECTIVE / CODE_IN_BULLET /
-    //       TRUNCATED_SENTENCE) — these aren't fatal individually but if
-    //       they're still present after repair we shouldn't trust the plan.
-    const everyModuleHasSlides = plan.modules.every((m) => m.slides.length > 0);
-    const SEMANTIC_BLOCKERS = [
+    //       TRUNCATED_SENTENCE) affects this module.
+    // Modules that fail the gate fall back to legacy generateModuleSlides
+    // for that index ONLY — the rest of the deck still benefits from the
+    // planner's clean output.
+    const SEMANTIC_BLOCKERS = new Set([
       "DOMAIN_CONTAMINATION", "SQL_IN_PYTHON", "GENERIC_OBJECTIVE",
       "CODE_IN_BULLET", "TRUNCATED_SENTENCE",
-    ];
-    const hasResidualSemanticBlocker = SEMANTIC_BLOCKERS.some(
-      (t) => (validation.byType[t] ?? 0) > 0,
-    );
-    if (
-      validation.passed &&
-      !hasResidualSemanticBlocker &&
-      everyModuleHasSlides &&
-      stats.modules_failed === 0
-    ) {
-      const v5Like: V5SlideLike[][] = presentationPlanToV5Slides(plan);
-      for (let i = 0; i < v5Like.length; i++) {
-        // Cast to existing Slide shape — V5SlideLike is structurally
-        // compatible (same field names, layout coerced below).
+    ]);
+    const fatalsByModule = new Map<number, number>();
+    const blockersByModule = new Map<number, number>();
+    for (const issue of validation.issues) {
+      if (issue.severity === "fatal") {
+        fatalsByModule.set(issue.moduleIndex, (fatalsByModule.get(issue.moduleIndex) ?? 0) + 1);
+      }
+      if (SEMANTIC_BLOCKERS.has(issue.type)) {
+        blockersByModule.set(issue.moduleIndex, (blockersByModule.get(issue.moduleIndex) ?? 0) + 1);
+      }
+    }
+
+    const v5Like: V5SlideLike[][] = presentationPlanToV5Slides(plan);
+    let acceptedCount = 0;
+    for (let i = 0; i < modules.length; i++) {
+      const planSlides = plan.modules[i]?.slides ?? [];
+      const slideCount = planSlides.length;
+      const hasFatal = (fatalsByModule.get(i) ?? 0) > 0;
+      const hasBlocker = (blockersByModule.get(i) ?? 0) > 0;
+      const inRange = slideCount >= 1 && slideCount <= 5;
+
+      if (inRange && !hasFatal && !hasBlocker) {
+        // Convert this module's slides to v5 Slide shape
         allModuleSlides[i] = v5Like[i].map((s): Slide => ({
           layout: s.layout as Layout,
           title: cleanSlideTitle(s.title.slice(0, 80), modules[i].title),
@@ -6896,41 +6912,50 @@ async function runPipeline(
             : undefined,
           moduleIndex: i,
         }));
+        moduleUsesPlanner[i] = true;
+        acceptedCount++;
+      } else {
+        moduleUsesPlanner[i] = false;
+        fallbackIndices.push(i);
+        console.warn(
+          `[PRESENTATION-PLAN] module ${i + 1} ("${modules[i].title}") rejected: slides=${slideCount} (in 1-5: ${inRange}), fatals=${fatalsByModule.get(i) ?? 0}, blockers=${blockersByModule.get(i) ?? 0} → legacy fallback for this module only`,
+        );
       }
-      plannerUsed = true;
-      console.log(`[PRESENTATION-PLAN] used | slides will flow through existing v5 pipeline`);
-    } else {
-      console.warn(
-        `[PRESENTATION-PLAN] gate failed (passed=${validation.passed}, residualSemanticBlocker=${hasResidualSemanticBlocker}, everyModuleHasSlides=${everyModuleHasSlides}, modules_failed=${stats.modules_failed}) — falling back to legacy generateModuleSlides`,
-      );
     }
+    console.log(
+      `[PRESENTATION-PLAN] per-module gate: accepted=${acceptedCount}/${modules.length} | fallback_indices=${JSON.stringify(fallbackIndices.map((i) => i + 1))}`,
+    );
   } catch (e: any) {
-    console.warn(`[PRESENTATION-PLAN] threw, falling back: ${e?.message ?? e}`);
+    console.warn(`[PRESENTATION-PLAN] threw, falling back ALL modules: ${e?.message ?? e}`);
+    for (let i = 0; i < modules.length; i++) {
+      moduleUsesPlanner[i] = false;
+      fallbackIndices.push(i);
+    }
   }
 
-  if (!plannerUsed) {
-    const BATCH_SIZE = 3; // max concurrent Gemini calls
-    for (let b = 0; b < modules.length; b += BATCH_SIZE) {
-      const batchIndices = Array.from(
-        { length: Math.min(BATCH_SIZE, modules.length - b) },
-        (_, k) => b + k,
-      );
+  // Run legacy generateModuleSlides for ONLY the modules that need it.
+  if (fallbackIndices.length > 0) {
+    const BATCH_SIZE = 3;
+    for (let b = 0; b < fallbackIndices.length; b += BATCH_SIZE) {
+      const batchIndices = fallbackIndices.slice(b, b + BATCH_SIZE);
       const results = await processBatch(batchIndices);
       for (const { i, slides } of results) {
         allModuleSlides[i] = slides;
       }
     }
-  } else {
-    // Planner path — apply layout variety + semantic gate so its output
-    // benefits from the same downstream guards as the legacy path.
-    for (let i = 0; i < allModuleSlides.length; i++) {
-      const split = splitOverflowSlides(allModuleSlides[i]);
-      const varied = applyLayoutVariety(split);
-      const aligned = varied.map((s) => validateSemanticAlignment(s, modules[i].title));
-      allModuleSlides[i] = aligned
-        .map((s) => semanticQualityGate(s, modules[i].title))
-        .filter((s): s is Slide => s !== null);
-    }
+  }
+
+  // Planner-accepted modules still flow through the existing downstream
+  // guards (split / variety / semantic gate) so they get the same polish
+  // as legacy modules.
+  for (let i = 0; i < allModuleSlides.length; i++) {
+    if (moduleUsesPlanner[i] !== true) continue; // legacy already polished
+    const split = splitOverflowSlides(allModuleSlides[i]);
+    const varied = applyLayoutVariety(split);
+    const aligned = varied.map((s) => validateSemanticAlignment(s, modules[i].title));
+    allModuleSlides[i] = aligned
+      .map((s) => semanticQualityGate(s, modules[i].title))
+      .filter((s): s is Slide => s !== null);
   }
 
   // ── v5.1.9 — PRE-BUILD MODULE COVER SLIDES ─────────────────
