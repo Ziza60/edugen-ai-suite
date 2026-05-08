@@ -481,6 +481,13 @@ function isGenericObjective(text: string, moduleTitle: string): boolean {
   const mt = moduleTitle.trim().toLowerCase().replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/, "");
   if (!mt) return false;
 
+  // v5.5.5 — looser pattern: ANY generic verb followed by a gerund glue word
+  // ("trabalhando", "estudando", "explorando", "lidando com") is inherently
+  // meta/empty regardless of suffix match. Catches "Compreender trabalhando
+  // com JSON e APIs." even when module title doesn't match exactly.
+  const gerundGlueRe = /^(compreender|entender|aplicar|identificar|conhecer|estudar|aprender|explorar|analisar|examinar)\s+(trabalhando|estudando|explorando|lidando|atuando|operando)\s+(com|em|sobre)\b/;
+  if (gerundGlueRe.test(t)) return true;
+
   // Verb + module title (e.g. "Compreender Estruturas de Dados.")
   for (const v of GENERIC_OBJECTIVE_VERBS) {
     if (t === `${v} ${mt}.` || t === `${v} ${mt}`) return true;
