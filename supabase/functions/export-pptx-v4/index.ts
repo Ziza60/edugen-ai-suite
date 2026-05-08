@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.5.3";
+const ENGINE_VERSION = "5.5.4";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -438,6 +438,46 @@ function normalizeTitleForCompare(t: string): string {
     .trim();
 }
 
+// v5.5.4 — bullet that is actually a code fragment leaking from the planner.
+// User report: slide 15 had bullet "{pizza['nome']} - R${pizza['preco']:.2f}")"
+// — that's the inside of an f-string that escaped from the code field. Detect
+// and drop these so the bullet list doesn't render gibberish.
+function isCodeFragmentBullet(s: string): boolean {
+  if (!s) return false;
+  const t = s.trim();
+  if (t.length < 4) return false;
+  // f-string interior fragment: contains {...['key']} or f"...{
+  if (/\{\s*['"]?\w+['"]?\s*\[\s*['"]/.test(t)) return true;       // {pizza['nome']
+  if (/\bf["'][^"']*\{/.test(t)) return true;                       // f"...{
+  // Template literal / format spec
+  if (/:\.\d+f\s*["']?\)?\s*$/.test(t)) return true;                // :.2f")
+  // Ends with `}")`, `}")`, `)"` — typical print(f"...") tail
+  if (/[}\)]['"]\)\s*$/.test(t)) return true;
+  // Bare Python statement starters (case-sensitive — uppercase prose like "Print" allowed)
+  if (/^(print|return|def|class|import|from|if |for |while |try:|except|raise |yield )\s*[\(\s:]/.test(t)) return true;
+  // Standalone comment or shell prompt
+  if (/^(#|>>>|\$ )/.test(t)) return true;
+  return false;
+}
+
+// v5.5.4 — strip trailing "# ..." or "// ..." placeholder comments from code.
+// User report: slides 38/42 ended in `# ...` indicating planner left an
+// implementation gap. Render-time, these read as incomplete demonstrations.
+function stripTrailingPlaceholderComment(code: string): string {
+  if (!code) return code;
+  const lines = code.split("\n");
+  let changed = false;
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1].trim();
+    if (!last) { lines.pop(); changed = true; continue; }
+    if (/^(#|\/\/|--)\s*\.{2,}\s*$/.test(last)) { lines.pop(); changed = true; continue; }
+    if (/^(#|\/\/|--)\s*\.{2,}\s*\(.*?\)\s*$/.test(last)) { lines.pop(); changed = true; continue; } // # ... (resto)
+    if (/^(#|\/\/|--)\s*(\.{2,}|TODO|FIXME|XXX|continuar|placeholder|completar)/i.test(last)) { lines.pop(); changed = true; continue; }
+    break;
+  }
+  return changed ? lines.join("\n") : code;
+}
+
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
 function applyFinalGuardrails(s: Slide, slideNum: number | string): Slide {
   let out: Slide = s;
@@ -445,6 +485,33 @@ function applyFinalGuardrails(s: Slide, slideNum: number | string): Slide {
   if (out.title) {
     const newTitle = rewriteBareQueTitle(out.title, slideNum);
     if (newTitle !== out.title) out = { ...out, title: newTitle };
+  }
+  // v5.5.4 — Guardrail 1b: strip code-fragment bullets BEFORE demote check
+  // so an items-only-of-code-fragments slide becomes empty and gets caught.
+  if (Array.isArray(out.items) && out.items.length > 0) {
+    const filtered = out.items.filter((it) => {
+      if (typeof it !== "string") return true;
+      if (isCodeFragmentBullet(it)) {
+        console.log(
+          `[CODE-BULLET-DROP] slide=${slideNum} dropped="${it.slice(0, 60)}"`,
+        );
+        return false;
+      }
+      return true;
+    });
+    if (filtered.length !== out.items.length) {
+      out = { ...out, items: filtered };
+    }
+  }
+  // v5.5.4 — Guardrail 1c: strip trailing # ... placeholder comments from code
+  if (out.code && out.code.trim()) {
+    const stripped = stripTrailingPlaceholderComment(out.code);
+    if (stripped !== out.code) {
+      console.log(
+        `[CODE-PLACEHOLDER-STRIP] slide=${slideNum} removed trailing comment placeholder`,
+      );
+      out = { ...out, code: stripped };
+    }
   }
   // Guardrail 2: code layout without code → demote to bullets
   if (out.layout === "code" && (!out.code || !out.code.trim())) {
@@ -8345,6 +8412,8 @@ async function runPipeline(
   // compatibility.
   const mergedTotalSlides = allModuleSlides.reduce((a, m) => a + m.length, 0);
   const fallbackModuleNumbers = fallbackIndices.map((i) => i + 1);
+  const acceptedModuleNumbers = Array.from({ length: allModuleSlides.length }, (_, i) => i + 1)
+    .filter((n) => !fallbackModuleNumbers.includes(n));
   console.log(
     `[COURSE-MERGE] modules=${allModuleSlides.length} totalSlides=${mergedTotalSlides} fallbackModules=${JSON.stringify(fallbackModuleNumbers.length > 0 ? fallbackModuleNumbers : "[none]")} dedupeRemoved=${dedupe.removed}`,
   );
@@ -8376,23 +8445,45 @@ async function runPipeline(
   // v5.5.2 adds adjacent-duplicate-title dedup at module scope.
   let guardrailSlideCounter = 0;
   let titleDedupCount = 0;
+  let titleDedupDropCount = 0;
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     let prevTitleNorm = "";
+    let prevItemsNorm = "";
     let prevDisambigSuffix = 1;
+    const kept: Slide[] = [];
     for (let si = 0; si < allModuleSlides[mi].length; si++) {
       guardrailSlideCounter++;
       let s = applyFinalGuardrails(
         allModuleSlides[mi][si],
         `M${mi + 1}.S${si + 1}`,
       );
-      // Adjacent duplicate-title dedup: if this slide's title (normalized)
-      // matches the previous one in the same module, append a roman-numeral
-      // suffix to disambiguate. Avoids two consecutive slides showing the
-      // identical headline (slide 40/41 user report: both "Depurando Código
-      // com pdb"). We DON'T drop the slide — its content may still differ;
-      // the renderer needs distinct titles for the TOC.
+      // v5.5.4 — Adjacent duplicate dedup: if title matches previous AND
+      // items are also similar (jaccard ≥0.6 on first 3 items), DROP this
+      // slide entirely — it's redundant filler ("parte II" symptom in
+      // modules 7/8 user report). Otherwise just relabel with roman-numeral
+      // suffix (v5.5.2 behavior, content may genuinely differ).
       const curNorm = normalizeTitleForCompare(s.title || "");
+      const curItemsNorm = (s.items ?? []).slice(0, 3)
+        .map((x) => normalizeTitleForCompare(String(x)))
+        .filter(Boolean)
+        .join("|");
       if (curNorm && curNorm === prevTitleNorm) {
+        const itemsJaccard = (() => {
+          if (!prevItemsNorm || !curItemsNorm) return 0;
+          const a = new Set(prevItemsNorm.split("|").filter((x) => x.length > 4));
+          const b = new Set(curItemsNorm.split("|").filter((x) => x.length > 4));
+          if (a.size === 0 || b.size === 0) return 0;
+          let inter = 0;
+          for (const x of a) if (b.has(x)) inter++;
+          return inter / (a.size + b.size - inter);
+        })();
+        if (itemsJaccard >= 0.6) {
+          console.log(
+            `[TITLE-DEDUP-DROP] slide=M${mi + 1}.S${si + 1} title+items duplicate of previous (jaccard=${itemsJaccard.toFixed(2)}) → DROPPED "${(s.title ?? "").slice(0, 60)}"`,
+          );
+          titleDedupDropCount += 1;
+          continue; // skip — don't push to kept[]
+        }
         prevDisambigSuffix += 1;
         const suffix = ["", "II", "III", "IV", "V", "VI"][prevDisambigSuffix - 1] || `${prevDisambigSuffix}`;
         const newTitle = `${s.title} (${suffix})`;
@@ -8405,11 +8496,13 @@ async function runPipeline(
         prevDisambigSuffix = 1;
       }
       prevTitleNorm = curNorm;
-      allModuleSlides[mi][si] = s;
+      prevItemsNorm = curItemsNorm;
+      kept.push(s);
     }
+    allModuleSlides[mi] = kept;
   }
   console.log(
-    `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount}`,
+    `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount} | adjacent_dropped=${titleDedupDropCount}`,
   );
   tCheckpoint = tlog("final_guardrails_done", tCheckpoint);
 
@@ -8869,6 +8962,11 @@ Deno.serve(async (req: Request) => {
       /* non-critical */
     }
 
+    // v5.5.4 — MANDATORY final diagnostic log so future iterations can
+    // confirm engine path WITHOUT having to scroll through the full log.
+    console.log(
+      `[PPTX][DIAG-FINAL] engine_version=${ENGINE_VERSION} cache=miss fallback_used=false accepted_modules=${JSON.stringify(acceptedModuleNumbers)} fallback_modules=${JSON.stringify(fallbackModuleNumbers)} slide_count=${(repairDiag.slide_count as number) ?? 0} qa_status=${qaSummary.qa_status ?? "unknown"} dedup_dropped=${titleDedupDropCount} status=exported`,
+    );
     return new Response(
       JSON.stringify({
         url: signedUrl.signedUrl,
@@ -8881,6 +8979,8 @@ Deno.serve(async (req: Request) => {
         slide_count: (repairDiag.slide_count as number) ?? 0,
         blocking_issues: [],             // empty on success path (veto would 422 otherwise)
         qa: qaSummary,                   // status / fixed / unfixed / removed_slides / breakdowns
+        accepted_modules: acceptedModuleNumbers,
+        fallback_modules: fallbackModuleNumbers,
         _diag: {
           raw_bytes: rawBytes.byteLength,
           repaired_bytes: pptxData.byteLength,
@@ -8898,6 +8998,9 @@ Deno.serve(async (req: Request) => {
       const v = error.result;
       console.warn(
         `[V5-QA-VETO] HTTP 422 — blocking=${v.blockingIssues.length} totalSlides=${v.totalSlides}`,
+      );
+      console.log(
+        `[PPTX][DIAG-FINAL] engine_version=${ENGINE_VERSION} cache=miss fallback_used=false status=blocked blocking=${v.blockingIssues.length} total_slides=${v.totalSlides}`,
       );
       return new Response(
         JSON.stringify({
