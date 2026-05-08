@@ -27,7 +27,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.5.0";
+const ENGINE_VERSION = "5.5.1";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -262,6 +262,145 @@ function normalizeSlideLabel(
   }
   console.log(`${tag} accepted=true promotionDetected=false label="${raw}"`);
   return raw.slice(0, 32).toUpperCase();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// v5.5.1 — FINAL GUARDRAILS (run once, just before render)
+// Belt-and-suspenders pass that catches three classes of damage that
+// can survive every prior layer because they are introduced by template
+// splits / legacy chunks / planner output that bypass cleanSlideTitle:
+//   1. Title still starting with "Que <X>?" → "Por que <x>?"
+//   2. layout="code" without any code → demote to "bullets"
+//   3. Last code line is a dangling assignment (var = expr; var unused
+//      and no print/return after) → append `print(var)` to complete it
+// All changes are LOG-ANNOUNCED and never throw. Pure additive layer.
+// ─────────────────────────────────────────────────────────────────────
+
+// Detect bare "Que ..." title patterns the planner sometimes emits.
+// Kept loose: any title whose first word (case-insensitive) is "Que"
+// and which doesn't already start with "Por que" / "O que" / "Para que"
+// / "Que é" / "Que são" is a candidate for rewrite.
+const BARE_QUE_TITLE_RE = /^que\s+\S+/i;
+
+function rewriteBareQueTitle(rawTitle: string, slideNum: number | string): string {
+  const raw = (rawTitle || "").trim();
+  if (!raw) return raw;
+  const lower = raw.toLowerCase();
+  if (
+    !lower.startsWith("que ") ||
+    lower.startsWith("que é ") ||
+    lower.startsWith("que são ") ||
+    /\bpor\s+que\b/i.test(raw) ||
+    /\bo\s+que\b/i.test(raw) ||
+    /\bpara\s+que\b/i.test(raw)
+  ) {
+    return raw;
+  }
+  // Strip leading "Que ", strip trailing "?" if present, lowercase first
+  // letter of remainder. Always append "?" so the result is still a
+  // question. Keeps trailing punctuation simple — no verb conjugation
+  // here (that's the optimistic path inside polishEditorialTitle); this
+  // pass is deliberately conservative because it runs LAST.
+  const stripped = raw.replace(/^que\s+/i, "").replace(/\?\s*$/, "").trim();
+  if (!stripped) return raw;
+  const remainder = stripped.charAt(0).toLowerCase() + stripped.slice(1);
+  const polished = `Por que ${remainder}?`;
+  if (polished !== raw) {
+    console.log(
+      `[TITLE-POLISH-FINAL] slide=${slideNum} before="${raw}" after="${polished}"`,
+    );
+  }
+  return polished;
+}
+
+// Detect a dangling final assignment in Python-style code:
+//   varname = expression
+// where varname is never used again after this line and no print/return
+// closes the snippet. We append `print(varname)` so the snippet ends
+// with a meaningful, complete statement.
+function repairDanglingAssignment(code: string, slideNum: number | string): string {
+  if (!code || !code.trim()) return code;
+  // Language gate: only safe to append print() in Python-style code.
+  // Skip if SQL (DDL/DML keywords) or JS/TS markers detected — appending
+  // print() to those would introduce syntax errors.
+  const codeUpper = code.toUpperCase();
+  const isSql = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE|COMMIT|ROLLBACK|WITH|FROM|WHERE|JOIN)\b/.test(codeUpper);
+  const isJs = /\b(const|let|var|function|=>|console\.log|require\(|import\s+\{)/.test(code);
+  if (isSql || isJs) return code;
+  const lines = code.split("\n");
+  // Walk backwards to find the last non-blank, non-comment line
+  let lastIdx = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (!t) continue;
+    if (t.startsWith("#") || t.startsWith("//") || t.startsWith("--")) continue;
+    lastIdx = i;
+    break;
+  }
+  if (lastIdx < 0) return code;
+  const lastLine = lines[lastIdx];
+  // Match a bare assignment (not an augmented op, not a comparison)
+  // varname = expression  — varname is plain identifier on the LHS
+  const assignMatch = lastLine.match(/^(\s*)([A-Za-z_][\w]*)\s*=\s*(?!=)(.+\S)\s*$/);
+  if (!assignMatch) return code;
+  const indent = assignMatch[1];
+  const varName = assignMatch[2];
+  // Skip multi-line expressions (parens still open) — too risky to touch
+  const opens = (lastLine.match(/[([{]/g) ?? []).length;
+  const closes = (lastLine.match(/[)\]}]/g) ?? []).length;
+  if (opens !== closes) return code;
+  // Check rest of code: is varName used anywhere ELSE? Is there any
+  // print() or return after? If so, the snippet is already complete.
+  const before = lines.slice(0, lastIdx).join("\n");
+  const after = lines.slice(lastIdx + 1).join("\n");
+  const usedElsewhere =
+    new RegExp(`\\b${varName}\\b`).test(before) ||
+    new RegExp(`\\b${varName}\\b`).test(after);
+  const hasFinalOutput =
+    /\b(print|return|yield|raise)\s*[\(:\s]/.test(after) ||
+    /\b(print|return|yield|raise)\s*[\(:\s]/.test(lastLine);
+  // Snippet is already complete in either of these cases:
+  //   (a) variable is referenced elsewhere AND there's a print/return
+  //       somewhere — the code clearly does something with it.
+  //   (b) the snippet ends with print/return on a different topic —
+  //       appending print(var) would just add noise.
+  // Only repair when the assignment is truly orphaned: nothing uses
+  // the variable AND there is no closing output statement at all.
+  if (hasFinalOutput) return code;
+  if (usedElsewhere) return code;
+  // Append a print(<var>) at the same indent to make the snippet complete
+  const repaired = lines
+    .slice(0, lastIdx + 1)
+    .concat([`${indent}print(${varName})`])
+    .concat(lines.slice(lastIdx + 1))
+    .join("\n");
+  console.log(
+    `[CODE-COMPLETE-REPAIR] slide=${slideNum} dangling_assignment="${varName}" → appended print(${varName})`,
+  );
+  return repaired;
+}
+
+// Apply all v5.5.1 final guardrails to a single slide. Pure transform.
+function applyFinalGuardrails(s: Slide, slideNum: number | string): Slide {
+  let out: Slide = s;
+  // Guardrail 1: title polish (catches every bypass path)
+  if (out.title) {
+    const newTitle = rewriteBareQueTitle(out.title, slideNum);
+    if (newTitle !== out.title) out = { ...out, title: newTitle };
+  }
+  // Guardrail 2: code layout without code → demote to bullets
+  if (out.layout === "code" && (!out.code || !out.code.trim())) {
+    console.log(
+      `[LAYOUT-DEMOTE] slide=${slideNum} layout=code→bullets reason=empty_code title="${(out.title ?? "").slice(0, 60)}"`,
+    );
+    out = { ...out, layout: "bullets" as Layout };
+  }
+  // Guardrail 3: dangling Python assignment → append print()
+  if (out.code && out.code.trim()) {
+    const newCode = repairDanglingAssignment(out.code, slideNum);
+    if (newCode !== out.code) out = { ...out, code: newCode };
+  }
+  return out;
 }
 
 // detectHeaderPromotionLeak — diagnostic scan AFTER region assignment.
@@ -8153,6 +8292,24 @@ async function runPipeline(
     `[V5-QA-POSTREPAIR] After final repair: status=${postRepairReport.status} | unfixed=${postRepairReport.issues.length} | fixed=${postRepairReport.fixedIssues.length}`,
   );
   tCheckpoint = tlog("post_repair_re_QA_done", tCheckpoint);
+
+  // ── v5.5.1 — FINAL GUARDRAILS ─────────────────────────────────────
+  // Last-mile defensive pass before render. Catches damage that survived
+  // every prior layer because it was introduced by paths that bypass
+  // cleanSlideTitle (template splits / legacy chunks / direct planner
+  // emissions). See `applyFinalGuardrails` for the three checks.
+  let guardrailSlideCounter = 0;
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    for (let si = 0; si < allModuleSlides[mi].length; si++) {
+      guardrailSlideCounter++;
+      allModuleSlides[mi][si] = applyFinalGuardrails(
+        allModuleSlides[mi][si],
+        `M${mi + 1}.S${si + 1}`,
+      );
+    }
+  }
+  console.log(`[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides`);
+  tCheckpoint = tlog("final_guardrails_done", tCheckpoint);
 
   // ── v5.1.8 — GLOBAL FIELD SAFETY NET ──────────────────────────────
   // Final pass: scan EVERY string field (extractAllStrings) of EVERY slide
