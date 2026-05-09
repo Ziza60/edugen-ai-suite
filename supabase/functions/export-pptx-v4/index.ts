@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.2";
+const ENGINE_VERSION = "5.7.3";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -580,6 +580,42 @@ function validateSemanticCodeCompleteness(code: string): string | null {
     if (!hasRealUse) return "class_instance_no_method_call";
   }
 
+  // ── v5.7.3 — function_returns_implicit_none (REORDERED before
+  // function_defined_but_uncalled). Rationale: a function with no `return`
+  // is broken regardless of whether it's called. Fixing the function FIRST
+  // means the subsequent call-demo (added by function_defined_but_uncalled
+  // repair) prints the actual computed value instead of `None`. Without
+  // this reorder, slides 14/43 hit `function_defined_but_uncalled` first,
+  // got a call-demo that printed None, and the convergent loop only
+  // discovered the missing return on a later cycle.
+  {
+    const allLines = t.split("\n");
+    const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
+    for (let i = 0; i < allLines.length; i++) {
+      const line = allLines[i];
+      const m = line.match(/^def\s+([a-z_][\w]*)\s*\(/);
+      if (!m) continue;
+      let bodyHasReturn = false;
+      let lastAssignVar: string | null = null;
+      for (let j = i + 1; j < allLines.length; j++) {
+        const bl = allLines[j];
+        if (bl.trim() === "") continue;
+        const ind = bl.match(/^(\s*)/)![1].length;
+        if (ind === 0) break;
+        if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
+        // v5.7.3 — IGNORE side-effect-only lines so logging.debug() doesn't
+        // mask the real "last computational assignment". Slide 43 was
+        // exactly this pattern: `soma = sum(); logging.debug(...)`.
+        if (/^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/.test(bl)) continue;
+        const am = bl.match(/^\s+([a-z_][\w]*)\s*=\s*[^=]/);
+        if (am) lastAssignVar = am[1];
+      }
+      if (!bodyHasReturn && lastAssignVar && RESULT_ISH.test(lastAssignVar)) {
+        return "function_returns_implicit_none";
+      }
+    }
+  }
+
   // ── v5.7.1 — function_defined_but_uncalled ──
   // Every top-level `def name(...)` (no leading whitespace — methods inside
   // a class are always indented and excluded automatically) must be invoked
@@ -699,32 +735,10 @@ function validateSemanticCodeCompleteness(code: string): string | null {
     }
   }
 
-  // Reason 5: function_returns_implicit_none.
-  // For each TOP-LEVEL def whose body never returns but contains a
-  // result-ish final assignment.
+  // Reason 5: function_returns_implicit_none — moved upstream to v5.7.3
+  // (now runs BEFORE function_defined_but_uncalled). Block kept as no-op
+  // marker for the legacy position so diff-blame stays readable.
   const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
-  for (let i = 0; i < allLines.length; i++) {
-    const line = allLines[i];
-    const m = line.match(/^def\s+([a-z_][\w]*)\s*\(/);
-    if (!m) continue;
-    // Walk body until dedent
-    let bodyHasReturn = false;
-    let lastAssignVar: string | null = null;
-    let bodyEnd = allLines.length;
-    for (let j = i + 1; j < allLines.length; j++) {
-      const bl = allLines[j];
-      if (bl.trim() === "") continue;
-      const ind = bl.match(/^(\s*)/)![1].length;
-      if (ind === 0) { bodyEnd = j; break; }
-      if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
-      // Track last `var = expr` (skip augmented like +=, -=)
-      const am = bl.match(/^\s+([a-z_][\w]*)\s*=\s*[^=]/);
-      if (am) lastAssignVar = am[1];
-    }
-    if (!bodyHasReturn && lastAssignVar && RESULT_ISH.test(lastAssignVar)) {
-      return "function_returns_implicit_none";
-    }
-  }
 
   // Reason 6: assignment_result_unused — last non-blank top-level line is
   // `var = call(...)` where var is result-ish AND never referenced after.
@@ -947,17 +961,10 @@ function repairIncompleteCodeExample(
     }
     if (injectedFn) {
       out = allLines.join("\n");
-      // After injecting return, the function still needs a call demo if
-      // it's never invoked. Re-validate; if reason is now
-      // function_defined_but_uncalled, fall through to that repair below
-      // (we deliberately don't `return` here so the next branch fires).
-      const re = validateSemanticCodeCompleteness(out);
-      if (re === null) return out;
-      // If the next reason is the call demo, keep going. Otherwise return
-      // partial repair.
-      if (re !== "function_defined_but_uncalled") return out;
-      // Override `reason` so the next branch runs in this same call.
-      reason = re;
+      // v5.7.3: convergent loop in applyFinalGuardrails handles the
+      // follow-up call-demo on the next cycle. Always return out so the
+      // loop sees the progress and decides whether to iterate.
+      return out;
     }
   }
 
@@ -1367,42 +1374,67 @@ function applyFinalGuardrails(
     const fixed = repairBareInstancePrint(out.code, prevSymbols, slideNum);
     if (fixed !== out.code) out = { ...out, code: fixed };
   }
-  // v5.5.5 — Guardrail 4: semantic completeness check + repair attempt.
-  // If code still incomplete after dangling/strip repairs, try
-  // repairIncompleteCodeExample with prev-slide context. If repair fails
-  // and slide is layout=code, demote to bullets so we never render
-  // "# ..." or class-with-no-instance to a student.
+  // v5.7.3 — Guardrail 4: CONVERGENT repair loop.
+  // Each cycle: validate → if reason → repair → re-validate. Loop until the
+  // validator returns null OR the repair makes no progress OR we hit
+  // MAX_REPAIR_CYCLES. The previous "1 validate + 1 repair + log PARTIAL"
+  // model only fixed the FIRST detected defect — slides 14/43 had two
+  // overlapping defects (function uncalled AND function returns None) and
+  // the second defect was logged as PARTIAL but never repaired.
+  //
+  // Emits structured `[OBSERVABLE-TRACE]` per cycle so prod logs prove the
+  // chain of detections + repairs end-to-end.
   if (out.code && out.code.trim()) {
-    const reason = validateSemanticCodeCompleteness(out.code);
-    if (reason !== null) {
-      const repaired = repairIncompleteCodeExample(out.code, moduleKind, prevSymbols, slideNum);
-      if (repaired) {
-        const reReason = validateSemanticCodeCompleteness(repaired);
-        if (reReason === null) {
-          out = { ...out, code: repaired };
-          console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair reason_was=${reason}`);
+    const MAX_REPAIR_CYCLES = 4;
+    let curCode = out.code;
+    const trace: Array<Record<string, unknown>> = [];
+    let cycle = 0;
+    let lastReason: string | null = null;
+    let firstReason: string | null = null;
+    while (cycle < MAX_REPAIR_CYCLES) {
+      const reason = validateSemanticCodeCompleteness(curCode);
+      if (cycle === 0) firstReason = reason;
+      trace.push({ cycle, phase: cycle === 0 ? "detect" : "revalidate", reason });
+      if (reason === null) { lastReason = null; break; }
+      lastReason = reason;
+      const repaired = repairIncompleteCodeExample(curCode, moduleKind, prevSymbols, slideNum);
+      if (!repaired) {
+        trace.push({ cycle, phase: "repair", reason, applied: false, skipReason: "repair_returned_null" });
+        break;
+      }
+      if (repaired === curCode) {
+        trace.push({ cycle, phase: "repair", reason, applied: false, skipReason: "no_progress" });
+        break;
+      }
+      trace.push({ cycle, phase: "repair", reason, applied: true });
+      curCode = repaired;
+      cycle++;
+    }
+    console.log(
+      `[OBSERVABLE-TRACE] slide=${slideNum} cycles=${cycle} firstReason=${firstReason ?? "null"} finalReason=${lastReason ?? "null"} trace=${JSON.stringify(trace)}`,
+    );
+    if (curCode !== out.code) out = { ...out, code: curCode };
+    if (lastReason === null) {
+      if (firstReason !== null) {
+        console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair_loop firstReason=${firstReason} cycles=${cycle}`);
+      }
+    } else {
+      console.warn(`[CODE-COMPLETE] slide=${slideNum} status=PARTIAL_AFTER_LOOP repair_left=${lastReason} cycles=${cycle}`);
+      // v5.5.8 — exhausted repair budget. Before demoting layout=code,
+      // try to synthesize a complete minimal example from module context.
+      // Only demote if synthesis is also unavailable (last resort).
+      if (out.layout === "code") {
+        const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+        if (synth) {
+          console.log(
+            `[CODE-SYNTHESIS] slide=${slideNum} reason=repair_loop_exhausted (${lastReason}) beforeLines=${out.code.split("\n").length} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
+          );
+          out = { ...out, code: synth.code };
         } else {
-          out = { ...out, code: repaired };
-          console.warn(`[CODE-COMPLETE] slide=${slideNum} status=PARTIAL repair_left=${reReason}`);
-        }
-      } else {
-        console.warn(`[CODE-COMPLETE] slide=${slideNum} status=FAILED reason=${reason}`);
-        // v5.5.8 — repair failed. Before demoting layout=code, try to
-        // synthesize a complete minimal example from module context. Only
-        // demote if synthesis is also unavailable (last resort).
-        if (out.layout === "code") {
-          const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
-          if (synth) {
-            console.log(
-              `[CODE-SYNTHESIS] slide=${slideNum} reason=repair_failed (${reason}) beforeLines=${out.code.split("\n").length} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
-            );
-            out = { ...out, code: synth.code };
-          } else {
-            console.warn(
-              `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${reason}) moduleKind=${moduleKind ?? "unknown"}`,
-            );
-            out = demoteCodeLayout(out, slideNum, `incomplete_unrepairable_${reason}`);
-          }
+          console.warn(
+            `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${lastReason}) moduleKind=${moduleKind ?? "unknown"}`,
+          );
+          out = demoteCodeLayout(out, slideNum, `incomplete_unrepairable_${lastReason}`);
         }
       }
     }
