@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.5.8";
+const ENGINE_VERSION = "5.5.9";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -8860,10 +8860,16 @@ async function runPipeline(
     // v5.5.6 — module-wide context accumulator (not just last slide)
     let moduleCtx: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] };
     // v5.5.5 — module kind (oop/json_apis/tests_logs/...) for completion hints
+    // v5.5.9 — emit [MODULE-CLASSIFY] so we can prove which kind every module
+    // actually got and catch first-match-wins misorderings (e.g. "Introdução
+    // à POO" matching `fundamentals` before `oop`).
     const moduleKind = (() => {
       const r = getModuleRule(courseTitle, moduleTitlesArr[mi] ?? "");
       return r ? r.kind : null;
     })();
+    console.log(
+      `[MODULE-CLASSIFY] mi=${mi + 1} title="${(moduleTitlesArr[mi] ?? "").slice(0, 80)}" kind=${moduleKind ?? "null"} course="${courseTitle.slice(0, 60)}"`,
+    );
     const kept: Slide[] = [];
     for (let si = 0; si < allModuleSlides[mi].length; si++) {
       guardrailSlideCounter++;
