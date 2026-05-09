@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.4";
+const ENGINE_VERSION = "5.7.5";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -588,29 +588,43 @@ function validateSemanticCodeCompleteness(code: string): string | null {
   // this reorder, slides 14/43 hit `function_defined_but_uncalled` first,
   // got a call-demo that printed None, and the convergent loop only
   // discovered the missing return on a later cycle.
+  // v5.7.5 — REWRITTEN to detect "happy-path implicit None". The v5.7.3
+  // version short-circuited on the FIRST `return` found in body, so a guard
+  // `return None` inside an early `if` (slide 42 production case) made the
+  // validator silently pass even though the function's success-path returns
+  // None. Fix: walk the ENTIRE body, ignore side-effect lines (logging/print),
+  // and check whether the LAST non-side-effect line is a `return` statement.
+  // A function whose last meaningful body line is a result-ish assignment
+  // (not a return) leaks implicit None on its happy path → flag.
   {
     const allLines = t.split("\n");
     const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
+    const SIDE_EFFECT_RE = /^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/;
     for (let i = 0; i < allLines.length; i++) {
       const line = allLines[i];
       const m = line.match(/^def\s+([a-z_][\w]*)\s*\(/);
       if (!m) continue;
-      let bodyHasReturn = false;
       let lastAssignVar: string | null = null;
+      let lastNonSideEffectIsReturn = false;
+      let sawAnyBody = false;
       for (let j = i + 1; j < allLines.length; j++) {
         const bl = allLines[j];
         if (bl.trim() === "") continue;
         const ind = bl.match(/^(\s*)/)![1].length;
-        if (ind === 0) break;
-        if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
-        // v5.7.3 — IGNORE side-effect-only lines so logging.debug() doesn't
-        // mask the real "last computational assignment". Slide 43 was
-        // exactly this pattern: `soma = sum(); logging.debug(...)`.
-        if (/^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/.test(bl)) continue;
+        if (ind === 0) break; // dedent → end of def body
+        sawAnyBody = true;
+        if (SIDE_EFFECT_RE.test(bl)) continue;
+        // Update "last meaningful line" trackers (do NOT break on return).
+        lastNonSideEffectIsReturn = /^\s*return\b/.test(bl);
         const am = bl.match(/^\s+([a-z_][\w]*)\s*=\s*[^=]/);
         if (am) lastAssignVar = am[1];
       }
-      if (!bodyHasReturn && lastAssignVar && RESULT_ISH.test(lastAssignVar)) {
+      if (
+        sawAnyBody &&
+        !lastNonSideEffectIsReturn &&
+        lastAssignVar &&
+        RESULT_ISH.test(lastAssignVar)
+      ) {
         return "function_returns_implicit_none";
       }
     }
@@ -920,22 +934,26 @@ function repairIncompleteCodeExample(
   // Slides 14 and 46 fix.
   if (reason === "function_returns_implicit_none") {
     const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
+    const SIDE_EFFECT_RE = /^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/;
     const allLines = out.split("\n");
     let injectedFn: { name: string; params: string } | null = null;
     for (let i = 0; i < allLines.length; i++) {
       const m = allLines[i].match(/^def\s+([a-z_][\w]*)\s*\(([^)]*)\)/);
       if (!m) continue;
-      let bodyHasReturn = false;
+      // v5.7.5 — full-body walk (mirrors validator). Detects happy-path
+      // implicit None even when an early guard `return None` exists.
       let lastAssignLineIdx = -1;
       let lastAssignVar: string | null = null;
       let lastAssignIndent = "    ";
+      let lastNonSideEffectIsReturn = false;
       let bodyEnd = allLines.length;
       for (let j = i + 1; j < allLines.length; j++) {
         const bl = allLines[j];
         if (bl.trim() === "") continue;
         const ind = bl.match(/^(\s*)/)![1].length;
         if (ind === 0) { bodyEnd = j; break; }
-        if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
+        if (SIDE_EFFECT_RE.test(bl)) continue;
+        lastNonSideEffectIsReturn = /^\s*return\b/.test(bl);
         const am = bl.match(/^(\s+)([a-z_][\w]*)\s*=\s*[^=]/);
         if (am) {
           lastAssignLineIdx = j;
@@ -943,7 +961,7 @@ function repairIncompleteCodeExample(
           lastAssignIndent = am[1];
         }
       }
-      if (bodyHasReturn || !lastAssignVar || !RESULT_ISH.test(lastAssignVar)) continue;
+      if (lastNonSideEffectIsReturn || !lastAssignVar || !RESULT_ISH.test(lastAssignVar)) continue;
       // Inject `<indent>return <var>` immediately after the last assignment.
       // We need to walk forward from lastAssignLineIdx to skip any
       // subsequent body lines that belong to the same statement (e.g.
@@ -1529,21 +1547,29 @@ function applyFinalGuardrails(
   if (out.layout === "code" && out.code && out.code.trim()) {
     const finalCode = out.code;
     const finalHash = shortCodeHash(finalCode);
-    // hasReturnInDef: any top-level `def` followed by a body containing `return`
-    // before indent drops back to 0. Cheap structural scan.
+    // v5.7.5 — hasReturnInDef now reflects HAPPY-PATH semantics (matches the
+    // validator). True iff the LAST non-side-effect line of any top-level def
+    // body is a `return`. A guard `return None` inside an early `if` does NOT
+    // count, because slide 42 (production) had exactly that pattern and the
+    // older "any return" snapshot would have lied (true) → wrong P1/P2 call.
     let hasReturnInDef = false;
     {
       const ls = finalCode.split("\n");
+      const SIDE_EFFECT_RE = /^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/;
       for (let i = 0; i < ls.length; i++) {
         if (!/^def\s+/.test(ls[i])) continue;
+        let lastIsReturn = false;
+        let sawBody = false;
         for (let j = i + 1; j < ls.length; j++) {
           const bl = ls[j];
           if (bl.trim() === "") continue;
           const ind = bl.match(/^(\s*)/)![1].length;
           if (ind === 0) break;
-          if (/^\s*return\b/.test(bl)) { hasReturnInDef = true; break; }
+          sawBody = true;
+          if (SIDE_EFFECT_RE.test(bl)) continue;
+          lastIsReturn = /^\s*return\b/.test(bl);
         }
-        if (hasReturnInDef) break;
+        if (sawBody && lastIsReturn) { hasReturnInDef = true; break; }
       }
     }
     // hasCallDemo: any top-level line that calls one of the defined fns
