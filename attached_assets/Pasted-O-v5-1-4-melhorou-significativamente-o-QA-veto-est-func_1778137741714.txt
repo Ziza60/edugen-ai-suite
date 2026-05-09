@@ -1,0 +1,249 @@
+O v5.1.4 melhorou significativamente:
+- o QA veto está funcionando;
+- o fallback v3 foi eliminado;
+- placeholders desapareceram;
+- exemplos de código ficaram mais íntegros;
+- o PPTX exportou corretamente.
+
+Porém o reparador atual ainda está “maquiando” danos técnicos em vez de reconstruir corretamente o conteúdo.
+
+O resultado:
+- o export passa;
+- mas ainda há frases semanticamente quebradas e contaminação de domínio.
+
+Precisamos agora evoluir do:
+“detectar símbolos quebrados”
+para:
+“detectar frases tecnicamente inválidas”.
+
+PROBLEMAS OBSERVADOS NO PPTX EXPORTADO
+
+1. DOMAIN_CONTAMINATION ainda existe
+
+No módulo:
+"Estruturas de Dados Fundamentais"
+
+Ainda aparecem:
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- TRUNCATE
+
+Isso continua inválido para um módulo introdutório de Python.
+
+O detector atual ainda está deixando passar SQL/DDL.
+
+2. Frases semanticamente quebradas continuam passando
+
+Exemplos reais do PPTX:
+
+Slide 17:
+- "Capture erros específicos como."
+
+Slide 30:
+- "Definir Classes: Usar com nome (Ex: )."
+- "Criar Construtor : Inicializa atributos do objeto ()."
+
+Slide 36:
+- "Verifica partes isoladas com."
+
+Essas frases NÃO são aceitáveis pedagogicamente.
+
+O reparador removeu os símbolos quebrados,
+mas deixou frases incompletas.
+
+3. Objetivos genéricos continuam
+
+Exemplos:
+- "Compreender fundamentos Essenciais de Python."
+- "Aplicar controle de Fluxo e Funções."
+- "Identificar controle de Fluxo e Funções."
+
+Isso ainda é:
+verbo genérico + nome do módulo.
+
+4. Redundância ainda existe
+
+Slides:
+- 10 e 13
+- 44 e 45
+
+continuam repetindo praticamente a mesma informação.
+
+AÇÃO OBRIGATÓRIA
+
+1. Criar detector de frase semanticamente incompleta
+
+Criar:
+detectIncompleteTechnicalSentence(text)
+
+Detectar padrões como:
+- termina com "como."
+- termina com "com."
+- termina com "usando."
+- termina com "Ex: ."
+- termina com "objeto ()."
+- contém "Usar com nome"
+- contém "(Ex: )"
+- contém "partes isoladas com"
+- contém frases truncadas sem conceito técnico válido.
+
+Se detectar:
+- gerar TECHNICAL_SEMANTIC_BREAK;
+- issue CRITICAL;
+- tentar repairSemanticBreak();
+- revalidar;
+- bloquear export se persistir.
+
+2. Criar repairSemanticBreak()
+
+O reparo deve reconstruir a frase tecnicamente.
+
+Exemplos:
+
+ruim:
+"Capture erros específicos como."
+
+bom:
+"Capture erros específicos como FileNotFoundError e IOError."
+
+ruim:
+"Definir Classes: Usar com nome (Ex: )."
+
+bom:
+"Definir Classes: Usar class seguido do nome da classe (Ex: class Livro:)."
+
+ruim:
+"Criar Construtor : Inicializa atributos do objeto ()."
+
+bom:
+"Criar Construtor __init__(): Inicializa atributos do objeto."
+
+ruim:
+"Verifica partes isoladas com."
+
+bom:
+"Verifica partes isoladas com unittest ou pytest."
+
+Regra:
+Nunca apenas remover símbolos.
+Sempre reconstruir semanticamente.
+
+3. Fortalecer DOMAIN_CONTAMINATION
+
+No módulo:
+"Estruturas de Dados Fundamentais"
+
+Bloquear completamente:
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- TRUNCATE
+- INSERT
+- UPDATE
+- DELETE
+- JOIN
+- SELECT
+
+Isso deve virar:
+HARD BLOCKER.
+
+Se aparecer:
+- regenerar slide;
+- fallback seguro;
+- remover slide;
+- bloquear export se persistir.
+
+Não exportar SQL em módulo Python introdutório.
+
+4. Fortalecer GENERIC_OBJECTIVE
+
+Objetivos devem conter:
+- habilidade concreta;
+- ação técnica;
+- conceito específico.
+
+Inválidos:
+- compreender + nome do módulo
+- aplicar + nome do módulo
+- identificar + nome do módulo
+
+Criar repairLearningObjective().
+
+Exemplos:
+
+ruim:
+"Aplicar controle de Fluxo e Funções."
+
+bom:
+"Criar funções reutilizáveis e aplicar estruturas condicionais."
+
+ruim:
+"Compreender fundamentos Essenciais de Python."
+
+bom:
+"Utilizar variáveis, tipos primitivos e operadores básicos em Python."
+
+5. Detectar redundância semântica
+
+Criar:
+detectSemanticDuplicateSlides()
+
+Se dois slides:
+- repetirem bullets;
+- repetirem explicações;
+- repetirem objetivo;
+- repetirem takeaway;
+
+Então:
+- fundir;
+- resumir;
+- ou remover o mais fraco.
+
+6. Adicionar novo tipo CRITICAL
+
+Adicionar:
+TECHNICAL_SEMANTIC_BREAK
+
+ao HARD_CRITICAL_TYPES.
+
+O PPTX NÃO pode exportar com frases técnicas truncadas.
+
+7. Logs obrigatórios
+
+Adicionar:
+[V5-SEMANTIC-REPAIR]
+antes/depois do reparo.
+
+Exemplo:
+[V5-SEMANTIC-REPAIR]
+"Capture erros específicos como."
+→
+"Capture erros específicos como FileNotFoundError e IOError."
+
+8. Critério de aceite
+
+Gerar novamente:
+"Introdução à Programação em Python"
+
+O PPTX só é aceitável se:
+- não houver SQL em módulo Python;
+- não houver frases truncadas;
+- não houver “como.”, “com.” ou “Ex: .” isolados;
+- não houver objetivos genéricos;
+- não houver placeholders;
+- não houver slides redundantes;
+- não houver código incompleto;
+- o QA continuar bloqueando corretamente;
+- o export continuar vindo do v4/v5;
+- o fallback v3 continuar desativado para veto semântico.
+
+Prioridade:
+1. Integridade semântica
+2. Qualidade pedagógica
+3. QA veto
+4. Estabilidade
+5. Design
+
+Não adicionar novas funcionalidades visuais.
+Corrigir a qualidade semântica do motor.

@@ -1,0 +1,155 @@
+Quero investigar um problema específico de layout/renderização no PPTX v5.3.2, não apenas um problema semântico.
+
+No PPTX gerado, no slide 13 — “Repetindo Ações com e” — o conteúdo que deveria aparecer dentro das caixas/steps parece ter vazado para a área do cabeçalho/título.
+
+Sintoma visual:
+- o slide deveria explicar laços “for” e “while” em cards/steps;
+- os termos técnicos “for” e “while” desapareceram;
+- sobrou apenas “com e” no título;
+- o conteúdo visual ficou mal distribuído, como se textos de steps/cards/process fossem renderizados no header ou fora das caixas corretas.
+
+Isso parece ser um bug de binding/renderização, não apenas de QA textual.
+
+Possíveis causas:
+1. PresentationPlan gerou intent/layoutHint de process/cards, mas a conversão para V5SlideLike mapeou campos errados.
+2. O renderer do layout process/cards está lendo title/header em vez de items/steps.
+3. Algum sanitizer removeu tokens técnicos curtos como “for” e “while”, deixando apenas conectivos.
+4. O layout recebeu steps incompletos e tentou renderizar o texto residual no cabeçalho.
+5. Algum fallback parcial converteu process/cards para layout textual sem preservar campos corretamente.
+
+Ação obrigatória:
+
+1. Localizar o slide no pipeline
+
+Investigar o slide equivalente a:
+- moduleIndex: 2
+- título visual: “Repetindo Ações com e”
+- tema: laços for/while
+
+Logar em modo debug:
+
+[SLIDE-BINDING-DEBUG]
+stage=presentationPlan
+slideId=...
+intent=...
+layoutHint=...
+title=...
+items=...
+steps=...
+cards=...
+code=...
+
+[SLIDE-BINDING-DEBUG]
+stage=v5SlideLike
+layout=...
+title=...
+sectionLabel=...
+items=...
+steps=...
+cards=...
+
+[SLIDE-BINDING-DEBUG]
+stage=rendererInput
+layout=...
+title=...
+itemsCount=...
+stepsCount=...
+cardsCount=...
+firstItems=...
+
+2. Verificar preservação de tokens curtos
+
+Garantir que tokens técnicos curtos NÃO sejam removidos:
+
+- for
+- while
+- if
+- elif
+- else
+- def
+
+Esses tokens podem ser curtos, mas são semanticamente essenciais em Python.
+
+O sanitizer/reparador nunca deve remover esses tokens quando estiverem em contexto técnico.
+
+3. Validar layouts process/cards antes do render
+
+Criar validação:
+
+validateLayoutBinding(slide)
+
+Para layouts:
+- process
+- cards
+- comparison
+- twocol
+- code_walkthrough
+
+Regras:
+- title não pode conter conectivos soltos como “com e”;
+- title não pode ser resultado de perda de tokens técnicos;
+- process precisa ter steps válidos;
+- cards precisam ter title/body válidos;
+- items não podem ser renderizados no header;
+- se steps/cards estiverem vazios, converter para layout seguro de bullets;
+- se o título ficou corrompido, reconstruir a partir do moduleTitle + intent.
+
+4. Criar detector específico
+
+Criar:
+detectHeaderContentLeak(slide)
+
+Detectar padrões como:
+- title contém “com e”
+- title contém “com ,”
+- title contém “e” isolado entre conceitos removidos
+- section/header parece conter conteúdo que deveria estar em item/step
+- title perdeu tokens técnicos de lista conhecida
+
+Exemplo:
+ruim:
+“Repetindo Ações com e”
+
+bom:
+“Repetindo Ações com for e while”
+
+5. Reparar o caso específico
+
+Se moduleKind = py_flow e título contém “Repetindo Ações com e”:
+
+corrigir para:
+“Repetindo Ações com for e while”
+
+E garantir que os cards/steps contenham:
+- for: itera sobre sequências conhecidas;
+- while: repete enquanto uma condição for verdadeira;
+- break/continue: controlam o fluxo do laço.
+
+6. Não mascarar o problema
+
+Não apenas trocar o título no final.
+Primeiro investigar onde o binding quebrou:
+- PresentationPlan?
+- conversão para V5SlideLike?
+- sanitizer?
+- renderer?
+
+Preciso saber a causa raiz.
+
+7. Critério de aceite
+
+Gerar novamente o PPTX.
+
+O slide sobre laços deve:
+- ter título correto: “Repetindo Ações com for e while” ou equivalente;
+- preservar tokens for e while;
+- renderizar conteúdo dentro das caixas/steps, não no cabeçalho;
+- não deixar cards/steps vazios;
+- não deixar conectivos soltos;
+- não quebrar outros slides de process/cards.
+
+Prioridade:
+1. descobrir causa raiz do binding/layout;
+2. preservar tokens técnicos curtos;
+3. corrigir renderização de process/cards;
+4. manter QA e planner modular funcionando.

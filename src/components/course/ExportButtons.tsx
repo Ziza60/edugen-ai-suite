@@ -281,6 +281,16 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               let data: any = null;
               let engineUsed = "v3-native";
 
+              // ── ENGINE POLICY (v5.7+) ──
+              // Canonical engine = export-pptx-v4 (engine v5.x).
+              // - QA_VETO/422 → hard stop, no fallback (semantic veto).
+              // - Infra failure (5xx/network/timeout) → fallback ONLY to export-pptx-v3.
+              // - export-pptx-v6 is NOT in the automatic fallback chain. It only fires
+              //   when explicitly opted in via options.useV6 (UI toggle currently hidden).
+              console.log(
+                "[PPTX-FRONTEND] preferredEngine=export-pptx-v4 fallbackAllowedOnlyFor=infra_failure qaVetoFallback=false",
+              );
+
               // ── PRESENTON AI ENGINE ──
               if (options.usePresenton) {
                 console.log("[PPTX] Attempting Presenton AI export... template:", options.template);
@@ -382,42 +392,18 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 }
               }
 
-              // ── V6 NATIVE ENGINE (Template ZIP) ──
-              if (!data?.url && options.useV6) {
-                console.log("[PPTX] Using EduGen v6 engine (template ZIP)...");
-                try {
-                  const resV6 = await supabase.functions.invoke("export-pptx-v6", {
-                    body: {
-                      course_id:     courseId,
-                      density:       options.density,
-                      language:      "Português (Brasil)",
-                      footerBrand:   options.footerBrand,
-                      include_images: options.includeImages,
-                    },
-                  });
-                  if (resV6.data?.url && !resV6.error) {
-                    data = resV6.data;
-                    engineUsed = "v6-native";
-                    console.log("[PPTX] v6 successful! Slides:", resV6.data.slide_count);
-                  } else {
-                    const errMsg = resV6.data?.error || resV6.error?.message || "";
-                    console.warn("[PPTX] v6 failed, falling back to v4:", errMsg);
-                    toast({ title: "v6 indisponível, usando v5", description: errMsg, duration: 4000 });
-                  }
-                } catch (errV6) {
-                  console.error("[PPTX] v6 crash:", errV6);
-                  toast({ title: "EduGen v6 indisponível", description: "Usando motor v5 como fallback.", duration: 4000 });
-                }
-              }
-
-              // ── V4 NATIVE ENGINE ──
+              // ── V4 NATIVE ENGINE (CANONICAL) ──
+              // Order matters: v4 runs FIRST as the canonical engine.
+              // v6 was previously here and silently bypassed all v5.x improvements
+              // (planner, PYTHON_MODULE_RULES, per-module gate, QA veto). It is now
+              // only callable via explicit opt-in further down (UI toggle hidden).
               if (!data?.url && options.useV4) {
-                console.log("[PPTX] Using EduGen v4 engine...");
+                console.log("[PPTX] Using export-pptx-v4 (canonical engine)...");
                 const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx-v4`;
                 const EXPORT_TIMEOUT_MS = 480000;
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
-                let res: Response;
+                let res: Response | null = null;
                 try {
                   res = await fetch(url, {
                     method: "POST",
@@ -438,25 +424,117 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                     }),
                     signal: controller.signal,
                   });
+                } catch (errV4) {
+                  // Network error / timeout / AbortError — treat as infra failure
+                  // and fall through to v3. Semantic vetos always come back as a
+                  // real HTTP 422 response and are handled below.
+                  console.warn("[PPTX] v4 erro de rede/timeout, tentando v3:", errV4);
+                  toast({ title: "v4 indisponível, usando v3", description: String((errV4 as Error)?.message ?? errV4), duration: 4000 });
                 } finally {
                   clearTimeout(timeoutId);
                 }
-                const responseText = await res.text();
+                const responseText = res ? await res.text() : "";
                 let v4data: any = {};
                 try { v4data = responseText ? JSON.parse(responseText) : {}; } catch { /* ignore */ }
-                if (res.ok && v4data?.url) {
+                if (res && res.ok && v4data?.url) {
                   data = v4data;
                   engineUsed = "v4-native";
-                  console.log("[PPTX] v4 diag:", JSON.stringify(v4data._diag));
-                } else {
-                  console.warn("[PPTX] v4 failed, falling back to v3:", v4data?.error || res.status);
+                  // Unambiguous success log — uses the actual function name + version.
+                  console.log(
+                    `[PPTX] export-pptx-v4 / engine_version=${v4data.engine_version ?? "unknown"} successful (slides=${v4data.slide_count ?? "?"})`,
+                  );
+                  // Unified diagnostic line — answers: which engine, version,
+                  // fallback, cache, totals, removed, blocking issues, status.
+                  console.log("[PPTX][DIAG]", JSON.stringify({
+                    engine_function: v4data.engine_function ?? v4data.engine ?? "export-pptx-v4",
+                    engine:          v4data.engine ?? "export-pptx-v4",
+                    engine_version:  v4data.engine_version,
+                    status:          v4data.status ?? "exported",
+                    fallback_used:   v4data.fallback_used ?? false,
+                    fallback_reason: v4data.fallback_reason ?? null,
+                    modules_failed:  v4data.modules_failed ?? 0,
+                    accepted_modules: v4data.accepted_modules ?? [],
+                    fallback_modules: v4data.fallback_modules ?? [],
+                    cache:           v4data.cache ?? "miss",
+                    slide_count:     v4data.slide_count,
+                    total_slides:    v4data.total_slides ?? v4data.slide_count,
+                    qa_status:       v4data.qa?.qa_status ?? "unknown",
+                    qa:              v4data.qa,
+                    blocking_issues: v4data.blocking_issues ?? [],
+                  }));
+                  console.log("[PPTX] v4 raw _diag:", JSON.stringify(v4data._diag));
+                } else if (res && res.status === 422 && v4data?.code === "PPTX_QA_VETO") {
+                  // ── SEMANTIC VETO — DO NOT FALL BACK ──
+                  console.error("[PPTX][DIAG]", JSON.stringify({
+                    engine:         v4data.engine ?? "export-pptx-v4",
+                    engine_version: v4data.engine_version,
+                    status:         "blocked",
+                    fallback_used:  false,
+                    cache:          v4data.cache ?? "miss",
+                    totalSlides:    v4data.totalSlides,
+                    removedSlides:  v4data.removedSlides,
+                    blocking_issues: v4data.blockingIssues,
+                  }));
+                  console.error("[PPTX] v4 BLOQUEOU export (QA veto):", v4data);
+                  const issues: Array<{slideId:string;type:string;message:string}> =
+                    v4data?.blockingIssues ?? [];
+                  const summary = issues.slice(0, 3)
+                    .map((i) => `• ${i.slideId}: ${i.type}`)
+                    .join("\n") || "Conteúdo gerado pela IA tem problemas críticos.";
+                  toast({
+                    title: "Geração bloqueada — qualidade insuficiente",
+                    description: `O motor detectou problemas que não puderam ser corrigidos:\n${summary}\n\nRegenere o curso ou ajuste o conteúdo antes de exportar.`,
+                    duration: 12000,
+                    variant: "destructive",
+                  });
+                  setExportingPptx(false);
+                  return; // hard stop — do NOT fall back to legacy engines
+                } else if (res) {
+                  console.warn("[PPTX] v4 falhou (infra), tentando v3:", v4data?.error || res.status);
                   toast({ title: "v4 indisponível, usando v3", description: v4data?.error || "", duration: 4000 });
                 }
               }
 
-              // ── V3/LEGACY NATIVE ENGINE (fallback) ──
+              // ── V6 NATIVE ENGINE (template ZIP) — EXPLICIT OPT-IN ONLY ──
+              // v6 is NOT a default fallback. UI toggle is hidden. It only fires
+              // if a developer/admin explicitly sets options.useV6 (e.g. via console).
+              // When invoked, emit a clear warning so the path is never silent.
+              if (!data?.url && options.useV6) {
+                console.warn("[PPTX-FRONTEND-WARN] export-pptx-v6 used only as explicit opt-in (NOT a default fallback)");
+                console.log("[PPTX] Using export-pptx-v6 (template ZIP, explicit opt-in)...");
+                try {
+                  const resV6 = await supabase.functions.invoke("export-pptx-v6", {
+                    body: {
+                      course_id:     courseId,
+                      density:       options.density,
+                      language:      "Português (Brasil)",
+                      footerBrand:   options.footerBrand,
+                      include_images: options.includeImages,
+                    },
+                  });
+                  if (resV6.data?.url && !resV6.error) {
+                    data = resV6.data;
+                    engineUsed = "v6-native";
+                    console.log(
+                      `[PPTX] export-pptx-v6 / engine_version=${resV6.data.engine_version ?? "unknown"} successful (slides=${resV6.data.slide_count ?? "?"})`,
+                    );
+                  } else {
+                    const errMsg = resV6.data?.error || resV6.error?.message || "";
+                    console.warn("[PPTX] v6 explicit opt-in failed:", errMsg);
+                    toast({ title: "v6 indisponível", description: errMsg, duration: 4000 });
+                  }
+                } catch (errV6) {
+                  console.error("[PPTX] v6 crash:", errV6);
+                  toast({ title: "EduGen v6 indisponível", description: String((errV6 as Error)?.message ?? errV6), duration: 4000 });
+                }
+              }
+
+              // ── V3 LEGACY NATIVE ENGINE (infra fallback) ──
+              // Hard-pinned to export-pptx-v3. Previously a stale selector could
+              // route to v2 when useV3=false (default), bypassing v3 entirely.
               if (!data?.url) {
-                const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx-v3";
+                const functionName = "export-pptx-v3";
+                console.warn("[PPTX-FRONTEND] infra fallback engaged → export-pptx-v3 (hard-pinned)");
                 const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
                 console.log(`[PPTX] Starting native export to: ${url} (engine: ${functionName})`);
                 
@@ -502,7 +580,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                   }
                   throw new Error(data?.error || `Erro na exportação (HTTP ${res.status})`);
                 }
-                engineUsed = options.useV3 ? "v3-native" : "v2-legacy";
+                engineUsed = "v3-native";
               }
 
               // ── FINAL DOWNLOAD ──
@@ -600,6 +678,18 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
         >
           {exportingNotion ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <StickyNote className="h-4 w-4 mr-1" />}
           Notion {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+        </Button>
+
+        {/* Moodle - Pro */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleExportWithFunction("export-moodle", "zip", setExportingMoodle, "Moodle")}
+          disabled={exportingMoodle || !isPublished}
+          title={!isPublished ? "Publique o curso primeiro" : "Exportar para Moodle (XML Backup)"}
+        >
+          {exportingMoodle ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <GraduationCap className="h-4 w-4 mr-1" />}
+          Moodle {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
         </Button>
 
         {/* Moodle - Pro */}

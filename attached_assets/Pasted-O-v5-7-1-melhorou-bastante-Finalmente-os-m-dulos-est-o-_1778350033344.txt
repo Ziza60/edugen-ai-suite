@@ -1,0 +1,286 @@
+O v5.7.1 melhorou bastante. Finalmente os módulos estão semanticamente coerentes e o módulo 7 voltou a ter exemplos técnicos reais.
+
+Mas ainda existem 4 problemas específicos que precisamos resolver de forma cirúrgica, sem destabilizar o pipeline.
+
+NÃO mexer em:
+- frontend;
+- planner modular;
+- preservation layer;
+- renderer core;
+- layout engine;
+- billing;
+- schema;
+- rotas;
+- ExportButtons;
+- qaVeto;
+- engine selection;
+- fallback policy.
+
+O foco agora é:
+COMPLETUDE PEDAGÓGICA FINAL.
+
+========================================
+1. FUNÇÃO SEM RESULTADO OBSERVÁVEL
+========================================
+
+O slide 14 ainda falha.
+
+Problema:
+A função calcula desconto, mas:
+- não retorna valor;
+- não demonstra uso;
+- não mostra resultado final ao aluno.
+
+Hoje:
+```python
+def calcularvalortotal(...):
+    ...
+    desconto = ...
+
+Mas não existe:
+
+return total_liquido
+
+nem:
+
+resultado = calcularvalortotal(...)
+print(resultado)
+
+Isso NÃO deve passar como exemplo completo.
+
+========================================
+2. LOGGING AINDA NÃO FECHA O EXEMPLO
+
+Slide 46:
+o exemplo de logging ainda termina “aberto”.
+
+Hoje:
+
+soma = sum(dados)
+logging.debug(...)
+
+Mas falta:
+
+return;
+exemplo de chamada;
+saída observável.
+
+Quero:
+
+return soma
+
+resultado = processar_dados([1,2,3])
+print(resultado)
+========================================
+3. MÉTODO QUE RETORNA STRING PRECISA SER EXIBIDO
+
+Slide 40 melhorou:
+
+livro2.exibir_detalhes()
+
+Mas o método retorna string.
+
+Então o correto pedagogicamente é:
+
+print(livro2.exibir_detalhes())
+
+O aluno precisa VER o resultado.
+
+Quero detectar:
+
+método retornando valor;
+chamado isoladamente;
+sem uso do retorno.
+
+E promover automaticamente para:
+
+print(...)
+
+quando fizer sentido.
+
+========================================
+4. RETICÊNCIAS VISUAIS / OVERFLOW
+
+Slides 51 e 53 ainda mostram:
+
+“comentários para…”
+“listar…”
+
+Isso parece truncamento visual/layout overflow.
+
+NÃO é placeholder técnico,
+mas ainda é saída ruim.
+
+Quero detectar:
+
+linha terminando em “…”;
+texto cortado no final;
+continuação visual truncada;
+clipping.
+
+E:
+
+reduzir texto;
+reflow;
+split;
+shrink;
+layout fallback;
+
+ANTES do render final.
+
+Não quero exportar texto visualmente cortado.
+
+========================================
+5. NOVO CONCEITO: OBSERVABLE OUTCOME
+
+Hoje o sistema valida:
+
+sintaxe;
+completude mínima;
+chamada de função;
+método em objeto.
+
+Mas ainda não valida:
+“o aluno consegue ver o resultado?”
+
+Adicionar conceito:
+
+observable_outcome
+
+CODE slide deve demonstrar:
+
+saída;
+efeito;
+resultado;
+comportamento observável.
+
+Exemplos válidos:
+
+print(resultado)
+return valor
+logging.info(...)
+assertEqual(...)
+print(obj.metodo())
+
+Exemplos insuficientes:
+
+obj.metodo()
+resultado = soma(a,b)
+dados = processar(x)
+
+sem uso posterior.
+
+========================================
+6. NOVA VALIDAÇÃO
+
+Criar:
+
+validateObservableOutcome()
+
+Regras:
+
+def → precisa uso observável;
+method returning scalar/string → precisa print/uso;
+processamento → precisa saída;
+logging → precisa chamada demonstrativa;
+classe → precisa método/atributo/output.
+========================================
+7. REPAIR PEDAGÓGICO
+
+Criar:
+
+repairObservableOutcome()
+
+Exemplos:
+
+ANTES:
+
+livro2.exibir_detalhes()
+
+DEPOIS:
+
+print(livro2.exibir_detalhes())
+
+ANTES:
+
+resultado = processar(dados)
+
+DEPOIS:
+
+resultado = processar(dados)
+print(resultado)
+
+ANTES:
+
+soma = sum(dados)
+
+DEPOIS:
+
+soma = sum(dados)
+return soma
+========================================
+8. OVERFLOW VISUAL
+
+Criar scan final:
+
+detectVisualTruncation()
+
+Detectar:
+
+texto terminando em “…”;
+frases interrompidas;
+bullets incompletos;
+clipping visual.
+
+Logs:
+
+[VISUAL-TRUNCATION]
+slide=...
+field=...
+action=shrink|split|rewrite|fallback
+========================================
+9. NÃO MASCARAR
+
+NÃO converter:
+CODE → bullets
+
+apenas para esconder incompletude.
+
+Prioridade:
+
+repair;
+synthesize;
+reflow;
+split;
+fallback explícito;
+veto.
+========================================
+10. CRITÉRIO DE ACEITE
+
+Gerar novamente:
+“Introdução à Programação em Python”
+
+Resultados esperados:
+
+slide 14:
+return presente;
+chamada da função;
+print(resultado);
+slide 40:
+print(livro2.exibir_detalhes());
+slide 46:
+return soma;
+chamada demonstrativa;
+print(resultado);
+slides 51 e 53:
+sem reticências truncadas;
+sem clipping visual;
+nenhum CODE sem outcome observável;
+nenhum overflow textual visível;
+sem regressão:
+POO;
+tokens;
+modularidade;
+preservation layer;
+planner;
+engine v4/v5.7.

@@ -64,48 +64,110 @@ Public URL where students access a course without registration. Shares the same 
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
 ## PPTX Exporter v5 (Active Engine — export-pptx-v4)
-`supabase/functions/export-pptx-v4/index.ts` (~4763 lines, ENGINE_VERSION=5.0.0).
-Pipeline: Parse → Segment → **VisualPlanner** → LayoutVariety → SemanticQualityGate → TemplateSplits → **PPTX QA Engine** → Render → Export.
 
-### Visual Planner (Section 5B)
-Pure-heuristic editorial layer — no AI, no coordinates, no renderer changes.
-- **Type**: `SlideVisualPlan { slideId, intent, emotionalWeight, focalElement, pacingRole, densityTolerance, preferredLayout?, fallbackLayouts? }`
-- **Function**: `createVisualPlan(slide, prevSlides, moduleContext)` — heuristic analysis of title keywords, item count, layout, SQL content, density
-- **Intent detection**: `code` (SQL/code layout), `comparison` (vs/contraste titles), `process` (passo/etapa/fluxo), `summary` (resumo/takeaways), `impact` (≤3 items + numbers/strong words), `example` (cenário/caso), `concept` (definição/introdução), `educational` (default)
-- **PacingRole**: `module_transition` (covers), `recap` (takeaways), `deep_dive` (dense code), `visual_break` (after 2+ dense slides), `normal` (default)
-- **Integration**: `applyLayoutVariety` calls `createVisualPlan` per slide (silent try/catch fallback) → passes `plan` to `chooseLayout`
-- **chooseLayout** uses plan in 3 ways: preferred layout hint (only when existing heuristics find no signal), visual break enforcement (redirects bullets/twocol to cards/diagram), anti-repetition fallback list (`plan.fallbackLayouts` tried before static rules)
-- **Guarantee**: plan=null → 100% original behavior; all layout changes still pass `isRenderableSlide`
+**Files**
+- `supabase/functions/export-pptx-v4/index.ts` (~7700 lines, `ENGINE_VERSION="5.3.0"`) — pipeline orchestrator + renderer
+- `supabase/functions/export-pptx-v4/presentation-plan.ts` (~1750 lines) — Presentation Planner + modular export types (active path)
 
-### PPTX QA Engine (Section 6C) + Resolution Cascade (Section 6D)
-Full QA pipeline: `runPptxQA` (initial 11-point pass) → `resolveQAIssues` (3-level cascade if issues remain).
+**Pipeline**
+```
+Course MD → PresentationPlan (per-module LLM, 3-wide batch)
+          → validate (11 checks) → repair → V5SlideLike
+          → per-module gate ──┬─ accepted → split / variety / semanticQualityGate
+                              └─ rejected → legacy processBatch (THIS module only)
+          → sanitize → PPTX QA Engine (11 checks) → Resolution Cascade (L1/L2/L3)
+          → sanitize → QA Veto → Render → Export
+```
 
-**QA Thresholds** (`const QA`): `MAX_WORDS_PER_SLIDE=50`, `MAX_BULLETS=6`, `MAX_CODE_LINES=12`, `MAX_TABLE_CELLS=16`, `MIN_BODY_FONT_SIZE=18pt`, `MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE=2`, `MIN_REQUIRED_WHITESPACE_RATIO=0.20`
+### Active path: Presentation Planner (v5.2.3)
 
-**11 QA checks**: `EMPTY_SLIDE`, `PLACEHOLDER_RESIDUAL`, `TITLE_FRAGMENT`, `GENERIC_LEARNING_OBJECTIVE`, `CONTENT_DENSITY_OVERFLOW`, `TOO_MANY_BULLETS`, `CODE_TOO_LONG`, `SQL_CODE_INCOMPLETE`, `LAYOUT_REPETITION`, `COMPARISON_UNSAFE`, `FONT_TOO_SMALL_RISK`
+**Module exports** (`presentation-plan.ts`)
+- `PresentationSlide`, `PresentationPlan`, `PlanIntent` (`module_cover` | `concept` | `example` | `code_walkthrough` | `process` | `comparison` | `cards` | `takeaways` | `summary` | `closing`)
+- `generatePresentationPlan(input)` — per-module Gemini call, 3-wide batch, prompt embeds module allow/deny + hard contract (3-5 slides, module coherence, no truncation, no generic objectives)
+- `validatePresentationPlan(plan, courseTitle)` — 11 deterministic checks: `MISSING_TITLE`, `EMPTY_SLIDE`, `INVALID_INTENT`, `TOO_MANY_BULLETS`, `CODE_TOO_LONG`, `EMPTY_ITEM`, `GENERIC_OBJECTIVE`, `TRUNCATED_SENTENCE`, `CODE_IN_BULLET`, `DOMAIN_CONTAMINATION` / `SQL_IN_PYTHON`, `DUPLICATE_SLIDE`. Cross-module-leak in title is **fatal**.
+- `repairPlan(plan, report, courseTitle)` — drops fatals, filters bad items, promotes code-in-bullet to `code` field, caps bullets/code, dedupes; returns stats
+- `presentationPlanToV5Slides(plan)` — converts to `V5SlideLike[][]`
 
-**Resolution Cascade** (`resolveQAIssues`): runs if any issue survives initial QA pass. Max 2 cycles of:
-- **Level 1** (`l1VisualFix`): visual fixes per-slide — spacing, text trim (SQL-safe), title normalisation, placeholder removal, label swap, punctuation; never splits or changes layout
-- **Level 2** (`l2Replan`): layout replanning — splits bullets/code into (1/2)+(2/2) slides, converts comparison→twocol, rotates repeated layouts, drops unfixable empties
-- **Level 3** (`l3LocalRewrite`): Gemini rewrite of individual slide (CRITICAL only, max 3 concurrent) — narrow prompt, JSON response, 4-5 bullets
-- Final `isRenderableSlide` hard filter after all levels
+**Hard rules baked into prompt + parser**
+- Exactly 3-4 slides/module (parser slices to 4, preserves trailing `takeaways`/`summary`/`closing`). Prompt: "Prefer 3 slides for short/simple modules; use 4 only when truly needed."
+- One idea per slide; max 5 items; ≤15 words/item; code in `code` field (≤12 lines); last slide must be `takeaways`
+- "Every slide MUST teach a concept that belongs to '${moduleTitle}'. Do NOT teach concepts that belong to other modules."
 
-**SQL preservation**: `safeSliceText()` never trims `SELECT *`, `COUNT(*)`, `SUM(*)`, `AVG(*)`, `MAX(*)`, `MIN(*)`
-**Guarantee**: no PPTX exits with empty slide, visible placeholder, title fragment, or incomplete SQL code
+**Per-module Python rules** (`PYTHON_MODULE_RULES`) — title regex + allow/deny lists + hard `denyPatterns`:
 
-### Design Systems (Section 2B) — v5.1
-`DESIGN_SYSTEMS` is the canonical source of truth for all 5 visual identities. `SKIN_REGISTRY` is derived from it automatically (excludes `default_v5`).
+| kind | matches | forbids |
+|---|---|---|
+| `fundamentals` | "fundamentos" / "introdução" / "básico" | SQL DDL/DML, POO, herança |
+| `control_flow` | "controle de fluxo" / "funções" / "loops" | SQL, classes POO |
+| `data_structures` | "estruturas de dados" / "listas" / "dicionários" | SQL DDL/DML, JOIN, "banco de dados relacional", chave primária |
+| `files_exceptions` | "arquivos" / "exceções" / "tratamento de erros" | SQL, POO avançado |
+| `json_apis` | "JSON" / "APIs" / "HTTP" | SQL CREATE TABLE |
+| `oop` | "POO" / "orientado a objetos" / "herança" | SQL + 9 fundamentals patterns (variáveis básicas, tipos primitivos, operadores aritméticos, expressões aritméticas, input()/print() topic, atribuição simples, hello world, sintaxe básica) |
+| `tests_logs` | "testes" / "logs" / "depuração" | SQL + 3 fundamentals patterns |
+| `best_practices` | "boas práticas" / "implantação" / "deploy" / "CI/CD" | SQL + 6 fundamentals patterns |
 
-**`ComponentArchetypes`** — drives per-layout visual style (added to `Design` + `SkinOverride`):
-| Field | Options |
-|---|---|
-| `cards` | `elevated_grid` \| `flat_grid` \| `minimal_blocks` |
-| `process` | `horizontal_chevron` \| `numbered_steps` |
-| `comparison` | `clean_columns` \| `split_panels` \| `subtle_table` |
-| `code` | `terminal_dark` \| `editor_light` |
-| `takeaway` | `numbered_list` \| `highlight_cards` |
+**Cross-module leak detector** (`isCrossModuleBasicLeak(text, moduleTitle)`)
+`ADVANCED_MODULE_TITLE_RE` (POO / herança / encapsul / polimorf / boas práticas / implant / deploy / avançado / otimiz / performance / CI-CD / monitora / segurança / refactor / arquitetura / testes / logs / depura / debug) × `FUNDAMENTALS_TOPIC_RE` (variáveis básicas/primitivas/e tipos/simples, **variáveis,? tipos e operadores**, tipos primitivos, operadores aritméticos/básicos/de atribuição, expressões aritméticas, **expressões e atribuições**, **criar expressões**, hello world, sintaxe básica do python, atribuição simples/básica/de valores, entrada/saída básica, **entrada e saída com variáveis**, **aplicar entrada e saída**, input() e print()). Wired into validation 7b (item, fixable) + 7c (title, FATAL) + repair `cleanItems` + `filterColumn` + non-item field guard.
 
-**Skin → Archetype mapping**:
+**Truncation patterns** (`isTruncatedSentence`)
+Catches: ending in `,:\-(`, `,.$` (verdadeiro ou falso,.), stripped tokens (`com e`, `com :`, `(Ex: )`, `objeto ().`), `,\s+e\s+'X'` (abertura, e 'a'), `\bcom\s*,\s+e\s+` (leitura com, e escrita), bare verb+`e`+preposition with **30+ verbs** (Trata/Captura/Utilizar/Garantir/Permite/Habilita/Verifica/Analisa/Identifica/Prepara/Limpa/etc), verb→`para` with no object (`^Use\s+para`, `^Utilizar\s+para`), leading `e` + verb (`^e preparam`), orphan comma in parens (`\(\s*,` — "(, ERROR)"), bare "Que [Title-Case]" ending in `?` or with 2+ Title-Case words and no "Por Que" anywhere, `(leitura|escrita|abertura|fechamento|entrada|saída)\s+com\s*,`. **15/15 truncation tests pass.**
+
+**Per-module gate** (`runPipeline`, index.ts ~line 6892)
+A module is accepted ONLY if all three hold:
+1. `1 ≤ slideCount ≤ 4`
+2. zero fatal validation issues for this `moduleIndex`
+3. zero residual semantic blockers (`DOMAIN_CONTAMINATION` / `SQL_IN_PYTHON` / `GENERIC_OBJECTIVE` / `CODE_IN_BULLET` / `TRUNCATED_SENTENCE`) for this `moduleIndex`
+
+Failing modules fall back to **legacy `processBatch` for THAT INDEX ONLY** — accepted modules still benefit from clean planner output. If `generatePresentationPlan` throws entirely, all modules fall back. The QA veto stays active in both paths. **7/7 gate-logic tests pass.**
+
+**Logs**
+- `[PRESENTATION-PLAN]` — module/slide counts, intents breakdown, repair stats (repaired_objectives, blocked_contamination, moved_code, removed_duplicates, removed_truncated, capped_bullets, capped_code, modules_failed)
+- `[PRESENTATION-PLAN-VALIDATION]` — `PASSED` / `FAILED` + issues by type
+- `[PRESENTATION-PLAN] module N ("title") rejected: slides=X, fatals=Y, blockers=Z → legacy fallback for this module only`
+- `[PRESENTATION-PLAN] per-module gate: accepted=N/M | fallback_indices=[...]`
+
+### Legacy safety net (pre-planner pipeline — still active)
+
+These layers run AFTER the planner output (or legacy fallback) flows through, so any residual damage from either path gets caught. Built up across hardening passes 1-16 (full history in git).
+
+**Pipeline order**: Parse → Segment → **VisualPlanner** → LayoutVariety → SemanticQualityGate → TemplateSplits → **Sanitize** → **PPTX QA Engine** → **Cascade** → **Sanitize** → **QA Veto** → Render → Export
+
+**Visual Planner** (heuristic, no AI) — `SlideVisualPlan { slideId, intent, emotionalWeight, focalElement, pacingRole, densityTolerance, preferredLayout?, fallbackLayouts? }`. `createVisualPlan(slide, prevSlides, moduleContext)` analyzes title keywords + item count + density to detect intent (`code`/`comparison`/`process`/`summary`/`impact`/`example`/`concept`/`educational`) and pacingRole (`module_transition`/`recap`/`deep_dive`/`visual_break`/`normal`). `chooseLayout` uses it for layout hint, visual-break enforcement, and anti-repetition fallback. Plan=null → 100% original behavior.
+
+**Domain guard** — `inferCourseDomain()` + `detectDomainContamination()` block SQL/DDL leaking into Python (and vice versa). Inspects ONLY `slide.code` after `stripCommentsAndStrings()`. Module allow-lists are ecosystem-aware (postgres/mysql/oracle/pandas/numpy/django/flask/node/react/etc).
+
+**Detectors** — `HARD_SQL_PROSE_RE` + `PT_SQL_DDL_RE` + `BARE_SQL_UPPER_RE` + `BARE_SQL_DDL_VERBS_RE` (DROP/TRUNCATE/CREATE/ALTER) + `BROADER_PT_DB_RE`; `isGenericLearningObjective` (3 patterns including "em + concrete-tech-noun" application context); `detectBrokenNaturalLanguage` (5 patterns); `detectIncompleteTechnicalSentence` (10 patterns); `detectTechnicalDamage` (10 patterns including `STRIPPED_LEADING_COMMA_RE`, `BARE_COM_E_RE`, `NO_DOT_TAIL_RE`, `TRAILING_NOUN_DOT_RE`, `COM_COLON_GAP_RE`); `detectRawCodeLeak` (5 patterns); `isCrossModuleBasicLeak` (legacy version, kept for non-planner path); `(?<!\bPor\s)\bQue\s+...` for `missing_por_que` (Pass 13 lookbehind to avoid self-rejection).
+
+**Repairs** — `repairTechnicalSanitizationDamage` (PY_FILES_DICT/PY_OOP_DICT/PY_TESTS_DICT/PY_GENERIC_DICT/ORPHAN_PUNCT_DICT), `repairSemanticBreak` (SEMANTIC_REPAIRS[subdomain][key]), `repairLearningObjective` (PYTHON_OBJECTIVE_TAILS), `dedupeSemanticDuplicates` (jaccard ≥0.70 global, ≥0.55 for adjacent slides). Run pre-QA + post-cascade; `runPptxQA` re-runs after repair so `qaVeto` consumes fresh report.
+
+**Module covers** — `moduleCovers: Slide[]` pre-built so covers traverse full repair pipeline; `competencies` wired through `sanitizeSlidePlaceholders`, `repairSlideTechnicalDamage`, `slideHasResidualPlaceholder`, `qaVeto.extraCovers`.
+
+**Placeholder sanitizer** — `removeOrBlockPlaceholders()` strips `[[BT_N]]/[[BT0]]/[[SQLW_N]]/[[ANY_TOKEN]]/{{TOKEN}}/lorem ipsum`; pre-QA + post-cascade + final residual-strip.
+
+**Code completeness validator** — per-language structural check: bracket balance after stripping comments/strings/template literals; Python def/class body presence; SQL statement termination.
+
+**Contamination strip** — `stripSqlContaminationFromSlide` runs at 4 call sites (pre-QA + post-cascade × per-slide + cover); drops items matching SQL contamination, cross-module leak, raw-code leak, `detectTechnicalDamage`, or `detectIncompleteTechnicalSentence`. `[V5-CONTAM-STRIP]` log per drop. `isRenderableSlide` then drops the slide if too few items remain — this excises unrepairable damage instead of vetoing the whole deck.
+
+**Global field safety net** — `runGlobalFieldSafetyNet` walks EVERY string field via `extractAllStrings(depth=6)` and runs all detectors above. `[V5-SAFETY-NET]` logs each leak.
+
+**PPTX QA Engine** — `runPptxQA` (initial 11-check pass): `EMPTY_SLIDE`, `PLACEHOLDER_RESIDUAL`, `TITLE_FRAGMENT`, `GENERIC_LEARNING_OBJECTIVE`, `CONTENT_DENSITY_OVERFLOW`, `TOO_MANY_BULLETS`, `CODE_TOO_LONG`, `SQL_CODE_INCOMPLETE`, `LAYOUT_REPETITION`, `COMPARISON_UNSAFE`, `FONT_TOO_SMALL_RISK` — plus 5 v5.1 critical checks: `DOMAIN_CONTAMINATION`, `INCOMPLETE_CODE`, `EXTREME_DENSITY` (>80 word hard cap), `BROKEN_COMPARISON`, `UNREADABLE_SLIDE`, `GENERIC_OBJECTIVE`. Thresholds: `MAX_WORDS_PER_SLIDE=50`, `MAX_BULLETS=6`, `MAX_CODE_LINES=12`, `MAX_TABLE_CELLS=16`, `MIN_BODY_FONT_SIZE=18pt`, `MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE=2`, `MIN_REQUIRED_WHITESPACE_RATIO=0.20`. `safeSliceText()` never trims `SELECT *`/`COUNT(*)`/`SUM(*)`/`AVG(*)`/`MAX(*)`/`MIN(*)`.
+
+**Resolution Cascade** — `resolveQAIssues` runs if any issue survives initial QA. Max 2 cycles of:
+- **L1** `l1VisualFix` — per-slide visual fixes (spacing, SQL-safe text trim, title normalisation, placeholder removal, label swap, punctuation); never splits/changes layout
+- **L2** `l2Replan` — splits bullets/code into (1/2)+(2/2), converts comparison→twocol, rotates repeated layouts, drops unfixable empties
+- **L3** `l3LocalRewrite` — Gemini rewrite (CRITICAL only, max 3 concurrent, narrow JSON prompt, 4-5 bullets, accepts `courseTopic+moduleTitle` for domain hint, post-rewrite contamination veto). Skips LLM for `DOMAIN_CONTAMINATION`/`INCOMPLETE_CODE`/`GENERIC_OBJECTIVE` (deterministic fix already applied)
+- Final `isRenderableSlide` hard filter
+
+**QA Veto** — hard gate after cascade. `HARD_CRITICAL_TYPES` = `DOMAIN_CONTAMINATION`, `INCOMPLETE_CODE`, `PLACEHOLDER_RESIDUAL`, `EMPTY_SLIDE`, `UNREADABLE_SLIDE`, `EXTREME_DENSITY`, `BROKEN_COMPARISON`, `TITLE_FRAGMENT`, `GENERIC_OBJECTIVE`, `GENERIC_LEARNING_OBJECTIVE`. Throws `PptxQAVetoError` → HTTP 422 with structured `blockingIssues[]` (slideId/type/message) so client can show actionable feedback instead of corrupt PPTX.
+
+**Frontend** — `ExportButtons.tsx` distinguishes `422 + PPTX_QA_VETO` (HARD STOP) from infra failures (5xx/network → fallback v3). Sanitizer no longer strips `[[BT_N]]`/`[[SQLW_N]]` protected slots. TOC pagination redesigned.
+
+### Diagnostic Payload (v5.1.3+)
+Both 200 and 422 responses include: `engine`, `engine_version`, `status` (`exported`|`blocked`), `fallback_used`, `cache` (`miss`), `slide_count`, `blocking_issues`. On success a `qa` summary: `qa_status`, `issues_unfixed`, `issues_fixed`, `original_slides`, `rendered_slides`, `removed_slides`, `fixed_breakdown`, `unfixed_breakdown`. Frontend logs unified `[PPTX][DIAG] {...}` on every export end.
+
+### Design Systems (5 visual identities)
+`DESIGN_SYSTEMS` is the canonical source of truth. `SKIN_REGISTRY` is derived from it (excludes `default_v5`). Each design has `ComponentArchetypes` driving per-layout style; missing archetype falls back to default silently (`d.componentArchetypes?.x ?? "default"`).
+
 | Skin | cards | process | comparison | code | takeaway |
 |---|---|---|---|---|---|
 | `default_v5` | elevated_grid | horizontal_chevron | clean_columns | terminal_dark | numbered_list |
@@ -114,81 +176,18 @@ Full QA pipeline: `runPptxQA` (initial 11-point pass) → `resolveQAIssues` (3-l
 | `dark_elegance_xl` | minimal_blocks | numbered_steps | subtle_table | editor_light | highlight_cards |
 | `dark_style_theme` | flat_grid | horizontal_chevron | split_panels | terminal_dark | numbered_list |
 
-**Archetype visual descriptions**:
-- `flat_grid`: flat card, no shadow, bottom accent strip, accent-colored title, index label top-right
-- `minimal_blocks`: translucent bg, ultra-thin left accent bar (0.024w), no badge, editorial typography
-- `numbered_steps`: vertical layout with spine + numbered circle badges + right text cards
-- `editor_light`: surface-colored panel, accent border, accent top stripe, no traffic lights, skin-toned code text
-- `highlight_cards`: cards with colored top band, shadow, no number circle — impactful
-- `split_panels`: each column has a colored header band ("GRUPO A"/"GRUPO B") + stacked mini-cards + center divider
-- `subtle_table`: alternating row tints, hairline dividers, plain text, column divider line
-- `elevated_grid` / `horizontal_chevron` / `clean_columns` / `terminal_dark` / `numbered_list`: existing default behaviors
+**Archetype visuals**: `flat_grid` (no shadow, bottom accent strip, accent title, top-right index); `minimal_blocks` (translucent bg, ultra-thin left accent bar 0.024w, no badge, editorial); `numbered_steps` (vertical spine + numbered circles + right text cards); `editor_light` (surface panel, accent border + top stripe, no traffic lights); `highlight_cards` (colored top band, shadow, no number circle); `split_panels` (colored header bands "GRUPO A"/"GRUPO B" + stacked mini-cards + center divider); `subtle_table` (alternating row tints, hairline dividers); `elevated_grid` / `horizontal_chevron` / `clean_columns` / `terminal_dark` / `numbered_list` (default behaviors).
 
-**Guarantee**: `d.componentArchetypes?.x ?? "default"` — missing archetype falls back to default behavior silently.
+### Version history (top-level)
+- **v5.7.3** (current) — **Convergent repair loop + validator reorder + OBSERVABLE-TRACE**. Fixes architectural bug in v5.7.2 where slides 14/43 ("Introdução à Programação em Python") shipped with `print(None)` because the single-pass repair model only addressed the FIRST detected defect. Root cause (static-diagnosed, no prod logs needed): in v5.7.2, validator returned `function_defined_but_uncalled` first → repair appended `resultado = fn(...)\nprint(resultado)` → re-validation found `function_returns_implicit_none` → logged `[CODE-COMPLETE] status=PARTIAL` and STOPPED. The new `inject_missing_return` repair never executed. **Three changes**: (1) **Validator reorder** — `function_returns_implicit_none` block moved upstream of `function_defined_but_uncalled` (L586-620); semantic rationale: a function with no `return` is broken regardless of being called, so fix it FIRST so the call-demo prints the real value. Body walker now also skips `logging.*/logger.*/log.*/print` lines so `logging.debug()` cannot mask the real "last computational assignment" (slide 43 root cause). (2) **Convergent repair loop in `applyFinalGuardrails` Guardrail 4** (L1387-1456): replaces `1 validate → 1 repair → log PARTIAL` with `while (cycle < MAX_REPAIR_CYCLES=4) { reason=validate; if null break; repaired=repair; if !repaired || ===cur break; cur=repaired; cycle++ }`. Slide 14 worst case now: detect→inject_return→revalidate→call_demo→revalidate→PASS in 2 cycles. (3) **`[OBSERVABLE-TRACE]` structured log** per slide with `cycles`/`firstReason`/`finalReason`/`trace[{cycle,phase,reason,applied,skipReason}]`. Loop exhaust still preserves v5.5.8 fallback chain (synth → demote). Repair `inject_missing_return` simplified (L965-971): always `return out` after injection — convergent loop drives chain instead of in-repair fallthrough. Tests (`__tests__/v572_observable_outcome.smoke.ts`): 25/25 via Node V8, including 2 EXACT production reproductions — slide 14 with if/elif chain and slide 43 with `logging.debug()` after assignment. Both converge to PASSED in 2 cycles, inject correct `return` + correct call demo, preserve `logging.debug` side-effect (return injected at body END not after assignment line). Architect-reviewed: 0 blocking, infinite-loop risk capped, RESULT_ISH scoping safe, no fallthrough breakage. Restrictions honored: zero edits to frontend, planner, preservation, renderer core, layout engine, qaVeto, engine selection, fallback policy, billing, schema, routes, ExportButtons. `ENGINE_VERSION = "5.7.3"`. Slide 45 truncation ("software de alta qualidade e fácil.") deferred to v5.7.4 — purely stylistic, requires LLM rewrite, out of scope this round.
+- **v5.7.2** — **Observable outcome tier + visual truncation repair**. Diagnosed 5 slides from re-generation of "Introdução à Programação em Python" (14/40/46/51/53) where v5.7.1 still left didactic gaps: (1) function computes a result variable but never returns it (slide 14: `def calcularvalortotal: ... totalliquido = totalbruto - desconto` — my v5.7.1 call-demo would print `None`); (2) function with logging mid-body but no return (slide 46: `def processar_dados: soma = sum(); logging.debug(...)`); (3) bare method call discarding string return (slide 40: `livro2.exibir_detalhes()` — method returns `f"..."` but result is thrown away); (4-5) bullets/items ending in unicode `…` or literal `...` after renderer truncation ("comentários para…", "listar…"). All addressed via 4 new failure modes integrated into existing validator/repair (no parallel `validateObservableOutcome` — kept as documentation alias only): **`bare_method_call_discards_return`** — scans `<indent>def name(self,...)` bodies for `return <non-trivial>` (excludes `return None` / bare `return`), collects names into `returningMethods`; flags top-level `inst.method(...)` call statements when method name is in the set. **`function_returns_implicit_none`** — for each top-level `def fn(...)` walks body until dedent; captures last `<indent>var = expr` (skips `+=`/etc); flags if no `return` AND var name matches `RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i`. **`assignment_result_unused`** — last non-blank top-level line is `var = ident(...)`, var is RESULT_ISH, var never referenced elsewhere (defensive narrow scope to avoid false-positive on `cliente = MyClient()` setup code). New repairs: **`wrap_method_in_print`** (slide 40) — re-discovers returning methods, replaces first matching top-level bare call with `print(<expr>)`. **`inject_missing_return`** (slides 14, 46) — walks def body, finds last RESULT_ISH assignment, inserts `<indent>return <var>` at `bodyEnd` (line AFTER last body line) so any post-assignment side effects (logging.debug etc) still execute before return. After injection re-validates; if next reason is `function_defined_but_uncalled` overrides `reason` and falls through to v5.7.1's call-demo branch in same call (slide 14 gets BOTH return AND call+print). **`print_assignment_terminal`** — appends `print(<var>)`. NEW deterministic visual-truncation `repairVisualTruncationInItems` for non-code fields (`items`/`leftItems`/`rightItems`/`leftBullets`/`rightBullets`): `ELLIPSIS_TAIL_RE = /^(.*?)(\s*(?:\.{2,}|…+)\s*)$/` matches trailing `...` or `…`; strips ellipsis, drops up to 2 dangling prepositions/conjunctions via `TRAILING_PREP_RE` (para/de/da/do/das/dos/com/e/ou/que/em/no/na/nos/nas/ao/à/aos/às/por/sobre/entre/sem/sob/a/as/os/um/uma/uns/umas), strips trailing `,;:-`, ensures `.` if word count ≥2, action `kept_short` if <2 words, drops empty results. Emits `[VISUAL-TRUNCATION] slide=N field=items[i] action=stripped_and_capped|kept_short|kept_short_punctuated|dropped_empty before=... after=...` per fix. Wired as **Guardrail 6** at the END of `applyFinalGuardrails` (after Guardrail 5 integrity check). Tests `__tests__/v572_observable_outcome.smoke.ts`: 14/14 via Node V8 (3 negative for slides 14/40/46, 4 positive controls including `print(inst.method())`/explicit-return-with-demo/void-function-no-result-ish/`MyClient()` setup, 5 visual-truncation cases including dangling preposition + < 3 words + clean text no-op). Architect-reviewed (only flag: methods tracked by name not class — acceptable for short educational snippets). Restrictions honored: no frontend, no planner, no preservation, no renderer core, no layout engine, no qaVeto, no engine selection, no fallback policy. `ENGINE_VERSION = "5.7.2"`.
+- **v5.7.1** — **Code completeness = pedagogical demonstration, not just "runnable"**. Diagnosed 4 production slides (13/35/43/49 of "Introdução à Programação em Python") that passed `validateSemanticCodeCompleteness` despite being didactically broken. Root cause = 3 escapes in the validator, all fixed: (1) NEW rule **`function_defined_but_uncalled`** — top-level `def name(...)` with no call site `name(...)` outside its signature returns this reason; decorated defs (`@deco\ndef fn`) and decorator references (`@fn`) count as use; recursion in body counts (acceptable corner case). (2) HARDENED **`class_instance_no_method_call`** replaces the bare `print(<inst>)` escape on the old `class_defined_but_unused` rule — instantiation alone is no longer sufficient; at least one instance MUST do `inst.method(...)` or `inst.attr` access (`print(obj)` showing object address is dropped). Old rule preserved as fallback `class_defined_but_no_output`. (3) NEW preventive helper `repairBareInstancePrint(code, moduleCtx, slideNum)` — extracted the print-inst-to-method rewrite from `repairIncompleteCodeExample` (where it was chicken-and-egg gated on validation already failing) and promoted it to a new **Guardrail 3b** in `applyFinalGuardrails`, BEFORE the validator runs. Method picked from local funcs first, then `moduleCtx.funcs`, skipping `__init__/__new__/__str__/__repr__/main/init`. Emits `[CODE-PREVENTIVE-REPAIR]` log. (4) NEW repair pattern `function_call_demo` in `repairIncompleteCodeExample` — when reason is `function_defined_but_uncalled`, appends `resultado = fnName(args)\nprint(resultado)` with args inferred from parameter names (lista→`[10,20,30]`, preco/valor/num/idade→`10`, nome/texto→`"exemplo"`, path→`"dados.txt"`, url→`"https://api.example.com"`, flag/is_*→`True`, fallback→param name as string). Class repair guard at L747 extended to also handle the new `class_instance_no_method_call` and `class_defined_but_no_output` reasons. (5) Tests `__tests__/v571_code_completeness.smoke.ts` covering all 4 user-reported regression cases + 5 positive controls (function with call demo, class with method/attr access, decorator pattern, methods-only inside class, legacy ellipsis/too_few). 9/9 verified via Node V8 (deno test path: `deno test --allow-read supabase/functions/export-pptx-v4/__tests__/v571_code_completeness.smoke.ts`). All restrictions honored: no frontend, no renderer, no planner edits; v4/v5.7 remains canonical engine; QA veto active; no CODE→bullets demote to hide problems — repair completes the example. `ENGINE_VERSION = "5.7.1"`.
+- **v5.7.0** — **Engine-policy hardening + last-mile FORBIDDEN-VETO**. Diagnosed root cause of "POO contamination" reports: `PptxExportDialog` defaulted `useV6=true, useV4=false`, and `ExportButtons` called `export-pptx-v6` BEFORE v4. All v5.x improvements (planner, `PYTHON_MODULE_RULES`, per-module gate, QA veto, guardrails, demotes) were silently bypassed in production. **Frontend**: defaults flipped (`useV4=true, useV6=false`); v6 toggle removed from UI (state preserved for explicit opt-in via React DevTools/console); ExportButtons reordered so v4 runs first; v6 block now opt-in only and emits `[PPTX-FRONTEND-WARN]`; legacy infra fallback hard-pinned to `export-pptx-v3` (was buggy `useV3 ? v3 : useV2 ? v2 : v3` which fell to v2 by default); `[PPTX-FRONTEND]` startup policy log; `[PPTX][DIAG]` extended with `engine_function`, `fallback_reason`, `modules_failed`, `total_slides`, `qa_status`. **Backend**: `ENGINE_VERSION="5.7.0"`. (1) NEW `demoteCodeLayout(s, slideId, reason)` helper + `_isCodeLabel`/`_demoteCodeLabel` helpers — single source of truth for code→bullets demotion; rewrites label `CÓDIGO/CODIGO/CODE`→`CONCEITO`; emits `[LAYOUT-DEMOTE]`. Routed through 5 demote sites: 3 in `applyFinalGuardrails` + 2 in QA cascade (`DOMAIN_CONTAMINATION` L7367, `INCOMPLETE_CODE` L7427). Plus inline label demotion at 4 NON-routed code→bullets sites: `repairEmptySlide` L4481, `splitOverflowSlides` L4535 (Slide A), `l1VisualFix EMPTY_SLIDE` L7943, `l3LocalRewrite` candidate L8193. (2) NEW `FORBIDDEN_FINAL_PATTERNS` constant (6 patterns: `ELLIPSIS_HASH`, `ELLIPSIS_SLASH`, `ELLIPSIS_BARE`, `CODIGO_OMITIDO`, `RESTANTE_OMITIDO`, `CONTINUA_PLACEHOLDER`) + structural `CODE_NO_CODE` check. NEW `scanFinalSlidesForForbiddenPatterns(modules)` is **layout-aware** (only scans rendered fields per layout — `code` for code; `leftItems`+`rightItems` for comparison/twocol; `items` everywhere else; `title`+`label` always). Throws `PptxQAVetoError` with structured `{slideId, type, field, pattern, snippet}`. Runs AFTER existing `qaVeto`, BEFORE render. Emergency env kill switch `PPTX_FORBIDDEN_VETO_DISABLED=1`. (3) NEW `QAIssueType.FORBIDDEN_FINAL_PATTERN` + extended `QAIssue` interface with optional `field/pattern/snippet`. (4) Killed render-time placeholder injections that would re-introduce forbidden patterns AFTER the veto: `renderCode` no longer appends `"\n# ..."` (L2660); `l1VisualFix.CODE_TOO_LONG` no longer appends `"-- ... (ver continuação)"` (L7977); `l2Replan.CODE_TOO_LONG` fallback no longer appends `"-- ... (ver material)"` (L8071) — all now clean truncates. (5) Response payload (200 + 422) extended with `engine_function`, `fallback_reason` (`null`|`"qa_veto"`|`"module_planner_rejected_or_validation_failed"`), `modules_failed` (= `fallbackModuleNumbers.length` strictly), `total_slides` (alias of `slide_count`); 422 also gains `slide_count` snake_case + `blocking_issues` snake_case alias of legacy `blockingIssues` (with `field/pattern/snippet`). All legacy keys (`engine`, `slide_count`, `totalSlides`, `removedSlides`, `blockingIssues`) preserved. `[PPTX][DIAG-FINAL]` log includes the new fields. Architect-reviewed twice (pre + post implementation).
+- **v5.6.0** — **`PYTHON_MODULE_RULES` reordered: most-specific first, `fundamentals` last**. Bug confirmed via static analysis (no log needed): first-match-wins order had `fundamentals` (regex: `introdu[çc][aã]o|básico|fundament`) at position 1 and `oop` at position 6 — so "Introdução à POO" / "Introdução à Programação Orientada a Objetos" matched `fundamentals` before `oop`, giving the POO module wrong deny-lists and allowing cross-module contamination (variáveis/operadores/print appearing in OOP slides). Fix: reorder array to `oop → tests_logs → best_practices → json_apis → files_exceptions → data_structures → control_flow → fundamentals`. All 5-character-specific kinds now checked before the generic catch-all. Verified modules 1–5 unaffected (their titles have unique keywords that don't collide). `ENGINE_VERSION = "5.6.0"`.
+- **v5.5.9** — **`[MODULE-CLASSIFY]` diagnostic log** in `index.ts` per-module loop (`applyFinalGuardrails` outer loop). Emits `[MODULE-CLASSIFY] mi=N title="…" kind=oop|fundamentals|… course="…"` once per module so prod logs prove which `kind` each module actually received. Diagnosed the v5.5.x first-match-wins ordering bug that this v5.6.0 fixes. No behavioral change. `ENGINE_VERSION = "5.5.9"`.
+- Older entries (v5.0 → v5.5.8) archived in `docs/pptx-engine-history.md`.
 
-## PPTX Exporter v3 (Legacy)
-`supabase/functions/export-pptx-v3/index.ts` (2284 lines, v3.4.1). Superseded by v5.
-
-## PPTX Exporter v2 (Legacy)
-`supabase/functions/export-pptx-v2/index.ts` (5173 lines, v2.8.1). Bug fixes applied but superseded by v3.
-
-### Image System
-- Fetches thematic images from Unsplash API based on course/module titles
-- Requires `UNSPLASH_ACCESS_KEY` env var in Supabase Edge Functions (set via `supabase secrets set`)
-- Graceful degradation: if no key set, slides render without images (same as before)
-- Diagnostic logging: logs `unsplashKey=SET|MISSING` and `includeImages_raw` at export start
-- Images applied to: cover slide (full-bleed background), module covers (right-side panel), closing slide (background)
-- Overlays for readability: dark overlay on backgrounds, accent-tinted overlay on module image panels
-- Credits: photographer attribution shown at bottom-right of image slides
-- Keyword extraction: Portuguese titles translated to English via PT_EN_MAP for better Unsplash results
-- All images fetched in parallel via Promise.allSettled (max 4 concurrent)
-
-### v2 Visual Design (Premium Layout)
-- **Color palette**: Purple-primary (`6C63FF`), blue (`3B82F6`), green (`10B981`), amber (`F59E0B`), cyan (`06B6D4`)
-- **Backgrounds**: Deep navy (`050A18` cover, `F7F8FC` light, `0C1322` dark)
-- **Card shadows**: Simulated via semi-transparent offset shapes (`addCardShadow`)
-- **Gradient bars**: Simulated via stepped transparency shapes (`addGradientBar`)
-- **Left edge**: Double-line accent (solid + 50% transparency ghost line)
-- **Footer**: Gradient accent bar + branded dot + "EduGenAI" label
-- **Slide title**: Double underline (accent + divider)
-- **Cards**: White backgrounds with left color accent bars, rounded corners, shadows
-- **Number badges**: Adaptive sizing (capped by card dimensions to prevent overflow)
-- **Text autoFit**: All content text boxes use autoFit to prevent text clipping
-- **Images**: `slide.addImage()` used instead of `slide.background` for reliability
-- **Base64 prefix**: `data:image/jpeg;base64,...` (PptxGenJS requires `data:` prefix)
-
-### Example Highlight (Case Study) Layout
-- Dark background with left-side timeline panel
-- Up to 5 phases: Contexto → Desafio → Solução → Implementação → Resultado
-- Numbered circle badges per phase with accent colors
-- Label detection pipeline: "Label: content" parsing with canonical label mapping
-- Unlabeled items get auto-assigned to available phase labels
-- Minimum 3 phases enforced — synthesizes labels from raw content if needed
-- Badge "ESTUDO DE CASO" at top
-
-### Warning Callout Layout
-- Max 4 items (reduced from 6 to prevent dense slides)
-- Items with "Label: content" get separated header/description styling
-- Red accent theme with alternating card backgrounds
-
-### Gender Agreement System
-- Context-aware "amplamente utilizado/a/os/as" with separate masculine/feminine noun groups
-- Feminine nouns: ferramenta, plataforma, tecnologia, técnica, abordagem, etc.
-- Masculine nouns: software, sistema, modelo, método, processo, etc.
-- Broad pattern-based agreement for ~30 feminine nouns × ~30 adjectives
-- "percepções" + masculine adjective → feminine adjective correction
-- Preposition insertion for "gestão/análise/segurança X" → "gestão de X"
-
-### v2 Density Parameters
-- `maxItemsPerSlide: 9` — max content items per slide
-- `maxCharsPerItem: 200` — max text length per bullet
-- `LAYOUT_VISUAL_MAX_ITEMS.bullets: 7`
-- `LAYOUT_VISUAL_MAX_ITEMS.example_highlight: 5`
-- `LAYOUT_VISUAL_MAX_ITEMS.warning_callout: 4`
-- `mergeShortItems` threshold: 90 chars
-- `MIN_CONTINUATION_ITEMS: 4`
-- Stage 3.6: merges adjacent sparse continuation slides
-
-### Critical Constraints
-- NEVER modify `export-pptx/index.ts` (v1) — must remain 100% untouched
-- v1 confirmed untouched across all sessions
+## Legacy PPTX Exporters (do not modify unless asked)
+- **v3** — `export-pptx-v3/index.ts` (2284 lines, v3.4.1). Superseded by v5; kept as fallback for infra failures (5xx/network).
+- **v2** — `export-pptx-v2/index.ts` (5173 lines, v2.8.1). Premium layout with Unsplash image system, gender agreement, case-study/warning layouts. Superseded by v3.
+- **v1** — `export-pptx/index.ts`. **NEVER modify** — must remain 100% untouched.

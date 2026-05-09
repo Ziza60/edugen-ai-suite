@@ -1,0 +1,256 @@
+Quero investigar um problema estrutural específico de renderização/layout que continua acontecendo no PPTX v5.4.x.
+
+IMPORTANTE:
+Esse problema JÁ havia sido relatado anteriormente.
+Na ocasião, o sistema aparentemente apenas mascarou o bug:
+- trocando layouts;
+- reduzindo quantidade de cards;
+- mudando intent;
+- usando fallback;
+- reorganizando o slide.
+
+Mas o problema estrutural NÃO foi corrigido.
+Agora ele reapareceu de forma consistente.
+
+Slides afetados no PPTX atual:
+- slide 13
+- slide 30
+- slide 43
+
+Sintoma visual:
+Os textos aparecem na parte superior dos cards/boxes, como se fossem títulos/headlines, em vez de aparecerem dentro do corpo das caixas.
+
+Resultado:
+- o body dos cards fica vazio ou quase vazio;
+- o conteúdo “vaza” para a área de header;
+- visualmente parece que os textos estão fora das caixas.
+
+Exemplos visuais:
+Slide 13:
+“DEF DEFINE UM BLOCO...”
+
+Slide 30:
+“APIS WEB PERMITEM...”
+
+Slide 43:
+“O MÓDULO LOGGING REGISTRA...”
+
+Todos aparecem como títulos/headlines superiores, não como conteúdo interno dos cards.
+
+Diagnóstico importante:
+O problema NÃO parece ser:
+- markdown;
+- planner;
+- semantic preservation;
+- QA textual;
+- token masking.
+
+O conteúdo está semanticamente correto.
+
+O problema parece ser:
+semantic node → layout region assignment
+
+Ou seja:
+o renderer/layout está promovendo conteúdo de body/items para regiões de header/title.
+
+Suspeita forte:
+Alguma heurística está classificando textos curtos/emphasis/uppercase como headline automaticamente.
+
+Possíveis causas:
+1. splitHeadlineAndBody()
+2. promoteEmphasisText()
+3. shortTextPromotion()
+4. heurística baseada em:
+   - tamanho do texto;
+   - uppercase;
+   - verbos imperativos;
+   - densidade;
+   - frases curtas.
+
+5. mapping errado:
+items[] → cardHeader
+em vez de:
+items[] → cardBody
+
+6. fallback parcial:
+process/cards → convertedHeadlineLayout
+
+7. renderer de cards/process:
+quando body está vazio ou pequeno:
+promove conteúdo para title region.
+
+O que quero agora:
+NÃO mascarar.
+NÃO trocar layout automaticamente.
+NÃO esconder o bug.
+NÃO converter tudo para bullets.
+NÃO reduzir quantidade de cards apenas para evitar overflow.
+
+Quero:
+investigar a causa raiz do semantic-region assignment.
+
+1. Instrumentação obrigatória
+
+Adicionar logs detalhados:
+
+[LAYOUT-REGION-DEBUG]
+slideId=...
+intent=...
+layout=...
+regionAssignment={
+  title: ...,
+  header: ...,
+  body: ...,
+  items: ...,
+  cards: ...,
+  processSteps: ...
+}
+
+[LAYOUT-REGION-DEBUG]
+promotionDetected=true
+reason="short-uppercase-content"
+
+[LAYOUT-REGION-DEBUG]
+field=items[0]
+original="DEF define um bloco..."
+assignedRegion="cardHeader"
+
+2. Detectar promotion indevida
+
+Criar detector:
+
+detectHeaderPromotionLeak(slide)
+
+Detectar quando:
+- card body ficou vazio;
+- items foram promovidos para header;
+- process steps foram promovidos para title;
+- texto longo aparece na região headline;
+- cardHeader possui frases completas em vez de títulos curtos;
+- title/header contém:
+  - verbos técnicos;
+  - explicações;
+  - sentenças completas;
+  - exemplos;
+  - frases declarativas.
+
+Exemplo ruim:
+Header:
+“DEF DEFINE UM BLOCO DE CÓDIGO...”
+
+Exemplo correto:
+Header:
+“Funções em Python”
+
+Body:
+“def define um bloco de código reutilizável...”
+
+3. Validar distribuição de regiões
+
+Criar:
+validateSemanticRegionDistribution(slide)
+
+Regras:
+- cardHeader deve ser curto;
+- cardBody deve conter explicação principal;
+- process step title ≠ process step description;
+- body não pode ficar vazio se houver items;
+- items[] não devem ser promovidos integralmente para title;
+- se body estiver vazio e header muito longo:
+  emitir warning/fix.
+
+4. Proteger items/body semanticamente
+
+Adicionar metadados:
+
+{
+  semanticRole: "body_content"
+}
+
+para:
+- items;
+- process descriptions;
+- card bodies;
+- explanatory text.
+
+Renderer NÃO deve promover semanticRole=body_content para header/title automaticamente.
+
+5. Corrigir heurística de promotion
+
+Se existir lógica:
+- promoteEmphasisText()
+- shortTextPromotion()
+- headlineBoost()
+- autoHeaderPromotion()
+
+Adicionar proteção:
+NUNCA promover:
+- body_content;
+- process descriptions;
+- explanatory text;
+- semantic items.
+
+Mesmo se:
+- uppercase;
+- curto;
+- técnico;
+- bold;
+- emphasis.
+
+6. Caso específico obrigatório
+
+Os slides:
+- 13
+- 30
+- 43
+
+devem renderizar:
+- texto dentro do body dos cards;
+- não na região superior/headline;
+- cards semanticamente preenchidos;
+- header curto e editorial;
+- body explicativo.
+
+7. NÃO usar workaround visual
+
+Não quero:
+- trocar layout automaticamente;
+- cair em bullets;
+- remover cards;
+- simplificar conteúdo;
+- esconder cards;
+- transformar body em title;
+- reduzir quantidade de elementos só para evitar o bug.
+
+Quero:
+resolver o semantic-region assignment corretamente.
+
+8. Critério de aceite
+
+Gerar novamente o curso Python.
+
+Os slides:
+13
+30
+43
+
+devem:
+- manter o layout atual;
+- manter conteúdo técnico;
+- manter cards/process;
+- renderizar textos dentro das caixas;
+- manter header separado do body;
+- não promover explicações para headline;
+- não deixar body vazio.
+
+E os logs devem mostrar:
+[LAYOUT-REGION-DEBUG]
+promotionDetected=false
+
+para esses slides.
+
+Prioridade:
+1. descobrir causa raiz;
+2. corrigir semantic-region assignment;
+3. impedir promotion indevida;
+4. manter arquitetura modular/planner/preservation layer intactos.

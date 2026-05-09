@@ -1,0 +1,200 @@
+event_message,event_type,execution_id,function_id,id,level,timestamp
+shutdown,Shutdown,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,7d05d687-b9f1-496b-b088-548593c42f2c,log,1778257748225000
+"[MODULE-QA] module=7 status=WARNING issuesUnfixed=0 issuesFixed=3
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,cdce01e7-412b-46dc-99a7-7385146dcb94,info,1778257748169000
+"[V5-QA] FIXED CONTENT_DENSITY_OVERFLOW @ module_1_slide_3 — Slide com 59 palavras (máx 50): ""Ferramentas para Qualidade e Estabilidade""
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,cc8683e7-d296-4ceb-9f5c-d144e64c7de9,info,1778257748169000
+"[V5-GENERIC-DROP] slide=module_1_slide_5 title=""Resultados de Aprendizagem do Módulo"" — dropped (no objective-title batch repair)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,0ed0d5bc-b0d7-40d0-985f-da9ccd50e1d0,info,1778257748169000
+"[V5-QA] status=WARNING | unfixed=0 | fixed=3 | total_checks=3
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,0a2b72e3-22ad-467f-8fab-c7e0f2b16c8a,info,1778257748169000
+"[V5-QA] FIXED EMPTY_SLIDE @ module_1_slide_3 — Slide vazio reparado: ""Ferramentas para Qualidade e Estabilidade"" (bullets)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,a9641df0-7194-4090-aa9f-48009a788c16,info,1778257748169000
+"[V5-QA] FIXED GENERIC_OBJECTIVE @ module_1_slide_5 — Slide majoritariamente genérico: ""Resultados de Aprendizagem do Módulo"" (1/3) — slide removido
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,272ba78c-3e11-45a5-8337-c58b14a86332,info,1778257748169000
+"[V5] Repaired slide ""Ferramentas para Qualidade e Estabilidade"" (bullets) → bullets with 5 items
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,e39c741e-c3d8-4fb4-bf53-2bb10f7e505d,warning,1778257748169000
+"[V5-QA] FIXED EMPTY_SLIDE @ module_1_slide_2 — Slide vazio reparado: ""Conceitos Essenciais da Programação Orientada a Objetos"" (bullets)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,a2d1b226-8fd7-4e06-81c0-ae0c36b46e4b,info,1778257748168000
+"[V5-QA] FIXED CONTENT_DENSITY_OVERFLOW @ module_1_slide_2 — Slide com 66 palavras (máx 50): ""Conceitos Essenciais da Programação Orientada a Objetos""
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,0420a2e2-a80e-409e-bdae-db59fd214b62,info,1778257748168000
+"[MODULE-QA] module=6 status=WARNING issuesUnfixed=0 issuesFixed=6
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,adc8fe02-c54b-462c-a735-ec032182d9c0,info,1778257748168000
+"[V5-QA] status=WARNING | unfixed=0 | fixed=6 | total_checks=6
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,5833597e-2810-42b3-a042-c71eb6259349,info,1778257748168000
+"[V5-QA] FIXED EMPTY_SLIDE @ module_1_slide_4 — Slide vazio reparado: ""Implementando POO: Da Classe ao Objeto em Python (2/2)"" (process)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,e7ad5dc0-12dd-4c6f-9c34-7c9ed10afe98,info,1778257748168000
+"[V5-QA] FIXED CONTENT_DENSITY_OVERFLOW @ module_1_slide_4 — Slide com 66 palavras (máx 50): ""Implementando POO: Da Classe ao Objeto em Python (2/2)""
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,89b729d2-3212-4698-a842-5ea2c8a6dca7,info,1778257748168000
+"[V5-QA] FIXED GENERIC_OBJECTIVE @ module_1_slide_7 — 1 objetivo(s) genérico(s) removidos de ""O Que Você Aprenderá Neste Módulo""
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,6057f9a4-8445-4c18-92fa-c5c9eb909e93,info,1778257748168000
+"[V5-QA] FIXED CONTENT_DENSITY_OVERFLOW @ module_1_slide_6 — Slide com 52 palavras (máx 50): ""Benefícios da Programação Orientada a Objetos""
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,3a5d38fa-754e-4eac-a1ce-d58d29d07908,info,1778257748168000
+"[V5] Repaired slide ""Implementando POO: Da Classe ao Objeto em Python (2/2)"" (process) → bullets with 5 items
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,a2fcbafd-f04c-4ca9-af18-63693385e9b0,warning,1778257748167000
+"[V5-QA] FIXED GENERIC_OBJECTIVE @ module_1_slide_6 — Slide majoritariamente genérico: ""O Que Você Vai Dominar Neste Módulo"" (1/3) — slide removido
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,f0804664-4c6f-4169-95dd-067d624fed38,info,1778257748166000
+"[V5-GENERIC-DROP] slide=module_1_slide_6 title=""O Que Você Vai Dominar Neste Módulo"" — dropped (no objective-title batch repair)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,e27d8105-82e9-40b9-a599-badfa49412cb,info,1778257748166000
+"[V5-QA] FIXED INCOMPLETE_CODE @ module_1_slide_4 — Snippet HTTP completado em ""Manipulando JSON e APIs com Python — Exemplo"" (python)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,28197d6d-c08d-4127-8d6a-e9c5eadf9f83,info,1778257748166000
+"[V5-QA] FIXED CONTENT_DENSITY_OVERFLOW @ module_1_slide_2 — Slide com 65 palavras (máx 50): ""JSON: Estrutura e Importância na Web""
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,00907489-ecfe-4ceb-bed4-59b4617e6f5e,info,1778257748166000
+"[V5-QA] status=WARNING | unfixed=0 | fixed=4 | total_checks=4
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,72f9e56e-30a8-452e-88b1-61606399a074,info,1778257748166000
+"[V5-QA] FIXED EMPTY_SLIDE @ module_1_slide_2 — Slide vazio reparado: ""JSON: Estrutura e Importância na Web"" (bullets)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,f441bf70-5311-4b6d-950c-a271677861a9,info,1778257748166000
+"[V5] Repaired slide ""Conceitos Essenciais da Programação Orientada a Objetos"" (bullets) → bullets with 5 items
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,db0b67ce-809b-4388-8765-6bf98d0ce9ea,warning,1778257748166000
+"[MODULE-QA] module=5 status=WARNING issuesUnfixed=0 issuesFixed=4
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,eb967cca-b856-474c-a50c-fc1cc5f51b0d,info,1778257748166000
+"[V5] Repaired slide ""JSON: Estrutura e Importância na Web"" (bullets) → bullets with 5 items
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,cddc7e05-e5f1-47d6-a30b-acbf9357e12b,warning,1778257748165000
+"[V5-CODE-REPAIR] module_1_slide_4 | requests snippet completed (lang=python)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,5ccbfa58-1b54-4879-af4b-e70fa14b2214,info,1778257748165000
+"[MODULE-QA] module=4 status=PASSED issuesUnfixed=0 issuesFixed=1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,cc42346a-68eb-405d-8a5e-8960f0b4a97b,info,1778257748164000
+"[V5-QA] status=PASSED | unfixed=0 | fixed=1 | total_checks=1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,a3017bdf-2f1d-464c-ba03-dc60a3cf1810,info,1778257748164000
+"[V5-QA] FIXED GENERIC_OBJECTIVE @ module_1_slide_4 — 1 objetivo(s) genérico(s) removidos de ""O Que Você Aprenderá Neste Módulo""
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,42047422-7804-4afa-99cd-376b4c8976da,info,1778257748164000
+"[V5-QA] status=PASSED | unfixed=0 | fixed=1 | total_checks=1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,65acc003-63fe-4459-95d1-ce15200aabc8,info,1778257748163000
+"[V5-QA] FIXED INCOMPLETE_CODE @ module_1_slide_5 — Código incompleto em ""Função adicionarlivro em Python — Exemplo"" (python) — slide removido (sem fallback de bullets)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,b3d12b54-f795-46d9-8aeb-c122dbf6a5d0,info,1778257748163000
+"[V5-CODE-DROP] module_1_slide_5 | ""Função adicionarlivro em Python — Exemplo"" dropped: incomplete code, no bullet fallback (lang=python)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,22459f51-4d85-4d8b-af5e-4b42036a9b25,info,1778257748163000
+"[MODULE-QA] module=3 status=PASSED issuesUnfixed=0 issuesFixed=1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,9ed627df-8903-4cd1-a92b-9aec5b252afa,info,1778257748163000
+"[MODULE-QA] module=2 status=PASSED issuesUnfixed=0 issuesFixed=2
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,7459f47f-9e2c-4b0f-97c8-51dfd72d6e11,info,1778257748162000
+"[V5-QA] FIXED EMPTY_SLIDE @ module_1_slide_2 — Slide vazio reparado: ""Construindo um Sistema de Pedidos de Pizza (2/2)"" (process)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,b457b7c8-4475-4a72-8887-6c4271b367d8,info,1778257748162000
+"[V5-QA] status=PASSED | unfixed=0 | fixed=2 | total_checks=2
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,977e7474-8897-4aee-b655-8729c093d3fb,info,1778257748162000
+"[V5-QA] FIXED GENERIC_OBJECTIVE @ module_1_slide_4 — 1 objetivo(s) genérico(s) removidos de ""O que aprendemos com o sistema de pedidos""
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,3504cd09-f216-41ba-ad30-6329c85f0bc3,info,1778257748162000
+"[V5-QA] status=PASSED | unfixed=0 | fixed=1 | total_checks=1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,025032d0-9589-4eca-902f-2413a1ed8540,info,1778257748161000
+"[V5] Repaired slide ""Construindo um Sistema de Pedidos de Pizza (2/2)"" (process) → bullets with 3 items
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,97e0b87c-b811-401b-b54b-1a9c87394108,warning,1778257748161000
+"[V5-QA] FIXED GENERIC_OBJECTIVE @ module_1_slide_4 — Slide majoritariamente genérico: ""Representação de Dados"" (2/4) — slide removido
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,9fbba49c-f832-4d61-939e-7020a1aed6cb,info,1778257748161000
+"[MODULE-QA] module=1 status=PASSED issuesUnfixed=0 issuesFixed=1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,d9376925-6d77-4e29-8684-82d63d91fdb6,info,1778257748161000
+"[V5-GENERIC-DROP] slide=module_1_slide_4 title=""Representação de Dados"" — dropped (no objective-title batch repair)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,ab96aa8d-6b1d-40af-8f0a-08dfdb8d34cd,info,1778257748160000
+"[V5-OBJECTIVE-REPAIR-BATCH] field=competencies moduleKind=py_oop ratio=3/3 → full replacement (3 tails)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,df3629a8-1ca8-419e-874a-1daf317d42db,info,1778257748155000
+"[V5-TIMING] phase=planner+pre_QA_pipeline_done ms=111575 total=111575 modules=8
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,f264f887-e586-4489-9a61-21393afe578d,info,1778257748155000
+"[V5-OBJECTIVE-REPAIR-BATCH] field=competencies moduleKind=py_tests ratio=3/3 → full replacement (3 tails)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,6f95d968-354e-44b4-b843-461794d5fcce,info,1778257748155000
+"[V5-OBJECTIVE-REPAIR-BATCH] field=competencies moduleKind=py_best_practices ratio=3/3 → full replacement (3 tails)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,b07f25ca-008b-4851-aac6-7118223fcddf,info,1778257748155000
+"[V5-OBJECTIVE-REPAIR-BATCH] field=competencies moduleKind=py_files ratio=2/3 → full replacement (3 tails)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,5f4e8534-5abc-4fd7-9c28-4d12caf20fae,info,1778257748154000
+"[TECH-PRESERVE] module_5_cover field=competencies[1] tokens=1 kinds=python_keyword:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,d3e05c95-8c95-4a66-9d4e-c12a0c8f3bec,info,1778257748154000
+"[TECH-PRESERVE] module_4_cover field=competencies[1] tokens=3 kinds=python_keyword:3
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,34e58c2e-5f62-4391-b7dc-8dccd71a3a58,info,1778257748152000
+"[V5-CONTAM-STRIP] module_3_cover | ""Estruturas de Dados Fundamentais"" | dropped=3 reasons=[sql,sql,sql]
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,426578ff-c1ed-47f8-b18f-b735789ec68a,info,1778257748152000
+"[V5-OBJECTIVE-REPAIR-BATCH] field=competencies moduleKind=py_flow ratio=3/3 → full replacement (3 tails)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,e6570114-dee4-4ed7-b4b9-f5b0c278197b,info,1778257748151000
+"[V5-OBJECTIVE-REPAIR-BATCH] field=competencies moduleKind=py_basics ratio=3/3 → full replacement (3 tails)
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,09da16f7-d6ff-463e-b2ba-a5933443cb48,info,1778257748151000
+"[TECH-PRESERVE] module_8_slide_4 field=items[0] tokens=1 kinds=filename:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,a5e5976a-b122-4df4-9c0f-43263f742bbb,info,1778257748146000
+"[TECH-PRESERVE] module_8_slide_3 field=items[1] tokens=1 kinds=package_tool:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,be9297d2-4841-4ff9-9088-9d53769bb0b7,info,1778257748145000
+"[V5-REPAIR] module_8_slide_3 | ""Estruturar Projeto: Organize em , , docs/ e arquivos-chave."" → ""Estruturar Projeto: Organize em itens diversos.docs/ e arquivos-chave.""
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,7ae94330-4711-4a17-b8a0-d9090ea2dfe0,info,1778257748145000
+"[TECH-PRESERVE] module_8_slide_3 field=items[0] tokens=1 kinds=package_tool:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,403149e8-0a50-4720-a4de-5b197360b4ae,info,1778257748145000
+"[TECH-PRESERVE] module_8_slide_3 field=items[2] tokens=1 kinds=file_path:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,63ae19ab-9374-446e-aab0-2510f60fd54f,info,1778257748145000
+"[TECH-PRESERVE] module_8_slide_1 field=items[0] tokens=1 kinds=package_tool:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,3de728d4-e226-4034-b1cc-4e076b8dbc37,info,1778257748143000
+"[TECH-PRESERVE] module_7_slide_5 field=items[0] tokens=1 kinds=python_keyword:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,7c02c367-f2de-4252-8730-e6a3a1439b6f,info,1778257748142000
+"[V5-KIND] module=8 moduleTitle=""Boas Práticas e Implantação de Projetos"" kind=py_best_practices
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,283d797c-62bf-4fb2-8f3c-11f2acac606f,info,1778257748142000
+"[TECH-PRESERVE] module_7_slide_2 field=items[2] tokens=1 kinds=python_module:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,e522454b-fb1c-4622-b9fa-1ba4dbd1507e,info,1778257748141000
+"[TECH-PRESERVE] module_7_slide_2 field=items[0] tokens=3 kinds=backticked:3
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,f4a07b24-915c-40cc-8ea7-f1d2e3429bcc,info,1778257748141000
+"[TECH-PRESERVE] module_7_slide_2 field=items[1] tokens=4 kinds=python_module:1,log_level:3
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,5a2191d0-fcc1-4005-8eb4-2c9ea699dc2f,info,1778257748141000
+"[V5-TOKEN-REPAIR] module_7_slide_2 before=""Testes Unitários: Use com métodos e assert."" after=""Testes Unitários: Use `unittest.TestCase` com métodos `test_*` e `assert*`."" valid=true
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,c838f4a3-2ff7-4d80-b4f7-3972ecb01041,info,1778257748140000
+"[V5-KIND] module=7 moduleTitle=""Testes, Logs e Depuração"" kind=py_tests
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,dca26027-218e-4c44-9022-ce573cb6b980,info,1778257748139000
+"[TECH-PRESERVE] module_6_slide_3 field=items[0] tokens=1 kinds=python_keyword:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,ce55e2ee-4718-4c3c-a33d-cb1859b4d634,info,1778257748137000
+"[V5-KIND] module=6 moduleTitle=""Introdução à Programação Orientada a Objetos (POO)"" kind=py_oop
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,7c685082-0b9a-4b01-83af-3d90ced38d4e,info,1778257748137000
+"[TECH-PRESERVE] module_5_slide_6 field=items[2] tokens=1 kinds=api_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,0dcc9976-a5de-4133-a1fc-f6128ce8c5c6,info,1778257748136000
+"[TECH-PRESERVE] module_5_slide_5 field=items[0] tokens=1 kinds=http_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,c61bc8bd-2205-468a-aa68-ee76eb2bc265,info,1778257748136000
+"[TECH-PRESERVE] module_5_slide_5 field=title tokens=1 kinds=http_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,3c2ad9f4-1c61-49d8-91d5-d802bb3bcc2f,info,1778257748136000
+"[V5-CONTAM-STRIP] module_5_slide_5 | ""Trabalhando com JSON e APIs Web"" | dropped=1 reasons=[sql]
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,fe101727-79e7-485b-b3a6-519fffd2feec,info,1778257748136000
+"[TECH-PRESERVE] module_5_slide_5 field=items[1] tokens=1 kinds=http_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,e7ce3a73-adf3-44b8-bf96-ba4c9fd2e122,info,1778257748136000
+"[TECH-PRESERVE] module_5_slide_6 field=items[0] tokens=1 kinds=python_keyword:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,e8abba24-843a-490f-867e-d7aa199c3d95,info,1778257748136000
+"[TECH-PRESERVE] module_5_slide_6 field=items[1] tokens=1 kinds=json_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,abe845f5-d39d-4abd-a9e4-0f2fa525255a,info,1778257748136000
+"[TECH-PRESERVE] module_5_slide_5 field=items[2] tokens=1 kinds=http_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,b2b7305e-8e6f-4977-810a-24b9e3754cd3,info,1778257748136000
+"[TECH-PRESERVE] module_5_slide_5 field=items[3] tokens=1 kinds=http_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,882af589-7f23-453f-ae2f-c545550d2a29,info,1778257748136000
+"[TECH-PRESERVE] module_5_slide_4 field=items[1] tokens=2 kinds=api_method:1,http_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,4a0a4757-c6fb-4439-9ba2-4f3c457b9d27,info,1778257748135000
+"[TECH-PRESERVE] module_5_slide_3 field=items[0] tokens=1 kinds=json_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,33a018b1-7b8d-4eee-bf5a-f9c941a97d38,info,1778257748135000
+"[TECH-PRESERVE] module_5_slide_3 field=items[2] tokens=1 kinds=http_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,4849cd61-295e-42db-902b-6f68a59dfb7c,info,1778257748135000
+"[TECH-PRESERVE] module_5_slide_3 field=items[1] tokens=2 kinds=api_method:1,http_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,54e12c05-2332-49e9-a921-b50c1f176967,info,1778257748135000
+"[V5-KIND] module=5 moduleTitle=""Trabalhando com JSON e APIs Web"" kind=py_generic
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,98457fad-400d-4148-86fb-052134200f17,info,1778257748135000
+"[TECH-PRESERVE] module_5_slide_4 field=items[0] tokens=1 kinds=json_method:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,3fb35135-9f94-4fd9-a570-184fc099517d,info,1778257748135000
+"[TECH-PRESERVE] module_4_slide_4 field=items[2] tokens=3 kinds=python_keyword:3
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,b0e0dd89-8236-4746-aef2-6fc9f0e0dbe5,info,1778257748134000
+"[TECH-PRESERVE] module_4_slide_4 field=items[1] tokens=1 kinds=python_keyword:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,ac711488-4530-48b1-8adf-8bcf74be273b,info,1778257748134000
+"[TECH-PRESERVE] module_4_slide_3 field=items[0] tokens=2 kinds=python_keyword:1,python_builtin:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,e33dcedb-8efa-4220-8b58-0771cd4edd7b,info,1778257748133000
+"[TECH-PRESERVE] module_4_slide_3 field=items[1] tokens=2 kinds=python_keyword:2
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,102baf90-0e68-4307-be84-a291d0457675,info,1778257748133000
+"[TECH-PRESERVE] module_4_slide_2 field=items[7] tokens=3 kinds=quoted_mode:3
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,69293a8d-3430-4b00-b26b-fdb1575ce3ea,info,1778257748133000
+"[TECH-PRESERVE] module_4_slide_2 field=items[3] tokens=4 kinds=quoted_mode:4
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,4e1f5771-39d3-490e-b8da-948100c27c9d,info,1778257748133000
+"[V5-KIND] module=4 moduleTitle=""Manipulação de Arquivos e Exceções"" kind=py_files
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,9ea1d936-13d5-4fe8-9f84-128bb8071a5d,info,1778257748131000
+"[V5-KIND] module=3 moduleTitle=""Estruturas de Dados Fundamentais"" kind=py_datastructs
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,0112ddeb-0bc0-4fce-ae25-abfe9163a5f3,info,1778257748127000
+"[TECH-PRESERVE] module_2_slide_3 field=items[2] tokens=2 kinds=python_keyword:2
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,31a3267a-a948-4a6a-82e4-263252fb9e1a,info,1778257748127000
+"[TECH-PRESERVE] module_2_slide_3 field=items[1] tokens=1 kinds=python_keyword:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,ebcc48d7-b972-4db1-9392-e537cb90ac4d,info,1778257748126000
+"[V5-KIND] module=2 moduleTitle=""Controle de Fluxo e Funções"" kind=py_flow
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,0c74b0ce-98f7-4128-a430-aaf8e7ab8452,info,1778257748125000
+"[TECH-PRESERVE] module_1_slide_4 field=items[0] tokens=1 kinds=python_keyword:1
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,7baec9d6-c136-4210-9a32-150821a20a55,info,1778257748120000
+"[V5-KIND] module=1 moduleTitle=""Fundamentos Essenciais de Python"" kind=py_basics
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,4a95654f-9fcb-490f-8626-e4ab7977b51b,info,1778257748106000
+"[V5-TEMPLATE] Splits applied | template=dark_theme | processMax=4 | takeawaysMax=8 | cardsMax=3
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,53b1d742-2ed1-460a-80f3-7fbfe0df318d,info,1778257748102000
+"[V5-TEMPLATE] Resolved template: ""dark_theme"" | modules=8 | tocLimit=6
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,2f961557-a61e-406b-a7e8-7ebcfd16a798,info,1778257748101000
+"[V5] Module 8: 4 raw → 4 split → 4 final
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,03850104-a8c1-493b-8701-c5cb0efb575d,info,1778257748094000
+"[V5] Module 7: 4 raw → 4 split → 4 final
+",Log,1df543b1-6947-4c92-a63a-c22479699920,533e62c9-4529-43b4-863d-ed08e7072475,ef52883c-b51f-4faa-84f2-3cec439376c6,info,1778257747455000

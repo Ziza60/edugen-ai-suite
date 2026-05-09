@@ -1,0 +1,291 @@
+O v5.7.2 avançou parcialmente, mas os logs e o PPTX mostram que as regras novas NÃO dispararam de forma consistente nos casos reais.
+
+O repair para:
+- wrap_method_in_print
+
+funcionou.
+
+Mas:
+- inject_missing_return
+- function_call_demo
+
+NÃO funcionaram corretamente nos slides reais 14 e 43.
+
+Precisamos investigar isso cirurgicamente.
+
+NÃO mexer em:
+- frontend;
+- planner modular;
+- preservation layer;
+- renderer;
+- layout engine;
+- billing;
+- schema;
+- rotas;
+- ExportButtons;
+- engine selection;
+- fallback policy;
+- qaVeto.
+
+Objetivo:
+descobrir por que o repair funciona nos testes mas não nos slides reais.
+
+========================================
+1. INVESTIGAÇÃO REAL DOS SLIDES 14 E 43
+========================================
+
+Quero investigação baseada no PPTX REAL, não apenas smoke tests.
+
+Slides problemáticos:
+
+Slide 14:
+```python
+def calcularvalortotal(...):
+    ...
+    desconto = ...
+
+Sem:
+
+return;
+resultado = ...;
+print(resultado).
+
+Slide 43:
+
+def processar_dados(...):
+    ...
+    soma = sum(...)
+    logging.debug(...)
+
+Sem:
+
+return soma;
+chamada da função;
+print(resultado).
+
+O v5.7.2 deveria corrigir ambos.
+Não corrigiu.
+
+========================================
+2. ADICIONAR TRACE DETALHADO
+
+Quero logs detalhados dentro do pipeline de repair.
+
+Adicionar:
+
+[OBSERVABLE-TRACE]
+slide=...
+phase=detect|repair|revalidate
+reason=...
+detectedFunctions=[...]
+lastAssignment=...
+hasReturn=true|false
+hasObservableOutcome=true|false
+repairApplied=...
+repairSkippedReason=...
+
+========================================
+3. INVESTIGAR A CAUSA RAIZ
+
+Hipóteses possíveis:
+
+parser não identifica corretamente o escopo da função;
+última atribuição está dentro de bloco if/elif;
+regex não encontra variável final;
+logging.debug() impede o detector;
+slide.code está chegando truncado;
+repair roda antes do preservation restore;
+validateSemanticCodeCompleteness roda em texto diferente do repair;
+function_call_demo não roda após inject_missing_return;
+repair é revertido depois por outro pass;
+code synthesis sobrescreve o snippet.
+
+Quero diagnóstico REAL baseado no pipeline completo.
+
+========================================
+4. GARANTIR ENCADEAMENTO DE REPAIRS
+
+Hoje parece:
+detect missing return
+→ inject return
+→ fim
+
+Mas deveria ser:
+detect missing return
+→ inject return
+→ reparse AST/code
+→ detect missing observable outcome
+→ inject call demo
+→ revalidate final
+
+Quero pipeline explícito:
+
+repairObservableFlow():
+
+inject_missing_return
+reparse code
+function_call_demo
+observable outcome validation
+final semantic validation
+========================================
+5. TRATAR ATRIBUIÇÃO EM BLOCOS CONDICIONAIS
+
+O slide 14 provavelmente falha porque:
+
+if total > 80:
+    desconto = ...
+elif total > 50:
+    desconto = ...
+
+e o detector talvez não ache “última atribuição final”.
+
+Criar lógica:
+
+identificar variável acumuladora;
+identificar variável final computada;
+detectar variável usada no cálculo final;
+permitir múltiplos caminhos condicionais.
+
+Exemplo:
+
+desconto = ...
+totalliquido = totalbruto - desconto
+
+→ deve inferir:
+
+return totalliquido
+
+mesmo com if/elif antes.
+
+========================================
+6. LOGGING NÃO PODE IMPEDIR DETECÇÃO
+
+No slide 43:
+
+soma = sum(dados)
+logging.debug(...)
+
+O detector parece achar que logging.debug() é “última linha útil”.
+
+Mas semanticamente:
+
+soma é o resultado;
+logging é side-effect.
+
+Quero:
+
+ignorar logging/debug/info/error para determinação do resultado computacional;
+priorizar variável calculada.
+========================================
+7. REVALIDAÇÃO OBRIGATÓRIA
+
+Após inject_missing_return:
+
+reparse;
+rerun validators;
+rerun observable checks.
+
+Não aceitar repair parcial.
+
+========================================
+8. TESTES REAIS
+
+Não quero apenas smoke tests artificiais.
+
+Criar testes reproduzindo exatamente:
+
+Caso 14:
+
+def calcularvalortotal(carrinhodecompras):
+    totalbruto = 0.0
+    ...
+    desconto = ...
+
+Caso 43:
+
+def processar_dados(dados):
+    soma = sum(dados)
+    logging.debug(...)
+
+O resultado final esperado deve ser:
+
+return ...
+resultado = ...
+print(resultado)
+========================================
+9. TRUNCAMENTO VISUAL
+
+Slide 45:
+
+software de alta qualidade e fácil.
+
+Isso continua truncado semanticamente.
+
+Adicionar:
+
+detector de frase terminando em adjetivo/conjunção incompleta;
+repair curto determinístico;
+ou rewrite da bullet.
+
+Exemplo:
+ANTES:
+
+software de alta qualidade e fácil.
+
+DEPOIS:
+
+software de alta qualidade e fácil manutenção.
+========================================
+10. NÃO QUERO
+
+Não quero:
+
+mascarar removendo código;
+converter CODE → bullets;
+reduzir slides artificialmente;
+esconder snippets;
+fallback silencioso;
+hardcode específico apenas para slide 14.
+
+Quero:
+correção arquitetural do fluxo observable outcome.
+
+========================================
+11. CRITÉRIO DE ACEITE
+
+Novo export:
+“Introdução à Programação em Python”
+
+Esperado:
+
+Slide 14:
+
+return totalliquido;
+resultado = calcularvalortotal(...);
+print(resultado);
+
+Slide 43:
+
+return soma;
+resultado = processar_dados(...);
+print(resultado);
+
+Slide 39:
+
+manter print(livro1.exibir_info());
+
+Slide 45:
+
+sem frase truncada;
+
+Sem regressão:
+
+POO;
+planner modular;
+preservation layer;
+tokens;
+layout;
+engine v4/v5.7.x.
+
+Quero primeiro o diagnóstico real do pipeline e dos repairs.
+Não quero mais “parece que deveria funcionar”.

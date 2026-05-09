@@ -58,8 +58,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ── CACHE CHECK ── v2 prefix invalidates old 800-token truncated results
-    const cacheKey = await hashInput(`enhance:v2:${action}:${language}:${text}`);
+    // ── CACHE CHECK ──
+    const cacheKey = await hashInput(`enhance:${action}:${language}:${text}`);
     const { data: cached } = await serviceClient
       .from("ai_cache")
       .select("response_text")
@@ -83,37 +83,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    const model = "gemini-2.5-flash"; 
+    const model = "gemini-3-flash-preview"; 
 
     const systemPrompts: Record<string, string> = {
-      improve:   `Você é um editor pedagógico especialista. Melhore o texto fornecido mantendo o mesmo significado mas tornando-o mais claro, conciso e profissional. Mantenha o formato markdown. Responda APENAS com o texto melhorado, sem explicações.`,
-      simplify:  `Você é um editor pedagógico. Simplifique o texto fornecido para que seja compreensível por iniciantes. Use linguagem simples e direta. Mantenha o formato markdown. Responda APENAS com o texto simplificado.`,
-      expand:    `Você é um editor pedagógico. Expanda o texto fornecido com mais detalhes, exemplos e explicações. Mantenha o formato markdown. Responda APENAS com o texto expandido.`,
-      fix:       `Você é um editor. Corrija erros gramaticais, ortográficos e de formatação no texto. Mantenha o formato markdown. Responda APENAS com o texto corrigido.`,
-      shorten:   `Você é um editor pedagógico. Reduza o texto fornecido para a metade, preservando os pontos mais importantes. Seja direto e elimine redundâncias. Mantenha o formato markdown. Responda APENAS com o texto encurtado.`,
-      deepen:    `Você é um especialista pedagógico. Aprofunde o texto com conceitos técnicos, nuances, referências ou frameworks relevantes para quem já tem conhecimento básico. Mantenha o formato markdown. Responda APENAS com o texto aprofundado.`,
-      example:   `Você é um educador. Gere um exemplo prático, concreto e detalhado que ilustre bem o conceito descrito no texto. Pode ser um caso real, analogia ou cenário. Formate como markdown com título "## Exemplo Prático". Responda APENAS com o exemplo.`,
-      practical: `Você é um designer instrucional. Transforme o conteúdo fornecido em uma aula prática com: objetivo claro, atividade hands-on passo a passo, dicas de execução e critérios de sucesso. Formate com seções markdown. Responda APENAS com a aula prática.`,
-      activity:    `Você é um designer instrucional. Crie uma atividade de aprendizagem baseada no conteúdo: descreva o objetivo, as instruções passo a passo, os materiais necessários e como avaliar o resultado. Formate com seções markdown. Responda APENAS com a atividade.`,
-      regenerate:  `Você é um especialista pedagógico e redator de cursos. Reescreva completamente este conteúdo de módulo com uma abordagem mais rica e didática. Mantenha o tema mas crie estrutura nova com: objetivo de aprendizagem, conceitos principais explicados com profundidade, pelo menos um exemplo prático concreto, e um resumo dos pontos-chave. Use markdown com seções ## e listas onde apropriado. Responda APENAS com o novo conteúdo do módulo.`,
+      improve: `Você é um editor pedagógico especialista. Melhore o texto fornecido mantendo o mesmo significado mas tornando-o mais claro, conciso e profissional. Mantenha o formato markdown. Responda APENAS com o texto melhorado, sem explicações.`,
+      simplify: `Você é um editor pedagógico. Simplifique o texto fornecido para que seja compreensível por iniciantes. Use linguagem simples e direta. Mantenha o formato markdown. Responda APENAS com o texto simplificado.`,
+      expand: `Você é um editor pedagógico. Expanda o texto fornecido com mais detalhes, exemplos e explicações. Mantenha o formato markdown. Responda APENAS com o texto expandido.`,
+      fix: `Você é um editor. Corrija erros gramaticais, ortográficos e de formatação no texto. Mantenha o formato markdown. Responda APENAS com o texto corrigido.`,
     };
 
     const systemPrompt = systemPrompts[action] || systemPrompts.improve;
-
-    // Content-generating actions need more tokens than editing actions
-    const maxTokensByAction: Record<string, number> = {
-      improve:    1200,
-      simplify:   1000,
-      expand:     1500,
-      fix:        1000,
-      shorten:     800,
-      deepen:     1800,
-      example:    2000,
-      practical:  2500,
-      activity:   2500,
-      regenerate: 3000,
-    };
-    const maxTokens = maxTokensByAction[action] ?? 1200;
 
     const response = await fetch(url, {
       method: "POST",
@@ -128,7 +107,7 @@ Deno.serve(async (req: Request) => {
           { role: "user", content: text },
         ],
         stream: false,
-        max_tokens: maxTokens,
+        max_tokens: 800,
       }),
     });
 
@@ -165,7 +144,7 @@ Deno.serve(async (req: Request) => {
         action_type: action,
         prompt_preview: text.substring(0, 100),
         response_text: enhanced,
-      }).then(() => {}).catch(() => {}); // non-blocking cache write
+      });
     }
 
     return new Response(JSON.stringify({ enhanced }), {

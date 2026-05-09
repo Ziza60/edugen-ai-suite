@@ -2,8 +2,35 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import JSZip from "npm:jszip@3.10.1";
+import {
+  generatePresentationPlan,
+  presentationPlanToV5Slides,
+  type V5SlideLike,
+  // v5.3.0 — modular export architecture
+  MAX_PLANNER_SLIDES_PER_MODULE,
+  MIN_PLANNER_SLIDES_PER_MODULE,
+  buildDefaultBlueprint,
+  type GlobalBlueprint,
+  type ModuleDeck,
+  type ModuleQADiagnostic,
+  type ModulePlannerDiagnostic,
+  type CourseExportPlan,
+  // v5.5.3 — module isolation guard
+  getModuleRule,
+  computeOopPositivityFraction,
+} from "./presentation-plan.ts";
+import {
+  withTechnicalProtection,
+  detectTechnicalTokens,
+  detectTechnicalTokenDamage,
+  scanSlideForTechnicalDamage,
+} from "./technical-preservation.ts";
+import {
+  polishEditorialTitle,
+  polishEditorialText,
+} from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.0.0";
+const ENGINE_VERSION = "5.7.3";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -120,6 +147,1357 @@ function san(text: string): string {
     .replace(/\|/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// ═══════════════════════════════════════════════════════════
+// SEMANTIC REGION ASSIGNMENT — v5.4.8
+// ═══════════════════════════════════════════════════════════
+// Bug history: prior renderers split card items on the FIRST ": " whenever
+// `colonIdx < 50`. That promoted long descriptive prose with an embedded
+// colon (e.g. "def define um bloco de código reutilizável: você pode
+// chamá-lo várias vezes") into the BOLD/LARGE title region while a tiny
+// trailing fragment ended up as the body — visually indistinguishable from
+// a runaway headline. This is the "semantic region assignment" defect
+// reported for slides 13/30/43.
+//
+// `parseCardItem` is the SINGLE source of truth for "should this item be
+// rendered as Title + Body, or as Body only?" — used by renderCards (all
+// archetypes) and renderDiagram. Strict acceptance: prefix must look like
+// a real label (≤28 chars, ≤3 words, no conjugated verb, no stop-word
+// tail) AND body must be substantial (≥4 words). Anything else is treated
+// as body-only — NEVER fabricate a header by stealing from body content.
+//
+// All decisions are logged with `[LAYOUT-REGION-DEBUG]` so production
+// traces show exactly which item was split, which was kept whole, and why.
+const PARSE_STOP_TAIL_RE =
+  /\b(de|do|da|dos|das|em|no|na|nos|nas|com|para|por|que|se|é|ou|e|a|o|à|às|aos|um|uma|uns|umas|of|in|on|with|for|by|the|to)$/i;
+const PARSE_VERB_3P_RE =
+  /^(define|definem|registra|registram|permite|permitem|cria|criam|gera|geram|exibe|exibem|aplica|aplicam|envia|enviam|recebe|recebem|valida|validam|trata|tratam|captura|capturam|utiliza|utilizam|garante|garantem|habilita|habilitam|verifica|verificam|analisa|analisam|identifica|identificam|prepara|preparam|limpa|limpam|atribui|atribuem|retorna|retornam|chama|chamam|importa|importam|executa|executam|inicializa|inicializam|herda|herdam|encapsula|encapsulam|sobrescreve|sobrescrevem|implementa|implementam|abstrai|abstraem|modifica|modificam|controla|controlam|gerencia|gerenciam|configura|configuram|monitora|monitoram|otimiza|otimizam|usa|usam|faz|fazem|tem|têm|é|são|está|estão|pode|podem|deve|devem)$/i;
+
+interface ParsedCardItem {
+  title: string;
+  body: string;
+  split: "accepted" | "rejected";
+  reason?: string;
+  semanticRole: "card_title_body" | "body_content";
+}
+
+function parseCardItem(
+  text: string,
+  ctx: { slideNum?: number | string; layout?: string; itemIdx?: number; archetype?: string },
+): ParsedCardItem {
+  const t = (text || "").trim();
+  const tag =
+    `[LAYOUT-REGION-DEBUG] slide=${ctx.slideNum ?? "?"} layout=${ctx.layout ?? "?"}` +
+    `${ctx.archetype ? ` arch=${ctx.archetype}` : ""} itemIdx=${ctx.itemIdx ?? "?"}`;
+
+  const ci = t.indexOf(": ");
+  if (ci <= 0) {
+    console.log(`${tag} split=rejected reason=no_colon promotionDetected=false`);
+    return { title: "", body: t, split: "rejected", reason: "no_colon", semanticRole: "body_content" };
+  }
+
+  const prefix = t.slice(0, ci).trim();
+  const suffix = t.slice(ci + 2).trim();
+  const prefixWords = prefix.split(/\s+/).filter(Boolean);
+  const suffixWords = suffix.split(/\s+/).filter(Boolean);
+
+  // Reject conditions — each protects against semantic body→header promotion.
+  let reason: string | null = null;
+  if (prefix.length > 28) {
+    reason = `prefix_too_long(${prefix.length}>28)`;
+  } else if (prefixWords.length > 3) {
+    reason = `prefix_too_many_words(${prefixWords.length}>3)`;
+  } else if (suffixWords.length < 4) {
+    reason = `body_too_short(${suffixWords.length}<4)`;
+  } else if (PARSE_STOP_TAIL_RE.test(prefix)) {
+    reason = "prefix_ends_with_stopword";
+  } else if (prefixWords.length >= 2 && prefixWords.some((w) => PARSE_VERB_3P_RE.test(w))) {
+    reason = "prefix_contains_conjugated_verb";
+  }
+
+  if (reason) {
+    console.log(
+      `${tag} split=rejected reason=${reason} promotionDetected=false ` +
+      `prefix="${prefix.slice(0, 40)}" body_preview="${suffix.slice(0, 40)}"`,
+    );
+    // Keep entire text as body — semantic protection in action.
+    return { title: "", body: t, split: "rejected", reason, semanticRole: "body_content" };
+  }
+
+  console.log(
+    `${tag} split=accepted promotionDetected=false title="${prefix}" body="${suffix.slice(0, 50)}"`,
+  );
+  return { title: prefix, body: suffix, split: "accepted", semanticRole: "card_title_body" };
+}
+
+// normalizeSlideLabel — v5.4.9 — protect the slide-level "section badge"
+// region from receiving descriptive prose. Planner sometimes emits the
+// slide title itself (or a full sentence) into `label`, which then gets
+// uppercased + bolded by `header()` and visually dominates the slide as a
+// runaway headline. A real label is a SHORT TAG: ≤4 words AND ≤25 chars,
+// no conjugated verb, no stop-word tail. Anything else falls back to the
+// caller-provided default ("CONTEÚDO" / "FLUXO" / "PROCESSO" / etc.).
+function normalizeSlideLabel(
+  rawLabel: string | undefined | null,
+  defaultLabel: string,
+  ctx?: { slideNum?: number | string },
+): string {
+  const tag = `[LAYOUT-REGION-DEBUG] slide=${ctx?.slideNum ?? "?"} field=slide_label`;
+  const raw = String(rawLabel ?? "").trim();
+  if (!raw) {
+    return defaultLabel.slice(0, 32).toUpperCase();
+  }
+  const words = raw.split(/\s+/).filter(Boolean);
+  let reason: string | null = null;
+  if (raw.length > 25) reason = `label_too_long(${raw.length}>25)`;
+  else if (words.length > 4) reason = `label_too_many_words(${words.length}>4)`;
+  else if (PARSE_STOP_TAIL_RE.test(raw)) reason = "label_ends_with_stopword";
+  else if (words.length >= 2 && words.some((w) => PARSE_VERB_3P_RE.test(w))) {
+    reason = "label_contains_conjugated_verb";
+  }
+  if (reason) {
+    console.log(
+      `${tag} accepted=false reason=${reason} promotionDetected=true ` +
+      `original="${raw.slice(0, 60)}" → fallback="${defaultLabel}"`,
+    );
+    return defaultLabel.slice(0, 32).toUpperCase();
+  }
+  console.log(`${tag} accepted=true promotionDetected=false label="${raw}"`);
+  return raw.slice(0, 32).toUpperCase();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// v5.5.1 — FINAL GUARDRAILS (run once, just before render)
+// Belt-and-suspenders pass that catches three classes of damage that
+// can survive every prior layer because they are introduced by template
+// splits / legacy chunks / planner output that bypass cleanSlideTitle:
+//   1. Title still starting with "Que <X>?" → "Por que <x>?"
+//   2. layout="code" without any code → demote to "bullets"
+//   3. Last code line is a dangling assignment (var = expr; var unused
+//      and no print/return after) → append `print(var)` to complete it
+// All changes are LOG-ANNOUNCED and never throw. Pure additive layer.
+// ─────────────────────────────────────────────────────────────────────
+
+// Detect bare "Que ..." title patterns the planner sometimes emits.
+// Kept loose: any title whose first word (case-insensitive) is "Que"
+// and which doesn't already start with "Por que" / "O que" / "Para que"
+// / "Que é" / "Que são" is a candidate for rewrite.
+const BARE_QUE_TITLE_RE = /^que\s+\S+/i;
+
+function rewriteBareQueTitle(rawTitle: string, slideNum: number | string): string {
+  const raw = (rawTitle || "").trim();
+  if (!raw) return raw;
+  const lower = raw.toLowerCase();
+  if (
+    !lower.startsWith("que ") ||
+    lower.startsWith("que é ") ||
+    lower.startsWith("que são ") ||
+    /\bpor\s+que\b/i.test(raw) ||
+    /\bo\s+que\b/i.test(raw) ||
+    /\bpara\s+que\b/i.test(raw)
+  ) {
+    return raw;
+  }
+  // Strip leading "Que ", strip trailing "?" if present, lowercase first
+  // letter of remainder. Always append "?" so the result is still a
+  // question. Keeps trailing punctuation simple — no verb conjugation
+  // here (that's the optimistic path inside polishEditorialTitle); this
+  // pass is deliberately conservative because it runs LAST.
+  const stripped = raw.replace(/^que\s+/i, "").replace(/\?\s*$/, "").trim();
+  if (!stripped) return raw;
+  const remainder = stripped.charAt(0).toLowerCase() + stripped.slice(1);
+  const polished = `Por que ${remainder}?`;
+  if (polished !== raw) {
+    console.log(
+      `[TITLE-POLISH-FINAL] slide=${slideNum} before="${raw}" after="${polished}"`,
+    );
+  }
+  return polished;
+}
+
+// Detect a dangling final assignment in Python-style code:
+//   varname = expression
+// where varname is never used again after this line and no print/return
+// closes the snippet. We append `print(varname)` so the snippet ends
+// with a meaningful, complete statement.
+function repairDanglingAssignment(code: string, slideNum: number | string): string {
+  if (!code || !code.trim()) return code;
+  // Language gate: only safe to append print() in Python-style code.
+  // Skip if SQL (DDL/DML keywords) or JS/TS markers detected — appending
+  // print() to those would introduce syntax errors.
+  const codeUpper = code.toUpperCase();
+  const isSql = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE|COMMIT|ROLLBACK|WITH|FROM|WHERE|JOIN)\b/.test(codeUpper);
+  const isJs = /\b(const|let|var|function|=>|console\.log|require\(|import\s+\{)/.test(code);
+  if (isSql || isJs) return code;
+  const lines = code.split("\n");
+  // Walk backwards to find the last non-blank, non-comment line
+  let lastIdx = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (!t) continue;
+    if (t.startsWith("#") || t.startsWith("//") || t.startsWith("--")) continue;
+    lastIdx = i;
+    break;
+  }
+  if (lastIdx < 0) return code;
+  const lastLine = lines[lastIdx];
+
+  // ── Pattern A: bare assignment "varname = expression" at end ──
+  // Repair only when nothing AFTER this line uses the variable AND
+  // there is no terminating output (print/return/yield/raise) anywhere
+  // after. Reassignment earlier in the snippet (varName appearing in
+  // `before`) does NOT count as "used" — that's just shadowing, the
+  // last assignment is still dangling. (v5.5.2 fix for slide 14:
+  // `desconto = bruto * 0.05; desconto = bruto * 0.10` ending.)
+  const assignMatch = lastLine.match(/^(\s*)([A-Za-z_][\w]*)\s*=\s*(?!=)(.+\S)\s*$/);
+  if (assignMatch) {
+    const indent = assignMatch[1];
+    const varName = assignMatch[2];
+    const opens = (lastLine.match(/[([{]/g) ?? []).length;
+    const closes = (lastLine.match(/[)\]}]/g) ?? []).length;
+    if (opens !== closes) return code; // multi-line expr — bail
+    const after = lines.slice(lastIdx + 1).join("\n");
+    const usedAfter = new RegExp(`\\b${varName}\\b`).test(after);
+    const hasFinalOutput = /\b(print|return|yield|raise)\s*[\(:\s]/.test(after);
+    if (hasFinalOutput || usedAfter) return code;
+    const repaired = lines
+      .slice(0, lastIdx + 1)
+      .concat([`${indent}print(${varName})`])
+      .concat(lines.slice(lastIdx + 1))
+      .join("\n");
+    console.log(
+      `[CODE-COMPLETE-REPAIR] slide=${slideNum} pattern=dangling_assignment var="${varName}" → appended print(${varName})`,
+    );
+    return repaired;
+  }
+
+  // ── Pattern B: function defined but never called ──
+  // Last meaningful line is `return <expr>` (or just `pass`) — the
+  // snippet defines a function and ends inside it. If we can find the
+  // enclosing `def funcname(...)` and that name is never called below
+  // the def, append a `print(funcname(<placeholder>))` at column 0.
+  // (v5.5.2 fix for slide 47: function ending with `return 0.0`.)
+  const isReturnEnd = /^\s+(return\b|pass\s*$)/.test(lastLine);
+  if (isReturnEnd) {
+    let defIdx = -1;
+    let defIndent = "";
+    let funcName = "";
+    let funcArgs = "";
+    for (let i = lastIdx - 1; i >= 0; i--) {
+      const m = lines[i].match(/^(\s*)def\s+([A-Za-z_][\w]*)\s*\(([^)]*)\)/);
+      if (m) {
+        defIdx = i;
+        defIndent = m[1];
+        funcName = m[2];
+        funcArgs = m[3];
+        break;
+      }
+    }
+    if (defIdx < 0 || !funcName) return code;
+    // Only handle module-level defs (no leading indent on `def`)
+    if (defIndent !== "") return code;
+    // If funcname appears as a call anywhere outside the def body, snippet is fine
+    const callRe = new RegExp(`\\b${funcName}\\s*\\(`);
+    const beforeDef = lines.slice(0, defIdx).join("\n");
+    if (callRe.test(beforeDef)) return code;
+    // Build a placeholder argument list: int args → 0, str-ish → "x", default → None.
+    const argList = funcArgs
+      .split(",")
+      .map((a) => a.trim())
+      .filter((a) => a && a !== "self")
+      .map((a) => {
+        const name = a.split(/[:=]/)[0].trim().toLowerCase();
+        // Numeric: explicit semantic names + common single-letter math params
+        // (a/b/c/d/m/n/x/y/i/j/k). Defaulting these to None would raise
+        // TypeError on any arithmetic operation inside the function body.
+        if (/preco|valor|num|qtd|total|count|idade|^[abcdmnxyijk]$|n$|x$|y$|i$/.test(name)) return "0";
+        if (/nome|name|texto|str|msg|titulo/.test(name)) return '"x"';
+        return "None";
+      })
+      .join(", ");
+    const callLine = `print(${funcName}(${argList}))`;
+    const repaired = code.replace(/\s*$/, "") + "\n" + callLine + "\n";
+    console.log(
+      `[CODE-COMPLETE-REPAIR] slide=${slideNum} pattern=def_without_call func="${funcName}" → appended ${callLine}`,
+    );
+    return repaired;
+  }
+
+  return code;
+}
+
+// Normalize a title for adjacent-duplicate comparison: lowercase, strip
+// punctuation/whitespace, collapse spaces. Two titles that normalize
+// to the same string are considered duplicates.
+function normalizeTitleForCompare(t: string): string {
+  return (t || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// v5.5.4 — bullet that is actually a code fragment leaking from the planner.
+// User report: slide 15 had bullet "{pizza['nome']} - R${pizza['preco']:.2f}")"
+// — that's the inside of an f-string that escaped from the code field. Detect
+// and drop these so the bullet list doesn't render gibberish.
+function isCodeFragmentBullet(s: string): boolean {
+  if (!s) return false;
+  const t = s.trim();
+  if (t.length < 4) return false;
+  // f-string interior fragment: contains {...['key']} or f"...{
+  if (/\{\s*['"]?\w+['"]?\s*\[\s*['"]/.test(t)) return true;       // {pizza['nome']
+  if (/\bf["'][^"']*\{/.test(t)) return true;                       // f"...{
+  // Template literal / format spec
+  if (/:\.\d+f\s*["']?\)?\s*$/.test(t)) return true;                // :.2f")
+  // Ends with `}")`, `}")`, `)"` — typical print(f"...") tail
+  if (/[}\)]['"]\)\s*$/.test(t)) return true;
+  // Bare Python statement starters (case-sensitive — uppercase prose like "Print" allowed)
+  if (/^(print|return|def|class|import|from|if |for |while |try:|except|raise |yield )\s*[\(\s:]/.test(t)) return true;
+  // Standalone comment or shell prompt
+  if (/^(#|>>>|\$ )/.test(t)) return true;
+  return false;
+}
+
+// v5.5.4 — strip trailing "# ..." or "// ..." placeholder comments from code.
+// User report: slides 38/42 ended in `# ...` indicating planner left an
+// implementation gap. Render-time, these read as incomplete demonstrations.
+function stripTrailingPlaceholderComment(code: string): string {
+  if (!code) return code;
+  const lines = code.split("\n");
+  let changed = false;
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1].trim();
+    if (!last) { lines.pop(); changed = true; continue; }
+    if (/^(#|\/\/|--)\s*\.{2,}\s*$/.test(last)) { lines.pop(); changed = true; continue; }
+    if (/^(#|\/\/|--)\s*\.{2,}\s*\(.*?\)\s*$/.test(last)) { lines.pop(); changed = true; continue; } // # ... (resto)
+    if (/^(#|\/\/|--)\s*(\.{2,}|TODO|FIXME|XXX|continuar|placeholder|completar)/i.test(last)) { lines.pop(); changed = true; continue; }
+    break;
+  }
+  return changed ? lines.join("\n") : code;
+}
+
+// v5.5.5/v5.5.6 — extract symbols defined in a slide's code so subsequent
+// slides' repairs can stay coherent with what the student already saw.
+// v5.5.6 widens to include funcs/imports for fuller context.
+type CodeSymbols = {
+  classes: string[];
+  vars: string[];
+  funcs: string[];
+  imports: string[];
+};
+function extractCodeSymbols(code: string | null | undefined): CodeSymbols {
+  const out: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] };
+  if (!code) return out;
+  for (const line of code.split("\n")) {
+    const c = line.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/);
+    if (c) out.classes.push(c[1]);
+    const v = line.match(/^\s*([a-z_][a-z0-9_]*)\s*=\s*[A-Z][A-Za-z0-9_]*\s*\(/);
+    if (v) out.vars.push(v[1]);
+    const f = line.match(/^\s*def\s+([a-z_][\w]*)\s*\(/);
+    if (f) out.funcs.push(f[1]);
+    const im = line.match(/^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))/);
+    if (im) out.imports.push(im[1] || im[2]);
+  }
+  return out;
+}
+
+// v5.5.6 — aggregate semantic context across ALL slides accepted so far
+// in the same module. Used as moduleCtx by repair so completions reuse
+// names introduced earlier in the module — not just the immediate slide.
+function extractSemanticCodeContext(slides: Slide[]): CodeSymbols {
+  const ctx: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] };
+  const seen = { classes: new Set<string>(), vars: new Set<string>(), funcs: new Set<string>(), imports: new Set<string>() };
+  for (const s of slides) {
+    const sy = extractCodeSymbols(s.code);
+    for (const c of sy.classes) if (!seen.classes.has(c)) { seen.classes.add(c); ctx.classes.push(c); }
+    for (const v of sy.vars) if (!seen.vars.has(v)) { seen.vars.add(v); ctx.vars.push(v); }
+    for (const f of sy.funcs) if (!seen.funcs.has(f)) { seen.funcs.add(f); ctx.funcs.push(f); }
+    for (const i of sy.imports) if (!seen.imports.has(i)) { seen.imports.add(i); ctx.imports.push(i); }
+  }
+  return ctx;
+}
+
+// v5.5.5 / v5.7.1 — semantic completeness check on a code snippet.
+// Returns null when complete enough to render; otherwise a short reason.
+//
+// v5.7.1 hardening — code "completeness" for an educational slide is no
+// longer just "syntactically runnable". A snippet must DEMONSTRATE its
+// concept to a student. New rules:
+//
+//   - `function_defined_but_uncalled` — a top-level `def name(...)` exists
+//     but `name(...)` is never invoked anywhere else in the snippet (and
+//     is not used as a decorator `@name`). Slides 13/43/49 in the user
+//     report all triggered this: function defined, never called, no
+//     observable output.
+//
+//   - `class_instance_no_method_call` (REPLACES old `class_defined_but_unused`
+//     escape via `print(obj)`) — defining a class and instantiating it is
+//     not enough; `print(<instance>)` alone is not enough (it just prints
+//     the object's address). At least one instance must do a real method
+//     call (`obj.method(...)`) or attribute access (`obj.attr`).
+//     Slide 35 ("Classe Carro") triggered this.
+//
+// Old behavior preserved as fallback `class_defined_but_no_output`.
+function validateSemanticCodeCompleteness(code: string): string | null {
+  if (!code || !code.trim()) return "empty";
+  const t = code.trim();
+  const lines = t.split("\n");
+  for (const ln of lines) {
+    const s = ln.trim();
+    if (/^\.{3,}$/.test(s)) return "ellipsis_placeholder";
+    if (/^(#|\/\/|--)\s*\.{2,}/.test(s)) return "ellipsis_comment_placeholder";
+    if (/^(#|\/\/|--)\s*(continua|restante omitido|resto omitido|TODO|FIXME|XXX)/i.test(s)) return "todo_placeholder";
+  }
+  const codeLines = lines.filter((l) => {
+    const x = l.trim();
+    return x && !x.startsWith("#") && !x.startsWith("//") && !x.startsWith("--");
+  }).length;
+  if (codeLines < 2) return "too_few_code_lines";
+  const lastNonBlank = (() => {
+    for (let i = lines.length - 1; i >= 0; i--) if (lines[i].trim()) return lines[i].trim();
+    return "";
+  })();
+  if (/[,:({\[]\s*$/.test(lastNonBlank)) return "trailing_open_bracket";
+
+  // ── v5.7.1 — class hardening: instantiation + REAL method/attr access ──
+  const classMatch = t.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/m);
+  if (classMatch) {
+    const cls = classMatch[1];
+    // Find all instance assignments at top level: `name = ClassName(...)`
+    const instRe = new RegExp(`^\\s*([a-z_][\\w]*)\\s*=\\s*${cls}\\s*\\(`, "gm");
+    const instances: string[] = [];
+    let im: RegExpExecArray | null;
+    while ((im = instRe.exec(t)) !== null) instances.push(im[1]);
+    if (instances.length === 0) return "class_defined_but_unused";
+    // For at least one instance, require attribute or method access.
+    // `inst.something` matches both `inst.method(` and `inst.attr` —
+    // `print(inst)` (no dot after inst) does NOT match.
+    const hasRealUse = instances.some((inst) =>
+      new RegExp(`\\b${inst}\\s*\\.\\s*[a-zA-Z_]\\w*`).test(t),
+    );
+    if (!hasRealUse) return "class_instance_no_method_call";
+  }
+
+  // ── v5.7.3 — function_returns_implicit_none (REORDERED before
+  // function_defined_but_uncalled). Rationale: a function with no `return`
+  // is broken regardless of whether it's called. Fixing the function FIRST
+  // means the subsequent call-demo (added by function_defined_but_uncalled
+  // repair) prints the actual computed value instead of `None`. Without
+  // this reorder, slides 14/43 hit `function_defined_but_uncalled` first,
+  // got a call-demo that printed None, and the convergent loop only
+  // discovered the missing return on a later cycle.
+  {
+    const allLines = t.split("\n");
+    const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
+    for (let i = 0; i < allLines.length; i++) {
+      const line = allLines[i];
+      const m = line.match(/^def\s+([a-z_][\w]*)\s*\(/);
+      if (!m) continue;
+      let bodyHasReturn = false;
+      let lastAssignVar: string | null = null;
+      for (let j = i + 1; j < allLines.length; j++) {
+        const bl = allLines[j];
+        if (bl.trim() === "") continue;
+        const ind = bl.match(/^(\s*)/)![1].length;
+        if (ind === 0) break;
+        if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
+        // v5.7.3 — IGNORE side-effect-only lines so logging.debug() doesn't
+        // mask the real "last computational assignment". Slide 43 was
+        // exactly this pattern: `soma = sum(); logging.debug(...)`.
+        if (/^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/.test(bl)) continue;
+        const am = bl.match(/^\s+([a-z_][\w]*)\s*=\s*[^=]/);
+        if (am) lastAssignVar = am[1];
+      }
+      if (!bodyHasReturn && lastAssignVar && RESULT_ISH.test(lastAssignVar)) {
+        return "function_returns_implicit_none";
+      }
+    }
+  }
+
+  // ── v5.7.1 — function_defined_but_uncalled ──
+  // Every top-level `def name(...)` (no leading whitespace — methods inside
+  // a class are always indented and excluded automatically) must be invoked
+  // somewhere outside its own signature, OR referenced as a decorator
+  // (`@name`). Recursive self-calls inside the def body would also count
+  // (acceptable corner case — pure recursion without a top-level demo is
+  // rare in planner output).
+  const topLevelDefRe = /^def\s+([a-z_][\w]*)\s*\(/gm;
+  const topLevelDefs: { name: string; isDecorated: boolean }[] = [];
+  let dm: RegExpExecArray | null;
+  while ((dm = topLevelDefRe.exec(t)) !== null) {
+    // Check if the line(s) immediately preceding this def are decorators.
+    // Walk backwards, skipping blank lines and decorator lines, to find
+    // the nearest non-decorator content. If we find `@\w+` directly above
+    // this def (with only blank lines between), the def is decorated.
+    const before = t.slice(0, dm.index);
+    const prevLines = before.split("\n");
+    let isDecorated = false;
+    for (let i = prevLines.length - 1; i >= 0; i--) {
+      const line = prevLines[i].trim();
+      if (line === "") continue;
+      if (/^@[\w.]+/.test(line)) { isDecorated = true; break; }
+      break;
+    }
+    topLevelDefs.push({ name: dm[1], isDecorated });
+  }
+  if (topLevelDefs.length > 0) {
+    // Replace each top-level def signature with a placeholder so the
+    // signature itself does not register as a "call" of the function.
+    const tForCallScan = t.replace(/^def\s+[a-z_][\w]*\s*\(/gm, "__DEFSIG__(");
+    for (const { name: fn, isDecorated } of topLevelDefs) {
+      // A function counts as "used" if ANY of:
+      //   - it is decorated (e.g. @app.route, @log_calls) — decoration is
+      //     itself an exposure / call site;
+      //   - it is invoked directly (`fn(...)`), excluding `obj.fn(` and
+      //     `def fn(` which are attribute access / signature respectively;
+      //   - it is referenced as a decorator (`@fn`) elsewhere.
+      if (isDecorated) continue;
+      const callRe = new RegExp(`(?<![\\w.])${fn}\\s*\\(`);
+      const decoRe = new RegExp(`@\\s*${fn}\\b`);
+      if (!callRe.test(tForCallScan) && !decoRe.test(t)) {
+        return "function_defined_but_uncalled";
+      }
+    }
+  }
+
+  // ── v5.7.2 — observable_outcome tier ──
+  // A code slide is not "complete" just because it parses. The student must
+  // be able to OBSERVE a result (printed value, returned value, side-effect).
+  // Three new failure modes:
+  //
+  //   - `bare_method_call_discards_return`
+  //       Top-level line of the form `inst.method(args)` (no print wrap, no
+  //       assignment) where `method` is defined in a class body and that
+  //       method body contains `return <non-trivial>`. Slide 40 symptom:
+  //       `livro2.exibir_detalhes()` discards a string return.
+  //
+  //   - `function_returns_implicit_none`
+  //       A top-level `def fn(...)` whose body has at least one assignment
+  //       to a "result-ish" variable name (total*/result*/resultado*/soma*/
+  //       valor*/saida*/output*/final*/ans*/response*/payload*/data*/count*)
+  //       but no `return` statement. Slides 14 and 46 symptom.
+  //
+  //   - `assignment_result_unused`
+  //       Top-level (not inside def/class) last non-blank line is
+  //       `var = call(...)` AND `var` is never referenced again. Defensive
+  //       check; narrowly scoped to result-ish var names to avoid false
+  //       positives on legitimate setup code (`client = MyClient()` etc).
+
+  // Helper: classify a top-level def's body. Returns { hasReturn, methods,
+  // bodyLastAssignVar } and the def block's start/end line indices.
+  // We only need a structural scan, not full parsing.
+  const allLines = t.split("\n");
+
+  // Identify methods that return a non-trivial value (used by reason 4).
+  // A method def is `<indent>def methodName(self...)` where indent > 0.
+  // We scan the next lines until the indent drops back to <= def indent.
+  const returningMethods = new Set<string>();
+  for (let i = 0; i < allLines.length; i++) {
+    const line = allLines[i];
+    const m = line.match(/^(\s+)def\s+([a-z_][\w]*)\s*\(\s*self\b/);
+    if (!m) continue;
+    const defIndent = m[1].length;
+    const methodName = m[2];
+    // Walk the body
+    for (let j = i + 1; j < allLines.length; j++) {
+      const bl = allLines[j];
+      if (bl.trim() === "") continue;
+      const ind = bl.match(/^(\s*)/)![1].length;
+      if (ind <= defIndent) break; // dedented out of method body
+      // return with a non-trivial expression (not "return" alone or
+      // "return None")
+      if (/^\s*return\s+(?!None\s*$|$)/.test(bl)) {
+        returningMethods.add(methodName);
+        break;
+      }
+    }
+  }
+
+  // Reason 4: bare method call that discards a returning method's value.
+  if (returningMethods.size > 0) {
+    for (const line of allLines) {
+      // Top-level only (no leading whitespace)
+      if (/^\s/.test(line)) continue;
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      // Must be a bare expression statement: `inst.method(...)`
+      // - no leading print(/return / assignment
+      // - exactly the call, possibly with surrounding whitespace
+      const bm = trimmed.match(/^([a-z_][\w]*)\.([a-z_][\w]*)\s*\([^)]*\)\s*$/);
+      if (!bm) continue;
+      const methodName = bm[2];
+      if (!returningMethods.has(methodName)) continue;
+      // Skip if this is `print(...)` or assignment context (already filtered
+      // by the leading regex check, but defensive)
+      return "bare_method_call_discards_return";
+    }
+  }
+
+  // Reason 5: function_returns_implicit_none — moved upstream to v5.7.3
+  // (now runs BEFORE function_defined_but_uncalled). Block kept as no-op
+  // marker for the legacy position so diff-blame stays readable.
+  const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
+
+  // Reason 6: assignment_result_unused — last non-blank top-level line is
+  // `var = call(...)` where var is result-ish AND never referenced after.
+  {
+    let lastNonBlankIdx = -1;
+    for (let i = allLines.length - 1; i >= 0; i--) {
+      if (allLines[i].trim() !== "") { lastNonBlankIdx = i; break; }
+    }
+    if (lastNonBlankIdx >= 0) {
+      const last = allLines[lastNonBlankIdx];
+      // Top-level only
+      if (!/^\s/.test(last)) {
+        const am = last.match(/^([a-z_][\w]*)\s*=\s*[a-z_][\w]*\s*\(/);
+        if (am && RESULT_ISH.test(am[1])) {
+          // Var must not be referenced anywhere else
+          const v = am[1];
+          let usedElsewhere = false;
+          for (let i = 0; i < allLines.length; i++) {
+            if (i === lastNonBlankIdx) continue;
+            if (new RegExp(`\\b${v}\\b`).test(allLines[i])) { usedElsewhere = true; break; }
+          }
+          if (!usedElsewhere) return "assignment_result_unused";
+        }
+      }
+    }
+  }
+
+  // ── Legacy fallback: class with no observable output anywhere ──
+  // Kept for cases that bypass the hardened class rule above (e.g. class
+  // defined but nothing else emits output).
+  const definesClass = /^\s*class\s+[A-Z]/m.test(t);
+  const hasOutput = /\b(print|return|yield|raise|assert)\s*[\(.]|\blog(?:ger|ging)?\.[a-z]+\s*\(/.test(t);
+  if (definesClass && !hasOutput) return "class_defined_but_no_output";
+
+  return null;
+}
+
+// v5.7.2 alias for documentation purposes — same implementation.
+// Code slides require an OBSERVABLE OUTCOME (printed value, returned value,
+// side-effect) for a student to learn from them. The validator above
+// enforces this in tiers; this alias makes intent explicit at call sites
+// that specifically care about outcome (vs. structural completeness).
+const validateObservableOutcome = validateSemanticCodeCompleteness;
+
+// v5.7.1 — preventive repair: rewrite `print(<instance>)` →
+// `<instance>.<method>()` BEFORE the validator runs. Method is chosen from
+// the CURRENT slide's symbols first, then from moduleCtx.funcs as fallback.
+// Skips dunder methods and generic init/main names.
+//
+// This used to live exclusively inside `repairIncompleteCodeExample`
+// (chicken-and-egg: only ran AFTER validation failed — but slide 35 made
+// validation PASS via the bare `print(obj)` escape, so the repair never
+// got a chance to fix the pedagogical bug).
+function repairBareInstancePrint(
+  code: string,
+  moduleCtx: CodeSymbols,
+  slideNum: number | string,
+): string {
+  if (!code) return code;
+  const m = code.match(/^([ \t]*)print\(\s*([a-z_][\w]*)\s*\)\s*$/m);
+  if (!m) return code;
+  const [fullMatch, indent, instName] = m;
+  const isInst = new RegExp(`\\b${instName}\\s*=\\s*[A-Z][A-Za-z0-9_]*\\s*\\(`).test(code);
+  if (!isInst) return code;
+  const SKIP_FNS = new Set(["__init__", "__new__", "__str__", "__repr__", "main", "init"]);
+  const localFuncs = extractCodeSymbols(code).funcs;
+  const candidate =
+    localFuncs.find((f) => !SKIP_FNS.has(f)) ??
+    moduleCtx.funcs.find((f) => !SKIP_FNS.has(f));
+  if (!candidate) return code;
+  const replaced = code.replace(fullMatch, `${indent}${instName}.${candidate}()`);
+  console.log(
+    `[CODE-PREVENTIVE-REPAIR] slide=${slideNum} pattern=print_inst_to_method inst=${instName} method=${candidate}`,
+  );
+  return replaced;
+}
+
+// v5.5.5 — try to repair an incomplete code example. Returns the repaired
+// code if able to make it pass `validateSemanticCodeCompleteness`, otherwise
+// returns null so caller can decide to demote/drop. `prevSymbols` carries
+// class/var names from the previous slide so completions reuse them when
+// pedagogically coherent.
+function repairIncompleteCodeExample(
+  code: string,
+  moduleKind: string | null,
+  moduleCtx: CodeSymbols,
+  slideNum: number | string,
+): string | null {
+  if (!code) return null;
+  const before = code;
+  let out = stripTrailingPlaceholderComment(code).replace(/\s*$/, "");
+  if (!out.trim()) return null;
+  // v5.5.7 — explicit ellipsis-block log: emitted on EVERY entry where the
+  // input had ellipsis-class damage, regardless of whether repair succeeds.
+  // Action label is updated post-decision via `[CODE-REPAIR]` / Guardrail-4 demote.
+  const initialReason = validateSemanticCodeCompleteness(before);
+  if (initialReason && /^(ellipsis|todo)/.test(initialReason)) {
+    console.warn(
+      `[CODE-ELLIPSIS-BLOCK] slide=${slideNum} reason=${initialReason} action=attempt_repair`,
+    );
+  }
+  const reason = validateSemanticCodeCompleteness(out);
+  if (reason === null) {
+    if (out !== before) console.log(`[CODE-REPAIR] slide=${slideNum} pattern=strip_placeholder_only`);
+    return out !== before ? out : null;
+  }
+  // v5.5.7 — print(<inst>) → <inst>.<method>() pattern.
+  // After a class instance is created, planners often emit `print(meu_carro)`
+  // followed by `# ...` (now stripped). That print is pedagogically dead —
+  // it just shows the object's address. Replace with a real method call
+  // when one is available from the module context (moduleCtx.funcs).
+  const printInstMatch = out.match(/^([ \t]*)print\(\s*([a-z_][\w]*)\s*\)\s*$/m);
+  if (printInstMatch) {
+    const [fullMatch, indent, instName] = printInstMatch;
+    // Confirm instName is actually a class instance: was assigned a ClassName(...) call
+    const isInst = new RegExp(`\\b${instName}\\s*=\\s*[A-Z][A-Za-z0-9_]*\\s*\\(`).test(out);
+    if (isInst) {
+      // Pick a method: prefer module-context funcs that aren't __init__/builtin
+      const candidate = moduleCtx.funcs.find(
+        (f) => f !== "__init__" && !["main", "init"].includes(f),
+      );
+      if (candidate) {
+        out = out.replace(fullMatch, `${indent}${instName}.${candidate}()`);
+        console.log(
+          `[CODE-REPAIR] slide=${slideNum} pattern=print_inst_to_method inst=${instName} method=${candidate}`,
+        );
+        const afterPrintFix = validateSemanticCodeCompleteness(out);
+        if (afterPrintFix === null) return out;
+      }
+    }
+  }
+  // ── v5.7.2 — observable_outcome repairs ──
+
+  // Pattern: bare_method_call_discards_return → wrap in print().
+  // Slide 40 fix. Find the FIRST top-level `inst.method(...)` line whose
+  // method returns a value, replace with `print(inst.method(...))`.
+  if (reason === "bare_method_call_discards_return") {
+    const allLines = out.split("\n");
+    // Re-discover returning methods (cheap; same scan as the validator)
+    const returning = new Set<string>();
+    for (let i = 0; i < allLines.length; i++) {
+      const m = allLines[i].match(/^(\s+)def\s+([a-z_][\w]*)\s*\(\s*self\b/);
+      if (!m) continue;
+      const defIndent = m[1].length;
+      for (let j = i + 1; j < allLines.length; j++) {
+        const bl = allLines[j];
+        if (bl.trim() === "") continue;
+        const ind = bl.match(/^(\s*)/)![1].length;
+        if (ind <= defIndent) break;
+        if (/^\s*return\s+(?!None\s*$|$)/.test(bl)) { returning.add(m[2]); break; }
+      }
+    }
+    let replaced = false;
+    const newLines = allLines.map((line) => {
+      if (replaced || /^\s/.test(line)) return line;
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("print(")) return line;
+      const bm = trimmed.match(/^([a-z_][\w]*\.[a-z_][\w]*\s*\([^)]*\))\s*$/);
+      if (!bm) return line;
+      const methodName = trimmed.split(".")[1].split("(")[0];
+      if (!returning.has(methodName)) return line;
+      replaced = true;
+      console.log(
+        `[CODE-REPAIR] slide=${slideNum} pattern=wrap_method_in_print expr=${JSON.stringify(bm[1])}`,
+      );
+      return `print(${bm[1]})`;
+    });
+    if (replaced) {
+      out = newLines.join("\n");
+      const re = validateSemanticCodeCompleteness(out);
+      if (re === null) return out;
+      // fall through — let other reasons get repaired in next pass
+    }
+  }
+
+  // Pattern: function_returns_implicit_none → inject `return <var>` inside
+  // the def body (right after the last assignment to a result-ish var),
+  // then if the function is uncalled, also append a call demo.
+  // Slides 14 and 46 fix.
+  if (reason === "function_returns_implicit_none") {
+    const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
+    const allLines = out.split("\n");
+    let injectedFn: { name: string; params: string } | null = null;
+    for (let i = 0; i < allLines.length; i++) {
+      const m = allLines[i].match(/^def\s+([a-z_][\w]*)\s*\(([^)]*)\)/);
+      if (!m) continue;
+      let bodyHasReturn = false;
+      let lastAssignLineIdx = -1;
+      let lastAssignVar: string | null = null;
+      let lastAssignIndent = "    ";
+      let bodyEnd = allLines.length;
+      for (let j = i + 1; j < allLines.length; j++) {
+        const bl = allLines[j];
+        if (bl.trim() === "") continue;
+        const ind = bl.match(/^(\s*)/)![1].length;
+        if (ind === 0) { bodyEnd = j; break; }
+        if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
+        const am = bl.match(/^(\s+)([a-z_][\w]*)\s*=\s*[^=]/);
+        if (am) {
+          lastAssignLineIdx = j;
+          lastAssignVar = am[2];
+          lastAssignIndent = am[1];
+        }
+      }
+      if (bodyHasReturn || !lastAssignVar || !RESULT_ISH.test(lastAssignVar)) continue;
+      // Inject `<indent>return <var>` immediately after the last assignment.
+      // We need to walk forward from lastAssignLineIdx to skip any
+      // subsequent body lines that belong to the same statement (e.g.
+      // `logging.debug(...)` after the assignment) — but in Python a
+      // simple assignment is one logical line, so insert right after.
+      // We insert AT the end of the function body to ensure the return
+      // is the last executed statement (handles slide 46 where logging
+      // comes after the assignment).
+      allLines.splice(bodyEnd, 0, `${lastAssignIndent}return ${lastAssignVar}`);
+      injectedFn = { name: m[1], params: m[2] ?? "" };
+      console.log(
+        `[CODE-REPAIR] slide=${slideNum} pattern=inject_missing_return fn=${m[1]} var=${lastAssignVar}`,
+      );
+      break;
+    }
+    if (injectedFn) {
+      out = allLines.join("\n");
+      // v5.7.3: convergent loop in applyFinalGuardrails handles the
+      // follow-up call-demo on the next cycle. Always return out so the
+      // loop sees the progress and decides whether to iterate.
+      return out;
+    }
+  }
+
+  // Pattern: assignment_result_unused → append `print(<var>)`. Narrowly
+  // scoped via the validator's RESULT_ISH check, so this fires only when
+  // the user's last line is something like `resultado = somar(2, 3)` with
+  // no follow-up demonstration.
+  if (reason === "assignment_result_unused") {
+    const allLines = out.split("\n");
+    let lastNonBlankIdx = -1;
+    for (let i = allLines.length - 1; i >= 0; i--) {
+      if (allLines[i].trim() !== "") { lastNonBlankIdx = i; break; }
+    }
+    if (lastNonBlankIdx >= 0) {
+      const am = allLines[lastNonBlankIdx].match(/^([a-z_][\w]*)\s*=/);
+      if (am) {
+        out += `\nprint(${am[1]})`;
+        console.log(
+          `[CODE-REPAIR] slide=${slideNum} pattern=print_assignment_terminal var=${am[1]}`,
+        );
+        if (validateSemanticCodeCompleteness(out) === null) return out;
+      }
+    }
+  }
+
+  // v5.7.1 — function_defined_but_uncalled repair: append a CALL DEMO
+  // for the LAST top-level function defined in the snippet. Generates
+  // sample arguments based on parameter name heuristics.
+  if (reason === "function_defined_but_uncalled") {
+    const fnDefs = [...out.matchAll(/^def\s+([a-z_][\w]*)\s*\(([^)]*)\)/gm)];
+    if (fnDefs.length > 0) {
+      const lastDef = fnDefs[fnDefs.length - 1];
+      const fnName = lastDef[1];
+      const params = lastDef[2] ?? "";
+      const args = params
+        .split(",")
+        .map((p) => p.trim().split(/[:=]/)[0].trim())
+        // Strip leading `*`/`**` from `*args`/`**kwargs` then drop them —
+        // we cannot safely synthesize splat values for an educational demo.
+        .map((n) => n.replace(/^\*{1,2}/, ""))
+        .filter((n) => n && n !== "self" && n !== "cls" && n !== "args" && n !== "kwargs")
+        .map((n) => {
+          const lower = n.toLowerCase();
+          if (/^lista|^list|seq|items|valores|numeros|carrinho/.test(lower)) return `[10, 20, 30]`;
+          if (/^dict|mapa|^map|opts|config|kwargs/.test(lower)) return `{}`;
+          if (/preco|valor|num|qtd|total|count|idade|^[abcnxyij]$/.test(lower)) return `10`;
+          if (/nome|name|texto|string|^str$|titulo|msg|message/.test(lower)) return `"exemplo"`;
+          if (/path|file|arquivo|caminho/.test(lower)) return `"dados.txt"`;
+          if (/url|endpoint|host/.test(lower)) return `"https://api.example.com"`;
+          if (/flag|ativo|enabled|on$|^is_/.test(lower)) return `True`;
+          return `"${n}"`;
+        })
+        .join(", ");
+      out += `\n\nresultado = ${fnName}(${args})\nprint(resultado)`;
+      console.log(
+        `[CODE-REPAIR] slide=${slideNum} pattern=function_call_demo fn=${fnName} args=${JSON.stringify(args)}`,
+      );
+      if (validateSemanticCodeCompleteness(out) === null) return out;
+      // If the validator still fails (e.g. function has no return so
+      // `resultado` is None and another rule trips), keep the partial
+      // repair and let the cascade continue.
+      return out;
+    }
+  }
+
+  const cm = out.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/m);
+  if (cm && (reason === "class_defined_but_unused" || reason === "too_few_code_lines" || reason === "class_instance_no_method_call" || reason === "class_defined_but_no_output")) {
+    const cls = cm[1];
+    // v5.5.6 — DRIFT GUARD: if the slide defines a class NOT seen in the
+    // module context AND the module already has prior classes, this is the
+    // planner introducing a new domain — refuse to "complete" it because
+    // doing so would cement the drift. Let the layout demote take over.
+    if (moduleCtx.classes.length > 0 && !moduleCtx.classes.includes(cls)) {
+      console.warn(
+        `[CODE-CONTEXT-DRIFT] slide=${slideNum} reason="class '${cls}' is new vs module context [${moduleCtx.classes.slice(0, 4).join(", ")}]" action=refuse_repair`,
+      );
+      return null;
+    }
+    const initArgs = (out.match(/def\s+__init__\s*\(\s*self\s*(?:,\s*([^)]*))?\)/) ?? [, ""])[1] ?? "";
+    const args = initArgs
+      .split(",").map((a) => a.trim().split(/[:=]/)[0].trim()).filter(Boolean)
+      .map((a) => /preco|valor|num|qtd|total|count|idade|^[abcnxyij]$/.test(a.toLowerCase()) ? "0" : `"${a}"`)
+      .join(", ");
+    // v5.5.6 — Reuse instance name from module context if same class was
+    // already instantiated earlier (e.g. slide N had `livro = Livro(...)` →
+    // slide N+1's repair reuses `livro` instead of inventing a new name).
+    const ctxInstIdx = moduleCtx.classes.indexOf(cls);
+    const inst = ctxInstIdx >= 0 && moduleCtx.vars[ctxInstIdx]
+      ? moduleCtx.vars[ctxInstIdx]
+      : cls.toLowerCase();
+    const hasOtherMethod = /^\s*def\s+(?!__init__)[a-z_][\w]*\s*\(/m.test(out);
+    const attrMatch = out.match(/self\.(\w+)\s*=/);
+    if (!hasOtherMethod && attrMatch) {
+      out += `\n\n    def exibir(self):\n        print(self.${attrMatch[1]})\n\n${inst} = ${cls}(${args})\n${inst}.exibir()`;
+    } else {
+      out += `\n\n${inst} = ${cls}(${args})`;
+    }
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=class_demo cls=${cls} inst=${inst}`);
+    console.log(
+      `[CODE-CONTEXT] slide=${slideNum} reusedClasses=${JSON.stringify([cls])} reusedVariables=${JSON.stringify(ctxInstIdx >= 0 ? [inst] : [])} newSymbols=${JSON.stringify(ctxInstIdx >= 0 ? [] : [inst])} contextualConsistency=${ctxInstIdx >= 0 ? "PASSED" : "NEW_INST"}`,
+    );
+    return validateSemanticCodeCompleteness(out) === null ? out : out;
+  }
+  if (/\btry\s*:\s*\n/.test(out) && !/\bexcept\b/.test(out)) {
+    out += `\nexcept Exception as e:\n    print(f"Erro: {e}")`;
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=try_without_except`);
+    return out;
+  }
+  if (moduleKind === "json_apis" && /requests\.get\(/.test(out) && !/\.json\(\)/.test(out)) {
+    out += `\nprint(resp.json())`;
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=json_api_response`);
+    return out;
+  }
+  if (moduleKind === "tests_logs" && /import\s+logging|logging\./.test(out) && !/logging\.(info|debug|warning|error|critical)\s*\(/.test(out)) {
+    out += `\nlogging.info("Operação concluída")`;
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=logging_emit`);
+    return out;
+  }
+  if (out !== before) {
+    console.log(`[CODE-REPAIR] slide=${slideNum} pattern=partial_strip reason=${reason}`);
+    return out;
+  }
+  return null;
+}
+
+// v5.7.0 — demoteCodeLayout
+// Single source of truth for "code → bullets" demotion. Used by both the
+// final-guardrail pass AND the QA cascade so we cannot leave a slide with
+// `layout="bullets"` carrying a `label="CÓDIGO"` (the user-visible bug:
+// section header says CÓDIGO but the slide has no code block).
+//
+// Always:
+//   - sets layout = "bullets"
+//   - clears code
+//   - if label looks like CÓDIGO/CODE → rewrite to "CONCEITO"
+//
+// Emits [LAYOUT-DEMOTE] with reason for traceability.
+// _isCodeLabel — true when a label string looks like a CODE section header
+// ("CÓDIGO" / "CODIGO" / "CODE" / "CÓDIGO - X"). Used by demoteCodeLayout
+// AND by every other site that converts a code slide into bullets but does
+// NOT route through demoteCodeLayout (overflow split, EMPTY repair, L3 rewrite).
+function _isCodeLabel(label: unknown): boolean {
+  if (!label || typeof label !== "string") return false;
+  return /^c[óo]digo\b|^code\b|^c[óo]digo\s*-/i.test(label.trim());
+}
+
+// _demoteCodeLabel — returns "CONCEITO" if the label looks like a CODE label,
+// otherwise returns the label unchanged. Inline-callable from any site that
+// produces bullets/cards/concept slides from a (possibly) code-labeled source.
+function _demoteCodeLabel(label?: string): string | undefined {
+  return _isCodeLabel(label) ? "CONCEITO" : label;
+}
+
+function demoteCodeLayout(s: Slide, slideId: string | number, reason: string): Slide {
+  const out: Slide = { ...s, layout: "bullets" as Layout, code: undefined };
+  const lbl = (out.label ?? "").trim();
+  if (_isCodeLabel(lbl)) {
+    out.label = "CONCEITO";
+    console.log(
+      `[LAYOUT-DEMOTE] slide=${slideId} layout=code→bullets label=${JSON.stringify(lbl)}→"CONCEITO" reason=${reason}`,
+    );
+  } else {
+    console.log(
+      `[LAYOUT-DEMOTE] slide=${slideId} layout=code→bullets label=${JSON.stringify(lbl)} reason=${reason}`,
+    );
+  }
+  return out;
+}
+
+// v5.5.8 — synthesizeMinimalCompleteExample
+// Produces a known-good 3-7 line snippet for the given module kind, reusing
+// classes/vars/funcs from the module accumulator when available so the new
+// snippet stays in the established domain (Carro/Livro/Pedido). Returns null
+// only when no canonical example exists for the kind — caller then demotes.
+//
+// Source labels emitted in [CODE-SYNTHESIS]:
+//   "module_ctx"  → reused class+method already shown earlier in module
+//   "canonical_<kind>" → fallback canonical snippet for the kind
+function synthesizeMinimalCompleteExample(
+  moduleKind: string | null,
+  ctx: CodeSymbols,
+  slideTitle: string,
+): { code: string; source: string } | null {
+  const title = (slideTitle || "").toLowerCase();
+  const kind = moduleKind ?? "";
+
+  // OOP — strongly prefer reusing module context (Carro/Livro/etc)
+  if (kind === "oop" || /\b(classe|objeto|m[eé]todo|atributo|heran[çc]a|encapsul|self|__init__|poo)\b/i.test(title)) {
+    const cls = ctx.classes[0];
+    const inst = ctx.vars[0];
+    const method = ctx.funcs.find((f) => f !== "__init__" && !["main", "init"].includes(f));
+    if (cls && inst && method) {
+      return {
+        code: `${inst} = ${cls}("Toyota", "Corolla")\n${inst}.${method}()`,
+        source: "module_ctx",
+      };
+    }
+    if (cls && inst) {
+      return {
+        code: `${inst} = ${cls}("Toyota", "Corolla")\nprint(${inst})`,
+        source: "module_ctx",
+      };
+    }
+    return {
+      code: `class Carro:\n    def __init__(self, marca, modelo):\n        self.marca = marca\n        self.modelo = modelo\n    def exibir_info(self):\n        print(f"{self.marca} {self.modelo}")\n\nmeu_carro = Carro("Toyota", "Corolla")\nmeu_carro.exibir_info()`,
+      source: "canonical_oop",
+    };
+  }
+
+  // Tests / Logs / Debug — pick by title keyword, fallback unittest
+  if (kind === "tests_logs" || /\b(teste|unittest|pytest|tdd|log|logging|pdb|debug|depura)\b/i.test(title)) {
+    if (/\bpdb\b|\bdepura/i.test(title)) {
+      return {
+        code: `import pdb\n\ndef calcular(a, b):\n    pdb.set_trace()\n    return a + b\n\nprint(calcular(2, 3))`,
+        source: "canonical_pdb",
+      };
+    }
+    if (/\blog/i.test(title)) {
+      return {
+        code: `import logging\n\nlogging.basicConfig(level=logging.INFO)\nlogging.info("Aplicação iniciada")\nlogging.warning("Operação demorada")`,
+        source: "canonical_logging",
+      };
+    }
+    return {
+      code: `import unittest\n\nclass TestCalculadora(unittest.TestCase):\n    def test_soma(self):\n        self.assertEqual(2 + 2, 4)\n\nif __name__ == "__main__":\n    unittest.main()`,
+      source: "canonical_unittest",
+    };
+  }
+
+  // JSON / APIs
+  if (kind === "json_apis" || /\b(json|api|http|requests|rest)\b/i.test(title)) {
+    return {
+      code: `import requests\n\nurl = "https://api.exemplo.com/dados"\nresponse = requests.get(url)\nif response.status_code == 200:\n    dados = response.json()\n    print(dados)`,
+      source: "canonical_json_api",
+    };
+  }
+
+  // Files / Exceptions
+  if (kind === "files_exceptions" || /\b(arquivo|leitura|escrita|with open|exce[çc][oõ]es?|try.*except)\b/i.test(title)) {
+    return {
+      code: `try:\n    with open("dados.txt", "r") as f:\n        conteudo = f.read()\n    print(conteudo)\nexcept FileNotFoundError:\n    print("Arquivo não encontrado")`,
+      source: "canonical_files_exceptions",
+    };
+  }
+
+  // Control flow / functions
+  if (kind === "control_flow" || /\b(if|elif|else|for|while|fun[çc][aã]o|loop|condicional)\b/i.test(title)) {
+    return {
+      code: `def classificar(nota):\n    if nota >= 7:\n        return "Aprovado"\n    elif nota >= 5:\n        return "Recuperação"\n    return "Reprovado"\n\nprint(classificar(8))`,
+      source: "canonical_control_flow",
+    };
+  }
+
+  // Data structures
+  if (kind === "data_structures" || /\b(lista|dicion[áa]rio|tupla|conjunto|cole[çc][aã]o|estrutura.*dado)\b/i.test(title)) {
+    return {
+      code: `pedido = [{"item": "Pizza", "preco": 60.0}, {"item": "Refri", "preco": 8.0}]\ntotal = sum(p["preco"] for p in pedido)\nprint(f"Total: R$ {total:.2f}")`,
+      source: "canonical_data_structures",
+    };
+  }
+
+  // Fundamentals
+  if (kind === "fundamentals" || /\b(vari[áa]vel|tipo|operador|fundamento|introdu[çc][aã]o|b[áa]sico)\b/i.test(title)) {
+    return {
+      code: `nome = input("Qual é o seu nome? ")\nidade = int(input("Qual é a sua idade? "))\nprint(f"Olá, {nome}! Você tem {idade} anos.")`,
+      source: "canonical_fundamentals",
+    };
+  }
+
+  // Best practices — concrete code rather than abstract bullets
+  if (kind === "best_practices" || /\b(boas pr[áa]ticas|pep|docstring|venv|pip|deploy)\b/i.test(title)) {
+    return {
+      code: `def calcular_media(notas: list[float]) -> float:\n    """Retorna a média aritmética da lista de notas."""\n    if not notas:\n        return 0.0\n    return sum(notas) / len(notas)\n\nprint(calcular_media([7.5, 8.0, 9.2]))`,
+      source: "canonical_best_practices",
+    };
+  }
+
+  return null;
+}
+
+// v5.7.2 — Visual truncation repair for non-code text fields.
+// Planners occasionally emit bullets/items that exceed the layout's drawable
+// width; the renderer then truncates with a literal "..." or unicode "…",
+// shipping a half-sentence to the student ("comentários para…", "listar…").
+// This is a layout-engine symptom (proibido tocar no renderer), so we
+// transform the text BEFORE render: strip the ellipsis, drop a dangling
+// preposition/conjunction, ensure terminal punctuation. Cheap, deterministic,
+// no LLM. Operates only on items / leftItems / rightItems (NOT code).
+const TRAILING_PREP_RE = /\s+(para|de|da|do|das|dos|com|e|ou|que|em|no|na|nos|nas|ao|à|aos|às|por|sobre|entre|sem|sob|a|as|os|um|uma|uns|umas)\s*$/i;
+const ELLIPSIS_TAIL_RE = /^(.*?)(\s*(?:\.{2,}|…+|\.{2,}\s*…+|…+\s*\.{2,})\s*)$/;
+
+function repairVisualTruncationInItems(slide: Slide, slideNum: number | string): Slide {
+  const fields = ["items", "leftItems", "rightItems", "leftBullets", "rightBullets"] as const;
+  let out: any = slide;
+  let touched = false;
+  for (const field of fields) {
+    const arr = (slide as any)[field];
+    if (!Array.isArray(arr)) continue;
+    let fieldChanged = false;
+    const fixed = arr.map((item: any, i: number) => {
+      if (typeof item !== "string") return item;
+      const m = item.match(ELLIPSIS_TAIL_RE);
+      if (!m) return item;
+      let cleaned = m[1].trimEnd();
+      let droppedWords = 0;
+      while (TRAILING_PREP_RE.test(cleaned) && droppedWords < 2) {
+        cleaned = cleaned.replace(TRAILING_PREP_RE, "").trimEnd();
+        droppedWords++;
+      }
+      cleaned = cleaned.replace(/[,;:\-]+\s*$/, "").trimEnd();
+      const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
+      let action: string;
+      if (wordCount === 0) {
+        action = "dropped_empty";
+        cleaned = "";
+      } else if (wordCount < 2) {
+        action = "kept_short";
+      } else {
+        action = "stripped_and_capped";
+        if (!/[.!?:]$/.test(cleaned)) cleaned += ".";
+        if (wordCount < 3) action = "kept_short_punctuated";
+      }
+      console.log(
+        `[VISUAL-TRUNCATION] slide=${slideNum} field=${field}[${i}] action=${action} before=${JSON.stringify(item.slice(0, 80))} after=${JSON.stringify(cleaned.slice(0, 80))}`,
+      );
+      fieldChanged = true;
+      return cleaned;
+    }).filter((v: any) => !(typeof v === "string" && v === ""));
+    if (fieldChanged) {
+      out = { ...out, [field]: fixed };
+      touched = true;
+    }
+  }
+  return touched ? out : slide;
+}
+
+// Apply all v5.5.1 final guardrails to a single slide. Pure transform.
+// v5.5.5: accepts moduleKind + prevSymbols for semantic code repair.
+// v5.5.6: prevSymbols is now full module accumulator, not just last slide.
+function applyFinalGuardrails(
+  s: Slide,
+  slideNum: number | string,
+  moduleKind: string | null = null,
+  prevSymbols: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] },
+): Slide {
+  let out: Slide = s;
+  // Guardrail 1: title polish (catches every bypass path)
+  if (out.title) {
+    const newTitle = rewriteBareQueTitle(out.title, slideNum);
+    if (newTitle !== out.title) out = { ...out, title: newTitle };
+  }
+  // v5.5.4 — Guardrail 1b: strip code-fragment bullets BEFORE demote check
+  // so an items-only-of-code-fragments slide becomes empty and gets caught.
+  if (Array.isArray(out.items) && out.items.length > 0) {
+    const filtered = out.items.filter((it) => {
+      if (typeof it !== "string") return true;
+      if (isCodeFragmentBullet(it)) {
+        console.log(
+          `[CODE-BULLET-DROP] slide=${slideNum} dropped="${it.slice(0, 60)}"`,
+        );
+        return false;
+      }
+      return true;
+    });
+    if (filtered.length !== out.items.length) {
+      out = { ...out, items: filtered };
+    }
+  }
+  // v5.5.4 — Guardrail 1c: strip trailing # ... placeholder comments from code
+  if (out.code && out.code.trim()) {
+    const stripped = stripTrailingPlaceholderComment(out.code);
+    if (stripped !== out.code) {
+      console.log(
+        `[CODE-PLACEHOLDER-STRIP] slide=${slideNum} removed trailing comment placeholder`,
+      );
+      out = { ...out, code: stripped };
+    }
+  }
+  // v5.5.8 — Guardrail 2 INVERTED: code layout without code → try to SYNTHESIZE
+  // a minimal complete example BEFORE demoting. Demotion is the last-resort
+  // fallback and now emits [CODE-SLIDE-CONVERSION] for full visibility.
+  if (out.layout === "code" && (!out.code || !out.code.trim())) {
+    const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+    if (synth) {
+      console.log(
+        `[CODE-SYNTHESIS] slide=${slideNum} reason=empty_code beforeLines=0 afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
+      );
+      out = { ...out, code: synth.code };
+    } else {
+      console.warn(
+        `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=empty_code_no_synth_available moduleKind=${moduleKind ?? "unknown"}`,
+      );
+      out = demoteCodeLayout(out, slideNum, "empty_code_no_synth");
+    }
+  }
+  // Guardrail 3: dangling Python assignment → append print()
+  if (out.code && out.code.trim()) {
+    const newCode = repairDanglingAssignment(out.code, slideNum);
+    if (newCode !== out.code) out = { ...out, code: newCode };
+  }
+  // v5.7.1 — Guardrail 3b: PREVENTIVE — bare `print(<instance>)` →
+  // `<instance>.<method>()`. Runs BEFORE the validator so the rewrite
+  // happens for slides that the validator USED to (incorrectly) accept
+  // (slide 35 "Carro" symptom — `print(carro_amigo)` showing object
+  // address). Method is chosen from local funcs first, then moduleCtx.
+  if (out.code && out.code.trim()) {
+    const fixed = repairBareInstancePrint(out.code, prevSymbols, slideNum);
+    if (fixed !== out.code) out = { ...out, code: fixed };
+  }
+  // v5.7.3 — Guardrail 4: CONVERGENT repair loop.
+  // Each cycle: validate → if reason → repair → re-validate. Loop until the
+  // validator returns null OR the repair makes no progress OR we hit
+  // MAX_REPAIR_CYCLES. The previous "1 validate + 1 repair + log PARTIAL"
+  // model only fixed the FIRST detected defect — slides 14/43 had two
+  // overlapping defects (function uncalled AND function returns None) and
+  // the second defect was logged as PARTIAL but never repaired.
+  //
+  // Emits structured `[OBSERVABLE-TRACE]` per cycle so prod logs prove the
+  // chain of detections + repairs end-to-end.
+  if (out.code && out.code.trim()) {
+    const MAX_REPAIR_CYCLES = 4;
+    let curCode = out.code;
+    const trace: Array<Record<string, unknown>> = [];
+    let cycle = 0;
+    let lastReason: string | null = null;
+    let firstReason: string | null = null;
+    while (cycle < MAX_REPAIR_CYCLES) {
+      const reason = validateSemanticCodeCompleteness(curCode);
+      if (cycle === 0) firstReason = reason;
+      trace.push({ cycle, phase: cycle === 0 ? "detect" : "revalidate", reason });
+      if (reason === null) { lastReason = null; break; }
+      lastReason = reason;
+      const repaired = repairIncompleteCodeExample(curCode, moduleKind, prevSymbols, slideNum);
+      if (!repaired) {
+        trace.push({ cycle, phase: "repair", reason, applied: false, skipReason: "repair_returned_null" });
+        break;
+      }
+      if (repaired === curCode) {
+        trace.push({ cycle, phase: "repair", reason, applied: false, skipReason: "no_progress" });
+        break;
+      }
+      trace.push({ cycle, phase: "repair", reason, applied: true });
+      curCode = repaired;
+      cycle++;
+    }
+    console.log(
+      `[OBSERVABLE-TRACE] slide=${slideNum} cycles=${cycle} firstReason=${firstReason ?? "null"} finalReason=${lastReason ?? "null"} trace=${JSON.stringify(trace)}`,
+    );
+    if (curCode !== out.code) out = { ...out, code: curCode };
+    if (lastReason === null) {
+      if (firstReason !== null) {
+        console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair_loop firstReason=${firstReason} cycles=${cycle}`);
+      }
+    } else {
+      console.warn(`[CODE-COMPLETE] slide=${slideNum} status=PARTIAL_AFTER_LOOP repair_left=${lastReason} cycles=${cycle}`);
+      // v5.5.8 — exhausted repair budget. Before demoting layout=code,
+      // try to synthesize a complete minimal example from module context.
+      // Only demote if synthesis is also unavailable (last resort).
+      if (out.layout === "code") {
+        const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+        if (synth) {
+          console.log(
+            `[CODE-SYNTHESIS] slide=${slideNum} reason=repair_loop_exhausted (${lastReason}) beforeLines=${out.code.split("\n").length} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
+          );
+          out = { ...out, code: synth.code };
+        } else {
+          console.warn(
+            `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${lastReason}) moduleKind=${moduleKind ?? "unknown"}`,
+          );
+          out = demoteCodeLayout(out, slideNum, `incomplete_unrepairable_${lastReason}`);
+        }
+      }
+    }
+  }
+  // v5.5.5 — Guardrail 5: code-slide integrity. Layout=code with too few
+  // real code lines or no syntax markers is meaningless.
+  // v5.5.8 — INVERTED: try synth before demote.
+  if (out.layout === "code" && out.code && out.code.trim()) {
+    const codeLines = out.code.split("\n").filter((l) => {
+      const x = l.trim();
+      return x && !x.startsWith("#") && !x.startsWith("//") && !x.startsWith("--");
+    }).length;
+    const hasSyntax = /[=()\[\]{}:]|^\s*(def|class|import|from|return|print|if|for|while|try)\b/m.test(out.code);
+    if (codeLines < 3 || !hasSyntax) {
+      console.warn(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=false codeLines=${codeLines} hasSyntax=${hasSyntax}`);
+      const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+      if (synth) {
+        console.log(
+          `[CODE-SYNTHESIS] slide=${slideNum} reason=integrity_fail (codeLines=${codeLines}, hasSyntax=${hasSyntax}) beforeLines=${codeLines} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
+        );
+        out = { ...out, code: synth.code };
+      } else {
+        console.warn(
+          `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=integrity_fail_no_synth moduleKind=${moduleKind ?? "unknown"}`,
+        );
+        out = demoteCodeLayout(out, slideNum, "integrity_fail_no_synth");
+      }
+    } else {
+      console.log(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=true codeLines=${codeLines}`);
+    }
+  }
+  // v5.7.2 — Guardrail 6: visual truncation in non-code text fields.
+  // Strips trailing "…" / "..." from items/leftItems/rightItems and cleans
+  // dangling prepositions. Pre-render, deterministic, no LLM.
+  out = repairVisualTruncationInItems(out, slideNum);
+  return out;
+}
+
+// detectHeaderPromotionLeak — diagnostic scan AFTER region assignment.
+// Reports any title region that received sentence-like prose (the symptom
+// users perceive as "content promoted to headline"). Returns leaks for
+// logging; does NOT throw or modify the slide (pure observability).
+function detectHeaderPromotionLeak(
+  parsed: ParsedCardItem[],
+  slideNum: number | string,
+): { itemIdx: number; title: string; reason: string }[] {
+  const leaks: { itemIdx: number; title: string; reason: string }[] = [];
+  parsed.forEach((p, i) => {
+    if (p.split !== "accepted") return;
+    const wc = p.title.split(/\s+/).filter(Boolean).length;
+    if (wc > 3) leaks.push({ itemIdx: i, title: p.title, reason: `title_word_count=${wc}` });
+    else if (p.title.length > 28) leaks.push({ itemIdx: i, title: p.title, reason: `title_length=${p.title.length}` });
+    else if (/[.?!]\s+\w/.test(p.title)) leaks.push({ itemIdx: i, title: p.title, reason: "title_contains_sentence_break" });
+  });
+  if (leaks.length > 0) {
+    console.warn(
+      `[LAYOUT-REGION-DEBUG] slide=${slideNum} HEADER_PROMOTION_LEAK count=${leaks.length} ` +
+      leaks.map((l) => `[#${l.itemIdx} reason=${l.reason} title="${l.title.slice(0, 30)}"]`).join(" "),
+    );
+  } else {
+    console.log(`[LAYOUT-REGION-DEBUG] slide=${slideNum} HEADER_PROMOTION_LEAK count=0 promotionDetected=false`);
+  }
+  return leaks;
 }
 
 const corsHeaders = {
@@ -613,6 +1991,7 @@ function renderTOC(
   num: number,
   total: number,
   modules: { title: string }[],
+  pagination?: { page: number; pageCount: number; firstModule: number; lastModule: number; totalModules: number },
 ) {
   const slide = pptx.addSlide();
   bg(slide, d.bg);
@@ -626,7 +2005,11 @@ function renderTOC(
     h: SLIDE_H - 0.06,
     fill: { color: d.surface },
   });
-  slide.addText("ÍNDICE", {
+  // ── Header label: "ÍNDICE" or "ÍNDICE — PARTE X/Y" when paginated
+  const headerLabel = pagination && pagination.pageCount > 1
+    ? `ÍNDICE — PARTE ${pagination.page}/${pagination.pageCount}`
+    : "ÍNDICE";
+  slide.addText(headerLabel, {
     x: ML,
     y: 0.3,
     w: panelW - ML,
@@ -637,6 +2020,8 @@ function renderTOC(
     color: d.accent,
     charSpacing: 5,
   });
+  // ── Title: "Conteúdo do Curso" — same on every page so it reads
+  // as the same course rather than a separate one.
   slide.addText("Conteúdo\ndo Curso", {
     x: ML,
     y: 0.64,
@@ -650,19 +2035,28 @@ function renderTOC(
     lineSpacingMultiple: 1.1,
     fit: "shrink" as any,
   });
-  // Module count chip
+  // ── Bottom chip: module range (e.g. "Módulos 7–8 de 8") when paginated,
+  // else the simple total count. Never just "{n} Módulos" alone on page 2+,
+  // which previously read like a different deck.
+  const chipLabel = pagination && pagination.pageCount > 1
+    ? (pagination.firstModule === pagination.lastModule
+        ? `Módulo ${pagination.firstModule} de ${pagination.totalModules}`
+        : `Módulos ${pagination.firstModule}–${pagination.lastModule} de ${pagination.totalModules}`)
+    : `${modules.length} Módulo${modules.length !== 1 ? "s" : ""}`;
+  // Wider chip for paginated label (it can be long like "Módulos 11–15 de 20")
+  const chipW = pagination && pagination.pageCount > 1 ? 2.4 : 1.7;
   slide.addShape("roundRect" as any, {
     x: ML,
     y: FOOTER_Y - 0.54,
-    w: 1.7,
+    w: chipW,
     h: 0.36,
     fill: { color: d.accent },
     rectRadius: 0.04,
   });
-  slide.addText(`${modules.length} Módulo${modules.length !== 1 ? "s" : ""}`, {
+  slide.addText(chipLabel, {
     x: ML,
     y: FOOTER_Y - 0.54,
-    w: 1.7,
+    w: chipW,
     h: 0.36,
     fontSize: 12,
     fontFace: d.bodyFont,
@@ -670,6 +2064,7 @@ function renderTOC(
     color: "FFFFFF",
     align: "center",
     valign: "middle",
+    fit: "shrink" as any,
   });
 
   // Module list — 2 columns when > 5 modules
@@ -757,9 +2152,13 @@ function renderTOCPaginated(
   // Multi-page: split modules into pages of maxPerPage each
   const pageCount = Math.ceil(modules.length / maxPerPage);
   for (let p = 0; p < pageCount; p++) {
-    const chunk = modules.slice(p * maxPerPage, (p + 1) * maxPerPage);
-    // Show pagination label when more than one TOC page is needed
-    const pageLabel = `ÍNDICE (${p + 1}/${pageCount})`;
+    const firstIdx = p * maxPerPage;
+    const lastIdx  = Math.min((p + 1) * maxPerPage, modules.length);
+    const chunk = modules.slice(firstIdx, lastIdx);
+    // Pagination metadata so renderTOC can show "ÍNDICE — PARTE 2/2"
+    // and "Módulos 7–8 de 8" instead of just "{n} Módulos" (which on
+    // page 2+ looked like a separate course in v5.1).
+    const pageLabel = `ÍNDICE — PARTE ${p + 1}/${pageCount}`;
     renderTOC(
       pptx,
       { ...slide_, label: pageLabel },
@@ -767,6 +2166,13 @@ function renderTOCPaginated(
       startNum + p,
       total,
       chunk,
+      {
+        page: p + 1,
+        pageCount,
+        firstModule: firstIdx + 1,
+        lastModule:  lastIdx,
+        totalModules: modules.length,
+      },
     );
   }
   return pageCount;
@@ -1015,6 +2421,13 @@ function renderCards(
 
   const cardArch = d.componentArchetypes?.cards ?? "elevated_grid";
 
+  // v5.4.8 — pre-parse all items with strict semantic-region assignment
+  // (single source of truth shared by every card archetype).
+  const parsed: ParsedCardItem[] = items.map((it, i) =>
+    parseCardItem(it, { slideNum: num, layout: "cards", itemIdx: i, archetype: cardArch }),
+  );
+  detectHeaderPromotionLeak(parsed, num);
+
   // ── flat_grid: no shadow, bottom accent strip, accent title, no badge ──
   if (cardArch === "flat_grid") {
     for (let i = 0; i < items.length; i++) {
@@ -1023,10 +2436,9 @@ function renderCards(
       const x = ML + col * (cardW + gap);
       const y = cardsStartY + row * (cardH + gap);
       const pal = [d.accent, d.accent2, d.accent3][i % 3];
-      const colonIdx = items[i].indexOf(": ");
-      const hasTitle = colonIdx > 0 && colonIdx < 50;
-      const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
-      const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
+      const hasTitle = parsed[i].split === "accepted";
+      const cardTopText = parsed[i].title;
+      const cardBodyText = parsed[i].body;
       slide.addShape("roundRect" as any, {
         x, y, w: cardW, h: cardH,
         fill: { color: d.surface },
@@ -1068,10 +2480,9 @@ function renderCards(
       const x = ML + col * (cardW + gap);
       const y = cardsStartY + row * (cardH + gap);
       const pal = [d.accent, d.accent2, d.accent3][i % 3];
-      const colonIdx = items[i].indexOf(": ");
-      const hasTitle = colonIdx > 0 && colonIdx < 50;
-      const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
-      const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
+      const hasTitle = parsed[i].split === "accepted";
+      const cardTopText = parsed[i].title;
+      const cardBodyText = parsed[i].body;
       slide.addShape("roundRect" as any, {
         x, y, w: cardW, h: cardH,
         fill: { color: d.surface, transparency: 62 },
@@ -1112,11 +2523,10 @@ function renderCards(
     const y = cardsStartY + row * (cardH + gap);
     const pal = [d.accent, d.accent2, d.accent3][i % 3];
 
-    // Parse "Title: Description"
-    const colonIdx = items[i].indexOf(": ");
-    const hasTitle = colonIdx > 0 && colonIdx < 50;
-    const cardTopText = hasTitle ? items[i].slice(0, colonIdx) : "";
-    const cardBodyText = hasTitle ? items[i].slice(colonIdx + 2) : items[i];
+    // v5.4.8 — semantic region assignment via parseCardItem (no naive < 50 split).
+    const hasTitle = parsed[i].split === "accepted";
+    const cardTopText = parsed[i].title;
+    const cardBodyText = parsed[i].body;
 
     // Shadow (omit for glow — bright border provides depth)
     if (d.cardStyle !== "glow") {
@@ -1756,9 +3166,13 @@ function renderCode(
   // Hard cap: truncate to CODE_MAX_LINES regardless of AI output
   const rawCode = slide_.code || "";
   const codeLines = rawCode.split("\n");
+  // v5.7.0 — never inject "# ..." continuation marker. It's a forbidden
+  // final pattern (and used to be re-introduced AFTER the FORBIDDEN-VETO
+  // scan). Just truncate cleanly; the user can see code is capped from the
+  // line count alone, and we never want a placeholder line in the deck.
   const codeText =
     codeLines.length > CODE_MAX_LINES
-      ? codeLines.slice(0, CODE_MAX_LINES).join("\n") + "\n# ..."
+      ? codeLines.slice(0, CODE_MAX_LINES).join("\n")
       : rawCode;
   const leftW = CW * 0.42;
   const rightX = ML + leftW + 0.22;
@@ -2351,13 +3765,21 @@ function renderDiagram(
   const rawItems = (slide_.items || []).slice(0, 5);
   if (rawItems.length === 0) { footer(slide, d, num, total); return; }
 
-  // Parse items — support "Label: description" format for richer boxes
-  const stages = rawItems.map((item) => {
-    const ci = item.indexOf(": ");
-    if (ci > 2 && ci < 42) {
-      return { label: item.slice(0, ci).trim(), body: item.slice(ci + 2).trim() };
+  // v5.4.9 — Parse items via parseCardItem (strict semantic assignment).
+  // The diagram colored top band ALWAYS uppercases its `label` (line ~2555),
+  // so a long sentence in `label` becomes a runaway uppercase headline (the
+  // exact regression seen in slides 45/46 of the Python deck after v5.4.8,
+  // which wrongly sent the full body sentence to the label slot when split
+  // was rejected). Fix: when parseCardItem rejects the split, generate a
+  // SYNTHETIC SHORT LABEL ("Etapa N") and keep the full original sentence
+  // in body — body is rendered in normal case so the explanation is visible
+  // without being promoted to headline. Per user spec.
+  const stages = rawItems.map((item, i) => {
+    const p = parseCardItem(item, { slideNum: num, layout: "diagram", itemIdx: i });
+    if (p.split === "accepted") {
+      return { label: p.title, body: p.body };
     }
-    return { label: item.trim(), body: "" };
+    return { label: `Etapa ${i + 1}`, body: p.body.trim() };
   });
 
   const n       = stages.length;
@@ -2643,10 +4065,13 @@ async function generateModuleSlides(
         : cleanSlideTitle(String(s.title || mod.title).slice(0, 80), mod.title),
       label: s.layout === "takeaways"
         ? rotateSummaryLabel(moduleIndex)
-        : String(s.label || "CONTEÚDO").slice(0, 32).toUpperCase(),
+        : normalizeSlideLabel(s.label, "CONTEÚDO"),
       items: Array.isArray(s.items)
         ? s.items.slice(0, 6)
-            .map((x: any) => safeItemText(globalSanitize(String(x)), 105))
+            .map((x: any) => polishEditorialText(
+              safeItemText(globalSanitize(String(x)), 105),
+              { field: "item" },
+            ))
             .filter((x: string) => x.length > 0)
         : [],
       code: s.code ? validateCodeIntegrity(String(s.code).slice(0, 1200)) : undefined,
@@ -2875,18 +4300,25 @@ const SQL_WILDCARD_RE =
 function globalSanitize(text: string): string {
   if (!text || typeof text !== "string") return "";
 
-  // Step 1a: protect SQL wildcard expressions using printable-ASCII markers [[SQLW_N]]
+  // Step 1a: protect SQL wildcard expressions using printable-ASCII markers [[SQLWN]]
+  // v5.4.7 — markers MUST NOT contain underscores. MARKDOWN_ITALIC_RE
+  // (/_{1,2}([^_]+)_{1,2}/g) was eating the underscores of two adjacent BT_N/
+  // SQLW_N markers and unifying them, e.g. "[[BT_0]] e [[BT_1]]" became
+  // "[[BT0]] e [[BT1]]" — restore regex then failed and the cleanup pattern
+  // (which accepts optional underscore) deleted the protected content
+  // entirely. Result: titles like "Exibindo com `def` e `for`" rendered as
+  // "Exibindo com  e " → TPL veto: com_e_orphan / com_comma_e.
   const sqlSlots: string[] = [];
   const withSqlProt = text.replace(SQL_WILDCARD_RE, (match) => {
     sqlSlots.push(match);
-    return `[[SQLW_${sqlSlots.length - 1}]]`;
+    return `[[SQLW${sqlSlots.length - 1}]]`;
   });
 
-  // Step 1b: protect backtick-quoted content using printable-ASCII markers [[BT_N]]
+  // Step 1b: protect backtick-quoted content using printable-ASCII markers [[BTN]]
   const backtickSlots: string[] = [];
   const slotted = withSqlProt.replace(/`([^`]*)`/g, (_full, inner: string) => {
     backtickSlots.push(inner);
-    return `[[BT_${backtickSlots.length - 1}]]`;
+    return `[[BT${backtickSlots.length - 1}]]`;
   });
 
   // Step 2: clean markdown & noise — san() is safe here (markers are ASCII printable)
@@ -2902,14 +4334,28 @@ function globalSanitize(text: string): string {
   );
 
   // Step 3: restore protected content (backticks first, then SQL wildcards)
+  // v5.4.7 — accept optional underscore for back-compat with any stale markers
+  // emitted by upstream code (LLM examples, legacy fallback path, etc.)
   const withBt = cleaned.replace(
-    /\[\[BT_(\d+)\]\]/g,
+    /\[\[BT_?(\d+)\]\]/g,
     (_m, idx: string) => backtickSlots[Number(idx)] ?? "",
   );
-  return withBt.replace(
-    /\[\[SQLW_(\d+)\]\]/g,
+  const restored = withBt.replace(
+    /\[\[SQLW_?(\d+)\]\]/g,
     (_m, idx: string) => sqlSlots[Number(idx)] ?? "",
   );
+
+  // Final safety net (v5.1) — strip ANY residual placeholder marker that
+  // survived the restore step (e.g. stale [[BT0]], [[BT1]] from prompt
+  // examples baked into LLM output, orphan {{TOKEN}}, lorem ipsum, etc.)
+  return restored
+    .replace(/\[\[BT_?\d+\]\]/gi, "")
+    .replace(/\[\[SQLW_?\d+\]\]/gi, "")
+    .replace(/\[\[[A-Z_0-9]{2,}\]\]/g, "")
+    .replace(/\{\{[A-Z_0-9]{2,}\}\}/g, "")
+    .replace(/\blorem\s+ipsum\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 // Safe title: never cuts mid-word, max 60 chars by default
@@ -2972,7 +4418,8 @@ function cleanTakeawayTitle(title: string, moduleTitle: string): string {
     ];
     return sanitizeTitle(opts[mod.length % opts.length]);
   }
-  return sanitizeTitle(t);
+  // v5.5.0 — editorial polish so "QUE …" / shouted titles get repaired
+  return polishEditorialTitle(sanitizeTitle(t));
 }
 
 // ── TITLE GARBAGE CLEANUP ──
@@ -2984,8 +4431,10 @@ function cleanSlideTitle(title: string, moduleTitle: string): string {
   if (!raw || GARBAGE_TITLE_RE.test(raw) || raw.toLowerCase() === moduleTitle.trim().toLowerCase()) {
     return sanitizeTitle(moduleTitle);
   }
-  // Apply full normalization (preposition fix, etc.)
-  return normalizeSlideTitle(raw, moduleTitle);
+  // Structural normalization (preposition fix, fragment repair, etc.)
+  const structural = normalizeSlideTitle(raw, moduleTitle);
+  // v5.5.0 — editorial polish (Que…? → Por que…?, shout→sentence-case)
+  return polishEditorialTitle(structural);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3106,7 +4555,7 @@ function validateCodeIntegrity(code: string): string {
 // Final check applied after validateSemanticAlignment in processBatch.
 // Repairs or drops slides that still fail quality criteria.
 // Returns null → caller must filter the slide out.
-const PLACEHOLDER_RE = /^\[.*\]$|^(TODO|TBD|PLACEHOLDER|CONTEÚDO AQUI|ITEM \d+)$/i;
+const PLACEHOLDER_RE = /^\[.*\]$|^(TODO|TBD|PLACEHOLDER|CONTEÚDO AQUI|ITEM \d+|LOREM\s+IPSUM)$|\[\[[A-Z_0-9]+\]\]|\{\{[A-Z_0-9]+\}\}|\[\[BT_?\d+\]\]/i;
 const FRAG_CONJ_RE   = /^(e|é|ou|mas|porém|então)\s+/i;
 
 function semanticQualityGate(slide: Slide, moduleTitle: string): Slide | null {
@@ -3540,7 +4989,9 @@ function repairEmptySlide(s: Slide, moduleContent: string): Slide {
   console.warn(
     `[V5] Repaired slide "${s.title}" (${s.layout}) → bullets with ${repaired.length} items`,
   );
-  return { ...s, layout: "bullets", items: repaired };
+  // v5.7.0 — if the source slide carried a CÓDIGO label, demote it so the
+  // resulting bullets slide doesn't render with a misleading code header.
+  return { ...s, layout: "bullets", items: repaired, code: undefined, label: _demoteCodeLabel(s.label) };
 }
 
 // ── OVERFLOW GUARD ──
@@ -3589,11 +5040,12 @@ function splitOverflowSlides(slides: Slide[]): Slide[] {
     }
 
     // Slide A — explanation only (bullets)
+    // v5.7.0 — demote CÓDIGO label since this split-out slide has no code.
     if (items.length > 0) {
       out.push({
         layout: "bullets",
         title: s.title,
-        label: s.label,
+        label: _demoteCodeLabel(s.label),
         items: items.slice(0, 5),
         moduleIndex: s.moduleIndex,
       });
@@ -3901,6 +5353,2171 @@ function splitSlidesForTemplate(slides: Slide[], caps: TemplateCaps): Slide[] {
 // WARNINGs auto-fixed in-place; CRITICALs repaired or slide removed.
 // ═══════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════
+// SECTION 5C: SCENE BLUEPRINT + HARD CONSTRAINTS + DOMAIN GUARD
+// Architectural correction (v5.1) — adds an intermediate semantic layer
+// between the LLM-generated Slide and the renderer, with explicit
+// hard/soft constraint separation, domain contamination detection, a
+// final placeholder sanitizer and Python/SQL code completeness checks.
+//
+// Hard constraints ALWAYS win over soft constraints. The qaVeto
+// function (Section 6E) blocks the final export if any CRITICAL issue
+// survives the resolution cascade.
+// ═══════════════════════════════════════════════════════════
+
+type ContentDomain =
+  | "python"
+  | "sql"
+  | "javascript"
+  | "java"
+  | "data_analysis"
+  | "business"
+  | "marketing"
+  | "design"
+  | "legal"
+  | "education"
+  | "generic";
+
+type SceneIntent =
+  | "concept"
+  | "example"
+  | "code"
+  | "process"
+  | "comparison"
+  | "summary"
+  | "module_cover"
+  | "toc"
+  | "closing";
+
+type ScenePriority = "low" | "medium" | "high";
+
+type FocalElement =
+  | "title"
+  | "bullets"
+  | "code"
+  | "steps"
+  | "cards"
+  | "comparison"
+  | "none";
+
+interface HardConstraints {
+  noPlaceholders:        true;
+  noEmptySlides:         true;
+  noIncompleteCode:      true;
+  noDomainContamination: true;
+  maxWords:              number;
+  maxBullets:            number;
+  maxCodeLines:          number;
+  minFontSafe:           true;
+  noFragmentTitle:       true;
+  noGenericObjective:    true;
+}
+
+interface SoftConstraints {
+  preferPremiumVisual: boolean;
+  preferHero:          boolean;
+  preferComparison:    boolean;
+  preferCards:         boolean;
+  preferLayoutBold:    boolean;
+  preferVariation:     boolean;
+}
+
+interface SceneBlueprint {
+  slideId:           string;
+  moduleId:          string;
+  courseTopic:       string;
+  contentDomain:     ContentDomain;
+  intent:            SceneIntent;
+  priority:          ScenePriority;
+  focalElement:      FocalElement;
+  layoutCandidates:  Layout[];
+  hardConstraints:   HardConstraints;
+  softConstraints:   SoftConstraints;
+}
+
+const DEFAULT_HARD: HardConstraints = {
+  noPlaceholders:        true,
+  noEmptySlides:         true,
+  noIncompleteCode:      true,
+  noDomainContamination: true,
+  maxWords:              80,
+  maxBullets:             6,
+  maxCodeLines:          12,
+  minFontSafe:           true,
+  noFragmentTitle:       true,
+  noGenericObjective:    true,
+};
+
+const DEFAULT_SOFT: SoftConstraints = {
+  preferPremiumVisual: true,
+  preferHero:          false,
+  preferComparison:    false,
+  preferCards:         true,
+  preferLayoutBold:    false,
+  preferVariation:     true,
+};
+
+// ── Course-topic → ContentDomain inference ──────────────────
+function inferCourseDomain(courseTopic: string, moduleTitle = ""): ContentDomain {
+  const t = `${courseTopic} ${moduleTitle}`.toLowerCase();
+  if (/\bpython\b|\bdjango\b|\bflask\b|\bpandas\b|\bnumpy\b/.test(t)) return "python";
+  if (/\bsql\b|\bpostgres|\bmysql\b|\boracle\b|banco de dados|database/.test(t)) return "sql";
+  if (/\bjavascript\b|\bnode\b|\breact\b|\btypescript\b|\bvue\b/.test(t)) return "javascript";
+  if (/\bjava\b(?!\s*script)|spring\b|maven|gradle/.test(t)) return "java";
+  if (/análise de dados|data analy|business intelligence|\bbi\b|power\s*bi/.test(t)) return "data_analysis";
+  if (/marketing|publicidade|branding|propaganda/.test(t)) return "marketing";
+  if (/design|ux|ui|figma|adobe/.test(t)) return "design";
+  if (/jurídic|legal|direito|contrato/.test(t)) return "legal";
+  if (/empresa|gestão|negóci|liderança|vendas/.test(t)) return "business";
+  if (/educação|ensino|pedagog|didátic/.test(t)) return "education";
+  return "generic";
+}
+
+// ── Domain-aware intent inference ──────────────────────────
+function inferSceneIntent(slide: Slide): SceneIntent {
+  if (slide.layout === "module_cover") return "module_cover";
+  if (slide.layout === "toc")          return "toc";
+  if (slide.layout === "closing")      return "closing";
+  if (slide.layout === "code" || (slide.code && slide.code.trim().length > 0)) return "code";
+  if (slide.layout === "comparison") return "comparison";
+  if (slide.layout === "process" || slide.layout === "timeline") return "process";
+  if (slide.layout === "takeaways") return "summary";
+  const t = (slide.title || "").toLowerCase();
+  if (/exemplo|caso|cenário|prática/.test(t)) return "example";
+  return "concept";
+}
+
+function buildSceneBlueprint(
+  slide: Slide,
+  moduleId: string,
+  moduleTitle: string,
+  courseTopic: string,
+  slideId: string,
+): SceneBlueprint {
+  const domain = inferCourseDomain(courseTopic, moduleTitle);
+  const intent = inferSceneIntent(slide);
+  const focalElement: FocalElement =
+    intent === "code"          ? "code" :
+    intent === "process"       ? "steps" :
+    intent === "comparison"    ? "comparison" :
+    nonEmpty(slide.items).length >= 4 ? "bullets" :
+    nonEmpty(slide.items).length > 0   ? "cards" :
+    slide.title                ? "title" : "none";
+  const layoutCandidates: Layout[] = (() => {
+    if (intent === "code")       return ["code", "twocol", "bullets"];
+    if (intent === "process")    return ["process", "timeline", "diagram", "bullets"];
+    if (intent === "comparison") return ["comparison", "twocol", "cards"];
+    if (intent === "summary")    return ["takeaways", "bullets", "cards"];
+    if (intent === "example")    return ["cards", "twocol", "bullets"];
+    return [slide.layout, "bullets", "cards", "twocol"];
+  })();
+  const priority: ScenePriority =
+    intent === "code" || intent === "comparison" ? "high" :
+    intent === "module_cover" || intent === "summary" ? "medium" :
+    "low";
+  return {
+    slideId,
+    moduleId,
+    courseTopic,
+    contentDomain: domain,
+    intent,
+    priority,
+    focalElement,
+    layoutCandidates,
+    hardConstraints: DEFAULT_HARD,
+    softConstraints: DEFAULT_SOFT,
+  };
+}
+
+// ── Domain contamination detector ──────────────────────────
+// Returns true if a slide contains content from a foreign technical
+// domain (e.g. SQL/DDL appearing inside a Python course module).
+const SQL_DDL_RE = /\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE|CREATE\s+INDEX|CREATE\s+VIEW|FOREIGN\s+KEY|PRIMARY\s+KEY)\b/i;
+const SQL_DML_RE = /\b(SELECT\s+\*|SELECT\s+\w+\s+FROM|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|JOIN\s+\w+\s+ON)\b/i;
+const PYTHON_HINTS_RE = /\b(def\s+\w+\s*\(|class\s+\w+|import\s+\w+|from\s+\w+\s+import|print\s*\(|elif\b|lambda\s+|self\.)/;
+const JS_HINTS_RE = /\b(function\s+\w+\s*\(|const\s+\w+\s*=|let\s+\w+\s*=|=>|console\.log|require\s*\()/;
+
+// Strip line/block comments + string/template literals so we don't flag
+// SQL/Python/JS keywords that only appear inside docstrings, examples,
+// regex tutorials, etc.  This makes contamination detection conservative.
+function stripCommentsAndStrings(code: string): string {
+  return code
+    // Python triple-quoted docstrings
+    .replace(/'''[\s\S]*?'''/g, "")
+    .replace(/"""[\s\S]*?"""/g, "")
+    // C-family block comments
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    // line comments (#, //, --)
+    .replace(/(^|\s)#[^\n]*/g, "$1")
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/--[^\n]*/g, "")
+    // string literals
+    .replace(/'(?:\\.|[^'\\])*'/g, "''")
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/`(?:\\.|[^`\\])*`/g, "``");
+}
+
+// Hard SQL DDL/DML patterns — keywords extremely unlikely to appear in
+// legitimate prose of a non-SQL course. Scanned across title + items
+// + code. v5.1.5 strengthening: also flags BARE uppercase SQL keywords
+// (SELECT/INSERT/UPDATE/DELETE/JOIN) when they appear as standalone
+// uppercase tokens — Python pedagogy uses lowercase verbs ("selecionar",
+// "atualizar"), so uppercase SQL is foreign-domain leakage.
+// HARD prose SQL — only phrases that are unambiguous SQL even in lowercase.
+// Excludes "GROUP BY"/"ORDER BY"/bare "SELECT"/bare "JOIN" — these are too
+// common in English prose ("group by length", "order by date", "select * from
+// the list"). Those go to BARE_SQL_UPPER_RE (uppercase-only).
+const HARD_SQL_PROSE_RE =
+  /\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM|INSERT\s+INTO|UPDATE\s+\w+\s+SET|FOREIGN\s+KEY|PRIMARY\s+KEY|REFERENCES\s+\w+\s*\()\b/i;
+// v5.1.7 — Portuguese SQL DDL pedagogy phrases. Python courses NEVER discuss
+// "criar tabela" / "alterar tabela" / "chave estrangeira" / "chave primária"
+// in pedagogical prose. These are SQL-domain concepts.
+const PT_SQL_DDL_RE =
+  /\b(criar|alterar|remover|truncar|excluir)\s+tabela\b|\bchave\s+(estrangeira|prim[áa]ria)\b|\b(inserir|atualizar|deletar)\s+(em|na|de)\s+tabela\b|\bbanco\s+de\s+dados\s+relacional\b|\bschema\s+do\s+banco\b/i;
+// Bare uppercase SQL — case-sensitive; only blocks ALL-CAPS variants.
+// FROM/WHERE alone removed — too common in English prose ("FROM zero to hero").
+const BARE_SQL_UPPER_RE =
+  /(?<![A-Za-z])(SELECT|INSERT|UPDATE|DELETE|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|GROUP\s+BY|ORDER\s+BY|HAVING|UNION)(?![A-Za-z])/;
+
+// v5.1.6: exhaustive string extraction — recursively pulls every
+// string-valued field from a slide so SQL leakage can't hide inside
+// nested arrays (caseStudy.phases, process.steps, cards, tableData...).
+function extractAllStrings(value: unknown, out: string[] = [], depth = 0): string[] {
+  if (depth > 6) return out;
+  if (value == null) return out;
+  if (typeof value === "string") { if (value.trim()) out.push(value); return out; }
+  if (Array.isArray(value)) {
+    for (const v of value) extractAllStrings(v, out, depth + 1);
+    return out;
+  }
+  if (typeof value === "object") {
+    for (const k of Object.keys(value as Record<string, unknown>)) {
+      // Skip known non-textual / structural keys to keep the pass fast.
+      if (k === "layout" || k === "image" || k === "src" || k === "url" || k === "color") continue;
+      extractAllStrings((value as Record<string, unknown>)[k], out, depth + 1);
+    }
+  }
+  return out;
+}
+
+// v5.1.8 — GLOBAL FIELD SAFETY NET
+// Runs ALL hard detectors against EVERY string field of EVERY slide via
+// extractAllStrings(). This catches contamination/genericity that per-field
+// QA checks miss (e.g. competencies on module_cover, cards.title/text,
+// takeaways subtitle, comparison left/right text, process.steps).
+// Returns issues with precise (slideId + matched substring) so qaVeto can
+// hard-block AND the developer can see exactly which field escaped.
+const MODULE_SQL_ALLOW_RE =
+  /\bsql\b|banco de dados|\bbd\b|\bdatabase\b|\bquery\b|\bconsulta\b|postgres|mysql|oracle|sqlite|mariadb|nosql/i;
+const MODULE_PYTHON_ALLOW_RE =
+  /\bpython\b|pandas|numpy|django|flask|jupyter|scikit|matplotlib|seaborn|pytorch|tensorflow/i;
+
+// v5.1.14 — DETERMINISTIC SQL STRIP for module covers (items + competencies)
+// When the LLM ignores domain-integrity prompts and emits SQL DDL/DML inside
+// a non-SQL course's module cover (e.g. "Criar tabelas com CREATE TABLE" in a
+// Python "Estruturas de Dados" module), the safety net previously vetoed the
+// whole export. Now we drop ONLY the offending strings so the cover survives.
+// If a list goes empty after stripping, we leave it empty (renderer handles
+// sparse covers; cleaner than fabricating fake content).
+// v5.1.15 — broader SQL detection (Pass 14 missed bare DROP/TRUNCATE/CREATE/ALTER
+// without "TABLE", and "banco de dados" without "relacional").
+// v5.1.15 — exclude `_` and digits from the boundary so identifiers like
+// `CREATE_ACTION`, `DROP_TABLE_NAME`, `ALTER2` (constants/var names that
+// happen to embed an SQL verb) don't trip the detector.
+const BARE_SQL_DDL_VERBS_RE =
+  /(?<![A-Za-z0-9_])(DROP|TRUNCATE|CREATE|ALTER)(?![A-Za-z0-9_])/;
+const BROADER_PT_DB_RE =
+  /\b(banco\s+de\s+dados|tabela[s]?\s+(do\s+)?banco|colunas?\s+(da|de)\s+tabela|registros?\s+(da|na|de)\s+tabela|consulta[s]?\s+SQL)\b/i;
+
+function isSqlContaminatedString(txt: string): boolean {
+  if (!txt || typeof txt !== "string") return false;
+  return HARD_SQL_PROSE_RE.test(txt) ||
+    PT_SQL_DDL_RE.test(txt) ||
+    BARE_SQL_UPPER_RE.test(txt) ||
+    BARE_SQL_DDL_VERBS_RE.test(txt) ||
+    BROADER_PT_DB_RE.test(txt);
+}
+
+// v5.1.15 — cross-module objective contamination
+// Module 8 ("Boas Práticas e Implantação") receiving Module 1 objectives
+// ("Utilizar variáveis, tipos primitivos..."). Detect when an advanced
+// module title contains advanced/practice/deploy keywords AND an item
+// mentions clearly basic-fundamental concepts.
+const ADVANCED_MODULE_RE =
+  /\b(boas\s+pr[áa]ticas|implanta[çc][ãa]o|deploy|avan[çc]ad[oa]s?|otimiza[çc][ãa]o|performance|ci\/cd|monitora|seguran[çc]a|refactor|arquitetura|escalabilidade)\b/i;
+const BASIC_FUNDAMENTALS_RE =
+  /\b(vari[áa]veis\s+(b[áa]sicas|e\s+tipos\s+primitivos|e\s+operadores\s+b[áa]sicos)|tipos\s+primitivos|primeiros\s+passos|hello\s+world|sintaxe\s+b[áa]sica|expressões\s+b[áa]sicas|atribuições\s+b[áa]sicas|operadores\s+b[áa]sicos|conceitos\s+iniciais)\b/i;
+
+function isCrossModuleBasicLeak(txt: string, moduleTitle: string): boolean {
+  if (!txt || !moduleTitle) return false;
+  if (!ADVANCED_MODULE_RE.test(moduleTitle)) return false;
+  return BASIC_FUNDAMENTALS_RE.test(txt);
+}
+
+// v5.1.15 — raw code leaking as bullet/text
+// Slide 11 had `{pizza['nome']} - R${pizza['preco']:.2f}") print(...)` as
+// a bullet item. Detect template-string / dangling-print / unbalanced
+// quote patterns that reveal source-code fragments leaked into prose.
+const RAW_CODE_LEAK_PATTERNS: RegExp[] = [
+  /\{[a-zA-Z_]\w*\[['"][^'"]+['"]\][^}]*\}/,        // {var['key']:fmt}
+  /["')]\s*print\s*\(/,                              // ") print(  or  ) print(
+  /\bprint\s*\(\s*[fr]?["'][^"']*$/,                 // print("...   (unterminated)
+  /\.\d+f\}["')]/,                                   // :.2f}")
+  /\)\s*\.\s*print\s*\(/,                            // ).print(
+];
+function detectRawCodeLeak(text: string): boolean {
+  if (!text || text.length < 8) return false;
+  return RAW_CODE_LEAK_PATTERNS.some((re) => re.test(text));
+}
+
+// v5.1.15 — generalised contamination strip. Drops items matching ANY of:
+//   - SQL leakage in non-SQL/non-DB module
+//   - cross-module basic-fundamental leak in advanced module
+//   - raw code leak (template strings, dangling print, etc.)
+function stripSqlContaminationFromSlide(
+  slide: Slide,
+  courseDomain: ContentDomain,
+  moduleTitle: string,
+  slideId: string,
+): Slide {
+  const moduleAllowsSql = MODULE_SQL_ALLOW_RE.test(moduleTitle);
+  const moduleAllowsPython = MODULE_PYTHON_ALLOW_RE.test(moduleTitle);
+  const looksLikePython = courseDomain === "python" || moduleAllowsPython;
+  const checkSql = (courseDomain !== "sql" && !moduleAllowsSql) || looksLikePython;
+
+  const isContaminated = (t: string): string | null => {
+    if (typeof t !== "string") return null;
+    if (checkSql && isSqlContaminatedString(t)) return "sql";
+    if (isCrossModuleBasicLeak(t, moduleTitle)) return "cross_module_basic";
+    if (detectRawCodeLeak(t)) return "raw_code_leak";
+    // v5.1.16 — last-resort drop for items that survived the repair pipeline
+    // with structural damage (stripped function names, "com :", "com e", etc.)
+    // or empty semantic-break shells like "(Ex: )" / "objeto ()" /
+    // "Definir Classes: Usar com nome". These were previously emitted as HARD
+    // CRITICAL by the safety net and vetoed the entire export. Strip-and-keep
+    // is safer: the renderable-slide gate drops the slide if too few items
+    // remain, but the rest of the deck survives.
+    if (detectTechnicalDamage(t)) return "tech_damage_unrepaired";
+    try {
+      const inc = detectIncompleteTechnicalSentence(t);
+      if (inc?.broken) return `semantic_break:${inc.key ?? "unknown"}`;
+    } catch { /* defensive */ }
+    return null;
+  };
+
+  const out = { ...slide } as Slide & { competencies?: string[] };
+  let dropped = 0;
+  const reasons: string[] = [];
+
+  for (const key of ["items", "leftItems", "rightItems"] as const) {
+    const arr = (out as unknown as Record<string, unknown>)[key];
+    if (Array.isArray(arr)) {
+      const before = arr.length;
+      const cleaned = (arr as string[]).filter((t) => {
+        const r = isContaminated(t);
+        if (r) reasons.push(r);
+        return r === null;
+      });
+      dropped += before - cleaned.length;
+      (out as unknown as Record<string, unknown>)[key] = cleaned;
+    }
+  }
+  const comps = (slide as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    const before = comps.length;
+    const cleaned = comps.filter((t) => {
+      const r = isContaminated(t);
+      if (r) reasons.push(r);
+      return r === null;
+    });
+    dropped += before - cleaned.length;
+    out.competencies = cleaned;
+  }
+  if (dropped > 0) {
+    console.log(
+      `[V5-CONTAM-STRIP] ${slideId} | "${moduleTitle}" | dropped=${dropped} reasons=[${reasons.join(",")}]`,
+    );
+  }
+  return out;
+}
+
+function runGlobalFieldSafetyNet(
+  allModuleSlides: Slide[][],
+  courseDomain: ContentDomain,
+  moduleTitlesArr: string[],
+): QAIssue[] {
+  const issues: QAIssue[] = [];
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const moduleTitle = moduleTitlesArr[mi] ?? "";
+    const moduleAllowsSql    = MODULE_SQL_ALLOW_RE.test(moduleTitle);
+    const moduleAllowsPython = MODULE_PYTHON_ALLOW_RE.test(moduleTitle);
+    const looksLikePython = courseDomain === "python" || moduleAllowsPython;
+    const checkSql = (courseDomain !== "sql" && !moduleAllowsSql) || looksLikePython;
+
+    for (let si = 0; si < allModuleSlides[mi].length; si++) {
+      const s = allModuleSlides[mi][si];
+      const id = `M${mi + 1}.S${si + 1}`;
+      const title = s.title ?? id;
+      const strs = extractAllStrings(s).filter((x) => !x.startsWith("[["));
+
+      for (const txt of strs) {
+        if (typeof txt !== "string" || txt.length < 4) continue;
+
+        // ── SQL leakage in non-SQL course ────────────────────
+        if (checkSql) {
+          const m1 = HARD_SQL_PROSE_RE.exec(txt);
+          if (m1) {
+            issues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `[SAFETY-NET] SQL DDL/DML escapou em "${title}" — match="${m1[0].slice(0, 60)}" no campo "${txt.slice(0, 80)}"`,
+              context: txt.slice(0, 160),
+              resolutionStrategy: "Bloqueio absoluto — campo escapou do detector per-layout",
+            });
+            continue;
+          }
+          const m2 = PT_SQL_DDL_RE.exec(txt);
+          if (m2) {
+            issues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `[SAFETY-NET] Pedagogia SQL (PT) escapou em "${title}" — match="${m2[0].slice(0, 60)}" no campo "${txt.slice(0, 80)}"`,
+              context: txt.slice(0, 160),
+              resolutionStrategy: "Bloqueio absoluto",
+            });
+            continue;
+          }
+          const m3 = BARE_SQL_UPPER_RE.exec(txt);
+          if (m3) {
+            issues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `[SAFETY-NET] SQL keyword UPPERCASE escapou em "${title}" — match="${m3[0].slice(0, 60)}" no campo "${txt.slice(0, 80)}"`,
+              context: txt.slice(0, 160),
+              resolutionStrategy: "Bloqueio absoluto",
+            });
+            continue;
+          }
+        }
+
+        // (Generic-objective check moved out of the per-string loop —
+        //  it runs only on items/competencies below to avoid false
+        //  positives on cover titles that legitimately start with verbs.)
+
+        // ── Broken Portuguese language ────────────────────────
+        // v5.4.3 — REMOVED. The safety net iterates extractAllStrings() which
+        // walks every field including stale leftItems/rightItems on
+        // non-comparison layouts (preserved by repairEmptySlide() and
+        // layout-rotation transforms). That produced phantom CRITICAL
+        // blockers even after check #20 already dropped the offending
+        // rendered content. Check #20 is field-aware (findBrokenLanguageHit
+        // skips non-rendered fields) and runs TWICE in the pipeline
+        // (per-module + post-repair re-QA at line 7829), so any broken
+        // language in actually-rendered fields is already dropped/removed
+        // before the safety net runs. Keeping a non-field-aware detector
+        // here would re-introduce the phantom-blocker pattern v5.4.3 fixes.
+
+        // ── Unresolved technical damage ("verb ()", ", ,", "Use e .") ──
+        if (detectTechnicalDamage(txt)) {
+          issues.push({
+            slideId: id, type: "TECHNICAL_SANITIZATION_DAMAGE", severity: "CRITICAL",
+            message: `[SAFETY-NET] Dano técnico não reparado em "${title}": "${txt.slice(0, 80)}"`,
+            context: txt.slice(0, 160),
+            resolutionStrategy: "Bloqueio absoluto — repair determinístico falhou",
+          });
+        }
+
+        // ── Incomplete technical sentence ─────────────────────
+        const inc = detectIncompleteTechnicalSentence(txt);
+        if (inc.broken) {
+          issues.push({
+            slideId: id, type: "TECHNICAL_SEMANTIC_BREAK", severity: "CRITICAL",
+            message: `[SAFETY-NET] Frase técnica incompleta em "${title}" (${inc.key}): "${txt.slice(0, 80)}"`,
+            context: txt.slice(0, 160),
+            resolutionStrategy: "Bloqueio absoluto",
+          });
+        }
+      }
+
+      // ── Generic objective check: ONLY items + competencies on module_cover ──
+      // Restricted to objective-bearing fields to avoid false positives on
+      // titles that legitimately start with verbs ("Aplicar Loops em Python").
+      if (s.layout === "module_cover") {
+        const sCov = s as Slide & { competencies?: string[] };
+        const objFields = [
+          ...(Array.isArray(s.items) ? s.items : []),
+          ...(Array.isArray(sCov.competencies) ? sCov.competencies : []),
+        ];
+        for (const txt of objFields) {
+          if (typeof txt !== "string" || txt.length < 4) continue;
+          if (isGenericLearningObjective(txt, moduleTitle)) {
+            issues.push({
+              slideId: id, type: "GENERIC_LEARNING_OBJECTIVE", severity: "CRITICAL",
+              message: `[SAFETY-NET] Objetivo genérico escapou em "${title}": "${txt.slice(0, 100)}"`,
+              context: txt.slice(0, 160),
+              resolutionStrategy: "Bloqueio absoluto — repair não atingiu o campo",
+            });
+          }
+        }
+      }
+    }
+  }
+  return issues;
+}
+
+function detectDomainContamination(
+  slide: Slide,
+  domain: ContentDomain,
+  moduleTitle: string,
+): { contaminated: boolean; reason?: string } {
+  // Module/course allow-lists — ecosystem-aware.
+  const moduleAllowsSql =
+    /\bsql\b|banco de dados|\bbd\b|\bdatabase\b|\bquery\b|\bconsulta\b|postgres|mysql|oracle|sqlite|mariadb|nosql/i.test(moduleTitle);
+  const moduleAllowsPython =
+    /\bpython\b|pandas|numpy|django|flask|jupyter|scikit|matplotlib|seaborn|pytorch|tensorflow/i.test(moduleTitle);
+  const moduleAllowsJs =
+    /\bjavascript\b|\btypescript\b|\bnode\b|\bnodejs\b|\breact\b|\bvue\b|\bnext\b|\bnuxt\b|\bangular\b|\bdeno\b/i.test(moduleTitle);
+
+  // v5.1.6: also infer python from module title/slide content even when
+  // courseDomain is "generic" (e.g. when the course title doesn't have
+  // "Python" but a module clearly does). This makes the SQL block
+  // ABSOLUTE for any python module regardless of inferred domain.
+  const looksLikePython = domain === "python" || moduleAllowsPython;
+
+  // ── Layer 1: HARD prose check (EXHAUSTIVE — all string fields) ───
+  // Concatenates EVERY string-valued field reachable in the slide, not
+  // just title/items. Catches SQL leaking into process.steps, cards,
+  // caseStudy.phases, tableData, etc.
+  if ((domain !== "sql" && !moduleAllowsSql) || looksLikePython) {
+    const allStrs = extractAllStrings(slide).filter((s) => !s.startsWith("[[")); // skip protected slots
+    const proseText = allStrs.join("\n");
+    const sample = (m: RegExpExecArray | null) => m ? m[0].slice(0, 80) : "";
+    const m1 = HARD_SQL_PROSE_RE.exec(proseText);
+    if (m1) {
+      console.log(`[V5-DOMAIN-BLOCK] SQL DDL/DML detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}" | match="${sample(m1)}" | title="${slide.title ?? ""}"`);
+      return { contaminated: true, reason: `SQL DDL/DML em prose de curso ${domain} ("${sample(m1)}")` };
+    }
+    const m2 = BARE_SQL_UPPER_RE.exec(proseText);
+    if (m2) {
+      console.log(`[V5-DOMAIN-BLOCK] Bare uppercase SQL detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}" | match="${sample(m2)}" | title="${slide.title ?? ""}"`);
+      return { contaminated: true, reason: `SQL bare keywords em prose de curso ${domain} ("${sample(m2)}")` };
+    }
+    // v5.1.7: Portuguese SQL pedagogy phrases — block in non-SQL/python courses
+    const m3 = PT_SQL_DDL_RE.exec(proseText);
+    if (m3) {
+      console.log(`[V5-DOMAIN-BLOCK] Portuguese SQL pedagogy detected in ${looksLikePython ? "python" : domain} module "${moduleTitle}" | match="${sample(m3)}" | title="${slide.title ?? ""}"`);
+      return { contaminated: true, reason: `Pedagogia SQL (PT) em curso ${domain} ("${sample(m3)}")` };
+    }
+  }
+  if (domain === "generic" && !looksLikePython) return { contaminated: false };
+
+  // ── Layer 2: code-block analysis (only when slide has code) ─
+  if (!slide.code || !slide.code.trim()) return { contaminated: false };
+  const sanitisedCode = stripCommentsAndStrings(slide.code);
+  if (!sanitisedCode.trim()) return { contaminated: false };
+
+  if (domain !== "sql" && !moduleAllowsSql) {
+    if (SQL_DDL_RE.test(sanitisedCode)) return { contaminated: true, reason: `SQL DDL em curso ${domain}` };
+    if (SQL_DML_RE.test(sanitisedCode)) return { contaminated: true, reason: `SQL DML em curso ${domain}` };
+  }
+  if (domain !== "python" && !moduleAllowsPython) {
+    if (PYTHON_HINTS_RE.test(sanitisedCode)) return { contaminated: true, reason: `Código Python em curso ${domain}` };
+  }
+  if (domain !== "javascript" && !moduleAllowsJs) {
+    if (JS_HINTS_RE.test(sanitisedCode)) return { contaminated: true, reason: `Código JS em curso ${domain}` };
+  }
+  return { contaminated: false };
+}
+
+// ── Generic learning objective detector (v5.1 hardening) ────
+// Catches non-pedagogical bullets like "Compreender X", "Aplicar X",
+// "Identificar X" where X is just a fragment of the module title and
+// no concrete technical verb/operation is present.
+const FILLER_VERBS_RE =
+  /^(compreender|conhecer|entender|aprender|saber|estudar|explorar|descobrir|aplicar|identificar|reconhecer|familiarizar(-se)?|introduzir|apresentar|abordar|revisar)\s+/i;
+
+const CONCRETE_TECH_VERBS_RE =
+  /\b(criar|definir|implementar|construir|configurar|instalar|executar|chamar|invocar|escrever|ler|abrir|fechar|salvar|carregar|importar|exportar|inserir|atualizar|remover|deletar|consultar|filtrar|agrupar|ordenar|tratar|capturar|lançar|gerar|retornar|receber|enviar|conectar|autenticar|validar|testar|depurar|iterar|percorrer|mapear|reduzir|filtrar|combinar|comparar|calcular|somar|contar|converter|serializar|desserializar|parsear|formatar|renderizar|publicar|fazer\s+deploy|usar|utilizar|manipular)\b/i;
+
+// v5.3.2 — extended with best-practices/I/O/OOP-Python tokens that were missing,
+// causing safety-net false positives on legitimate replacement objectives like
+// "Aplicar PEP 8 e docstrings para manter código legível e padronizado."
+// (M8 cover blocked) and "Aplicar entrada e saída com input() e print()."
+// (M1 cover would block on the next regen).
+const CONCRETE_TECH_NOUNS_RE =
+  /\b(função|funções|método|métodos|classe|classes|objeto|objetos|instância|instâncias|atributo|atributos|herança|polimorfismo|encapsulamento|construtor|construtores|variável|variáveis|lista|listas|dicionário|dicionários|tupla|tuplas|conjunto|conjuntos|array|arrays|loop|loops|for|while|if|else|try|except|finally|with|lambda|map|filter|reduce|comprehension|decorador|generator|iterator|módulo|módulos|pacote|pacotes|biblioteca|framework|api|endpoint|requisição|resposta|json|csv|xml|sql|select|insert|update|delete|join|índice|tabela|coluna|chave|exceção|erro|log|teste|unitário|integração|debug|depuração|parâmetro|argumento|retorno|callback|promise|async|await|thread|processo|arquivo|diretório|stream|buffer|socket|http|tcp|udp|rest|graphql|entrada|saída|input|print|read|write|open|pep\s*8|docstring|docstrings|venv|virtualenv|pip|requirements|setup\.py|pyproject(\.toml)?|src|tests|docs|readme|license|distribuição|empacotamento|projeto|projetos|dependência|dependências|repositório|gitignore|ci\/?cd|deploy|implantação|produção)\b/i;
+
+function isGenericLearningObjective(text: string, moduleTitle: string): boolean {
+  if (!text || text.length < 10) return false;
+  const t = text.trim();
+
+  // Only items that BEGIN with a filler verb are candidates for generic.
+  if (!FILLER_VERBS_RE.test(t)) return false;
+
+  const tail = t.replace(FILLER_VERBS_RE, "").trim();
+  const hasConcreteVerb = CONCRETE_TECH_VERBS_RE.test(tail);
+  const hasConcreteNoun = CONCRETE_TECH_NOUNS_RE.test(tail);
+
+  // v5.1.7 — STRICTER: filler verbs ("Compreender", "Aplicar", "Identificar")
+  // are pedagogically vague by themselves. The presence of a tech NOUN alone
+  // ("Aplicar Funções", "Identificar testes") is just topic restatement, not
+  // a concrete actionable objective. We require either:
+  //   (a) a concrete tech VERB in the tail ("Aplicar criar funções"), OR
+  //   (b) a purpose clause + concrete content ("Aplicar listas para armazenar").
+  // Otherwise the item is generic — block it.
+
+  // Pattern 1: filler + concrete VERB → not generic (truly actionable).
+  if (hasConcreteVerb) return false;
+
+  // Pattern 2: filler + purpose clause + concrete noun → not generic
+  // ("Aplicar listas para armazenar dados").
+  const hasPurposeClause = /\b(para|com|usando|através|via|de\s+modo|de\s+forma|a\s+fim\s+de)\b/i.test(tail);
+  if (hasPurposeClause && hasConcreteNoun) return false;
+
+  // Pattern 3 (v5.1.12) — filler + <concrete concept> + "em/no/na <objeto técnico>"
+  // ACCEPTS: "Aplicar escopo local e global em funções Python"
+  //          "Aplicar herança e encapsulamento em classes Python"
+  // BLOCKS:  "Compreender conceitos sobre funções"  (filler noun before prep)
+  //          "Aplicar fundamentos em classes"        (filler noun before prep)
+  //          "Aplicar IA em saúde"                   (no tech noun after prep)
+  // "sobre" was removed — it usually marks topic restatement, not application
+  // context. `dentro d[aeo]s?` now covers da/de/do/das/des/dos.
+  const APPLICATION_PREP_RE = /\b(em|no|na|nos|nas|dentro\s+d[aeo]s?)\s+/i;
+  const FILLER_NOUNS_RE =
+    /^(conceitos?|fundamentos?|princípios?|princip|noções?|aspectos?|elementos?|tópicos?|temas?|bases?|ideias?|teorias?|introdução|visão\s+geral|panorama|generalidades?)\b/i;
+  const appMatch = tail.match(APPLICATION_PREP_RE);
+  if (appMatch && appMatch.index !== undefined) {
+    const beforePrep = tail.slice(0, appMatch.index).trim();
+    const afterPrep = tail.slice(appMatch.index + appMatch[0].length);
+    // BEFORE-prep must be a real concept, not a filler noun stub.
+    const beforeWords = beforePrep.split(/\s+/).filter(Boolean);
+    const beforeIsFillerStub =
+      beforePrep.length === 0 ||
+      (FILLER_NOUNS_RE.test(beforePrep) && beforeWords.length <= 2);
+    // AFTER-prep must contain a concrete technical noun.
+    if (!beforeIsFillerStub && CONCRETE_TECH_NOUNS_RE.test(afterPrep)) return false;
+  }
+
+  // All remaining filler-led items lacking actionable content are generic.
+  // This catches:
+  //   "Compreender fundamentos Essenciais de Python."   (no verb, no noun)
+  //   "Aplicar controle de Fluxo e Funções."           (noun only, no verb, no purpose)
+  //   "Identificar testes, Logs e Depuração."          (noun only, no verb, no purpose)
+  //   "Conhecer estruturas de dados básicas."          (no verb, weak noun without purpose)
+  return true;
+}
+
+// ── Technical-sanitization damage detector (v5.1 hardening) ─
+// Detects the SPECIFIC symptom of stripped function calls: orphan empty
+// parens following a Portuguese action word that pedagogical content
+// would normally pair with a function name. Examples we want to catch:
+//   "Realize leitura () e escrita ()."   ← read()/write() were stripped
+//   "Use a função () para ..."          ← function name was stripped
+//   "Chame . () no objeto"               ← method call dot+name stripped
+// Examples we must NOT flag (legitimate prose):
+//   "Use parênteses () para agrupar expressões."
+//   "Explique a notação callback () no pseudocódigo."
+//
+// Strategy: only trigger when the empty parens follow one of a small set
+// of "calling" verbs/nouns AND the surrounding text doesn't explicitly
+// reference the parentheses themselves as a topic.
+const CALLING_TRIGGER_WORDS = [
+  "leitura", "escrita", "abertura", "fechamento", "execução", "execucao",
+  "invocação", "invocacao", "chamada", "definição", "definicao",
+  "função", "funcao", "método", "metodo",
+  "ler", "escrever", "abrir", "fechar", "executar", "invocar", "chamar",
+];
+const DAMAGED_CALL_RE = new RegExp(
+  `\\b(${CALLING_TRIGGER_WORDS.join("|")})\\s+\\(\\s*\\)`,
+  "i",
+);
+const DAMAGED_DOT_RE = /\b\w+\s*\.\s*\(\s*\)/;        // "obj. ()" — method call w/ name stripped
+const DAMAGED_DOUBLE_PARENS_RE = /\b(?:e|ou|,)\s+\(\s*\)/i; // "..., ()" or "... e ()"
+
+// ── PUNCTUATION-only damage (no parens) ─────────────────────
+// Catches: "Estruture em , , , .", "Use e .", "Use X e ."
+// Symptom: words got stripped, leaving orphan punctuation/conjunctions.
+const ORPHAN_COMMAS_RE = /,\s*,/;
+const ORPHAN_CONJ_PERIOD_RE = /\s(e|ou)\s+\.(\s|$)/i;
+const STRIPPED_VERB_PHRASE_RE =
+  /\b(use|usar|chame|chamar|invoque|invocar|execute|executar|defina|definir|configure|configurar|estruture|estruturar|importe|importar|crie|criar)\s+(?:\w+\s+)?(?:e|ou)\s+\.(\s|$)/i;
+// "X em : ." or ": ." (colon then nothing meaningful) at end of sentence
+const STRIPPED_TAIL_AFTER_COLON_RE = /:\s*[,\s\.]+$/;
+// (Removed STRIPPED_ENUMERATION_AFTER_PREP_RE — too broad. The ", ,"
+//  pattern covered by ORPHAN_COMMAS_RE catches the real damage case
+//  "em , , , ." while normal enumerations like "em módulos, classes."
+//  contain only single commas between words and are correctly ignored.)
+
+// Topics that legitimately discuss empty parens — exempt from damage flag.
+const PARENS_TOPIC_RE = /\bparêntese|\bparentese|\bnotação|\bnotacao|\bsintaxe\b|\bsímbolo|\bsimbolo\b/i;
+
+// v5.1.15 — additional gap patterns from Pass 15 user report:
+//   "Usar modos de abertura , e 'a' corretamente."  → STRIPPED_LEADING_COMMA_RE
+//   "Definir classes com e atributos no ."          → BARE_COM_E_RE / NO_DOT_TAIL_RE
+//   "Organizar testes em classes e métodos ."       → TRAILING_NOUN_DOT_RE
+//   "Testes Unitários com : Crie classes..."        → COM_COLON_GAP_RE
+const STRIPPED_LEADING_COMMA_RE = /[a-zA-ZÀ-ÿ]\s+,\s+/;          // word + space + ", "
+const BARE_COM_E_RE = /\bcom\s+e\s+[a-zA-ZÀ-ÿ]/;                  // "com e atributos"
+const NO_DOT_TAIL_RE = /\b(no|na|nos|nas|de|do|da)\s*\.\s*$/i;    // "no ."
+const TRAILING_NOUN_DOT_RE = /\b(m[ée]todos|classes|fun[çc][õo]es|atributos|par[âa]metros|argumentos|m[óo]dulos)\s+\.\s*$/i;
+const COM_COLON_GAP_RE = /\bcom\s*:\s*[A-ZÀ-Ÿ]/;                  // "com : Crie"
+
+function detectTechnicalDamage(text: string): boolean {
+  // Min length 6 — catches short stripped phrases like "Use e ." (7 chars).
+  if (!text || text.length < 6) return false;
+  // Exempt prose that explicitly discusses parens/notation/syntax as a topic.
+  if (PARENS_TOPIC_RE.test(text)) return false;
+
+  // ── Empty-parens damage ───────────────────────────────────
+  // Calling verb/noun directly followed by "()" with no name in between.
+  if (DAMAGED_CALL_RE.test(text)) return true;
+  // Method-call dot pattern with stripped name.
+  if (DAMAGED_DOT_RE.test(text)) return true;
+  // Conjunction followed by isolated "()" — pattern of two stripped calls.
+  if (DAMAGED_DOUBLE_PARENS_RE.test(text)) return true;
+
+  // ── Orphan-punctuation damage (no parens) ─────────────────
+  // ", ," — at least one list item was stripped.
+  if (ORPHAN_COMMAS_RE.test(text)) return true;
+  // "Use e ." or "Use X e ." — enumeration verb missing trailing item.
+  if (STRIPPED_VERB_PHRASE_RE.test(text)) return true;
+  // " e ." / " ou ." — conjunction followed by period (item after conj stripped).
+  if (ORPHAN_CONJ_PERIOD_RE.test(text)) return true;
+  // ": ." or ": , , ." — colon then nothing meaningful after.
+  if (STRIPPED_TAIL_AFTER_COLON_RE.test(text)) return true;
+
+  // ── v5.1.15 new gap patterns ──────────────────────────────
+  if (STRIPPED_LEADING_COMMA_RE.test(text)) return true;
+  if (BARE_COM_E_RE.test(text)) return true;
+  if (NO_DOT_TAIL_RE.test(text)) return true;
+  if (TRAILING_NOUN_DOT_RE.test(text)) return true;
+  if (COM_COLON_GAP_RE.test(text)) return true;
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════
+// SEMANTIC BREAK DETECTOR (v5.1.5 hardening pass 5)
+// Detects sentences whose syntax is intact but whose meaning was
+// destroyed by sanitization — e.g. "Capture erros específicos como.",
+// "Verifica partes isoladas com.", "Definir Classes: Usar com nome
+// (Ex: ).". These pass detectTechnicalDamage (no orphan parens, no
+// orphan commas) but are pedagogically broken.
+// ═══════════════════════════════════════════════════════════
+
+// Pattern → (matcher, repair-context-key). Repair attempts come from
+// the per-domain dictionaries below.
+type SemanticBreakPattern = {
+  re: RegExp;
+  key: string;          // semantic kind (used to look up repair phrases)
+  describe: string;     // human-readable name for logging
+};
+
+const SEMANTIC_BREAK_PATTERNS: SemanticBreakPattern[] = [
+  // ── Truncated terminal connectives ──────────────────────────
+  // "...específicos como." / "...trate como."
+  { re: /\b(como|tais\s+como|tipo|tipos\s+de|exemplos?\s+de)\s*\.\s*$/i,
+    key: "trailing_as_example", describe: "termina com 'como.'" },
+  // "...partes isoladas com." / "...trabalha com."
+  { re: /\b(com|usando|através\s+de|via|por\s+meio\s+de)\s*\.\s*$/i,
+    key: "trailing_with_tool", describe: "termina com 'com.' ou 'usando.'" },
+  // "...feito a partir de."
+  { re: /\b(a\s+partir\s+de|para|de)\s*\.\s*$/i,
+    key: "trailing_preposition", describe: "termina com preposição isolada" },
+
+  // ── Empty parenthetical examples ────────────────────────────
+  // "(Ex: )" / "(Exemplo: )" / "(ex: ).
+  { re: /\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i,
+    key: "empty_example_parens", describe: "(Ex: ) sem exemplo" },
+  // "Ex: ." / "Exemplo: ." (no parens)
+  { re: /\b(?:ex|exemplo|exemplos)\s*:\s*\.(\s|$)/i,
+    key: "empty_example_colon", describe: "Ex: . sem exemplo" },
+
+  // ── Anonymous "Usar com nome" / "objeto ()" patterns ────────
+  // "Usar com nome (Ex: )" / "Definir com nome"
+  { re: /\busa(?:r|ndo)?\s+com\s+nome\b/i,
+    key: "use_with_name", describe: "'Usar com nome' sem keyword" },
+  // "Inicializa atributos do objeto ()" — pseudo-call with empty parens
+  { re: /\bobjeto\s*\(\s*\)/i,
+    key: "object_empty_parens", describe: "objeto () pseudo-chamada" },
+  // "Criar Construtor :" — colon without method body indication
+  { re: /\bcriar\s+construtor\s*:/i,
+    key: "create_constructor_label", describe: "Criar Construtor sem __init__()" },
+  // "Definir Classes:" or "Definir Classe :" without keyword
+  { re: /\bdefinir\s+classes?\s*:\s*usar\b(?!.*\bclass\b)/i,
+    key: "define_classes_no_class", describe: "Definir Classes sem keyword 'class'" },
+
+  // ── Generic verb stranded by missing complement ─────────────
+  // "Verifica partes isoladas." (verb + isolated noun + period, no tool)
+  // — only flagged when a known "X com Y" framing got truncated to "X."
+  { re: /\b(verifica|valida|testa|garante|assegura|implementa)\s+\w+(?:\s+\w+){0,3}\s+com\s*\.\s*$/i,
+    key: "verb_isolated_with_dot", describe: "verbo + 'com.' truncado" },
+];
+
+function detectIncompleteTechnicalSentence(
+  text: string,
+): { broken: boolean; key?: string; describe?: string } {
+  if (!text || text.length < 8) return { broken: false };
+  // Exempt prose explicitly discussing parentheses/notation as a topic
+  if (PARENS_TOPIC_RE.test(text)) return { broken: false };
+  for (const p of SEMANTIC_BREAK_PATTERNS) {
+    if (p.re.test(text)) {
+      return { broken: true, key: p.key, describe: p.describe };
+    }
+  }
+  return { broken: false };
+}
+
+// ── Domain-aware semantic reconstructions ───────────────────
+// For each (domain, pattern_key) we provide a substitution function.
+// If no rule matches, returns null and the field stays broken (will be
+// blocked by qaVeto via TECHNICAL_SEMANTIC_BREAK).
+
+type SemanticRepairFn = (text: string) => string | null;
+
+function detectModuleDomainPython(moduleTitle: string, courseTopic: string): string {
+  // v5.3.1 — CRITICAL FIX: previously this concatenated moduleTitle + courseTopic
+  // and tested the basics regex against the combined text. For ANY course titled
+  // "Introdução à Programação em Python", the word `introdução` from the course
+  // topic matched py_basics → so M8 "Boas Práticas" was wrongly classified as
+  // py_basics and then injected with "Utilizar variáveis, tipos primitivos..."
+  // objectives. Now:
+  //   • The basics branch matches MODULE TITLE ONLY (the only branch that
+  //     was vulnerable to the course-topic leak).
+  //   • py_best_practices is FIRST so M8 wins before any other branch can.
+  //   • The other narrow branches keep matching combined text since their
+  //     patterns are too specific to be hit by a generic course title.
+  const m = (moduleTitle || "").toLowerCase();
+  const t = `${moduleTitle} ${courseTopic}`.toLowerCase();
+  // py_best_practices FIRST — most specific module class
+  if (/\bboas\s+pr[áa]ticas|\bbest\s+practices|\bimplant|\bdeploy|\bproduc[aã]o|\bci[\/\-]?cd|\bempacot|\bpep\s*8|\bvenv\b|\bpip\b|\brequirements|\bsetup\.py|\bdocstring|\bestrutura\s+de\s+projeto|\breadme/.test(m)) return "py_best_practices";
+  // v5.5.7 — py_json_api BEFORE py_files: "Trabalhando com JSON e APIs Web"
+  // titles would otherwise miss because they don't mention arquivos/leitura.
+  if (/\bjson\b|\bapis?\b|\brest\b|\bhttp\b|\brequests\b/.test(t)) return "py_json_api";
+  if (/\barquivos?|\bfiles?\b|\bi\/o\b|\bleitura|\bescrita/.test(t)) return "py_files";
+  if (/\bclasses?|\boop\b|\bobjetos?|\bherança|\bencapsul/.test(t)) return "py_oop";
+  if (/\btestes?|\bunittest|\bpytest|\btdd\b/.test(t)) return "py_tests";
+  if (/\bexce[çc][õo]es?|\berros?|\btry|\bexcept/.test(t)) return "py_errors";
+  // py_flow BEFORE py_functions — "Controle de Fluxo e Funções" titles
+  // would otherwise hit the functions branch first.
+  if (/\bcontrole\s+de\s+fluxo|condicionais|la[çc]os|loops|\bwhile\b|\bfor\b/.test(t)) return "py_flow";
+  if (/\bfunções?|\bfunctions?|\bdef\b/.test(t)) return "py_functions";
+  if (/\bestruturas?\s+de\s+dados|listas?|dicionários?|tuplas?|conjuntos?/.test(t)) return "py_datastructs";
+  // py_basics: MODULE TITLE ONLY (no course topic) — prevents "Introdução à
+  // Programação em Python" course title from forcing every module into basics.
+  if (/\bvariáveis|\btipos\s+primitivos|\boperadores|\bfundamentos|\bintrodu[çc][aã]o|\bb[áa]sico/.test(m)) return "py_basics";
+  return "py_generic";
+}
+
+const SEMANTIC_REPAIRS: Record<string, Record<string, SemanticRepairFn>> = {
+  // ── Python • Errors / Exceptions ──────────────────────────
+  py_errors: {
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `FileNotFoundError` e `IOError`."),
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `try`/`except`."),
+    trailing_preposition: null as unknown as SemanticRepairFn,
+    verb_isolated_with_dot: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `try`/`except`."),
+  },
+  // ── Python • Classes / OOP ────────────────────────────────
+  py_oop: {
+    // v5.4.1 — full-sentence replacement (was partial regex consuming only
+    // "usar com nome", leaving "...com nome maiúsculo." dangling and being
+    // concatenated AFTER our injected snippet → garbled "...seguido do
+    // nome a palavra-chave class com nome mai" output in the log).
+    use_with_name: (_t) =>
+      "Usar a palavra-chave `class` seguida do nome da classe em PascalCase.",
+    // v5.4.1 — full-sentence replacement. Previous regex only consumed
+    // "Definir Classes: Usar" prefix, so the original tail
+    // "a palavra-chave class com nome maiúsculo." was concatenated to the
+    // replacement, producing "...seguido do nome a palavra-chave class
+    // com nome maiúsculo." (then truncated mid-word in display logs).
+    // The detector lookahead `(?!.*\bclass\b)` failed to see `class`
+    // because withTechnicalProtection had MASKED it to a PUA placeholder.
+    define_classes_no_class: (_t) =>
+      "Definir Classes: usar a palavra-chave `class` com nome em PascalCase.",
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `class Livro:`)"),
+    empty_example_colon: (t) =>
+      t.replace(/\b(ex|exemplo|exemplos)\s*:\s*\.(\s|$)/i, "$1: `class Livro:`.$2"),
+    object_empty_parens: (t) =>
+      t.replace(/\bobjeto\s*\(\s*\)/i, "objeto"),
+    create_constructor_label: (t) =>
+      t.replace(/\bcriar\s+construtor\s*:/i, "Criar Construtor `__init__()`:"),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `__init__()` e atributos."),
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `class` e `__init__()`."),
+  },
+  // ── Python • Tests ────────────────────────────────────────
+  py_tests: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `unittest` ou `pytest`."),
+    verb_isolated_with_dot: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `unittest` ou `pytest`."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `assertEqual()` e `assertTrue()`."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `assertEqual(a, b)`)"),
+    empty_example_colon: (t) =>
+      t.replace(/\b(ex|exemplo|exemplos)\s*:\s*\.(\s|$)/i, "$1: `assertEqual(a, b)`.$2"),
+  },
+  // ── Python • Files / I/O ──────────────────────────────────
+  py_files: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `open()` e `with`."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `'r'`, `'w'` e `'a'`."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `open('file.txt', 'r')`)"),
+  },
+  // ── Python • Functions ────────────────────────────────────
+  py_functions: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `def` e parâmetros."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `def`, `return` e parâmetros."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `def soma(a, b): return a + b`)"),
+  },
+  // ── Python • Data structures ──────────────────────────────
+  py_datastructs: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com listas, dicionários e tuplas."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `list`, `dict` e `tuple`."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, "(Ex: `[1, 2, 3]` ou `{'a': 1}`)"),
+  },
+  // ── Python • Flow control ─────────────────────────────────
+  py_flow: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `if`/`elif`/`else` e `for`/`while`."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `if`, `for` e `while`."),
+  },
+  // ── Python • Basics ───────────────────────────────────────
+  py_basics: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com variáveis, tipos e operadores."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como `int`, `str`, `float` e `bool`."),
+  },
+  // ── Python • Best Practices / Deployment (v5.3.1) ─────────
+  py_best_practices: {
+    trailing_with_tool: (t) =>
+      t.replace(/\bcom\s*\.\s*$/i, "com `venv`, `pip` e `requirements.txt`."),
+    trailing_as_example: (t) =>
+      t.replace(/\b(como|tais\s+como)\s*\.\s*$/i, "como PEP 8, docstrings e `setup.py`."),
+    empty_example_parens: (t) =>
+      t.replace(/\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i,
+        "(Ex: `pip install -r requirements.txt`)"),
+  },
+  // ── Python • Generic fallback ─────────────────────────────
+  py_generic: {
+    empty_example_parens: (t) =>
+      t.replace(/\s*\(\s*(?:ex|exemplo|exemplos|por\s*ex|p\.\s*ex)\s*[:.]?\s*\)/i, ""),
+    empty_example_colon: (t) =>
+      t.replace(/\s*\b(ex|exemplo|exemplos)\s*:\s*\.(\s|$)/i, ".$2"),
+  },
+};
+
+function repairSemanticBreak(
+  text: string,
+  moduleTitle: string,
+  courseTopic: string,
+): { repaired: string; changed: boolean; appliedKey?: string } {
+  if (!text) return { repaired: text, changed: false };
+  const detect = detectIncompleteTechnicalSentence(text);
+  if (!detect.broken || !detect.key) return { repaired: text, changed: false };
+
+  const subdomain = detectModuleDomainPython(moduleTitle, courseTopic);
+  const dictsToTry = [
+    SEMANTIC_REPAIRS[subdomain],
+    SEMANTIC_REPAIRS["py_generic"],
+  ].filter(Boolean);
+
+  for (const dict of dictsToTry) {
+    const fn = dict[detect.key];
+    if (typeof fn !== "function") continue;
+    const out = fn(text);
+    if (out && out !== text) {
+      // Verify the repair actually fixed the break
+      if (!detectIncompleteTechnicalSentence(out).broken) {
+        return { repaired: out, changed: true, appliedKey: detect.key };
+      }
+    }
+  }
+  return { repaired: text, changed: false };
+}
+
+function repairSlideSemanticBreaks(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+  slideId: string,
+): Slide {
+  // v5.4.0 (architect feedback) — wrap the natural-language repair in
+  // withTechnicalProtection so technical tokens (if/elif/__init__/
+  // unittest.TestCase/DEBUG/etc) are FROZEN with PUA placeholders
+  // before SEMANTIC_REPAIRS rules touch the text. Restoration happens
+  // automatically; if any token is lost during repair, the wrapper
+  // REVERTS to the original text so qaVeto sees real damage and can
+  // emit TECHNICAL_TOKEN_LOSS instead of shipping a half-fixed line.
+  const fix = (txt: string | undefined, field: string): string | undefined => {
+    if (!txt) return txt;
+    const protectedRun = withTechnicalProtection(txt, { slideId, field }, (masked) => {
+      const r = repairSemanticBreak(masked, moduleTitle, courseTopic);
+      return r.changed ? r.repaired : masked;
+    });
+    if (protectedRun.result !== txt) {
+      console.log(
+        `[V5-SEMANTIC-REPAIR] ${slideId} field=${field} | "${txt.slice(0, 80)}" → "${protectedRun.result.slice(0, 80)}" valid=${protectedRun.valid}`,
+      );
+    }
+    return protectedRun.result;
+  };
+  const out: Slide = {
+    ...s,
+    title:    fix(s.title, "title") ?? s.title,
+    subtitle: fix(s.subtitle, "subtitle"),
+    items:      s.items?.map((t, i) => fix(t, `items[${i}]`) ?? t),
+    leftItems:  s.leftItems?.map((t, i) => fix(t, `leftItems[${i}]`) ?? t),
+    rightItems: s.rightItems?.map((t, i) => fix(t, `rightItems[${i}]`) ?? t),
+  };
+  // v5.1.8: also repair competencies on module_cover
+  const comps = (s as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    (out as Slide & { competencies?: string[] }).competencies =
+      comps.map((t, i) => fix(t, `competencies[${i}]`) ?? t);
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════
+// LEARNING OBJECTIVE REPAIR (v5.1.5)
+// Rewrites generic objectives like "Compreender fundamentos
+// Essenciais de Python" into concrete pedagogical statements
+// using a domain-aware tail dictionary.
+// ═══════════════════════════════════════════════════════════
+
+const PYTHON_OBJECTIVE_TAILS: Record<string, string[]> = {
+  py_basics: [
+    "Utilizar variáveis, tipos primitivos e operadores básicos.",
+    "Criar expressões e atribuições corretas em Python.",
+    "Aplicar entrada e saída com `input()` e `print()`.",
+  ],
+  py_flow: [
+    "Criar estruturas condicionais com `if`, `elif` e `else`.",
+    "Implementar laços com `for` e `while` para iteração.",
+    "Combinar operadores lógicos em condições compostas.",
+  ],
+  py_functions: [
+    "Definir funções reutilizáveis com `def` e parâmetros.",
+    "Retornar valores e usar argumentos posicionais e nomeados.",
+    "Aplicar escopo local e global em funções Python.",
+  ],
+  py_datastructs: [
+    "Manipular listas, tuplas e dicionários para armazenar dados.",
+    "Acessar, inserir e remover elementos de coleções.",
+    "Aplicar métodos como `append()`, `pop()` e `keys()`.",
+  ],
+  py_oop: [
+    "Definir classes com `class` e atributos no `__init__()`.",
+    "Criar objetos e invocar métodos sobre instâncias.",
+    "Aplicar herança e encapsulamento em classes Python.",
+  ],
+  py_files: [
+    "Abrir, ler e escrever arquivos com `open()` e `with`.",
+    "Tratar exceções de I/O como `FileNotFoundError`.",
+    "Usar modos de abertura `'r'`, `'w'` e `'a'` corretamente.",
+  ],
+  py_errors: [
+    "Capturar exceções específicas com `try`/`except`.",
+    "Diferenciar `FileNotFoundError`, `ValueError` e `IOError`.",
+    "Aplicar `finally` para liberar recursos com segurança.",
+  ],
+  py_tests: [
+    "Escrever testes unitários com `unittest` ou `pytest`.",
+    "Validar resultados com `assertEqual()` e `assertTrue()`.",
+    "Organizar testes em classes `TestCase` e métodos `test_*`.",
+  ],
+  py_json_api: [
+    "Interpretar dados JSON recebidos de APIs Web em Python.",
+    "Serializar e desserializar objetos com `json.dumps()` e `json.loads()`.",
+    "Realizar requisições HTTP com `requests.get()` e `requests.post()`.",
+    "Validar respostas usando `response.status_code` antes de processar.",
+    "Converter respostas com `response.json()` para dicionários e listas Python.",
+  ],
+  py_best_practices: [
+    "Aplicar PEP 8 e docstrings para manter código legível e padronizado.",
+    "Organizar projetos Python com `src/`, `tests/`, `docs/` e `README.md`.",
+    "Gerenciar dependências com `venv`, `pip` e `requirements.txt`.",
+    "Preparar pacotes Python para distribuição com `setup.py` e `pyproject.toml`.",
+  ],
+  py_generic: [
+    "Aplicar conceitos práticos com exemplos de código Python.",
+    "Implementar pequenas rotinas utilizando boas práticas.",
+    "Resolver exercícios reforçando os fundamentos do tópico.",
+  ],
+};
+
+function repairLearningObjective(
+  text: string,
+  moduleTitle: string,
+  courseTopic: string,
+  idx: number,
+): string {
+  if (!isGenericLearningObjective(text, moduleTitle)) return text;
+  const sub = detectModuleDomainPython(moduleTitle, courseTopic);
+  const tails = PYTHON_OBJECTIVE_TAILS[sub] ?? PYTHON_OBJECTIVE_TAILS["py_generic"];
+  const replacement = tails[idx % tails.length];
+  // v5.3.1 — explicit kind log per spec
+  console.log(
+    `[V5-OBJECTIVE-REPAIR] moduleKind=${sub} before="${text.slice(0, 80)}" after="${replacement.slice(0, 80)}"`,
+  );
+  // v5.5.7 — dedicated JSON/API repair log so production filters can isolate
+  // the slide-28-class regression independently of generic objective traffic.
+  if (sub === "py_json_api") {
+    console.log(
+      `[OBJECTIVE-JSON-API-REPAIR] before="${text.slice(0, 100)}" after="${replacement.slice(0, 100)}"`,
+    );
+  }
+  return replacement;
+}
+
+function repairSlideLearningObjectives(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+): Slide {
+  if (s.layout !== "module_cover") return s;
+  const mt = moduleTitle || s.title || "";
+  const sub = detectModuleDomainPython(mt, courseTopic);
+  const tails = PYTHON_OBJECTIVE_TAILS[sub] ?? PYTHON_OBJECTIVE_TAILS["py_generic"];
+
+  // v5.4.1 — when ≥50% of items in a cover field are generic, item-by-item
+  // repair is unstable: the survivors keep tripping the safety net (residual
+  // GENERIC_OBJECTIVE / GENERIC_LEARNING_OBJECTIVE → qaVeto blocks the export).
+  // Replace the WHOLE field with deterministic tails for the module kind.
+  const repairBatch = (arr: string[], field: string): string[] => {
+    if (!arr.length) return arr;
+    const genericCount = arr.filter((it) => isGenericLearningObjective(it, mt)).length;
+    if (genericCount * 2 >= arr.length) {
+      const N = Math.min(Math.max(arr.length, 2), tails.length);
+      const replacement = tails.slice(0, N);
+      console.log(
+        `[V5-OBJECTIVE-REPAIR-BATCH] field=${field} moduleKind=${sub} ratio=${genericCount}/${arr.length} → full replacement (${N} tails)`,
+      );
+      return replacement;
+    }
+    return arr.map((it, i) => repairLearningObjective(it, mt, courseTopic, i));
+  };
+
+  const out: Slide = { ...s };
+  if (Array.isArray(s.items)) {
+    out.items = repairBatch(s.items, "items");
+  }
+  // v5.1.8: also repair competencies (separate field on module_cover)
+  if (Array.isArray((s as Slide & { competencies?: string[] }).competencies)) {
+    const comps = (s as Slide & { competencies?: string[] }).competencies as string[];
+    (out as Slide & { competencies?: string[] }).competencies = repairBatch(comps, "competencies");
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════
+// BROKEN NATURAL LANGUAGE DETECTOR + REPAIR (v5.1.6 hardening pass 6)
+// Catches Portuguese grammar damage that survives every other check —
+// e.g. "POO: Que Adotar a Programação Orientada a Objetos?" (missing
+// "Por"), questions starting with "Que" + verb without "Por", missing
+// prepositions, etc.
+// ═══════════════════════════════════════════════════════════
+
+type BrokenLangPattern = {
+  re: RegExp;
+  key: string;
+  describe: string;
+};
+
+const BROKEN_LANG_PATTERNS: BrokenLangPattern[] = [
+  // "Que Adotar...", "Que Usar...", "POO: Que Aprender..." — missing "Por"
+  // Negative lookbehind (?<!\bPor\s) ensures we DON'T re-flag already-fixed
+  // "Por Que Usar..." (otherwise the verify step rejects the repair).
+  { re: /(?<!\bPor\s)\bQue\s+(Adotar|Usar|Utilizar|Aplicar|Escolher|Implementar|Aprender|Estudar|Conhecer|Iniciar|Começar|Comecar|Programar|Desenvolver|Criar|Adotamos|Escolhemos|Usamos)\b/,
+    key: "missing_por_que", describe: "'Que <verbo>' sem 'Por'" },
+  // "POO: É Importante?" / "POR: É Necessário?" — fragmented questions starting with isolated "É"
+  { re: /(^|[\s:])É\s+(Importante|Necessário|Necessária|Útil|Fundamental|Essencial)\?/,
+    key: "missing_por_que_e", describe: "'É <adj>?' provavelmente faltando 'Por que'" },
+  // Title ends with isolated preposition: "Introdução a", "Conceitos de", "Trabalhando com"
+  { re: /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ][^.?!]*\b(a|de|com|para|em|por)\s*$/,
+    key: "trailing_preposition_title", describe: "título termina em preposição isolada" },
+  // Double conjunction: "que que", "de de", "com com"
+  { re: /\b(que|de|com|para|em|por)\s+\1\b/i,
+    key: "duplicate_word", describe: "palavra duplicada" },
+  // "?:" or ":?" or ":?:" — broken question/colon punctuation
+  { re: /[?:]\s*[?:]/,
+    key: "broken_question_colon", describe: "pontuação de pergunta/dois-pontos quebrada" },
+];
+
+function detectBrokenNaturalLanguage(
+  text: string,
+): { broken: boolean; key?: string; describe?: string } {
+  if (!text || text.length < 4) return { broken: false };
+  for (const p of BROKEN_LANG_PATTERNS) {
+    if (p.re.test(text)) return { broken: true, key: p.key, describe: p.describe };
+  }
+  return { broken: false };
+}
+
+const BROKEN_LANG_REPAIRS: Record<string, (t: string) => string | null> = {
+  missing_por_que: (t) =>
+    t.replace(
+      /(?<!\bPor\s)\bQue(\s+(?:Adotar|Usar|Utilizar|Aplicar|Escolher|Implementar|Aprender|Estudar|Conhecer|Iniciar|Começar|Comecar|Programar|Desenvolver|Criar|Adotamos|Escolhemos|Usamos)\b)/,
+      "Por Que$1",
+    ),
+  missing_por_que_e: (t) =>
+    t.replace(
+      /(^|[\s:])É\s+(Importante|Necessário|Necessária|Útil|Fundamental|Essencial)\?/,
+      "$1Por que é $2?",
+    ),
+  trailing_preposition_title: (t) =>
+    // Drop the trailing preposition (safer than guessing the missing word)
+    t.replace(/\s+\b(a|de|com|para|em|por)\s*$/, ""),
+  duplicate_word: (t) =>
+    t.replace(/\b(que|de|com|para|em|por)\s+\1\b/gi, "$1"),
+  broken_question_colon: (t) => t.replace(/[?:]\s*[?:]/g, "?"),
+};
+
+// v5.4.3 — bounded iterative repair with progressive acceptance.
+// Old behavior: single pass; if the repaired text still tripped ANY broken
+// pattern (even a different one), the function discarded ALL progress and
+// returned the original damaged string. That left "Que Adotar com" → first
+// pass produces "Por Que Adotar com" (still trailing-preposition) → reverted.
+// New behavior: up to 3 iterations; we keep partial improvements as long as
+// each step actually changes the text. Returns the final state plus a flag
+// indicating whether residual damage remains.
+function repairBrokenLanguage(
+  text: string,
+): { repaired: string; changed: boolean; key?: string; residualBroken?: boolean; residualKey?: string } {
+  if (!text) return { repaired: text, changed: false };
+  let cur = text;
+  let firstKey: string | undefined;
+  let changed = false;
+  const MAX_ITER = 3;
+  for (let i = 0; i < MAX_ITER; i++) {
+    const det = detectBrokenNaturalLanguage(cur);
+    if (!det.broken || !det.key) {
+      return { repaired: cur, changed, key: firstKey, residualBroken: false };
+    }
+    const fn = BROKEN_LANG_REPAIRS[det.key];
+    if (!fn) break;
+    const out = fn(cur);
+    if (!out || out === cur) break;
+    if (firstKey === undefined) firstKey = det.key;
+    cur = out.trim();
+    changed = true;
+  }
+  const finalDet = detectBrokenNaturalLanguage(cur);
+  return {
+    repaired: cur,
+    changed,
+    key: firstKey,
+    residualBroken: finalDet.broken,
+    residualKey: finalDet.key,
+  };
+}
+
+// v5.4.3 — field-aware broken-language scanner. Returns the first hit found
+// across all rendered text fields of a slide, with enough metadata for the
+// QA check #20 to (a) report the actual field in the message and (b) drop
+// the offending bullet (or the whole slide if it's the title) without
+// emitting a phantom UNFIXED CRITICAL.
+type BrokenLangHit =
+  | { kind: "title"; txt: string; key: string; describe: string }
+  | { kind: "subtitle"; txt: string; key: string; describe: string }
+  | { kind: "items" | "leftItems" | "rightItems" | "competencies"; index: number; txt: string; key: string; describe: string };
+
+function findBrokenLanguageHit(s: Slide): BrokenLangHit | null {
+  const isComparison = s.layout === "comparison";
+  const fields: Array<{ kind: BrokenLangHit["kind"]; arr?: string[]; single?: string | undefined }> = [
+    { kind: "title", single: s.title },
+    { kind: "subtitle", single: s.subtitle },
+    { kind: "items", arr: s.items },
+    // Only inspect leftItems/rightItems on the layout that actually renders them
+    // (avoids phantom blockers from stale fields on bullets/process/etc).
+    { kind: "leftItems", arr: isComparison ? s.leftItems : undefined },
+    { kind: "rightItems", arr: isComparison ? s.rightItems : undefined },
+    { kind: "competencies", arr: s.layout === "module_cover" ? (s as Slide & { competencies?: string[] }).competencies : undefined },
+  ];
+  for (const f of fields) {
+    if (f.single && typeof f.single === "string") {
+      const det = detectBrokenNaturalLanguage(f.single);
+      if (det.broken && det.key && det.describe) {
+        return { kind: f.kind as "title" | "subtitle", txt: f.single, key: det.key, describe: det.describe };
+      }
+    }
+    if (Array.isArray(f.arr)) {
+      for (let i = 0; i < f.arr.length; i++) {
+        const t = f.arr[i];
+        if (typeof t !== "string") continue;
+        const det = detectBrokenNaturalLanguage(t);
+        if (det.broken && det.key && det.describe) {
+          return { kind: f.kind as "items" | "leftItems" | "rightItems" | "competencies", index: i, txt: t, key: det.key, describe: det.describe };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function repairSlideBrokenLanguage(s: Slide, slideId: string): Slide {
+  const fix = (txt: string | undefined): string | undefined => {
+    if (!txt) return txt;
+    const r = repairBrokenLanguage(txt);
+    if (r.changed) {
+      console.log(
+        `[V5-LANGUAGE-REPAIR] ${slideId} | "${txt.slice(0, 80)}" → "${r.repaired.slice(0, 80)}" [${r.key}]`,
+      );
+    }
+    return r.repaired;
+  };
+  const out: Slide = {
+    ...s,
+    title:    fix(s.title) ?? s.title,
+    subtitle: fix(s.subtitle),
+    items:      s.items?.map((t) => fix(t) ?? t),
+    leftItems:  s.leftItems?.map((t) => fix(t) ?? t),
+    rightItems: s.rightItems?.map((t) => fix(t) ?? t),
+  };
+  // v5.1.8: also repair competencies on module_cover
+  const comps = (s as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    (out as Slide & { competencies?: string[] }).competencies = comps.map((t) => fix(t) ?? t);
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════
+// SEMANTIC DUPLICATE DETECTOR (v5.1.5)
+// Finds slide pairs whose normalized bullet/title content overlaps
+// ≥70% and drops the weaker one (fewer items, shorter total text).
+// ═══════════════════════════════════════════════════════════
+
+function slideSemanticSignature(s: Slide): string {
+  const all = [
+    s.title || "",
+    ...(s.items ?? []),
+    ...(s.leftItems ?? []),
+    ...(s.rightItems ?? []),
+  ].join(" | ").toLowerCase()
+    .replace(/[`*_~\-•]/g, " ")
+    .replace(/[^a-z0-9áéíóúâêîôûãõç\s]/gi, " ")
+    .replace(/\s+/g, " ").trim();
+  return all;
+}
+
+function jaccardSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const tokA = new Set(a.split(/\s+/).filter((w) => w.length > 3));
+  const tokB = new Set(b.split(/\s+/).filter((w) => w.length > 3));
+  if (!tokA.size || !tokB.size) return 0;
+  let inter = 0;
+  for (const w of tokA) if (tokB.has(w)) inter++;
+  return inter / (tokA.size + tokB.size - inter);
+}
+
+function slideContentWeight(s: Slide): number {
+  const items = [
+    ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+  ];
+  return items.length * 100 + items.reduce((a, b) => a + (b?.length ?? 0), 0);
+}
+
+function dedupeSemanticDuplicates(allModuleSlides: Slide[][]): {
+  result: Slide[][]; removed: number;
+} {
+  const SIM_THRESHOLD = 0.70;
+  // v5.1.15 — adjacent slides (same module, consecutive index) get a more
+  // aggressive threshold because real consecutive slides should advance the
+  // narrative; near-identical pairs are almost always accidental redundancy.
+  const ADJACENT_SIM_THRESHOLD = 0.55;
+  let removedCount = 0;
+  const result = allModuleSlides.map((modSlides) => {
+    if (modSlides.length < 2) return modSlides;
+    const keep = new Array(modSlides.length).fill(true);
+    const sigs = modSlides.map(slideSemanticSignature);
+    for (let i = 0; i < modSlides.length; i++) {
+      if (!keep[i]) continue;
+      // Skip structural slides — they intentionally repeat patterns.
+      if (["module_cover", "toc", "closing", "cover"].includes(modSlides[i].layout)) continue;
+      for (let j = i + 1; j < modSlides.length; j++) {
+        if (!keep[j]) continue;
+        if (["module_cover", "toc", "closing", "cover"].includes(modSlides[j].layout)) continue;
+        const sim = jaccardSimilarity(sigs[i], sigs[j]);
+        const threshold = (j === i + 1) ? ADJACENT_SIM_THRESHOLD : SIM_THRESHOLD;
+        if (sim >= threshold) {
+          // Drop the weaker (less content); tie-break: keep earlier.
+          const wi = slideContentWeight(modSlides[i]);
+          const wj = slideContentWeight(modSlides[j]);
+          const dropIdx = wj > wi ? i : j;
+          keep[dropIdx] = false;
+          removedCount++;
+          console.log(
+            `[V5-DEDUPE] dropped slide #${dropIdx + 1} (sim=${sim.toFixed(2)} with #${(dropIdx === i ? j : i) + 1}): "${modSlides[dropIdx].title}"`,
+          );
+          if (dropIdx === i) break; // i is gone, move on
+        }
+      }
+    }
+    return modSlides.filter((_, i) => keep[i]);
+  });
+  return { result, removed: removedCount };
+}
+
+// ── Final placeholder sanitizer ────────────────────────────
+// IMPORTANT (v5.1 hardening): We DO NOT strip [[BT_N]] or [[SQLW_N]] here —
+// those are protected backtick / SQL-wildcard slots managed by
+// globalSanitize(). Stripping them out-of-band destroys legitimate code
+// like `read()`, `write()`, `except`, `finally`. The rule is:
+//   - Use globalSanitize() to clean text (it restores BT/SQLW slots safely).
+//   - Use removeOrBlockPlaceholders() to strip ONLY foreign template tokens
+//     that were never produced by globalSanitize ({{TOKEN}}, lorem ipsum,
+//     stale [[CAPS_TOKEN]] patterns NOT matching BT_N or SQLW_N).
+const FOREIGN_PLACEHOLDER_PATTERNS: RegExp[] = [
+  /\{\{[A-Z_0-9]+\}\}/g,                      // {{COURSE_TITLE}}, {{BULLET_1}}
+  /\blorem\s+ipsum\b/gi,
+  /\bTODO\b:/g,
+];
+
+// Stricter patterns used ONLY by the residual-placeholder veto check.
+// These DO include BT_N/SQLW_N because by the time the veto runs, all
+// globalSanitize calls are complete, so any surviving marker is genuine
+// leakage that must block export.
+const RESIDUAL_PLACEHOLDER_PATTERNS: RegExp[] = [
+  /\[\[BT_?\d+\]\]/gi,
+  /\[\[SQLW_?\d+\]\]/gi,
+  /\[\[[A-Z_0-9]{2,}\]\]/g,
+  /\{\{[A-Z_0-9]+\}\}/g,
+  /\blorem\s+ipsum\b/gi,
+];
+
+function removeOrBlockPlaceholders(text: string): string {
+  if (!text || typeof text !== "string") return text;
+  let out = text;
+  for (const re of FOREIGN_PLACEHOLDER_PATTERNS) out = out.replace(re, "");
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+
+// sanitizeSlidePlaceholders pipes every text field through globalSanitize
+// FIRST (which safely restores BT_N/SQLW_N slots and strips orphan markers),
+// then through removeOrBlockPlaceholders (which only kills foreign tokens
+// like {{...}} and lorem ipsum). Code blocks are never touched.
+function sanitizeSlidePlaceholders(s: Slide): Slide {
+  const cleanText = (t?: string) => {
+    if (!t) return t;
+    return removeOrBlockPlaceholders(globalSanitize(t));
+  };
+  const cleanItems = (arr?: string[]) =>
+    arr ? arr.map((t) => cleanText(t) ?? "").filter((t) => t.trim().length > 0) : arr;
+  const out: Slide = {
+    ...s,
+    title:       cleanText(s.title) ?? "",
+    subtitle:    cleanText(s.subtitle),
+    label:       cleanText(s.label),
+    leftHeader:  cleanText(s.leftHeader),
+    rightHeader: cleanText(s.rightHeader),
+    items:       cleanItems(s.items),
+    leftItems:   cleanItems(s.leftItems),
+    rightItems:  cleanItems(s.rightItems),
+    code:        s.code, // never sanitise code
+  };
+  // v5.1.9: also sanitise competencies (module_cover field)
+  const comps = (s as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    (out as Slide & { competencies?: string[] }).competencies = cleanItems(comps);
+  }
+  return out;
+}
+
+// ── Technical sanitization damage REPAIR (v5.1.4) ──────────
+// Deterministic, domain-aware repair of "verb ()" / ", ," / "Use e ."
+// patterns that survive globalSanitize. Runs BEFORE the QA detector,
+// then again after the cascade. Never loosens the veto — only attempts
+// to reconstruct the lost technical token from context.
+//
+// Domain dictionaries are conservative: they only fire when the module
+// title clearly belongs to a known domain (Python file I/O, Python OOP,
+// Python tests). Generic Python repairs apply to any Python course.
+
+type RepairRule = [RegExp, string];
+
+const PY_FILES_DICT: RepairRule[] = [
+  // "leitura ()" / "ler ()" → "leitura com `read()`"
+  [/\b(leitura|ler)\s*\(\s*\)/gi, "leitura com `read()`"],
+  // "escrita ()" / "escrever ()" → "escrita com `write()`"
+  [/\b(escrita|escrever)\s*\(\s*\)/gi, "escrita com `write()`"],
+  // "abrir ()" / "abertura ()" → "`open()`"
+  [/\b(abrir|abertura)\s*\(\s*\)/gi, "`open()`"],
+  // "fechar ()" / "fechamento ()" → "`close()`"
+  [/\b(fechar|fechamento)\s*\(\s*\)/gi, "`close()`"],
+  // "Use () para abrir arquivos" → "Use `open()` para abrir arquivos"
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+abrir/gi, "$1 `open()` para abrir"],
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+(ler|leitura)/gi, "$1 `read()` para $2"],
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+(escrever|escrita)/gi, "$1 `write()` para $2"],
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+fechar/gi, "$1 `close()` para fechar"],
+  // "trata erros e para limpeza" → "Use `except` para tratar erros e `finally` para limpeza"
+  [/\btrata(r)?\s+(erros?|exce[çc][õo]es?)\s+e\s+para\s+limpeza/gi,
+    "Use `except` para tratar erros e `finally` para limpeza"],
+  // "blocos e para tratamento" → "blocos `try`/`except` para tratamento"
+  [/\bblocos?\s+e\s+para\s+tratamento/gi, "blocos `try`/`except` para tratamento"],
+  // "with open ()" → "`with open(...)`"
+  [/\bwith\s+open\s*\(\s*\)/gi, "`with open(...)`"],
+  // "use with ()" → "use `with open(...)`"
+  [/\b(use|usar|usando)\s+with\s+\(\s*\)/gi, "$1 `with open(...)`"],
+  // "context manager ()" → "context manager `with`"
+  [/\bcontext\s*manager\s*\(\s*\)/gi, "context manager `with`"],
+  // "exceção FileNotFound" / "FileNotFound ()" → "`FileNotFoundError`"
+  [/\bFileNotFound(?:Error)?\s*\(\s*\)/g, "`FileNotFoundError`"],
+  [/\bexce[çc][aã]o\s+FileNotFound\b/gi, "exceção `FileNotFoundError`"],
+  // "IOError ()" / "IO Error ()" → "`IOError`"
+  [/\bIO\s*Error\s*\(\s*\)/g, "`IOError`"],
+  // "encoding ()" → "`encoding='utf-8'`"
+  [/\bencoding\s*\(\s*\)/gi, "`encoding='utf-8'`"],
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+codifica[çc][aã]o/gi,
+    "$1 `encoding='utf-8'` para codificação"],
+  // "modo de abertura ()" → "modo de abertura (`'r'`, `'w'`, `'a'`)"
+  [/\bmodo(s)?\s+de\s+abertura\s*\(\s*\)/gi, "modos de abertura (`'r'`, `'w'`, `'a'`)"],
+  // "blocos try e ()" → "blocos `try` e `except`"
+  [/\bblocos?\s+try\s+e\s+\(\s*\)/gi, "blocos `try` e `except`"],
+  // "try ()" / "except ()" / "finally ()" — drop empty parens (these are statements, not calls)
+  [/\b(try|except|finally|raise)\s*\(\s*\)/gi, "`$1`"],
+  // v5.1.6: stripped function name with surviving comma — "leitura (, )" / "escrita (, )"
+  [/\b(leitura|ler)\s*\(\s*,\s*\)/gi, "leitura com `read()`"],
+  [/\b(escrita|escrever)\s*\(\s*,\s*\)/gi, "escrita com `write()`"],
+  // "função (, )" / "method (, )" → drop the orphan parens
+  [/\b(função|funcao|m[ée]todo|chamada)\s*\(\s*,+\s*\)/gi, "$1 correspondente"],
+  // "Use com." / "Utilize com." (terminal "com.") in files context → with open
+  [/\b(use|usar|utilize|utilizar)\s+com\s*\.\s*$/i, "$1 `with open(...)` para gerenciamento seguro de arquivos."],
+];
+
+const PY_OOP_DICT: RepairRule[] = [
+  // "construtor ()" → "`__init__()`"
+  [/\bconstrutor\s*\(\s*\)/gi, "`__init__()`"],
+  // "método ()" / "metodo ()" → "método correspondente"
+  [/\b(m[ée]todo|metodo)\s*\(\s*\)/gi, "método correspondente"],
+  // "instanciar ()" → "instanciar a classe"
+  [/\binstanciar\s*\(\s*\)/gi, "instanciar a classe"],
+  // "use () para criar objetos" → "use o construtor para criar objetos"
+  [/\b(use|usar|usando)\s+\(\s*\)\s+para\s+(criar|instanciar)/gi,
+    "$1 o construtor para $2"],
+];
+
+const PY_TESTS_DICT: RepairRule[] = [
+  // v5.1.6: "Use com classes e métodos assert" → "Use `unittest` com classes `TestCase` e métodos `assert*`"
+  [/\b(use|usar|usando|utilize|utilizar)\s+com\s+classes?\s+e\s+m[ée]todos?\s+assert\w*\b/gi,
+    "$1 `unittest` com classes `TestCase` e métodos `assert*`"],
+  // "Use com classes" alone (sem assert)
+  [/\b(use|usar|usando|utilize|utilizar)\s+com\s+classes?\b(?!\s+\w)/gi,
+    "$1 `unittest` com classes `TestCase`"],
+  // "métodos assert." (terminal) → métodos assert*
+  [/\bm[ée]todos?\s+assert\s*\.(\s|$)/gi, "métodos `assert*`.$1"],
+  // "Use com." (terminal) in tests context → use unittest
+  [/\b(use|usar|utilize|utilizar)\s+com\s*\.\s*$/i, "$1 `unittest` para escrever testes."],
+  // "classes com e métodos" → "classes com `unittest.TestCase` e métodos `test_*`"
+  [/\bclasses?\s+com\s+e\s+m[ée]todos/gi,
+    "classes com `unittest.TestCase` e métodos `test_*`"],
+  // "use () para asserções" → "use `assertEqual()` para asserções"
+  [/\b(use|usar)\s+\(\s*\)\s+para\s+asser[çc][õo]es/gi,
+    "$1 `assertEqual()` para asserções"],
+  // "testes" pattern: bare "()" near "teste"
+  [/\bteste\s*\(\s*\)/gi, "função de teste"],
+];
+
+const PY_GENERIC_DICT: RepairRule[] = [
+  // "Realize leitura () e escrita ()." → handled by FILES first; this is fallback
+  // Generic "verb ()" with no obvious tech mapping → drop empty parens
+  [/\b(usar|use|usando|chamar|chame|chamando|invocar|invoque|executar|execute|aplicar|aplique|realize|realizar|fazer|faça|implementar|implemente)\s+\(\s*\)\s+e\s+\(\s*\)/gi,
+    "$1 as funções correspondentes"],
+  [/\b(usar|use|usando|chamar|chame|chamando|invocar|invoque|executar|execute|aplicar|aplique|realize|realizar|fazer|faça|implementar|implemente)\s+\(\s*\)/gi,
+    "$1 a função apropriada"],
+  // "função ()" / "funcao ()" → "função correspondente"
+  [/\b(fun[çc][aã]o|chamada)\s*\(\s*\)/gi, "$1 correspondente"],
+  // ". ()" → ". " (orphan parens at sentence break)
+  [/\.\s*\(\s*\)/g, "."],
+  // "() e ()" anywhere → "as funções correspondentes"
+  [/\(\s*\)\s+e\s+\(\s*\)/g, "as funções correspondentes"],
+  // Bare leftover "()" — drop
+  [/\s+\(\s*\)/g, ""],
+];
+
+const ORPHAN_PUNCT_DICT: RepairRule[] = [
+  // "X em , , , ." → "X em itens diversos."
+  [/\bem\s+(,\s*){2,}\.?/gi, "em itens diversos."],
+  // ", ," → ","
+  [/,\s*,+/g, ","],
+  // " ," → ","
+  [/\s+,/g, ","],
+  // " e ." → "."
+  [/\s+e\s+\./g, "."],
+  // " ou ." → "."
+  [/\s+ou\s+\./g, "."],
+  // ": ." or ": , ." → "."
+  [/:\s*[,\s]*\./g, "."],
+  // collapse whitespace
+  [/\s{2,}/g, " "],
+];
+
+function detectModuleDomain(moduleTitle: string, courseTopic: string): {
+  isPython: boolean; isFiles: boolean; isOOP: boolean; isTests: boolean;
+  isBestPractices: boolean; isFlow: boolean; isErrors: boolean;
+} {
+  const ml = (moduleTitle || "").toLowerCase();
+  const ct = (courseTopic  || "").toLowerCase();
+  const isPython = /\bpython\b/.test(ml) || /\bpython\b/.test(ct);
+  const isFiles  = isPython && /(arquiv|except|exce[çc][aã]o|erro|i\/?o|recurs|file|leitura|escrita)/.test(ml);
+  const isOOP    = isPython && /(orient|objeto|classe|poo|construtor|hera[nñ][cç]a|encapsul|polimorf)/.test(ml);
+  const isTests  = isPython && /(teste|test\b|unitt|pytest|tdd|log|depura|debug)/.test(ml);
+  // v5.3.1 — new domain flags for token-restoration repairs
+  const isBestPractices = isPython && /(boas\s+pr[áa]ticas|best\s+practices|implant|deploy|produc[aã]o|ci[\/\-]?cd|empacot|pep\s*8|venv|pip|requirements|setup\.py|docstring|estrutura\s+de\s+projeto|readme)/.test(ml);
+  const isFlow   = isPython && /(controle\s+de\s+fluxo|condicionais?|la[çc]os?|loops?|while|for\b)/.test(ml);
+  const isErrors = isPython && /(exce[çc][õo]es?|erros?|try\b|except\b|finally\b)/.test(ml);
+  return { isPython, isFiles, isOOP, isTests, isBestPractices, isFlow, isErrors };
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.3.1 — TECHNICAL TOKEN RESTORATION
+// ───────────────────────────────────────────────────────────
+// The existing `repairTechnicalSanitizationDamage` only cleans
+// punctuation symptoms ("(, , else)" → "(, else)"). That's not a
+// repair — the technical token (if/elif/DEBUG/INFO/...) was lost.
+// `repairTechnicalTokens` RESTORES the missing tokens before any
+// cleanup runs. Mappings are domain-aware (kind from
+// detectModuleDomainPython). Conservative regex: each rule fires
+// only on the exact damage signature the LLM/sanitizer leaves.
+// ═══════════════════════════════════════════════════════════
+type TokenRepairRule = [RegExp, string];
+
+const TR_FLOW_TOKENS: TokenRepairRule[] = [
+  // "Condicionais (, , else)" / "Condicionais (, else)" / "Condicionais (, , )"
+  [/\bcondicionais\s*\(\s*,?\s*,?\s*(?:else)?\s*,?\s*\)/gi, "Condicionais (`if`, `elif`, `else`)"],
+  // "(, , else)" anywhere
+  [/\(\s*,\s*,\s*else\s*\)/gi, "(`if`, `elif`, `else`)"],
+  // "(, else)" or "(, elif, else)"
+  [/\(\s*,\s*(elif\s*,\s*)?else\s*\)/gi, "(`if`, `elif`, `else`)"],
+  // "Estruturas e aplicam" → "Estruturas if e elif aplicam"
+  [/\bestruturas\s+e\s+aplicam\b/gi, "Estruturas `if` e `elif` aplicam"],
+  // "Use e para iterar" → "Use `for` e `while` para iterar"
+  [/\b(use|usar|usando)\s+e\s+para\s+iterar\b/gi, "$1 `for` e `while` para iterar"],
+  // v5.3.3 — TITLE damage: "Repetindo Ações com e" / "Repetindo ações com e"
+  // (LLM rephrase via L3 cascade dropped the quoted 'for'/'while' tokens).
+  // Trailing-period rule is FIRST so it consumes " ." cleanly without leaving
+  // an orphan space before the dot.
+  [/\b(repetindo\s+a[çc][oõ]es|la[çc]os|loops?|itera(ndo|ção)|repeti[çc][aã]o)\s+com\s+e\s*\.\s*$/gim,
+    "$1 com `for` e `while`."],
+  [/\b(repetindo\s+a[çc][oõ]es|la[çc]os|loops?|itera(ndo|ção)|repeti[çc][aã]o)\s+com\s+e\b(?!\s+\w)/gi,
+    "$1 com `for` e `while`"],
+  // "Estruturas de repetição com e" / "controle de fluxo com e"
+  [/\b(estruturas\s+de\s+repeti[çc][aã]o|controle\s+de\s+fluxo)\s+com\s+e\b(?!\s+\w)/gi,
+    "$1 com `for` e `while`"],
+];
+
+const TR_TESTS_TOKENS: TokenRepairRule[] = [
+  // "Níveis como, e ERROR" / "Níveis como , e ERROR"
+  [/\bn[ií]veis\s+como\s*,?\s*,?\s*e\s+ERROR\b/gi, "Níveis como `DEBUG`, `INFO` e `ERROR`"],
+  // "níveis , e ERROR" (sem "como")
+  [/\bn[ií]veis\s+,?\s*,\s*e\s+ERROR\b/gi, "Níveis `DEBUG`, `INFO` e `ERROR`"],
+  // v5.3.2 — "Configure níveis de log como e ." / "níveis de log como e."
+  // (sem "ERROR" no final — só a lacuna aberta)
+  [/\bn[ií]veis\s+de\s+log\s+como\s+e\s*\.\s*/gi,
+    "níveis de log como `DEBUG`, `INFO`, `WARNING` e `ERROR`. "],
+  [/\bn[ií]veis\s+de\s+log\s+como\s*\.\s*$/gim,
+    "níveis de log como `DEBUG`, `INFO`, `WARNING` e `ERROR`."],
+  // "Use com métodos e assert" sem unittest.TestCase
+  [/\b(use|usar|usando|utilize|utilizar)\s+com\s+m[ée]todos\s+e\s+assert\b(?!\w)/gi,
+    "$1 `unittest.TestCase` com métodos `test_*` e `assert*`"],
+  // "classes de teste herdando de"
+  [/\bclasses?\s+de\s+teste\s+herdando\s+de\s*\.?\s*$/gim,
+    "classes de teste herdando de `unittest.TestCase`."],
+  [/\bclasses?\s+de\s+teste\s+herdando\s+de\s+(?![\w`])/gi,
+    "classes de teste herdando de `unittest.TestCase` "],
+];
+
+const TR_FILES_TOKENS: TokenRepairRule[] = [
+  // "Realize leitura com, e escrita com ." / "leitura com, e escrita com."
+  [/\b(realize|realizar)\s+leitura\s+com\s*,?\s*e\s+escrita\s+com\s*\.\s*/gi,
+    "$1 leitura com `read()` e escrita com `write()`. "],
+  // "leitura com, e escrita com" (no terminal period)
+  [/\bleitura\s+com\s*,\s*e\s+escrita\s+com\s+(?![\w`])/gi,
+    "leitura com `read()` e escrita com `write()` "],
+  // "Realize leitura (, ) e escrita (write())" → normalize
+  [/\bleitura\s*\(\s*,\s*\)\s+e\s+escrita\b/gi,
+    "leitura com `read()` e escrita"],
+  // "Capture e para feedback" → "Capture FileNotFoundError e IOError"
+  [/\b(capture|capturar|trate|tratar)\s+e\s+para\s+feedback\b/gi,
+    "$1 `FileNotFoundError` e `IOError` para feedback claro"],
+  // "e são comuns em manipulação de arquivos" (leading bare conjunction)
+  [/(^|[.;]\s*)e\s+s[aã]o\s+comuns\s+em\s+manipula[çc][aã]o\s+de\s+arquivos\b/gi,
+    "$1`FileNotFoundError` e `IOError` são comuns em manipulação de arquivos"],
+];
+
+const TR_OOP_TOKENS: TokenRepairRule[] = [
+  // "construtor init" → "construtor __init__()"
+  [/\bconstrutor\s+init\b(?!_)/gi, "construtor `__init__()`"],
+  // "método init" / "metodo init" (sem __)
+  [/\b(m[ée]todo)\s+init\b(?!_)/gi, "$1 `__init__()`"],
+  // "<inst>.init(" → "<inst>.__init__("  (parser-side typo handled by repairPythonApiTypos in presentation-plan; here for prose)
+  [/\b([a-zA-Z_]\w*)\.init\(/g, "$1.__init__("],
+  // "Acessar Membros: Usar." / "Acessar Membros: Usar"
+  [/\bacessar\s+membros\s*:\s*usar\s*\.?\s*$/gim,
+    "Acessar membros usando `objeto.atributo` e `objeto.metodo()`."],
+];
+
+const TR_BEST_PRACTICES_TOKENS: TokenRepairRule[] = [
+  // "Organize o código-fonte em e testes em ."
+  [/\borganize\s+o\s+c[óo]digo[\-\s]?fonte\s+em\s+e\s+testes\s+em\s*\.\s*/gi,
+    "Organize o código-fonte em `src/` e testes em `tests/`. "],
+  // "Inclua e para informações do projeto."
+  [/\binclua\s+e\s+para\s+informa[çc][õo]es\s+do\s+projeto\s*\.\s*/gi,
+    "Inclua `README.md` e `LICENSE` para informações do projeto. "],
+  // "Utilizar e para definir metadados do projeto."
+  [/\b(utilizar|utilize|use|usar)\s+e\s+para\s+definir\s+metadados\s+do\s+projeto\s*\.\s*/gi,
+    "$1 `setup.py` e `pyproject.toml` para definir metadados do projeto. "],
+  // "Gerencie dependências com e ." (venv + pip)
+  [/\bgerenci(e|ar)\s+depend[êe]ncias\s+com\s+e\s*\.\s*/gi,
+    "Gerencie dependências com `venv` e `pip`. "],
+  // "Estruture o projeto com , , e ."
+  [/\bestruture\s+o\s+projeto\s+com\s*(?:,\s*)+e\s*\.\s*/gi,
+    "Estruture o projeto com `src/`, `tests/`, `docs/` e `README.md`. "],
+];
+
+function repairTechnicalTokens(
+  text: string,
+  moduleTitle: string,
+  courseTopic: string,
+): { result: string; changed: boolean } {
+  if (!text || typeof text !== "string") return { result: text, changed: false };
+  const dom = detectModuleDomain(moduleTitle, courseTopic);
+  let out = text;
+  const apply = (rules: TokenRepairRule[]) => {
+    for (const [re, rep] of rules) out = out.replace(re, rep);
+  };
+  // Token restoration is domain-narrow — only apply rules whose domain matches.
+  if (dom.isFlow)         apply(TR_FLOW_TOKENS);
+  if (dom.isTests)        apply(TR_TESTS_TOKENS);
+  if (dom.isFiles || dom.isErrors) apply(TR_FILES_TOKENS);
+  if (dom.isOOP)          apply(TR_OOP_TOKENS);
+  if (dom.isBestPractices) apply(TR_BEST_PRACTICES_TOKENS);
+  return { result: out.trim(), changed: out.trim() !== text };
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.3.1 — REPAIR VALIDATION
+// ───────────────────────────────────────────────────────────
+// After ANY repair, check the OUTPUT for residual damage signatures.
+// If the "repair" still contains broken patterns, REVERT to the
+// original (so qaVeto sees the real damage and can block it instead
+// of shipping a half-fixed sentence).
+// ═══════════════════════════════════════════════════════════
+const BAD_REPAIR_PATTERNS: { re: RegExp; reason: string }[] = [
+  { re: /,\s*,/, reason: "double comma residual" },
+  { re: /\bcom\s*,\s*e\b/i, reason: "'com, e' gap" },
+  { re: /\bcomo\s*,\s*e\b/i, reason: "'como, e' gap" },
+  { re: /\bcom\s*\.\s*$/i, reason: "trailing 'com.'" },
+  { re: /\bem\s*\.\s*$/i, reason: "trailing 'em.'" },
+  { re: /\bde\s*\.\s*$/i, reason: "trailing 'de.'" },
+  { re: /\busar\s*\.\s*$/i, reason: "trailing 'usar.'" },
+  { re: /\(\s*,\s*\)/, reason: "empty (, )" },
+  { re: /\(\s*,\s*else\s*\)/i, reason: "(, else) without if/elif" },
+  { re: /\bem\s+e\s+/i, reason: "'em e' gap" },
+  { re: /\bde\s+e\s+(?![a-zà-ÿ])/i, reason: "'de e' gap (no following word)" },
+  { re: /\bn[ií]veis\s+como\s*,\s*e\b/i, reason: "níveis como, e (DEBUG/INFO missing)" },
+];
+
+function validateRepairedText(after: string, before: string): { valid: boolean; reason?: string } {
+  if (!after || typeof after !== "string") return { valid: true };
+  // Special compound checks
+  if (/\bconstrutor\s+init\b/i.test(after) && !/__init__/.test(after)) {
+    return { valid: false, reason: "'construtor init' without __init__" };
+  }
+  if (/\bcom\s+m[ée]todos\s+e\s+assert\b/i.test(after) && !/unittest\.TestCase/.test(after)) {
+    return { valid: false, reason: "'com métodos e assert' without unittest.TestCase" };
+  }
+  for (const { re, reason } of BAD_REPAIR_PATTERNS) {
+    if (re.test(after)) return { valid: false, reason };
+  }
+  return { valid: true };
+}
+
+// Per-slide wrapper that applies token restoration + validation, with
+// REVERT-on-fail semantics. Returns the repaired slide or the original
+// if the repair couldn't restore the missing tokens (so qaVeto sees
+// the real damage downstream).
+function applyTokenRepairAndValidate(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+  slideId?: string,
+): Slide {
+  const repairField = (t?: string): string | undefined => {
+    if (!t || typeof t !== "string") return t;
+    const { result, changed } = repairTechnicalTokens(t, moduleTitle, courseTopic);
+    if (!changed) return t;
+    const validation = validateRepairedText(result, t);
+    if (!validation.valid) {
+      console.warn(
+        `[V5-REPAIR-REJECTED] ${slideId ?? "?"} before="${t.slice(0, 80)}" after="${result.slice(0, 80)}" reason="${validation.reason}"`,
+      );
+      return t; // revert
+    }
+    console.log(
+      `[V5-TOKEN-REPAIR] ${slideId ?? "?"} before="${t.slice(0, 80)}" after="${result.slice(0, 80)}" valid=true`,
+    );
+    return result;
+  };
+
+  const out: Slide = { ...s };
+  if (typeof s.title === "string") out.title = repairField(s.title)!;
+  if (Array.isArray(s.items)) out.items = s.items.map((it) => repairField(it) ?? it);
+  if (Array.isArray((s as Slide & { competencies?: string[] }).competencies)) {
+    const comps = (s as Slide & { competencies?: string[] }).competencies as string[];
+    (out as Slide & { competencies?: string[] }).competencies = comps.map((c) => repairField(c) ?? c);
+  }
+  // Comparison columns
+  const sx = s as Slide & { left?: { items?: string[] }; right?: { items?: string[] } };
+  if (sx.left?.items) {
+    (out as Slide & { left?: { items?: string[] } }).left = {
+      ...sx.left,
+      items: sx.left.items.map((it) => repairField(it) ?? it),
+    };
+  }
+  if (sx.right?.items) {
+    (out as Slide & { right?: { items?: string[] } }).right = {
+      ...sx.right,
+      items: sx.right.items.map((it) => repairField(it) ?? it),
+    };
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════
+// v5.3.3 — HEADER/CONTENT BINDING GUARD
+// ───────────────────────────────────────────────────────────
+// Catches the class of bug where short technical tokens (for,
+// while, if, elif, else, def) were dropped from the TITLE — by
+// L3 LLM rewrite, by an over-eager sanitizer, or by a planner
+// repair — leaving connectives like "com e", "com ,", or
+// "estruturas e aplicam" alone in the header. These read as
+// content leakage into the title region.
+// Returns a report so callers can decide to repair / fall back.
+// ═══════════════════════════════════════════════════════════
+const SHORT_TECHNICAL_TOKENS_RE =
+  /\b(for|while|if|elif|else|def|try|except|finally|with|class|return|yield|lambda|async|await)\b/i;
+
+const HEADER_LEAK_PATTERNS: Array<{ re: RegExp; key: string }> = [
+  // Title ends or contains "com e" with no following noun (lost token between)
+  { re: /\bcom\s+e\b(?!\s+[a-záéíóúâêôãõç])/i, key: "com_e_orphan" },
+  // "com , " orphan comma
+  { re: /\bcom\s*,\s*(e\s+)?$/i, key: "com_comma_orphan" },
+  // " e " sandwiched between two parens/punct, no real word right after
+  { re: /\(\s*,?\s*e\s*\)/, key: "paren_e_orphan" },
+  // Trailing "como e ." / "como , e ."
+  { re: /\bcomo\s*,?\s*e\s*\.\s*$/i, key: "como_e_trailing" },
+  // " e " followed immediately by period/end (fragment)
+  { re: /\s+e\s*\.\s*$/i, key: "e_dot_trailing" },
+  // Title starts with bare connective + verb ("e preparam", "ou criam")
+  { re: /^(e|ou)\s+\w+/i, key: "leading_connective" },
+];
+
+// v5.3.3 (architect feedback) — allowlist for legitimate Portuguese forms that
+// would otherwise trip leak patterns. Checked BEFORE detection runs.
+const HEADER_LEAK_ALLOWLIST: RegExp[] = [
+  /\bE\/S\b/,                                   // "Trabalhando com E/S"
+  /^E\s+se\b/i,                                 // "E se o arquivo não existir?"
+  /^Ou\s+(quando|se|como|por\s*que)\b/i,        // "Ou quando usar..."
+  /\bcom\s+e\s+sem\b/i,                         // "tabelas com e sem índice"
+  /\bcom\s+e\s+contra\b/i,                      // "argumentos com e contra"
+];
+
+function detectHeaderContentLeak(title: string): { leaked: boolean; key?: string } {
+  if (!title || typeof title !== "string") return { leaked: false };
+  const t = title.trim();
+  if (t.length < 5) return { leaked: false };
+  for (const allow of HEADER_LEAK_ALLOWLIST) {
+    if (allow.test(t)) return { leaked: false };
+  }
+  for (const p of HEADER_LEAK_PATTERNS) {
+    if (p.re.test(t)) return { leaked: true, key: p.key };
+  }
+  return { leaked: false };
+}
+
+// v5.3.3 (architect feedback) — DETERMINISTIC short-token preservation.
+// If the slide body / code mentions a Python keyword (for/while/if/elif/
+// else/def/try/except/with/class) but the TITLE no longer contains ANY of
+// them AND the title contains an orphan connective ("com e" / "como e"),
+// flag as `short_token_dropped`. Catches the L3 rephrase damage even when
+// none of the named title patterns above match exactly.
+function detectShortTokenDropped(title: string, body: string): boolean {
+  if (!title || !body) return false;
+  const bodyMentions = SHORT_TECHNICAL_TOKENS_RE.test(body);
+  if (!bodyMentions) return false;
+  if (SHORT_TECHNICAL_TOKENS_RE.test(title)) return false;
+  return /\b(com|como|usando|via)\s+e\b(?!\s+[a-záéíóúâêôãõç])/i.test(title)
+      || /\s+e\s*\.\s*$/i.test(title);
+}
+
+// Reconstruct a safe title from moduleTitle + intent when repair fails.
+function reconstructTitleFromIntent(
+  moduleTitle: string,
+  intent: string | undefined,
+  kind: string,
+): string {
+  const mod = moduleTitle.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim();
+  if (kind === "py_flow") {
+    if (intent === "code_walkthrough" || intent === "example") return `Laços \`for\` e \`while\` em Python`;
+    if (intent === "process") return `Estruturas de Controle de Fluxo`;
+    if (intent === "comparison") return `\`for\` vs \`while\``;
+    return `Controle de Fluxo: \`if\`/\`for\`/\`while\``;
+  }
+  if (kind === "py_oop" && intent) return `Classes e Objetos em Python`;
+  if (kind === "py_files" && intent) return `Arquivos com \`open()\` e \`with\``;
+  if (kind === "py_tests" && intent) return `Testes com \`unittest\``;
+  // Generic fallback
+  return mod || "Conteúdo do Módulo";
+}
+
+// Validates that layouts which RELY on a meaningful title + rich body
+// (process / cards / comparison / twocol / code_walkthrough) are not
+// producing a corrupted header. If the title leaked AND we know the
+// module kind, we attempt token restoration; if still bad, we
+// reconstruct from moduleTitle+intent so the renderer never receives
+// "Repetindo Ações com e".
+type LayoutBindingReport = {
+  ok: boolean;
+  reason?: string;
+  repairedTitle?: string;
+};
+
+// v5.3.3 (architect feedback) — narrowed: dropped `bullets`, `code`,
+// `module_cover` to avoid over-firing on legitimate cover/bullet titles.
+// Module covers go through a dedicated objective-repair pipeline already.
+const LAYOUTS_NEEDING_BINDING_GUARD = new Set<string>([
+  "process",
+  "cards",
+  "comparison",
+  "twocol",
+  "code_walkthrough",
+]);
+
+function validateLayoutBinding(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+  intent?: string,
+): LayoutBindingReport {
+  if (!s || !s.layout) return { ok: true };
+  if (!LAYOUTS_NEEDING_BINDING_GUARD.has(String(s.layout))) return { ok: true };
+  const title = String(s.title ?? "").trim();
+  if (!title) return { ok: false, reason: "empty_title" };
+
+  // Combine body fields for short-token check
+  const bodyText = [
+    ...(s.items ?? []),
+    s.code ?? "",
+    ...((s as any).leftItems ?? []),
+    ...((s as any).rightItems ?? []),
+  ].join(" ");
+
+  let leak = detectHeaderContentLeak(title);
+  if (!leak.leaked && detectShortTokenDropped(title, bodyText)) {
+    leak = { leaked: true, key: "short_token_dropped" };
+  }
+  if (!leak.leaked) return { ok: true };
+
+  // Try token repair first (TR_FLOW_TOKENS et al)
+  const { result, changed } = repairTechnicalTokens(title, moduleTitle, courseTopic);
+  if (changed) {
+    const stillLeaked = detectHeaderContentLeak(result).leaked;
+    if (!stillLeaked) {
+      console.log(
+        `[V5-BINDING-REPAIR] layout=${s.layout} key=${leak.key} before="${title.slice(0, 60)}" after="${result.slice(0, 60)}"`,
+      );
+      return { ok: false, reason: leak.key, repairedTitle: result };
+    }
+  }
+
+  // Fall back to reconstruction
+  const { kind } = detectModuleDomain(moduleTitle, courseTopic);
+  const pyKind = (() => {
+    try { return detectModuleDomainPython(moduleTitle, courseTopic); }
+    catch { return "py_generic"; }
+  })();
+  const reconstructed = reconstructTitleFromIntent(moduleTitle, intent, pyKind || kind || "generic");
+  console.warn(
+    `[V5-BINDING-RECONSTRUCT] layout=${s.layout} key=${leak.key} kind=${pyKind} intent=${intent ?? "?"} before="${title.slice(0, 60)}" after="${reconstructed.slice(0, 60)}"`,
+  );
+  return { ok: false, reason: leak.key, repairedTitle: reconstructed };
+}
+
+function repairTechnicalSanitizationDamage(
+  text: string,
+  moduleTitle: string,
+  courseTopic: string,
+  _language: string = "pt-BR",
+): string {
+  if (!text || typeof text !== "string") return text;
+  const { isPython, isFiles, isOOP, isTests } = detectModuleDomain(moduleTitle, courseTopic);
+  let out = text;
+  const apply = (dict: RepairRule[]) => { for (const [re, rep] of dict) out = out.replace(re, rep); };
+  // Domain-specific dictionaries first (so "leitura ()" → "leitura com `read()`"
+  // wins over the generic "verb ()" → "verb a função apropriada").
+  if (isFiles) apply(PY_FILES_DICT);
+  if (isOOP)   apply(PY_OOP_DICT);
+  if (isTests) apply(PY_TESTS_DICT);
+  if (isPython) apply(PY_GENERIC_DICT);
+  // Always run orphan-punctuation cleanup last.
+  apply(ORPHAN_PUNCT_DICT);
+  return out.trim();
+}
+
+// Slide-level wrapper. Logs before/after when a damaged field was repaired.
+function repairSlideTechnicalDamage(
+  s: Slide,
+  moduleTitle: string,
+  courseTopic: string,
+  slideId?: string,
+): Slide {
+  const repair = (t?: string) => {
+    if (!t) return t;
+    if (!detectTechnicalDamage(t)) return t;
+    const fixed = repairTechnicalSanitizationDamage(t, moduleTitle, courseTopic);
+    if (fixed !== t) {
+      console.log(
+        `[V5-REPAIR] ${slideId ?? "?"} | "${t.slice(0, 80)}" → "${fixed.slice(0, 80)}"`,
+      );
+    }
+    return fixed;
+  };
+  const repairArr = (arr?: string[]) =>
+    arr ? arr.map((t) => repair(t) ?? "").filter((t) => t.trim().length > 0) : arr;
+  const out: Slide = {
+    ...s,
+    title:       repair(s.title) ?? s.title,
+    subtitle:    repair(s.subtitle),
+    label:       repair(s.label),
+    leftHeader:  repair(s.leftHeader),
+    rightHeader: repair(s.rightHeader),
+    items:       repairArr(s.items),
+    leftItems:   repairArr(s.leftItems),
+    rightItems:  repairArr(s.rightItems),
+    code:        s.code,
+  };
+  // v5.1.9: also repair competencies (module_cover field)
+  const comps = (s as Slide & { competencies?: string[] }).competencies;
+  if (Array.isArray(comps)) {
+    (out as Slide & { competencies?: string[] }).competencies = repairArr(comps);
+  }
+  return out;
+}
+
+function slideHasResidualPlaceholder(s: Slide): { found: boolean; sample?: string } {
+  const sCov = s as Slide & { competencies?: string[] };
+  const candidates = [
+    s.title, s.subtitle, s.label, s.leftHeader, s.rightHeader,
+    ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+    ...(sCov.competencies ?? []),
+  ].filter(Boolean) as string[];
+  for (const t of candidates) {
+    for (const re of RESIDUAL_PLACEHOLDER_PATTERNS) {
+      const m = t.match(re);
+      if (m) return { found: true, sample: m[0] };
+    }
+  }
+  return { found: false };
+}
+
+// ── Python `requests` snippet completion (v5.4.1) ──────────
+// User spec: "Se o snippet tiver requests.get/post, ele deve ser
+// completado com response = requests.get(...) + print(response.status_code)
+// + print(response.json())". Returns a fresh, validator-safe 6-7 line
+// snippet whenever the input mentions a `requests.<method>(...)` call;
+// returns null otherwise so the caller can fall back to bullets/drop.
+function repairPythonRequestsSnippet(code: string): string | null {
+  const m = code.match(/requests\.(get|post|put|delete|patch|head)\s*\(/i);
+  if (!m) return null;
+  const method = m[1].toLowerCase();
+  const hasBody = method === "post" || method === "put" || method === "patch";
+  const lines = [
+    "import requests",
+    "",
+    `url = "https://api.example.com/data"`,
+  ];
+  if (hasBody) {
+    lines.push(`payload = {"key": "value"}`);
+    lines.push(`response = requests.${method}(url, json=payload)`);
+  } else {
+    lines.push(`response = requests.${method}(url)`);
+  }
+  lines.push("print(response.status_code)");
+  lines.push("print(response.json())");
+  return lines.join("\n");
+}
+
+// ── Code completeness validator ────────────────────────────
+// Per-language structural completeness check. Returns true when the
+// code block looks safe to render (closed brackets, balanced quotes,
+// no truncation marker like "...", etc.).
+function validateCodeCompleteness(code: string, language: ContentDomain): boolean {
+  if (!code || !code.trim()) return false;
+  const trimmed = code.trim();
+
+  // Universal: no obvious truncation marker at end
+  if (/\.{3,}$|…\s*$/.test(trimmed)) return false;
+
+  // Strip strings, template literals AND comments before structural checks
+  // so legitimate `if (x > "}")` or `// {` etc don't trip the validator.
+  const stripped = stripCommentsAndStrings(trimmed);
+
+  // Bracket balance — applies to most C-family + Python expressions
+  const pairs: Array<[string, string]> = [["(", ")"], ["[", "]"], ["{", "}"]];
+  for (const [open, close] of pairs) {
+    const opens  = (stripped.match(new RegExp(`\\${open}`, "g")) ?? []).length;
+    const closes = (stripped.match(new RegExp(`\\${close}`, "g")) ?? []).length;
+    if (opens !== closes) return false;
+  }
+
+  // Unbalanced triple-quoted strings (Python) — count on the raw code
+  const tripleSingle = (trimmed.match(/'''/g) ?? []).length;
+  const tripleDouble = (trimmed.match(/"""/g) ?? []).length;
+  if (tripleSingle % 2 !== 0 || tripleDouble % 2 !== 0) return false;
+
+  // Python-specific: def/class with no body
+  if (language === "python") {
+    const lines = trimmed.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*(def|class|if|elif|else|for|while|try|except|finally|with)\b.*:\s*$/.test(line)) {
+        // Must have an indented next line OR same-line body (already on this line before colon)
+        const next = lines[i + 1] ?? "";
+        const indent = (line.match(/^\s*/)?.[0].length) ?? 0;
+        const nextIndent = (next.match(/^\s*/)?.[0].length) ?? 0;
+        if (!next.trim() || nextIndent <= indent) return false;
+      }
+    }
+  }
+
+  // SQL-specific: statement must terminate with `;` OR have valid FROM / WHERE / VALUES
+  if (language === "sql") {
+    const upper = trimmed.toUpperCase();
+    if (/^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/.test(upper)) {
+      if (!/;\s*(--[^\n]*\s*)?$/.test(trimmed) && !/--/.test(trimmed)) {
+        // No semicolon and no comment-only fallback
+        if (!/(FROM|WHERE|VALUES|SET|TABLE)\s+\w+/i.test(trimmed)) return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 // ── QA Global Thresholds ────────────────────────────────────
 const QA = {
   MAX_WORDS_PER_SLIDE:               50,
@@ -3910,6 +7527,7 @@ const QA = {
   MIN_BODY_FONT_SIZE:                18, // pt — used for risk detection only
   MAX_IDENTICAL_LAYOUTS_IN_SEQUENCE:  2,
   MIN_REQUIRED_WHITESPACE_RATIO:    0.20,
+  MAX_WORDS_HARD_VETO:               80, // hard cap for veto (blueprint hard constraint)
 } as const;
 
 // ── QA Issue Types & Severity ───────────────────────────────
@@ -3924,7 +7542,25 @@ type QAIssueType =
   | "SQL_CODE_INCOMPLETE"
   | "LAYOUT_REPETITION"
   | "COMPARISON_UNSAFE"
-  | "FONT_TOO_SMALL_RISK";
+  | "FONT_TOO_SMALL_RISK"
+  // ── Architectural correction (v5.1) ─────────────────────────
+  | "DOMAIN_CONTAMINATION"
+  | "INCOMPLETE_CODE"
+  | "EXTREME_DENSITY"
+  | "BROKEN_COMPARISON"
+  | "UNREADABLE_SLIDE"
+  | "GENERIC_OBJECTIVE"
+  // ── v5.1 hardening pass 2 ───────────────────────────────────
+  | "TECHNICAL_SANITIZATION_DAMAGE"
+  // ── v5.1.5 hardening pass 5 ─────────────────────────────────
+  | "TECHNICAL_SEMANTIC_BREAK"
+  | "REDUNDANT_SLIDE"
+  // ── v5.1.6 hardening pass 6 ─────────────────────────────────
+  | "BROKEN_LANGUAGE_STRUCTURE"
+  // ── v5.4.0 Technical Preservation Layer ─────────────────────
+  | "TECHNICAL_TOKEN_LOSS"
+  // ── v5.7.0 Final safety net (forbidden-pattern scan) ────────
+  | "FORBIDDEN_FINAL_PATTERN";
 
 interface QAIssue {
   slideId:            string;
@@ -3934,6 +7570,145 @@ interface QAIssue {
   metric?:            number;
   context?:           string;
   resolutionStrategy: string;
+  // v5.7.0 — extended fields (only populated for FORBIDDEN_FINAL_PATTERN today,
+  // but optional so any future check can carry actionable feedback to the UI).
+  field?:             string;   // "code" | "items" | "leftItems" | "rightItems" | "title" | "label"
+  pattern?:           string;   // pattern_id from FORBIDDEN_FINAL_PATTERNS
+  snippet?:           string;   // ≤80 chars excerpt centered on the offending text
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v5.7.0 — FORBIDDEN FINAL PATTERNS
+// Last-mile veto. After ALL guardrails, cascade, repair, sanitization,
+// and dedup, a slide MUST NOT contain any of these patterns. If any
+// survives, throw 422 PptxQAVetoError. Catches the systemic class of
+// bugs where AI-generated decks ship "# ...", "código omitido", or a
+// CODE-labeled slide without any code.
+//
+// EXPORTED for unit testing.
+// EMERGENCY KILL-SWITCH: set env PPTX_FORBIDDEN_VETO_DISABLED=1 to skip.
+// ═══════════════════════════════════════════════════════════════
+type ForbiddenPatternSpec = {
+  id:        string;
+  pattern:   RegExp;
+  message:   string;
+  fields:    Array<"code" | "items" | "leftItems" | "rightItems" | "title" | "label">;
+};
+
+const FORBIDDEN_FINAL_PATTERNS: ForbiddenPatternSpec[] = [
+  {
+    id:      "ELLIPSIS_HASH",
+    pattern: /^\s*#\s*\.{2,}\s*$/m,
+    message: "Linha de código omitida com '# ...' encontrada",
+    fields:  ["code"],
+  },
+  {
+    id:      "ELLIPSIS_SLASH",
+    pattern: /^\s*\/\/\s*\.{2,}\s*$/m,
+    message: "Linha de código omitida com '// ...' encontrada",
+    fields:  ["code"],
+  },
+  {
+    id:      "ELLIPSIS_BARE",
+    pattern: /^\s*\.{3,}\s*$/m,
+    message: "Linha contendo apenas '...' encontrada",
+    fields:  ["code", "items", "leftItems", "rightItems"],
+  },
+  {
+    id:      "CODIGO_OMITIDO",
+    pattern: /\bc[óo]digo\s+omitido\b/i,
+    message: "Texto literal 'código omitido' encontrado",
+    fields:  ["code", "items", "leftItems", "rightItems"],
+  },
+  {
+    id:      "RESTANTE_OMITIDO",
+    pattern: /\brestante\s+omitido\b/i,
+    message: "Texto literal 'restante omitido' encontrado",
+    fields:  ["code", "items", "leftItems", "rightItems"],
+  },
+  {
+    id:      "CONTINUA_PLACEHOLDER",
+    pattern: /^\s*(continua|cont\.|to be continued)\s*\.?\s*$/im,
+    message: "Linha placeholder 'continua' encontrada",
+    fields:  ["code", "items", "leftItems", "rightItems"],
+  },
+];
+
+function _excerpt(haystack: string, match: RegExpExecArray, max = 80): string {
+  const idx = match.index;
+  const len = match[0].length;
+  const start = Math.max(0, idx - Math.floor((max - len) / 2));
+  return haystack.slice(start, start + max).replace(/\s+/g, " ").trim();
+}
+
+function _scanField(
+  slideId: string,
+  field: "code" | "items" | "leftItems" | "rightItems" | "title" | "label",
+  value: string,
+  out: QAIssue[],
+): void {
+  if (!value || typeof value !== "string") return;
+  for (const spec of FORBIDDEN_FINAL_PATTERNS) {
+    if (!spec.fields.includes(field)) continue;
+    const re = new RegExp(spec.pattern.source, spec.pattern.flags);
+    const m = re.exec(value);
+    if (m) {
+      out.push({
+        slideId,
+        type:               "FORBIDDEN_FINAL_PATTERN",
+        severity:           "CRITICAL",
+        message:            `${spec.message} (campo=${field})`,
+        resolutionStrategy: "Bloquear export com 422 — repair anterior não eliminou padrão proibido",
+        field,
+        pattern:            spec.id,
+        snippet:            _excerpt(value, m, 80),
+      });
+    }
+  }
+}
+
+// scanFinalSlidesForForbiddenPatterns — layout-aware. Only scans fields that
+// will actually be rendered for a given layout (e.g. comparison slides render
+// leftItems+rightItems but not items; code slides render code; etc). This
+// avoids phantom 422s from stale fields that survive layout changes.
+function scanFinalSlidesForForbiddenPatterns(
+  modules: Slide[][],
+): QAIssue[] {
+  const found: QAIssue[] = [];
+  for (let mi = 0; mi < modules.length; mi++) {
+    for (let si = 0; si < modules[mi].length; si++) {
+      const s = modules[mi][si];
+      const id = `M${mi + 1}.S${si + 1}`;
+      // Title + label always render
+      _scanField(id, "title", s.title ?? "", found);
+      _scanField(id, "label", s.label ?? "", found);
+      // Layout-conditional rendering
+      const lay = s.layout ?? "bullets";
+      if (lay === "code") {
+        _scanField(id, "code", s.code ?? "", found);
+        // Structural: code layout MUST have non-empty code
+        if (!s.code || s.code.trim().length === 0) {
+          found.push({
+            slideId:            id,
+            type:               "FORBIDDEN_FINAL_PATTERN",
+            severity:           "CRITICAL",
+            message:            "Slide com layout=code sem bloco de código real",
+            resolutionStrategy: "Demote to bullets ou synth — não exportar CODE vazio",
+            field:              "code",
+            pattern:            "CODE_NO_CODE",
+            snippet:            (s.title ?? "").slice(0, 80),
+          });
+        }
+      } else if (lay === "comparison" || lay === "twocol") {
+        _scanField(id, "leftItems", (s.leftItems ?? []).join("\n"), found);
+        _scanField(id, "rightItems", (s.rightItems ?? []).join("\n"), found);
+      } else {
+        // bullets/cards/process/takeaways/etc render `items`
+        _scanField(id, "items", (s.items ?? []).join("\n"), found);
+      }
+    }
+  }
+  return found;
 }
 
 interface QAReport {
@@ -3977,7 +7752,10 @@ function qaCountWords(text: string): number {
 function runPptxQA(
   allSlides: Slide[][],
   moduleContents: string[],
+  courseTopic = "",
+  moduleTitles: string[] = [],
 ): { repairedSlides: Slide[][]; report: QAReport } {
+  const courseDomain = inferCourseDomain(courseTopic);
   const unfixedIssues: QAIssue[] = [];
   const fixedIssues:   QAIssue[] = [];
 
@@ -4074,17 +7852,29 @@ function runPptxQA(
       }
 
       // ──────────────────────────────────────────────────────
-      // 4. GENERIC_LEARNING_OBJECTIVE  [WARNING — already fixed upstream]
+      // 4. GENERIC_LEARNING_OBJECTIVE  [CRITICAL — auto-repair via cascade]
+      // v5.1.6: was WARNING-only and used BAD_OBJECTIVE_RE (only catches
+      // double-verb patterns). Now uses isGenericLearningObjective which
+      // catches "Compreender X", "Aplicar X", "Identificar X" — emits
+      // CRITICAL so L1 cascade replaces with concrete objectives via
+      // repairSlideLearningObjectives.
       // ──────────────────────────────────────────────────────
-      if (s.layout === "module_cover" && Array.isArray(s.items)) {
-        const generic = s.items.filter((item) => BAD_OBJECTIVE_RE.test(item));
+      if (s.layout === "module_cover") {
+        const moduleTitle4 = moduleTitles[mi] ?? s.title ?? "";
+        // v5.1.8: scan BOTH items and competencies (module_cover usually has competencies, not items).
+        const sCov = s as Slide & { competencies?: string[] };
+        const fields: string[] = [
+          ...(Array.isArray(s.items) ? s.items : []),
+          ...(Array.isArray(sCov.competencies) ? sCov.competencies : []),
+        ];
+        const generic = fields.filter((item) => isGenericLearningObjective(item, moduleTitle4));
         if (generic.length > 0) {
-          fixedIssues.push({
-            slideId: id, type: "GENERIC_LEARNING_OBJECTIVE", severity: "WARNING",
+          unfixedIssues.push({
+            slideId: id, type: "GENERIC_LEARNING_OBJECTIVE", severity: "CRITICAL",
             message: `${generic.length} objetivo(s) genérico(s) em "${s.title}"`,
             metric: generic.length,
             context: generic[0],
-            resolutionStrategy: "Objetivos expandidos por expandVagueObjective() upstream",
+            resolutionStrategy: "L1 cascade aplicará repairSlideLearningObjectives()",
           });
         }
       }
@@ -4230,6 +8020,350 @@ function runPptxQA(
           s = modSlides[si];
         }
       }
+
+      // ══════════════════════════════════════════════════════
+      // ARCHITECTURAL CORRECTION (v5.1) — additional CRITICAL checks
+      // ══════════════════════════════════════════════════════
+
+      // 12. DOMAIN_CONTAMINATION  [CRITICAL → drop or strip code]
+      // Prevents SQL/DDL leaking into Python courses, etc.
+      const moduleTitle = moduleTitles[mi] ?? "";
+      const contam = detectDomainContamination(s, courseDomain, moduleTitle);
+      if (contam.contaminated) {
+        // If contamination is confined to the code field, strip the code
+        // and demote layout to bullets. Otherwise mark slide for removal.
+        if (s.layout === "code" && s.code) {
+          const itemsFallback = nonEmpty(s.items);
+          if (itemsFallback.length >= 3) {
+            fixedIssues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `Domínio contaminado em "${s.title}": ${contam.reason}`,
+              context: contam.reason,
+              resolutionStrategy: "Código contaminado removido; slide convertido para bullets",
+            });
+            modSlides[si] = demoteCodeLayout(s, id, `domain_contamination_${contam.reason}`);
+            s = modSlides[si];
+          } else {
+            unfixedIssues.push({
+              slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+              message: `Slide com domínio incompatível removido: "${s.title}" (${contam.reason})`,
+              context: contam.reason,
+              resolutionStrategy: "Slide removido — não havia conteúdo alternativo válido",
+            });
+            keepMask[si] = false;
+            continue;
+          }
+        } else {
+          unfixedIssues.push({
+            slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
+            message: `Slide com domínio incompatível: "${s.title}" (${contam.reason})`,
+            context: contam.reason,
+            resolutionStrategy: "Slide removido para preservar coerência do curso",
+          });
+          keepMask[si] = false;
+          continue;
+        }
+      }
+
+      // 13. INCOMPLETE_CODE  [CRITICAL → repair snippet, drop code or drop slide]
+      // Per-language structural validation (Python def/class body, brackets, quotes).
+      // v5.4.1 — pedagogical-closure repair for Python `requests.get/post`
+      // snippets BEFORE giving up. If repair impossible: convert to bullets
+      // when items≥3, otherwise DROP slide silently (no residual CRITICAL —
+      // a removed slide cannot harm the deck downstream).
+      if (s.layout === "code" && s.code) {
+        const lang: ContentDomain =
+          courseDomain === "python" || courseDomain === "sql" ||
+          courseDomain === "javascript" || courseDomain === "java"
+            ? courseDomain : "generic";
+        if (!validateCodeCompleteness(s.code, lang)) {
+          // Try domain-specific snippet completion first
+          let repairedCode: string | null = null;
+          if (lang === "python" || lang === "generic") {
+            repairedCode = repairPythonRequestsSnippet(s.code);
+          }
+          if (repairedCode && validateCodeCompleteness(repairedCode, "python")) {
+            fixedIssues.push({
+              slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
+              message: `Snippet HTTP completado em "${s.title}" (${lang})`,
+              context: lang,
+              resolutionStrategy: "repairPythonRequestsSnippet — fechamento pedagógico injetado",
+            });
+            modSlides[si] = { ...s, code: repairedCode };
+            s = modSlides[si];
+            console.log(`[V5-CODE-REPAIR] ${id} | requests snippet completed (lang=${lang})`);
+          } else {
+            const itemsFallback = nonEmpty(s.items);
+            if (itemsFallback.length >= 3) {
+              fixedIssues.push({
+                slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
+                message: `Código incompleto em "${s.title}" (${lang}) — convertido para bullets`,
+                context: lang,
+                resolutionStrategy: "Bloco de código removido; slide renderizado como bullets",
+              });
+              modSlides[si] = demoteCodeLayout(s, id, `incomplete_code_${lang}`);
+              s = modSlides[si];
+            } else {
+              // v5.4.1 — register as FIXED (slide removido). Previously this
+              // pushed an UNFIXED CRITICAL into qaVeto's HARD_CRITICAL_TYPES
+              // even though the slide was already gone, blocking the export
+              // for an issue that no longer existed.
+              fixedIssues.push({
+                slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
+                message: `Código incompleto em "${s.title}" (${lang}) — slide removido (sem fallback de bullets)`,
+                context: lang,
+                resolutionStrategy: "Slide removido do deck — issue extinta",
+              });
+              keepMask[si] = false;
+              console.log(`[V5-CODE-DROP] ${id} | "${s.title}" dropped: incomplete code, no bullet fallback (lang=${lang})`);
+              continue;
+            }
+          }
+        }
+      }
+
+      // 14. EXTREME_DENSITY  [CRITICAL → split or trim hard]
+      // Hard veto threshold (80 words) — overrides MAX_WORDS_PER_SLIDE.
+      const HARD_DENSITY_SKIP: Layout[] = ["code","module_cover","cover","toc","closing"];
+      if (!HARD_DENSITY_SKIP.includes(s.layout)) {
+        const itemsNow = nonEmpty(s.items);
+        const totalWords = itemsNow.reduce((a, t) => a + qaCountWords(t), 0);
+        if (totalWords > QA.MAX_WORDS_HARD_VETO) {
+          const trimmed = itemsNow
+            .map((t) => safeSliceText(t, 70))
+            .slice(0, QA.MAX_BULLETS);
+          const trimmedWords = trimmed.reduce((a, t) => a + qaCountWords(t), 0);
+          if (trimmedWords <= QA.MAX_WORDS_HARD_VETO) {
+            fixedIssues.push({
+              slideId: id, type: "EXTREME_DENSITY", severity: "CRITICAL",
+              message: `Densidade extrema (${totalWords} palavras) em "${s.title}" — comprimida para ${trimmedWords}`,
+              metric: totalWords,
+              resolutionStrategy: "Itens comprimidos e truncados ao limite duro",
+            });
+            modSlides[si] = { ...s, items: trimmed };
+            s = modSlides[si];
+          } else {
+            unfixedIssues.push({
+              slideId: id, type: "EXTREME_DENSITY", severity: "CRITICAL",
+              message: `Densidade extrema sem reparo em "${s.title}" (${totalWords} palavras)`,
+              metric: totalWords,
+              resolutionStrategy: "Será dividido pelo cascade L2",
+            });
+          }
+        }
+      }
+
+      // 15. BROKEN_COMPARISON  [CRITICAL → convert to twocol]
+      // Comparison with one or both columns empty / single-item.
+      if (s.layout === "comparison") {
+        const lI2 = nonEmpty(s.leftItems);
+        const rI2 = nonEmpty(s.rightItems);
+        if (lI2.length < 2 || rI2.length < 2) {
+          const merged = [...lI2, ...rI2].slice(0, 6);
+          if (merged.length >= 3) {
+            fixedIssues.push({
+              slideId: id, type: "BROKEN_COMPARISON", severity: "CRITICAL",
+              message: `Comparison quebrado em "${s.title}" (l=${lI2.length} r=${rI2.length})`,
+              resolutionStrategy: "Convertido para twocol com itens mesclados",
+            });
+            modSlides[si] = { ...s, layout: "twocol", items: merged, leftItems: undefined, rightItems: undefined };
+            s = modSlides[si];
+          } else {
+            unfixedIssues.push({
+              slideId: id, type: "BROKEN_COMPARISON", severity: "CRITICAL",
+              message: `Comparison quebrado sem conteúdo: "${s.title}"`,
+              resolutionStrategy: "Slide removido",
+            });
+            keepMask[si] = false;
+            continue;
+          }
+        }
+      }
+
+      // 16. UNREADABLE_SLIDE  [CRITICAL → drop]
+      // Final readability check — if after all fixes the slide is still
+      // un-renderable OR has zero meaningful content, mark CRITICAL.
+      if (!isRenderableSlide(s)) {
+        unfixedIssues.push({
+          slideId: id, type: "UNREADABLE_SLIDE", severity: "CRITICAL",
+          message: `Slide ilegível após todos os reparos: "${s.title}" (${s.layout})`,
+          resolutionStrategy: "Slide removido do deck final",
+        });
+        keepMask[si] = false;
+        continue;
+      }
+
+      // 17. GENERIC_OBJECTIVE  [CRITICAL → drop bad items, batch-replace, or drop slide]
+      // Strict pedagogical check — strips bullets like "Compreender Python",
+      // "Aplicar fundamentos", "Identificar testes" that are non-actionable.
+      // v5.4.2 — three-tier resolution (no UNFIXED CRITICAL ever leaves here):
+      //   1) goodItems >= 3 → keep good ones (FIXED)
+      //   2) title looks like a learning-objective slide ("Objetivos…",
+      //      "O Que Você Aprendeu…", "Aprendizados…", "Competências…") →
+      //      batch-replace with PYTHON_OBJECTIVE_TAILS[moduleKind] sliced to N
+      //   3) otherwise drop the slide as FIXED (no CRITICAL residual — a
+      //      removed slide cannot harm the deck downstream)
+      const genericSkipLayouts: Layout[] = ["code", "module_cover", "cover", "toc", "closing"];
+      if (!genericSkipLayouts.includes(s.layout) && s.items?.length) {
+        const moduleTitle17 = moduleTitles[mi] ?? "";
+        const goodItems = s.items.filter((it) => !isGenericLearningObjective(it, moduleTitle17));
+        const removedCount = s.items.length - goodItems.length;
+        if (removedCount > 0) {
+          if (goodItems.length >= 3) {
+            fixedIssues.push({
+              slideId: id, type: "GENERIC_OBJECTIVE", severity: "CRITICAL",
+              message: `${removedCount} objetivo(s) genérico(s) removidos de "${s.title}"`,
+              metric: removedCount,
+              resolutionStrategy: "Bullets genéricos removidos; restantes preservados",
+            });
+            modSlides[si] = { ...s, items: goodItems };
+            s = modSlides[si];
+          } else {
+            // Tier 2 — title looks like an objectives/recap slide → batch repair
+            const titleLower = (s.title ?? "").toLowerCase();
+            const isObjectiveTitle =
+              /\bobjetiv|\baprendizad|\bo\s+que\s+voc[eê]\s+aprend|\bcompet[eê]nc|\bganhos\b|\bessenci/.test(titleLower);
+            if (isObjectiveTitle) {
+              const sub = detectModuleDomainPython(moduleTitle17, courseTopic);
+              const tails = PYTHON_OBJECTIVE_TAILS[sub] ?? PYTHON_OBJECTIVE_TAILS["py_generic"];
+              const N = Math.min(Math.max(s.items.length, 3), tails.length);
+              const replacement = tails.slice(0, N);
+              fixedIssues.push({
+                slideId: id, type: "GENERIC_OBJECTIVE", severity: "CRITICAL",
+                message: `Slide de objetivos majoritariamente genérico: "${s.title}" (${removedCount}/${s.items.length}) — substituído por tails determinísticas (${sub})`,
+                metric: removedCount,
+                resolutionStrategy: "Itens substituídos em batch por PYTHON_OBJECTIVE_TAILS[moduleKind]",
+              });
+              modSlides[si] = { ...s, items: replacement };
+              s = modSlides[si];
+              console.log(
+                `[V5-OBJECTIVE-REPAIR-BATCH] slide=${id} moduleKind=${sub} ratio=${removedCount}/${s.items.length} title="${(s.title ?? "").slice(0, 60)}" → full replacement (${N} tails)`,
+              );
+            } else {
+              // Tier 3 — slide dropped as FIXED (was UNFIXED CRITICAL pre-v5.4.2,
+              // which left a phantom blocker for qaVeto on a slide that was
+              // already gone from the deck).
+              fixedIssues.push({
+                slideId: id, type: "GENERIC_OBJECTIVE", severity: "CRITICAL",
+                message: `Slide majoritariamente genérico: "${s.title}" (${removedCount}/${s.items.length}) — slide removido`,
+                metric: removedCount,
+                resolutionStrategy: "Slide removido do deck — issue extinta",
+              });
+              keepMask[si] = false;
+              console.log(
+                `[V5-GENERIC-DROP] slide=${id} title="${(s.title ?? "").slice(0, 60)}" — dropped (no objective-title batch repair)`,
+              );
+              continue;
+            }
+          }
+        }
+      }
+
+      // 18. TECHNICAL_SANITIZATION_DAMAGE  [CRITICAL → flag for veto]
+      // Catches the symptom of valid Python/JS function calls being
+      // stripped (e.g. "Realize leitura ()" instead of "leitura `read()`").
+      // We cannot recover the lost name here — the only safe action is to
+      // mark CRITICAL and let qaVeto block the export.
+      const allTextFields = [
+        s.title, s.subtitle, ...(s.items ?? []),
+        ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+      ].filter(Boolean) as string[];
+      let damaged = false;
+      for (const t of allTextFields) {
+        if (detectTechnicalDamage(t)) { damaged = true; break; }
+      }
+      if (damaged) {
+        unfixedIssues.push({
+          slideId: id, type: "TECHNICAL_SANITIZATION_DAMAGE", severity: "CRITICAL",
+          message: `Sintaxe técnica destruída em "${s.title}" (parênteses vazios após verbo)`,
+          resolutionStrategy: "Slide marcado para regeneração",
+        });
+      }
+
+      // 19. TECHNICAL_SEMANTIC_BREAK  [CRITICAL → repair via cascade or veto]
+      // Catches sentences whose syntax survived but whose meaning was
+      // destroyed (e.g. "Capture erros específicos como.", "Verifica
+      // partes isoladas com.", "Definir Classes: Usar com nome (Ex: ).").
+      let semanticBreak: { txt: string; describe: string } | null = null;
+      for (const t of allTextFields) {
+        const det = detectIncompleteTechnicalSentence(t);
+        if (det.broken) { semanticBreak = { txt: t, describe: det.describe ?? det.key ?? "?" }; break; }
+      }
+      if (semanticBreak) {
+        unfixedIssues.push({
+          slideId: id, type: "TECHNICAL_SEMANTIC_BREAK", severity: "CRITICAL",
+          message: `Frase tecnicamente incompleta em "${s.title}" (${semanticBreak.describe})`,
+          context: semanticBreak.txt.slice(0, 120),
+          resolutionStrategy: "Reparo semântico via repairSemanticBreak() ou bloqueio do export",
+        });
+      }
+
+      // 20. BROKEN_LANGUAGE_STRUCTURE  [CRITICAL → field-aware drop or veto]
+      // v5.4.3 — three-tier resolution mirroring check #17:
+      //   1) hit on items[n]/leftItems[n]/rightItems[n]/competencies[n] →
+      //      drop that entry; if slide remains renderable → FIXED, else
+      //      drop slide as FIXED.
+      //   2) hit on title/subtitle → drop slide as FIXED (no phantom blocker).
+      //   3) message and context now report the ACTUAL field that matched
+      //      (was always "título…" before — misleading).
+      const hit = findBrokenLanguageHit(s);
+      if (hit) {
+        const fieldLabel = hit.kind === "title" || hit.kind === "subtitle"
+          ? hit.kind
+          : `${hit.kind}[${(hit as { index: number }).index}]`;
+        if (hit.kind === "items" || hit.kind === "leftItems" || hit.kind === "rightItems" || hit.kind === "competencies") {
+          // Drop the offending entry, keep the rest
+          const sCopy: Slide & { competencies?: string[] } = { ...s };
+          const idx = (hit as { index: number }).index;
+          if (hit.kind === "items" && Array.isArray(sCopy.items)) {
+            sCopy.items = sCopy.items.filter((_, i) => i !== idx);
+          } else if (hit.kind === "leftItems" && Array.isArray(sCopy.leftItems)) {
+            sCopy.leftItems = sCopy.leftItems.filter((_, i) => i !== idx);
+          } else if (hit.kind === "rightItems" && Array.isArray(sCopy.rightItems)) {
+            sCopy.rightItems = sCopy.rightItems.filter((_, i) => i !== idx);
+          } else if (hit.kind === "competencies" && Array.isArray(sCopy.competencies)) {
+            sCopy.competencies = sCopy.competencies.filter((_, i) => i !== idx);
+          }
+          if (isRenderableSlide(sCopy)) {
+            modSlides[si] = sCopy;
+            s = modSlides[si];
+            fixedIssues.push({
+              slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
+              message: `Linguagem quebrada em "${s.title}" → field=${fieldLabel} (${hit.describe})`,
+              context: hit.txt.slice(0, 160),
+              resolutionStrategy: `Item ${fieldLabel} removido; slide preservado`,
+            });
+            console.log(
+              `[V5-LANG-DROP-ITEM] slide=${id} field=${fieldLabel} key=${hit.key} txt="${hit.txt.slice(0, 80)}"`,
+            );
+          } else {
+            keepMask[si] = false;
+            fixedIssues.push({
+              slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
+              message: `Linguagem quebrada em "${s.title}" → field=${fieldLabel} (${hit.describe}) — slide removido (sem conteúdo restante)`,
+              context: hit.txt.slice(0, 160),
+              resolutionStrategy: "Slide removido do deck — issue extinta",
+            });
+            console.log(
+              `[V5-LANG-DROP-SLIDE] slide=${id} field=${fieldLabel} reason=not_renderable_after_strip`,
+            );
+            continue;
+          }
+        } else {
+          // title or subtitle — drop the slide entirely as FIXED
+          keepMask[si] = false;
+          fixedIssues.push({
+            slideId: id, type: "BROKEN_LANGUAGE_STRUCTURE", severity: "CRITICAL",
+            message: `Linguagem quebrada em "${s.title}" → field=${fieldLabel} (${hit.describe}) — slide removido`,
+            context: hit.txt.slice(0, 160),
+            resolutionStrategy: "Slide removido do deck — issue extinta",
+          });
+          console.log(
+            `[V5-LANG-DROP-SLIDE] slide=${id} field=${fieldLabel} key=${hit.key} txt="${hit.txt.slice(0, 80)}"`,
+          );
+          continue;
+        }
+      }
     } // end slide loop
 
     // Apply drop mask for CRITICALs that could not be repaired
@@ -4305,13 +8439,21 @@ function normalizeItemPunctuation(text: string): string {
  * Apply a targeted visual fix to a single slide for the given issue.
  * Never changes layout or splits the slide.
  */
-function l1VisualFix(s: Slide, issue: QAIssue, moduleContent: string): Slide {
+function l1VisualFix(
+  s: Slide,
+  issue: QAIssue,
+  moduleContent: string,
+  moduleTitle: string = "",
+  courseTopic: string = "",
+): Slide {
   switch (issue.type) {
     case "EMPTY_SLIDE": {
       const rep = repairEmptySlide(s, moduleContent);
       if (isRenderableSlide(rep)) return rep;
+      // v5.7.0 — demote CÓDIGO label; this fallback bullets slide has no code.
       return {
-        ...s, layout: "bullets",
+        ...s, layout: "bullets", code: undefined,
+        label: _demoteCodeLabel(s.label),
         title: s.label || s.title || "Conteúdo",
         items: ["Consulte o material do módulo para este tópico."],
       };
@@ -4345,8 +8487,9 @@ function l1VisualFix(s: Slide, issue: QAIssue, moduleContent: string): Slide {
       return { ...s, items: trimmed.slice(0, QA.MAX_BULLETS) };
     }
     case "CODE_TOO_LONG": {
+      // v5.7.0 — clean truncate, no continuation placeholder (forbidden final pattern).
       const lines = (s.code || "").split("\n").slice(0, QA.MAX_CODE_LINES);
-      return { ...s, code: lines.join("\n") + "\n-- ... (ver continuação)" };
+      return { ...s, code: lines.join("\n") };
     }
     case "LAYOUT_REPETITION": {
       const items = nonEmpty(s.items);
@@ -4364,14 +8507,47 @@ function l1VisualFix(s: Slide, issue: QAIssue, moduleContent: string): Slide {
     }
     case "FONT_TOO_SMALL_RISK":
       return { ...s, items: nonEmpty(s.items).map((t) => safeSliceText(t, 80)) };
+    case "TECHNICAL_SANITIZATION_DAMAGE": {
+      const mTitle = moduleTitle || s.label || "";
+      const cTopic = courseTopic || mTitle;
+      return repairSlideTechnicalDamage(s, mTitle, cTopic, issue.slideId);
+    }
+    case "TECHNICAL_SEMANTIC_BREAK": {
+      // Domain-aware semantic reconstruction. If repair fails, the slide
+      // remains broken and qaVeto blocks the export (HARD_CRITICAL).
+      const mTitle = moduleTitle || s.label || "";
+      const cTopic = courseTopic || mTitle;
+      return repairSlideSemanticBreaks(s, mTitle, cTopic, issue.slideId);
+    }
+    case "BROKEN_LANGUAGE_STRUCTURE": {
+      // v5.1.6: deterministic Portuguese-grammar repair ("Que Adotar..."
+      // → "Por Que Adotar..."). Failures stay flagged; veto blocks.
+      return repairSlideBrokenLanguage(s, issue.slideId);
+    }
+    case "GENERIC_OBJECTIVE":
     case "GENERIC_LEARNING_OBJECTIVE": {
-      if (s.layout !== "module_cover" || !Array.isArray(s.items)) return s;
-      const expanded = s.items
-        .map((item, idx) =>
-          withPeriod(normalizeLearningObjective(expandVagueObjective(item, s.title), s.title, idx))
-        )
-        .filter((item) => item.length > 8 && !BAD_OBJECTIVE_RE.test(item));
-      return expanded.length >= 2 ? { ...s, items: expanded } : s;
+      if (s.layout !== "module_cover") return s;
+      // v5.1.5: deterministic concrete-objective rewrite using
+      // PYTHON_OBJECTIVE_TAILS dictionary (tied to module subdomain).
+      // v5.1.9: works for items AND competencies (module_cover usually has competencies, no items).
+      const repaired = repairSlideLearningObjectives(s, moduleTitle || s.title || "", courseTopic);
+      // Keep the legacy normalisation as a final pass for any remaining
+      // items that weren't generic (it normalises capitalisation).
+      const out: Slide = { ...repaired };
+      if (Array.isArray(repaired.items)) {
+        const finalItems = repaired.items
+          .map((item, idx) => withPeriod(normalizeLearningObjective(item, s.title, idx)))
+          .filter((item) => item.length > 8);
+        if (finalItems.length >= 2) out.items = finalItems;
+      }
+      const repCov = (repaired as Slide & { competencies?: string[] }).competencies;
+      if (Array.isArray(repCov)) {
+        const finalComps = repCov
+          .map((item, idx) => withPeriod(normalizeLearningObjective(item, s.title, idx)))
+          .filter((item) => item.length > 8);
+        if (finalComps.length >= 2) (out as Slide & { competencies?: string[] }).competencies = finalComps;
+      }
+      return out;
     }
     default:
       return s;
@@ -4404,7 +8580,8 @@ function l2Replan(s: Slide, issue: QAIssue, moduleContent: string): Slide[] {
         const p2: Slide = { ...s, title: `${s.title} (2/2)`, code: lines.slice(mid).join("\n") };
         if (isRenderableSlide(p1) && isRenderableSlide(p2)) return [p1, p2];
       }
-      return [{ ...s, code: lines.slice(0, QA.MAX_CODE_LINES).join("\n") + "\n-- ... (ver material)" }];
+      // v5.7.0 — clean truncate, no continuation placeholder.
+      return [{ ...s, code: lines.slice(0, QA.MAX_CODE_LINES).join("\n") }];
     }
     case "LAYOUT_REPETITION": {
       const candidates: Layout[] = ["cards", "diagram", "process", "timeline", "twocol", "bullets"];
@@ -4443,7 +8620,32 @@ async function l3LocalRewrite(
   s: Slide,
   issue: QAIssue,
   geminiKey: string,
+  courseTopic = "",
+  moduleTitle = "",
 ): Promise<Slide> {
+  // ── Domain-aware skip list (v5.1) ─────────────────────────
+  // Some issue types are dangerous for LLM rewrite because they tend
+  // to produce generic content or contaminate the course domain.
+  // For these, we keep the deterministic L1/L2 fix and skip the LLM.
+  const SKIP_LLM: QAIssueType[] = [
+    "DOMAIN_CONTAMINATION", // already structurally fixed
+    "INCOMPLETE_CODE",      // code rewrite is too risky without source
+    "GENERIC_LEARNING_OBJECTIVE",
+    "GENERIC_OBJECTIVE",
+  ];
+  if (SKIP_LLM.includes(issue.type)) {
+    console.log(`[V5-QA-L3] Skipping LLM rewrite for ${issue.type} (deterministic fix already applied)`);
+    return s;
+  }
+
+  const allowedDomain = inferCourseDomain(courseTopic, moduleTitle);
+  const domainHint =
+    allowedDomain === "python" ? "Python (NUNCA gere SQL/DDL como CREATE TABLE, ALTER, DROP)." :
+    allowedDomain === "sql"    ? "SQL." :
+    allowedDomain === "javascript" ? "JavaScript/TypeScript." :
+    allowedDomain === "java"   ? "Java." :
+    "do tema do curso (NÃO mude de assunto).";
+
   const contentSummary = [
     s.code   ? `CODE:\n${s.code.slice(0, 400)}`                               : null,
     s.items?.length  ? `ITEMS:\n${(s.items || []).slice(0, 8).join("\n")}`     : null,
@@ -4452,12 +8654,21 @@ async function l3LocalRewrite(
   ].filter(Boolean).join("\n");
 
   const safeTitle = (s.title || "Slide").replace(/"/g, "'");
-  const prompt = `Você é editor de slides educativos. O slide abaixo tem problema: "${issue.type}: ${issue.message}".
+  const prompt = `Você é editor de slides educativos do curso "${courseTopic}".
+Módulo atual: "${moduleTitle}".
+Domínio permitido: ${domainHint}
+
+O slide abaixo tem problema: "${issue.type}: ${issue.message}".
 
 Slide atual — título: "${safeTitle}" | layout: ${s.layout}
 ${contentSummary}
 
-Reescreva APENAS o conteúdo como 4-5 bullets concisos (máx 20 palavras cada) em português, preservando todo conteúdo técnico essencial. NUNCA corte SELECT *, COUNT(*), SUM(*).
+Regras OBRIGATÓRIAS:
+- Mantenha o domínio do curso. Não introduza tecnologias de outro tema.
+- 4-5 bullets concisos (máx 20 palavras cada) em português.
+- Sem placeholders, sem [[...]], sem {{...}}, sem "lorem ipsum".
+- Sem objetivos genéricos como "Compreender X" ou "Aprender sobre Y".
+- Preserve conteúdo técnico essencial. NUNCA corte SELECT *, COUNT(*), SUM(*).
 
 Responda SOMENTE com JSON válido sem markdown:
 {"title":"${safeTitle}","items":["item1","item2","item3","item4"]}`;
@@ -4483,13 +8694,49 @@ Responda SOMENTE com JSON válido sem markdown:
     const newItems: string[] = Array.isArray(parsed.items)
       ? parsed.items
           .filter((t: unknown): t is string => typeof t === "string" && t.trim().length > 3)
+          .map((t: string) => removeOrBlockPlaceholders(t))
+          .filter((t: string) => t.length > 3 && !BAD_OBJECTIVE_RE.test(t))
           .slice(0, 6)
       : [];
-    if (newItems.length >= 3) {
-      console.log(`[V5-QA-L3] Rewrote "${s.title}" via Gemini (${newItems.length} items)`);
-      return { ...s, layout: "bullets", items: newItems };
+    if (newItems.length < 3) {
+      throw new Error(`LLM returned only ${newItems.length} usable items`);
     }
-    throw new Error(`LLM returned only ${newItems.length} items`);
+    // ── Post-rewrite domain veto ─────────────────────────────
+    // v5.7.0 — also demote CÓDIGO label (rewritten candidate is bullets-only).
+    const candidate: Slide = { ...s, layout: "bullets", items: newItems, code: undefined, label: _demoteCodeLabel(s.label) };
+    const contam2 = detectDomainContamination(candidate, allowedDomain, moduleTitle);
+    if (contam2.contaminated) {
+      console.warn(`[V5-QA-L3] Rejected rewrite (domain contamination: ${contam2.reason})`);
+      return s;
+    }
+    // ── v5.4.0 Technical token preservation veto ────────────
+    // If the original slide TITLE+ITEMS had technical tokens (if/elif/
+    // __init__/unittest.TestCase/DEBUG/etc) and the LLM rewrite dropped
+    // any of them, REJECT the rewrite and keep the original.
+    // (architect feedback) Only compare against fields the candidate
+    // KEEPS — the candidate is bullets-only with code/columns dropped,
+    // so requiring tokens from `s.code` or `s.leftItems` to survive in
+    // `candidate.title + newItems` would over-reject every paraphrase.
+    const originalSurvivableText = [s.title, ...(s.items ?? [])].filter(Boolean).join(" ");
+    const rewrittenText = [candidate.title, ...newItems].join(" ");
+    const originalTokens = detectTechnicalTokens(originalSurvivableText);
+    if (originalTokens.length > 0) {
+      const dropped = originalTokens.filter(t => !rewrittenText.includes(t.value));
+      if (dropped.length > 0) {
+        console.warn(
+          `[TECH-PRESERVE-FAIL] L3 rewrite dropped ${dropped.length} token(s) from title+items: ${dropped.map(t=>t.value).join(", ")} — REJECTED`,
+        );
+        return s;
+      }
+    }
+    // Also reject if the rewrite itself introduced damage signatures
+    const rewriteDamage = detectTechnicalTokenDamage(rewrittenText);
+    if (rewriteDamage.damaged) {
+      console.warn(`[TECH-PRESERVE-FAIL] L3 rewrite produced damage signatures: ${rewriteDamage.keys.join(", ")} — REJECTED`);
+      return s;
+    }
+    console.log(`[V5-QA-L3] Rewrote "${s.title}" via Gemini (${newItems.length} items)`);
+    return candidate;
   } catch (err) {
     console.warn(`[V5-QA-L3] Rewrite failed for "${s.title}": ${err instanceof Error ? err.message : String(err)}`);
     return s; // unchanged — runPptxQA final pass will handle it
@@ -4510,6 +8757,8 @@ async function resolveQAIssues(
   qaReport: QAReport,
   moduleContents: string[],
   geminiKey: string,
+  courseTopic = "",
+  moduleTitles: string[] = [],
 ): Promise<{ resolvedSlides: Slide[][]; finalReport: QAReport }> {
   if (qaReport.issues.length === 0) {
     return { resolvedSlides: slides, finalReport: qaReport };
@@ -4528,9 +8777,15 @@ async function resolveQAIssues(
       if (!pos) continue;
       const { mi, si } = pos;
       if (!current[mi] || si >= current[mi].length) continue;
-      current[mi][si] = l1VisualFix(current[mi][si], issue, moduleContents[mi] ?? "");
+      current[mi][si] = l1VisualFix(
+        current[mi][si],
+        issue,
+        moduleContents[mi] ?? "",
+        moduleTitles[mi] ?? "",
+        courseTopic,
+      );
     }
-    const { repairedSlides: afterL1, report: reportL1 } = runPptxQA(current, moduleContents);
+    const { repairedSlides: afterL1, report: reportL1 } = runPptxQA(current, moduleContents, courseTopic, moduleTitles);
     current = afterL1;
     console.log(`[V5-QA-CASCADE] After L1 (cycle ${cycle + 1}): unfixed=${reportL1.issues.length}`);
     if (reportL1.issues.length === 0) { lastReport = reportL1; break; }
@@ -4563,7 +8818,7 @@ async function resolveQAIssues(
       }
     }
 
-    const { repairedSlides: afterL2, report: reportL2 } = runPptxQA(current, moduleContents);
+    const { repairedSlides: afterL2, report: reportL2 } = runPptxQA(current, moduleContents, courseTopic, moduleTitles);
     current = afterL2;
     lastReport = reportL2;
     console.log(`[V5-QA-CASCADE] After L2 (cycle ${cycle + 1}): unfixed=${lastReport.issues.length}`);
@@ -4589,7 +8844,8 @@ async function resolveQAIssues(
       const batch = tasks.slice(b, b + 3);
       const settled = await Promise.allSettled(
         batch.map(({ issue, mi, si }) =>
-          l3LocalRewrite(current[mi][si], issue, geminiKey).then((s) => ({ mi, si, s }))
+          l3LocalRewrite(current[mi][si], issue, geminiKey, courseTopic, moduleTitles[mi] ?? "")
+            .then((s) => ({ mi, si, s }))
         ),
       );
       for (const res of settled) {
@@ -4600,7 +8856,7 @@ async function resolveQAIssues(
     }
 
     // Final QA pass after L3
-    const { repairedSlides: afterL3, report: reportL3 } = runPptxQA(current, moduleContents);
+    const { repairedSlides: afterL3, report: reportL3 } = runPptxQA(current, moduleContents, courseTopic, moduleTitles);
     current = afterL3;
     lastReport = reportL3;
     console.log(`[V5-QA-CASCADE] After L3: status=${lastReport.status} unfixed=${lastReport.issues.length}`);
@@ -4621,6 +8877,125 @@ async function resolveQAIssues(
     `[V5-QA-CASCADE] Complete: status=${lastReport.status} | unfixed=${lastReport.issues.length} | fixed=${lastReport.fixedIssues.length}`,
   );
   return { resolvedSlides: current, finalReport: lastReport };
+}
+
+// ═══════════════════════════════════════════════════════════
+// SECTION 6E: QA VETO (Architectural correction v5.1)
+// Final hard gate — blocks export if any CRITICAL issue from the
+// hard-constraint set survives the resolution cascade.
+// ═══════════════════════════════════════════════════════════
+
+interface QAVetoResult {
+  blocked:        boolean;
+  blockingIssues: QAIssue[];
+  totalSlides:    number;
+  removedSlides:  number;
+}
+
+const HARD_CRITICAL_TYPES: ReadonlySet<QAIssueType> = new Set<QAIssueType>([
+  "DOMAIN_CONTAMINATION",
+  "INCOMPLETE_CODE",
+  "PLACEHOLDER_RESIDUAL",
+  "EMPTY_SLIDE",
+  "UNREADABLE_SLIDE",
+  "EXTREME_DENSITY",
+  "BROKEN_COMPARISON",
+  // Spec-required additions (architect review v5.1):
+  "TITLE_FRAGMENT",
+  "GENERIC_OBJECTIVE",
+  "GENERIC_LEARNING_OBJECTIVE",
+  // v5.1 hardening pass 2:
+  "TECHNICAL_SANITIZATION_DAMAGE",
+  // v5.1.5 hardening pass 5 — semantically broken technical sentences
+  // (e.g. "Capture erros específicos como.", "Verifica X com.") that
+  // cannot be auto-repaired must block export rather than ship truncated.
+  "TECHNICAL_SEMANTIC_BREAK",
+  // v5.1.6 hardening pass 6 — broken Portuguese ("Que Adotar..." sem "Por")
+  "BROKEN_LANGUAGE_STRUCTURE",
+  // v5.4.0 — Technical Preservation Layer detected residual technical
+  // token loss after all repair passes. Preservation layer was either
+  // bypassed or input was already corrupted upstream — block export.
+  "TECHNICAL_TOKEN_LOSS",
+]);
+
+function qaVeto(
+  finalReport: QAReport,
+  finalSlides: Slide[][],
+  originalCount: number,
+  extraCovers?: Slide[],
+): QAVetoResult {
+  const totalSlides   = finalSlides.reduce((a, m) => a + m.length, 0);
+  const removedSlides = Math.max(0, originalCount - totalSlides);
+
+  // Per-slide residual placeholder check (defence in depth)
+  const placeholderIssues: QAIssue[] = [];
+  for (let mi = 0; mi < finalSlides.length; mi++) {
+    for (let si = 0; si < finalSlides[mi].length; si++) {
+      const s = finalSlides[mi][si];
+      const ph = slideHasResidualPlaceholder(s);
+      if (ph.found) {
+        placeholderIssues.push({
+          slideId: `M${mi + 1}.S${si + 1}`,
+          type: "PLACEHOLDER_RESIDUAL",
+          severity: "CRITICAL",
+          message: `Placeholder residual "${ph.sample}" em "${s.title}"`,
+          resolutionStrategy: "Bloqueio de export — sanitizer não conseguiu remover marker",
+        });
+      }
+    }
+  }
+  // v5.1.9: also scan module covers for residual placeholders
+  if (extraCovers) {
+    for (let mi = 0; mi < extraCovers.length; mi++) {
+      const c = extraCovers[mi];
+      const ph = slideHasResidualPlaceholder(c);
+      if (ph.found) {
+        placeholderIssues.push({
+          slideId: `M${mi + 1}.COVER`,
+          type: "PLACEHOLDER_RESIDUAL",
+          severity: "CRITICAL",
+          message: `Placeholder residual "${ph.sample}" em cover "${c.title}"`,
+          resolutionStrategy: "Bloqueio de export — sanitizer não conseguiu remover marker",
+        });
+      }
+    }
+  }
+
+  const blockingIssues = [
+    ...finalReport.issues.filter(
+      (i) => i.severity === "CRITICAL" && HARD_CRITICAL_TYPES.has(i.type),
+    ),
+    ...placeholderIssues,
+  ];
+
+  // Empty deck is also a veto trigger
+  if (totalSlides === 0) {
+    blockingIssues.push({
+      slideId: "DECK", type: "EMPTY_SLIDE", severity: "CRITICAL",
+      message: "Deck final ficou sem slides após QA",
+      resolutionStrategy: "Bloqueio de export — todos os slides removidos pelo cascade",
+    });
+  }
+
+  const blocked = blockingIssues.length > 0;
+  console.log(
+    `[V5-QA-VETO] blocked=${blocked} | blockingIssues=${blockingIssues.length} | totalSlides=${totalSlides} | removedSlides=${removedSlides}`,
+  );
+  for (const i of blockingIssues.slice(0, 12)) {
+    console.warn(`[V5-QA-VETO] BLOCK ${i.type} @ ${i.slideId} — ${i.message}`);
+  }
+  return { blocked, blockingIssues, totalSlides, removedSlides };
+}
+
+// Custom error thrown when qaVeto blocks the export. Caught by the
+// HTTP handler and converted into a structured 422 response.
+class PptxQAVetoError extends Error {
+  result: QAVetoResult;
+  constructor(result: QAVetoResult) {
+    super(`PPTX QA Veto: ${result.blockingIssues.length} blocking issue(s)`);
+    this.name = "PptxQAVetoError";
+    this.result = result;
+  }
 }
 
 /**
@@ -4659,6 +9034,19 @@ async function runPipeline(
   geminiKey: string,
   selectedTemplate: string,
 ): Promise<PptxGenJS> {
+  // v5.4.4 — wall-clock timing checkpoints. Edge Function 546 errors mean
+  // CPU/wall-clock/memory limit hit. Without these logs we cannot tell
+  // whether the planner, the per-module QA, the cascade L3, or pptx.write()
+  // is responsible. All checkpoints log [V5-TIMING] phase=... ms=... total=...
+  const t0 = Date.now();
+  const tlog = (phase: string, since?: number): number => {
+    const now = Date.now();
+    const ms = now - (since ?? t0);
+    const total = now - t0;
+    console.log(`[V5-TIMING] phase=${phase} ms=${ms} total=${total} modules=${modules.length}`);
+    return now;
+  };
+  let tCheckpoint = t0;
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "EduGenAI v5";
@@ -4721,18 +9109,223 @@ async function runPipeline(
     });
   }
 
-  const BATCH_SIZE = 3; // max concurrent Gemini calls
+  // Suppress unused-var lint when planner short-circuits processBatch.
+  void slideCache; void moduleHashKey; void processBatch;
+
+  // ── PRESENTATION PLANNER (v5.2.0) ─────────────────────────────────────
+  // Try the new structured planner first. It enforces per-module domain
+  // rules (e.g. no SQL in a Python "Estruturas de Dados" module), concrete
+  // learning objectives, single-idea-per-slide, code-in-code-field, and
+  // dedup — BEFORE the renderer ever sees the slides. Reduces the load on
+  // the regex-heavy QA cascade.
+  //
+  // SAFETY: any failure (planner exception, validation fatal, empty output
+  // for ≥1 module) falls back silently to the legacy generateModuleSlides
+  // pipeline. The QA veto remains active either way.
   const allModuleSlides: Slide[][] = new Array(modules.length);
-  for (let b = 0; b < modules.length; b += BATCH_SIZE) {
-    const batchIndices = Array.from(
-      { length: Math.min(BATCH_SIZE, modules.length - b) },
-      (_, k) => b + k,
+  // Per-module decision: which indices get planner output vs legacy fallback.
+  // null = decide later (planner threw); true = planner ok; false = fallback.
+  const moduleUsesPlanner: (boolean | null)[] = new Array(modules.length).fill(null);
+  const fallbackIndices: number[] = [];
+
+  try {
+    const { plan, stats, validation } = await generatePresentationPlan({
+      courseTitle, modules, language, geminiKey,
+    });
+    console.log(
+      `[PRESENTATION-PLAN] modules=${stats.module_count} | slides=${stats.slide_count} | intents=${JSON.stringify(stats.intents_breakdown)} | repaired_objectives=${stats.repaired_objectives} | blocked_contamination=${stats.blocked_contamination} | moved_code=${stats.moved_code} | removed_duplicates=${stats.removed_duplicates} | removed_truncated=${stats.removed_truncated} | capped_bullets=${stats.capped_bullets} | capped_code=${stats.capped_code} | modules_failed=${stats.modules_failed}`,
     );
-    const results = await processBatch(batchIndices);
-    for (const { i, slides } of results) {
-      allModuleSlides[i] = slides;
+    console.log(
+      `[PRESENTATION-PLAN-VALIDATION] ${validation.passed ? "PASSED" : "FAILED"} | issues=${JSON.stringify(validation.byType)}`,
+    );
+
+    // PER-MODULE GATE — accept the planner module-by-module instead of
+    // all-or-nothing. A module is accepted ONLY if:
+    //   (a) slide count in [MIN..MAX]_PLANNER_SLIDES_PER_MODULE, AND
+    //   (b) no fatal validation issue affects this module, AND
+    //   (c) no residual semantic blocker (DOMAIN_CONTAMINATION /
+    //       SQL_IN_PYTHON / GENERIC_OBJECTIVE / CODE_IN_BULLET /
+    //       TRUNCATED_SENTENCE / BROKEN_SEMANTIC_SENTENCE /
+    //       MODULE_OBJECTIVE_VIOLATION / INCOMPLETE_CODE_SNIPPET)
+    //       affects this module.
+    // Modules that fail the gate fall back to legacy generateModuleSlides
+    // for that index ONLY — the rest of the deck still benefits from the
+    // planner's clean output.
+    const SEMANTIC_BLOCKERS = new Set([
+      "DOMAIN_CONTAMINATION", "SQL_IN_PYTHON", "GENERIC_OBJECTIVE",
+      "CODE_IN_BULLET", "TRUNCATED_SENTENCE",
+      // v5.2.3 — new HARD blockers for semantic consolidation
+      "BROKEN_SEMANTIC_SENTENCE", "MODULE_OBJECTIVE_VIOLATION",
+      "INCOMPLETE_CODE_SNIPPET",
+    ]);
+    const fatalsByModule = new Map<number, number>();
+    const blockersByModule = new Map<number, number>();
+    for (const issue of validation.issues) {
+      if (issue.severity === "fatal") {
+        fatalsByModule.set(issue.moduleIndex, (fatalsByModule.get(issue.moduleIndex) ?? 0) + 1);
+      }
+      if (SEMANTIC_BLOCKERS.has(issue.type)) {
+        blockersByModule.set(issue.moduleIndex, (blockersByModule.get(issue.moduleIndex) ?? 0) + 1);
+      }
+    }
+
+    const v5Like: V5SlideLike[][] = presentationPlanToV5Slides(plan);
+    let acceptedCount = 0;
+    for (let i = 0; i < modules.length; i++) {
+      const planSlides = plan.modules[i]?.slides ?? [];
+      const slideCount = planSlides.length;
+      const hasFatal = (fatalsByModule.get(i) ?? 0) > 0;
+      const hasBlocker = (blockersByModule.get(i) ?? 0) > 0;
+      const inRange = slideCount >= MIN_PLANNER_SLIDES_PER_MODULE
+                   && slideCount <= MAX_PLANNER_SLIDES_PER_MODULE;
+
+      // v5.3.0 — emit per-module planner diagnostic log
+      console.log(
+        `[MODULE-PLANNER] module=${i + 1} title="${modules[i].title.slice(0, 40)}" slides=${slideCount} fatals=${fatalsByModule.get(i) ?? 0} blockers=${blockersByModule.get(i) ?? 0} accepted=${inRange && !hasFatal && !hasBlocker}`,
+      );
+
+      // v5.5.3 — OOP positivity check. When the module rule is `oop` but
+      // <30% of the planner's slides mention any OOP keyword, the module
+      // is contaminated even if no individual slide tripped a leak detector.
+      // Force fallback to legacy generation for that module.
+      let oopPositivityFail = false;
+      const moduleRule = getModuleRule(courseTitle, modules[i].title);
+      if (moduleRule?.kind === "oop") {
+        const planSlidesForFraction = plan.modules[i]?.slides ?? [];
+        const frac = computeOopPositivityFraction(planSlidesForFraction);
+        if (frac < 0.3 && planSlidesForFraction.length > 0) {
+          oopPositivityFail = true;
+          console.log(
+            `[MODULE-PLANNER] module=${i + 1} OOP positivity check FAILED: ${(frac * 100).toFixed(0)}% slides mention OOP keywords (need ≥30%) → forcing legacy fallback`,
+          );
+        }
+      }
+
+      if (inRange && !hasFatal && !hasBlocker && !oopPositivityFail) {
+        // v5.3.3 — STAGE 1 binding debug: planner output PER SLIDE before any conversion
+        for (let psi = 0; psi < (plan.modules[i]?.slides ?? []).length; psi++) {
+          const ps = plan.modules[i].slides[psi];
+          const slideId = `module_${i + 1}_slide_${psi + 1}`;
+          console.log(
+            `[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=${slideId} intent=${ps.intent} layoutHint=${(ps as any).layoutHint ?? "?"} title="${(ps.title ?? "").slice(0, 60)}" items=${(ps.items ?? []).length} steps=${((ps as any).steps ?? []).length} cards=${((ps as any).cards ?? []).length} hasCode=${!!ps.code}`,
+          );
+        }
+        // Convert this module's slides to v5 Slide shape
+        allModuleSlides[i] = v5Like[i].map((s, vi): Slide => {
+          const baseTitle = cleanSlideTitle(s.title.slice(0, 80), modules[i].title);
+          // v5.3.3 — STAGE 2 binding debug: post-conversion v5 layout/title/items
+          console.log(
+            `[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=${i + 1} slideIdx=${vi} layout=${s.layout} title="${baseTitle.slice(0, 60)}" sectionLabel="${(s.label ?? "").slice(0, 30)}" items=${(s.items ?? []).length} leftItems=${(s.leftItems ?? []).length} rightItems=${(s.rightItems ?? []).length}`,
+          );
+          // v5.3.3 — header/content leak guard BEFORE the slide enters QA
+          const intent = (plan.modules[i]?.slides ?? [])[vi]?.intent;
+          const binding = validateLayoutBinding(
+            { ...(s as unknown as Slide), title: baseTitle, layout: s.layout as Layout },
+            modules[i].title,
+            courseTitle,
+            intent,
+          );
+          // v5.3.3 (architect feedback) — emit a DISTINCT diagnostic when the
+          // binding repair fires. Module stays on the planner path (we already
+          // reconstructed a safe title), but the flag surfaces planner/L3
+          // corruption so we can audit and route to fallback later if needed.
+          if (!binding.ok) {
+            console.warn(
+              `[PLANNER-BINDING-FAILURE] module=${i + 1} slideIdx=${vi} layout=${s.layout} reason=${binding.reason} reconstructed=${binding.repairedTitle !== baseTitle} before="${baseTitle.slice(0, 60)}" after="${(binding.repairedTitle ?? baseTitle).slice(0, 60)}"`,
+            );
+          }
+          const finalTitle = binding.ok ? baseTitle : (binding.repairedTitle ?? baseTitle);
+          return {
+          layout: s.layout as Layout,
+          title: finalTitle,
+          label: normalizeSlideLabel(s.label, "CONTEÚDO"),
+          items: (s.items ?? [])
+            .map((x) => polishEditorialText(
+              safeItemText(globalSanitize(x), 105),
+              { field: "item" },
+            ))
+            .filter((x) => x.length > 0),
+          code: s.code ? validateCodeIntegrity(s.code.slice(0, 1200)) : undefined,
+          codeLabel: s.codeLabel ? s.codeLabel.slice(0, 20) : (s.code ? "Python" : undefined),
+          leftHeader: s.leftHeader ? globalSanitize(s.leftHeader).slice(0, 40) : undefined,
+          rightHeader: s.rightHeader ? globalSanitize(s.rightHeader).slice(0, 40) : undefined,
+          leftItems: s.leftItems
+            ? s.leftItems.map((x) => globalSanitize(x).slice(0, 90)).filter((x) => x.length > 0)
+            : undefined,
+          rightItems: s.rightItems
+            ? s.rightItems.map((x) => globalSanitize(x).slice(0, 90)).filter((x) => x.length > 0)
+            : undefined,
+          moduleIndex: i,
+          };
+        });
+        // v5.3.3 — STAGE 3 binding debug: final renderer-input slides per module
+        for (let ri = 0; ri < allModuleSlides[i].length; ri++) {
+          const rs = allModuleSlides[i][ri];
+          console.log(
+            `[SLIDE-BINDING-DEBUG] stage=rendererInput module=${i + 1} slideIdx=${ri} layout=${rs.layout} title="${(rs.title ?? "").slice(0, 60)}" itemsCount=${(rs.items ?? []).length} leftCount=${((rs as any).leftItems ?? []).length} rightCount=${((rs as any).rightItems ?? []).length} firstItems="${(rs.items ?? []).slice(0, 2).map((x) => x.slice(0, 30)).join(" | ")}"`,
+          );
+        }
+        moduleUsesPlanner[i] = true;
+        acceptedCount++;
+      } else {
+        moduleUsesPlanner[i] = false;
+        fallbackIndices.push(i);
+        console.warn(
+          `[PRESENTATION-PLAN] module ${i + 1} ("${modules[i].title}") rejected: slides=${slideCount} (in ${MIN_PLANNER_SLIDES_PER_MODULE}-${MAX_PLANNER_SLIDES_PER_MODULE}: ${inRange}), fatals=${fatalsByModule.get(i) ?? 0}, blockers=${blockersByModule.get(i) ?? 0} → legacy fallback for this module only`,
+        );
+      }
+    }
+    console.log(
+      `[PRESENTATION-PLAN] per-module gate: accepted=${acceptedCount}/${modules.length} | fallback_indices=${JSON.stringify(fallbackIndices.map((i) => i + 1))}`,
+    );
+  } catch (e: any) {
+    console.warn(`[PRESENTATION-PLAN] threw, falling back ALL modules: ${e?.message ?? e}`);
+    for (let i = 0; i < modules.length; i++) {
+      moduleUsesPlanner[i] = false;
+      fallbackIndices.push(i);
     }
   }
+
+  // Run legacy generateModuleSlides for ONLY the modules that need it.
+  if (fallbackIndices.length > 0) {
+    const BATCH_SIZE = 3;
+    for (let b = 0; b < fallbackIndices.length; b += BATCH_SIZE) {
+      const batchIndices = fallbackIndices.slice(b, b + BATCH_SIZE);
+      const results = await processBatch(batchIndices);
+      for (const { i, slides } of results) {
+        allModuleSlides[i] = slides;
+      }
+    }
+  }
+
+  // Planner-accepted modules still flow through the existing downstream
+  // guards (split / variety / semantic gate) so they get the same polish
+  // as legacy modules.
+  for (let i = 0; i < allModuleSlides.length; i++) {
+    if (moduleUsesPlanner[i] !== true) continue; // legacy already polished
+    const split = splitOverflowSlides(allModuleSlides[i]);
+    const varied = applyLayoutVariety(split);
+    const aligned = varied.map((s) => validateSemanticAlignment(s, modules[i].title));
+    allModuleSlides[i] = aligned
+      .map((s) => semanticQualityGate(s, modules[i].title))
+      .filter((s): s is Slide => s !== null);
+  }
+
+  // ── v5.1.9 — PRE-BUILD MODULE COVER SLIDES ─────────────────
+  // Module covers were previously constructed inline at render time
+  // via extractCompetencies(...), bypassing QA/repair/safety entirely.
+  // Build them upfront so the repair pipeline + safety net inspect
+  // (and can block) the actual competency strings that will render.
+  const moduleCovers: Slide[] = modules.map((m, i) => {
+    const cleanTitle =
+      m.title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() || m.title;
+    return {
+      layout: "module_cover",
+      title: cleanTitle,
+      moduleIndex: i,
+      competencies: extractCompetencies(m.content, cleanTitle),
+    } as Slide & { moduleIndex: number; competencies: string[] };
+  });
 
   // ── TEMPLATE RESOLUTION ──────────────────────────────────────────────────
   // Resolve which template to use, then apply adaptive splits so that no slide
@@ -4763,34 +9356,466 @@ async function runPipeline(
   //   L1 visual fixes → re-QA → L2 layout replanning → re-QA (×2 cycles)
   //   L3 local Gemini rewrite for surviving CRITICALs.
   // Final isRenderableSlide filter guarantees no broken slide reaches renderer.
-  const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
-    allModuleSlides,
-    modules.map((m) => m.content),
-  );
-  for (let i = 0; i < qaSlides.length; i++) {
-    allModuleSlides[i] = qaSlides[i];
+  const moduleTitlesArr = modules.map((m) => m.title);
+  const moduleContentsArr = modules.map((m) => m.content);
+  const originalSlideCount = allModuleSlides.reduce((a, m) => a + m.length, 0);
+
+  // Pre-QA placeholder sanitization pass (architectural correction v5.1).
+  // Strips orphan [[BT0]]/[[BT1]]/{{TOKEN}}/lorem ipsum from every text
+  // field BEFORE QA runs, so subsequent checks see clean content.
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    allModuleSlides[mi] = allModuleSlides[mi].map(sanitizeSlidePlaceholders);
   }
+
+  // ── Pre-QA TECHNICAL DAMAGE REPAIR (v5.1.4) ──────────────────────────
+  // Deterministic, domain-aware reconstruction of "verb ()" / ", ," patterns
+  // BEFORE qa runs. The QA still runs afterwards and the veto still blocks
+  // anything we couldn't fix — we never loosen the gate, we just give the
+  // repairer a chance to recover known damage from context.
+  // ── Pre-QA repair pass (v5.1.6) ───────────────────────────
+  // Mirrors the post-cascade pipeline so initial QA sees already-cleaned
+  // slides. Catches damage from sanitization/LLM before it gets logged
+  // as an issue.
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    // v5.3.1 — explicit per-module kind log so we can see which domain the
+    // repair pipeline thinks each module is, and audit misclassifications.
+    const kind = detectModuleDomainPython(mTitle, courseTitle);
+    console.log(`[V5-KIND] module=${mi + 1} moduleTitle="${mTitle}" kind=${kind}`);
+    allModuleSlides[mi] = allModuleSlides[mi].map((s, si) => {
+      const sid = `module_${mi + 1}_slide_${si + 1}`;
+      // v5.3.1 — token restoration FIRST (architect plan): restore missing
+      // technical tokens before punctuation cleaners can strip the gap.
+      let out = applyTokenRepairAndValidate(s, mTitle, courseTitle, sid);
+      out = repairSlideTechnicalDamage(out, mTitle, courseTitle, sid);
+      out = repairSlideSemanticBreaks(out, mTitle, courseTitle, sid);
+      out = repairSlideLearningObjectives(out, mTitle, courseTitle);
+      out = repairSlideBrokenLanguage(out, sid);
+      // v5.1.14: deterministic SQL strip (drops contaminated items)
+      out = stripSqlContaminationFromSlide(out, inferCourseDomain(courseTitle), mTitle, sid);
+      return out;
+    });
+  }
+
+  // v5.1.9: same repair pipeline for pre-built module covers
+  for (let mi = 0; mi < moduleCovers.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    const sid = `module_${mi + 1}_cover`;
+    let c = sanitizeSlidePlaceholders(moduleCovers[mi]);
+    c = repairSlideTechnicalDamage(c, mTitle, courseTitle, sid);
+    c = repairSlideSemanticBreaks(c, mTitle, courseTitle, sid);
+    c = repairSlideLearningObjectives(c, mTitle, courseTitle);
+    c = repairSlideBrokenLanguage(c, sid);
+    c = stripSqlContaminationFromSlide(c, inferCourseDomain(courseTitle), mTitle, sid);
+    moduleCovers[mi] = c;
+  }
+
+  tCheckpoint = tlog("planner+pre_QA_pipeline_done", tCheckpoint);
+
+  // ── v5.3.0 — PER-MODULE QA WRAPPER ─────────────────────────────────────
+  // Architectural shift inspired by Manus: QA runs per-module instead of
+  // on the full deck. Each module gets its own QA + cascade so semantic
+  // problems stay scoped to a single module. The aggregated report still
+  // feeds the global safety net + veto downstream (hybrid model — see
+  // architect plan, Phase 5).
+  //
+  // We aggregate the per-module reports into a single QAReport so the
+  // existing downstream code (post-repair re-QA, safety net, veto)
+  // continues to work unchanged.
+  const aggregatedIssues: QAIssue[] = [];
+  const aggregatedFixed: QAIssue[] = [];
+  const moduleQADiagnostics: ModuleQADiagnostic[] = [];
+
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    const mContent = moduleContentsArr[mi] ?? "";
+    // Run runPptxQA on a single-module slice (it accepts Slide[][])
+    const { repairedSlides: qaSlides, report: qaReport } = runPptxQA(
+      [allModuleSlides[mi]],
+      [mContent],
+      courseTitle,
+      [mTitle],
+    );
+    allModuleSlides[mi] = qaSlides[0] ?? allModuleSlides[mi];
+
+    let moduleReport: QAReport = qaReport;
+    if (qaReport.issues.length > 0) {
+      const { resolvedSlides, finalReport } = await resolveQAIssues(
+        [allModuleSlides[mi]],
+        qaReport,
+        [mContent],
+        geminiKey,
+        courseTitle,
+        [mTitle],
+      );
+      allModuleSlides[mi] = resolvedSlides[0] ?? allModuleSlides[mi];
+      moduleReport = finalReport;
+    }
+
+    // Aggregate
+    aggregatedIssues.push(...moduleReport.issues);
+    aggregatedFixed.push(...moduleReport.fixedIssues);
+
+    // Per-module diagnostic
+    const unfixedBreakdown: Record<string, number> = {};
+    for (const iss of moduleReport.issues) {
+      unfixedBreakdown[iss.type] = (unfixedBreakdown[iss.type] ?? 0) + 1;
+    }
+    const diag: ModuleQADiagnostic = {
+      moduleIndex: mi,
+      moduleTitle: mTitle,
+      status: moduleReport.status,
+      issuesUnfixed: moduleReport.issues.length,
+      issuesFixed: moduleReport.fixedIssues.length,
+      unfixedBreakdown,
+    };
+    moduleQADiagnostics.push(diag);
+    console.log(
+      `[MODULE-QA] module=${mi + 1} status=${diag.status} issuesUnfixed=${diag.issuesUnfixed} issuesFixed=${diag.issuesFixed}${diag.issuesUnfixed > 0 ? " unfixed=" + JSON.stringify(unfixedBreakdown) : ""}`,
+    );
+  }
+
+  let cascadeReport: QAReport = {
+    status: aggregatedIssues.length === 0 ? "PASSED" : "FAILED",
+    issues: aggregatedIssues,
+    fixedIssues: aggregatedFixed,
+  };
   console.log(
-    `[V5-QA] Initial pass: status=${qaReport.status} | issues=${qaReport.issues.length} | fixed=${qaReport.fixedIssues.length}`,
+    `[V5-QA] Per-module aggregate: status=${cascadeReport.status} | unfixed=${cascadeReport.issues.length} | fixed=${cascadeReport.fixedIssues.length} | courseDomain=${inferCourseDomain(courseTitle)}`,
+  );
+  tCheckpoint = tlog("per_module_QA_cascade_done", tCheckpoint);
+
+  // Post-cascade safety sanitization pass — guarantees no residual
+  // placeholder reaches the renderer even if a cascade level produced one.
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    allModuleSlides[mi] = allModuleSlides[mi].map(sanitizeSlidePlaceholders);
+  }
+
+  // ── Final repair pass (v5.1.6) ─────────────────────────────────────
+  // Last chance before the veto. Runs sequentially:
+  //   (a) repairSlideTechnicalDamage     — empty-paren / orphan-punct
+  //   (b) repairSlideSemanticBreaks      — "como.", "com.", "(Ex: )"
+  //   (c) repairSlideLearningObjectives  — concrete objective rewrite
+  //   (d) repairSlideBrokenLanguage      — "Que Adotar..." → "Por Que..."
+  // Then dedupeSemanticDuplicates collapses any near-duplicate slides.
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    allModuleSlides[mi] = allModuleSlides[mi].map((s, si) => {
+      const sid = `module_${mi + 1}_slide_${si + 1}.post`;
+      // v5.3.1 — same token-restoration pass post-cascade, in case L1/L2/L3
+      // re-introduced a known gap.
+      let out = applyTokenRepairAndValidate(s, mTitle, courseTitle, sid);
+      out = repairSlideTechnicalDamage(out, mTitle, courseTitle, sid);
+      out = repairSlideSemanticBreaks(out, mTitle, courseTitle, sid);
+      out = repairSlideLearningObjectives(out, mTitle, courseTitle);
+      out = repairSlideBrokenLanguage(out, sid);
+      out = stripSqlContaminationFromSlide(out, inferCourseDomain(courseTitle), mTitle, sid);
+      return out;
+    });
+  }
+  const dedupe = dedupeSemanticDuplicates(allModuleSlides);
+  if (dedupe.removed > 0) {
+    for (let i = 0; i < dedupe.result.length; i++) allModuleSlides[i] = dedupe.result[i];
+    console.log(`[V5-DEDUPE] Total redundant slides removed: ${dedupe.removed}`);
+  }
+
+  // ── v5.3.0 — COURSE-MERGE LOG ─────────────────────────────────────────
+  // Logical merge step: at this point every ModuleDeck has been QA'd and
+  // deduped. The renderer below treats allModuleSlides + moduleCovers as
+  // the merged deck. Emitting this log makes the pipeline boundary
+  // explicit even though the data structure stays flat for renderer
+  // compatibility.
+  const mergedTotalSlides = allModuleSlides.reduce((a, m) => a + m.length, 0);
+  const fallbackModuleNumbers = fallbackIndices.map((i) => i + 1);
+  const acceptedModuleNumbers = Array.from({ length: allModuleSlides.length }, (_, i) => i + 1)
+    .filter((n) => !fallbackModuleNumbers.includes(n));
+  console.log(
+    `[COURSE-MERGE] modules=${allModuleSlides.length} totalSlides=${mergedTotalSlides} fallbackModules=${JSON.stringify(fallbackModuleNumbers.length > 0 ? fallbackModuleNumbers : "[none]")} dedupeRemoved=${dedupe.removed}`,
   );
 
-  if (qaReport.issues.length > 0) {
-    // Unfixed issues remain — run resolution cascade
-    const { resolvedSlides, finalReport } = await resolveQAIssues(
-      allModuleSlides,
-      qaReport,
-      modules.map((m) => m.content),
-      geminiKey,
-    );
-    for (let i = 0; i < resolvedSlides.length; i++) {
-      allModuleSlides[i] = resolvedSlides[i];
-    }
-    console.log(
-      `[V5-QA-CASCADE] Final: status=${finalReport.status} | unfixed=${finalReport.issues.length} | fixed=${finalReport.fixedIssues.length}`,
-    );
-  } else {
-    console.log("[V5-QA] All issues resolved in initial pass — cascade skipped");
+  // ── RE-RUN QA after the final repair so qaVeto sees the current state.
+  // Without this, the veto consumes the stale cascadeReport and would
+  // (a) block slides we just fixed, or (b) miss damage introduced after
+  // cascade. We reuse runPptxQA's full battery of CRITICAL checks.
+  const { repairedSlides: postRepairSlides, report: postRepairReport } = runPptxQA(
+    allModuleSlides,
+    moduleContentsArr,
+    courseTitle,
+    moduleTitlesArr,
+  );
+  for (let i = 0; i < postRepairSlides.length; i++) {
+    allModuleSlides[i] = postRepairSlides[i];
   }
+  cascadeReport = postRepairReport;
+  console.log(
+    `[V5-QA-POSTREPAIR] After final repair: status=${postRepairReport.status} | unfixed=${postRepairReport.issues.length} | fixed=${postRepairReport.fixedIssues.length}`,
+  );
+  tCheckpoint = tlog("post_repair_re_QA_done", tCheckpoint);
+
+  // ── v5.5.1+ — FINAL GUARDRAILS ────────────────────────────────────
+  // Last-mile defensive pass before render. Catches damage that survived
+  // every prior layer because it was introduced by paths that bypass
+  // cleanSlideTitle (template splits / legacy chunks / direct planner
+  // emissions). See `applyFinalGuardrails` for the per-slide checks.
+  // v5.5.2 adds adjacent-duplicate-title dedup at module scope.
+  let guardrailSlideCounter = 0;
+  let titleDedupCount = 0;
+  let titleDedupDropCount = 0;
+  let weakContinuationDropCount = 0;
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    let prevTitleNorm = "";
+    let prevItemsNorm = "";
+    let prevDisambigSuffix = 1;
+    // v5.5.6 — module-wide context accumulator (not just last slide)
+    let moduleCtx: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] };
+    // v5.5.5 — module kind (oop/json_apis/tests_logs/...) for completion hints
+    // v5.5.9 — emit [MODULE-CLASSIFY] so we can prove which kind every module
+    // actually got and catch first-match-wins misorderings (e.g. "Introdução
+    // à POO" matching `fundamentals` before `oop`).
+    const moduleKind = (() => {
+      const r = getModuleRule(courseTitle, moduleTitlesArr[mi] ?? "");
+      return r ? r.kind : null;
+    })();
+    console.log(
+      `[MODULE-CLASSIFY] mi=${mi + 1} title="${(moduleTitlesArr[mi] ?? "").slice(0, 80)}" kind=${moduleKind ?? "null"} course="${courseTitle.slice(0, 60)}"`,
+    );
+    const kept: Slide[] = [];
+    for (let si = 0; si < allModuleSlides[mi].length; si++) {
+      guardrailSlideCounter++;
+      let s = applyFinalGuardrails(
+        allModuleSlides[mi][si],
+        `M${mi + 1}.S${si + 1}`,
+        moduleKind,
+        moduleCtx,
+      );
+      // v5.5.4 — Adjacent duplicate dedup: if title matches previous AND
+      // items are also similar (jaccard ≥0.6 on first 3 items), DROP this
+      // slide entirely — it's redundant filler ("parte II" symptom in
+      // modules 7/8 user report). Otherwise just relabel with roman-numeral
+      // suffix (v5.5.2 behavior, content may genuinely differ).
+      const curNorm = normalizeTitleForCompare(s.title || "");
+      const curItemsNorm = (s.items ?? []).slice(0, 3)
+        .map((x) => normalizeTitleForCompare(String(x)))
+        .filter(Boolean)
+        .join("|");
+      if (curNorm && curNorm === prevTitleNorm) {
+        const itemsJaccard = (() => {
+          if (!prevItemsNorm || !curItemsNorm) return 0;
+          const a = new Set(prevItemsNorm.split("|").filter((x) => x.length > 4));
+          const b = new Set(curItemsNorm.split("|").filter((x) => x.length > 4));
+          if (a.size === 0 || b.size === 0) return 0;
+          let inter = 0;
+          for (const x of a) if (b.has(x)) inter++;
+          return inter / (a.size + b.size - inter);
+        })();
+        if (itemsJaccard >= 0.6) {
+          console.log(
+            `[TITLE-DEDUP-DROP] slide=M${mi + 1}.S${si + 1} title+items duplicate of previous (jaccard=${itemsJaccard.toFixed(2)}) → DROPPED "${(s.title ?? "").slice(0, 60)}"`,
+          );
+          titleDedupDropCount += 1;
+          continue; // skip — don't push to kept[]
+        }
+      }
+      // v5.5.5 — Weak-continuation detector: catch slides explicitly titled
+      // "(II)", "Parte 2", "Continuação", etc. with content too similar to
+      // a previous slide in the SAME module (jaccard ≥0.45 — looser
+      // threshold because the title already signals redundancy).
+      const isContinuationTitle = /\((II|III|IV|V)\)\s*$|\bparte\s+[2-9]\b|\bcontinua[çc][ãa]o\b|\bparte\s+ii+\b/i.test(s.title || "");
+      if (isContinuationTitle && curNorm) {
+        // Check against ALL previous slides in this module, not just the immediate one
+        let bestJacc = 0;
+        for (const k of kept) {
+          const kItems = (k.items ?? []).slice(0, 5)
+            .map((x) => normalizeTitleForCompare(String(x)))
+            .filter(Boolean);
+          if (!kItems.length || !curItemsNorm) continue;
+          const a = new Set(kItems.filter((x) => x.length > 4));
+          const b = new Set(curItemsNorm.split("|").filter((x) => x.length > 4));
+          if (!a.size || !b.size) continue;
+          let inter = 0;
+          for (const x of a) if (b.has(x)) inter++;
+          const jc = inter / (a.size + b.size - inter);
+          if (jc > bestJacc) bestJacc = jc;
+        }
+        if (bestJacc >= 0.45) {
+          console.log(
+            `[WEAK-CONTINUATION] slide=M${mi + 1}.S${si + 1} similarity=${bestJacc.toFixed(2)} action=drop title="${(s.title ?? "").slice(0, 60)}"`,
+          );
+          weakContinuationDropCount += 1;
+          continue;
+        }
+      }
+      // Continue with normal flow (re-enter the dedup-relabel branch only on direct title dup)
+      if (curNorm && curNorm === prevTitleNorm) {
+        prevDisambigSuffix += 1;
+        const suffix = ["", "II", "III", "IV", "V", "VI"][prevDisambigSuffix - 1] || `${prevDisambigSuffix}`;
+        const newTitle = `${s.title} (${suffix})`;
+        console.log(
+          `[TITLE-DEDUP-FINAL] slide=M${mi + 1}.S${si + 1} duplicate of previous → "${newTitle}"`,
+        );
+        s = { ...s, title: newTitle };
+        titleDedupCount += 1;
+      } else {
+        prevDisambigSuffix = 1;
+      }
+      prevTitleNorm = curNorm;
+      prevItemsNorm = curItemsNorm;
+      kept.push(s);
+      // v5.5.6 — accumulate module context across ALL kept slides so
+      // subsequent slides' repairs see the full vocabulary, not just last.
+      moduleCtx = extractSemanticCodeContext(kept);
+    }
+    allModuleSlides[mi] = kept;
+  }
+  console.log(
+    `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount} | adjacent_dropped=${titleDedupDropCount} | weak_continuation_dropped=${weakContinuationDropCount}`,
+  );
+  tCheckpoint = tlog("final_guardrails_done", tCheckpoint);
+
+  // ── v5.1.8 — GLOBAL FIELD SAFETY NET ──────────────────────────────
+  // Final pass: scan EVERY string field (extractAllStrings) of EVERY slide
+  // against ALL hard detectors. Catches contamination/genericity/brokenness
+  // that field-specific QA checks missed (competencies, takeaways subtitle,
+  // cards/process nested, comparison left/right, etc).
+  // v5.1.9: also re-run final repair pass on covers, then include them in safety net.
+  for (let mi = 0; mi < moduleCovers.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    const sid = `module_${mi + 1}_cover`;
+    let c = sanitizeSlidePlaceholders(moduleCovers[mi]);
+    c = repairSlideTechnicalDamage(c, mTitle, courseTitle, sid);
+    c = repairSlideSemanticBreaks(c, mTitle, courseTitle, sid);
+    c = repairSlideLearningObjectives(c, mTitle, courseTitle);
+    c = repairSlideBrokenLanguage(c, sid);
+    c = stripSqlContaminationFromSlide(c, inferCourseDomain(courseTitle), mTitle, sid);
+    moduleCovers[mi] = c;
+  }
+  // Wrap each cover as its own pseudo-module so safety-net indexing keeps
+  // the original module title aligned with each cover.
+  const coverGroups: Slide[][] = moduleCovers.map((c) => [c]);
+  const safetyNetIssues = [
+    ...runGlobalFieldSafetyNet(
+      allModuleSlides,
+      inferCourseDomain(courseTitle),
+      moduleTitlesArr,
+    ),
+    ...runGlobalFieldSafetyNet(
+      coverGroups,
+      inferCourseDomain(courseTitle),
+      moduleTitlesArr,
+    ).map((iss) => ({ ...iss, slideId: iss.slideId.replace(/^M(\d+)\.S1$/, "M$1.COVER") })),
+  ];
+  if (safetyNetIssues.length > 0) {
+    console.log(`[V5-SAFETY-NET] ${safetyNetIssues.length} issue(s) escaped per-field checks:`);
+    for (const i of safetyNetIssues.slice(0, 20)) {
+      console.log(`[V5-SAFETY-NET]   - ${i.slideId} | ${i.type} | ${i.message.slice(0, 200)}`);
+    }
+    cascadeReport = {
+      ...cascadeReport,
+      status: "FAILED",
+      issues: [...cascadeReport.issues, ...safetyNetIssues],
+    };
+  } else {
+    console.log(`[V5-SAFETY-NET] Clean — no leakage detected by global field scan`);
+  }
+
+  // ── v5.4.0 TECHNICAL TOKEN DAMAGE SCAN ─────────────────────────────────
+  // Final check: scan every slide + cover for residual technical token
+  // damage signatures ("com, e else", "níveis como, e ERROR", "construtor
+  // init" sans __init__, etc). Each match → TECHNICAL_TOKEN_LOSS issue
+  // (HARD_CRITICAL) so qaVeto blocks the export with structured details.
+  const techDamageIssues: QAIssue[] = [];
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    for (let si = 0; si < allModuleSlides[mi].length; si++) {
+      const s = allModuleSlides[mi][si];
+      const scan = scanSlideForTechnicalDamage(s as any);
+      if (scan.damaged) {
+        for (const m of scan.matches) {
+          techDamageIssues.push({
+            slideId: `M${mi + 1}.S${si + 1}`,
+            type: "TECHNICAL_TOKEN_LOSS",
+            severity: "CRITICAL",
+            message: `Token técnico perdido em ${m.field}${m.index !== undefined ? `[${m.index}]` : ""}: "${m.sample}" (signatures: ${m.keys.join(", ")})`,
+            resolutionStrategy: "Bloqueio de export — preservação técnica falhou ou input já estava corrompido upstream",
+          });
+        }
+      }
+    }
+  }
+  if (moduleCovers) {
+    for (let mi = 0; mi < moduleCovers.length; mi++) {
+      const scan = scanSlideForTechnicalDamage(moduleCovers[mi] as any);
+      if (scan.damaged) {
+        for (const m of scan.matches) {
+          techDamageIssues.push({
+            slideId: `M${mi + 1}.COVER`,
+            type: "TECHNICAL_TOKEN_LOSS",
+            severity: "CRITICAL",
+            message: `Token técnico perdido em cover ${m.field}: "${m.sample}" (signatures: ${m.keys.join(", ")})`,
+            resolutionStrategy: "Bloqueio de export — preservação técnica falhou em module cover",
+          });
+        }
+      }
+    }
+  }
+  if (techDamageIssues.length > 0) {
+    console.warn(`[TECH-TOKEN-QA] ${techDamageIssues.length} technical token loss(es) detected — adding to QA report`);
+    for (const i of techDamageIssues.slice(0, 20)) {
+      console.warn(`[TECH-TOKEN-QA]   - ${i.slideId} | ${i.message}`);
+    }
+    cascadeReport = {
+      ...cascadeReport,
+      status: "FAILED",
+      issues: [...cascadeReport.issues, ...techDamageIssues],
+    };
+  } else {
+    console.log(`[TECH-TOKEN-QA] Clean — no technical token damage detected`);
+  }
+
+  // ── QA VETO ─────────────────────────────────────────────────────────────
+  // Hard gate — blocks export if any CRITICAL hard-constraint issue
+  // survives the cascade. The handler converts this into a 422 response
+  // with structured details.
+  tCheckpoint = tlog("safety_net_done", tCheckpoint);
+  const veto = qaVeto(cascadeReport, allModuleSlides, originalSlideCount, moduleCovers);
+  if (veto.blocked) {
+    tlog("veto_blocked", tCheckpoint);
+    throw new PptxQAVetoError(veto);
+  }
+  tCheckpoint = tlog("veto_passed", tCheckpoint);
+
+  // ── v5.7.0 FORBIDDEN-PATTERN FINAL SAFETY NET ──────────────────────────
+  // Last-mile veto. After ALL repair/cascade/sanitize/dedup, scan every
+  // RENDERED field of every slide for the forbidden patterns enumerated in
+  // FORBIDDEN_FINAL_PATTERNS (e.g. "# ...", "código omitido", "continua").
+  // Also catches the structural class of bug "layout=code with no code".
+  // Emergency kill switch: PPTX_FORBIDDEN_VETO_DISABLED=1.
+  const forbiddenVetoDisabled =
+    (Deno.env.get("PPTX_FORBIDDEN_VETO_DISABLED") ?? "").trim() === "1";
+  if (!forbiddenVetoDisabled) {
+    const forbidden = scanFinalSlidesForForbiddenPatterns(allModuleSlides);
+    if (forbidden.length > 0) {
+      const totalSlidesNow = allModuleSlides.reduce(
+        (s, m) => s + m.filter(isRenderableSlide).length, 0);
+      console.warn(
+        `[FORBIDDEN-VETO] blocked=${forbidden.length} totalSlides=${totalSlidesNow} patterns=${
+          JSON.stringify(forbidden.map((i) => `${i.slideId}:${i.pattern}@${i.field}`))
+        }`,
+      );
+      tlog("forbidden_veto_blocked", tCheckpoint);
+      throw new PptxQAVetoError({
+        blocked:        true,
+        blockingIssues: forbidden,
+        totalSlides:    totalSlidesNow,
+        removedSlides:  0,
+      });
+    }
+    console.log(`[FORBIDDEN-VETO] passed — no forbidden final patterns detected`);
+  } else {
+    console.warn(
+      `[FORBIDDEN-VETO] DISABLED via PPTX_FORBIDDEN_VETO_DISABLED=1 — skipping last-mile scan`,
+    );
+  }
+  tCheckpoint = tlog("forbidden_veto_passed", tCheckpoint);
   // ─────────────────────────────────────────────────────────────────────────
 
   // Count actual total slides from generated content (for accurate footer numbers)
@@ -4836,15 +9861,11 @@ async function runPipeline(
       modules[i].title.replace(/^m[oó]dulo\s+\d+\s*[:–\-]\s*/i, "").trim() ||
       modules[i].title;
 
-    // Module cover with competencies extracted from content
+    // v5.1.9: cover was pre-built and passed through repair + safety net + veto.
+    // Render uses the QA'd version, NOT a fresh extractCompetencies() call.
     renderModuleCover(
       pptx,
-      {
-        layout: "module_cover",
-        title: cleanTitle,
-        moduleIndex: i,
-        competencies: extractCompetencies(modules[i].content, cleanTitle),
-      },
+      moduleCovers[i],
       design,
       ++slideNum,
       totalSlides,
@@ -4907,8 +9928,31 @@ async function runPipeline(
     totalSlides,
   );
 
+  tlog("render_loop_done", tCheckpoint);
   console.log(`[V5] Pipeline complete: ${slideNum} slides`);
-  return pptx;
+  // Compact QA summary for diagnostic transparency on the success path.
+  // The veto already short-circuits when blocked; here we expose what was
+  // detected and silently auto-repaired (so the user can see the engine
+  // actually did work, even when no PPTX is blocked).
+  const qaSummary = {
+    qa_status: cascadeReport.status,                 // PASSED | WARNING | FAILED
+    issues_unfixed: cascadeReport.issues.length,     // surviving (non-hard-critical)
+    issues_fixed:   cascadeReport.fixedIssues.length,
+    original_slides: originalSlideCount,
+    rendered_slides: slideNum,
+    removed_slides:  Math.max(0, originalSlideCount - allModuleSlides.reduce((a, m) => a + m.filter(isRenderableSlide).length, 0)),
+    fixed_breakdown: (() => {
+      const counts: Record<string, number> = {};
+      for (const i of cascadeReport.fixedIssues) counts[i.type] = (counts[i.type] ?? 0) + 1;
+      return counts;
+    })(),
+    unfixed_breakdown: (() => {
+      const counts: Record<string, number> = {};
+      for (const i of cascadeReport.issues) counts[i.type] = (counts[i.type] ?? 0) + 1;
+      return counts;
+    })(),
+  };
+  return { pptx, qaSummary, acceptedModuleNumbers, fallbackModuleNumbers, titleDedupDropCount };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5031,7 +10075,7 @@ Deno.serve(async (req: Request) => {
       `[V5] ENGINE=${ENGINE_VERSION} | "${courseTitle}" | ${moduleData.length} modules | theme=${theme} | density=${density}`,
     );
 
-    const pptx = await runPipeline(
+    const { pptx, qaSummary, acceptedModuleNumbers, fallbackModuleNumbers, titleDedupDropCount } = await runPipeline(
       courseTitle,
       moduleData,
       design,
@@ -5041,16 +10085,31 @@ Deno.serve(async (req: Request) => {
       selectedTemplate,
     );
 
-    const rawData = await pptx.write({ outputType: "uint8array" });
-    const rawBytes = rawData as Uint8Array;
-    console.log(
-      `[V5-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]}`,
-    );
+    // v5.4.4 — wrap pptx.write() in explicit try/catch with timing. This
+    // is the heaviest synchronous step (serializes 30-50 slides + assets)
+    // and a likely culprit for 546 WORKER_LIMIT timeouts. If write fails
+    // or times out, we surface the elapsed time + slide count instead of
+    // dying silently on the runtime kill.
+    const tWriteStart = Date.now();
+    let rawBytes: Uint8Array;
+    try {
+      const rawData = await pptx.write({ outputType: "uint8array" });
+      rawBytes = rawData as Uint8Array;
+      console.log(
+        `[V5-WRITE] raw_bytes=${rawBytes.byteLength} | magic=${rawBytes[0]}_${rawBytes[1]}_${rawBytes[2]}_${rawBytes[3]} | write_ms=${Date.now() - tWriteStart}`,
+      );
+    } catch (writeErr: any) {
+      console.error(
+        `[V5-WRITE-FAIL] pptx.write() threw after ${Date.now() - tWriteStart}ms — ${writeErr?.message ?? writeErr}`,
+      );
+      throw writeErr;
+    }
+    const tRepairStart = Date.now();
     const repairResult = await repairPptxPackage(rawBytes);
     const pptxData = repairResult.data;
     const repairDiag = repairResult.diag;
     console.log(
-      `[V5-WRITE] repaired_bytes=${pptxData.byteLength} slides=${repairDiag.slide_count}`,
+      `[V5-WRITE] repaired_bytes=${pptxData.byteLength} slides=${repairDiag.slide_count} | repair_ms=${Date.now() - tRepairStart}`,
     );
 
     const dateStr = new Date().toISOString().slice(0, 10);
@@ -5065,6 +10124,7 @@ Deno.serve(async (req: Request) => {
     const fileName = `${userId}/${safeName}-PPTX-v5-${dateStr}-${ts}.pptx`;
 
     // Upload with retry
+    const tUploadStart = Date.now();
     let uploadErr: any = null;
     for (let attempt = 1; attempt <= 4; attempt++) {
       const { error } = await serviceClient.storage
@@ -5085,6 +10145,7 @@ Deno.serve(async (req: Request) => {
         );
     }
     if (uploadErr) throw uploadErr;
+    console.log(`[V5-UPLOAD] upload_ms=${Date.now() - tUploadStart} bytes=${pptxData.byteLength}`);
 
     const { data: signedUrl, error: signErr } = await serviceClient.storage
       .from("course-exports")
@@ -5101,12 +10162,35 @@ Deno.serve(async (req: Request) => {
       /* non-critical */
     }
 
+    // v5.5.4 — MANDATORY final diagnostic log so future iterations can
+    // confirm engine path WITHOUT having to scroll through the full log.
+    // v5.7.0 — extended with engine_function / modules_failed / total_slides.
+    const _slideCount = (repairDiag.slide_count as number) ?? 0;
+    const _modulesFailed = fallbackModuleNumbers.length;
+    const _fallbackReason = _modulesFailed > 0
+      ? "module_planner_rejected_or_validation_failed"
+      : null;
+    console.log(
+      `[PPTX][DIAG-FINAL] engine_function=export-pptx-v4 engine_version=${ENGINE_VERSION} cache=miss fallback_used=false fallback_reason=${_fallbackReason ?? "null"} modules_failed=${_modulesFailed} accepted_modules=${JSON.stringify(acceptedModuleNumbers)} fallback_modules=${JSON.stringify(fallbackModuleNumbers)} slide_count=${_slideCount} total_slides=${_slideCount} qa_status=${qaSummary.qa_status ?? "unknown"} dedup_dropped=${titleDedupDropCount} status=exported`,
+    );
     return new Response(
       JSON.stringify({
         url: signedUrl.signedUrl,
         version: "v5",
+        engine: "export-pptx-v4",
+        engine_function: "export-pptx-v4",  // v5.7.0 — explicit alias of `engine` for unambiguous logs
         engine_version: ENGINE_VERSION,
-        slide_count: (repairDiag.slide_count as number) ?? 0,
+        status: "exported",
+        fallback_used: false,            // v4 never falls back to a different function internally
+        fallback_reason: _fallbackReason, // v5.7.0 — null on full success; string when ≥1 module fell back to legacy processBatch
+        modules_failed: _modulesFailed,   // v5.7.0 — strictly = fallbackModuleNumbers.length
+        cache: "miss",                   // every export is a fresh build (filename has timestamp)
+        slide_count: _slideCount,        // canonical
+        total_slides: _slideCount,       // v5.7.0 — alias for downstream compat
+        blocking_issues: [],             // empty on success path (veto would 422 otherwise)
+        qa: qaSummary,                   // status / fixed / unfixed / removed_slides / breakdowns
+        accepted_modules: acceptedModuleNumbers,
+        fallback_modules: fallbackModuleNumbers,
         _diag: {
           raw_bytes: rawBytes.byteLength,
           repaired_bytes: pptxData.byteLength,
@@ -5119,6 +10203,58 @@ Deno.serve(async (req: Request) => {
       },
     );
   } catch (error: any) {
+    // ── QA VETO → 422 with structured details (architectural correction v5.1) ──
+    if (error instanceof PptxQAVetoError) {
+      const v = error.result;
+      const _hasForbidden = v.blockingIssues.some((i) => i.type === "FORBIDDEN_FINAL_PATTERN");
+      console.warn(
+        `[V5-QA-VETO] HTTP 422 — blocking=${v.blockingIssues.length} totalSlides=${v.totalSlides} forbiddenFinalPatterns=${_hasForbidden}`,
+      );
+      console.log(
+        `[PPTX][DIAG-FINAL] engine_function=export-pptx-v4 engine_version=${ENGINE_VERSION} cache=miss fallback_used=false fallback_reason=qa_veto modules_failed=0 status=blocked blocking=${v.blockingIssues.length} total_slides=${v.totalSlides} forbidden_final_patterns=${_hasForbidden}`,
+      );
+      return new Response(
+        JSON.stringify({
+          error:           "PPTX export blocked by quality veto",
+          code:            "PPTX_QA_VETO",
+          engine:          "export-pptx-v4",
+          engine_function: "export-pptx-v4",   // v5.7.0 alias
+          engine_version:  ENGINE_VERSION,
+          status:          "blocked",
+          fallback_used:   false,
+          fallback_reason: "qa_veto",          // v5.7.0 — semantic veto, not infra
+          modules_failed:  0,                  // v5.7.0 — modules_failed only counts legacy fallback, not QA blocks
+          cache:           "miss",
+          totalSlides:     v.totalSlides,      // legacy field — keep for compat
+          total_slides:    v.totalSlides,      // v5.7.0 snake_case alias
+          removedSlides:   v.removedSlides,    // legacy
+          slide_count:     v.totalSlides - v.removedSlides, // v5.7.0 snake_case companion
+          blockingIssues:  v.blockingIssues.map((i) => ({   // legacy camelCase shape
+            slideId: i.slideId,
+            type:    i.type,
+            message: i.message,
+            // v5.7.0 — extended fields when present (FORBIDDEN_FINAL_PATTERN populates these)
+            ...(i.field   ? { field:   i.field   } : {}),
+            ...(i.pattern ? { pattern: i.pattern } : {}),
+            ...(i.snippet ? { snippet: i.snippet } : {}),
+          })),
+          blocking_issues: v.blockingIssues.map((i) => ({   // v5.7.0 snake_case alias for new UI
+            slide_id: i.slideId,
+            type:     i.type,
+            message:  i.message,
+            field:    i.field   ?? null,
+            pattern:  i.pattern ?? null,
+            snippet:  i.snippet ?? null,
+          })),
+          hint:
+            "O conteúdo gerado contém problemas críticos (placeholders, código incompleto, contaminação de domínio ou densidade extrema). Tente regenerar o curso ou ajustar os módulos.",
+        }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
     console.error("[V5] Export error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Internal server error" }),

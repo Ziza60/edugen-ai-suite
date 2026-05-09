@@ -2008,7 +2008,7 @@ ${truncatedContent}`;
       ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
       : "https://ai.gateway.lovable.dev/v1/chat/completions";
     const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
-    const model = "gemini-2.5-flash";
+    const model = "gemini-3-flash-preview";
 
     const response = await fetch(url, {
       method: "POST",
@@ -2435,7 +2435,7 @@ REGRAS CRÍTICAS:
           ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
           : "https://ai.gateway.lovable.dev/v1/chat/completions";
         const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
-        const model = "gemini-2.5-flash";
+        const model = "gemini-3-flash-preview";
 
         response = await fetch(url, {
           method: "POST",
@@ -6349,6 +6349,19 @@ Deno.serve(async (req: Request) => {
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
+    const { data: sub } = await serviceClient.from("subscriptions").select("plan").eq("user_id", userId).single();
+    const plan = sub?.plan || "free";
+
+    if (plan !== "pro") {
+      const { data: profile } = await serviceClient.from("profiles").select("is_dev").eq("user_id", userId).maybeSingle();
+      if (!profile?.is_dev) {
+        return new Response(
+          JSON.stringify({ error: "PowerPoint export requires a Pro plan.", feature: "export_pptx" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     const { data: course, error: courseErr } = await serviceClient
       .from("courses").select("*").eq("id", course_id).eq("user_id", userId).single();
     if (courseErr || !course) {
@@ -6625,7 +6638,7 @@ Deno.serve(async (req: Request) => {
                 ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
                 : "https://ai.gateway.lovable.dev/v1/chat/completions";
               const apiKey = GEMINI_API_KEY || LOVABLE_API_KEY;
-              const model = "gemini-2.5-flash";
+              const model = "gemini-3-flash-preview";
 
               const regenResponse = await fetch(url, {
                 method: "POST",

@@ -1,0 +1,199 @@
+event_message,event_type,execution_id,function_id,id,level,timestamp
+shutdown,Shutdown,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,a2e02e75-2f36-4965-92a2-83d192c59a53,log,1778300511421000
+shutdown,Shutdown,bb903d12-976c-404f-b392-20e999ba178b,533e62c9-4529-43b4-863d-ed08e7072475,8001ad07-2a72-4e7b-92f9-a25d6602dfad,log,1778300509623000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""PRINCIPAIS APRENDIZADOS""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,0f999e0e-e618-4ab5-a122-bc2c85b5e421,info,1778300457383000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=5 slideIdx=1 layout=code title=""Manipulando JSON com o Módulo json"" itemsCount=3 leftCount=0 rightCount=0 firstItems=""O módulo json do Python conver | json.dumps() serializa um obje""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,03f87c5b-04d2-4dd1-a796-aa7d8d09f651,info,1778300457383000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=3 layout=code title=""Realizando Requisições HTTP com requests"" sectionLabel=""CÓDIGO"" items=4 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,1b931ef6-e348-4bf1-abfe-b0ba6e0b5263,info,1778300457383000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CONCEITO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,7fa365f5-f667-4632-9fd3-46a9bc08e914,info,1778300457383000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=4 layout=takeaways title=""Principais Aprendizados do Módulo"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,e0c9df41-440f-49fb-b287-620869accbb4,info,1778300457383000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=5 slideIdx=0 layout=bullets title=""JSON: O Padrão para Troca de Dados"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""JSON (JavaScript Object Notati | É independente de linguagem e ""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,eccf3ca6-6b30-41e4-979f-8d150dd0de68,info,1778300457383000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=5 slideIdx=3 layout=code title=""Realizando Requisições HTTP com requests"" itemsCount=4 leftCount=0 rightCount=0 firstItems=""A biblioteca requests simplifi | Use requests.get() para buscar""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,0b84e8a7-ab4d-4bc5-817b-d3911fe77757,info,1778300457383000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CÓDIGO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,28d74bbb-d10f-4a48-9a34-fb5840c2fc56,info,1778300457383000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=5 slideIdx=2 layout=bullets title=""APIs Web: Comunicação entre Aplicações"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""APIs Web são interfaces que pe | APIs RESTful utilizam métodos ""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,530deaed-cf2e-4ab5-a59a-01ca7f4f8ed0,info,1778300457383000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_3 intent=concept layoutHint=bullets title=""APIs Web: Comunicação entre Aplicações"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,f9717c4a-9d83-4723-9492-0370a33b3691,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=3 layout=code title=""Tratamento Robusto de Exceções"" itemsCount=3 leftCount=0 rightCount=0 firstItems=""O bloco try encapsula o código | except captura e trata exceçõe""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,fe814421-f09c-4c14-bc5b-2bd58afb2800,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=2 layout=bullets title=""APIs Web: Comunicação entre Aplicações"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,4e9dcd1b-0599-46ff-9f70-b1a0567afb5d,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=2 layout=comparison title=""Arquivos de Texto vs. Arquivos Binários"" itemsCount=0 leftCount=4 rightCount=4 firstItems=""""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,e071adef-693b-49dc-9d05-27f0f20d8a52,info,1778300457382000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CÓDIGO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,8facde86-fe33-47a4-98ed-06372189eae8,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=0 layout=bullets title=""JSON: O Padrão para Troca de Dados"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,9ab8c9ef-abc4-46df-958f-169132bcff65,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_5 intent=takeaways layoutHint=takeaways title=""Principais Aprendizados do Módulo"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,4bf2b024-6017-4c52-a5ff-3c57708b0c85,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_4 intent=code_walkthrough layoutHint=code title=""Realizando Requisições HTTP com `requests`"" items=4 steps=0 cards=0 hasCode=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,7f5fd824-8235-40c0-a44b-d0297078424d,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=1 layout=process title=""Abrindo e Fechando Arquivos com Segurança"" itemsCount=4 leftCount=0 rightCount=0 firstItems=""1. Use a função open() para cr | 2. Escolha o modo de abertura ""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,6145397e-cbd7-4812-8edf-26dad3072796,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_1 intent=concept layoutHint=bullets title=""JSON: O Padrão para Troca de Dados"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,e749a642-d81d-4cfc-aee8-31facdd1bbd2,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=4 layout=takeaways title=""Principais Aprendizados do Módulo"" itemsCount=4 leftCount=0 rightCount=0 firstItems=""Persistir dados em arquivos de | Utilizar with open() para oper""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,59b85e44-1e27-4dd5-b2bb-7aa12f975377,info,1778300457382000
+"[MODULE-PLANNER] module=5 title=""Trabalhando com JSON e APIs Web"" slides=5 fatals=0 blockers=0 accepted=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,1f5d665e-641e-4798-9679-862fcedbf700,info,1778300457382000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CÓDIGO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,a6f758dd-ba3b-4ba7-93d0-b5b70f6cc867,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_2 intent=code_walkthrough layoutHint=code title=""Manipulando JSON com o Módulo `json`"" items=3 steps=0 cards=0 hasCode=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,03ea4d39-1ded-4071-861e-4e522f217d6e,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=1 layout=code title=""Manipulando JSON com o Módulo json"" sectionLabel=""CÓDIGO"" items=3 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,c4a36747-020a-4c5a-9672-4fd3a61ce915,info,1778300457382000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CONCEITO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,c774b593-be72-46cb-9a34-ebfac7fba450,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=3 layout=code title=""Tratamento Robusto de Exceções"" sectionLabel=""CÓDIGO"" items=3 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,35a9ba80-1120-4849-84df-01a5216bf8ea,info,1778300457382000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""PRINCIPAIS APRENDIZADOS""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,f1101659-0a3f-4591-8bd4-35c0b5123531,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=4 layout=takeaways title=""Principais Aprendizados do Módulo"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=4 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,448bc088-9618-48f1-a8e4-a78cdbd8bd5a,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=0 layout=bullets title=""Arquivos e Tratamento de Erros"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Manipulação de arquivos permit | É crucial para salvar informaç""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,1371755a-5853-43f1-adad-30ea7b3c5596,info,1778300457382000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=false reason=label_ends_with_stopword promotionDetected=true original=""COMPARAÇÃO"" → fallback=""CONTEÚDO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,9beb673b-d402-440d-b066-c709bae4a86b,info,1778300457382000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=2 layout=comparison title=""Arquivos de Texto vs. Arquivos Binários"" sectionLabel=""COMPARAÇÃO"" items=0 leftItems=4 rightItems=4
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,8aa76bda-f273-4212-bc61-80b1c4e41547,info,1778300457381000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""PROCESSO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,55eca062-7428-473f-8285-988532113c9c,info,1778300457381000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CONCEITO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,538cbc78-592f-49f7-b495-961960b7c5e6,info,1778300457380000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=0 layout=bullets title=""Arquivos e Tratamento de Erros"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,70fea705-0ab9-4013-8589-4512e5c56de8,info,1778300457380000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_2 intent=process layoutHint=process title=""Abrindo e Fechando Arquivos com Segurança"" items=4 steps=0 cards=0 hasCode=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,e8f17173-8d2d-4775-949b-efa58a02d431,info,1778300457380000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_3 intent=comparison layoutHint=comparison title=""Arquivos de Texto vs. Arquivos Binários"" items=0 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,65e6f29f-01a9-42f6-8997-6ff8893e1098,info,1778300457380000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_4 intent=code_walkthrough layoutHint=code title=""Tratamento Robusto de Exceções"" items=3 steps=0 cards=0 hasCode=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,27005235-5403-48b2-b007-f0f0dbcf76a2,info,1778300457380000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_1 intent=concept layoutHint=bullets title=""Fundamentos: Arquivos e Tratamento de Erros"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,6d27f1fa-59a8-41f2-aa8b-2cf2c76a68da,info,1778300457380000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_5 intent=takeaways layoutHint=takeaways title=""Principais Aprendizados do Módulo"" items=4 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,be03381e-a0eb-47b7-8c3f-286fd3b4b5ce,info,1778300457380000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=1 layout=process title=""Abrindo e Fechando Arquivos com Segurança"" sectionLabel=""PROCESSO"" items=4 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,c3427a33-2c09-455d-b541-cd1a4a9e1ade,info,1778300457380000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=3 slideIdx=1 layout=code title=""Representando Livros e a Biblioteca"" sectionLabel=""CÓDIGO"" items=3 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,34d42cf6-788b-4d2d-91c0-9451b340c68c,info,1778300457379000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CÓDIGO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,db6a8fd9-441b-4157-a577-546e0954b5da,info,1778300457379000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CÓDIGO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,3ccdfe96-947b-4a01-a4b8-f93b207b04b5,info,1778300457379000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""EXEMPLO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,1c98a22a-f84d-4311-9b5b-bc3d83bbf1a3,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=2 layout=bullets title=""Repetindo Ações com Laços de Repetição"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Laços de repetição executam um | O laço for itera sobre sequênc""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,39e94cbc-3ec2-4fe4-a1a9-5a13ef8983f8,info,1778300457379000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""PRINCIPAIS APRENDIZADOS""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,24b76401-6b07-4643-a6f1-f001c4e36afa,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=3 slideIdx=3 layout=takeaways title=""Principais Aprendizados sobre Estruturas de Dados"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,0bc12833-cd9f-43ee-81dd-254a60fc8e98,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=1 layout=bullets title=""Tomada de Decisão com Condicionais"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Estruturas condicionais contro | O if executa um bloco de códig""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,d1f1a367-2750-40e8-9d8e-84e3bae17eb2,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=3 slideIdx=2 layout=code title=""Rastreando Gêneros e Livros Emprestados"" itemsCount=3 leftCount=0 rightCount=0 firstItems=""Conjuntos garantem que cada gê | Outro conjunto rastreia os IDs""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,7ee13881-2d9d-451f-b690-afb45bce5aab,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_3_slide_4 intent=takeaways layoutHint=takeaways title=""Principais Aprendizados sobre Estruturas de Dados"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,cc433674-fa61-4b42-ae07-ce0597ab5912,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=4 layout=takeaways title=""Principais Aprendizados de Controle de Fluxo e Funções"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Definir funções para modulariz | Utilizar if, elif, else para d""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,0b36f4b9-a036-4918-8750-0d12689b2afa,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=3 slideIdx=3 layout=takeaways title=""Principais Aprendizados sobre Estruturas de Dados"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Listas organizam coleções de i | Dicionários armazenam dados co""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,e6c4b44d-fe72-454f-8bf4-f850532c770a,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_3_slide_2 intent=code_walkthrough layoutHint=code title=""Representando Livros e a Biblioteca"" items=3 steps=0 cards=0 hasCode=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,749123bb-5ed8-4147-9a55-f685e35e87a1,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_3_slide_3 intent=code_walkthrough layoutHint=code title=""Rastreando Gêneros e Livros Emprestados"" items=3 steps=0 cards=0 hasCode=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,5221ba67-83a9-4617-b388-2f0d97827a3c,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=3 slideIdx=0 layout=bullets title=""Organizando Dados: O Desafio da Biblioteca"" sectionLabel=""EXEMPLO"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,1833eaf1-e491-4198-bc53-43fc14e0ce5a,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=3 slideIdx=0 layout=bullets title=""Organizando Dados: O Desafio da Biblioteca"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Armazenar e gerenciar múltiplo | Guardar informações detalhadas""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,0dd5fb52-c8ad-4d3d-ba8d-f6637a7edbf1,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_3_slide_1 intent=example layoutHint=bullets title=""Organizando Dados: O Desafio da Biblioteca"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,a059610c-3300-45e3-bd35-239e785791a8,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=3 layout=code title=""Exemplo Prático: Lógica de Desconto da Pizzaria"" itemsCount=2 leftCount=0 rightCount=0 firstItems=""Esta função calcula o total do | Demonstra o uso de laços for e""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,b107ed02-16f9-4e7a-80c6-51849aeced50,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=0 layout=bullets title=""Organizando o Código com Funções"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Funções agrupam blocos de códi | Elas promovem a reutilização, ""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,5d2dd816-a51d-47a9-86e8-9daa0dcb897a,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=3 slideIdx=2 layout=code title=""Rastreando Gêneros e Livros Emprestados"" sectionLabel=""CÓDIGO"" items=3 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,6e91a97e-b336-405e-a176-4cc2275741d4,info,1778300457379000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""PRINCIPAIS APRENDIZADOS""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,bc975007-e80b-40fb-a91b-5fdb3cece468,info,1778300457379000
+"[MODULE-PLANNER] module=4 title=""Manipulação de Arquivos e Exceções"" slides=5 fatals=0 blockers=0 accepted=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,15298036-de3d-4014-bc59-ad1cd0c9ef28,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=3 slideIdx=1 layout=code title=""Representando Livros e a Biblioteca"" itemsCount=3 leftCount=0 rightCount=0 firstItems=""Uma lista chamada biblioteca a | Cada livro é um dicionário, co""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,8a08058a-66d4-46ca-aba5-2f43e878b878,info,1778300457379000
+"[MODULE-PLANNER] module=3 title=""Estruturas de Dados Fundamentais"" slides=4 fatals=0 blockers=0 accepted=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,1c84ab78-2e3a-4527-9b50-de231d3886fb,info,1778300457379000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=1 slideIdx=1 layout=bullets title=""Variáveis: Contêineres de Informação"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Variáveis são espaços nomeados | Elas armazenam valores que pod""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,a682c9e7-acfd-44e7-94c5-459817115e07,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=4 layout=takeaways title=""Principais Aprendizados de Controle de Fluxo e Funções"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,c95772a2-45af-4339-a261-c933fabb1257,info,1778300457378000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CONCEITO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,a2f5848c-5ac7-4eb8-bb9a-358816ad5714,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_2 intent=concept layoutHint=bullets title=""Tomada de Decisão com Condicionais"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,92f8cb88-cf14-4509-82c2-7d2c65a9ccab,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_1 intent=concept layoutHint=bullets title=""Organizando o Código com Funções"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,ed2045b1-fab2-4836-a219-d194392b889f,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_4 intent=code_walkthrough layoutHint=code title=""Exemplo Prático: Lógica de Desconto da Pizzaria"" items=2 steps=0 cards=0 hasCode=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,f94119c9-962a-43a3-bacd-2f4ca44ae1ce,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=3 layout=code title=""Exemplo Prático: Lógica de Desconto da Pizzaria"" sectionLabel=""CÓDIGO"" items=2 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,73c3d185-d72f-4059-8e9f-5d809659d2c9,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=2 layout=bullets title=""Repetindo Ações com Laços de Repetição"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,3612117e-6e2a-4a30-a5fa-9f9e91a38733,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=1 slideIdx=3 layout=takeaways title=""Principais Aprendizados"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Compreendemos a importância da | Definimos variáveis como contê""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,87b97606-570e-4136-8f87-d73f71eb2a6c,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=1 layout=bullets title=""Tomada de Decisão com Condicionais"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,fd2a2f27-7e28-4d77-bac7-c8b33c72cc44,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_5 intent=takeaways layoutHint=takeaways title=""Principais Aprendizados de Controle de Fluxo e Funções"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,7c623b92-ab1b-418b-a212-f4ae1333af75,info,1778300457378000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CONCEITO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,4e273e49-bd6a-470a-826b-82f8232ec827,info,1778300457378000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CONCEITO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,f47298ec-db27-4bb7-b568-1396decd4f3c,info,1778300457378000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CÓDIGO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,c46e2df4-b66a-4611-a1e3-4952014bf867,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=0 layout=bullets title=""Organizando o Código com Funções"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,65a72e8d-31c2-40b5-a40f-99f2b5c75783,info,1778300457378000
+"[MODULE-PLANNER] module=2 title=""Controle de Fluxo e Funções"" slides=5 fatals=0 blockers=0 accepted=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,54d811e9-3000-4f11-9cb9-93c3bfb0d434,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_3 intent=concept layoutHint=bullets title=""Repetindo Ações com Laços de Repetição"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,a8192628-db8d-45e5-aba7-11f10c178fed,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=1 slideIdx=2 layout=code title=""Declarando e Usando Variáveis em Python"" itemsCount=2 leftCount=0 rightCount=0 firstItems=""Atribuímos um valor a uma vari | Podemos exibir o valor de uma ""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,5f5788cf-ed40-4a0b-89a7-3fa319a705fa,info,1778300457378000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=1 slideIdx=0 layout=bullets title=""A Importância da Representação de Dados"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Todo software lida com informa | Computadores operam com dados ""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,c0c5e8b7-dc49-419c-b176-1c84f72d5e96,info,1778300457377000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""PRINCIPAIS APRENDIZADOS""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,b2017a14-3ea2-4b23-bcd0-74deca914d50,info,1778300457377000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=1 slideIdx=2 layout=code title=""Declarando e Usando Variáveis em Python"" sectionLabel=""CÓDIGO"" items=2 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,8203c412-fb3e-44c2-906f-1b40caa88c17,info,1778300457376000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=1 slideIdx=3 layout=takeaways title=""Principais Aprendizados"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,6f7e661a-0286-490c-aab4-b88cb2bf856b,info,1778300457376000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CÓDIGO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,c1924c3d-7556-40a5-96d8-f63e3beaab58,info,1778300457376000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CONCEITO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,382c86df-ee16-4b9c-90b5-4af115849d70,info,1778300457375000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=1 slideIdx=1 layout=bullets title=""Variáveis: Contêineres de Informação"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,1ac8d197-4668-4746-8c9e-0915eb5a09bd,info,1778300457375000
+"[LAYOUT-REGION-DEBUG] slide=? field=slide_label accepted=true promotionDetected=false label=""CONCEITO""
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,8b0e3959-6413-4fea-8cc2-db1a0ef9eb8e,info,1778300457374000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=1 slideIdx=0 layout=bullets title=""A Importância da Representação de Dados"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,47890901-974c-4e7f-8066-06b9bb234f3c,info,1778300457373000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_1_slide_1 intent=concept layoutHint=bullets title=""A Importância da Representação de Dados"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,fa2d80c5-e9c9-4a5c-b3b8-f3039910070c,info,1778300457371000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_1_slide_3 intent=code_walkthrough layoutHint=code title=""Declarando e Usando Variáveis em Python"" items=2 steps=0 cards=0 hasCode=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,d3e2b85d-b5bc-4916-b0c4-9105f4b5fc1c,info,1778300457371000
+"[MODULE-PLANNER] module=1 title=""Fundamentos Essenciais de Python"" slides=4 fatals=0 blockers=0 accepted=true
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,ccf91bfd-4d60-484b-9865-4e378316eb5b,info,1778300457371000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_1_slide_4 intent=takeaways layoutHint=takeaways title=""Principais Aprendizados"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,ca845ce9-7a9a-484b-8c7b-72b5b12b4934,info,1778300457371000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_1_slide_2 intent=concept layoutHint=bullets title=""Variáveis: Contêineres de Informação"" items=5 steps=0 cards=0 hasCode=false
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,0423b18e-a4aa-4bf8-b065-fae5f2cc56b8,info,1778300457371000
+"[PRESENTATION-PLAN] modules=8 | slides=37 | intents={""concept"":12,""code_walkthrough"":9,""takeaways"":8,""example"":1,""process"":6,""comparison"":1} | repaired_objectives=0 | blocked_contamination=0 | moved_code=0 | removed_duplicates=0 | removed_truncated=0 | capped_bullets=0 | capped_code=7 | modules_failed=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,12d860e0-a57d-4aa1-8a7b-be81c236fb1c,info,1778300457370000
+"[PLANNER-TIMING] total_ms=19532 modules=8 batch_size=8 slides=37 failed=0
+",Log,981aa07d-2b37-4f0d-9e83-87f869f04369,533e62c9-4529-43b4-863d-ed08e7072475,db7b66f6-46ac-4d4e-a2f5-5f2922d7e919,info,1778300457370000

@@ -1,0 +1,201 @@
+event_message,event_type,execution_id,function_id,id,level,timestamp
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=6 slideIdx=2 layout=code title=""Exemplo: Criando e Interagindo com a Classe 'Pessoa'"" itemsCount=1 leftCount=0 rightCount=0 firstItems=""Este código demonstra a criaçã""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,4a593827-dcdc-41af-a05f-bed1240d055c,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=6 slideIdx=1 layout=process title=""Implementando Classes e Objetos em Python"" itemsCount=4 leftCount=0 rightCount=0 firstItems=""Defina uma classe usando a pal | Crie o método __init__ (constr""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,259432de-3a45-4867-a1ab-06c5ee2c8a75,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=6 slideIdx=3 layout=bullets title=""Herança: Reutilização e Hierarquias de Classes"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Herança permite que uma subcla | Promove a reutilização de códi""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,d852c271-fbfc-4ed0-bb1c-0e136d3f0871,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=6 slideIdx=4 layout=takeaways title=""Principais Aprendizados sobre POO em Python"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Compreender que classes são mo | Saber definir classes com atri""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,e4ed301e-c17b-45cf-976f-9c891deed1fd,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=6 slideIdx=0 layout=bullets title=""Introdução à POO: Essenciais"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""POO organiza o software em ""ob | Uma classe é um ""molde"" que de""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,07f349e1-5801-4657-9f2c-771db3f6d496,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_7_slide_2 intent=concept layoutHint=bullets title=""Testes Unitários com `unittest`"" items=4 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,e934071d-68ac-4d08-a1ec-e56ef89a2e43,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=6 slideIdx=4 layout=takeaways title=""Principais Aprendizados sobre POO em Python"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,08f614f6-a4aa-4c8e-8404-bf62838e3da8,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=6 slideIdx=3 layout=bullets title=""Herança: Reutilização e Hierarquias de Classes"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,9a9bcc97-3682-464b-a05c-8e5e8776753e,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_7_slide_3 intent=concept layoutHint=bullets title=""Registro de Eventos com `logging`"" items=4 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,4ad2bc18-c8f8-439b-8ad3-bc2ac5e67a1a,info,1778260571325000
+"[MODULE-PLANNER] module=7 title=""Testes, Logs e Depuração"" slides=5 fatals=0 blockers=0 accepted=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,9b80cdc9-32d0-4c71-b8cb-c475d668bacd,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_7_slide_1 intent=concept layoutHint=bullets title=""Fundamentos de Qualidade de Código"" items=4 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,b9736daa-679b-499f-9e9c-5b87913bcf7a,info,1778260571325000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_6_slide_2 intent=process layoutHint=process title=""Implementando Classes e Objetos em Python"" items=4 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,c1982113-8186-41a4-a339-0cddb008681e,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=4 layout=takeaways title=""Pontos Chave do Módulo"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=4 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,14796a8a-babb-4786-a839-07e304c18355,info,1778260571324000
+"[MODULE-PLANNER] module=6 title=""Introdução à Programação Orientada a Obj"" slides=5 fatals=0 blockers=0 accepted=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,720c2321-8aa3-4333-b162-0ed4dd89584f,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=5 slideIdx=1 layout=process title=""Manipulando JSON em Python"" itemsCount=4 leftCount=0 rightCount=0 firstItems=""O módulo json do Python conver | json.loads() desserializa uma ""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,1ef1b746-721a-4ad4-9441-e4a5affd0cee,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=6 slideIdx=1 layout=process title=""Implementando Classes e Objetos em Python"" sectionLabel=""PROCESSO"" items=4 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,da4934c5-bbd9-4427-b4cb-c9a31be3794c,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=5 slideIdx=0 layout=bullets title=""O que é JSON?"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""JSON (JavaScript Object Notati | É independente de linguagem de""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,ca85687f-d696-40bf-8e24-8862ea05db10,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=3 layout=code title=""Exemplo Prático com JSON e APIs"" sectionLabel=""CÓDIGO"" items=3 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,b37051e5-13fd-4c4b-b8c0-1644a3a0981c,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_6_slide_3 intent=code_walkthrough layoutHint=code title=""Exemplo: Criando e Interagindo com a Classe 'Pessoa'"" items=1 steps=0 cards=0 hasCode=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,fb9cb1e8-294f-453b-8714-d4e7a7296126,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=6 slideIdx=0 layout=bullets title=""Introdução à POO: Essenciais"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,df6f10c4-3394-4128-adaf-56cc55701674,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_6_slide_5 intent=takeaways layoutHint=takeaways title=""Principais Aprendizados sobre POO em Python"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,282d65ba-7ea1-4929-a5b8-2c697b72a682,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_6_slide_4 intent=concept layoutHint=bullets title=""Herança: Reutilização e Hierarquias de Classes"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,cff10e55-46fc-4a7e-9ca0-e3d657af15f1,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=5 slideIdx=4 layout=takeaways title=""Pontos Chave do Módulo"" itemsCount=4 leftCount=0 rightCount=0 firstItems=""Compreender a estrutura e a im | Serializar e desserializar dad""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,0d38d883-5d2f-485e-9732-0a33720eb9e1,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_6_slide_1 intent=concept layoutHint=bullets title=""Introdução à POO: Fundamentos Essenciais"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,d74c94c3-e766-4e3d-b64f-f9639ba3696f,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=6 slideIdx=2 layout=code title=""Exemplo: Criando e Interagindo com a Classe 'Pessoa'"" sectionLabel=""CÓDIGO"" items=1 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,c04e2846-74a1-4f20-b0dd-e16d6efe7e6c,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=5 slideIdx=3 layout=code title=""Exemplo Prático com JSON e APIs"" itemsCount=3 leftCount=0 rightCount=0 firstItems=""Converta objetos Python para J | Realize requisições GET para o""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,5cf21ca7-4b43-44e2-b326-e17c51689f2c,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=5 slideIdx=2 layout=bullets title=""Interagindo com APIs Web"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""APIs Web são interfaces que pe | APIs RESTful utilizam métodos ""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,548da4b9-10b8-4a03-98b8-cb4b87535896,info,1778260571324000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=3 layout=code title=""Tratamento de Exceções na Prática"" sectionLabel=""CÓDIGO"" items=4 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,59cc22ec-226f-4cab-8112-2fe6564d2421,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_4 intent=code_walkthrough layoutHint=code title=""Exemplo Prático com JSON e APIs"" items=3 steps=0 cards=0 hasCode=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,491bf2a1-824b-4f29-add7-e7ee04735d63,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_3 intent=concept layoutHint=bullets title=""Interagindo com APIs Web"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,3731e5d3-d74e-46b5-8ced-a237794349aa,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=3 layout=code title=""Tratamento de Exceções na Prática"" itemsCount=4 leftCount=0 rightCount=0 firstItems=""Encapsule código propenso a er | Use except para capturar e tra""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,c387a3df-7792-4f9a-9821-cf5563608663,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=1 layout=process title=""Manipulação de Arquivos:"" itemsCount=4 leftCount=0 rightCount=0 firstItems=""Use open() para criar um objet | Escolha o modo de abertura: 'r""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,d54186f8-5f4b-4d16-b649-03977a57b820,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=0 layout=bullets title=""Introdução à Persistência e Robustez"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Manipulação de arquivos permit | É crucial para compartilhar in""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,4388ebff-bc65-442d-aec2-accc310460c5,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_5 intent=takeaways layoutHint=takeaways title=""Pontos Chave do Módulo"" items=4 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,fd3e5679-0895-4e00-a6e9-7be50c7bd7ed,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=0 layout=bullets title=""O que é JSON?"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,476a562f-fe8e-41e8-82db-1fd9602fcc6c,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_1 intent=concept layoutHint=bullets title=""O que é JSON?"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,85d64f9d-bbca-471c-9923-9de955afdb10,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_5_slide_2 intent=process layoutHint=process title=""Manipulando JSON em Python"" items=4 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,f293c197-5cf2-4e42-b41e-f9b7f7ca839c,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=4 layout=takeaways title=""Principais Aprendizados do Módulo"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Ler e escrever dados em arquiv | Aplicar with open() para garan""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,c291fa56-9d6e-4b34-b56e-9d4e1c00aa6a,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=4 layout=takeaways title=""Principais Aprendizados do Módulo"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,54f71201-32e1-42c4-9912-8b202061df1f,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=4 slideIdx=2 layout=comparison title=""Arquivos de Texto vs. Binários"" itemsCount=0 leftCount=4 rightCount=4 firstItems=""""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,19c7ede8-c7a0-4e26-b576-6dd972841f23,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=2 layout=bullets title=""Interagindo com APIs Web"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,17457a56-d61a-4fb9-bd2f-e47711ddb522,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=5 slideIdx=1 layout=process title=""Manipulando JSON em Python"" sectionLabel=""PROCESSO"" items=4 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,33ca376b-b05d-406f-91bc-54a8f23082dc,info,1778260571323000
+"[MODULE-PLANNER] module=5 title=""Trabalhando com JSON e APIs Web"" slides=5 fatals=0 blockers=0 accepted=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,9804c2e9-f473-408f-b994-90509ee17381,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=2 layout=comparison title=""Arquivos de Texto vs. Binários"" sectionLabel=""COMPARAÇÃO"" items=0 leftItems=4 rightItems=4
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,57964b70-4b80-470f-9fc6-0708502903e1,info,1778260571323000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=1 layout=process title=""Manipulação de Arquivos:"" sectionLabel=""PROCESSO"" items=4 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,eb86e7a2-6fd4-4efe-9605-8d0f9df64efd,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=3 slideIdx=2 layout=code title=""Implementando a Estrutura da Biblioteca"" itemsCount=3 leftCount=0 rightCount=0 firstItems=""Declaramos as estruturas princ | Adicionamos um livro usando um""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,f9be0297-0e07-4098-a30b-25d0b50f686c,info,1778260571322000
+"[MODULE-PLANNER] module=4 title=""Manipulação de Arquivos e Exceções"" slides=5 fatals=0 blockers=0 accepted=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,286098ed-a6e0-47cd-929c-feffef900bb7,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=3 layout=code title=""Coletando Pedidos com Laço while"" itemsCount=3 leftCount=0 rightCount=0 firstItems=""O laço while True permite cole | A condição if entrada == 'fim'""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,4cbe16b3-dd0b-497f-bcbc-0eca99ebeb2b,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=0 layout=bullets title=""Controle de Fluxo e Funções: Pilares da Lógica"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Controle de fluxo direciona a  | Funções organizam o código em ""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,b858482d-6bd5-416f-923d-bfc68fb1a977,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=4 layout=takeaways title=""Principais Aprendizados sobre Controle de Fluxo e Funções"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Declarar funções com def para  | Utilizar for para iterar sobre""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,00882765-c114-4e77-9c06-dc6d24b68e50,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_5 intent=takeaways layoutHint=takeaways title=""Principais Aprendizados do Módulo"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,ab61ac26-dec6-436c-a82d-684490f5ffa0,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_3_slide_2 intent=example layoutHint=bullets title=""Exemplo: Organizando Dados de uma Biblioteca"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,f53d5707-a5b8-4fa8-898c-516e7b404bc1,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_4 intent=code_walkthrough layoutHint=code title=""Tratamento de Exceções na Prática"" items=4 steps=0 cards=0 hasCode=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,b06c8557-9348-4027-8ede-8025fd57f81c,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=4 slideIdx=0 layout=bullets title=""Introdução à Persistência e Robustez"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,765fd213-de00-4b82-8bb7-2fc6482e162e,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_3_slide_1 intent=concept layoutHint=bullets title=""O que são Estruturas de Dados?"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,bf24a57b-7cfa-41c3-9e3b-e8dada060149,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=3 slideIdx=2 layout=code title=""Implementando a Estrutura da Biblioteca"" sectionLabel=""CÓDIGO"" items=3 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,dd5bb847-ddd7-4dee-ab68-881b7b61824a,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=3 slideIdx=0 layout=bullets title=""O que são Estruturas de Dados?"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,77528bde-eb63-4734-b348-8cd0adcd019e,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_3_slide_4 intent=takeaways layoutHint=takeaways title=""Aprendizados Essenciais sobre Estruturas de Dados"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,66ada6de-aa2c-4385-a88c-bf248ac8264d,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=3 slideIdx=1 layout=bullets title=""Exemplo: Organizando Dados de uma Biblioteca"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Uma lista armazena todos os li | Cada livro é um dicionário com""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,7901e2c0-6921-496a-a0be-ec9f6674f9d9,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=3 slideIdx=1 layout=bullets title=""Exemplo: Organizando Dados de uma Biblioteca"" sectionLabel=""EXEMPLO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,4f097594-2c7a-4bcd-b5a2-7906edeb957b,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=3 slideIdx=3 layout=takeaways title=""Aprendizados Essenciais sobre Estruturas de Dados"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Listas são ideais para coleçõe | Tuplas garantem a imutabilidad""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,cc89d354-01d7-49e0-941a-1be3fc2bfd70,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_1 intent=concept layoutHint=bullets title=""Introdução à Persistência e Robustez"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,7f0a86ff-22ef-4c2f-80ac-7aeabf426dbd,info,1778260571322000
+"[MODULE-PLANNER] module=3 title=""Estruturas de Dados Fundamentais"" slides=4 fatals=0 blockers=0 accepted=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,a80a4467-a725-4b0c-9a00-468f8327cdc9,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=2 layout=code title=""Aplicando Descontos com e"" itemsCount=2 leftCount=0 rightCount=0 firstItems=""A função calcularvalortotal de | e verificam condições para dif""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,9eba7839-ec88-4ab9-a2fe-8bbaf4cece52,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=3 slideIdx=3 layout=takeaways title=""Aprendizados Essenciais sobre Estruturas de Dados"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,8e63ccf0-9200-4f70-bca5-484d69d55416,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=4 layout=takeaways title=""Principais Aprendizados sobre Controle de Fluxo e Funções"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,7c5fc9a0-d339-48cf-9cbd-6a13600b6148,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=3 slideIdx=0 layout=bullets title=""O que são Estruturas de Dados?"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""São formas de organizar e arma | Permitem gerenciar informações""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,d7b2cfc4-a9a3-4e8c-8d8f-5b1d4a6c4716,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_3 intent=comparison layoutHint=comparison title=""Arquivos de Texto vs. Binários"" items=0 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,4b70ce9c-54de-4e56-8a44-13d30b296067,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=2 slideIdx=1 layout=code title=""Exibindo o Cardápio com e"" itemsCount=2 leftCount=0 rightCount=0 firstItems=""A função exibircardapio organi | O laço itera sobre cada item d""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,858d0fd2-ba12-402e-832a-10a68dbe2646,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_3_slide_3 intent=code_walkthrough layoutHint=code title=""Implementando a Estrutura da Biblioteca"" items=3 steps=0 cards=0 hasCode=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,544b2101-8d87-43b6-938b-f7365d43e2b9,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_4_slide_2 intent=process layoutHint=process title=""Manipulação de Arquivos: Fundamentos"" items=4 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,5b271978-2b01-457c-a749-6067cd1a5a87,info,1778260571322000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=0 layout=bullets title=""Controle de Fluxo e Funções: Pilares da Lógica"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,cc30ea08-f99f-4d0c-be82-dd61d795c25c,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=1 layout=code title=""Exibindo o Cardápio com e"" sectionLabel=""CÓDIGO"" items=2 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,60ee6de7-b431-4d48-88ff-4e6f530956b5,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_5 intent=takeaways layoutHint=takeaways title=""Principais Aprendizados sobre Controle de Fluxo e Funções"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,cd563fbf-e5ba-4392-990f-b7dbec107297,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_1 intent=concept layoutHint=bullets title=""Controle de Fluxo e Funções: Pilares da Lógica"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,2ff698e5-2e38-49b3-8799-92e06a3edc01,info,1778260571321000
+"[MODULE-PLANNER] module=2 title=""Controle de Fluxo e Funções"" slides=5 fatals=0 blockers=0 accepted=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,73715832-8a7a-477c-b44d-08e3c7686882,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=2 layout=code title=""Aplicando Descontos com e"" sectionLabel=""CÓDIGO"" items=2 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,676a6789-6359-405a-849a-e6cc3e402f13,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_2 intent=code_walkthrough layoutHint=code title=""Exibindo o Cardápio com `def` e `for`"" items=2 steps=0 cards=0 hasCode=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,378ea755-19b1-483b-9fc5-413dfc78ae0f,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=1 slideIdx=1 layout=bullets title=""Variáveis: Armazenando Valores"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Variáveis são espaços nomeados | Elas reservam um local para gu""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,d1155f26-8796-4a57-9831-3a9afb0b1d0c,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_4 intent=code_walkthrough layoutHint=code title=""Coletando Pedidos com Laço `while`"" items=3 steps=0 cards=0 hasCode=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,00641bd9-53eb-4826-8b8b-5f70da51b2d8,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=1 slideIdx=0 layout=bullets title=""Representando o Mundo Real no Computador"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Todo software lida com informa | Computadores operam apenas com""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,0315ded2-cfe6-486a-9619-40a05d6e373b,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_2_slide_3 intent=code_walkthrough layoutHint=code title=""Aplicando Descontos com `if` e `elif`"" items=2 steps=0 cards=0 hasCode=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,c4721a79-83ba-4600-9db5-c37da685ee06,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=2 slideIdx=3 layout=code title=""Coletando Pedidos com Laço while"" sectionLabel=""CÓDIGO"" items=3 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,82e644b7-1112-4322-8b7b-c9f8942679fd,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=1 slideIdx=3 layout=cards title=""Conhecendo os Tipos de Dados Primitivos"" itemsCount=4 leftCount=0 rightCount=0 firstItems=""Inteiro (int): Números sem cas | Decimal (float): Números com c""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,bcdd4dd5-d76e-4330-bdb6-d47986c89c97,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=1 slideIdx=2 layout=code title=""Como Criar Variáveis em Python"" itemsCount=3 leftCount=0 rightCount=0 firstItems=""Em Python, variáveis são criad | O nome da variável fica à esqu""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,63433f68-f1b8-438f-bc73-1684f42b4873,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=1 slideIdx=4 layout=takeaways title=""Principais Aprendizados sobre"" sectionLabel=""PRINCIPAIS APRENDIZADOS"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,3ff183e3-7b3c-4df6-89c5-8c25f36e126d,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=rendererInput module=1 slideIdx=4 layout=takeaways title=""Principais Aprendizados sobre"" itemsCount=5 leftCount=0 rightCount=0 firstItems=""Compreender a necessidade de r | Definir variáveis como contêin""
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,6aff9e7a-c023-4710-b810-0a26da8d06bb,info,1778260571321000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=1 slideIdx=3 layout=cards title=""Conhecendo os Tipos de Dados Primitivos"" sectionLabel=""CONCEITOS"" items=4 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,de247b0c-7d14-4cc3-ad5e-3207a0fee830,info,1778260571320000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=1 slideIdx=2 layout=code title=""Como Criar Variáveis em Python"" sectionLabel=""CÓDIGO"" items=3 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,15893fc5-c1c7-47da-851d-3756dd9700fd,info,1778260571319000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=1 slideIdx=1 layout=bullets title=""Variáveis: Armazenando Valores"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,bc775b4f-06ea-4dbb-bfc4-050acedfb2da,info,1778260571319000
+"[SLIDE-BINDING-DEBUG] stage=v5SlideLike module=1 slideIdx=0 layout=bullets title=""Representando o Mundo Real no Computador"" sectionLabel=""CONCEITO"" items=5 leftItems=0 rightItems=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,1ee77930-14b4-4a98-9324-b8e4065056ae,info,1778260571318000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_1_slide_1 intent=concept layoutHint=bullets title=""Representando o Mundo Real no Computador"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,b99e5b5f-2833-4fad-80e3-5ee8d095820e,info,1778260571316000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_1_slide_5 intent=takeaways layoutHint=takeaways title=""Principais Aprendizados sobre Fundamentos"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,825de4d3-1538-4ec4-8e77-62db87bd1682,info,1778260571316000
+"[MODULE-PLANNER] module=1 title=""Fundamentos Essenciais de Python"" slides=5 fatals=0 blockers=0 accepted=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,ed0c3d92-260d-4ec0-aec5-50eaa738278d,info,1778260571316000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_1_slide_2 intent=concept layoutHint=bullets title=""Variáveis: Armazenando Valores"" items=5 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,8f0450c1-07b9-4cd3-a460-f5ecbf1c9b78,info,1778260571316000
+"[PRESENTATION-PLAN] modules=8 | slides=39 | intents={""concept"":17,""code_walkthrough"":8,""cards"":1,""takeaways"":8,""example"":1,""process"":3,""comparison"":1} | repaired_objectives=0 | blocked_contamination=0 | moved_code=0 | removed_duplicates=0 | removed_truncated=1 | capped_bullets=0 | capped_code=6 | modules_failed=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,db08cf28-8238-47b0-8449-7ced8aa46d56,info,1778260571316000
+"[PRESENTATION-PLAN-VALIDATION] PASSED | issues={}
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,0115661a-f5dc-4bee-b1eb-a92804445eb6,info,1778260571316000
+"[PLANNER-TIMING] total_ms=35477 modules=8 batch_size=8 slides=39 failed=0
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,e5295a5c-4394-4aa1-a21c-2ed4ecc54e80,info,1778260571316000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_1_slide_3 intent=code_walkthrough layoutHint=code title=""Como Criar Variáveis em Python"" items=3 steps=0 cards=0 hasCode=true
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,f9207104-e042-4519-a841-3da47294e7ce,info,1778260571316000
+"[SLIDE-BINDING-DEBUG] stage=presentationPlan slideId=module_1_slide_4 intent=cards layoutHint=cards title=""Conhecendo os Tipos de Dados Primitivos"" items=4 steps=0 cards=0 hasCode=false
+",Log,fc635260-ce2b-40b5-8d4d-861e31312a77,533e62c9-4529-43b4-863d-ed08e7072475,ac2fe770-7edd-4a20-b1b9-a68df851251a,info,1778260571316000

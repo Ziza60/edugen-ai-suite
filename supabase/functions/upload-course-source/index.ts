@@ -7,13 +7,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Max source files per course per plan — keep in sync with supabase/functions/_shared/plans.ts
-const MAX_FILES_PER_PLAN: Record<string, number> = {
-  free:    3,
-  starter: 5,
-  pro:     10,
-};
-const MAX_FILES_DEFAULT = 3;
+const MAX_FILES_FREE = 3;
+const MAX_FILES_PRO = 20;
 const ALLOWED_TYPES = ["application/pdf", "text/plain", "text/markdown"];
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
 const MAX_TOTAL_CHARS = 500_000;
@@ -57,7 +52,7 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gemini-2.5-flash",
+      model: "google/gemini-3-flash-lite",
       messages: [
         {
           role: "user",
@@ -121,6 +116,30 @@ Deno.serve(async (req: Request) => {
     }
     const userId = claimsData.claims.sub as string;
 
+    // Check Pro plan
+    const { data: sub } = await serviceClient
+      .from("subscriptions")
+      .select("plan")
+      .eq("user_id", userId)
+      .single();
+
+    const plan = sub?.plan || "free";
+
+    // Check dev bypass
+    const { data: profile } = await serviceClient
+      .from("profiles")
+      .select("is_dev")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const isDev = profile?.is_dev === true;
+
+    if (plan !== "pro" && !isDev) {
+      return new Response(
+        JSON.stringify({ error: "Fontes próprias estão disponíveis apenas no plano Pro." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Parse multipart form data
     const formData = await req.formData();
     const courseId = formData.get("course_id") as string;
@@ -143,7 +162,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check existing sources count for this course
-    const maxFiles = isDev ? (MAX_FILES_PER_PLAN.pro) : (MAX_FILES_PER_PLAN[plan] ?? MAX_FILES_DEFAULT);
+    const maxFiles = plan === "pro" || isDev ? MAX_FILES_PRO : MAX_FILES_FREE;
     const { count: existingCount } = await serviceClient
       .from("course_sources")
       .select("*", { count: "exact", head: true })

@@ -8,8 +8,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── Text helpers ───────────────────────────────────────────────────────
+// ── Emoji & encoding helpers ──────────────────────────────────────────
 
+/** Remove emojis and other non-Latin1 symbols that jsPDF cannot render */
 function sanitizeText(text: string): string {
   let clean = text
     .replace(/[\u{1F600}-\u{1F64F}]/gu, "")
@@ -37,9 +38,11 @@ function sanitizeText(text: string): string {
     .replace(/[\u2013\u2014]/g, "-")
     .replace(/[\u2026]/g, "...");
 
-  return clean.replace(/  +/g, " ").trim();
+  clean = clean.replace(/  +/g, " ").trim();
+  return clean;
 }
 
+/** Strip markdown formatting from text */
 function stripMarkdown(text: string): string {
   return text
     .replace(/#{1,6}\s*/g, "")
@@ -56,106 +59,123 @@ function getHeadingLevel(line: string): number {
   return match ? match[1].length : 0;
 }
 
-function normalizeTitle(t: string): string {
-  return sanitizeText(stripMarkdown(t.replace(/^#{1,6}\s*/, "").replace(/^M[oó]dulo\s+\d+[:.]\s*/i, "")))
-    .toLowerCase().replace(/\s+/g, " ").trim();
+// ── Table parser ──────────────────────────────────────────────────────
+
+interface ParsedTable {
+  headers: string[];
+  rows: string[][];
 }
-
-// ── Table parser ────────────────────────────────────────────────────────
-
-interface ParsedTable { headers: string[]; rows: string[][]; }
 
 function parseMarkdownTable(lines: string[], startIndex: number): { table: ParsedTable | null; endIndex: number } {
   if (!lines[startIndex]?.includes("|")) return { table: null, endIndex: startIndex };
+
   const parsePipeRow = (line: string): string[] =>
     line.split("|").map((c) => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length);
-  // BUG #4 FIX: filter empty header cells to prevent ghost columns from AI-generated trailing pipes
-  const headers = parsePipeRow(lines[startIndex]).filter((h) => h !== "");
+
+  const headers = parsePipeRow(lines[startIndex]);
   if (headers.length < 2) return { table: null, endIndex: startIndex };
-  const numCols = headers.length;
+
   const sepLine = lines[startIndex + 1];
   if (!sepLine || !/^[\s|:-]+$/.test(sepLine)) return { table: null, endIndex: startIndex };
+
   const rows: string[][] = [];
   let i = startIndex + 2;
   while (i < lines.length && lines[i].includes("|")) {
     const cells = parsePipeRow(lines[i]);
-    if (cells.length >= 1) {
-      // Normalize each row to exactly numCols cells — prevents missing or extra columns
-      const normalized = cells.slice(0, numCols);
-      while (normalized.length < numCols) normalized.push("");
-      rows.push(normalized);
-    }
+    if (cells.length >= 2) rows.push(cells);
     i++;
   }
+
   if (rows.length === 0) return { table: null, endIndex: startIndex };
   return { table: { headers, rows }, endIndex: i - 1 };
 }
 
-// ── Pedagogical block detection ─────────────────────────────────────────
+// ── Pedagogical block detection ───────────────────────────────────────
 
-type BlockType = "example" | "reflection" | "summary" | "takeaways" | "tip" | "note" | null;
+type PedagogicalBlockType = "example" | "reflection" | "summary" | "takeaways" | "tip" | "note" | null;
 
-function detectBlock(text: string): BlockType {
+function detectPedagogicalBlock(text: string): PedagogicalBlockType {
   const lower = text.toLowerCase().replace(/[*#_`>]/g, "").trim();
-  if (/^exemplo\s+pr[áa]tico/.test(lower) || /^na\s+pr[áa]tica/.test(lower)) return "example";
-  if (/^pare\s+um\s+momento/.test(lower) || /^reflita/.test(lower) || /^checkpoint/.test(lower)) return "reflection";
+  if (/^exemplo\s+pr[áa]tico/.test(lower) || /^na\s+pr[áa]tica/.test(lower) || /^vamos\s+praticar/.test(lower)) return "example";
+  if (/^pare\s+um\s+momento/.test(lower) || /^reflita/.test(lower) || /^para\s+pensar/.test(lower) || /^checkpoint/.test(lower)) return "reflection";
   if (/^resumo/.test(lower) || /^em\s+resumo/.test(lower) || /^conclus[ãa]o/.test(lower)) return "summary";
-  if (/^key\s+takeaway/.test(lower) || /^pontos[- ]chave/.test(lower) || /^principais\s+aprendizados/.test(lower)) return "takeaways";
+  if (/^key\s+takeaway/.test(lower) || /^pontos[- ]chave/.test(lower)) return "takeaways";
   if (/^dica/.test(lower) || /^importante/.test(lower) || /^aten[çc][ãa]o/.test(lower)) return "tip";
-  if (/^nota/.test(lower) || /^lembre[- ]se/.test(lower) || /^desafio/.test(lower) || /^atividade/.test(lower)) return "note";
+  if (/^nota/.test(lower) || /^lembre[- ]se/.test(lower) || /^sa[íi]ba\s+mais/.test(lower) || /^exerc[íi]cio/.test(lower) || /^atividade/.test(lower) || /^desafio/.test(lower)) return "note";
   return null;
 }
 
-// ── Layout constants ────────────────────────────────────────────────────
+// ── PDF Layout constants ──────────────────────────────────────────────
 
 const PAGE_W = 210;
-const PAGE_H = 297;
-const MARGIN_L = 22;
-const MARGIN_R = 22;
-const MARGIN_T = 26;
-const MARGIN_B = 26;
-const CONTENT_W = PAGE_W - MARGIN_L - MARGIN_R;
-const MAX_Y = PAGE_H - MARGIN_B;
+const MARGIN_LEFT = 24;
+const MARGIN_RIGHT = 24;
+const MARGIN_TOP = 28;
+const MARGIN_BOTTOM = 28;
+const CONTENT_W = PAGE_W - MARGIN_LEFT - MARGIN_RIGHT;
+const MAX_Y = 297 - MARGIN_BOTTOM;
 
-const FONT = { COVER_TITLE: 30, COVER_SUB: 12, MODULE_NUM: 11, MODULE_TITLE: 22, H2: 14, H3: 12, H4: 11, BODY: 10.5, SMALL: 9.5, TABLE_H: 9, TABLE_B: 9, BLOCK_LABEL: 9.5 };
+// Font sizes
+const FONT = {
+  TITLE: 28,
+  MODULE_TITLE: 20,
+  H2: 15,
+  H3: 12.5,
+  H4: 11,
+  BODY: 10.5,
+  SMALL: 9.5,
+  TABLE_HEADER: 9,
+  TABLE_BODY: 9,
+  BLOCK_LABEL: 9.5,
+};
 
+// Spacing (mm) — generous for comfortable reading
 const SP = {
-  AFTER_TITLE: 12, BEFORE_H2: 11, AFTER_H2: 6, BEFORE_H3: 9, AFTER_H3: 5,
-  BEFORE_H4: 7, AFTER_H4: 4, AFTER_PARA: 5.5, LINE_H: 5.2,
-  BULLET_GAP: 3, TABLE_ROW_PAD: 3.5, TABLE_LINE: 4, SECTION_GAP: 10,
-  BOX_V: 5, BOX_H: 8,
+  AFTER_TITLE: 14,
+  BEFORE_H2: 12,
+  AFTER_H2: 7,
+  BEFORE_H3: 10,
+  AFTER_H3: 5,
+  BEFORE_H4: 8,
+  AFTER_H4: 4,
+  AFTER_PARAGRAPH: 6,
+  LINE_HEIGHT: 5.2,
+  BULLET_GAP: 3,
+  TABLE_ROW_PAD: 3.5,
+  TABLE_CELL_LINE: 4,
+  SECTION_GAP: 10,
+  BLOCK_PAD_V: 5,
+  BLOCK_PAD_H: 8,
 };
 
-const C = {
-  NAVY: [22, 33, 75] as const,
-  NAVY_MID: [45, 60, 130] as const,
-  NAVY_LIGHT: [80, 100, 170] as const,
-  ACCENT: [255, 195, 0] as const,         // Gold accent
-  TEXT_DARK: [28, 28, 33] as const,
-  TEXT_BODY: [50, 50, 58] as const,
-  TEXT_MUTED: [110, 110, 120] as const,
-  WHITE: [255, 255, 255] as const,
-  BG_EXAMPLE: [234, 247, 238] as const,
-  BG_REFLECTION: [242, 238, 252] as const,
-  BG_SUMMARY: [234, 243, 254] as const,
-  BG_TAKEAWAY: [254, 247, 228] as const,
-  BG_TIP: [255, 244, 230] as const,
-  BG_NOTE: [242, 242, 250] as const,
-  BAR_EXAMPLE: [38, 142, 72] as const,
-  BAR_REFLECTION: [108, 68, 180] as const,
-  BAR_SUMMARY: [38, 98, 180] as const,
-  BAR_TAKEAWAY: [196, 148, 28] as const,
-  BAR_TIP: [218, 118, 28] as const,
-  BAR_NOTE: [98, 98, 128] as const,
-  TABLE_HEAD: [22, 33, 75] as const,
-  TABLE_ZEBRA: [244, 244, 252] as const,
-  TABLE_COL1: [232, 234, 248] as const,
-  BORDER: [205, 205, 218] as const,
-  BORDER_TABLE: [180, 180, 200] as const,
-  PAGE_BG: [252, 252, 254] as const,
+// Colors (RGB tuples)
+const COLOR = {
+  PRIMARY: [35, 40, 85] as const,       // Deep navy
+  PRIMARY_LIGHT: [60, 65, 130] as const,
+  TEXT_DARK: [30, 30, 35] as const,
+  TEXT_BODY: [45, 45, 50] as const,
+  TEXT_MUTED: [100, 100, 110] as const,
+  TEXT_WHITE: [255, 255, 255] as const,
+  BG_EXAMPLE: [235, 245, 238] as const,    // Soft green
+  BG_REFLECTION: [240, 238, 250] as const, // Soft purple
+  BG_SUMMARY: [235, 242, 252] as const,    // Soft blue
+  BG_TAKEAWAY: [252, 245, 230] as const,   // Soft amber
+  BG_TIP: [255, 243, 230] as const,        // Soft orange
+  BG_NOTE: [242, 242, 248] as const,       // Neutral
+  BAR_EXAMPLE: [40, 140, 70] as const,
+  BAR_REFLECTION: [110, 70, 180] as const,
+  BAR_SUMMARY: [40, 100, 180] as const,
+  BAR_TAKEAWAY: [200, 150, 30] as const,
+  BAR_TIP: [220, 120, 30] as const,
+  BAR_NOTE: [100, 100, 130] as const,
+  TABLE_HEADER: [35, 40, 85] as const,
+  TABLE_ZEBRA: [245, 245, 252] as const,
+  TABLE_FIRST_COL: [232, 232, 245] as const,
+  BORDER_LIGHT: [210, 210, 220] as const,
+  BORDER_TABLE: [185, 185, 200] as const,
 };
 
-// ── Renderer ────────────────────────────────────────────────────────────
+// ── PDF renderer ──────────────────────────────────────────────────────
 
 class PdfRenderer {
   doc: any;
@@ -164,239 +184,196 @@ class PdfRenderer {
 
   constructor() {
     this.doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    this.y = MARGIN_T;
+    this.y = MARGIN_TOP;
     this.pageNum = 1;
   }
 
+  // ── Page management ──────────────────────────────────────────────
+
   addPage() {
     this.doc.addPage();
-    this.y = MARGIN_T;
+    this.y = MARGIN_TOP;
     this.pageNum++;
-    this.drawPageChrome();
+    this.drawFooter();
   }
 
   checkPage(needed: number) {
     if (this.y + needed > MAX_Y) this.addPage();
   }
 
-  /** Estimate minimum height needed after a heading so it never strands alone at the bottom */
-  estimateFollowHeight(lines: string[], fromIdx: number): number {
-    // Skip blank lines
-    let j = fromIdx;
-    while (j < lines.length && !lines[j].trim()) j++;
-    if (j >= lines.length) return 0;
-
-    const t = lines[j].trim();
-    // Table coming up → keep at least 28mm
-    if (t.includes("|")) return 28;
-    // Another heading → keep at least 10mm
-    if (getHeadingLevel(t) > 0) return 10;
-    // Bullet list → estimate first 2 bullets
-    if (t.startsWith("- ") || t.startsWith("* ") || /^\d+\.\s/.test(t)) {
-      this.doc.setFontSize(FONT.BODY);
-      const ls = this.doc.splitTextToSize(sanitizeText(stripMarkdown(t.replace(/^[-*\d.]\s*/, ""))), CONTENT_W - 10);
-      return Math.min(ls.length, 3) * SP.LINE_H + SP.BULLET_GAP + 10;
-    }
-    // Regular paragraph → estimate first line
-    this.doc.setFontSize(FONT.BODY);
-    const ls = this.doc.splitTextToSize(sanitizeText(stripMarkdown(t)), CONTENT_W);
-    return Math.min(ls.length, 3) * SP.LINE_H + 8;
-  }
-
-  drawPageChrome() {
-    // Subtle left sidebar accent
-    this.doc.setFillColor(...C.NAVY);
-    this.doc.rect(0, 0, 4, PAGE_H, "F");
-    this.doc.setFillColor(...C.NAVY_MID);
-    this.doc.rect(0, 0, 1.5, PAGE_H, "F");
-    // Top rule
-    this.doc.setFillColor(...C.NAVY_LIGHT);
-    this.doc.rect(4, 0, PAGE_W - 4, 0.8, "F");
-    // Footer area
-    this.doc.setFillColor(...C.NAVY);
-    this.doc.rect(0, PAGE_H - 8, PAGE_W, 8, "F");
-    // Page number
+  drawFooter() {
     this.doc.setFontSize(8);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(...C.WHITE);
-    this.doc.text(`${this.pageNum}`, PAGE_W / 2, PAGE_H - 3, { align: "center" });
-    // BUG #6 FIX: reset font/size after footer so first element on new page never inherits 8pt Bold
-    this.doc.setTextColor(...C.TEXT_BODY);
     this.doc.setFont("helvetica", "normal");
-    this.doc.setFontSize(FONT.BODY);
+    this.doc.setTextColor(160, 160, 165);
+    this.doc.text(`${this.pageNum}`, PAGE_W / 2, 290, { align: "center" });
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
-  // ── Cover page ──────────────────────────────────────────────────────
+  // ── Estimation helpers (no side-effects on Y) ────────────────────
+
+  estimateTextHeight(text: string, fontSize: number, maxWidth: number, lineH: number): number {
+    this.doc.setFontSize(fontSize);
+    const lines = this.doc.splitTextToSize(sanitizeText(stripMarkdown(text)), maxWidth);
+    return lines.length * lineH + 4;
+  }
+
+  estimateBulletHeight(text: string): number {
+    this.doc.setFontSize(FONT.BODY);
+    const clean = sanitizeText(stripMarkdown(text.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "")));
+    const lines = this.doc.splitTextToSize(clean, CONTENT_W - 10);
+    return lines.length * SP.LINE_HEIGHT + SP.BULLET_GAP;
+  }
+
+  estimateNextBlockHeight(lines: string[], i: number): number {
+    if (i >= lines.length) return 0;
+    const trimmed = lines[i].trim();
+    if (!trimmed) return 0;
+
+    if (trimmed.includes("|") && i + 1 < lines.length && lines[i + 1]?.includes("|")) {
+      const { table } = parseMarkdownTable(lines, i);
+      if (table) return Math.min(80, 10 + table.rows.length * 12);
+    }
+    if (trimmed.startsWith("> ")) {
+      let text = trimmed.replace(/^>\s*/, "");
+      let j = i + 1;
+      while (j < lines.length && lines[j]?.trim().startsWith("> ")) {
+        text += " " + lines[j].trim().replace(/^>\s*/, "");
+        j++;
+      }
+      return this.estimateTextHeight(text, FONT.SMALL, CONTENT_W - 16, 4.5) + 12;
+    }
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || /^\d+\.\s/.test(trimmed)) {
+      let h = 0, j = i, count = 0;
+      while (j < lines.length && count < 5) {
+        const t = lines[j].trim();
+        if (!t || getHeadingLevel(t) > 0) break;
+        if (t.startsWith("- ") || t.startsWith("* ") || /^\d+\.\s/.test(t)) {
+          h += this.estimateBulletHeight(t);
+          count++;
+        } else break;
+        j++;
+      }
+      return h;
+    }
+    return this.estimateTextHeight(trimmed, FONT.BODY, CONTENT_W, SP.LINE_HEIGHT);
+  }
+
+  nextNonEmpty(lines: string[], from: number): number {
+    let j = from;
+    while (j < lines.length && !lines[j].trim()) j++;
+    return j;
+  }
+
+  // ── Title page ────────────────────────────────────────────────────
 
   renderTitlePage(title: string, description: string | null, language: string) {
-    // Full navy top band: top 45% of page
-    const bandH = PAGE_H * 0.46;
-    this.doc.setFillColor(...C.NAVY);
-    this.doc.rect(0, 0, PAGE_W, bandH, "F");
+    // Top decorative bar
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.rect(0, 0, PAGE_W, 8, "F");
+    // Accent stripe
+    this.doc.setFillColor(...COLOR.PRIMARY_LIGHT);
+    this.doc.rect(0, 8, PAGE_W, 2, "F");
 
-    // Diagonal wave accent at band bottom
-    this.doc.setFillColor(...C.NAVY_MID);
-    this.doc.rect(0, bandH - 6, PAGE_W, 6, "F");
-    // Gold accent stripe
-    this.doc.setFillColor(...C.ACCENT);
-    this.doc.rect(0, bandH, PAGE_W, 3, "F");
-
-    // Lighter stripe inside left edge of band (no alpha — jsPDF doesn't support it)
-    this.doc.setFillColor(45, 58, 110);
-    this.doc.rect(0, 0, 5, bandH, "F");
-
-    // Title text (white, inside band)
-    const cleanTitle = sanitizeText(title);
-    this.doc.setFontSize(FONT.COVER_TITLE);
+    // Title
+    this.doc.setFontSize(FONT.TITLE);
     this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(...C.WHITE);
-    const titleLines = this.doc.splitTextToSize(cleanTitle, CONTENT_W - 10);
-    const titleTotalH = titleLines.length * 11;
-    const titleStartY = bandH / 2 - titleTotalH / 2 + 5;
-    this.doc.text(titleLines, PAGE_W / 2, titleStartY, { align: "center" });
+    this.doc.setTextColor(...COLOR.PRIMARY);
+    const titleLines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 20);
+    const titleY = 80;
+    this.doc.text(titleLines, PAGE_W / 2, titleY, { align: "center" });
 
-    // Gold underline under title
-    const titleEndY = titleStartY + titleTotalH + 2;
-    this.doc.setFillColor(...C.ACCENT);
-    this.doc.rect(PAGE_W / 2 - 28, titleEndY, 56, 1.5, "F");
+    // Decorative line under title
+    const underY = titleY + titleLines.length * 11 + 6;
+    this.doc.setDrawColor(...COLOR.PRIMARY);
+    this.doc.setLineWidth(1);
+    this.doc.line(PAGE_W / 2 - 35, underY, PAGE_W / 2 + 35, underY);
+    this.doc.setLineWidth(0.3);
+    this.doc.line(PAGE_W / 2 - 25, underY + 3, PAGE_W / 2 + 25, underY + 3);
 
-    // Description text (below band, on white area)
+    // Description
     if (description) {
-      const descY = bandH + 14;
       this.doc.setFontSize(11.5);
       this.doc.setFont("helvetica", "normal");
-      this.doc.setTextColor(...C.TEXT_BODY);
-      const descLines = this.doc.splitTextToSize(sanitizeText(description), CONTENT_W - 20);
-      const maxDescLines = 8;
-      this.doc.text(descLines.slice(0, maxDescLines), PAGE_W / 2, descY, { align: "center" });
+      this.doc.setTextColor(...COLOR.TEXT_MUTED);
+      const descLines = this.doc.splitTextToSize(sanitizeText(description), CONTENT_W - 40);
+      this.doc.text(descLines, PAGE_W / 2, underY + 18, { align: "center" });
     }
 
-    // BUG #1 FIX: metadata box (Idioma + Gerado em) removed — not relevant for students
+    // Metadata
+    this.doc.setFontSize(9);
+    this.doc.setTextColor(130, 130, 140);
+    this.doc.text(`Idioma: ${language}`, PAGE_W / 2, 248, { align: "center" });
+    this.doc.text(new Date().toLocaleDateString("pt-BR"), PAGE_W / 2, 254, { align: "center" });
 
-    // Footer
-    this.doc.setFillColor(...C.NAVY);
-    this.doc.rect(0, PAGE_H - 8, PAGE_W, 8, "F");
-    this.doc.setFontSize(8);
-    this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(...C.WHITE);
-    this.doc.text("1", PAGE_W / 2, PAGE_H - 3, { align: "center" });
+    // Bottom decorative bars
+    this.doc.setFillColor(...COLOR.PRIMARY_LIGHT);
+    this.doc.rect(0, 289, PAGE_W, 2, "F");
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.rect(0, 291, PAGE_W, 6, "F");
+
+    this.drawFooter();
   }
 
-  // ── Module divider page ─────────────────────────────────────────────
+  // ── Module title ──────────────────────────────────────────────────
 
-  renderModuleTitle(title: string, moduleIndex: number) {
-    this.doc.addPage();
-    this.pageNum++;
+  renderModuleTitle(title: string) {
+    this.addPage();
+    this.y = MARGIN_TOP + 8;
 
-    // Full page with navy left panel
-    const panelW = PAGE_W * 0.42;
-
-    // Navy left panel
-    this.doc.setFillColor(...C.NAVY);
-    this.doc.rect(0, 0, panelW, PAGE_H, "F");
-
-    // Lighter stripe inside panel
-    this.doc.setFillColor(...C.NAVY_MID);
-    this.doc.rect(panelW - 10, 0, 10, PAGE_H, "F");
-
-    // Gold accent line at panel edge
-    this.doc.setFillColor(...C.ACCENT);
-    this.doc.rect(panelW, 0, 2.5, PAGE_H, "F");
-
-    // White right area
-    this.doc.setFillColor(...C.WHITE);
-    this.doc.rect(panelW + 2.5, 0, PAGE_W - panelW - 2.5, PAGE_H, "F");
-
-    // Module number on left panel (vertical center)
-    const numLabel = `MÓDULO`;
-    const numStr = String(moduleIndex).padStart(2, "0");
-    this.doc.setFontSize(9.5);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(...C.ACCENT);
-    this.doc.text(numLabel, panelW / 2, PAGE_H / 2 - 16, { align: "center" });
-
-    this.doc.setFontSize(54);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(...C.WHITE);
-    this.doc.text(numStr, panelW / 2, PAGE_H / 2 + 12, { align: "center" });
-
-    // Decorative lines on left panel
-    this.doc.setDrawColor(...C.ACCENT);
-    this.doc.setLineWidth(0.5);
-    this.doc.line(panelW / 2 - 16, PAGE_H / 2 - 24, panelW / 2 + 16, PAGE_H / 2 - 24);
-    this.doc.line(panelW / 2 - 16, PAGE_H / 2 + 22, panelW / 2 + 16, PAGE_H / 2 + 22);
-
-    // Module title on right area
-    const rightX = panelW + 14;
-    const rightW = PAGE_W - panelW - 14 - 12;
-    const cleanTitle = sanitizeText(title.replace(/^M[oó]dulo\s+\d+[:.]\s*/i, ""));
+    // Accent bar
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.rect(MARGIN_LEFT, this.y - 3, 5, 14, "F");
 
     this.doc.setFontSize(FONT.MODULE_TITLE);
     this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(...C.NAVY);
-    const titleLines = this.doc.splitTextToSize(cleanTitle, rightW);
-    const titleH = titleLines.length * 9;
-    this.doc.text(titleLines, rightX, PAGE_H / 2 - titleH / 2, { baseline: "top" });
+    this.doc.setTextColor(...COLOR.PRIMARY);
+    const lines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 14);
+    this.doc.text(lines, MARGIN_LEFT + 10, this.y + 7);
+    this.y += lines.length * 9 + SP.AFTER_TITLE;
 
-    // Underline accent on right
-    const underY = PAGE_H / 2 - titleH / 2 + titleH + 6;
-    this.doc.setFillColor(...C.NAVY_LIGHT);
-    this.doc.rect(rightX, underY, 32, 1.2, "F");
-
-    // Footer
-    this.doc.setFillColor(...C.NAVY);
-    this.doc.rect(0, PAGE_H - 8, PAGE_W, 8, "F");
-    this.doc.setFontSize(8);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(...C.WHITE);
-    this.doc.text(`${this.pageNum}`, PAGE_W / 2, PAGE_H - 3, { align: "center" });
-    this.doc.setTextColor(...C.TEXT_BODY);
-    // NOTE: content page is created by renderModuleContent, not here
+    // Separator line
+    this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
+    this.doc.setLineWidth(0.4);
+    this.doc.line(MARGIN_LEFT, this.y, PAGE_W - MARGIN_RIGHT, this.y);
+    this.y += 8;
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
-  // ── Headings ────────────────────────────────────────────────────────
+  // ── Headings ──────────────────────────────────────────────────────
 
   renderHeading(text: string, level: number, extraNeeded = 0) {
-    const sizeMap: Record<number, number> = { 2: FONT.H2, 3: FONT.H3, 4: FONT.H4 };
+    const sizeMap: Record<number, number> = { 2: FONT.H2, 3: FONT.H3, 4: FONT.H4, 5: FONT.BODY, 6: FONT.BODY };
     const fontSize = sizeMap[level] || FONT.BODY;
     const beforeMap: Record<number, number> = { 2: SP.BEFORE_H2, 3: SP.BEFORE_H3, 4: SP.BEFORE_H4 };
+    const beforeSpace = beforeMap[level] || 6;
     const afterMap: Record<number, number> = { 2: SP.AFTER_H2, 3: SP.AFTER_H3, 4: SP.AFTER_H4 };
-    const before = beforeMap[level] || 6;
-    const after = afterMap[level] || 4;
+    const afterSpace = afterMap[level] || 4;
 
     const cleanText = sanitizeText(stripMarkdown(text.replace(/^#{1,6}\s*/, "")));
     this.doc.setFontSize(fontSize);
     const textLines = this.doc.splitTextToSize(cleanText, CONTENT_W);
-    const headingH = before + textLines.length * (fontSize * 0.38) + after + (level === 2 ? 5 : 0);
+    const headingH = beforeSpace + textLines.length * (fontSize * 0.38) + afterSpace;
 
     this.checkPage(headingH + extraNeeded);
-    this.y += before;
+    this.y += beforeSpace;
 
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...COLOR.PRIMARY);
+    this.doc.text(textLines, MARGIN_LEFT, this.y);
+    this.y += textLines.length * (fontSize * 0.38) + afterSpace;
+
+    // H2 underline accent
     if (level === 2) {
-      // H2: navy left bar + bold text
-      const barH = textLines.length * (fontSize * 0.38) + 4;
-      this.doc.setFillColor(...C.NAVY);
-      this.doc.rect(MARGIN_L, this.y - 3, 3, barH, "F");
-      this.doc.setFont("helvetica", "bold");
-      this.doc.setTextColor(...C.NAVY);
-      this.doc.text(textLines, MARGIN_L + 8, this.y);
-      this.y += textLines.length * (fontSize * 0.38) + after + 2;
-    } else if (level === 3) {
-      this.doc.setFont("helvetica", "bold");
-      this.doc.setTextColor(...C.NAVY_MID);
-      this.doc.text(textLines, MARGIN_L, this.y);
-      this.y += textLines.length * (fontSize * 0.38) + after;
-    } else {
-      this.doc.setFont("helvetica", "bold");
-      this.doc.setTextColor(...C.TEXT_DARK);
-      this.doc.text(textLines, MARGIN_L, this.y);
-      this.y += textLines.length * (fontSize * 0.38) + after;
+      this.doc.setDrawColor(...COLOR.PRIMARY_LIGHT);
+      this.doc.setLineWidth(0.3);
+      this.doc.line(MARGIN_LEFT, this.y - 3, MARGIN_LEFT + 55, this.y - 3);
+      this.y += 2;
     }
 
-    this.doc.setTextColor(...C.TEXT_BODY);
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
-  // ── Body text ────────────────────────────────────────────────────────
+  // ── Body text ─────────────────────────────────────────────────────
 
   renderParagraph(text: string) {
     const cleanText = sanitizeText(stripMarkdown(text));
@@ -404,35 +381,39 @@ class PdfRenderer {
 
     this.doc.setFontSize(FONT.BODY);
     this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(...C.TEXT_BODY);
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
+
     const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
-    this.checkPage(lines.length * SP.LINE_H + 3);
-    this.doc.text(lines, MARGIN_L, this.y);
-    this.y += lines.length * SP.LINE_H + SP.AFTER_PARA;
+    this.checkPage(lines.length * SP.LINE_HEIGHT + 3);
+    this.doc.text(lines, MARGIN_LEFT, this.y);
+    this.y += lines.length * SP.LINE_HEIGHT + SP.AFTER_PARAGRAPH;
   }
 
   renderBullet(text: string, indent = 0) {
-    const cleanText = sanitizeText(stripMarkdown(text.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "")));
+    const cleanText = sanitizeText(stripMarkdown(text.replace(/^[-*]\s*/, "")));
     if (!cleanText) return;
 
     this.doc.setFontSize(FONT.BODY);
     this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(...C.TEXT_BODY);
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
 
     const indentMm = indent * 5;
-    const bulletX = MARGIN_L + 4 + indentMm;
-    const textX = MARGIN_L + 10 + indentMm;
-    const availW = CONTENT_W - 10 - indentMm;
-    const lines = this.doc.splitTextToSize(cleanText, availW);
-    // BUG #3 FIX: +8mm orphan buffer — any bullet that can't fit with room for one sibling
-    // moves to the next page, preventing isolated last-bullets on near-blank pages
-    this.checkPage(lines.length * SP.LINE_H + SP.BULLET_GAP + 8);
+    const bulletX = MARGIN_LEFT + 3 + indentMm;
+    const textX = MARGIN_LEFT + 9 + indentMm;
+    const availW = CONTENT_W - 9 - indentMm;
 
-    this.doc.setFillColor(...C.NAVY_MID);
-    this.doc.circle(bulletX, this.y - 1.2, 0.85, "F");
+    const lines = this.doc.splitTextToSize(cleanText, availW);
+    this.checkPage(lines.length * SP.LINE_HEIGHT + SP.BULLET_GAP);
+
+    // Bullet dot
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.circle(bulletX, this.y - 1.2, 0.8, "F");
+
     this.doc.text(lines, textX, this.y);
-    this.y += lines.length * SP.LINE_H + SP.BULLET_GAP;
+    this.y += lines.length * SP.LINE_HEIGHT + SP.BULLET_GAP;
   }
+
+  // ── Blockquote ────────────────────────────────────────────────────
 
   renderBlockquote(text: string) {
     const cleanText = sanitizeText(stripMarkdown(text.replace(/^>\s*/, "")));
@@ -440,68 +421,89 @@ class PdfRenderer {
 
     this.doc.setFontSize(FONT.SMALL);
     this.doc.setFont("helvetica", "italic");
+
     const lines = this.doc.splitTextToSize(cleanText, CONTENT_W - 16);
-    const blockH = lines.length * 4.5 + SP.BOX_V * 2;
+    const blockH = lines.length * 4.5 + SP.BLOCK_PAD_V * 2;
     this.checkPage(blockH + 4);
 
-    this.doc.setFillColor(...C.BG_NOTE);
-    this.doc.roundedRect(MARGIN_L, this.y - SP.BOX_V, CONTENT_W, blockH, 2, 2, "F");
-    this.doc.setFillColor(...C.BAR_NOTE);
-    this.doc.roundedRect(MARGIN_L, this.y - SP.BOX_V, 3, blockH, 1.5, 1.5, "F");
+    // Background
+    this.doc.setFillColor(...COLOR.BG_NOTE);
+    this.doc.roundedRect(MARGIN_LEFT, this.y - SP.BLOCK_PAD_V, CONTENT_W, blockH, 2, 2, "F");
+
+    // Left accent bar
+    this.doc.setFillColor(...COLOR.BAR_NOTE);
+    this.doc.roundedRect(MARGIN_LEFT, this.y - SP.BLOCK_PAD_V, 3, blockH, 1.5, 1.5, "F");
+
     this.doc.setTextColor(60, 60, 85);
-    this.doc.text(lines, MARGIN_L + SP.BOX_H + 2, this.y + 1);
+    this.doc.text(lines, MARGIN_LEFT + SP.BLOCK_PAD_H + 2, this.y + 1);
     this.y += blockH + 6;
-    this.doc.setTextColor(...C.TEXT_BODY);
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
-  // ── Pedagogical box ─────────────────────────────────────────────────
+  // ── Styled pedagogical box ────────────────────────────────────────
 
-  renderPedagogicalBox(label: string, bodyLines: string[], blockType: BlockType) {
+  renderPedagogicalBox(label: string, bodyLines: string[], blockType: PedagogicalBlockType) {
     const bgMap: Record<string, readonly [number, number, number]> = {
-      example: C.BG_EXAMPLE, reflection: C.BG_REFLECTION, summary: C.BG_SUMMARY,
-      takeaways: C.BG_TAKEAWAY, tip: C.BG_TIP, note: C.BG_NOTE,
+      example: COLOR.BG_EXAMPLE,
+      reflection: COLOR.BG_REFLECTION,
+      summary: COLOR.BG_SUMMARY,
+      takeaways: COLOR.BG_TAKEAWAY,
+      tip: COLOR.BG_TIP,
+      note: COLOR.BG_NOTE,
     };
     const barMap: Record<string, readonly [number, number, number]> = {
-      example: C.BAR_EXAMPLE, reflection: C.BAR_REFLECTION, summary: C.BAR_SUMMARY,
-      takeaways: C.BAR_TAKEAWAY, tip: C.BAR_TIP, note: C.BAR_NOTE,
+      example: COLOR.BAR_EXAMPLE,
+      reflection: COLOR.BAR_REFLECTION,
+      summary: COLOR.BAR_SUMMARY,
+      takeaways: COLOR.BAR_TAKEAWAY,
+      tip: COLOR.BAR_TIP,
+      note: COLOR.BAR_NOTE,
     };
     const bt = blockType || "note";
-    const bg = bgMap[bt] || C.BG_NOTE;
-    const bar = barMap[bt] || C.BAR_NOTE;
+    const bg = bgMap[bt] || COLOR.BG_NOTE;
+    const bar = barMap[bt] || COLOR.BAR_NOTE;
 
+    // Measure label
     this.doc.setFontSize(FONT.BLOCK_LABEL);
     this.doc.setFont("helvetica", "bold");
     const labelClean = sanitizeText(stripMarkdown(label));
     const labelLines = this.doc.splitTextToSize(labelClean, CONTENT_W - 18);
     const labelH = labelLines.length * 4.5;
 
+    // Measure body
     this.doc.setFontSize(FONT.BODY);
     this.doc.setFont("helvetica", "normal");
     const bodyH = bodyLines.reduce((sum, line) => {
       const ls = this.doc.splitTextToSize(sanitizeText(stripMarkdown(line)), CONTENT_W - 18);
-      return sum + ls.length * SP.LINE_H + 2;
+      return sum + ls.length * SP.LINE_HEIGHT + 2;
     }, 0);
 
-    const totalH = SP.BOX_V + labelH + 4 + bodyH + SP.BOX_V;
+    const totalH = SP.BLOCK_PAD_V + labelH + 4 + bodyH + SP.BLOCK_PAD_V;
     this.checkPage(totalH + 4);
 
     const boxY = this.y - 2;
-    this.doc.setFillColor(...bg);
-    this.doc.roundedRect(MARGIN_L, boxY, CONTENT_W, totalH, 2.5, 2.5, "F");
-    this.doc.setFillColor(...bar);
-    this.doc.roundedRect(MARGIN_L, boxY, 3.5, totalH, 1.5, 1.5, "F");
 
+    // Background with rounded corners
+    this.doc.setFillColor(...bg);
+    this.doc.roundedRect(MARGIN_LEFT, boxY, CONTENT_W, totalH, 2.5, 2.5, "F");
+
+    // Left accent bar
+    this.doc.setFillColor(...bar);
+    this.doc.roundedRect(MARGIN_LEFT, boxY, 3.5, totalH, 1.5, 1.5, "F");
+
+    // Label
     this.doc.setFontSize(FONT.BLOCK_LABEL);
     this.doc.setFont("helvetica", "bold");
     this.doc.setTextColor(...(bar as [number, number, number]));
-    const innerX = MARGIN_L + SP.BOX_H + 2;
-    let curY = boxY + SP.BOX_V + 3;
+    const innerX = MARGIN_LEFT + SP.BLOCK_PAD_H + 2;
+    let curY = boxY + SP.BLOCK_PAD_V + 3;
     this.doc.text(labelLines, innerX, curY);
     curY += labelH + 4;
 
+    // Body content
     this.doc.setFontSize(FONT.BODY);
     this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(...C.TEXT_BODY);
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
     for (const line of bodyLines) {
       const clean = sanitizeText(stripMarkdown(line));
       if (!clean) { curY += 2; continue; }
@@ -511,123 +513,86 @@ class PdfRenderer {
         const ls = this.doc.splitTextToSize(bulletText, CONTENT_W - 24);
         this.doc.setFillColor(...bar);
         this.doc.circle(innerX + 2, curY - 1, 0.7, "F");
-        this.doc.setTextColor(...C.TEXT_BODY);
+        this.doc.setTextColor(...COLOR.TEXT_BODY);
         this.doc.text(ls, innerX + 7, curY);
-        curY += ls.length * SP.LINE_H + SP.BULLET_GAP;
+        curY += ls.length * SP.LINE_HEIGHT + SP.BULLET_GAP;
       } else {
         const ls = this.doc.splitTextToSize(clean, CONTENT_W - 18);
         this.doc.text(ls, innerX, curY);
-        curY += ls.length * SP.LINE_H + 2;
+        curY += ls.length * SP.LINE_HEIGHT + 2;
       }
     }
 
     this.y = boxY + totalH + 8;
   }
 
-  // ── Code block (BUG #2 + #5 FIX) ───────────────────────────────────
-  // Renders fenced code verbatim — no stripMarkdown, no HTML escape,
-  // so operators like > and < are preserved exactly as written.
-  renderCodeBlock(code: string) {
-    const rawLines = code.split("\n");
-    // Trim trailing blank lines
-    while (rawLines.length && !rawLines[rawLines.length - 1].trim()) rawLines.pop();
-    if (!rawLines.length) return;
-
-    const lineH = 4.2;
-    const padV = 5;
-    const padH = 8;
-    const totalH = rawLines.length * lineH + padV * 2;
-
-    this.checkPage(Math.min(totalH + 6, 55));
-    this.y += 3;
-
-    // Dark background box (sized to available space on current page)
-    const availH = MAX_Y - this.y - padV;
-    this.doc.setFillColor(30, 36, 55);
-    this.doc.roundedRect(MARGIN_L, this.y - padV, CONTENT_W, Math.min(totalH, availH + padV), 2, 2, "F");
-
-    this.doc.setFontSize(8.5);
-    this.doc.setFont("courier", "normal");
-    this.doc.setTextColor(210, 215, 240);
-
-    let codeY = this.y;
-    for (const line of rawLines) {
-      if (codeY + lineH > MAX_Y - 4) {
-        this.addPage();
-        // Re-draw background on continuation page
-        const remLines = rawLines.slice(rawLines.indexOf(line));
-        const remH = remLines.length * lineH + padV * 2;
-        this.doc.setFillColor(30, 36, 55);
-        this.doc.roundedRect(MARGIN_L, this.y - padV, CONTENT_W, Math.min(remH, MAX_Y - this.y - padV + padV), 2, 2, "F");
-        this.doc.setFontSize(8.5);
-        this.doc.setFont("courier", "normal");
-        this.doc.setTextColor(210, 215, 240);
-        codeY = this.y;
-      }
-      // Use sanitizeText (removes emojis/bad chars) but NOT stripMarkdown — preserves > < operators
-      this.doc.text(sanitizeText(line), MARGIN_L + padH, codeY);
-      codeY += lineH;
-    }
-
-    this.y = codeY + padV + 5;
-    // Reset to body style after code block
-    this.doc.setTextColor(...C.TEXT_BODY);
-    this.doc.setFont("helvetica", "normal");
-    this.doc.setFontSize(FONT.BODY);
-  }
+  // ── Horizontal rule ───────────────────────────────────────────────
 
   renderHorizontalRule() {
     this.checkPage(10);
     this.y += 4;
-    this.doc.setDrawColor(...C.BORDER);
+    this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
     this.doc.setLineWidth(0.3);
-    this.doc.line(MARGIN_L + 20, this.y, PAGE_W - MARGIN_R - 20, this.y);
+    this.doc.line(MARGIN_LEFT + 25, this.y, PAGE_W - MARGIN_RIGHT - 25, this.y);
     this.y += SP.SECTION_GAP;
   }
 
-  // ── Table ────────────────────────────────────────────────────────────
+  // ── Table rendering ───────────────────────────────────────────────
 
   renderTable(table: ParsedTable) {
     const { headers, rows } = table;
     const numCols = headers.length;
+
+    // Column widths - first column wider for "Aspecto" pattern
     const colWidths: number[] = [];
     const firstRatio = numCols <= 2 ? 0.35 : numCols <= 3 ? 0.30 : 0.25;
     colWidths.push(CONTENT_W * firstRatio);
     const remaining = CONTENT_W - colWidths[0];
     for (let i = 1; i < numCols; i++) colWidths.push(remaining / (numCols - 1));
 
+    // Pre-measure all rows to get accurate heights
     const headerH = 10;
     const rowHeights: number[] = [];
     for (const row of rows) {
-      this.doc.setFontSize(FONT.TABLE_B);
+      this.doc.setFontSize(FONT.TABLE_BODY);
       let maxLines = 1;
       for (let c = 0; c < numCols; c++) {
         const cellText = sanitizeText(stripMarkdown(row[c] || ""));
         const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 8);
         if (lines.length > maxLines) maxLines = Math.min(lines.length, 4);
       }
-      rowHeights.push(Math.max(9, maxLines * SP.TABLE_LINE + SP.TABLE_ROW_PAD * 2));
+      rowHeights.push(Math.max(8, maxLines * SP.TABLE_CELL_LINE + SP.TABLE_ROW_PAD * 2));
     }
 
     const totalTableH = headerH + rowHeights.reduce((a, b) => a + b, 0) + 4;
-    if (totalTableH < MAX_Y - MARGIN_T) this.checkPage(totalTableH);
-    else this.checkPage(Math.min(totalTableH, headerH + rowHeights[0] + 20));
+
+    // If table fits on one page, keep it together
+    if (totalTableH < MAX_Y - MARGIN_TOP) {
+      this.checkPage(totalTableH);
+    } else {
+      this.checkPage(Math.min(totalTableH, headerH + rowHeights[0] + 20));
+    }
 
     this.y += 3;
-    const startX = MARGIN_L;
+    const startX = MARGIN_LEFT;
     let currentY = this.y;
 
     const drawHeader = (atY: number): number => {
-      this.doc.setFillColor(...C.TABLE_HEAD);
-      this.doc.roundedRect(startX, atY, CONTENT_W, headerH, 2, 2, "F");
+      // Header background
+      this.doc.setFillColor(...COLOR.TABLE_HEADER);
+      this.doc.roundedRect(startX, atY, CONTENT_W, headerH, 1.5, 1.5, "F");
+      // Square off bottom corners by overlaying rect
       this.doc.rect(startX, atY + headerH - 2, CONTENT_W, 2, "F");
-      this.doc.setFontSize(FONT.TABLE_H);
+
+      this.doc.setFontSize(FONT.TABLE_HEADER);
       this.doc.setFont("helvetica", "bold");
-      this.doc.setTextColor(...C.WHITE);
+      this.doc.setTextColor(...COLOR.TEXT_WHITE);
+
       let hx = startX;
       for (let c = 0; c < numCols; c++) {
-        const txt = sanitizeText(stripMarkdown(headers[c] || ""));
-        this.doc.text(txt.slice(0, 40), hx + 4, atY + 6.5);
+        const cellText = sanitizeText(stripMarkdown(headers[c] || ""));
+        const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 6);
+        this.doc.text(lines[0] || "", hx + 4, atY + 6.5);
         hx += colWidths[c];
       }
       return atY + headerH;
@@ -635,178 +600,149 @@ class PdfRenderer {
 
     currentY = drawHeader(currentY);
 
+    // ── Rows ──
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       const rowH = rowHeights[r];
 
+      // Page break check
       if (currentY + rowH > MAX_Y) {
+        // Draw outer border for current page portion
         const partH = currentY - this.y;
-        this.doc.setDrawColor(...C.BORDER_TABLE);
+        this.doc.setDrawColor(...COLOR.BORDER_TABLE);
         this.doc.setLineWidth(0.3);
         this.doc.rect(startX, this.y, CONTENT_W, partH);
+
         this.addPage();
         currentY = this.y;
         currentY = drawHeader(currentY);
       }
 
-      this.doc.setFillColor(...(r % 2 === 0 ? C.TABLE_ZEBRA : C.WHITE));
+      // Row background
+      this.doc.setFillColor(...(r % 2 === 0 ? COLOR.TABLE_ZEBRA : COLOR.TEXT_WHITE));
       this.doc.rect(startX, currentY, CONTENT_W, rowH, "F");
-      this.doc.setFillColor(...C.TABLE_COL1);
+
+      // First column highlight
+      this.doc.setFillColor(...COLOR.TABLE_FIRST_COL);
       this.doc.rect(startX, currentY, colWidths[0], rowH, "F");
 
+      // Cell text
       let colX = startX;
       for (let c = 0; c < numCols; c++) {
         const cellText = sanitizeText(stripMarkdown(row[c] || ""));
-        this.doc.setFontSize(FONT.TABLE_B);
+        this.doc.setFontSize(FONT.TABLE_BODY);
         const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 8).slice(0, 4);
+
         if (c === 0) {
           this.doc.setFont("helvetica", "bold");
-          this.doc.setTextColor(...C.NAVY);
+          this.doc.setTextColor(...COLOR.PRIMARY);
         } else {
           this.doc.setFont("helvetica", "normal");
-          this.doc.setTextColor(...C.TEXT_BODY);
+          this.doc.setTextColor(...COLOR.TEXT_BODY);
         }
+
         for (let l = 0; l < lines.length; l++) {
-          this.doc.text(lines[l], colX + 4, currentY + SP.TABLE_ROW_PAD + 3 + l * SP.TABLE_LINE);
+          this.doc.text(lines[l], colX + 4, currentY + SP.TABLE_ROW_PAD + 3 + l * SP.TABLE_CELL_LINE);
         }
         colX += colWidths[c];
       }
 
-      this.doc.setDrawColor(...C.BORDER);
+      // Row bottom border
+      this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
       this.doc.setLineWidth(0.15);
       this.doc.line(startX, currentY + rowH, startX + CONTENT_W, currentY + rowH);
+
       currentY += rowH;
     }
 
+    // Outer border
     const totalH = currentY - this.y;
-    this.doc.setDrawColor(...C.BORDER_TABLE);
+    this.doc.setDrawColor(...COLOR.BORDER_TABLE);
     this.doc.setLineWidth(0.35);
     this.doc.roundedRect(startX, this.y, CONTENT_W, totalH, 1.5, 1.5);
 
+    // Column separators
     let colX = startX;
     for (let c = 0; c < numCols - 1; c++) {
       colX += colWidths[c];
-      this.doc.setDrawColor(...C.BORDER);
+      this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
       this.doc.setLineWidth(0.15);
       this.doc.line(colX, this.y + headerH, colX, this.y + totalH);
     }
 
-    // BUG #7 FIX: increase post-table spacing so text never collides with table border
-    this.y = currentY + SP.SECTION_GAP + 4;
+    this.y = currentY + SP.SECTION_GAP;
   }
 
-  // ── Module content ───────────────────────────────────────────────────
+  // ── Module content processor ──────────────────────────────────────
 
-  renderModuleContent(content: string, moduleTitle: string) {
-    // Create the content page here (module divider does NOT create it)
-    this.addPage();
-    this.y = MARGIN_T;
-
-    // Normalise literal escape sequences stored in DB (\\n → real newline, \\t → space)
-    let normContent = content
-      .replace(/\\n/g, "\n")
-      .replace(/\\t/g, " ")
-      .replace(/:\n+\d+\./g, ":");  // remove list-number artefacts after colons
-
-    // ── PRE-EXTRACT code fences (Bug #2 + #5 fix) ─────────────────────────
-    // Extract ALL fenced code blocks BEFORE any line-by-line processing.
-    // This guarantees:
-    //   • The language identifier (```sql, ```python…) is never emitted as text.
-    //   • Operators like > and < inside code are never stripped by stripMarkdown.
-    // Each block is replaced by a single-line placeholder and stored verbatim.
-    const codeBlockStore: string[] = [];
-    const CB_START = "[[CODEBLOCK_";
-    const CB_END   = "]]";
-    normContent = normContent.replace(
-      /```(\w*)[^\n]*\n([\s\S]*?)```/gm,
-      (_fullMatch, _lang, code) => {
-        const idx = codeBlockStore.length;
-        codeBlockStore.push(code.replace(/\n$/, "")); // store verbatim, strip final newline only
-        return `${CB_START}${idx}${CB_END}`;
-      }
-    );
-    // ── END pre-extraction ─────────────────────────────────────────────────
-
-    const lines = normContent.split("\n");
-    const normModuleTitle = normalizeTitle(moduleTitle);
+  renderModuleContent(content: string) {
+    const lines = content.split("\n");
     let i = 0;
-    let skippedFirstH1 = false;
 
     while (i < lines.length) {
       const trimmed = lines[i].trim();
 
-      // Blank lines: advance y but never past the content boundary
       if (!trimmed) {
-        if (this.y + 2.5 < MAX_Y - 10) this.y += 2.5;
+        this.y += 3;
         i++;
         continue;
       }
 
-      // Code block placeholder — restored verbatim, no stripMarkdown applied
-      if (trimmed.startsWith(CB_START) && trimmed.endsWith(CB_END)) {
-        const idxStr = trimmed.slice(CB_START.length, -CB_END.length);
-        const idx = parseInt(idxStr, 10);
-        if (!isNaN(idx) && codeBlockStore[idx] !== undefined) {
-          this.renderCodeBlock(codeBlockStore[idx]);
-        }
-        i++;
-        continue;
-      }
-
-      // Table detection
+      // ── Table detection ──
       if (trimmed.includes("|") && i + 1 < lines.length && lines[i + 1]?.includes("|")) {
         const { table, endIndex } = parseMarkdownTable(lines, i);
-        if (table) { this.renderTable(table); i = endIndex + 1; continue; }
+        if (table) {
+          this.renderTable(table);
+          i = endIndex + 1;
+          continue;
+        }
       }
 
-      // Headings
-      const headingLevel = getHeadingLevel(trimmed);
-      if (headingLevel > 0) {
-        // Skip first H1/H2 that duplicates the module title
-        if (!skippedFirstH1 && (headingLevel === 1 || headingLevel === 2)) {
-          const normContent = normalizeTitle(trimmed);
-          if (
-            normContent === normModuleTitle ||
-            normContent.includes(normModuleTitle) ||
-            normModuleTitle.includes(normContent)
-          ) {
-            skippedFirstH1 = true;
-            i++;
-            continue;
-          }
-        }
-        skippedFirstH1 = true;
-
-        const followH = this.estimateFollowHeight(lines, i + 1);
-        this.renderHeading(trimmed, headingLevel === 1 ? 2 : headingLevel, followH);
+      // ── Headings with look-ahead ──
+      const heading = getHeadingLevel(trimmed);
+      if (heading > 0) {
+        const nextIdx = this.nextNonEmpty(lines, i + 1);
+        const nextBlockH = this.estimateNextBlockHeight(lines, nextIdx);
+        this.renderHeading(trimmed, heading === 1 ? 2 : heading, nextBlockH);
         i++;
         continue;
       }
 
-      // Pedagogical blocks
-      const blockType = detectBlock(trimmed);
+      // ── Pedagogical blocks — collect label + body as one unit ──
+      const blockType = detectPedagogicalBlock(trimmed);
       if (blockType) {
         const label = trimmed;
         const bodyLines: string[] = [];
         let j = i + 1;
+        // Collect associated content lines until next heading, empty gap, or new block
         let emptyCount = 0;
         while (j < lines.length) {
           const t = lines[j].trim();
-          if (!t) { emptyCount++; if (emptyCount >= 2) break; j++; continue; }
+          if (!t) {
+            emptyCount++;
+            if (emptyCount >= 2) break; // Two blank lines = block separator
+            j++;
+            continue;
+          }
           emptyCount = 0;
           if (getHeadingLevel(t) > 0) break;
-          if (detectBlock(t)) break;
+          if (detectPedagogicalBlock(t)) break;
           if (t === "---" || t === "***" || t === "___") break;
           bodyLines.push(t);
           j++;
         }
-        if (bodyLines.length > 0) this.renderPedagogicalBox(label, bodyLines, blockType);
-        else this.renderParagraph(label);
+
+        if (bodyLines.length > 0) {
+          this.renderPedagogicalBox(label, bodyLines, blockType);
+        } else {
+          // No body found, render as styled paragraph
+          this.renderParagraph(label);
+        }
         i = j;
         continue;
       }
 
-      // Blockquote
+      // ── Blockquote ──
       if (trimmed.startsWith("> ")) {
         let quoteText = trimmed.replace(/^>\s*/, "");
         let j = i + 1;
@@ -814,33 +750,35 @@ class PdfRenderer {
           quoteText += " " + lines[j].trim().replace(/^>\s*/, "");
           j++;
         }
+        const bqH = this.estimateTextHeight(quoteText, FONT.SMALL, CONTENT_W - 16, 4.5) + 12;
+        this.checkPage(bqH);
         this.renderBlockquote(quoteText);
         i = j;
         continue;
       }
 
-      // Bullets
+      // ── Bullet list ──
       if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
         this.renderBullet(trimmed);
         i++;
         continue;
       }
 
-      // Numbered list
+      // ── Numbered list ──
       if (/^\d+\.\s/.test(trimmed)) {
         this.renderBullet("- " + trimmed.replace(/^\d+\.\s*/, ""));
         i++;
         continue;
       }
 
-      // Horizontal rule
+      // ── Horizontal rule ──
       if (trimmed === "---" || trimmed === "***" || trimmed === "___") {
         this.renderHorizontalRule();
         i++;
         continue;
       }
 
-      // Regular paragraph
+      // ── Regular paragraph ──
       this.renderParagraph(trimmed);
       i++;
     }
@@ -851,7 +789,7 @@ class PdfRenderer {
   }
 }
 
-// ── Main handler ─────────────────────────────────────────────────────────
+// ── Main handler ──────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -862,7 +800,8 @@ Deno.serve(async (req: Request) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Not authenticated" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -878,7 +817,8 @@ Deno.serve(async (req: Request) => {
     const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
     if (claimsError || !claimsData?.claims) {
       return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const userId = claimsData.claims.sub as string;
@@ -886,64 +826,106 @@ Deno.serve(async (req: Request) => {
     const { course_id } = await req.json();
     if (!course_id) {
       return new Response(JSON.stringify({ error: "course_id required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
+    // Check subscription
+    const { data: sub } = await serviceClient
+      .from("subscriptions")
+      .select("plan")
+      .eq("user_id", userId)
+      .single();
+    const plan = sub?.plan || "free";
+
+    if (plan !== "pro") {
+      const { data: profile } = await serviceClient
+        .from("profiles")
+        .select("is_dev")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!profile?.is_dev) {
+        return new Response(
+          JSON.stringify({ error: "PDF export is available only on Pro plan." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Fetch course + modules
     const { data: course, error: courseErr } = await serviceClient
-      .from("courses").select("*").eq("id", course_id).eq("user_id", userId).single();
+      .from("courses")
+      .select("*")
+      .eq("id", course_id)
+      .eq("user_id", userId)
+      .single();
 
     if (courseErr || !course) {
       return new Response(JSON.stringify({ error: "Course not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const { data: modulesRaw } = await serviceClient
-      .from("course_modules").select("*").eq("course_id", course_id).order("order_index");
+      .from("course_modules")
+      .select("*")
+      .eq("course_id", course_id)
+      .order("order_index");
     const modules: any[] = modulesRaw ?? [];
 
-    // Generate PDF
+    // ── Generate PDF ──
     const pdf = new PdfRenderer();
-    pdf.renderTitlePage(course.title, course.description, course.language || "pt-BR");
+    pdf.renderTitlePage(course.title, course.description, course.language);
 
-    modules.forEach((mod, idx) => {
-      pdf.renderModuleTitle(mod.title, idx + 1);
+    for (const mod of modules) {
+      pdf.renderModuleTitle(mod.title);
       if (mod.content) {
-        pdf.renderModuleContent(mod.content, mod.title);
+        pdf.renderModuleContent(mod.content);
       }
-    });
+    }
 
     const pdfBytes = pdf.output();
     const dateStr = new Date().toISOString().slice(0, 10);
-    const safeName = (course.title || "curso")
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().substring(0, 80);
+    const safeName = (course.title || "curso").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().substring(0, 80);
     const fileName = `${userId}/${safeName} - PDF - ${dateStr}.pdf`;
 
+    // Upload to storage
     const { error: uploadErr } = await serviceClient.storage
-      .from("course-exports").upload(fileName, pdfBytes, { contentType: "application/pdf", upsert: true });
+      .from("course-exports")
+      .upload(fileName, pdfBytes, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
 
     if (uploadErr) throw uploadErr;
 
+    // Create signed URL (1 hour)
     const { data: signedUrl, error: signErr } = await serviceClient.storage
-      .from("course-exports").createSignedUrl(fileName, 3600);
+      .from("course-exports")
+      .createSignedUrl(fileName, 3600);
 
     if (signErr) throw signErr;
 
+    // Log usage event
     await serviceClient.from("usage_events").insert({
-      user_id: userId, event_type: "COURSE_EXPORTED_PDF", metadata: { course_id },
+      user_id: userId,
+      event_type: "COURSE_EXPORTED_PDF",
+      metadata: { course_id },
     });
 
     return new Response(JSON.stringify({ url: signedUrl.signedUrl }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: any) {
     console.error("Export PDF error:", error);
-    return new Response(JSON.stringify({ error: error.message || "Internal server error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: error.message || "Internal server error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });

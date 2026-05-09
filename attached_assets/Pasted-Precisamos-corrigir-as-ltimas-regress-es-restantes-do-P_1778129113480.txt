@@ -1,0 +1,213 @@
+Precisamos corrigir as últimas regressões restantes do PPTX v5 antes de continuar evoluindo o design.
+
+Contexto:
+O motor melhorou após a última correção:
+- placeholders sumiram;
+- código incompleto foi reduzido;
+- slides vazios não apareceram;
+- estabilidade melhorou.
+
+Porém ainda existem problemas graves de QA e integridade semântica.
+
+Objetivo:
+Fortalecer o QA Veto e corrigir os problemas restantes sem adicionar novas features.
+
+Não migrar para v6.
+Não adicionar novos templates.
+Não alterar billing, schema ou rotas públicas.
+Não fazer refactor grande.
+
+Problemas observados no PPTX atual:
+
+1. DOMAIN_CONTAMINATION ainda passou:
+No módulo "Estruturas de Dados Fundamentais" apareceram:
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- TRUNCATE
+
+Isso é inválido em um curso de Introdução à Programação em Python, salvo se o módulo explicitamente falar de SQL.
+
+2. GENERIC_OBJECTIVE ainda passou:
+Exemplos:
+- "Compreender fundamentos Essenciais de Python."
+- "Aplicar controle de Fluxo e Funções."
+- "Identificar testes, Logs e Depuração."
+
+Esses objetivos são genéricos e não pedagógicos.
+
+3. Sanitização excessiva destruiu conteúdo técnico:
+Exemplo:
+- "Realize leitura () e escrita ()."
+- "trata erros e para limpeza de recursos."
+
+Provavelmente removeu:
+- read()
+- write()
+- except
+- finally
+
+4. TOC paginado ainda ficou estranho:
+A segunda página mostra:
+"2 Módulos"
+
+Isso parece outro curso.
+O correto seria algo como:
+- "Índice — Parte 2/2"
+- "Módulos 7–8"
+
+AÇÃO OBRIGATÓRIA
+
+1. Fortalecer DOMAIN_CONTAMINATION
+
+Melhorar:
+detectDomainContamination(slide, courseTopic, moduleTitle)
+
+Criar domínio permitido por módulo.
+
+Exemplo:
+Curso: Introdução à Programação em Python
+Módulo: Estruturas de Dados Fundamentais
+
+Pode conter:
+- listas
+- dicionários
+- tuplas
+- conjuntos
+- append()
+- keys()
+- sets
+- collections
+
+Não pode conter:
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- TRUNCATE
+- DELETE FROM
+- SELECT *
+- JOIN
+- SQL DDL/DML em geral
+
+Se detectar:
+- gerar QAIssue CRITICAL DOMAIN_CONTAMINATION;
+- regenerar somente o slide;
+- bloquear export se persistir.
+
+Regra:
+Nenhum slide pode misturar domínio Python e SQL sem intenção explícita.
+
+2. Corrigir GENERIC_OBJECTIVE
+
+Criar:
+isGenericLearningObjective(text)
+
+Detectar padrões genéricos como:
+- "Compreender [título]"
+- "Aplicar [título]"
+- "Identificar [título]"
+- repetir literalmente o nome do módulo sem verbo técnico concreto.
+
+Objetivos válidos devem:
+- mencionar habilidade concreta;
+- mencionar ação técnica;
+- mencionar operação/programação real.
+
+Exemplo bom:
+- "Manipular listas e dicionários para armazenar dados."
+- "Criar funções reutilizáveis com parâmetros e retorno."
+- "Tratar exceções usando try/except/finally."
+
+Se objetivo for genérico:
+- issue CRITICAL;
+- regenerar objetivos do slide;
+- nunca exportar objetivo genérico.
+
+3. Corrigir sanitizer técnico
+
+O sanitizer está removendo elementos válidos.
+
+Preservar:
+- read()
+- write()
+- open()
+- except
+- finally
+- __init__
+- append()
+- requests.get()
+- response.json()
+- print()
+- pip install
+- comandos Bash
+- sintaxe Python válida.
+
+NÃO remover:
+- parênteses válidos;
+- funções;
+- métodos;
+- chamadas técnicas.
+
+Criar:
+sanitizeTechnicalContent(text, language)
+
+Separar:
+- placeholder sanitizer
+- sanitizer técnico
+
+Nunca destruir código ou sintaxe educacional válida.
+
+4. Melhorar TOC paginado
+
+Quando houver múltiplas páginas de índice:
+
+Em vez de:
+- "2 Módulos"
+
+Usar:
+- "Índice — Parte 2/2"
+- "Módulos 7–8"
+
+Se houver 3 páginas:
+- Parte 1/3
+- Parte 2/3
+- Parte 3/3
+
+Nunca parecer outro curso separado.
+
+5. QA Veto obrigatório
+
+Adicionar novos QAIssues críticos:
+- DOMAIN_CONTAMINATION
+- GENERIC_OBJECTIVE
+- TECHNICAL_SANITIZATION_DAMAGE
+- INVALID_TOC_PAGINATION
+
+Se qualquer um persistir:
+- bloquear export;
+OU
+- regenerar apenas o slide problemático.
+
+Nunca exportar PPTX com issue crítica.
+
+6. Critério de aceite
+
+Gerar novamente o curso de Introdução à Programação em Python.
+
+O PPTX só é aceitável se:
+- não houver SQL/DDL indevido;
+- não houver objetivo genérico;
+- não houver sintaxe técnica destruída;
+- não houver placeholders;
+- TOC paginado parecer contínuo e profissional;
+- slides continuarem estáveis e legíveis;
+- default_v5 continuar funcionando.
+
+Prioridade:
+1. Integridade semântica
+2. QA veto
+3. Estabilidade
+4. Design premium
+
+Não adicionar novas funcionalidades.
+Apenas consolidar a arquitetura existente.

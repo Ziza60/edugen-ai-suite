@@ -1,0 +1,252 @@
+Precisamos corrigir a arquitetura do PPTX v5 após a implementação anterior.
+
+Contexto:
+A última implementação adicionou Visual Planner, Design Systems, QA e templates, mas o PPTX gerado apresentou regressões graves:
+- conteúdo de SQL apareceu em curso de Python;
+- placeholders [[BT0]] e [[BT1]] vazaram;
+- código Python foi renderizado incompleto;
+- objetivos genéricos voltaram;
+- slides densos demais foram exportados;
+- o QA não vetou problemas críticos.
+
+Objetivo:
+Reorganizar a arquitetura para seguir este fluxo:
+
+Markdown do curso
+→ SlideModel / Scene Blueprint
+→ Renderer v5 procedural
+→ Design System com hard constraints
+→ QA veto
+→ feedback/reparo
+→ export final
+
+Não migrar para v6.
+Não fazer refactor total.
+Não alterar billing, schema ou rotas públicas.
+Preservar o v5 como motor principal.
+
+1. Criar Scene Blueprint simples
+
+Criar uma camada intermediária antes do render:
+
+SceneBlueprint = {
+  slideId,
+  moduleId,
+  courseTopic,
+  contentDomain,
+  intent,
+  priority,
+  focalElement,
+  layoutCandidates,
+  hardConstraints,
+  softConstraints,
+  contentBlocks
+}
+
+Campos sugeridos:
+
+intent:
+- concept
+- example
+- code
+- process
+- comparison
+- summary
+- module_cover
+- toc
+- closing
+
+priority:
+- low
+- medium
+- high
+
+focalElement:
+- title
+- bullets
+- code
+- steps
+- cards
+- comparison
+- none
+
+contentDomain:
+- python
+- sql
+- business
+- legal
+- generic
+- etc.
+
+2. Hard constraints sempre vencem soft constraints
+
+Hard constraints obrigatórias:
+- nenhum placeholder visível: [[...]], {{...}}, BT0, BT1;
+- nenhum slide vazio;
+- nenhum código incompleto;
+- nenhum conteúdo incompatível com o curso;
+- máximo 80 palavras por slide comum;
+- máximo 6 bullets;
+- máximo 12 linhas de código;
+- fonte mínima segura;
+- título não pode ser fragmentado;
+- objetivo de aprendizagem não pode ser genérico.
+
+Soft constraints:
+- usar visual premium;
+- usar hero;
+- usar comparison;
+- usar cards;
+- usar skin específica;
+- usar layout mais ousado;
+- usar variação visual.
+
+Regra:
+Se qualquer soft constraint violar hard constraint, ignorar a soft constraint.
+
+3. Implementar QA Veto real
+
+Criar função:
+
+qaVeto(sceneBlueprints, renderedSlides)
+
+Ela deve bloquear export final se houver issue crítica.
+
+Issue crítica:
+- PLACEHOLDER_RESIDUAL
+- DOMAIN_CONTAMINATION
+- INCOMPLETE_CODE
+- EMPTY_SLIDE
+- TITLE_FRAGMENT
+- GENERIC_OBJECTIVE
+- EXTREME_DENSITY
+- BROKEN_COMPARISON
+- UNREADABLE_SLIDE
+
+Se houver issue crítica:
+- tentar reparar;
+- se não reparar, regenerar apenas o slide;
+- se ainda falhar, remover slide ou usar fallback seguro;
+- nunca exportar PPTX com issue crítica.
+
+4. Corrigir contaminação de domínio
+
+O curso de Python não pode gerar conteúdo SQL/DDL como:
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- TRUNCATE
+salvo se o módulo explicitamente falar de SQL.
+
+Criar função:
+detectDomainContamination(slide, courseTopic, moduleTitle)
+
+Exemplo:
+Curso: Introdução à Programação em Python
+Módulo: Estruturas de Dados Fundamentais
+Não pode aparecer:
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- comandos DDL de SQL.
+
+Se detectar:
+- issue CRITICAL;
+- regenerar slide com base no módulo correto;
+- bloquear export se persistir.
+
+5. Corrigir placeholders residuais
+
+Criar sanitizer final:
+removeOrBlockPlaceholders(text)
+
+Bloquear:
+- [[BT0]]
+- [[BT1]]
+- [[...]]
+- {{...}}
+- lorem ipsum
+- placeholders técnicos de template.
+
+Nenhum desses pode aparecer no PPTX final.
+
+6. Corrigir código incompleto
+
+Criar validateCodeCompleteness(code, language)
+
+Para Python:
+- detectar blocos abertos sem fechamento;
+- dicionários/listas/tuplas/chaves não fechadas;
+- função sem corpo completo;
+- string aberta;
+- código terminando abruptamente.
+
+Se código exceder limite:
+- dividir em dois slides;
+- ou reduzir semanticamente;
+- nunca cortar no meio.
+
+7. Desativar temporariamente reescrita semântica perigosa
+
+Desativar qualquer L3 rewrite que:
+- reescreva slide inteiro sem preservar domínio;
+- gere bullets genéricos;
+- altere conteúdo técnico sem validação;
+- misture tema de outro curso.
+
+Se LLM for usado para reparo:
+- passar courseTopic, moduleTitle e allowedDomain;
+- exigir que mantenha domínio;
+- validar novamente com qaVeto.
+
+8. Visual Planner vira sugestão, não autoridade
+
+O Visual Planner pode sugerir:
+- intent;
+- layoutCandidates;
+- focalElement;
+- pacingRole.
+
+Mas o renderer só deve aceitar se passar nas hard constraints.
+
+Se Visual Planner sugerir layout que quebra:
+- usar fallback layout seguro.
+
+9. Design System como guardião
+
+O Design System deve impor:
+- fonte mínima;
+- contraste;
+- limites por layout;
+- espaçamento mínimo;
+- quantidade máxima de itens.
+
+Não permitir que skin/template cause:
+- slide denso demais;
+- texto cortado;
+- comparison quebrado;
+- código incompleto.
+
+10. Critério de aceite obrigatório
+
+Gerar novo PPTX de teste com curso de Python.
+
+O PPTX só é aceitável se:
+- não houver conteúdo SQL/DDL indevido;
+- não houver placeholders;
+- não houver código incompleto;
+- não houver slide vazio;
+- não houver objetivos genéricos do tipo "Compreender [título]";
+- não houver slides com cara de apostila;
+- dark premium gerar diferença visual real, mas sem comprometer legibilidade;
+- default_v5 continuar funcionando;
+- se houver erro crítico, export deve reparar ou bloquear, nunca entregar quebrado.
+
+Prioridade:
+1. Estabilidade
+2. Integridade semântica
+3. QA veto
+4. Design premium
+
+Não adicionar novas features.
+Corrigir a arquitetura existente.
