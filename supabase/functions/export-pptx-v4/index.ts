@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.6.0";
+const ENGINE_VERSION = "5.7.0";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -668,6 +668,50 @@ function repairIncompleteCodeExample(
   return null;
 }
 
+// v5.7.0 — demoteCodeLayout
+// Single source of truth for "code → bullets" demotion. Used by both the
+// final-guardrail pass AND the QA cascade so we cannot leave a slide with
+// `layout="bullets"` carrying a `label="CÓDIGO"` (the user-visible bug:
+// section header says CÓDIGO but the slide has no code block).
+//
+// Always:
+//   - sets layout = "bullets"
+//   - clears code
+//   - if label looks like CÓDIGO/CODE → rewrite to "CONCEITO"
+//
+// Emits [LAYOUT-DEMOTE] with reason for traceability.
+// _isCodeLabel — true when a label string looks like a CODE section header
+// ("CÓDIGO" / "CODIGO" / "CODE" / "CÓDIGO - X"). Used by demoteCodeLayout
+// AND by every other site that converts a code slide into bullets but does
+// NOT route through demoteCodeLayout (overflow split, EMPTY repair, L3 rewrite).
+function _isCodeLabel(label: unknown): boolean {
+  if (!label || typeof label !== "string") return false;
+  return /^c[óo]digo\b|^code\b|^c[óo]digo\s*-/i.test(label.trim());
+}
+
+// _demoteCodeLabel — returns "CONCEITO" if the label looks like a CODE label,
+// otherwise returns the label unchanged. Inline-callable from any site that
+// produces bullets/cards/concept slides from a (possibly) code-labeled source.
+function _demoteCodeLabel(label?: string): string | undefined {
+  return _isCodeLabel(label) ? "CONCEITO" : label;
+}
+
+function demoteCodeLayout(s: Slide, slideId: string | number, reason: string): Slide {
+  const out: Slide = { ...s, layout: "bullets" as Layout, code: undefined };
+  const lbl = (out.label ?? "").trim();
+  if (_isCodeLabel(lbl)) {
+    out.label = "CONCEITO";
+    console.log(
+      `[LAYOUT-DEMOTE] slide=${slideId} layout=code→bullets label=${JSON.stringify(lbl)}→"CONCEITO" reason=${reason}`,
+    );
+  } else {
+    console.log(
+      `[LAYOUT-DEMOTE] slide=${slideId} layout=code→bullets label=${JSON.stringify(lbl)} reason=${reason}`,
+    );
+  }
+  return out;
+}
+
 // v5.5.8 — synthesizeMinimalCompleteExample
 // Produces a known-good 3-7 line snippet for the given module kind, reusing
 // classes/vars/funcs from the module accumulator when available so the new
@@ -835,10 +879,7 @@ function applyFinalGuardrails(
       console.warn(
         `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=empty_code_no_synth_available moduleKind=${moduleKind ?? "unknown"}`,
       );
-      console.log(
-        `[LAYOUT-DEMOTE] slide=${slideNum} layout=code→bullets reason=empty_code title="${(out.title ?? "").slice(0, 60)}"`,
-      );
-      out = { ...out, layout: "bullets" as Layout };
+      out = demoteCodeLayout(out, slideNum, "empty_code_no_synth");
     }
   }
   // Guardrail 3: dangling Python assignment → append print()
@@ -880,8 +921,7 @@ function applyFinalGuardrails(
             console.warn(
               `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${reason}) moduleKind=${moduleKind ?? "unknown"}`,
             );
-            console.log(`[LAYOUT-DEMOTE] slide=${slideNum} layout=code→bullets reason=incomplete_unrepairable (${reason})`);
-            out = { ...out, layout: "bullets" as Layout, code: undefined };
+            out = demoteCodeLayout(out, slideNum, `incomplete_unrepairable_${reason}`);
           }
         }
       }
@@ -908,7 +948,7 @@ function applyFinalGuardrails(
         console.warn(
           `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=integrity_fail_no_synth moduleKind=${moduleKind ?? "unknown"}`,
         );
-        out = { ...out, layout: "bullets" as Layout };
+        out = demoteCodeLayout(out, slideNum, "integrity_fail_no_synth");
       }
     } else {
       console.log(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=true codeLines=${codeLines}`);
@@ -2610,9 +2650,13 @@ function renderCode(
   // Hard cap: truncate to CODE_MAX_LINES regardless of AI output
   const rawCode = slide_.code || "";
   const codeLines = rawCode.split("\n");
+  // v5.7.0 — never inject "# ..." continuation marker. It's a forbidden
+  // final pattern (and used to be re-introduced AFTER the FORBIDDEN-VETO
+  // scan). Just truncate cleanly; the user can see code is capped from the
+  // line count alone, and we never want a placeholder line in the deck.
   const codeText =
     codeLines.length > CODE_MAX_LINES
-      ? codeLines.slice(0, CODE_MAX_LINES).join("\n") + "\n# ..."
+      ? codeLines.slice(0, CODE_MAX_LINES).join("\n")
       : rawCode;
   const leftW = CW * 0.42;
   const rightX = ML + leftW + 0.22;
@@ -4429,7 +4473,9 @@ function repairEmptySlide(s: Slide, moduleContent: string): Slide {
   console.warn(
     `[V5] Repaired slide "${s.title}" (${s.layout}) → bullets with ${repaired.length} items`,
   );
-  return { ...s, layout: "bullets", items: repaired };
+  // v5.7.0 — if the source slide carried a CÓDIGO label, demote it so the
+  // resulting bullets slide doesn't render with a misleading code header.
+  return { ...s, layout: "bullets", items: repaired, code: undefined, label: _demoteCodeLabel(s.label) };
 }
 
 // ── OVERFLOW GUARD ──
@@ -4478,11 +4524,12 @@ function splitOverflowSlides(slides: Slide[]): Slide[] {
     }
 
     // Slide A — explanation only (bullets)
+    // v5.7.0 — demote CÓDIGO label since this split-out slide has no code.
     if (items.length > 0) {
       out.push({
         layout: "bullets",
         title: s.title,
-        label: s.label,
+        label: _demoteCodeLabel(s.label),
         items: items.slice(0, 5),
         moduleIndex: s.moduleIndex,
       });
@@ -6995,7 +7042,9 @@ type QAIssueType =
   // ── v5.1.6 hardening pass 6 ─────────────────────────────────
   | "BROKEN_LANGUAGE_STRUCTURE"
   // ── v5.4.0 Technical Preservation Layer ─────────────────────
-  | "TECHNICAL_TOKEN_LOSS";
+  | "TECHNICAL_TOKEN_LOSS"
+  // ── v5.7.0 Final safety net (forbidden-pattern scan) ────────
+  | "FORBIDDEN_FINAL_PATTERN";
 
 interface QAIssue {
   slideId:            string;
@@ -7005,6 +7054,145 @@ interface QAIssue {
   metric?:            number;
   context?:           string;
   resolutionStrategy: string;
+  // v5.7.0 — extended fields (only populated for FORBIDDEN_FINAL_PATTERN today,
+  // but optional so any future check can carry actionable feedback to the UI).
+  field?:             string;   // "code" | "items" | "leftItems" | "rightItems" | "title" | "label"
+  pattern?:           string;   // pattern_id from FORBIDDEN_FINAL_PATTERNS
+  snippet?:           string;   // ≤80 chars excerpt centered on the offending text
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v5.7.0 — FORBIDDEN FINAL PATTERNS
+// Last-mile veto. After ALL guardrails, cascade, repair, sanitization,
+// and dedup, a slide MUST NOT contain any of these patterns. If any
+// survives, throw 422 PptxQAVetoError. Catches the systemic class of
+// bugs where AI-generated decks ship "# ...", "código omitido", or a
+// CODE-labeled slide without any code.
+//
+// EXPORTED for unit testing.
+// EMERGENCY KILL-SWITCH: set env PPTX_FORBIDDEN_VETO_DISABLED=1 to skip.
+// ═══════════════════════════════════════════════════════════════
+type ForbiddenPatternSpec = {
+  id:        string;
+  pattern:   RegExp;
+  message:   string;
+  fields:    Array<"code" | "items" | "leftItems" | "rightItems" | "title" | "label">;
+};
+
+const FORBIDDEN_FINAL_PATTERNS: ForbiddenPatternSpec[] = [
+  {
+    id:      "ELLIPSIS_HASH",
+    pattern: /^\s*#\s*\.{2,}\s*$/m,
+    message: "Linha de código omitida com '# ...' encontrada",
+    fields:  ["code"],
+  },
+  {
+    id:      "ELLIPSIS_SLASH",
+    pattern: /^\s*\/\/\s*\.{2,}\s*$/m,
+    message: "Linha de código omitida com '// ...' encontrada",
+    fields:  ["code"],
+  },
+  {
+    id:      "ELLIPSIS_BARE",
+    pattern: /^\s*\.{3,}\s*$/m,
+    message: "Linha contendo apenas '...' encontrada",
+    fields:  ["code", "items", "leftItems", "rightItems"],
+  },
+  {
+    id:      "CODIGO_OMITIDO",
+    pattern: /\bc[óo]digo\s+omitido\b/i,
+    message: "Texto literal 'código omitido' encontrado",
+    fields:  ["code", "items", "leftItems", "rightItems"],
+  },
+  {
+    id:      "RESTANTE_OMITIDO",
+    pattern: /\brestante\s+omitido\b/i,
+    message: "Texto literal 'restante omitido' encontrado",
+    fields:  ["code", "items", "leftItems", "rightItems"],
+  },
+  {
+    id:      "CONTINUA_PLACEHOLDER",
+    pattern: /^\s*(continua|cont\.|to be continued)\s*\.?\s*$/im,
+    message: "Linha placeholder 'continua' encontrada",
+    fields:  ["code", "items", "leftItems", "rightItems"],
+  },
+];
+
+function _excerpt(haystack: string, match: RegExpExecArray, max = 80): string {
+  const idx = match.index;
+  const len = match[0].length;
+  const start = Math.max(0, idx - Math.floor((max - len) / 2));
+  return haystack.slice(start, start + max).replace(/\s+/g, " ").trim();
+}
+
+function _scanField(
+  slideId: string,
+  field: "code" | "items" | "leftItems" | "rightItems" | "title" | "label",
+  value: string,
+  out: QAIssue[],
+): void {
+  if (!value || typeof value !== "string") return;
+  for (const spec of FORBIDDEN_FINAL_PATTERNS) {
+    if (!spec.fields.includes(field)) continue;
+    const re = new RegExp(spec.pattern.source, spec.pattern.flags);
+    const m = re.exec(value);
+    if (m) {
+      out.push({
+        slideId,
+        type:               "FORBIDDEN_FINAL_PATTERN",
+        severity:           "CRITICAL",
+        message:            `${spec.message} (campo=${field})`,
+        resolutionStrategy: "Bloquear export com 422 — repair anterior não eliminou padrão proibido",
+        field,
+        pattern:            spec.id,
+        snippet:            _excerpt(value, m, 80),
+      });
+    }
+  }
+}
+
+// scanFinalSlidesForForbiddenPatterns — layout-aware. Only scans fields that
+// will actually be rendered for a given layout (e.g. comparison slides render
+// leftItems+rightItems but not items; code slides render code; etc). This
+// avoids phantom 422s from stale fields that survive layout changes.
+function scanFinalSlidesForForbiddenPatterns(
+  modules: Slide[][],
+): QAIssue[] {
+  const found: QAIssue[] = [];
+  for (let mi = 0; mi < modules.length; mi++) {
+    for (let si = 0; si < modules[mi].length; si++) {
+      const s = modules[mi][si];
+      const id = `M${mi + 1}.S${si + 1}`;
+      // Title + label always render
+      _scanField(id, "title", s.title ?? "", found);
+      _scanField(id, "label", s.label ?? "", found);
+      // Layout-conditional rendering
+      const lay = s.layout ?? "bullets";
+      if (lay === "code") {
+        _scanField(id, "code", s.code ?? "", found);
+        // Structural: code layout MUST have non-empty code
+        if (!s.code || s.code.trim().length === 0) {
+          found.push({
+            slideId:            id,
+            type:               "FORBIDDEN_FINAL_PATTERN",
+            severity:           "CRITICAL",
+            message:            "Slide com layout=code sem bloco de código real",
+            resolutionStrategy: "Demote to bullets ou synth — não exportar CODE vazio",
+            field:              "code",
+            pattern:            "CODE_NO_CODE",
+            snippet:            (s.title ?? "").slice(0, 80),
+          });
+        }
+      } else if (lay === "comparison" || lay === "twocol") {
+        _scanField(id, "leftItems", (s.leftItems ?? []).join("\n"), found);
+        _scanField(id, "rightItems", (s.rightItems ?? []).join("\n"), found);
+      } else {
+        // bullets/cards/process/takeaways/etc render `items`
+        _scanField(id, "items", (s.items ?? []).join("\n"), found);
+      }
+    }
+  }
+  return found;
 }
 
 interface QAReport {
@@ -7337,7 +7525,7 @@ function runPptxQA(
               context: contam.reason,
               resolutionStrategy: "Código contaminado removido; slide convertido para bullets",
             });
-            modSlides[si] = { ...s, layout: "bullets", code: undefined };
+            modSlides[si] = demoteCodeLayout(s, id, `domain_contamination_${contam.reason}`);
             s = modSlides[si];
           } else {
             unfixedIssues.push({
@@ -7397,7 +7585,7 @@ function runPptxQA(
                 context: lang,
                 resolutionStrategy: "Bloco de código removido; slide renderizado como bullets",
               });
-              modSlides[si] = { ...s, layout: "bullets", code: undefined };
+              modSlides[si] = demoteCodeLayout(s, id, `incomplete_code_${lang}`);
               s = modSlides[si];
             } else {
               // v5.4.1 — register as FIXED (slide removido). Previously this
@@ -7746,8 +7934,10 @@ function l1VisualFix(
     case "EMPTY_SLIDE": {
       const rep = repairEmptySlide(s, moduleContent);
       if (isRenderableSlide(rep)) return rep;
+      // v5.7.0 — demote CÓDIGO label; this fallback bullets slide has no code.
       return {
-        ...s, layout: "bullets",
+        ...s, layout: "bullets", code: undefined,
+        label: _demoteCodeLabel(s.label),
         title: s.label || s.title || "Conteúdo",
         items: ["Consulte o material do módulo para este tópico."],
       };
@@ -7781,8 +7971,9 @@ function l1VisualFix(
       return { ...s, items: trimmed.slice(0, QA.MAX_BULLETS) };
     }
     case "CODE_TOO_LONG": {
+      // v5.7.0 — clean truncate, no continuation placeholder (forbidden final pattern).
       const lines = (s.code || "").split("\n").slice(0, QA.MAX_CODE_LINES);
-      return { ...s, code: lines.join("\n") + "\n-- ... (ver continuação)" };
+      return { ...s, code: lines.join("\n") };
     }
     case "LAYOUT_REPETITION": {
       const items = nonEmpty(s.items);
@@ -7873,7 +8064,8 @@ function l2Replan(s: Slide, issue: QAIssue, moduleContent: string): Slide[] {
         const p2: Slide = { ...s, title: `${s.title} (2/2)`, code: lines.slice(mid).join("\n") };
         if (isRenderableSlide(p1) && isRenderableSlide(p2)) return [p1, p2];
       }
-      return [{ ...s, code: lines.slice(0, QA.MAX_CODE_LINES).join("\n") + "\n-- ... (ver material)" }];
+      // v5.7.0 — clean truncate, no continuation placeholder.
+      return [{ ...s, code: lines.slice(0, QA.MAX_CODE_LINES).join("\n") }];
     }
     case "LAYOUT_REPETITION": {
       const candidates: Layout[] = ["cards", "diagram", "process", "timeline", "twocol", "bullets"];
@@ -7994,7 +8186,8 @@ Responda SOMENTE com JSON válido sem markdown:
       throw new Error(`LLM returned only ${newItems.length} usable items`);
     }
     // ── Post-rewrite domain veto ─────────────────────────────
-    const candidate: Slide = { ...s, layout: "bullets", items: newItems, code: undefined };
+    // v5.7.0 — also demote CÓDIGO label (rewritten candidate is bullets-only).
+    const candidate: Slide = { ...s, layout: "bullets", items: newItems, code: undefined, label: _demoteCodeLabel(s.label) };
     const contam2 = detectDomainContamination(candidate, allowedDomain, moduleTitle);
     if (contam2.contaminated) {
       console.warn(`[V5-QA-L3] Rejected rewrite (domain contamination: ${contam2.reason})`);
@@ -9073,6 +9266,40 @@ async function runPipeline(
     throw new PptxQAVetoError(veto);
   }
   tCheckpoint = tlog("veto_passed", tCheckpoint);
+
+  // ── v5.7.0 FORBIDDEN-PATTERN FINAL SAFETY NET ──────────────────────────
+  // Last-mile veto. After ALL repair/cascade/sanitize/dedup, scan every
+  // RENDERED field of every slide for the forbidden patterns enumerated in
+  // FORBIDDEN_FINAL_PATTERNS (e.g. "# ...", "código omitido", "continua").
+  // Also catches the structural class of bug "layout=code with no code".
+  // Emergency kill switch: PPTX_FORBIDDEN_VETO_DISABLED=1.
+  const forbiddenVetoDisabled =
+    (Deno.env.get("PPTX_FORBIDDEN_VETO_DISABLED") ?? "").trim() === "1";
+  if (!forbiddenVetoDisabled) {
+    const forbidden = scanFinalSlidesForForbiddenPatterns(allModuleSlides);
+    if (forbidden.length > 0) {
+      const totalSlidesNow = allModuleSlides.reduce(
+        (s, m) => s + m.filter(isRenderableSlide).length, 0);
+      console.warn(
+        `[FORBIDDEN-VETO] blocked=${forbidden.length} totalSlides=${totalSlidesNow} patterns=${
+          JSON.stringify(forbidden.map((i) => `${i.slideId}:${i.pattern}@${i.field}`))
+        }`,
+      );
+      tlog("forbidden_veto_blocked", tCheckpoint);
+      throw new PptxQAVetoError({
+        blocked:        true,
+        blockingIssues: forbidden,
+        totalSlides:    totalSlidesNow,
+        removedSlides:  0,
+      });
+    }
+    console.log(`[FORBIDDEN-VETO] passed — no forbidden final patterns detected`);
+  } else {
+    console.warn(
+      `[FORBIDDEN-VETO] DISABLED via PPTX_FORBIDDEN_VETO_DISABLED=1 — skipping last-mile scan`,
+    );
+  }
+  tCheckpoint = tlog("forbidden_veto_passed", tCheckpoint);
   // ─────────────────────────────────────────────────────────────────────────
 
   // Count actual total slides from generated content (for accurate footer numbers)
@@ -9421,19 +9648,29 @@ Deno.serve(async (req: Request) => {
 
     // v5.5.4 — MANDATORY final diagnostic log so future iterations can
     // confirm engine path WITHOUT having to scroll through the full log.
+    // v5.7.0 — extended with engine_function / modules_failed / total_slides.
+    const _slideCount = (repairDiag.slide_count as number) ?? 0;
+    const _modulesFailed = fallbackModuleNumbers.length;
+    const _fallbackReason = _modulesFailed > 0
+      ? "module_planner_rejected_or_validation_failed"
+      : null;
     console.log(
-      `[PPTX][DIAG-FINAL] engine_version=${ENGINE_VERSION} cache=miss fallback_used=false accepted_modules=${JSON.stringify(acceptedModuleNumbers)} fallback_modules=${JSON.stringify(fallbackModuleNumbers)} slide_count=${(repairDiag.slide_count as number) ?? 0} qa_status=${qaSummary.qa_status ?? "unknown"} dedup_dropped=${titleDedupDropCount} status=exported`,
+      `[PPTX][DIAG-FINAL] engine_function=export-pptx-v4 engine_version=${ENGINE_VERSION} cache=miss fallback_used=false fallback_reason=${_fallbackReason ?? "null"} modules_failed=${_modulesFailed} accepted_modules=${JSON.stringify(acceptedModuleNumbers)} fallback_modules=${JSON.stringify(fallbackModuleNumbers)} slide_count=${_slideCount} total_slides=${_slideCount} qa_status=${qaSummary.qa_status ?? "unknown"} dedup_dropped=${titleDedupDropCount} status=exported`,
     );
     return new Response(
       JSON.stringify({
         url: signedUrl.signedUrl,
         version: "v5",
         engine: "export-pptx-v4",
+        engine_function: "export-pptx-v4",  // v5.7.0 — explicit alias of `engine` for unambiguous logs
         engine_version: ENGINE_VERSION,
         status: "exported",
-        fallback_used: false,            // v4 never falls back internally
+        fallback_used: false,            // v4 never falls back to a different function internally
+        fallback_reason: _fallbackReason, // v5.7.0 — null on full success; string when ≥1 module fell back to legacy processBatch
+        modules_failed: _modulesFailed,   // v5.7.0 — strictly = fallbackModuleNumbers.length
         cache: "miss",                   // every export is a fresh build (filename has timestamp)
-        slide_count: (repairDiag.slide_count as number) ?? 0,
+        slide_count: _slideCount,        // canonical
+        total_slides: _slideCount,       // v5.7.0 — alias for downstream compat
         blocking_issues: [],             // empty on success path (veto would 422 otherwise)
         qa: qaSummary,                   // status / fixed / unfixed / removed_slides / breakdowns
         accepted_modules: acceptedModuleNumbers,
@@ -9453,27 +9690,45 @@ Deno.serve(async (req: Request) => {
     // ── QA VETO → 422 with structured details (architectural correction v5.1) ──
     if (error instanceof PptxQAVetoError) {
       const v = error.result;
+      const _hasForbidden = v.blockingIssues.some((i) => i.type === "FORBIDDEN_FINAL_PATTERN");
       console.warn(
-        `[V5-QA-VETO] HTTP 422 — blocking=${v.blockingIssues.length} totalSlides=${v.totalSlides}`,
+        `[V5-QA-VETO] HTTP 422 — blocking=${v.blockingIssues.length} totalSlides=${v.totalSlides} forbiddenFinalPatterns=${_hasForbidden}`,
       );
       console.log(
-        `[PPTX][DIAG-FINAL] engine_version=${ENGINE_VERSION} cache=miss fallback_used=false status=blocked blocking=${v.blockingIssues.length} total_slides=${v.totalSlides}`,
+        `[PPTX][DIAG-FINAL] engine_function=export-pptx-v4 engine_version=${ENGINE_VERSION} cache=miss fallback_used=false fallback_reason=qa_veto modules_failed=0 status=blocked blocking=${v.blockingIssues.length} total_slides=${v.totalSlides} forbidden_final_patterns=${_hasForbidden}`,
       );
       return new Response(
         JSON.stringify({
           error:           "PPTX export blocked by quality veto",
           code:            "PPTX_QA_VETO",
           engine:          "export-pptx-v4",
+          engine_function: "export-pptx-v4",   // v5.7.0 alias
           engine_version:  ENGINE_VERSION,
           status:          "blocked",
           fallback_used:   false,
+          fallback_reason: "qa_veto",          // v5.7.0 — semantic veto, not infra
+          modules_failed:  0,                  // v5.7.0 — modules_failed only counts legacy fallback, not QA blocks
           cache:           "miss",
-          totalSlides:     v.totalSlides,
-          removedSlides:   v.removedSlides,
-          blockingIssues:  v.blockingIssues.map((i) => ({
+          totalSlides:     v.totalSlides,      // legacy field — keep for compat
+          total_slides:    v.totalSlides,      // v5.7.0 snake_case alias
+          removedSlides:   v.removedSlides,    // legacy
+          slide_count:     v.totalSlides - v.removedSlides, // v5.7.0 snake_case companion
+          blockingIssues:  v.blockingIssues.map((i) => ({   // legacy camelCase shape
             slideId: i.slideId,
             type:    i.type,
             message: i.message,
+            // v5.7.0 — extended fields when present (FORBIDDEN_FINAL_PATTERN populates these)
+            ...(i.field   ? { field:   i.field   } : {}),
+            ...(i.pattern ? { pattern: i.pattern } : {}),
+            ...(i.snippet ? { snippet: i.snippet } : {}),
+          })),
+          blocking_issues: v.blockingIssues.map((i) => ({   // v5.7.0 snake_case alias for new UI
+            slide_id: i.slideId,
+            type:     i.type,
+            message:  i.message,
+            field:    i.field   ?? null,
+            pattern:  i.pattern ?? null,
+            snippet:  i.snippet ?? null,
           })),
           hint:
             "O conteúdo gerado contém problemas críticos (placeholders, código incompleto, contaminação de domínio ou densidade extrema). Tente regenerar o curso ou ajustar os módulos.",
