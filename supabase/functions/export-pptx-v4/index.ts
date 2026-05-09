@@ -735,7 +735,10 @@ function repairIncompleteCodeExample(
       const args = params
         .split(",")
         .map((p) => p.trim().split(/[:=]/)[0].trim())
-        .filter((n) => n && n !== "self" && n !== "cls")
+        // Strip leading `*`/`**` from `*args`/`**kwargs` then drop them —
+        // we cannot safely synthesize splat values for an educational demo.
+        .map((n) => n.replace(/^\*{1,2}/, ""))
+        .filter((n) => n && n !== "self" && n !== "cls" && n !== "args" && n !== "kwargs")
         .map((n) => {
           const lower = n.toLowerCase();
           if (/^lista|^list|seq|items|valores|numeros|carrinho/.test(lower)) return `[10, 20, 30]`;
