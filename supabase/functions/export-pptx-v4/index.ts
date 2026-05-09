@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.5";
+const ENGINE_VERSION = "5.7.6";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -1671,6 +1671,90 @@ function runNarrativeAlignmentScan(
         });
       }
     }
+  }
+  return issues;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// v5.7.6 — Module-scope minimum code coverage HARD GATE
+// User contract: in a Python course, every TECHNICAL module MUST ship
+// at least 1 real CODE slide. Silent demotions (CODE → CONCEPT) from
+// the v5.5.8 repair/synth fallback chain are no longer acceptable: when
+// demotion strips the only code slide from a technical module, this
+// gate fires MODULE_CODE_COVERAGE_MISSING (HARD_CRITICAL) and qaVeto
+// returns 422 with the affected module list — instead of shipping a
+// "clean" deck whose code examples were silently removed.
+//
+// Pipeline contract for code slides remains: repair → synthesize → demote.
+// This gate runs at the END (post-cascade, pre-veto) so it observes the
+// FINAL deck shape, not intermediate states. A module that lost its only
+// code slide via demotion will be caught and BLOCK the export.
+// ─────────────────────────────────────────────────────────────────────
+function validateMinimumCodeCoverageByModule(
+  allModuleSlides: Slide[][],
+  moduleTitlesArr: string[],
+  courseTitle: string,
+): QAIssue[] {
+  const issues: QAIssue[] = [];
+  const domain = inferCourseDomain(courseTitle);
+  // Only enforce for explicitly code-heavy domains. Extend the set when
+  // the user signals (sql/javascript/java are natural candidates).
+  const ENFORCE_DOMAINS: ReadonlySet<ContentDomain> = new Set<ContentDomain>([
+    "python",
+  ]);
+  if (!ENFORCE_DOMAINS.has(domain)) {
+    console.log(
+      `[MODULE-CODE-COVERAGE] skipped — domain=${domain} not in enforce-list`,
+    );
+    return issues;
+  }
+  // Modules whose title is purely meta (intro-to-course, conclusion,
+  // takeaways) are exempt. A regular "Introdução a Python" / "Fundamentos"
+  // module is NOT exempt — even an introduction module must ship at least
+  // one code example (hello-world, basic syntax, etc).
+  const META_MODULE_RE =
+    /^(introdu[çc][ãa]o\s+(ao\s+curso|geral)|apresenta[çc][ãa]o|bem-vindo|sobre\s+o\s+curso|índice|sumário|conclus[ãa]o|encerramento|recapitula[çc][ãa]o|aprendizados?\s+finais|pr[óo]ximos\s+passos|takeaways?|síntese|consolida[çc][ãa]o)/i;
+  const missing: Array<{ index: number; title: string }> = [];
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const moduleTitle = (moduleTitlesArr[mi] ?? "").trim();
+    if (META_MODULE_RE.test(moduleTitle)) {
+      console.log(
+        `[MODULE-CODE-COVERAGE] M${mi + 1} ("${moduleTitle}") skipped — meta module`,
+      );
+      continue;
+    }
+    let codeSlides = 0;
+    for (const s of allModuleSlides[mi]) {
+      if (s.layout === "code" && s.code && s.code.trim().length >= 10) {
+        codeSlides++;
+      }
+    }
+    console.log(
+      `[MODULE-CODE-COVERAGE] M${mi + 1} ("${moduleTitle}") codeSlides=${codeSlides}`,
+    );
+    if (codeSlides === 0) {
+      missing.push({ index: mi + 1, title: moduleTitle });
+    }
+  }
+  if (missing.length > 0) {
+    for (const m of missing) {
+      issues.push({
+        slideId: `M${m.index}.MODULE`,
+        type: "MODULE_CODE_COVERAGE_MISSING",
+        severity: "CRITICAL",
+        message:
+          `Módulo ${m.index} ("${m.title}") não contém nenhum slide de código real — em curso Python isso indica falha de síntese ou demoção silenciosa de CODE → CONCEPT/PROCESSO`,
+        resolutionStrategy:
+          "Bloqueio de export — regenerar o módulo para forçar exemplo de código completo (def/class/import/etc com ≥10 caracteres no campo code)",
+      });
+    }
+    console.warn(
+      `[MODULE-CODE-COVERAGE] BLOCKED — ${missing.length} módulo(s) técnico(s) sem código: ${missing.map((m) => `M${m.index}`).join(", ")}`,
+    );
+  } else {
+    console.log(
+      `[MODULE-CODE-COVERAGE] PASSED — todos os módulos técnicos contêm ≥1 slide de código real`,
+    );
   }
   return issues;
 }
@@ -7801,7 +7885,9 @@ type QAIssueType =
   // ── v5.7.0 Final safety net (forbidden-pattern scan) ────────
   | "FORBIDDEN_FINAL_PATTERN"
   // ── v5.7.4 Narrative/title↔code alignment ────────────────────
-  | "NARRATIVE_MISALIGNMENT";
+  | "NARRATIVE_MISALIGNMENT"
+  // ── v5.7.6 Module-scope minimum code coverage (Python) ───────
+  | "MODULE_CODE_COVERAGE_MISSING";
 
 interface QAIssue {
   slideId:            string;
@@ -9161,6 +9247,10 @@ const HARD_CRITICAL_TYPES: ReadonlySet<QAIssueType> = new Set<QAIssueType>([
   // uses a different, mutually exclusive entity (Carro). Pure planner
   // bug; cannot be silently demoted.
   "NARRATIVE_MISALIGNMENT",
+  // v5.7.6 — Technical Python module shipped without any real CODE
+  // slide. Catches the case where repair/synth fallbacks demoted the
+  // module's only code slide to CONCEPT/PROCESSO (silent failure).
+  "MODULE_CODE_COVERAGE_MISSING",
 ]);
 
 function qaVeto(
@@ -10034,6 +10124,27 @@ async function runPipeline(
     console.log(`[NARRATIVE-ALIGN] Clean — title↔code domains aligned`);
   }
   runJsonApiWeaknessScan(allModuleSlides, moduleTitlesArr, courseTitle);
+
+  // ── v5.7.6 — MODULE CODE COVERAGE HARD GATE ───────────────────────────
+  // Final pre-veto check: every TECHNICAL Python module must ship ≥1 real
+  // code slide. Catches silent demotion (CODE → CONCEPT) by repair-loop
+  // fallbacks. Pushes MODULE_CODE_COVERAGE_MISSING into the cascade report
+  // so qaVeto blocks export with structured details per affected module.
+  const moduleCoverageIssues = validateMinimumCodeCoverageByModule(
+    allModuleSlides,
+    moduleTitlesArr,
+    courseTitle,
+  );
+  if (moduleCoverageIssues.length > 0) {
+    console.warn(
+      `[MODULE-CODE-COVERAGE] ${moduleCoverageIssues.length} module(s) missing code — adding to QA report`,
+    );
+    cascadeReport = {
+      ...cascadeReport,
+      status: "FAILED",
+      issues: [...cascadeReport.issues, ...moduleCoverageIssues],
+    };
+  }
 
   // ── QA VETO ─────────────────────────────────────────────────────────────
   // Hard gate — blocks export if any CRITICAL hard-constraint issue
