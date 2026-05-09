@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.3";
+const ENGINE_VERSION = "5.7.4";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -1301,6 +1301,43 @@ function repairVisualTruncationInItems(slide: Slide, slideNum: number | string):
   return touched ? out : slide;
 }
 
+// ── v5.7.4 — code normalization for validator/repair alignment ──
+// All downstream walkers (validateSemanticCodeCompleteness, repair patterns,
+// narrative alignment) assume top-level Python code with `\n` line endings
+// and zero common leading whitespace. The planner sometimes emits code with
+// CRLF (Windows) or with a uniform 2/4-space prefix (when wrapped inside a
+// markdown list/quote). Without normalization, `^def\s+` regex misses the
+// def at column N and the validator silently passes broken code.
+function normalizeCodeForValidation(code: string): string {
+  if (!code) return code;
+  let s = code.replace(/\r\n?/g, "\n");
+  // Trim trailing whitespace on every line so `^\s*$` blanks normalize.
+  s = s.split("\n").map((l) => l.replace(/[ \t]+$/g, "")).join("\n");
+  // Compute common leading whitespace across non-blank lines and dedent.
+  const lines = s.split("\n");
+  let minIndent = Infinity;
+  for (const ln of lines) {
+    if (!ln.trim()) continue;
+    const m = ln.match(/^[ \t]*/);
+    const ind = m ? m[0].length : 0;
+    if (ind < minIndent) minIndent = ind;
+    if (minIndent === 0) break;
+  }
+  if (minIndent > 0 && minIndent !== Infinity) {
+    s = lines.map((ln) => ln.slice(minIndent)).join("\n");
+  }
+  return s;
+}
+
+// djb2 short hash for [FINAL-CODE-SNAPSHOT] identification. Cryptographically
+// useless; perfectly fine for "did the same code travel through both phases".
+function shortCodeHash(s: string): string {
+  if (!s) return "00000000";
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(16).padStart(8, "0").slice(0, 8);
+}
+
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
 // v5.5.5: accepts moduleKind + prevSymbols for semantic code repair.
 // v5.5.6: prevSymbols is now full module accumulator, not just last slide.
@@ -1341,6 +1378,18 @@ function applyFinalGuardrails(
         `[CODE-PLACEHOLDER-STRIP] slide=${slideNum} removed trailing comment placeholder`,
       );
       out = { ...out, code: stripped };
+    }
+  }
+  // v5.7.4 — Guardrail 1d: normalize code BEFORE validator/repair walkers run.
+  // Eliminates the silent-bypass bug where CRLF or uniform leading indent made
+  // `^def\s+` regex miss the top-level def and the validator passed broken code.
+  if (out.code && out.code.trim()) {
+    const normalized = normalizeCodeForValidation(out.code);
+    if (normalized !== out.code) {
+      console.log(
+        `[CODE-NORMALIZE] slide=${slideNum} crlf_or_dedent_applied beforeLen=${out.code.length} afterLen=${normalized.length}`,
+      );
+      out = { ...out, code: normalized };
     }
   }
   // v5.5.8 — Guardrail 2 INVERTED: code layout without code → try to SYNTHESIZE
@@ -1470,7 +1519,171 @@ function applyFinalGuardrails(
   // Strips trailing "…" / "..." from items/leftItems/rightItems and cleans
   // dangling prepositions. Pre-render, deterministic, no LLM.
   out = repairVisualTruncationInItems(out, slideNum);
+
+  // v5.7.4 — [FINAL-CODE-SNAPSHOT] — last observable point before render.
+  // Static analysis confirmed (commit doc v5.7.4): no `slide.code` mutation
+  // happens between `kept.push(s)` (post-guardrail) and `renderModuleCover`/
+  // `renderCode` (the actual render). So this is the ground truth for what
+  // the user will see in the PPTX. If snapshot says hasReturnInDef=true and
+  // PPTX shows no return → deploy/cache problem, not code problem.
+  if (out.layout === "code" && out.code && out.code.trim()) {
+    const finalCode = out.code;
+    const finalHash = shortCodeHash(finalCode);
+    // hasReturnInDef: any top-level `def` followed by a body containing `return`
+    // before indent drops back to 0. Cheap structural scan.
+    let hasReturnInDef = false;
+    {
+      const ls = finalCode.split("\n");
+      for (let i = 0; i < ls.length; i++) {
+        if (!/^def\s+/.test(ls[i])) continue;
+        for (let j = i + 1; j < ls.length; j++) {
+          const bl = ls[j];
+          if (bl.trim() === "") continue;
+          const ind = bl.match(/^(\s*)/)![1].length;
+          if (ind === 0) break;
+          if (/^\s*return\b/.test(bl)) { hasReturnInDef = true; break; }
+        }
+        if (hasReturnInDef) break;
+      }
+    }
+    // hasCallDemo: any top-level line that calls one of the defined fns
+    // (with our injected `resultado = fn(...)` / `print(fn(...))` form).
+    let hasCallDemo = false;
+    {
+      const fns: string[] = [];
+      const fnRe = /^def\s+([a-z_][\w]*)\s*\(/gm;
+      let m: RegExpExecArray | null;
+      while ((m = fnRe.exec(finalCode)) !== null) fns.push(m[1]);
+      const ls = finalCode.split("\n");
+      for (const ln of ls) {
+        if (/^\s/.test(ln)) continue; // top-level only
+        for (const fn of fns) {
+          // call form: `fn(...)` standalone OR `<var> = fn(...)` OR `print(fn(...))`
+          if (new RegExp(`(?<![\\w.])${fn}\\s*\\(`).test(ln) && !/^def\s+/.test(ln)) {
+            hasCallDemo = true; break;
+          }
+        }
+        if (hasCallDemo) break;
+      }
+    }
+    console.log(
+      `[FINAL-CODE-SNAPSHOT] slide=${slideNum} title=${JSON.stringify((out.title ?? "").slice(0, 60))} codeHash=${finalHash} codeLen=${finalCode.length} hasReturnInDef=${hasReturnInDef} hasCallDemo=${hasCallDemo} layout=${out.layout}`,
+    );
+  }
   return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// v5.7.4 — Narrative ↔ code alignment scan
+// Detects the "Livro/Ebook title + class Carro code" class of bug. Pure
+// planner-side defect; we cannot rewrite without an LLM call. Strategy:
+// emit a HARD_CRITICAL `NARRATIVE_MISALIGNMENT` issue and let qaVeto
+// block the export with structured details so the user can regenerate.
+//
+// Conservative on FPs: only flags when the slide title contains an
+// EXPLICIT QUOTED entity (e.g. `Classe "Livro" e subclasse "Ebook"`)
+// and the code defines a `class XXX:` whose name matches NONE of the
+// quoted entities (case-insensitive substring both ways).
+// ─────────────────────────────────────────────────────────────────────
+function runNarrativeAlignmentScan(
+  allModuleSlides: Slide[][],
+  moduleTitlesArr: string[],
+): QAIssue[] {
+  const issues: QAIssue[] = [];
+  const QUOTED_ENTITY_RE = /["“”']([A-Z][A-Za-zÀ-ÿ]{2,})["“”']/g;
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const moduleTitle = moduleTitlesArr[mi] ?? "";
+    for (let si = 0; si < allModuleSlides[mi].length; si++) {
+      const s = allModuleSlides[mi][si];
+      if (s.layout !== "code" || !s.code || !s.code.trim()) continue;
+      const title = s.title ?? "";
+      // Extract quoted entities from BOTH slide title and module title
+      const quotedEntities: string[] = [];
+      let q: RegExpExecArray | null;
+      QUOTED_ENTITY_RE.lastIndex = 0;
+      while ((q = QUOTED_ENTITY_RE.exec(title)) !== null) quotedEntities.push(q[1]);
+      QUOTED_ENTITY_RE.lastIndex = 0;
+      while ((q = QUOTED_ENTITY_RE.exec(moduleTitle)) !== null) quotedEntities.push(q[1]);
+      if (quotedEntities.length === 0) continue;
+      // Extract class/def names from the code, INCLUDING parent class names
+      // (e.g. `class Cachorro(Animal):` contributes both "Cachorro" and
+      // "Animal"). Without parent extraction the scan over-flagged inheritance
+      // examples where the title named the base class only.
+      const codeIdents: string[] = [];
+      const classRe = /^\s*class\s+([A-Z][A-Za-z0-9_]*)(?:\s*\(\s*([A-Z][A-Za-z0-9_,\s]*)\s*\))?/gm;
+      let cm: RegExpExecArray | null;
+      while ((cm = classRe.exec(s.code)) !== null) {
+        codeIdents.push(cm[1]);
+        if (cm[2]) {
+          for (const parent of cm[2].split(",").map((p) => p.trim()).filter(Boolean)) {
+            codeIdents.push(parent);
+          }
+        }
+      }
+      if (codeIdents.length === 0) continue; // no class defined; skip
+      // Match: any quoted entity ≈ any code ident (case-insensitive substring
+      // either direction). E.g. "Livro" ≈ "Livro", "LivroDigital" ≈ "Livro".
+      const matched = codeIdents.some((id) =>
+        quotedEntities.some(
+          (e) =>
+            id.toLowerCase().includes(e.toLowerCase()) ||
+            e.toLowerCase().includes(id.toLowerCase()),
+        ),
+      );
+      if (!matched) {
+        const slideId = `M${mi + 1}.S${si + 1}`;
+        const msg =
+          `Título cita entidade(s) ${JSON.stringify(quotedEntities)} mas código define ${JSON.stringify(codeIdents)} — domínios mutuamente exclusivos`;
+        console.warn(`[NARRATIVE-ALIGN] ${slideId} MISMATCH ${msg}`);
+        issues.push({
+          slideId,
+          type: "NARRATIVE_MISALIGNMENT",
+          severity: "CRITICAL",
+          message: msg,
+          resolutionStrategy:
+            "Bloqueio de export — planner emitiu código de domínio diferente do título; usuário deve regenerar este módulo",
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+// v5.7.4 — Module-scope JSON/API technical-token presence check (WARN only,
+// no veto). For modules classified as `json_apis`, verify at least one slide
+// mentions a recognizable HTTP/JSON token. Diagnostic signal that the
+// planner's content for that module is too conceptual.
+function runJsonApiWeaknessScan(
+  allModuleSlides: Slide[][],
+  moduleTitlesArr: string[],
+  courseTitle: string,
+): void {
+  const TOK_RE = /\b(requests\.|response\.status|response\.json|http\.|httpx|urllib|\.json\(\)|fetch\(|axios|api[._-]?key|GET\s|POST\s|application\/json|endpoint)/i;
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const mTitle = moduleTitlesArr[mi] ?? "";
+    const rule = getModuleRule(courseTitle, mTitle);
+    if (!rule || rule.kind !== "json_apis") continue;
+    let hits = 0;
+    for (const s of allModuleSlides[mi]) {
+      const blob = [
+        s.title ?? "",
+        s.code ?? "",
+        ...(s.items ?? []).map(String),
+        ...(s.leftItems ?? []).map(String),
+        ...(s.rightItems ?? []).map(String),
+      ].join("\n");
+      if (TOK_RE.test(blob)) hits++;
+    }
+    if (hits === 0) {
+      console.warn(
+        `[NARRATIVE-WEAK-JSON] module=${mi + 1} title=${JSON.stringify(mTitle.slice(0, 60))} kind=json_apis tokenHits=0 → planner output is too conceptual; recommend regenerating module`,
+      );
+    } else {
+      console.log(
+        `[NARRATIVE-WEAK-JSON] module=${mi + 1} kind=json_apis tokenHits=${hits} → ok`,
+      );
+    }
+  }
 }
 
 // detectHeaderPromotionLeak — diagnostic scan AFTER region assignment.
@@ -7560,7 +7773,9 @@ type QAIssueType =
   // ── v5.4.0 Technical Preservation Layer ─────────────────────
   | "TECHNICAL_TOKEN_LOSS"
   // ── v5.7.0 Final safety net (forbidden-pattern scan) ────────
-  | "FORBIDDEN_FINAL_PATTERN";
+  | "FORBIDDEN_FINAL_PATTERN"
+  // ── v5.7.4 Narrative/title↔code alignment ────────────────────
+  | "NARRATIVE_MISALIGNMENT";
 
 interface QAIssue {
   slideId:            string;
@@ -8916,6 +9131,10 @@ const HARD_CRITICAL_TYPES: ReadonlySet<QAIssueType> = new Set<QAIssueType>([
   // token loss after all repair passes. Preservation layer was either
   // bypassed or input was already corrupted upstream — block export.
   "TECHNICAL_TOKEN_LOSS",
+  // v5.7.4 — Slide title names a domain entity (Livro/Ebook) but code
+  // uses a different, mutually exclusive entity (Carro). Pure planner
+  // bug; cannot be silently demoted.
+  "NARRATIVE_MISALIGNMENT",
 ]);
 
 function qaVeto(
@@ -9770,6 +9989,25 @@ async function runPipeline(
   } else {
     console.log(`[TECH-TOKEN-QA] Clean — no technical token damage detected`);
   }
+
+  // ── v5.7.4 — NARRATIVE ALIGNMENT + JSON/API WEAKNESS ──────────────────
+  // Final pre-veto scan: catches the "Livro/Ebook title + class Carro code"
+  // class of bug (HARD_CRITICAL → veto) and emits diagnostic warnings for
+  // json_apis modules that lack any HTTP/JSON token (no veto).
+  const narrativeIssues = runNarrativeAlignmentScan(allModuleSlides, moduleTitlesArr);
+  if (narrativeIssues.length > 0) {
+    console.warn(
+      `[NARRATIVE-ALIGN] ${narrativeIssues.length} narrative misalignment(s) detected — adding to QA report`,
+    );
+    cascadeReport = {
+      ...cascadeReport,
+      status: "FAILED",
+      issues: [...cascadeReport.issues, ...narrativeIssues],
+    };
+  } else {
+    console.log(`[NARRATIVE-ALIGN] Clean — title↔code domains aligned`);
+  }
+  runJsonApiWeaknessScan(allModuleSlides, moduleTitlesArr, courseTitle);
 
   // ── QA VETO ─────────────────────────────────────────────────────────────
   // Hard gate — blocks export if any CRITICAL hard-constraint issue
