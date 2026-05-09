@@ -1,0 +1,286 @@
+Precisamos corrigir de uma vez a confusão entre engines e os últimos problemas recorrentes do export PPTX.
+
+Diagnóstico crítico:
+Descobrimos que o frontend estava chamando primeiro export-pptx-v6, enquanto a maior parte das melhorias recentes foi implementada no export-pptx-v4, que internamente é o motor v5.x.
+
+Isso causou testes inconsistentes, perda de tempo e resultados contraditórios.
+
+Objetivo desta rodada:
+1. garantir que o frontend use o motor correto;
+2. impedir que engines antigas ou paralelas mascarem bugs;
+3. eliminar definitivamente CODE sem código real;
+4. eliminar definitivamente "# ...";
+5. preservar toda a arquitetura já estabilizada.
+
+NÃO mexer em:
+- billing;
+- schema Supabase;
+- rotas públicas desnecessariamente;
+- Supabase tables;
+- design system visual;
+- renderer core, salvo validação mínima de integridade.
+
+========================================
+1. DEFINIR ENGINE CANÔNICA
+========================================
+
+A engine canônica para export PPTX deve ser:
+
+export-pptx-v4
+com engine interna v5.x mais recente.
+
+Mesmo que o nome da function seja v4, ela é o motor estabilizado.
+
+O frontend NÃO deve chamar export-pptx-v6 como primeira opção.
+
+Alterar ExportButtons.tsx para:
+
+1º chamar export-pptx-v4;
+2º se erro de infraestrutura real:
+   - timeout;
+   - 5xx;
+   - network error;
+   então fallback opcional para v3 ou v6, se ainda existir.
+3º se erro 422 / QA_VETO:
+   - hard stop;
+   - não cair em fallback.
+
+Adicionar log no browser:
+
+[PPTX-FRONTEND]
+preferredEngine=export-pptx-v4
+fallbackAllowedOnlyFor=infra_failure
+qaVetoFallback=false
+
+========================================
+2. NÃO USAR v6 SILENCIOSAMENTE
+========================================
+
+Se export-pptx-v6 continuar disponível:
+- não pode ser chamado silenciosamente;
+- não pode ser default;
+- não pode mascarar erro;
+- não pode gerar PPTX quando v5/v4 vetar qualidade.
+
+Adicionar aviso se v6 for usado:
+
+[PPTX-FRONTEND-WARN]
+export-pptx-v6 used only as infra fallback
+
+========================================
+3. DIAGNÓSTICO FINAL OBRIGATÓRIO
+========================================
+
+Todo PPTX gerado deve retornar/mostrar:
+
+engine_function
+engine_version
+fallback_used
+fallback_reason
+qa_status
+modules_failed
+accepted_modules
+fallback_modules
+total_slides
+
+Exemplo:
+
+[PPTX][DIAG]
+{
+  engine_function: "export-pptx-v4",
+  engine_version: "5.5.x",
+  fallback_used: false,
+  fallback_reason: null,
+  qa_status: "PASSED",
+  modules_failed: 0,
+  accepted_modules: 8,
+  fallback_modules: [],
+  total_slides: 48
+}
+
+Sem esse diagnóstico, fica impossível testar com confiança.
+
+========================================
+4. ELIMINAR "# ..." DEFINITIVAMENTE
+========================================
+
+Nenhum PPTX final pode conter:
+
+# ...
+...
+continua
+código omitido
+restante omitido
+
+Criar/fortalecer:
+
+ELLIPSIS_CODE_PLACEHOLDER
+
+Regra:
+Se detectar em bloco de código:
+1. tentar repair contextual;
+2. se repair falhar, bloquear com QA_VETO;
+3. não converter silenciosamente para bullets;
+4. não exportar.
+
+Adicionar safety-net final após render plan, antes de export:
+
+scanFinalSlidesForForbiddenPatterns()
+
+Se encontrar:
+- "# ..."
+- slide CODE sem code
+- placeholder técnico
+
+abortar export com 422.
+
+========================================
+5. CODE SEM CÓDIGO REAL É INVÁLIDO
+========================================
+
+Se slide está rotulado como CÓDIGO, ele precisa conter bloco de código real.
+
+Regra:
+CODE slide precisa ter:
+- code block;
+- >= 4 linhas úteis;
+- sintaxe detectável;
+- começo/meio/fim;
+- exemplo coerente com o título.
+
+Se não houver código:
+- gerar snippet real contextual;
+OU
+- converter explicitamente para CONCEITO/PROCESSO com log;
+MAS NÃO manter label CÓDIGO.
+
+Adicionar log:
+
+[CODE-SLIDE-INTEGRITY]
+slide=...
+label=CODE
+hasCode=true|false
+action=keep|repair|convert|veto
+
+========================================
+6. REPAIR NÃO PODE REMOVER VALOR TÉCNICO
+========================================
+
+Quando código estiver incompleto, o repair deve tentar completar, não remover.
+
+Prioridade:
+1. completar exemplo;
+2. sintetizar exemplo mínimo;
+3. converter explicitamente se não for possível;
+4. vetar se ainda estiver inconsistente.
+
+Não quero:
+código incompleto → bullets genéricos.
+
+Quero:
+código incompleto → código completo.
+
+========================================
+7. REPAIR CONTEXTUAL POR DOMÍNIO
+========================================
+
+Para exemplos recorrentes:
+
+Pizzaria:
+- deve terminar com return;
+- deve ter exemplo de uso.
+
+POO:
+- deve instanciar objeto;
+- deve chamar método real;
+- não apenas print(objeto).
+
+JSON/API:
+- deve ter requests.get() ou json.dumps()/loads();
+- não terminar com # ...
+
+Arquivos:
+- deve ter with open();
+- try/except coerente.
+
+Logging:
+- deve ter logging.basicConfig();
+- logging.info/debug/error;
+- retorno ou exemplo de chamada.
+
+Unittest:
+- deve ter import unittest;
+- class Test...;
+- método test_*;
+- assert.
+
+========================================
+8. CORRIGIR SLIDES PARTE 2 GENÉRICOS
+========================================
+
+Slides como:
+- "(II)"
+- "2/2"
+- "parte 2"
+
+só podem existir se trouxerem conteúdo novo e concreto.
+
+Se forem genéricos:
+- merge;
+- rewrite;
+- drop.
+
+Exemplos ruins:
+- "Organizar projetos Python com estrutura padronizada..."
+- "Facilita manutenção..."
+- "Promove colaboração..."
+
+Esses textos são takeaways, não slide de processo.
+
+========================================
+9. FRONTEND: NÃO CONFUNDIR NOMES
+========================================
+
+No frontend, exibir claramente qual engine gerou o PPTX.
+
+Exemplo no console:
+
+[PPTX] export-pptx-v4 / engine_version=5.5.x successful
+
+Não exibir:
+[PPTX] v6 successful
+
+quando o usuário está testando v5.
+
+Isso causou confusão real.
+
+========================================
+10. CRITÉRIO DE ACEITE
+========================================
+
+Gerar novamente:
+"Introdução à Programação em Python"
+
+Aceitável somente se:
+
+- console mostrar export-pptx-v4 como engine usada;
+- engine_version for 5.5.x ou superior;
+- fallback_used=false;
+- modules_failed=0;
+- nenhum "# ..." no PPTX;
+- nenhum slide CÓDIGO sem bloco de código;
+- Módulo 6 continuar POO;
+- Módulo 7 tiver exemplos reais ou conceitos coerentes;
+- Módulo 8 não tiver parte 2 genérica fraca;
+- tokens técnicos preservados;
+- QA não for mascarado por fallback.
+
+Prioridade absoluta:
+1. engine correta no frontend;
+2. diagnóstico transparente;
+3. impedir fallback silencioso;
+4. bloquear código incompleto;
+5. manter estabilidade atual.
+
+Depois dessa correção, todos os testes precisam ser comparáveis.
+Chega de testar engines diferentes sem perceber.
