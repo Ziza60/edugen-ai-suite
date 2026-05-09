@@ -336,60 +336,12 @@ interface ModuleRule {
 }
 
 // Order matters — first match wins. Patterns are PT/EN tolerant.
+// v5.6.0 — Order: most-specific first, fundamentals last (catch-all).
+// Bug fixed: "Introdução à POO" was matching `fundamentals` (position 1)
+// before `oop` (position 6) because `introdu[çc][aã]o` appears in both.
+// New order ensures POO/tests/best_practices/json/files/data/flow are all
+// checked before the generic fundamentals pattern.
 const PYTHON_MODULE_RULES: ModuleRule[] = [
-  {
-    kind: "fundamentals",
-    matchTitle: /(fundament|introdu[çc][aã]o|básico|basico|primeir|getting started|basics)/i,
-    allow: ["variáveis", "tipos primitivos", "operadores", "input/output", "expressões", "print", "type()"],
-    deny: ["SQL", "CREATE TABLE", "DROP", "TRUNCATE", "JOIN", "banco de dados", "POO", "herança"],
-    denyPatterns: [
-      /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE|SELECT\s+.+\s+FROM|INSERT\s+INTO|JOIN)\b/i,
-    ],
-  },
-  {
-    kind: "control_flow",
-    matchTitle: /(controle\s+de\s+fluxo|control\s+flow|fun[çc][oõ]es|functions|loops?|condicionais)/i,
-    allow: ["if/elif/else", "for/while", "def", "parâmetros", "return", "escopo local/global"],
-    deny: ["SQL", "CREATE TABLE", "JOIN", "banco de dados", "classe POO", "herança"],
-    denyPatterns: [
-      /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE|SELECT\s+.+\s+FROM|INSERT\s+INTO|JOIN)\b/i,
-    ],
-  },
-  {
-    kind: "data_structures",
-    matchTitle: /(estruturas?\s+de\s+dados|data\s+structures|listas|dicion[áa]rios|tuplas|conjuntos|sets)/i,
-    allow: ["listas", "dicionários", "tuplas", "conjuntos", "append()", "keys()", "values()", "set()"],
-    deny: [
-      "CREATE TABLE", "ALTER TABLE", "DROP TABLE", "TRUNCATE",
-      "SELECT", "INSERT", "UPDATE", "DELETE", "JOIN",
-      "banco de dados", "tabela SQL", "chave primária", "chave estrangeira",
-    ],
-    denyPatterns: [
-      /\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE)\b/i,
-      /\b(SELECT|INSERT|UPDATE|DELETE)\s+.+\s+(FROM|INTO|SET|WHERE)\b/i,
-      /\bJOIN\b/i,
-      /banco\s+de\s+dados\s+relacional/i,
-      /chave\s+(prim[áa]ria|estrangeira)/i,
-    ],
-  },
-  {
-    kind: "files_exceptions",
-    matchTitle: /(arquivos|files?|exce[çc][oõ]es|exceptions?|tratamento\s+de\s+erros)/i,
-    allow: ["open()", "with open()", "read()", "write()", "try", "except", "finally", "FileNotFoundError", "IOError", "modos 'r'/'w'/'a'/'b'"],
-    deny: ["SQL", "CREATE TABLE", "JOIN", "POO avançado"],
-    denyPatterns: [
-      /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE|SELECT\s+.+\s+FROM)\b/i,
-    ],
-  },
-  {
-    kind: "json_apis",
-    matchTitle: /(json|api[s]?|requests?|http|web\s+services?)/i,
-    allow: ["json.loads()", "json.dumps()", "json.load()", "json.dump()", "requests.get()", "requests.post()", "response.json()", "HTTP status code"],
-    deny: ["SQL CREATE", "tabelas", "JOIN"],
-    denyPatterns: [
-      /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE)\b/i,
-    ],
-  },
   {
     kind: "oop",
     matchTitle: /(POO|orientad[ao]\s+a\s+objet|object\s*oriented|classes?\s+e\s+objet|heran[çc]a)/i,
@@ -450,6 +402,59 @@ const PYTHON_MODULE_RULES: ModuleRule[] = [
       /\batribui[çc][aã]o\s+(simples|b[áa]sica|de\s+valores)\b/i,
       /\bhello\s+world\b/i,
       /\bsintaxe\s+b[áa]sica\s+do\s+python\b/i,
+    ],
+  },
+  {
+    kind: "json_apis",
+    matchTitle: /(json|api[s]?|requests?|http|web\s+services?)/i,
+    allow: ["json.loads()", "json.dumps()", "json.load()", "json.dump()", "requests.get()", "requests.post()", "response.json()", "HTTP status code"],
+    deny: ["SQL CREATE", "tabelas", "JOIN"],
+    denyPatterns: [
+      /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE)\b/i,
+    ],
+  },
+  {
+    kind: "files_exceptions",
+    matchTitle: /(arquivos|files?|exce[çc][oõ]es|exceptions?|tratamento\s+de\s+erros)/i,
+    allow: ["open()", "with open()", "read()", "write()", "try", "except", "finally", "FileNotFoundError", "IOError", "modos 'r'/'w'/'a'/'b'"],
+    deny: ["SQL", "CREATE TABLE", "JOIN", "POO avançado"],
+    denyPatterns: [
+      /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE|SELECT\s+.+\s+FROM)\b/i,
+    ],
+  },
+  {
+    kind: "data_structures",
+    matchTitle: /(estruturas?\s+de\s+dados|data\s+structures|listas|dicion[áa]rios|tuplas|conjuntos|sets)/i,
+    allow: ["listas", "dicionários", "tuplas", "conjuntos", "append()", "keys()", "values()", "set()"],
+    deny: [
+      "CREATE TABLE", "ALTER TABLE", "DROP TABLE", "TRUNCATE",
+      "SELECT", "INSERT", "UPDATE", "DELETE", "JOIN",
+      "banco de dados", "tabela SQL", "chave primária", "chave estrangeira",
+    ],
+    denyPatterns: [
+      /\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE)\b/i,
+      /\b(SELECT|INSERT|UPDATE|DELETE)\s+.+\s+(FROM|INTO|SET|WHERE)\b/i,
+      /\bJOIN\b/i,
+      /banco\s+de\s+dados\s+relacional/i,
+      /chave\s+(prim[áa]ria|estrangeira)/i,
+    ],
+  },
+  {
+    kind: "control_flow",
+    matchTitle: /(controle\s+de\s+fluxo|control\s+flow|fun[çc][oõ]es|functions|loops?|condicionais)/i,
+    allow: ["if/elif/else", "for/while", "def", "parâmetros", "return", "escopo local/global"],
+    deny: ["SQL", "CREATE TABLE", "JOIN", "banco de dados", "classe POO", "herança"],
+    denyPatterns: [
+      /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE|SELECT\s+.+\s+FROM|INSERT\s+INTO|JOIN)\b/i,
+    ],
+  },
+  {
+    kind: "fundamentals",
+    matchTitle: /(fundament|introdu[çc][aã]o|básico|basico|primeir|getting started|basics)/i,
+    allow: ["variáveis", "tipos primitivos", "operadores", "input/output", "expressões", "print", "type()"],
+    deny: ["SQL", "CREATE TABLE", "DROP", "TRUNCATE", "JOIN", "banco de dados", "POO", "herança"],
+    denyPatterns: [
+      /\b(CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE|SELECT\s+.+\s+FROM|INSERT\s+INTO|JOIN)\b/i,
     ],
   },
 ];
