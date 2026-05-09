@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.6";
+const ENGINE_VERSION = "5.7.7";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -1690,6 +1690,19 @@ function runNarrativeAlignmentScan(
 // FINAL deck shape, not intermediate states. A module that lost its only
 // code slide via demotion will be caught and BLOCK the export.
 // ─────────────────────────────────────────────────────────────────────
+// v5.7.7 — Module-level meta-slide regex used to (a) exempt meta modules from
+// the gate and (b) decide where to inject a synthesized code slide (BEFORE a
+// trailing takeaways/closing slide so the deck flow stays sensible).
+const META_SLIDE_TITLE_RE =
+  /^(takeaways?|principais\s+aprendizados?|aprendizados?\s+finais|recapitula[çc][ãa]o|s[íi]ntese|conclus[ãa]o|encerramento|pr[óo]ximos\s+passos|resumo)/i;
+
+function isMetaSlide(s: Slide): boolean {
+  if (s.layout === "takeaways" || s.layout === "closing" || s.layout === "module_cover" || s.layout === "toc") {
+    return true;
+  }
+  return META_SLIDE_TITLE_RE.test((s.title ?? "").trim());
+}
+
 function validateMinimumCodeCoverageByModule(
   allModuleSlides: Slide[][],
   moduleTitlesArr: string[],
@@ -1715,6 +1728,7 @@ function validateMinimumCodeCoverageByModule(
   const META_MODULE_RE =
     /^(introdu[çc][ãa]o\s+(ao\s+curso|geral)|apresenta[çc][ãa]o|bem-vindo|sobre\s+o\s+curso|índice|sumário|conclus[ãa]o|encerramento|recapitula[çc][ãa]o|aprendizados?\s+finais|pr[óo]ximos\s+passos|takeaways?|síntese|consolida[çc][ãa]o)/i;
   const missing: Array<{ index: number; title: string }> = [];
+  const injected: Array<{ index: number; title: string; source: string }> = [];
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     const moduleTitle = (moduleTitlesArr[mi] ?? "").trim();
     if (META_MODULE_RE.test(moduleTitle)) {
@@ -1732,9 +1746,55 @@ function validateMinimumCodeCoverageByModule(
     console.log(
       `[MODULE-CODE-COVERAGE] M${mi + 1} ("${moduleTitle}") codeSlides=${codeSlides}`,
     );
-    if (codeSlides === 0) {
-      missing.push({ index: mi + 1, title: moduleTitle });
+    if (codeSlides > 0) continue;
+
+    // ─── v5.7.7 — module-scope auto-heal via synthesizer ──────────────
+    // Per user contract: "Se um slide CODE estiver incompleto: 1. reparar;
+    // 2. sintetizar exemplo completo; 3. se falhar, QA_VETO." The per-slide
+    // pipeline already implements (1)+(2)+demote. The MODULE-level case
+    // (planner produced ZERO layout='code' slides for this module) was
+    // previously falling straight to veto. v5.7.7 adds module-scope step (2)
+    // BEFORE veto: classify the module via getModuleRule, accumulate code
+    // symbols from sibling slides (so OOP synth can reuse Carro/Livro from
+    // an earlier module slide), call synthesizeMinimalCompleteExample. If it
+    // returns code, INJECT a fresh layout='code' slide into the module. Only
+    // veto if synth ALSO fails.
+    const rule = getModuleRule(courseTitle, moduleTitle);
+    const moduleKind = rule ? rule.kind : null;
+    const moduleCtx: CodeSymbols = extractSemanticCodeContext(allModuleSlides[mi]);
+    const synth = synthesizeMinimalCompleteExample(moduleKind, moduleCtx, moduleTitle);
+    if (synth) {
+      const injectedSlide: Slide = {
+        layout: "code",
+        title: `Exemplo prático: ${moduleTitle}`,
+        code: synth.code,
+        moduleIndex: mi,
+      };
+      // Insert BEFORE the trailing meta slide (takeaways/closing/summary)
+      // when present; otherwise append at the end. Keeps narrative flow.
+      const slides = allModuleSlides[mi];
+      let insertAt = slides.length;
+      for (let k = slides.length - 1; k >= 0; k--) {
+        if (isMetaSlide(slides[k])) insertAt = k;
+        else break;
+      }
+      slides.splice(insertAt, 0, injectedSlide);
+      injected.push({ index: mi + 1, title: moduleTitle, source: synth.source });
+      console.log(
+        `[MODULE-CODE-COVERAGE-INJECT] M${mi + 1} ("${moduleTitle}") moduleKind=${moduleKind ?? "null"} source=${synth.source} insertAt=${insertAt} totalAfter=${slides.length}`,
+      );
+      continue;
     }
+    // Synth unavailable — this module CANNOT be auto-healed. Veto.
+    console.warn(
+      `[MODULE-CODE-COVERAGE-INJECT] M${mi + 1} ("${moduleTitle}") moduleKind=${moduleKind ?? "null"} synth=null — falling through to veto`,
+    );
+    missing.push({ index: mi + 1, title: moduleTitle });
+  }
+  if (injected.length > 0) {
+    console.log(
+      `[MODULE-CODE-COVERAGE] AUTO-HEALED ${injected.length} módulo(s) via síntese: ${injected.map((m) => `M${m.index}(${m.source})`).join(", ")}`,
+    );
   }
   if (missing.length > 0) {
     for (const m of missing) {
@@ -1743,17 +1803,17 @@ function validateMinimumCodeCoverageByModule(
         type: "MODULE_CODE_COVERAGE_MISSING",
         severity: "CRITICAL",
         message:
-          `Módulo ${m.index} ("${m.title}") não contém nenhum slide de código real — em curso Python isso indica falha de síntese ou demoção silenciosa de CODE → CONCEPT/PROCESSO`,
+          `Módulo ${m.index} ("${m.title}") não contém slide de código e a síntese também falhou (sem template aplicável para o moduleKind detectado)`,
         resolutionStrategy:
-          "Bloqueio de export — regenerar o módulo para forçar exemplo de código completo (def/class/import/etc com ≥10 caracteres no campo code)",
+          "Bloqueio de export — regenerar o módulo OU adicionar template SYNTH_TEMPLATES para esse moduleKind em synthesizeMinimalCompleteExample",
       });
     }
     console.warn(
-      `[MODULE-CODE-COVERAGE] BLOCKED — ${missing.length} módulo(s) técnico(s) sem código: ${missing.map((m) => `M${m.index}`).join(", ")}`,
+      `[MODULE-CODE-COVERAGE] BLOCKED — ${missing.length} módulo(s) técnico(s) sem código E sem síntese: ${missing.map((m) => `M${m.index}`).join(", ")}`,
     );
   } else {
     console.log(
-      `[MODULE-CODE-COVERAGE] PASSED — todos os módulos técnicos contêm ≥1 slide de código real`,
+      `[MODULE-CODE-COVERAGE] PASSED — todos os módulos técnicos contêm ≥1 slide de código real (${injected.length} via auto-heal)`,
     );
   }
   return issues;
