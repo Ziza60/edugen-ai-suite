@@ -1,0 +1,301 @@
+O v5.7.3 NÃO entregou o objetivo principal da rodada.
+
+O problema agora está confirmado:
+o loop convergente/reparos NÃO estão afetando o código final exportado no PPTX real.
+
+As evidências estão no PPTX gerado:
+
+========================================
+FALHAS REAIS CONFIRMADAS
+========================================
+
+SLIDE 12
+Ainda exporta:
+
+```python
+def calcularvalortotal(carrinhodecompras):
+    ...
+    totalliquido = totalbruto - desconto
+
+Sem:
+
+return totalliquido
+resultado = calcularvalortotal(...)
+print(resultado)
+
+SLIDE 39
+Ainda exporta:
+
+def processar_dados(dados):
+    soma = sum(dados)
+    logging.debug(...)
+
+Sem:
+
+return soma
+resultado = processar_dados(...)
+print(resultado)
+
+Isso prova:
+
+ou o repair NÃO roda;
+ou roda no objeto errado;
+ou é sobrescrito depois;
+ou o renderer/export usa snapshot anterior.
+========================================
+OUTRA FALHA
+
+SLIDE 35:
+Título:
+
+Classe "Livro" e subclasse "Ebook"
+
+Código:
+
+class Carro:
+
+Isso é inconsistência semântica/editorial.
+
+O planner ou repair perdeu alinhamento entre:
+
+título;
+narrativa;
+snippet.
+========================================
+NÃO QUERO MAIS HIPÓTESES
+
+Quero rastreamento REAL do objeto/slides durante TODO o pipeline.
+
+========================================
+
+TRACE DE IDENTIDADE DO SLIDE
+========================================
+
+Adicionar UUID/hash persistente por slide.
+
+Exemplo:
+
+slide.traceId = ...
+
+Logs em TODAS as fases:
+
+[PPTX-SLIDE-TRACE]
+traceId=...
+phase=planner|repair|cascade|renderer|final_export
+title=...
+codeHash=...
+hasReturn=...
+hasObservableOutcome=...
+
+Quero saber:
+
+se o slide reparado é o mesmo exportado;
+em qual fase o repair desaparece.
+========================================
+2. TRACE DO CÓDIGO ANTES/DEPOIS
+
+Para slides CODE:
+
+ANTES do repair:
+
+[CODE-BEFORE]
+
+DEPOIS:
+
+[CODE-AFTER]
+
+Exemplo:
+
+[CODE-BEFORE]
+slide=12
+hash=abc123
+...
+totalliquido = ...
+
+[CODE-AFTER]
+slide=12
+hash=def456
+return totalliquido
+resultado = calcularvalortotal(...)
+print(resultado)
+========================================
+3. TRACE FINAL PRÉ-RENDER
+
+Antes do render/export final:
+
+[FINAL-CODE-SNAPSHOT]
+slide=12
+traceId=...
+...
+
+Quero comparar:
+
+planner;
+repair;
+snapshot final exportado.
+========================================
+4. INVESTIGAR OVERRIDE/SOBRESCRITA
+
+Hipótese forte:
+algum pass posterior sobrescreve o repair.
+
+Investigar:
+
+cascade;
+layout fallback;
+slide normalization;
+processBatch;
+renderCode;
+splitOverflowSlides;
+dedupe;
+final sanitize;
+final merge;
+planner fallback.
+
+Quero saber:
+quem escreve o código final exportado.
+
+========================================
+5. GARANTIR MUTAÇÃO PERSISTENTE
+
+Hoje parece:
+repair altera cópia temporária.
+
+Quero:
+repair mutando o slide real que será renderizado.
+
+Após repair:
+
+reparse;
+persist;
+revalidate;
+exportar MESMO objeto.
+========================================
+6. VALIDAR NO OBJETO FINAL
+
+Hoje validateSemanticCodeCompleteness provavelmente roda cedo demais.
+
+Quero nova validação FINAL:
+
+validateFinalExportedCode()
+
+Rodando imediatamente antes de render/export.
+
+Se detectar:
+
+def sem return observável;
+função sem call-demo;
+logging sem outcome;
+método retornando valor sem print/uso;
+placeholder;
+truncamento;
+
+→ QA_VETO.
+
+========================================
+7. TÍTULO/CÓDIGO DESALINHADO
+
+Slide 35:
+Título fala:
+
+Livro
+Ebook
+
+Código usa:
+
+Carro
+
+Criar:
+
+validateNarrativeSemanticAlignment()
+
+Comparar:
+
+title;
+bullets;
+snippet;
+domínio principal.
+
+Detectar mismatch:
+
+Livro vs Carro;
+API vs biblioteca;
+Pizzaria vs banco;
+JSON vs listas básicas.
+
+Se mismatch:
+
+rewrite;
+repair;
+ou veto.
+========================================
+8. MÓDULO JSON/API
+
+Ainda está fraco tecnicamente.
+
+Quero pelo menos 1 slide CODE real com:
+
+requests.get()
+requests.post()
+response.status_code
+response.json()
+
+Hoje está muito conceitual.
+
+========================================
+9. NÃO QUERO
+
+Não quero:
+
+mais smoke tests isolados;
+mais “deveria funcionar”;
+mais repairs em objeto temporário;
+mais correções invisíveis;
+mais fallback silencioso.
+
+Quero rastreamento real do pipeline inteiro.
+
+========================================
+10. CRITÉRIO DE ACEITE
+
+Novo export:
+“Introdução à Programação em Python”
+
+Slide 12:
+DEVE conter:
+
+return totalliquido
+
+resultado = calcularvalortotal(...)
+print(resultado)
+
+Slide 39:
+DEVE conter:
+
+return soma
+
+resultado = processar_dados(...)
+print(resultado)
+
+Slide 35:
+Título e código devem usar o MESMO domínio:
+
+Livro/Ebook
+OU
+Carro
+
+Nunca misturado.
+
+Módulo 5:
+deve ter código real de requests/json.
+
+Além disso:
+
+logs completos de trace;
+snapshot final;
+sem regressão em:
+POO;
+planner modular;
+preservation layer;
+renderer;
+engine v5.7.x.
