@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.0";
+const ENGINE_VERSION = "5.7.1";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -519,8 +519,27 @@ function extractSemanticCodeContext(slides: Slide[]): CodeSymbols {
   return ctx;
 }
 
-// v5.5.5 — semantic completeness check on a code snippet.
+// v5.5.5 / v5.7.1 — semantic completeness check on a code snippet.
 // Returns null when complete enough to render; otherwise a short reason.
+//
+// v5.7.1 hardening — code "completeness" for an educational slide is no
+// longer just "syntactically runnable". A snippet must DEMONSTRATE its
+// concept to a student. New rules:
+//
+//   - `function_defined_but_uncalled` — a top-level `def name(...)` exists
+//     but `name(...)` is never invoked anywhere else in the snippet (and
+//     is not used as a decorator `@name`). Slides 13/43/49 in the user
+//     report all triggered this: function defined, never called, no
+//     observable output.
+//
+//   - `class_instance_no_method_call` (REPLACES old `class_defined_but_unused`
+//     escape via `print(obj)`) — defining a class and instantiating it is
+//     not enough; `print(<instance>)` alone is not enough (it just prints
+//     the object's address). At least one instance must do a real method
+//     call (`obj.method(...)`) or attribute access (`obj.attr`).
+//     Slide 35 ("Classe Carro") triggered this.
+//
+// Old behavior preserved as fallback `class_defined_but_no_output`.
 function validateSemanticCodeCompleteness(code: string): string | null {
   if (!code || !code.trim()) return "empty";
   const t = code.trim();
@@ -541,17 +560,113 @@ function validateSemanticCodeCompleteness(code: string): string | null {
     return "";
   })();
   if (/[,:({\[]\s*$/.test(lastNonBlank)) return "trailing_open_bracket";
-  const definesClass = /^\s*class\s+[A-Z]/m.test(t);
-  const hasOutput = /\b(print|return|yield|raise|assert)\s*[\(.]|\blog(?:ger|ging)?\.[a-z]+\s*\(/.test(t);
-  if (definesClass) {
-    const cm = t.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/m);
-    if (cm) {
-      const after = t.slice(t.indexOf(cm[0]) + cm[0].length);
-      const used = new RegExp(`\\b${cm[1]}\\s*\\(`).test(after);
-      if (!used && !hasOutput) return "class_defined_but_unused";
+
+  // ── v5.7.1 — class hardening: instantiation + REAL method/attr access ──
+  const classMatch = t.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/m);
+  if (classMatch) {
+    const cls = classMatch[1];
+    // Find all instance assignments at top level: `name = ClassName(...)`
+    const instRe = new RegExp(`^\\s*([a-z_][\\w]*)\\s*=\\s*${cls}\\s*\\(`, "gm");
+    const instances: string[] = [];
+    let im: RegExpExecArray | null;
+    while ((im = instRe.exec(t)) !== null) instances.push(im[1]);
+    if (instances.length === 0) return "class_defined_but_unused";
+    // For at least one instance, require attribute or method access.
+    // `inst.something` matches both `inst.method(` and `inst.attr` —
+    // `print(inst)` (no dot after inst) does NOT match.
+    const hasRealUse = instances.some((inst) =>
+      new RegExp(`\\b${inst}\\s*\\.\\s*[a-zA-Z_]\\w*`).test(t),
+    );
+    if (!hasRealUse) return "class_instance_no_method_call";
+  }
+
+  // ── v5.7.1 — function_defined_but_uncalled ──
+  // Every top-level `def name(...)` (no leading whitespace — methods inside
+  // a class are always indented and excluded automatically) must be invoked
+  // somewhere outside its own signature, OR referenced as a decorator
+  // (`@name`). Recursive self-calls inside the def body would also count
+  // (acceptable corner case — pure recursion without a top-level demo is
+  // rare in planner output).
+  const topLevelDefRe = /^def\s+([a-z_][\w]*)\s*\(/gm;
+  const topLevelDefs: { name: string; isDecorated: boolean }[] = [];
+  let dm: RegExpExecArray | null;
+  while ((dm = topLevelDefRe.exec(t)) !== null) {
+    // Check if the line(s) immediately preceding this def are decorators.
+    // Walk backwards, skipping blank lines and decorator lines, to find
+    // the nearest non-decorator content. If we find `@\w+` directly above
+    // this def (with only blank lines between), the def is decorated.
+    const before = t.slice(0, dm.index);
+    const prevLines = before.split("\n");
+    let isDecorated = false;
+    for (let i = prevLines.length - 1; i >= 0; i--) {
+      const line = prevLines[i].trim();
+      if (line === "") continue;
+      if (/^@[\w.]+/.test(line)) { isDecorated = true; break; }
+      break;
+    }
+    topLevelDefs.push({ name: dm[1], isDecorated });
+  }
+  if (topLevelDefs.length > 0) {
+    // Replace each top-level def signature with a placeholder so the
+    // signature itself does not register as a "call" of the function.
+    const tForCallScan = t.replace(/^def\s+[a-z_][\w]*\s*\(/gm, "__DEFSIG__(");
+    for (const { name: fn, isDecorated } of topLevelDefs) {
+      // A function counts as "used" if ANY of:
+      //   - it is decorated (e.g. @app.route, @log_calls) — decoration is
+      //     itself an exposure / call site;
+      //   - it is invoked directly (`fn(...)`), excluding `obj.fn(` and
+      //     `def fn(` which are attribute access / signature respectively;
+      //   - it is referenced as a decorator (`@fn`) elsewhere.
+      if (isDecorated) continue;
+      const callRe = new RegExp(`(?<![\\w.])${fn}\\s*\\(`);
+      const decoRe = new RegExp(`@\\s*${fn}\\b`);
+      if (!callRe.test(tForCallScan) && !decoRe.test(t)) {
+        return "function_defined_but_uncalled";
+      }
     }
   }
+
+  // ── Legacy fallback: class with no observable output anywhere ──
+  // Kept for cases that bypass the hardened class rule above (e.g. class
+  // defined but nothing else emits output).
+  const definesClass = /^\s*class\s+[A-Z]/m.test(t);
+  const hasOutput = /\b(print|return|yield|raise|assert)\s*[\(.]|\blog(?:ger|ging)?\.[a-z]+\s*\(/.test(t);
+  if (definesClass && !hasOutput) return "class_defined_but_no_output";
+
   return null;
+}
+
+// v5.7.1 — preventive repair: rewrite `print(<instance>)` →
+// `<instance>.<method>()` BEFORE the validator runs. Method is chosen from
+// the CURRENT slide's symbols first, then from moduleCtx.funcs as fallback.
+// Skips dunder methods and generic init/main names.
+//
+// This used to live exclusively inside `repairIncompleteCodeExample`
+// (chicken-and-egg: only ran AFTER validation failed — but slide 35 made
+// validation PASS via the bare `print(obj)` escape, so the repair never
+// got a chance to fix the pedagogical bug).
+function repairBareInstancePrint(
+  code: string,
+  moduleCtx: CodeSymbols,
+  slideNum: number | string,
+): string {
+  if (!code) return code;
+  const m = code.match(/^([ \t]*)print\(\s*([a-z_][\w]*)\s*\)\s*$/m);
+  if (!m) return code;
+  const [fullMatch, indent, instName] = m;
+  const isInst = new RegExp(`\\b${instName}\\s*=\\s*[A-Z][A-Za-z0-9_]*\\s*\\(`).test(code);
+  if (!isInst) return code;
+  const SKIP_FNS = new Set(["__init__", "__new__", "__str__", "__repr__", "main", "init"]);
+  const localFuncs = extractCodeSymbols(code).funcs;
+  const candidate =
+    localFuncs.find((f) => !SKIP_FNS.has(f)) ??
+    moduleCtx.funcs.find((f) => !SKIP_FNS.has(f));
+  if (!candidate) return code;
+  const replaced = code.replace(fullMatch, `${indent}${instName}.${candidate}()`);
+  console.log(
+    `[CODE-PREVENTIVE-REPAIR] slide=${slideNum} pattern=print_inst_to_method inst=${instName} method=${candidate}`,
+  );
+  return replaced;
 }
 
 // v5.5.5 — try to repair an incomplete code example. Returns the repaired
@@ -608,8 +723,45 @@ function repairIncompleteCodeExample(
       }
     }
   }
+  // v5.7.1 — function_defined_but_uncalled repair: append a CALL DEMO
+  // for the LAST top-level function defined in the snippet. Generates
+  // sample arguments based on parameter name heuristics.
+  if (reason === "function_defined_but_uncalled") {
+    const fnDefs = [...out.matchAll(/^def\s+([a-z_][\w]*)\s*\(([^)]*)\)/gm)];
+    if (fnDefs.length > 0) {
+      const lastDef = fnDefs[fnDefs.length - 1];
+      const fnName = lastDef[1];
+      const params = lastDef[2] ?? "";
+      const args = params
+        .split(",")
+        .map((p) => p.trim().split(/[:=]/)[0].trim())
+        .filter((n) => n && n !== "self" && n !== "cls")
+        .map((n) => {
+          const lower = n.toLowerCase();
+          if (/^lista|^list|seq|items|valores|numeros|carrinho/.test(lower)) return `[10, 20, 30]`;
+          if (/^dict|mapa|^map|opts|config|kwargs/.test(lower)) return `{}`;
+          if (/preco|valor|num|qtd|total|count|idade|^[abcnxyij]$/.test(lower)) return `10`;
+          if (/nome|name|texto|string|^str$|titulo|msg|message/.test(lower)) return `"exemplo"`;
+          if (/path|file|arquivo|caminho/.test(lower)) return `"dados.txt"`;
+          if (/url|endpoint|host/.test(lower)) return `"https://api.example.com"`;
+          if (/flag|ativo|enabled|on$|^is_/.test(lower)) return `True`;
+          return `"${n}"`;
+        })
+        .join(", ");
+      out += `\n\nresultado = ${fnName}(${args})\nprint(resultado)`;
+      console.log(
+        `[CODE-REPAIR] slide=${slideNum} pattern=function_call_demo fn=${fnName} args=${JSON.stringify(args)}`,
+      );
+      if (validateSemanticCodeCompleteness(out) === null) return out;
+      // If the validator still fails (e.g. function has no return so
+      // `resultado` is None and another rule trips), keep the partial
+      // repair and let the cascade continue.
+      return out;
+    }
+  }
+
   const cm = out.match(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/m);
-  if (cm && (reason === "class_defined_but_unused" || reason === "too_few_code_lines")) {
+  if (cm && (reason === "class_defined_but_unused" || reason === "too_few_code_lines" || reason === "class_instance_no_method_call" || reason === "class_defined_but_no_output")) {
     const cls = cm[1];
     // v5.5.6 — DRIFT GUARD: if the slide defines a class NOT seen in the
     // module context AND the module already has prior classes, this is the
@@ -886,6 +1038,15 @@ function applyFinalGuardrails(
   if (out.code && out.code.trim()) {
     const newCode = repairDanglingAssignment(out.code, slideNum);
     if (newCode !== out.code) out = { ...out, code: newCode };
+  }
+  // v5.7.1 — Guardrail 3b: PREVENTIVE — bare `print(<instance>)` →
+  // `<instance>.<method>()`. Runs BEFORE the validator so the rewrite
+  // happens for slides that the validator USED to (incorrectly) accept
+  // (slide 35 "Carro" symptom — `print(carro_amigo)` showing object
+  // address). Method is chosen from local funcs first, then moduleCtx.
+  if (out.code && out.code.trim()) {
+    const fixed = repairBareInstancePrint(out.code, prevSymbols, slideNum);
+    if (fixed !== out.code) out = { ...out, code: fixed };
   }
   // v5.5.5 — Guardrail 4: semantic completeness check + repair attempt.
   // If code still incomplete after dangling/strip repairs, try
