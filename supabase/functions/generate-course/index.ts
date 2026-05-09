@@ -201,7 +201,6 @@ function buildQualityElevationPrompt(
   courseTitle: string,
   targetAudience: string,
   language: string,
-  theme: string,
 ): string {
   return `Você é um supervisor sênior de qualidade de cursos online com 15 anos de experiência avaliando e elevando material didático para plataformas de e-learning B2B e corporativas.
 
@@ -209,16 +208,9 @@ Você recebeu o módulo abaixo, que já passou por revisão estrutural e está p
 
 ## CONTEXTO DO CURSO
 - Curso: "${courseTitle}"
-- Tema: "${theme}"
 - Módulo: "${moduleTitle}"
 - Público-alvo: ${targetAudience}
 - Idioma: ${language}
-
-## REGRA ABSOLUTA DE DOMÍNIO (NÃO QUEBRAR)
-- TODOS os exemplos, código, terminologia e analogias devem permanecer dentro do domínio técnico de "${courseTitle}" / "${theme}" e seu ecossistema nativo.
-- Se o curso é sobre uma linguagem de programação (Python, JavaScript, Java, etc.): use APENAS sintaxe/idiomática/biblioteca padrão dessa linguagem. NUNCA introduza SQL DDL/DML (CREATE TABLE, ALTER TABLE, INSERT, UPDATE, DELETE, SELECT, JOIN) salvo se o curso for explicitamente sobre SQL/bancos.
-- Mesma regra para shell/Bash, HTML/CSS ou outras linguagens — não traga exemplos de fora do domínio.
-- Ao "elevar a qualidade", NÃO substitua exemplos da linguagem-alvo por exemplos de outra tecnologia, mesmo que pareçam mais ricos.
 
 ## OS 5 CRITÉRIOS DE QUALIDADE DE CONTEÚDO
 
@@ -440,19 +432,6 @@ ${sourcesBlock}
 CRITICAL QUALITY RULES:
 - All text must have PERFECT spelling and grammar in ${language || "pt-BR"}.
 - Module titles must be complete, grammatically correct phrases.
-
-CRITICAL DOMAIN INTEGRITY (HARD RULE):
-- The course is about: "${title}" — Theme: "${theme}".
-- ALL module titles, summaries, quizzes, flashcards and any examples MUST stay strictly within this technical domain and its native ecosystem.
-- If the course is about a PROGRAMMING LANGUAGE (Python, JavaScript, Java, C#, Go, Ruby, PHP, etc.):
-  · Use ONLY that language's syntax, idioms, standard library and ecosystem.
-  · NEVER use SQL DDL/DML (CREATE TABLE, ALTER TABLE, INSERT, UPDATE, DELETE, SELECT, JOIN, etc.) unless the course is explicitly about SQL or relational databases.
-  · NEVER use shell/Bash, HTML/CSS, or other-language code as examples.
-  · A module titled "Data Structures" in a Python course means Python lists/tuples/dicts/sets — NOT SQL tables, columns or schemas.
-  · A module titled "Functions" in a Python course means Python def/lambda/decorators — NOT SQL stored procedures.
-- If the course is about SQL or a database, do the inverse — stay within SQL.
-- Module SUMMARIES must explicitly mention the language/tool by name where possible (e.g. "listas e dicionários em Python", not just "estruturas de dados").
-- Each module MUST be coherent with the course title — if you cannot write the module without leaving the domain, rewrite the module title.
 ${sourcesInstruction}
 
 Course details:
@@ -501,13 +480,6 @@ Return ONLY valid JSON with this structure:
 Language: ${language || "pt-BR"}. Target audience: ${target_audience || "general"}. Tone: ${tone || "professional"}.
 ${include_quiz ? "Include 3 quiz questions per module." : ""}
 ${include_flashcards ? "Include 5 flashcards per module." : ""}
-
-CRITICAL DOMAIN INTEGRITY (HARD RULE):
-- ALL module titles, summaries, quizzes, flashcards and examples MUST stay strictly within the technical domain of "${title}" / "${theme}" and its native ecosystem.
-- If the course is about a programming language (Python, JavaScript, Java, etc.): use ONLY that language's syntax/idioms/standard library. NEVER use SQL DDL/DML (CREATE TABLE, ALTER TABLE, INSERT, etc.) unless the course is explicitly about SQL/databases.
-- "Data Structures" in a Python course = lists/tuples/dicts/sets, NOT SQL tables.
-- Module summaries must cite the language/tool by name when possible.
-
 Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
 
         const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 1000, true);
@@ -570,20 +542,10 @@ Return ONLY valid JSON with "description" and "modules" array containing EXACTLY
           const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
 
 Course: ${title}
-Theme: ${theme}
 Module ${i + 1}: ${mod.title}
 Summary: ${mod.summary || mod.title}
 Target audience: ${target_audience || "general"}
 Tone: ${tone || "professional"}
-
-CRITICAL DOMAIN INTEGRITY (HARD RULE):
-- ALL examples, code, terminology and analogies MUST stay strictly inside the technical domain of "${title}" / "${theme}" and its native ecosystem.
-- If the course is about a PROGRAMMING LANGUAGE (Python, JavaScript, Java, etc.):
-  · Use ONLY that language's syntax, idioms and standard library in code blocks and examples.
-  · NEVER use SQL DDL/DML (CREATE TABLE, ALTER TABLE, INSERT, UPDATE, DELETE, SELECT, JOIN, etc.) unless the course is explicitly about SQL/databases.
-  · "Data structures" in a Python course = lists, tuples, dicts, sets — NOT SQL tables/columns.
-  · "Functions" in a Python course = def, lambda, decorators, *args/**kwargs — NOT SQL stored procedures.
-- Learning objectives, key takeaways and bullets MUST cite concrete language-native concepts (e.g. "Manipular listas, dicionários, tuplas e conjuntos em Python") and avoid generic verbs like "Aplicar X" without an application context.
 ${sourceContentInstruction}
 
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
@@ -602,7 +564,6 @@ Write 800-1200 words. Be thorough and educational.`;
             const qualityPrompt = buildQualityElevationPrompt(
               mod.title, refinedContent, title,
               target_audience || "profissionais da área", language || "pt-BR",
-              theme || "",
             );
             const qualityResult = await callAI("google/gemini-3-flash-preview", qualityPrompt, 2000);
             // Strip markdown fences AND any preamble before the first ## heading

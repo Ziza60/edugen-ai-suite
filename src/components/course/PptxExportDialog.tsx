@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SlidePreview } from "./SlidePreview";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -6,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Loader2, Presentation, ImageOff, Info, Check } from "lucide-react";
+import { Loader2, Presentation, ImageOff, Info } from "lucide-react";
 
 // ── Exported options type ──────────────────────────────────────────
 export interface PptxExportOptions {
@@ -14,202 +15,68 @@ export interface PptxExportOptions {
   density: "compact" | "standard" | "detailed";
   includeImages: boolean;
   theme: "light" | "dark";
-  template: string;
+  template: "default" | "academic" | "corporate" | "creative";
   useV2: boolean;
   useV3: boolean;
-  useV4: boolean;
-  useV6: boolean;
   useMagicSlides: boolean;
-  use2Slides: boolean;
-  usePresenton: boolean;
-  twoSlidesTheme: string;
   courseType: string;
   footerBrand: string | null;
 }
 
-// ── Visual Templates — each defines its complete look ──────────────
-interface VisualTemplate {
-  label: string;
-  tagline: string;
-  theme: "light" | "dark";
-  visualStyle: "classic" | "band" | "minimal";
-  colors: string[];   // primary accent colors for preview
-  bgColor: string;
-  textColor: string;
-  accentColor: string;
-}
-
-const VISUAL_TEMPLATES: Record<string, VisualTemplate> = {
-  default_v5: {
-    label: "Padrão v5",
-    tagline: "Navy & Blue — corporativo clássico",
-    theme: "dark",
-    visualStyle: "classic",
-    colors: ["#1E3A5F", "#2E6DA4", "#C47F17"],
-    bgColor: "#0A1628",
-    textColor: "#F1F5F9",
-    accentColor: "#1E3A5F",
-  },
-  futuristic_background: {
-    label: "Futuristic",
-    tagline: "Neon & Cyber — dark tech",
-    theme: "dark",
-    visualStyle: "classic",
-    colors: ["#00AAFF", "#7B2FFF", "#00FFD4"],
-    bgColor: "#030B18",
-    textColor: "#C8E6FF",
-    accentColor: "#00AAFF",
-  },
-  dark_theme: {
-    label: "Dark Premium",
-    tagline: "Gold & Dark — elegante e sofisticado",
-    theme: "dark",
-    visualStyle: "band",
-    colors: ["#F0A500", "#D97706", "#B45309"],
-    bgColor: "#0D1117",
-    textColor: "#E6EDF3",
-    accentColor: "#F0A500",
-  },
-  dark_elegance_xl: {
-    label: "Dark Elegance",
-    tagline: "Violet & Gold — premium e luxuoso",
-    theme: "dark",
-    visualStyle: "minimal",
-    colors: ["#8B2FC9", "#C2185B", "#D4AF37"],
-    bgColor: "#0B0912",
-    textColor: "#ECE8F5",
-    accentColor: "#8B2FC9",
-  },
-  dark_style_theme: {
-    label: "Dark Style",
-    tagline: "Red & Fire — ousado e impactante",
-    theme: "dark",
-    visualStyle: "classic",
-    colors: ["#E53E3E", "#DD6B20", "#D69E2E"],
-    bgColor: "#0F1219",
-    textColor: "#F0F4F8",
-    accentColor: "#E53E3E",
-  },
-};
-
-// ── Mini Slide Preview Card ────────────────────────────────────────
-function TemplateMiniPreview({ id, tpl, selected, onClick }: {
-  id: string;
-  tpl: VisualTemplate;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      data-testid={`template-card-${id}`}
-      onClick={onClick}
-      className={`relative flex flex-col rounded-xl border-2 overflow-hidden transition-all text-left w-full ${
-        selected
-          ? "border-primary shadow-md shadow-primary/20"
-          : "border-border hover:border-primary/40"
-      }`}
-    >
-      {/* Mini slide preview */}
-      <div
-        className="w-full h-[78px] relative overflow-hidden"
-        style={{ backgroundColor: tpl.bgColor }}
-      >
-        {tpl.visualStyle === "band" && (
-          <>
-            <div className="absolute inset-x-0 top-0 h-[28px]" style={{ backgroundColor: tpl.accentColor }} />
-            <div className="absolute top-[4px] left-[8px] text-[5px] font-bold tracking-widest opacity-60" style={{ color: "#fff" }}>SEÇÃO</div>
-            <div className="absolute top-[10px] left-[8px] right-[8px] text-[7px] font-bold leading-tight" style={{ color: "#fff" }}>
-              Título do Slide
-            </div>
-            <div className="absolute top-[34px] left-[8px] right-[8px] space-y-[3px]">
-              {[100, 85, 90].map((w, i) => (
-                <div key={i} className="h-[3px] rounded-full opacity-40" style={{ width: `${w}%`, backgroundColor: tpl.accentColor }} />
-              ))}
-            </div>
-          </>
-        )}
-        {tpl.visualStyle === "minimal" && (
-          <>
-            <div className="absolute top-[6px] left-[8px] w-[12px] h-[2px] rounded" style={{ backgroundColor: tpl.accentColor }} />
-            <div className="absolute top-[11px] left-[8px] right-[8px] text-[8px] font-bold" style={{ color: tpl.textColor }}>
-              Título do Slide
-            </div>
-            <div className="absolute top-[24px] left-[8px] text-[5px] font-bold tracking-widest opacity-50" style={{ color: tpl.accentColor }}>SEÇÃO</div>
-            <div className="absolute top-[33px] left-[8px] right-[8px] space-y-[3px]">
-              {[100, 85, 92].map((w, i) => (
-                <div key={i} className="h-[3px] rounded-full opacity-30" style={{ width: `${w}%`, backgroundColor: tpl.textColor }} />
-              ))}
-            </div>
-          </>
-        )}
-        {tpl.visualStyle === "classic" && (
-          <>
-            <div className="absolute top-[6px] left-[8px] text-[5px] font-bold tracking-widest" style={{ color: tpl.accentColor }}>SEÇÃO</div>
-            <div className="absolute top-[13px] left-[8px] right-[8px] text-[7px] font-bold" style={{ color: tpl.textColor }}>
-              Título do Slide
-            </div>
-            <div className="absolute top-[25px] left-[8px] right-[8px] space-y-[3px]">
-              {[100, 85, 90].map((w, i) => (
-                <div key={i} className="h-[3px] rounded-full opacity-40" style={{ width: `${w}%`, backgroundColor: tpl.accentColor }} />
-              ))}
-            </div>
-            {/* Left accent edge */}
-            <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: tpl.accentColor }} />
-          </>
-        )}
-        {/* Color palette dots */}
-        <div className="absolute bottom-[5px] right-[6px] flex gap-[3px]">
-          {tpl.colors.map((c, i) => (
-            <div key={i} className="w-[7px] h-[7px] rounded-full" style={{ backgroundColor: c }} />
-          ))}
-        </div>
-        {/* Dark/light badge */}
-        <div
-          className="absolute top-[4px] right-[5px] text-[5px] font-bold px-[4px] py-[1px] rounded-full"
-          style={{
-            backgroundColor: tpl.theme === "dark" ? "#1e293b" : "#e2e8f0",
-            color: tpl.theme === "dark" ? "#94a3b8" : "#475569",
-          }}
-        >
-          {tpl.theme === "dark" ? "DARK" : "LIGHT"}
-        </div>
-      </div>
-
-      {/* Card label */}
-      <div className={`px-3 py-2 ${selected ? "bg-primary/5" : "bg-card"}`}>
-        <p className="text-xs font-semibold leading-tight" style={{ color: selected ? undefined : undefined }}>
-          {tpl.label}
-        </p>
-        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{tpl.tagline}</p>
-      </div>
-
-      {selected && (
-        <div className="absolute top-2 left-2 bg-primary rounded-full p-0.5">
-          <Check className="h-2.5 w-2.5 text-white" />
-        </div>
-      )}
-    </button>
-  );
-}
-
-// ── Palettes ───────────────────────────────────────────────────────
+// ── Design data ────────────────────────────────────────────────────
 const PALETTES: Record<string, { label: string; colors: string[] }> = {
-  default:    { label: "Padrão do template", colors: [] },
+  default: { label: "Padrão (tema do template)", colors: [] }, // colors shown per template
   ocean:      { label: "Oceano",        colors: ["#2980B9", "#3498DB", "#1ABC9C", "#16A085", "#2C3E50"] },
   forest:     { label: "Floresta",      colors: ["#27AE60", "#2ECC71", "#1ABC9C", "#16A085", "#2C3E50"] },
   sunset:     { label: "Pôr do Sol",    colors: ["#E74C3C", "#E67E22", "#F39C12", "#D35400", "#C0392B"] },
   monochrome: { label: "Monocromático", colors: ["#2C3E50", "#34495E", "#7F8C8D", "#95A5A6", "#BDC3C7"] },
 };
 
+// Default palette per template — shown in the "Padrão" option preview
+const TEMPLATE_DEFAULT_COLORS: Record<string, string[]> = {
+  default:   ["#6C63FF", "#3B82F6", "#10B981", "#F59E0B", "#06B6D4"],
+  academic:  ["#003366", "#336699", "#FF6600", "#006633", "#660033"],
+  corporate: ["#1A1A2E", "#16213E", "#0F3460", "#533483", "#E94560"],
+  creative:  ["#2C3E50", "#E74C3C", "#F39C12", "#8E44AD", "#16A085"],
+};
+
+const TEMPLATES: Record<string, { label: string; desc: string; fonts: string }> = {
+  default: {
+    label: "Padrão (EduGenAI)",
+    desc: "Montserrat + Open Sans — Estilo educacional moderno",
+    fonts: "Montserrat / Open Sans",
+  },
+  academic: {
+    label: "Acadêmico",
+    desc: "Times New Roman + Arial — Formal e institucional",
+    fonts: "Times New Roman / Arial",
+  },
+  corporate: {
+    label: "Corporativo",
+    desc: "Montserrat + Open Sans — Sóbrio e profissional",
+    fonts: "Montserrat / Open Sans",
+  },
+  creative: {
+    label: "Criativo",
+    desc: "Playfair Display + Lato — Elegante e expressivo",
+    fonts: "Playfair Display / Lato",
+  },
+};
+
 const DENSITY_LABELS: Record<string, { label: string; desc: string; slidesPerModule: string }> = {
-  compact:  { label: "Compacto",  desc: "Menos slides, mais visual — ideal para apresentações ágeis",  slidesPerModule: "~5–7 slides/módulo" },
-  standard: { label: "Padrão",    desc: "Equilíbrio entre conteúdo e espaço — recomendado",              slidesPerModule: "~6–8 slides/módulo" },
-  detailed: { label: "Detalhado", desc: "Slides densos — ideal para material de estudo aprofundado",     slidesPerModule: "~7–9 slides/módulo" },
+  compact:  { label: "Compacto",  desc: "Mais slides, menos texto — ideal para apresentações ágeis",  slidesPerModule: "~5–8 slides/módulo" },
+  standard: { label: "Padrão",    desc: "Equilíbrio entre texto e espaço — recomendado",              slidesPerModule: "~7–10 slides/módulo" },
+  detailed: { label: "Detalhado", desc: "Slides mais densos — ideal para material de estudo",          slidesPerModule: "~9–14 slides/módulo" },
 };
 
 const COURSE_TYPES = [
-  "CURSO COMPLETO", "WORKSHOP", "MÓDULO",
-  "TRILHA DE APRENDIZAGEM", "WEBINAR", "TREINAMENTO", "MINI-CURSO",
+  "CURSO COMPLETO",
+  "WORKSHOP",
+  "MÓDULO",
+  "TRILHA DE APRENDIZAGEM",
+  "WEBINAR",
+  "TREINAMENTO",
+  "MINI-CURSO",
 ];
 
 // ── Component ──────────────────────────────────────────────────────
@@ -218,54 +85,49 @@ interface Props {
   exporting: boolean;
   disabled: boolean;
   isPro: boolean;
-  moduleCount?: number;
+  moduleCount?: number; // optional: number of modules for slide estimate
 }
 
 export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleCount = 5 }: Props) {
-  const [open, setOpen]                               = useState(false);
-  const [palette, setPalette]                         = useState<PptxExportOptions["palette"]>("default");
-  const [density, setDensity]                         = useState<PptxExportOptions["density"]>("standard");
-  const [includeImages, setIncludeImages]             = useState(true);
-  const [template, setTemplate]                       = useState("default_v5");
-  const [courseType, setCourseType]                   = useState("CURSO COMPLETO");
-  const [footerBrandEnabled, setFooterBrandEnabled]   = useState(true);
-  const [footerBrandValue, setFooterBrandValue]       = useState("EduGenAI");
-  const [useV2]                                       = useState(true);
-  const [useV3, setUseV3]                             = useState(false);
-  const [useV4, setUseV4]                             = useState(true);
-  const [useV6, setUseV6]                             = useState(false);
-  const [useMagicSlides, setUseMagicSlides]           = useState(false);
-  const [use2Slides, setUse2Slides]                   = useState(false);
-  const [usePresenton, setUsePresenton]               = useState(false);
-  const [twoSlidesTheme, setTwoSlidesTheme]           = useState("blue-gradient");
+  const [open, setOpen] = useState(false);
+  const [palette, setPalette]           = useState<PptxExportOptions["palette"]>("default");
+  const [density, setDensity]           = useState<PptxExportOptions["density"]>("standard");
+  const [includeImages, setIncludeImages] = useState(true);
+  const [theme, setTheme]               = useState<PptxExportOptions["theme"]>("light");
+  const [template, setTemplate]         = useState<PptxExportOptions["template"]>("default");
+  const [courseType, setCourseType]     = useState("CURSO COMPLETO");
+  const [footerBrandEnabled, setFooterBrandEnabled] = useState(true);
+  const [footerBrandValue, setFooterBrandValue]     = useState("EduGenAI");
+  const [useV2] = useState(true);
+  const [useV3, setUseV3] = useState(true);
+  const [useMagicSlides, setUseMagicSlides] = useState(isPro); // Default true for Pro as requested
 
-  const selectedTpl = VISUAL_TEMPLATES[template] || VISUAL_TEMPLATES.default_v5;
-  const theme = selectedTpl.theme;
-
+  // Estimate slide count based on density + module count
   const slideEstimates: Record<string, [number, number]> = {
-    compact:  [5, 7],
-    standard: [6, 8],
-    detailed: [7, 9],
+    compact:  [5, 8],
+    standard: [7, 10],
+    detailed: [9, 14],
   };
   const [lo, hi] = slideEstimates[density];
-  const minSlides = lo * moduleCount + 3;
+  const minSlides = lo * moduleCount + 3; // +3 for cover, TOC, closing
   const maxSlides = hi * moduleCount + 3;
 
+  // Preview colors: use template default when palette = "default"
   const previewColors = palette === "default"
-    ? selectedTpl.colors
+    ? TEMPLATE_DEFAULT_COLORS[template]
     : PALETTES[palette].colors;
 
   const footerBrand = footerBrandEnabled ? (footerBrandValue.trim() || "EduGenAI") : null;
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useV4, useV6, useMagicSlides, use2Slides, usePresenton, twoSlidesTheme, courseType, footerBrand });
+    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useMagicSlides, courseType, footerBrand });
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={disabled || exporting} data-testid="button-export-pptx">
+        <Button variant="outline" size="sm" disabled={disabled || exporting}>
           {exporting
             ? <Loader2 className="h-4 w-4 animate-spin mr-1" />
             : <Presentation className="h-4 w-4 mr-1" />}
@@ -278,38 +140,72 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
           <DialogTitle>Exportar PowerPoint</DialogTitle>
         </DialogHeader>
 
+        {/* ── Slide Preview ── */}
+        <div className="space-y-1.5 py-1">
+          <span className="text-xs text-muted-foreground">Pré-visualização</span>
+          <SlidePreview
+            previewColors={previewColors}
+            theme={theme}
+            courseType={courseType}
+            footerBrand={footerBrand}
+            template={template}
+          />
+        </div>
+
+        <hr className="border-border" />
+
         <div className="space-y-5 py-2">
-          {/* ── Template Visual Cards ── */}
+          {/* ── Tema Visual (first — sets the overall mood) ── */}
           <div className="space-y-2">
-            <Label>Template Visual</Label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {Object.entries(VISUAL_TEMPLATES).map(([id, tpl]) => (
-                <TemplateMiniPreview
-                  key={id}
-                  id={id}
-                  tpl={tpl}
-                  selected={template === id}
-                  onClick={() => setTemplate(id)}
-                />
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground pl-1">
-              Tema: <span className="font-medium">{selectedTpl.theme === "dark" ? "Escuro" : "Claro"}</span>
-              {" · "}
-              Layout: <span className="font-medium capitalize">{selectedTpl.visualStyle === "band" ? "Faixa no topo" : selectedTpl.visualStyle === "minimal" ? "Minimalista" : "Clássico flutuante"}</span>
-            </p>
+            <Label>Tema Visual</Label>
+            <Select value={theme} onValueChange={(v) => setTheme(v as PptxExportOptions["theme"])}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="light">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-3 h-3 rounded-full bg-white border border-gray-300" />
+                    <span>Claro (fundo branco)</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="dark">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-3 h-3 rounded-full bg-slate-900" />
+                    <span>Escuro (fundo escuro)</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          <hr className="border-border" />
+          {/* ── Template ── */}
+          <div className="space-y-2">
+            <Label>Template</Label>
+            <Select value={template} onValueChange={(v) => setTemplate(v as PptxExportOptions["template"])}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(TEMPLATES).map(([key, { label, desc, fonts }]) => (
+                  <SelectItem key={key} value={key}>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{label}</span>
+                      <span className="text-xs text-muted-foreground">{desc}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground pl-1">
+              Fontes: <span className="font-medium">{TEMPLATES[template].fonts}</span>
+            </p>
+          </div>
 
           {/* ── Palette ── */}
           <div className="space-y-2">
             <Label>Paleta de Cores</Label>
             <Select value={palette} onValueChange={(v) => setPalette(v as PptxExportOptions["palette"])}>
-              <SelectTrigger data-testid="select-palette"><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Object.entries(PALETTES).map(([key, { label }]) => {
-                  const colors = key === "default" ? selectedTpl.colors : PALETTES[key].colors;
+                  const colors = key === "default" ? TEMPLATE_DEFAULT_COLORS[template] : PALETTES[key].colors;
                   return (
                     <SelectItem key={key} value={key}>
                       <div className="flex items-center gap-2">
@@ -325,6 +221,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
                 })}
               </SelectContent>
             </Select>
+            {/* Live color preview strip */}
             <div className="flex gap-1 rounded-md overflow-hidden h-2 w-full mt-1">
               {previewColors.map((c, i) => (
                 <div key={i} className="flex-1" style={{ backgroundColor: c }} />
@@ -336,7 +233,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
           <div className="space-y-2">
             <Label>Densidade do Conteúdo</Label>
             <Select value={density} onValueChange={(v) => setDensity(v as PptxExportOptions["density"])}>
-              <SelectTrigger data-testid="select-density"><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Object.entries(DENSITY_LABELS).map(([key, { label, desc, slidesPerModule }]) => (
                   <SelectItem key={key} value={key}>
@@ -351,6 +248,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
                 ))}
               </SelectContent>
             </Select>
+            {/* Slide count estimate */}
             <p className="text-xs text-muted-foreground pl-1 flex items-center gap-1">
               <Info className="h-3 w-3" />
               Estimativa: <span className="font-medium text-foreground">{minSlides}–{maxSlides} slides</span> para este curso
@@ -361,7 +259,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
           <div className="space-y-2">
             <Label>Tipo de Curso (capa)</Label>
             <Select value={courseType} onValueChange={setCourseType}>
-              <SelectTrigger data-testid="select-course-type"><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {COURSE_TYPES.map((t) => (
                   <SelectItem key={t} value={t}>{t}</SelectItem>
@@ -376,12 +274,12 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
               <Label>Incluir Imagens</Label>
               <p className="text-xs text-muted-foreground">Imagens temáticas na capa, módulos e encerramento</p>
             </div>
-            <Switch checked={includeImages} onCheckedChange={setIncludeImages} data-testid="switch-include-images" />
+            <Switch checked={includeImages} onCheckedChange={setIncludeImages} />
           </div>
           {includeImages && (
             <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
               <ImageOff className="h-3.5 w-3.5 shrink-0" />
-              Imagens buscadas automaticamente via Pexels durante a geração do PPTX.
+              Requer integração Unsplash ativa. Se não configurada, o PPTX será gerado sem imagens.
             </div>
           )}
 
@@ -392,7 +290,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
                 <Label>Marca no Rodapé</Label>
                 <p className="text-xs text-muted-foreground">Texto exibido no rodapé de todos os slides</p>
               </div>
-              <Switch checked={footerBrandEnabled} onCheckedChange={setFooterBrandEnabled} data-testid="switch-footer-brand" />
+              <Switch checked={footerBrandEnabled} onCheckedChange={setFooterBrandEnabled} />
             </div>
             {footerBrandEnabled && (
               <Input
@@ -401,127 +299,34 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
                 placeholder="Ex: EduGenAI, Minha Escola, etc."
                 maxLength={40}
                 className="text-sm"
-                data-testid="input-footer-brand"
               />
             )}
           </div>
 
-          {/* ── Presenton AI Engine ── */}
-          <div className={`space-y-3 p-3 rounded-xl border transition-colors ${usePresenton ? "border-violet-500/40 bg-violet-500/5" : "border-border bg-muted/30"}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-semibold text-violet-400">✨ Presenton AI (Recomendado)</p>
-                  <Badge variant="outline" className="text-[10px] px-1 py-0 bg-violet-500/10 text-violet-400 border-violet-500/20">NOVO</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">Slides profissionais gerados por IA com templates premium</p>
+          {/* ── MagicSlides Pro toggle ── */}
+          <div className="flex items-center justify-between p-3 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-semibold text-indigo-400">✨ MagicSlides Pro (Beta)</p>
+                <Badge variant="outline" className="text-[10px] px-1 py-0 bg-indigo-500/10 text-indigo-400 border-indigo-500/20">NOVO</Badge>
               </div>
-              <Switch
-                checked={usePresenton}
-                onCheckedChange={(v) => {
-                  setUsePresenton(v);
-                  if (v) setUse2Slides(false);
-                }}
-                data-testid="switch-use-presenton"
-              />
+              <p className="text-xs text-muted-foreground">Motor de design avançado com imagens integradas</p>
             </div>
-            {usePresenton && (
-              <p className="text-[10px] text-muted-foreground pl-0.5">
-                O template visual selecionado acima será usado para escolher o design do Presenton.
-              </p>
-            )}
+            <Switch 
+              checked={useMagicSlides} 
+              onCheckedChange={setUseMagicSlides}
+              disabled={!isPro}
+            />
           </div>
 
-          {/* ── 2Slides AI Engine ── */}
-          <div className={`space-y-3 p-3 rounded-xl border transition-colors ${use2Slides ? "border-sky-500/40 bg-sky-500/5" : "border-border bg-muted/30"}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-semibold text-sky-400">⚡ 2Slides AI</p>
-                </div>
-                <p className="text-xs text-muted-foreground">Design profissional gerado por IA — templates premium</p>
-              </div>
-              <Switch
-                checked={use2Slides}
-                onCheckedChange={(v) => {
-                  setUse2Slides(v);
-                  if (v) setUsePresenton(false);
-                }}
-                data-testid="switch-use-2slides"
-              />
+          {/* ── V3 AI Generation toggle ── */}
+          <div className="flex items-center justify-between px-1">
+            <div>
+              <p className="text-sm font-medium">🧪 Geração de slides EduGen v3</p>
+              <p className="text-xs text-muted-foreground">Motor nativo de alta precisão pedagógica</p>
             </div>
-
-            {use2Slides && (
-              <div className="space-y-1.5 pt-1">
-                <Label className="text-xs text-muted-foreground">Tema Visual</Label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {[
-                    { key: "blue-gradient",   label: "Azul Gradiente",    desc: "Moderno • Claro",    color: "#3B82F6" },
-                    { key: "blue-modern",     label: "Azul Moderno",      desc: "Limpo • Claro",      color: "#2563EB" },
-                    { key: "dark-pro",        label: "Profissional Dark", desc: "Elegante • Escuro",  color: "#374151" },
-                    { key: "training-orange", label: "Treinamento",       desc: "Energético • Claro", color: "#F97316" },
-                  ].map(({ key, label, desc, color }) => (
-                    <button
-                      key={key}
-                      data-testid={`theme-2slides-${key}`}
-                      onClick={() => setTwoSlidesTheme(key)}
-                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition-all text-xs ${
-                        twoSlidesTheme === key
-                          ? "border-sky-500 bg-sky-500/10"
-                          : "border-border hover:border-sky-500/40"
-                      }`}
-                    >
-                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                      <div>
-                        <p className="font-medium leading-tight">{label}</p>
-                        <p className="text-muted-foreground leading-tight">{desc}</p>
-                      </div>
-                      {twoSlidesTheme === key && <Check className="h-3 w-3 text-sky-400 ml-auto shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[10px] text-muted-foreground pt-0.5 pl-0.5">
-                  💡 10 créditos por slide — novo signup inclui 880 créditos grátis
-                </p>
-              </div>
-            )}
+            <Switch checked={useV3} onCheckedChange={setUseV3} disabled={useMagicSlides} />
           </div>
-
-          {/* ── V6 Engine (template ZIP) — HIDDEN: not user-selectable, kept in code for explicit dev/admin opt-in only ── */}
-
-          {/* ── V4 Native Engine (CANONICAL) ── */}
-          {!use2Slides && !usePresenton && (
-            <div className={`space-y-1 p-3 rounded-xl border transition-colors ${useV4 ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-muted/30"}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-semibold text-emerald-400">🚀 EduGen v5</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Engine v5 — slides centrados, paletas expandidas, prompt McKinsey</p>
-                </div>
-                <Switch
-                  checked={useV4}
-                  onCheckedChange={(v) => { setUseV4(v); if (v) { setUseV3(false); } }}
-                  data-testid="switch-use-v4"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* ── V3 AI Generation toggle (legacy) ── */}
-          {!use2Slides && !usePresenton && (
-            <div className="flex items-center justify-between px-1">
-              <div>
-                <p className="text-sm font-medium">EduGen v3 (motor anterior)</p>
-                <p className="text-xs text-muted-foreground">Motor estável — use para comparar com v4/v6</p>
-              </div>
-              <Switch
-                checked={useV3}
-                onCheckedChange={(v) => { setUseV3(v); if (v) { setUseV4(false); } }}
-                data-testid="switch-use-v3"
-              />
-            </div>
-          )}
 
           {/* ── Compatibility note ── */}
           <div className="rounded-md border border-border bg-muted/50 p-3">
@@ -532,8 +337,8 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} data-testid="button-cancel-export">Cancelar</Button>
-          <Button onClick={handleExport} disabled={exporting} data-testid="button-confirm-export">
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+          <Button onClick={handleExport} disabled={exporting}>
             {exporting && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
             Gerar PPTX
           </Button>
