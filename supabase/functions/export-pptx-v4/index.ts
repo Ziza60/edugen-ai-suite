@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.1";
+const ENGINE_VERSION = "5.7.2";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -626,6 +626,132 @@ function validateSemanticCodeCompleteness(code: string): string | null {
     }
   }
 
+  // ── v5.7.2 — observable_outcome tier ──
+  // A code slide is not "complete" just because it parses. The student must
+  // be able to OBSERVE a result (printed value, returned value, side-effect).
+  // Three new failure modes:
+  //
+  //   - `bare_method_call_discards_return`
+  //       Top-level line of the form `inst.method(args)` (no print wrap, no
+  //       assignment) where `method` is defined in a class body and that
+  //       method body contains `return <non-trivial>`. Slide 40 symptom:
+  //       `livro2.exibir_detalhes()` discards a string return.
+  //
+  //   - `function_returns_implicit_none`
+  //       A top-level `def fn(...)` whose body has at least one assignment
+  //       to a "result-ish" variable name (total*/result*/resultado*/soma*/
+  //       valor*/saida*/output*/final*/ans*/response*/payload*/data*/count*)
+  //       but no `return` statement. Slides 14 and 46 symptom.
+  //
+  //   - `assignment_result_unused`
+  //       Top-level (not inside def/class) last non-blank line is
+  //       `var = call(...)` AND `var` is never referenced again. Defensive
+  //       check; narrowly scoped to result-ish var names to avoid false
+  //       positives on legitimate setup code (`client = MyClient()` etc).
+
+  // Helper: classify a top-level def's body. Returns { hasReturn, methods,
+  // bodyLastAssignVar } and the def block's start/end line indices.
+  // We only need a structural scan, not full parsing.
+  const allLines = t.split("\n");
+
+  // Identify methods that return a non-trivial value (used by reason 4).
+  // A method def is `<indent>def methodName(self...)` where indent > 0.
+  // We scan the next lines until the indent drops back to <= def indent.
+  const returningMethods = new Set<string>();
+  for (let i = 0; i < allLines.length; i++) {
+    const line = allLines[i];
+    const m = line.match(/^(\s+)def\s+([a-z_][\w]*)\s*\(\s*self\b/);
+    if (!m) continue;
+    const defIndent = m[1].length;
+    const methodName = m[2];
+    // Walk the body
+    for (let j = i + 1; j < allLines.length; j++) {
+      const bl = allLines[j];
+      if (bl.trim() === "") continue;
+      const ind = bl.match(/^(\s*)/)![1].length;
+      if (ind <= defIndent) break; // dedented out of method body
+      // return with a non-trivial expression (not "return" alone or
+      // "return None")
+      if (/^\s*return\s+(?!None\s*$|$)/.test(bl)) {
+        returningMethods.add(methodName);
+        break;
+      }
+    }
+  }
+
+  // Reason 4: bare method call that discards a returning method's value.
+  if (returningMethods.size > 0) {
+    for (const line of allLines) {
+      // Top-level only (no leading whitespace)
+      if (/^\s/.test(line)) continue;
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      // Must be a bare expression statement: `inst.method(...)`
+      // - no leading print(/return / assignment
+      // - exactly the call, possibly with surrounding whitespace
+      const bm = trimmed.match(/^([a-z_][\w]*)\.([a-z_][\w]*)\s*\([^)]*\)\s*$/);
+      if (!bm) continue;
+      const methodName = bm[2];
+      if (!returningMethods.has(methodName)) continue;
+      // Skip if this is `print(...)` or assignment context (already filtered
+      // by the leading regex check, but defensive)
+      return "bare_method_call_discards_return";
+    }
+  }
+
+  // Reason 5: function_returns_implicit_none.
+  // For each TOP-LEVEL def whose body never returns but contains a
+  // result-ish final assignment.
+  const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
+  for (let i = 0; i < allLines.length; i++) {
+    const line = allLines[i];
+    const m = line.match(/^def\s+([a-z_][\w]*)\s*\(/);
+    if (!m) continue;
+    // Walk body until dedent
+    let bodyHasReturn = false;
+    let lastAssignVar: string | null = null;
+    let bodyEnd = allLines.length;
+    for (let j = i + 1; j < allLines.length; j++) {
+      const bl = allLines[j];
+      if (bl.trim() === "") continue;
+      const ind = bl.match(/^(\s*)/)![1].length;
+      if (ind === 0) { bodyEnd = j; break; }
+      if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
+      // Track last `var = expr` (skip augmented like +=, -=)
+      const am = bl.match(/^\s+([a-z_][\w]*)\s*=\s*[^=]/);
+      if (am) lastAssignVar = am[1];
+    }
+    if (!bodyHasReturn && lastAssignVar && RESULT_ISH.test(lastAssignVar)) {
+      return "function_returns_implicit_none";
+    }
+  }
+
+  // Reason 6: assignment_result_unused — last non-blank top-level line is
+  // `var = call(...)` where var is result-ish AND never referenced after.
+  {
+    let lastNonBlankIdx = -1;
+    for (let i = allLines.length - 1; i >= 0; i--) {
+      if (allLines[i].trim() !== "") { lastNonBlankIdx = i; break; }
+    }
+    if (lastNonBlankIdx >= 0) {
+      const last = allLines[lastNonBlankIdx];
+      // Top-level only
+      if (!/^\s/.test(last)) {
+        const am = last.match(/^([a-z_][\w]*)\s*=\s*[a-z_][\w]*\s*\(/);
+        if (am && RESULT_ISH.test(am[1])) {
+          // Var must not be referenced anywhere else
+          const v = am[1];
+          let usedElsewhere = false;
+          for (let i = 0; i < allLines.length; i++) {
+            if (i === lastNonBlankIdx) continue;
+            if (new RegExp(`\\b${v}\\b`).test(allLines[i])) { usedElsewhere = true; break; }
+          }
+          if (!usedElsewhere) return "assignment_result_unused";
+        }
+      }
+    }
+  }
+
   // ── Legacy fallback: class with no observable output anywhere ──
   // Kept for cases that bypass the hardened class rule above (e.g. class
   // defined but nothing else emits output).
@@ -635,6 +761,13 @@ function validateSemanticCodeCompleteness(code: string): string | null {
 
   return null;
 }
+
+// v5.7.2 alias for documentation purposes — same implementation.
+// Code slides require an OBSERVABLE OUTCOME (printed value, returned value,
+// side-effect) for a student to learn from them. The validator above
+// enforces this in tiers; this alias makes intent explicit at call sites
+// that specifically care about outcome (vs. structural completeness).
+const validateObservableOutcome = validateSemanticCodeCompleteness;
 
 // v5.7.1 — preventive repair: rewrite `print(<instance>)` →
 // `<instance>.<method>()` BEFORE the validator runs. Method is chosen from
@@ -723,6 +856,133 @@ function repairIncompleteCodeExample(
       }
     }
   }
+  // ── v5.7.2 — observable_outcome repairs ──
+
+  // Pattern: bare_method_call_discards_return → wrap in print().
+  // Slide 40 fix. Find the FIRST top-level `inst.method(...)` line whose
+  // method returns a value, replace with `print(inst.method(...))`.
+  if (reason === "bare_method_call_discards_return") {
+    const allLines = out.split("\n");
+    // Re-discover returning methods (cheap; same scan as the validator)
+    const returning = new Set<string>();
+    for (let i = 0; i < allLines.length; i++) {
+      const m = allLines[i].match(/^(\s+)def\s+([a-z_][\w]*)\s*\(\s*self\b/);
+      if (!m) continue;
+      const defIndent = m[1].length;
+      for (let j = i + 1; j < allLines.length; j++) {
+        const bl = allLines[j];
+        if (bl.trim() === "") continue;
+        const ind = bl.match(/^(\s*)/)![1].length;
+        if (ind <= defIndent) break;
+        if (/^\s*return\s+(?!None\s*$|$)/.test(bl)) { returning.add(m[2]); break; }
+      }
+    }
+    let replaced = false;
+    const newLines = allLines.map((line) => {
+      if (replaced || /^\s/.test(line)) return line;
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("print(")) return line;
+      const bm = trimmed.match(/^([a-z_][\w]*\.[a-z_][\w]*\s*\([^)]*\))\s*$/);
+      if (!bm) return line;
+      const methodName = trimmed.split(".")[1].split("(")[0];
+      if (!returning.has(methodName)) return line;
+      replaced = true;
+      console.log(
+        `[CODE-REPAIR] slide=${slideNum} pattern=wrap_method_in_print expr=${JSON.stringify(bm[1])}`,
+      );
+      return `print(${bm[1]})`;
+    });
+    if (replaced) {
+      out = newLines.join("\n");
+      const re = validateSemanticCodeCompleteness(out);
+      if (re === null) return out;
+      // fall through — let other reasons get repaired in next pass
+    }
+  }
+
+  // Pattern: function_returns_implicit_none → inject `return <var>` inside
+  // the def body (right after the last assignment to a result-ish var),
+  // then if the function is uncalled, also append a call demo.
+  // Slides 14 and 46 fix.
+  if (reason === "function_returns_implicit_none") {
+    const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
+    const allLines = out.split("\n");
+    let injectedFn: { name: string; params: string } | null = null;
+    for (let i = 0; i < allLines.length; i++) {
+      const m = allLines[i].match(/^def\s+([a-z_][\w]*)\s*\(([^)]*)\)/);
+      if (!m) continue;
+      let bodyHasReturn = false;
+      let lastAssignLineIdx = -1;
+      let lastAssignVar: string | null = null;
+      let lastAssignIndent = "    ";
+      let bodyEnd = allLines.length;
+      for (let j = i + 1; j < allLines.length; j++) {
+        const bl = allLines[j];
+        if (bl.trim() === "") continue;
+        const ind = bl.match(/^(\s*)/)![1].length;
+        if (ind === 0) { bodyEnd = j; break; }
+        if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
+        const am = bl.match(/^(\s+)([a-z_][\w]*)\s*=\s*[^=]/);
+        if (am) {
+          lastAssignLineIdx = j;
+          lastAssignVar = am[2];
+          lastAssignIndent = am[1];
+        }
+      }
+      if (bodyHasReturn || !lastAssignVar || !RESULT_ISH.test(lastAssignVar)) continue;
+      // Inject `<indent>return <var>` immediately after the last assignment.
+      // We need to walk forward from lastAssignLineIdx to skip any
+      // subsequent body lines that belong to the same statement (e.g.
+      // `logging.debug(...)` after the assignment) — but in Python a
+      // simple assignment is one logical line, so insert right after.
+      // We insert AT the end of the function body to ensure the return
+      // is the last executed statement (handles slide 46 where logging
+      // comes after the assignment).
+      allLines.splice(bodyEnd, 0, `${lastAssignIndent}return ${lastAssignVar}`);
+      injectedFn = { name: m[1], params: m[2] ?? "" };
+      console.log(
+        `[CODE-REPAIR] slide=${slideNum} pattern=inject_missing_return fn=${m[1]} var=${lastAssignVar}`,
+      );
+      break;
+    }
+    if (injectedFn) {
+      out = allLines.join("\n");
+      // After injecting return, the function still needs a call demo if
+      // it's never invoked. Re-validate; if reason is now
+      // function_defined_but_uncalled, fall through to that repair below
+      // (we deliberately don't `return` here so the next branch fires).
+      const re = validateSemanticCodeCompleteness(out);
+      if (re === null) return out;
+      // If the next reason is the call demo, keep going. Otherwise return
+      // partial repair.
+      if (re !== "function_defined_but_uncalled") return out;
+      // Override `reason` so the next branch runs in this same call.
+      reason = re;
+    }
+  }
+
+  // Pattern: assignment_result_unused → append `print(<var>)`. Narrowly
+  // scoped via the validator's RESULT_ISH check, so this fires only when
+  // the user's last line is something like `resultado = somar(2, 3)` with
+  // no follow-up demonstration.
+  if (reason === "assignment_result_unused") {
+    const allLines = out.split("\n");
+    let lastNonBlankIdx = -1;
+    for (let i = allLines.length - 1; i >= 0; i--) {
+      if (allLines[i].trim() !== "") { lastNonBlankIdx = i; break; }
+    }
+    if (lastNonBlankIdx >= 0) {
+      const am = allLines[lastNonBlankIdx].match(/^([a-z_][\w]*)\s*=/);
+      if (am) {
+        out += `\nprint(${am[1]})`;
+        console.log(
+          `[CODE-REPAIR] slide=${slideNum} pattern=print_assignment_terminal var=${am[1]}`,
+        );
+        if (validateSemanticCodeCompleteness(out) === null) return out;
+      }
+    }
+  }
+
   // v5.7.1 — function_defined_but_uncalled repair: append a CALL DEMO
   // for the LAST top-level function defined in the snippet. Generates
   // sample arguments based on parameter name heuristics.
@@ -978,6 +1238,62 @@ function synthesizeMinimalCompleteExample(
   return null;
 }
 
+// v5.7.2 — Visual truncation repair for non-code text fields.
+// Planners occasionally emit bullets/items that exceed the layout's drawable
+// width; the renderer then truncates with a literal "..." or unicode "…",
+// shipping a half-sentence to the student ("comentários para…", "listar…").
+// This is a layout-engine symptom (proibido tocar no renderer), so we
+// transform the text BEFORE render: strip the ellipsis, drop a dangling
+// preposition/conjunction, ensure terminal punctuation. Cheap, deterministic,
+// no LLM. Operates only on items / leftItems / rightItems (NOT code).
+const TRAILING_PREP_RE = /\s+(para|de|da|do|das|dos|com|e|ou|que|em|no|na|nos|nas|ao|à|aos|às|por|sobre|entre|sem|sob|a|as|os|um|uma|uns|umas)\s*$/i;
+const ELLIPSIS_TAIL_RE = /^(.*?)(\s*(?:\.{2,}|…+|\.{2,}\s*…+|…+\s*\.{2,})\s*)$/;
+
+function repairVisualTruncationInItems(slide: Slide, slideNum: number | string): Slide {
+  const fields = ["items", "leftItems", "rightItems", "leftBullets", "rightBullets"] as const;
+  let out: any = slide;
+  let touched = false;
+  for (const field of fields) {
+    const arr = (slide as any)[field];
+    if (!Array.isArray(arr)) continue;
+    let fieldChanged = false;
+    const fixed = arr.map((item: any, i: number) => {
+      if (typeof item !== "string") return item;
+      const m = item.match(ELLIPSIS_TAIL_RE);
+      if (!m) return item;
+      let cleaned = m[1].trimEnd();
+      let droppedWords = 0;
+      while (TRAILING_PREP_RE.test(cleaned) && droppedWords < 2) {
+        cleaned = cleaned.replace(TRAILING_PREP_RE, "").trimEnd();
+        droppedWords++;
+      }
+      cleaned = cleaned.replace(/[,;:\-]+\s*$/, "").trimEnd();
+      const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
+      let action: string;
+      if (wordCount === 0) {
+        action = "dropped_empty";
+        cleaned = "";
+      } else if (wordCount < 2) {
+        action = "kept_short";
+      } else {
+        action = "stripped_and_capped";
+        if (!/[.!?:]$/.test(cleaned)) cleaned += ".";
+        if (wordCount < 3) action = "kept_short_punctuated";
+      }
+      console.log(
+        `[VISUAL-TRUNCATION] slide=${slideNum} field=${field}[${i}] action=${action} before=${JSON.stringify(item.slice(0, 80))} after=${JSON.stringify(cleaned.slice(0, 80))}`,
+      );
+      fieldChanged = true;
+      return cleaned;
+    }).filter((v: any) => !(typeof v === "string" && v === ""));
+    if (fieldChanged) {
+      out = { ...out, [field]: fixed };
+      touched = true;
+    }
+  }
+  return touched ? out : slide;
+}
+
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
 // v5.5.5: accepts moduleKind + prevSymbols for semantic code repair.
 // v5.5.6: prevSymbols is now full module accumulator, not just last slide.
@@ -1118,6 +1434,10 @@ function applyFinalGuardrails(
       console.log(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=true codeLines=${codeLines}`);
     }
   }
+  // v5.7.2 — Guardrail 6: visual truncation in non-code text fields.
+  // Strips trailing "…" / "..." from items/leftItems/rightItems and cleans
+  // dangling prepositions. Pre-render, deterministic, no LLM.
+  out = repairVisualTruncationInItems(out, slideNum);
   return out;
 }
 
