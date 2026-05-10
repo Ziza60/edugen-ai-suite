@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.1";
+const ENGINE_VERSION = "5.8.2";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -1066,8 +1066,25 @@ function applyFinalGuardrails(
           out = { ...out, code: repaired };
           console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair reason_was=${reason}`);
         } else {
-          out = { ...out, code: repaired };
+          // v5.8.2 — PARTIAL_AFTER_LOOP is not acceptable for a technical CODE slide.
+          // Try synthesis before accepting broken code or demoting.
           console.warn(`[CODE-COMPLETE] slide=${slideNum} status=PARTIAL repair_left=${reReason}`);
+          if (out.layout === "code") {
+            const synthP = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+            if (synthP) {
+              console.log(
+                `[CODE-SYNTHESIS] slide=${slideNum} reason=partial_after_loop (${reReason}) source=${synthP.source} moduleKind=${moduleKind ?? "unknown"}`,
+              );
+              out = { ...out, code: synthP.code };
+            } else {
+              console.warn(
+                `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=partial_after_loop_no_synth (${reReason}) moduleKind=${moduleKind ?? "unknown"}`,
+              );
+              out = demoteCodeLayout(out, slideNum, `partial_after_loop_${reReason}`);
+            }
+          } else {
+            out = { ...out, code: repaired };
+          }
         }
       } else {
         console.warn(`[CODE-COMPLETE] slide=${slideNum} status=FAILED reason=${reason}`);
@@ -1116,6 +1133,40 @@ function applyFinalGuardrails(
       }
     } else {
       console.log(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=true codeLines=${codeLines}`);
+    }
+  }
+  // v5.8.2 — Guardrail 6: HTTP parity for json_apis slides.
+  // If a CODE slide's text fields promise GET/POST but the code doesn't
+  // demonstrate those methods (with .status_code + .json()), repair the
+  // code with a canonical combined example. Non-code slides are logged only.
+  const isHttpModule = moduleKind === "json_apis" || /\b(requests|http|api|rest)\b/i.test(out.title ?? "");
+  if (isHttpModule) {
+    const promised = getHttpMethodsPromised(out);
+    if (promised.size > 0) {
+      if (out.layout === "code" && out.code) {
+        const codeLower = out.code.toLowerCase();
+        const covered = new Set<string>();
+        if (/requests\.get/.test(codeLower)) covered.add("GET");
+        if (/requests\.post/.test(codeLower)) covered.add("POST");
+        if (/requests\.put/.test(codeLower)) covered.add("PUT");
+        if (/requests\.delete/.test(codeLower)) covered.add("DELETE");
+        const hasStatusCode = /\.status_code/.test(codeLower);
+        const hasJsonCall    = /\.json\(\)/.test(codeLower);
+        const missing = [...promised].filter((m) => !covered.has(m));
+        if (missing.length > 0 || !hasStatusCode || !hasJsonCall) {
+          console.warn(
+            `[HTTP-PARITY] slide=${slideNum} promised=${[...promised].join("+")} covered=${[...covered].join("+")||"none"} status_code=${hasStatusCode} json=${hasJsonCall} → repair`,
+          );
+          const parityCode = synthesizeHttpParityExample(promised);
+          const parityCheck = validateSemanticCodeCompleteness(parityCode);
+          if (parityCheck === null) {
+            out = { ...out, code: parityCode };
+            console.log(`[HTTP-PARITY] slide=${slideNum} repaired with ${[...promised].join("+")} + status_code + json()`);
+          }
+        }
+      } else if (out.layout !== "code") {
+        console.log(`[HTTP-PARITY] slide=${slideNum} non-code slide promises ${[...promised].join("+")} — informational only`);
+      }
     }
   }
   return out;
@@ -7109,6 +7160,102 @@ function repairPythonRequestsSnippet(code: string): string | null {
   return lines.join("\n");
 }
 
+// ── v5.8.2 — HTTP Parity helpers ───────────────────────────────────────────
+// Scan ALL text fields of a slide (title, subtitle, items, leftItems,
+// rightItems) for mentions of HTTP methods. Returns the set of methods
+// *promised* by prose/bullets so guardrails can compare against the code.
+function getHttpMethodsPromised(s: Slide): Set<string> {
+  const text = [
+    s.title ?? "", s.subtitle ?? "", s.label ?? "",
+    ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+  ].join(" ").toLowerCase();
+  const methods = new Set<string>();
+  if (/\bget\b|requests\.get/.test(text)) methods.add("GET");
+  if (/\bpost\b|requests\.post/.test(text)) methods.add("POST");
+  if (/\bput\b|requests\.put/.test(text)) methods.add("PUT");
+  if (/\bdelete\b|requests\.delete/.test(text)) methods.add("DELETE");
+  return methods;
+}
+
+// Produce a combined GET+POST example (or whatever methods are in `methods`).
+// Always emits response.status_code + response.json() for parity.
+function synthesizeHttpParityExample(methods: Set<string>): string {
+  const lines: string[] = ["import requests", ""];
+  if (methods.has("GET") || methods.size === 0) {
+    lines.push(`url = "https://api.example.com/items"`);
+    lines.push(`response = requests.get(url)`);
+    lines.push(`print(response.status_code)`);
+    lines.push(`print(response.json())`);
+  }
+  if (methods.has("POST")) {
+    if (lines.length > 2) lines.push("");
+    lines.push(`payload = {"nome": "Produto A", "preco": 29.90}`);
+    lines.push(`resp_post = requests.post("https://api.example.com/items", json=payload)`);
+    lines.push(`print(resp_post.status_code)`);
+    lines.push(`print(resp_post.json())`);
+  }
+  return lines.join("\n");
+}
+
+// ── v5.8.2 — Module Skill Coverage Contracts ───────────────────────────────
+// Minimum observable patterns per moduleKind.
+// Each contract specifies required patterns that MUST collectively appear
+// in at least ONE code slide of the module. Missing contracts are logged
+// as [SKILL-CONTRACT] warnings and trigger a synthesis injection attempt.
+type SkillContract = {
+  name:             string;
+  requiredPatterns: RegExp[];  // ALL must appear in at least one code slide
+};
+
+const MODULE_SKILL_CONTRACTS: Record<string, SkillContract[]> = {
+  json_apis: [
+    { name: "http_get",   requiredPatterns: [/requests\.get\s*\(/] },
+    { name: "json_parse", requiredPatterns: [/\.status_code/, /\.json\(\)/] },
+  ],
+  tests_logs: [
+    { name: "unittest_or_pytest", requiredPatterns: [/import\s+unittest|import\s+pytest|def\s+test_/] },
+    { name: "logging_emit",       requiredPatterns: [/logging\.(info|debug|warning|error|critical)\s*\(/] },
+  ],
+  oop: [
+    { name: "class_with_init",  requiredPatterns: [/class\s+[A-Z]/, /__init__\s*\(/] },
+    { name: "instance_method",  requiredPatterns: [/\b[a-z_]\w*\s*\.\s*[a-z_]\w+\s*\(/] },
+  ],
+  files_exceptions: [
+    { name: "with_open",  requiredPatterns: [/with\s+open\s*\(/] },
+    { name: "try_except", requiredPatterns: [/try\s*:/, /except\b/] },
+  ],
+  best_practices: [
+    { name: "docstring_or_typehints", requiredPatterns: [/"""[\s\S]*?"""|def\s+\w+\s*\([^)]*:\s*\w+|->|requirements\.txt|venv/] },
+  ],
+};
+
+// Returns names of contracts that have NO code slide covering all their patterns.
+function checkModuleSkillContracts(
+  slides: Slide[],
+  moduleKind: string | null,
+  moduleTitle: string,
+  mi: number,
+): string[] {
+  if (!moduleKind || !(moduleKind in MODULE_SKILL_CONTRACTS)) return [];
+  const contracts = MODULE_SKILL_CONTRACTS[moduleKind];
+  const codeTexts = slides.filter((s) => s.layout === "code" && s.code).map((s) => s.code!);
+  const missing: string[] = [];
+  for (const contract of contracts) {
+    const covered = codeTexts.some((code) => contract.requiredPatterns.every((pat) => pat.test(code)));
+    if (!covered) {
+      missing.push(contract.name);
+      console.warn(
+        `[SKILL-CONTRACT] mi=${mi} title="${moduleTitle.slice(0, 60)}" kind=${moduleKind} MISSING=${contract.name} patterns=${contract.requiredPatterns.map((r) => r.source).join(" & ")}`,
+      );
+    } else {
+      console.log(
+        `[SKILL-CONTRACT] mi=${mi} title="${moduleTitle.slice(0, 60)}" kind=${moduleKind} OK=${contract.name}`,
+      );
+    }
+  }
+  return missing;
+}
+
 // ── Code completeness validator ────────────────────────────
 // Per-language structural completeness check. Returns true when the
 // code block looks safe to render (closed brackets, balanced quotes,
@@ -9314,6 +9461,42 @@ async function runPipeline(
       moduleCtx = extractSemanticCodeContext(kept);
     }
     allModuleSlides[mi] = kept;
+
+    // v5.8.2 — Skill coverage contracts: after all per-slide guardrails,
+    // check that the module's code slides collectively cover the required
+    // skill patterns for its kind. Missing patterns trigger a synthesis
+    // injection BEFORE global safety-net so the injected slide benefits from
+    // all subsequent QA layers. One injection attempt per module max.
+    const missingContracts = checkModuleSkillContracts(
+      kept, moduleKind, moduleTitlesArr[mi] ?? "", mi + 1,
+    );
+    if (missingContracts.length > 0) {
+      console.warn(
+        `[SKILL-CONTRACT] mi=${mi + 1} missing=${missingContracts.join(",")} → attempting synthesis injection`,
+      );
+      const synth = synthesizeMinimalCompleteExample(moduleKind, moduleCtx, moduleTitlesArr[mi] ?? "");
+      if (synth) {
+        const injectedSlide: Slide = {
+          layout: "code",
+          title:  `Exemplo: ${missingContracts[0].replace(/_/g, " ")}`,
+          code:   synth.code,
+          label:  "CÓDIGO",
+          moduleIndex: mi,
+        };
+        // Insert before trailing meta slides so it stays in the module body.
+        const metaIdx = kept.findIndex((s) => isMetaSlide(s));
+        if (metaIdx > 0) kept.splice(metaIdx, 0, injectedSlide);
+        else kept.push(injectedSlide);
+        allModuleSlides[mi] = kept;
+        console.log(
+          `[SKILL-CONTRACT-INJECT] mi=${mi + 1} kind=${moduleKind} contract=${missingContracts[0]} injected title="${injectedSlide.title}"`,
+        );
+      } else {
+        console.warn(
+          `[SKILL-CONTRACT] mi=${mi + 1} kind=${moduleKind} — synthesis unavailable, contracts remain unmet: ${missingContracts.join(",")}`,
+        );
+      }
+    }
   }
   console.log(
     `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount} | adjacent_dropped=${titleDedupDropCount} | weak_continuation_dropped=${weakContinuationDropCount}`,
