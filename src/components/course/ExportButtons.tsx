@@ -5,14 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Download, FileText, Loader2, Package, StickyNote, GraduationCap, FileType,
+  Download, FileText, Loader2, Package, StickyNote, GraduationCap,
 } from "lucide-react";
 import { PptxExportDialog, type PptxExportOptions } from "./PptxExportDialog";
 import { PptxQualityReport, type QualityReport } from "./PptxQualityReport";
-import {
-  Document, Packer, Paragraph, TextRun, HeadingLevel,
-  AlignmentType, BorderStyle, ShadingType,
-} from "docx";
 
 interface ExportButtonsProps {
   courseId: string;
@@ -30,7 +26,6 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const [exportingScorm, setExportingScorm] = useState(false);
   const [exportingNotion, setExportingNotion] = useState(false);
   const [exportingMoodle, setExportingMoodle] = useState(false);
-  const [exportingDocx, setExportingDocx] = useState(false);
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
 
@@ -38,143 +33,6 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
     const safe = (title || "curso").replace(/[^\w\s\-àáâãéêíóôõúüçÀÁÂÃÉÊÍÓÔÕÚÜÇ]/gi, "").trim();
     const date = new Date().toISOString().slice(0, 10);
     return `${safe} - ${format} - ${date}.${ext}`;
-  };
-
-  const handleExportDocx = async () => {
-    setExportingDocx(true);
-    try {
-      const children: Paragraph[] = [];
-
-      // Cover: course title
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: courseTitle, bold: true, size: 56, color: "1a1a2e" })],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 400 },
-        }),
-        new Paragraph({
-          children: [new TextRun({ text: `${modules.length} módulos`, size: 28, color: "666666" })],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 800 },
-        }),
-        new Paragraph({ children: [new TextRun({ text: "", break: 1 })] }),
-      );
-
-      for (const mod of modules) {
-        // Module heading
-        children.push(
-          new Paragraph({
-            text: mod.title,
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 480, after: 200 },
-            border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: "e2e8f0", space: 4 } },
-          })
-        );
-
-        const rawContent = mod.content || "";
-        const lines = rawContent.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("## ")) {
-            children.push(new Paragraph({ text: line.slice(3), heading: HeadingLevel.HEADING_2, spacing: { before: 240, after: 120 } }));
-          } else if (line.startsWith("### ")) {
-            children.push(new Paragraph({ text: line.slice(4), heading: HeadingLevel.HEADING_3, spacing: { before: 160, after: 80 } }));
-          } else if (line.startsWith("# ")) {
-            children.push(new Paragraph({ text: line.slice(2), heading: HeadingLevel.HEADING_1, spacing: { before: 320, after: 160 } }));
-          } else if (line.startsWith("- ") || line.startsWith("* ")) {
-            children.push(new Paragraph({ text: line.slice(2), bullet: { level: 0 }, spacing: { after: 60 } }));
-          } else if (/^\d+\. /.test(line)) {
-            children.push(new Paragraph({ text: line.replace(/^\d+\. /, ""), numbering: { reference: "ordered", level: 0 }, spacing: { after: 60 } }));
-          } else if (line.startsWith("> ")) {
-            children.push(new Paragraph({
-              children: [new TextRun({ text: line.slice(2), italics: true, color: "555555" })],
-              indent: { left: 720 },
-              spacing: { after: 120 },
-              shading: { type: ShadingType.SOLID, color: "f8f9fa", fill: "f8f9fa" },
-            }));
-          } else if (line === "---") {
-            children.push(new Paragraph({
-              children: [],
-              border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: "e2e8f0", space: 2 } },
-              spacing: { before: 120, after: 120 },
-            }));
-          } else if (line.trim() === "") {
-            children.push(new Paragraph({ text: "", spacing: { after: 80 } }));
-          } else {
-            // Inline bold/italic parsing
-            const runs: TextRun[] = [];
-            const boldItalicRe = /\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`/g;
-            let lastIdx = 0;
-            let m: RegExpExecArray | null;
-            while ((m = boldItalicRe.exec(line)) !== null) {
-              if (m.index > lastIdx) runs.push(new TextRun({ text: line.slice(lastIdx, m.index) }));
-              if (m[1]) runs.push(new TextRun({ text: m[1], bold: true, italics: true }));
-              else if (m[2]) runs.push(new TextRun({ text: m[2], bold: true }));
-              else if (m[3]) runs.push(new TextRun({ text: m[3], italics: true }));
-              else if (m[4]) runs.push(new TextRun({ text: m[4], font: "Courier New", size: 20, color: "d63384" }));
-              lastIdx = m.index + m[0].length;
-            }
-            if (lastIdx < line.length) runs.push(new TextRun({ text: line.slice(lastIdx) }));
-            children.push(new Paragraph({ children: runs.length ? runs : [new TextRun({ text: line })], spacing: { after: 100 } }));
-          }
-        }
-      }
-
-      // Footer branding
-      if (!isPro) {
-        children.push(
-          new Paragraph({ children: [], spacing: { before: 400 } }),
-          new Paragraph({
-            children: [new TextRun({ text: "Gerado com EduGenAI — plataforma de cursos com IA", italics: true, size: 18, color: "999999" })],
-            alignment: AlignmentType.CENTER,
-          })
-        );
-      }
-
-      const doc = new Document({
-        numbering: {
-          config: [{
-            reference: "ordered",
-            levels: [{ level: 0, format: "decimal", text: "%1.", alignment: AlignmentType.START, style: { paragraph: { indent: { left: 720, hanging: 360 } } } }],
-          }],
-        },
-        styles: {
-          default: {
-            document: { run: { font: "Calibri", size: 24, color: "1a1a2e" } },
-          },
-          paragraphStyles: [
-            { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", run: { size: 36, bold: true, color: "1a1a2e" } },
-            { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", run: { size: 28, bold: true, color: "334155" } },
-            { id: "Heading3", name: "Heading 3", basedOn: "Normal", next: "Normal", run: { size: 24, bold: true, color: "475569" } },
-          ],
-        },
-        sections: [{ properties: {}, children }],
-      });
-
-      const buffer = await Packer.toBlob(doc);
-      const url = URL.createObjectURL(buffer);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = formatFileName(courseTitle, "DOCX", "docx");
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      toast({ title: "DOCX gerado com sucesso!" });
-
-      if (user) {
-        supabase.from("usage_events").insert({
-          user_id: user.id,
-          event_type: "COURSE_EXPORTED_DOCX",
-          metadata: { course_id: courseId },
-        }).then(() => {});
-      }
-    } catch (err: any) {
-      toast({ title: "Erro ao gerar DOCX", description: err.message, variant: "destructive" });
-    } finally {
-      setExportingDocx(false);
-    }
   };
 
   const handleExportMarkdown = () => {
@@ -239,21 +97,8 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
     <>
       <div className="flex flex-wrap gap-2">
         {/* Markdown - Free + Pro */}
-        <Button variant="outline" size="sm" onClick={handleExportMarkdown} data-testid="button-export-md">
+        <Button variant="outline" size="sm" onClick={handleExportMarkdown}>
           <Download className="h-4 w-4 mr-1" /> MD
-        </Button>
-
-        {/* DOCX - Free + Pro (client-side) */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExportDocx}
-          disabled={exportingDocx}
-          data-testid="button-export-docx"
-          title="Exportar como documento Word editável"
-        >
-          {exportingDocx ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileType className="h-4 w-4 mr-1" />}
-          DOCX
         </Button>
 
         {/* PDF - Pro */}
@@ -281,260 +126,38 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               let data: any = null;
               let engineUsed = "v3-native";
 
-              // ── ENGINE POLICY (v5.7+) ──
-              // Canonical engine = export-pptx-v4 (engine v5.x).
-              // - QA_VETO/422 → hard stop, no fallback (semantic veto).
-              // - Infra failure (5xx/network/timeout) → fallback ONLY to export-pptx-v3.
-              // - export-pptx-v6 is NOT in the automatic fallback chain. It only fires
-              //   when explicitly opted in via options.useV6 (UI toggle currently hidden).
-              console.log(
-                "[PPTX-FRONTEND] preferredEngine=export-pptx-v4 fallbackAllowedOnlyFor=infra_failure qaVetoFallback=false",
-              );
-
-              // ── PRESENTON AI ENGINE ──
-              if (options.usePresenton) {
-                console.log("[PPTX] Attempting Presenton AI export... template:", options.template);
+              // ── MAGICSLIDES PRO (Try first if enabled) ──
+              if (options.useMagicSlides) {
+                console.log("[PPTX] Attempting MagicSlides Pro export...");
                 try {
-                  const resP = await supabase.functions.invoke("export-pptx-presenton", {
-                    body: {
-                      course_id:    courseId,
-                      template:     options.template,
-                      density:      options.density,
-                      courseType:   options.courseType || "CURSO COMPLETO",
-                      includeImages: options.includeImages,
-                    },
-                  });
-
-                  if (resP.data?.url && !resP.error) {
-                    data = resP.data;
-                    engineUsed = "presenton";
-                    console.log("[PPTX] Presenton AI successful! Slides:", resP.data.slide_count, "Credits:", resP.data.credits_consumed);
-                  } else {
-                    const errCode = resP.data?.error || resP.error?.message || "";
-                    console.warn("[PPTX] Presenton failed:", errCode, resP.data?.detail || "");
-                    if (errCode === "PRESENTON_NOT_CONFIGURED") {
-                      toast({
-                        title: "Presenton não configurado",
-                        description: "Chave de API ausente. Gerando com EduGen v3…",
-                        duration: 5000,
-                      });
-                    } else {
-                      toast({
-                        title: "Presenton temporariamente indisponível",
-                        description: "Gerando apresentação com EduGen v3…",
-                        duration: 4000,
-                      });
-                    }
-                  }
-                } catch (errP) {
-                  console.error("[PPTX] Presenton crash:", errP);
-                  toast({
-                    title: "Presenton AI indisponível",
-                    description: "Usando motor nativo EduGen v3 como fallback.",
-                    duration: 4000,
-                  });
-                }
-              }
-
-              // ── 2SLIDES AI ENGINE (Try if enabled and Presenton not used) ──
-              if (!data?.url && options.use2Slides) {
-                console.log("[PPTX] Attempting 2Slides AI export... theme:", options.twoSlidesTheme);
-                try {
-                  const res2s = await supabase.functions.invoke("export-pptx-2slides", {
-                    body: {
-                      course_id:   courseId,
-                      themeId:     options.twoSlidesTheme || "",
-                      language:    "Portuguese",
-                      courseType:  options.courseType || "CURSO COMPLETO",
-                    },
-                  });
-
-                  if (res2s.data?.url && !res2s.error) {
-                    data = res2s.data;
-                    engineUsed = "2slides";
-                    console.log("[PPTX] 2Slides AI successful! Slides:", res2s.data.slide_count);
-                  } else {
-                    const errCode = res2s.data?.error || res2s.error?.message || "";
-                    console.warn("[PPTX] 2Slides failed:", errCode, res2s.data?.detail || "");
-                    if (errCode === "TWOSLIDES_NO_CREDITS") {
-                      toast({
-                        title: "⚡ 2Slides: créditos esgotados",
-                        description: "Recarregue em 2slides.com/pricing. Gerando com EduGen v4…",
-                        duration: 7000,
-                      });
-                    } else if (errCode === "TWOSLIDES_NOT_CONFIGURED") {
-                      toast({
-                        title: "2Slides não configurado",
-                        description: "Chave de API ausente. Gerando com EduGen v4…",
-                        duration: 5000,
-                      });
-                    } else if (errCode === "TWOSLIDES_TIMEOUT") {
-                      toast({
-                        title: "2Slides: tempo limite excedido",
-                        description: res2s.data?.detail || "Curso muito grande para o 2Slides. Gerando com EduGen v4…",
-                        duration: 8000,
-                      });
-                    } else {
-                      toast({
-                        title: "2Slides temporariamente indisponível",
-                        description: "Gerando apresentação com EduGen v4…",
-                        duration: 4000,
-                      });
-                    }
-                  }
-                } catch (err2s) {
-                  console.error("[PPTX] 2Slides crash:", err2s);
-                  toast({
-                    title: "2Slides AI indisponível",
-                    description: "Usando motor nativo EduGen v3 como fallback.",
-                    duration: 4000,
-                  });
-                }
-              }
-
-              // ── V4 NATIVE ENGINE (CANONICAL) ──
-              // Order matters: v4 runs FIRST as the canonical engine.
-              // v6 was previously here and silently bypassed all v5.x improvements
-              // (planner, PYTHON_MODULE_RULES, per-module gate, QA veto). It is now
-              // only callable via explicit opt-in further down (UI toggle hidden).
-              if (!data?.url && options.useV4) {
-                console.log("[PPTX] Using export-pptx-v4 (canonical engine)...");
-                const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx-v4`;
-                const EXPORT_TIMEOUT_MS = 480000;
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
-                let res: Response | null = null;
-                try {
-                  res = await fetch(url, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${session.access_token}`,
-                      "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-                    },
-                    body: JSON.stringify({
-                      course_id: courseId,
-                      palette: options.palette,
-                      density: options.density,
-                      theme: options.theme,
+                  const magicRes = await supabase.functions.invoke("export-pptx-v3-magicslides", {
+                    body: { 
+                      course_id: courseId, 
                       template: options.template,
-                      includeImages: options.includeImages,
-                      courseType: options.courseType || "CURSO COMPLETO",
-                      footerBrand: options.footerBrand,
-                    }),
-                    signal: controller.signal,
-                  });
-                } catch (errV4) {
-                  // Network error / timeout / AbortError — treat as infra failure
-                  // and fall through to v3. Semantic vetos always come back as a
-                  // real HTTP 422 response and are handled below.
-                  console.warn("[PPTX] v4 erro de rede/timeout, tentando v3:", errV4);
-                  toast({ title: "v4 indisponível, usando v3", description: String((errV4 as Error)?.message ?? errV4), duration: 4000 });
-                } finally {
-                  clearTimeout(timeoutId);
-                }
-                const responseText = res ? await res.text() : "";
-                let v4data: any = {};
-                try { v4data = responseText ? JSON.parse(responseText) : {}; } catch { /* ignore */ }
-                if (res && res.ok && v4data?.url) {
-                  data = v4data;
-                  engineUsed = "v4-native";
-                  // Unambiguous success log — uses the actual function name + version.
-                  console.log(
-                    `[PPTX] export-pptx-v4 / engine_version=${v4data.engine_version ?? "unknown"} successful (slides=${v4data.slide_count ?? "?"})`,
-                  );
-                  // Unified diagnostic line — answers: which engine, version,
-                  // fallback, cache, totals, removed, blocking issues, status.
-                  console.log("[PPTX][DIAG]", JSON.stringify({
-                    engine_function: v4data.engine_function ?? v4data.engine ?? "export-pptx-v4",
-                    engine:          v4data.engine ?? "export-pptx-v4",
-                    engine_version:  v4data.engine_version,
-                    status:          v4data.status ?? "exported",
-                    fallback_used:   v4data.fallback_used ?? false,
-                    fallback_reason: v4data.fallback_reason ?? null,
-                    modules_failed:  v4data.modules_failed ?? 0,
-                    accepted_modules: v4data.accepted_modules ?? [],
-                    fallback_modules: v4data.fallback_modules ?? [],
-                    cache:           v4data.cache ?? "miss",
-                    slide_count:     v4data.slide_count,
-                    total_slides:    v4data.total_slides ?? v4data.slide_count,
-                    qa_status:       v4data.qa?.qa_status ?? "unknown",
-                    qa:              v4data.qa,
-                    blocking_issues: v4data.blocking_issues ?? [],
-                  }));
-                  console.log("[PPTX] v4 raw _diag:", JSON.stringify(v4data._diag));
-                } else if (res && res.status === 422 && v4data?.code === "PPTX_QA_VETO") {
-                  // ── SEMANTIC VETO — DO NOT FALL BACK ──
-                  console.error("[PPTX][DIAG]", JSON.stringify({
-                    engine:         v4data.engine ?? "export-pptx-v4",
-                    engine_version: v4data.engine_version,
-                    status:         "blocked",
-                    fallback_used:  false,
-                    cache:          v4data.cache ?? "miss",
-                    totalSlides:    v4data.totalSlides,
-                    removedSlides:  v4data.removedSlides,
-                    blocking_issues: v4data.blockingIssues,
-                  }));
-                  console.error("[PPTX] v4 BLOQUEOU export (QA veto):", v4data);
-                  const issues: Array<{slideId:string;type:string;message:string}> =
-                    v4data?.blockingIssues ?? [];
-                  const summary = issues.slice(0, 3)
-                    .map((i) => `• ${i.slideId}: ${i.type}`)
-                    .join("\n") || "Conteúdo gerado pela IA tem problemas críticos.";
-                  toast({
-                    title: "Geração bloqueada — qualidade insuficiente",
-                    description: `O motor detectou problemas que não puderam ser corrigidos:\n${summary}\n\nRegenere o curso ou ajuste o conteúdo antes de exportar.`,
-                    duration: 12000,
-                    variant: "destructive",
-                  });
-                  setExportingPptx(false);
-                  return; // hard stop — do NOT fall back to legacy engines
-                } else if (res) {
-                  console.warn("[PPTX] v4 falhou (infra), tentando v3:", v4data?.error || res.status);
-                  toast({ title: "v4 indisponível, usando v3", description: v4data?.error || "", duration: 4000 });
-                }
-              }
-
-              // ── V6 NATIVE ENGINE (template ZIP) — EXPLICIT OPT-IN ONLY ──
-              // v6 is NOT a default fallback. UI toggle is hidden. It only fires
-              // if a developer/admin explicitly sets options.useV6 (e.g. via console).
-              // When invoked, emit a clear warning so the path is never silent.
-              if (!data?.url && options.useV6) {
-                console.warn("[PPTX-FRONTEND-WARN] export-pptx-v6 used only as explicit opt-in (NOT a default fallback)");
-                console.log("[PPTX] Using export-pptx-v6 (template ZIP, explicit opt-in)...");
-                try {
-                  const resV6 = await supabase.functions.invoke("export-pptx-v6", {
-                    body: {
-                      course_id:     courseId,
-                      density:       options.density,
-                      language:      "Português (Brasil)",
-                      footerBrand:   options.footerBrand,
-                      include_images: options.includeImages,
+                      language: "Português (Brasil)" // Default or from context
                     },
                   });
-                  if (resV6.data?.url && !resV6.error) {
-                    data = resV6.data;
-                    engineUsed = "v6-native";
-                    console.log(
-                      `[PPTX] export-pptx-v6 / engine_version=${resV6.data.engine_version ?? "unknown"} successful (slides=${resV6.data.slide_count ?? "?"})`,
-                    );
+
+                  if (magicRes.data?.url && !magicRes.error) {
+                    data = magicRes.data;
+                    engineUsed = "magicslides";
+                    console.log("[PPTX] MagicSlides Pro successful!");
                   } else {
-                    const errMsg = resV6.data?.error || resV6.error?.message || "";
-                    console.warn("[PPTX] v6 explicit opt-in failed:", errMsg);
-                    toast({ title: "v6 indisponível", description: errMsg, duration: 4000 });
+                    console.warn("[PPTX] MagicSlides failed, falling back to native engine...", magicRes.error);
+                    toast({ 
+                      title: "MagicSlides (Beta) indisponível", 
+                      description: "Usando motor nativo EduGen v3 como fallback automático.",
+                      duration: 4000
+                    });
                   }
-                } catch (errV6) {
-                  console.error("[PPTX] v6 crash:", errV6);
-                  toast({ title: "EduGen v6 indisponível", description: String((errV6 as Error)?.message ?? errV6), duration: 4000 });
+                } catch (magicErr) {
+                  console.error("[PPTX] MagicSlides crash:", magicErr);
                 }
               }
 
-              // ── V3 LEGACY NATIVE ENGINE (infra fallback) ──
-              // Hard-pinned to export-pptx-v3. Previously a stale selector could
-              // route to v2 when useV3=false (default), bypassing v3 entirely.
+              // ── NATIVE ENGINE (If MagicSlides failed or wasn't requested) ──
               if (!data?.url) {
-                const functionName = "export-pptx-v3";
-                console.warn("[PPTX-FRONTEND] infra fallback engaged → export-pptx-v3 (hard-pinned)");
+                const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx";
                 const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
                 console.log(`[PPTX] Starting native export to: ${url} (engine: ${functionName})`);
                 
@@ -580,20 +203,12 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                   }
                   throw new Error(data?.error || `Erro na exportação (HTTP ${res.status})`);
                 }
-                engineUsed = "v3-native";
+                engineUsed = options.useV3 ? "v3-native" : "v2-legacy";
               }
 
               // ── FINAL DOWNLOAD ──
               if (!data?.url) {
                 throw new Error("Exportação concluída sem URL de download.");
-              }
-
-              // ── SLIDE LOG: store for /pptx-debug and print to console ──
-              if (data?.slide_log?.length) {
-                localStorage.setItem("pptx_slide_log", JSON.stringify(data.slide_log));
-                console.group(`[PPTX] Slide Log (${data.slide_log.length} slides)`);
-                console.table(data.slide_log);
-                console.groupEnd();
               }
 
               console.log(`[PPTX] Downloading from ${engineUsed}:`, data.url);
@@ -614,13 +229,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               const blobUrl = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = blobUrl;
-              const fileLabel =
-                engineUsed === "presenton"   ? "PPTX-Presenton" :
-                engineUsed === "2slides"     ? "PPTX-2Slides" :
-                engineUsed === "v6-native"   ? "PPTX-v6"      :
-                engineUsed === "v4-native"   ? "PPTX-v5"      :
-                engineUsed === "magicslides" ? "PPTX-PRO"     : "PPTX";
-              a.download = formatFileName(courseTitle, fileLabel, "pptx");
+              a.download = formatFileName(courseTitle, engineUsed === "magicslides" ? "PPTX-PRO" : "PPTX", "pptx");
               a.rel = "noopener";
               document.body.appendChild(a);
               a.click();
@@ -631,25 +240,11 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 setQualityReport(data.quality_report);
               }
 
-              const toastTitle =
-                engineUsed === "presenton"   ? "✨ PowerPoint Presenton gerado!" :
-                engineUsed === "2slides"     ? "⚡ PowerPoint AI gerado!" :
-                engineUsed === "v6-native"   ? "🎯 PowerPoint v6 gerado!" :
-                engineUsed === "v4-native"   ? "🚀 PowerPoint v5 gerado!" :
-                engineUsed === "magicslides" ? "✨ PowerPoint Pro gerado!" :
-                "PowerPoint gerado!";
-              const toastDesc =
-                engineUsed === "presenton"   ? `${data.slide_count} slides com design Presenton AI` :
-                engineUsed === "2slides"     ? `${data.slide_count} slides com design premium 2Slides` :
-                engineUsed === "v6-native"   ? `Engine v6 • template navy/gold • ${data.slide_count || 0} slides` :
-                engineUsed === "v4-native"   ? "Motor v5 com conteúdo e design aprimorados" :
-                engineUsed === "magicslides" ? "Design premium aplicado com sucesso." :
-                data.quality_report          ? `Score: ${data.quality_report.quality_score}/100` :
-                undefined;
-
               toast({
-                title: toastTitle,
-                description: toastDesc,
+                title: engineUsed === "magicslides" ? "PowerPoint Pro gerado!" : "PowerPoint gerado!",
+                description: data.quality_report 
+                  ? `Score: ${data.quality_report.quality_score}/100` 
+                  : (engineUsed === "magicslides" ? "Design premium aplicado com sucesso." : undefined),
                 action: data.quality_report ? (
                   <Button variant="outline" size="sm" onClick={() => setReportOpen(true)}>
                     Ver Detalhes
@@ -692,28 +287,15 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
           Moodle {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
         </Button>
 
-        {/* Moodle - Pro */}
+        {/* SCORM - Business */}
         <Button
           variant="outline"
           size="sm"
-          onClick={() => handleExportWithFunction("export-moodle", "zip", setExportingMoodle, "Moodle")}
-          disabled={exportingMoodle || !isPublished}
-          title={!isPublished ? "Publique o curso primeiro" : "Exportar para Moodle (XML Backup)"}
+          disabled={true}
+          title="Disponível no plano Business (em breve)"
         >
-          {exportingMoodle ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <GraduationCap className="h-4 w-4 mr-1" />}
-          Moodle {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-        </Button>
-
-        {/* SCORM - Pro */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleExportWithFunction("export-scorm", "zip", setExportingScorm, "SCORM")}
-          disabled={exportingScorm || !isPublished}
-          title={!isPublished ? "Publique o curso primeiro" : "Exportar pacote SCORM 1.2 para LMS (Moodle, Canvas, etc.)"}
-        >
-          {exportingScorm ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Package className="h-4 w-4 mr-1" />}
-          SCORM {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+          <Package className="h-4 w-4 mr-1" />
+          SCORM <Badge variant="outline" className="ml-1 text-[10px] px-1">Business</Badge>
         </Button>
       </div>
 
