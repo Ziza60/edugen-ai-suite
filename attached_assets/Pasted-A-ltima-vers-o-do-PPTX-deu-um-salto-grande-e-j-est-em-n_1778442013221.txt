@@ -1,0 +1,108 @@
+A última versão do PPTX deu um salto grande e já está em nível muito bom.
+
+Pontos estabilizados:
+- observable outcome corrigido no módulo 2;
+- API com GET + POST + response.json();
+- módulo 7 com unittest, logging e pdb;
+- POO semanticamente alinhado;
+- títulos ruins foram corrigidos;
+- cobertura CODE preservada.
+
+Agora NÃO quero nova arquitetura nem novos hardening grandes.
+
+Foco da próxima rodada:
+polishing visual/editorial e densidade prática leve.
+
+PROBLEMAS REAIS RESTANTES
+
+1. Slide 50 — truncamento visual/semântico
+Aparece:
+“pip install -r…”
+
+Isso não pode sair assim.
+
+Corrigir:
+- evitar corte com reticências;
+- quebrar linha;
+- reduzir texto;
+- dividir bullet;
+- ou encurtar semanticamente.
+
+Exemplo melhor:
+“Instale dependências com pip install -r requirements.txt.”
+
+Se não couber:
+“Instale dependências com requirements.txt.”
+
+2. Slide 18 — layout/archetype inadequado
+O slide “Desafio: Como organizar os dados...” ficou estranho.
+Ele mistura:
+- texto corrido;
+- enumeração;
+- pseudo-código;
+- estrutura visual confusa.
+
+Corrigir para:
+- card list;
+- comparação;
+- ou processo limpo.
+
+Não deixar texto como:
+“biblioteca = [] 2”
+“generosdisponiveis = set() 3”
+
+Isso parece vazamento de estrutura interna.
+
+3. Módulo 3 — aumentar densidade prática
+O módulo de estruturas de dados ainda está conceitual demais.
+
+Adicionar ou melhorar 1 slide CODE real com:
+- lista;
+- dicionário;
+- tupla;
+- conjunto;
+- append;
+- lookup por chave;
+- set.add();
+
+Exemplo esperado:
+```python
+biblioteca = []
+generos = set()
+
+livro = {
+    "titulo": "1984",
+    "autor": "George Orwell",
+    "isbn_ano": ("9780451524935", 1949),
+    "disponivel": True
+}
+
+biblioteca.append(livro)
+generos.add("distopia")
+
+print(biblioteca[0]["titulo"])
+print(generos)
+Não regredir
+Preservar obrigatoriamente:
+slide 12 corrigido com return/print;
+API GET+POST;
+unittest/logging/pdb;
+POO alinhado;
+anti-demotion;
+cobertura CODE por módulo;
+estabilidade visual.
+Logs desejados
+Adicionar/usar logs leves:
+[VISUAL-TRUNCATION-FIX]
+[ARCHETYPE-CLEANUP]
+[MODULE-PRACTICE-DENSITY]
+
+Critério de aceite:
+
+nenhum texto com “…” por corte semântico;
+slide 18 limpo e legível;
+módulo 3 com exemplo CODE real de estruturas;
+nenhum regressão nos módulos 2, 5, 6, 7 e 8.
+
+ENGINE_VERSION:
+manter v5.8.x ou incrementar patch, conforme padrão do projeto.

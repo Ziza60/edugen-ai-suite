@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.8.5";
+const ENGINE_VERSION = "5.8.6";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -1119,6 +1119,61 @@ function applyFinalGuardrails(
     );
     out = { ...out, items: out.items.slice(0, 5) };
   }
+
+  // v5.8.6 — Guardrail 1e: archetype-cleanup.
+  // Strips trailing leaked list-numbers (e.g. "biblioteca = [] 2") from bullet
+  // items. When the majority of items are Python assignment fragments (code leaked
+  // into bullets), converts the slide to a code layout instead.
+  if (Array.isArray(out.items) && out.items.length > 0 && out.layout !== "code") {
+    const stripped = out.items.map((item) => item.replace(/\s+\d+\s*$/, "").trim());
+    const assignmentLike = stripped.filter((item) =>
+      /^[a-z_][\w]*\s*=\s*([\[\]{}"'0-9]|True|False|None|set\s*\(|list\s*\()/.test(item)
+    );
+    const numbersRemoved = stripped.filter((c, i) => c !== out.items![i]).length;
+    if (assignmentLike.length >= Math.ceil(stripped.length / 2)) {
+      // Majority are code fragments — convert to code layout
+      const code = stripped.join("\n");
+      console.warn(
+        `[ARCHETYPE-CLEANUP] slide=${slideNum} layout=${out.layout}→code assignment_items=${assignmentLike.length}/${stripped.length} trailing_numbers_removed=${numbersRemoved}`,
+      );
+      out = { ...out, layout: "code", code, items: undefined, label: "CÓDIGO" };
+    } else if (numbersRemoved > 0) {
+      // Only trailing numbers leaked — strip them, keep layout
+      console.warn(
+        `[ARCHETYPE-CLEANUP] slide=${slideNum} stripped_trailing_numbers=${numbersRemoved}`,
+      );
+      out = { ...out, items: stripped };
+    }
+  }
+
+  // v5.8.6 — Guardrail 1f: CLI truncation repair.
+  // Fixes "pip install -r…" and similar truncated commands in bullet items.
+  // The safeSliceText preserve protects against NEW truncations; this pass
+  // repairs ones that already exist in planner output or prior renders.
+  if (Array.isArray(out.items) && out.items.length > 0) {
+    let cliFixed = false;
+    const fixedItems = out.items.map((item) => {
+      // "pip install -r…" / "pip install -r req…" → canonical form
+      if (/pip\s+install\s+-r\b/.test(item)) {
+        const fixed = item.replace(
+          /pip\s+install\s+-r(?:\s+[\w.*-]*(?:…|\.{3})?)?/gi,
+          "pip install -r requirements.txt",
+        );
+        if (fixed !== item) { cliFixed = true; return fixed; }
+      }
+      // Generic "cli-command … end-of-string" (only strip dangling ellipsis)
+      if (/(?:…|\.{3})\s*$/.test(item) && /\b(?:npm|yarn|apt|brew|cargo|python|git)\b/.test(item)) {
+        const fixed = item.replace(/\s*(?:…|\.{3})\s*$/, "").trim();
+        if (fixed !== item) { cliFixed = true; return fixed; }
+      }
+      return item;
+    });
+    if (cliFixed) {
+      console.log(`[VISUAL-TRUNCATION-FIX] slide=${slideNum} CLI command truncation repaired`);
+      out = { ...out, items: fixedItems };
+    }
+  }
+
   // v5.5.8 — Guardrail 2 INVERTED: code layout without code → try to SYNTHESIZE
   // a minimal complete example BEFORE demoting. Demotion is the last-resort
   // fallback and now emits [CODE-SLIDE-CONVERSION] for full visibility.
@@ -7368,6 +7423,7 @@ const CONTRACT_TITLE_MAP: Readonly<Record<string, string>> = {
   "try_except":             "Tratamento de Exceções",
   "docstring_or_typehints": "Docstrings e Type Hints",
   "pdb_debug":              "Depuração com pdb",
+  "collection_ops":         "Operações com Coleções em Python",
 };
 
 // ── v5.8.4 — Narrative Alignment ───────────────────────────────────────────
@@ -7566,6 +7622,29 @@ function synthesizeForContract(
       source: "canonical_unittest",
     };
   }
+  // v5.8.6 — data_structures: list + dict + tuple + set operations.
+  if (contractName === "collection_ops") {
+    return {
+      code: [
+        `biblioteca = []`,
+        `generos = set()`,
+        ``,
+        `livro = {`,
+        `    "titulo": "1984",`,
+        `    "autor": "George Orwell",`,
+        `    "isbn_ano": ("9780451524935", 1949),`,
+        `    "disponivel": True`,
+        `}`,
+        ``,
+        `biblioteca.append(livro)`,
+        `generos.add("distopia")`,
+        ``,
+        `print(biblioteca[0]["titulo"])`,
+        `print(generos)`,
+      ].join("\n"),
+      source: "canonical_data_structures",
+    };
+  }
   // Fallback: module-based synthesis (handles json_apis, oop, files_exceptions, etc.)
   return synthesizeMinimalCompleteExample(
     moduleKind, moduleCtx,
@@ -7603,6 +7682,9 @@ const MODULE_SKILL_CONTRACTS: Record<string, SkillContract[]> = {
   ],
   best_practices: [
     { name: "docstring_or_typehints", requiredPatterns: [/"""[\s\S]*?"""|def\s+\w+\s*\([^)]*:\s*\w+|->|requirements\.txt|venv/] },
+  ],
+  data_structures: [
+    { name: "collection_ops", requiredPatterns: [/\.append\s*\(/, /\[["']/, /set\s*\(\)|\.add\s*\(/] },
   ],
 };
 
@@ -8591,7 +8673,8 @@ function parseSlideId(id: string): { mi: number; si: number } | null {
  * like SELECT *, COUNT(*), SUM(*), MAX(*), MIN(*), AVG(*).
  * Also avoids breaking mid-word.
  */
-const SQL_STAR_PRESERVE_RE = /\b(?:SELECT\s+\*|COUNT\s*\(\s*\*\s*\)|SUM\s*\(\s*\*\s*\)|AVG\s*\(\s*\*\s*\)|MAX\s*\(\s*\*\s*\)|MIN\s*\(\s*\*\s*\))/i;
+// v5.8.6 — pip install -r added: never truncate install commands mid-flag.
+const SQL_STAR_PRESERVE_RE = /\b(?:SELECT\s+\*|COUNT\s*\(\s*\*\s*\)|SUM\s*\(\s*\*\s*\)|AVG\s*\(\s*\*\s*\)|MAX\s*\(\s*\*\s*\)|MIN\s*\(\s*\*\s*\)|pip\s+install\b)/i;
 
 function safeSliceText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
