@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.8.2";
+const ENGINE_VERSION = "5.8.3";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -7195,6 +7195,13 @@ function synthesizeHttpParityExample(methods: Set<string>): string {
     lines.push(`print(resp_post.json())`);
   }
   return lines.join("\n");
+}
+
+// ── v5.8.2 — isMetaSlide helper ────────────────────────────────────────────
+// Returns true for trailing/structural slides that should not be displaced
+// by injected content (takeaways, summary, closing, module covers).
+function isMetaSlide(s: Slide): boolean {
+  return ["takeaways", "summary", "closing", "module_cover"].includes(s.layout as string);
 }
 
 // ── v5.8.2 — Module Skill Coverage Contracts ───────────────────────────────

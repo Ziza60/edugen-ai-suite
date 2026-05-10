@@ -217,6 +217,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                   }
                   // v4 infra failure → try v3 fallback
                   if (options.useV4 && res.status >= 500) {
+                    console.error(`[PPTX] v4 error (${res.status}): ${data?.error || responseText?.slice(0,300)}`);
                     console.warn(`[PPTX] v4 infra error (${res.status}), falling back to v3`);
                     toast({ title: "Motor v4 indisponível", description: "Usando v3 como fallback...", duration: 3000 });
                     const fallbackUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx-v3`;
