@@ -155,10 +155,16 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 }
               }
 
-              // ── NATIVE ENGINE (If MagicSlides failed or wasn't requested) ──
+              // ── NATIVE ENGINE v4 (primary) → v3 (infra fallback) ──
               if (!data?.url) {
-                const functionName = options.useV3 ? "export-pptx-v3" : options.useV2 ? "export-pptx-v2" : "export-pptx";
+                // v5.7.0 policy: v4 is the default; v3 is the infra fallback only.
+                const functionName = options.useV4
+                  ? "export-pptx-v4"
+                  : options.useV3
+                  ? "export-pptx-v3"
+                  : "export-pptx-v3";
                 const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`;
+                console.log(`[PPTX-FRONTEND] engine=${functionName} useV4=${options.useV4} useV3=${options.useV3}`);
                 console.log(`[PPTX] Starting native export to: ${url} (engine: ${functionName})`);
                 
                 const EXPORT_TIMEOUT_MS = 480000;
@@ -195,15 +201,45 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                   throw new Error(!res.ok ? `Erro na exportação (HTTP ${res.status}).` : "Resposta inválida.");
                 }
 
+                // v4 returns 422 with blockingIssues when QA veto fires
+                if (res.status === 422 && (data?.blockingIssues || data?.blocking_issues)) {
+                  const issues = data.blockingIssues ?? data.blocking_issues ?? [];
+                  console.warn(`[PPTX][DIAG] status=blocked blocking_issues=${issues.length}`, issues);
+                  const detail = issues.slice(0, 3).map((i: any) => i.message ?? i.type).join("; ");
+                  throw new Error(`QA Veto: ${detail || "Conteúdo bloqueado por qualidade"}`);
+                }
+
                 if (!res.ok) {
                   if (data?.quality_report && !data?.quality_report?.passed) {
                     setQualityReport(data.quality_report);
                     setReportOpen(true);
                     return;
                   }
-                  throw new Error(data?.error || `Erro na exportação (HTTP ${res.status})`);
+                  // v4 infra failure → try v3 fallback
+                  if (options.useV4 && res.status >= 500) {
+                    console.warn(`[PPTX] v4 infra error (${res.status}), falling back to v3`);
+                    toast({ title: "Motor v4 indisponível", description: "Usando v3 como fallback...", duration: 3000 });
+                    const fallbackUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx-v3`;
+                    const fbRes = await fetch(fallbackUrl, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${session.access_token}`,
+                        "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                      },
+                      body: JSON.stringify({ course_id: courseId, palette: options.palette, density: options.density, theme: options.theme }),
+                    });
+                    const fbText = await fbRes.text();
+                    data = fbText ? JSON.parse(fbText) : {};
+                    if (!fbRes.ok) throw new Error(data?.error || `Erro fallback v3 (HTTP ${fbRes.status})`);
+                    engineUsed = "v3-fallback";
+                  } else {
+                    throw new Error(data?.error || `Erro na exportação (HTTP ${res.status})`);
+                  }
+                } else {
+                  engineUsed = options.useV4 ? "v4-native" : options.useV3 ? "v3-native" : "v3-native";
+                  console.log(`[PPTX][DIAG] engine_version=${data?.engine_version ?? "unknown"} slide_count=${data?.slide_count ?? "?"} qa_status=${data?.qa?.qa_status ?? "?"}`);
                 }
-                engineUsed = options.useV3 ? "v3-native" : "v2-legacy";
               }
 
               // ── FINAL DOWNLOAD ──
