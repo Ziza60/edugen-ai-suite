@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.8.1";
+const ENGINE_VERSION = "5.8.2";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -580,56 +580,6 @@ function validateSemanticCodeCompleteness(code: string): string | null {
     if (!hasRealUse) return "class_instance_no_method_call";
   }
 
-  // ── v5.7.3 — function_returns_implicit_none (REORDERED before
-  // function_defined_but_uncalled). Rationale: a function with no `return`
-  // is broken regardless of whether it's called. Fixing the function FIRST
-  // means the subsequent call-demo (added by function_defined_but_uncalled
-  // repair) prints the actual computed value instead of `None`. Without
-  // this reorder, slides 14/43 hit `function_defined_but_uncalled` first,
-  // got a call-demo that printed None, and the convergent loop only
-  // discovered the missing return on a later cycle.
-  // v5.7.5 — REWRITTEN to detect "happy-path implicit None". The v5.7.3
-  // version short-circuited on the FIRST `return` found in body, so a guard
-  // `return None` inside an early `if` (slide 42 production case) made the
-  // validator silently pass even though the function's success-path returns
-  // None. Fix: walk the ENTIRE body, ignore side-effect lines (logging/print),
-  // and check whether the LAST non-side-effect line is a `return` statement.
-  // A function whose last meaningful body line is a result-ish assignment
-  // (not a return) leaks implicit None on its happy path → flag.
-  {
-    const allLines = t.split("\n");
-    const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
-    const SIDE_EFFECT_RE = /^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/;
-    for (let i = 0; i < allLines.length; i++) {
-      const line = allLines[i];
-      const m = line.match(/^def\s+([a-z_][\w]*)\s*\(/);
-      if (!m) continue;
-      let lastAssignVar: string | null = null;
-      let lastNonSideEffectIsReturn = false;
-      let sawAnyBody = false;
-      for (let j = i + 1; j < allLines.length; j++) {
-        const bl = allLines[j];
-        if (bl.trim() === "") continue;
-        const ind = bl.match(/^(\s*)/)![1].length;
-        if (ind === 0) break; // dedent → end of def body
-        sawAnyBody = true;
-        if (SIDE_EFFECT_RE.test(bl)) continue;
-        // Update "last meaningful line" trackers (do NOT break on return).
-        lastNonSideEffectIsReturn = /^\s*return\b/.test(bl);
-        const am = bl.match(/^\s+([a-z_][\w]*)\s*=\s*[^=]/);
-        if (am) lastAssignVar = am[1];
-      }
-      if (
-        sawAnyBody &&
-        !lastNonSideEffectIsReturn &&
-        lastAssignVar &&
-        RESULT_ISH.test(lastAssignVar)
-      ) {
-        return "function_returns_implicit_none";
-      }
-    }
-  }
-
   // ── v5.7.1 — function_defined_but_uncalled ──
   // Every top-level `def name(...)` (no leading whitespace — methods inside
   // a class are always indented and excluded automatically) must be invoked
@@ -676,110 +626,6 @@ function validateSemanticCodeCompleteness(code: string): string | null {
     }
   }
 
-  // ── v5.7.2 — observable_outcome tier ──
-  // A code slide is not "complete" just because it parses. The student must
-  // be able to OBSERVE a result (printed value, returned value, side-effect).
-  // Three new failure modes:
-  //
-  //   - `bare_method_call_discards_return`
-  //       Top-level line of the form `inst.method(args)` (no print wrap, no
-  //       assignment) where `method` is defined in a class body and that
-  //       method body contains `return <non-trivial>`. Slide 40 symptom:
-  //       `livro2.exibir_detalhes()` discards a string return.
-  //
-  //   - `function_returns_implicit_none`
-  //       A top-level `def fn(...)` whose body has at least one assignment
-  //       to a "result-ish" variable name (total*/result*/resultado*/soma*/
-  //       valor*/saida*/output*/final*/ans*/response*/payload*/data*/count*)
-  //       but no `return` statement. Slides 14 and 46 symptom.
-  //
-  //   - `assignment_result_unused`
-  //       Top-level (not inside def/class) last non-blank line is
-  //       `var = call(...)` AND `var` is never referenced again. Defensive
-  //       check; narrowly scoped to result-ish var names to avoid false
-  //       positives on legitimate setup code (`client = MyClient()` etc).
-
-  // Helper: classify a top-level def's body. Returns { hasReturn, methods,
-  // bodyLastAssignVar } and the def block's start/end line indices.
-  // We only need a structural scan, not full parsing.
-  const allLines = t.split("\n");
-
-  // Identify methods that return a non-trivial value (used by reason 4).
-  // A method def is `<indent>def methodName(self...)` where indent > 0.
-  // We scan the next lines until the indent drops back to <= def indent.
-  const returningMethods = new Set<string>();
-  for (let i = 0; i < allLines.length; i++) {
-    const line = allLines[i];
-    const m = line.match(/^(\s+)def\s+([a-z_][\w]*)\s*\(\s*self\b/);
-    if (!m) continue;
-    const defIndent = m[1].length;
-    const methodName = m[2];
-    // Walk the body
-    for (let j = i + 1; j < allLines.length; j++) {
-      const bl = allLines[j];
-      if (bl.trim() === "") continue;
-      const ind = bl.match(/^(\s*)/)![1].length;
-      if (ind <= defIndent) break; // dedented out of method body
-      // return with a non-trivial expression (not "return" alone or
-      // "return None")
-      if (/^\s*return\s+(?!None\s*$|$)/.test(bl)) {
-        returningMethods.add(methodName);
-        break;
-      }
-    }
-  }
-
-  // Reason 4: bare method call that discards a returning method's value.
-  if (returningMethods.size > 0) {
-    for (const line of allLines) {
-      // Top-level only (no leading whitespace)
-      if (/^\s/.test(line)) continue;
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      // Must be a bare expression statement: `inst.method(...)`
-      // - no leading print(/return / assignment
-      // - exactly the call, possibly with surrounding whitespace
-      const bm = trimmed.match(/^([a-z_][\w]*)\.([a-z_][\w]*)\s*\([^)]*\)\s*$/);
-      if (!bm) continue;
-      const methodName = bm[2];
-      if (!returningMethods.has(methodName)) continue;
-      // Skip if this is `print(...)` or assignment context (already filtered
-      // by the leading regex check, but defensive)
-      return "bare_method_call_discards_return";
-    }
-  }
-
-  // Reason 5: function_returns_implicit_none — moved upstream to v5.7.3
-  // (now runs BEFORE function_defined_but_uncalled). Block kept as no-op
-  // marker for the legacy position so diff-blame stays readable.
-  const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
-
-  // Reason 6: assignment_result_unused — last non-blank top-level line is
-  // `var = call(...)` where var is result-ish AND never referenced after.
-  {
-    let lastNonBlankIdx = -1;
-    for (let i = allLines.length - 1; i >= 0; i--) {
-      if (allLines[i].trim() !== "") { lastNonBlankIdx = i; break; }
-    }
-    if (lastNonBlankIdx >= 0) {
-      const last = allLines[lastNonBlankIdx];
-      // Top-level only
-      if (!/^\s/.test(last)) {
-        const am = last.match(/^([a-z_][\w]*)\s*=\s*[a-z_][\w]*\s*\(/);
-        if (am && RESULT_ISH.test(am[1])) {
-          // Var must not be referenced anywhere else
-          const v = am[1];
-          let usedElsewhere = false;
-          for (let i = 0; i < allLines.length; i++) {
-            if (i === lastNonBlankIdx) continue;
-            if (new RegExp(`\\b${v}\\b`).test(allLines[i])) { usedElsewhere = true; break; }
-          }
-          if (!usedElsewhere) return "assignment_result_unused";
-        }
-      }
-    }
-  }
-
   // ── Legacy fallback: class with no observable output anywhere ──
   // Kept for cases that bypass the hardened class rule above (e.g. class
   // defined but nothing else emits output).
@@ -789,13 +635,6 @@ function validateSemanticCodeCompleteness(code: string): string | null {
 
   return null;
 }
-
-// v5.7.2 alias for documentation purposes — same implementation.
-// Code slides require an OBSERVABLE OUTCOME (printed value, returned value,
-// side-effect) for a student to learn from them. The validator above
-// enforces this in tiers; this alias makes intent explicit at call sites
-// that specifically care about outcome (vs. structural completeness).
-const validateObservableOutcome = validateSemanticCodeCompleteness;
 
 // v5.7.1 — preventive repair: rewrite `print(<instance>)` →
 // `<instance>.<method>()` BEFORE the validator runs. Method is chosen from
@@ -884,132 +723,6 @@ function repairIncompleteCodeExample(
       }
     }
   }
-  // ── v5.7.2 — observable_outcome repairs ──
-
-  // Pattern: bare_method_call_discards_return → wrap in print().
-  // Slide 40 fix. Find the FIRST top-level `inst.method(...)` line whose
-  // method returns a value, replace with `print(inst.method(...))`.
-  if (reason === "bare_method_call_discards_return") {
-    const allLines = out.split("\n");
-    // Re-discover returning methods (cheap; same scan as the validator)
-    const returning = new Set<string>();
-    for (let i = 0; i < allLines.length; i++) {
-      const m = allLines[i].match(/^(\s+)def\s+([a-z_][\w]*)\s*\(\s*self\b/);
-      if (!m) continue;
-      const defIndent = m[1].length;
-      for (let j = i + 1; j < allLines.length; j++) {
-        const bl = allLines[j];
-        if (bl.trim() === "") continue;
-        const ind = bl.match(/^(\s*)/)![1].length;
-        if (ind <= defIndent) break;
-        if (/^\s*return\s+(?!None\s*$|$)/.test(bl)) { returning.add(m[2]); break; }
-      }
-    }
-    let replaced = false;
-    const newLines = allLines.map((line) => {
-      if (replaced || /^\s/.test(line)) return line;
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("print(")) return line;
-      const bm = trimmed.match(/^([a-z_][\w]*\.[a-z_][\w]*\s*\([^)]*\))\s*$/);
-      if (!bm) return line;
-      const methodName = trimmed.split(".")[1].split("(")[0];
-      if (!returning.has(methodName)) return line;
-      replaced = true;
-      console.log(
-        `[CODE-REPAIR] slide=${slideNum} pattern=wrap_method_in_print expr=${JSON.stringify(bm[1])}`,
-      );
-      return `print(${bm[1]})`;
-    });
-    if (replaced) {
-      out = newLines.join("\n");
-      const re = validateSemanticCodeCompleteness(out);
-      if (re === null) return out;
-      // fall through — let other reasons get repaired in next pass
-    }
-  }
-
-  // Pattern: function_returns_implicit_none → inject `return <var>` inside
-  // the def body (right after the last assignment to a result-ish var),
-  // then if the function is uncalled, also append a call demo.
-  // Slides 14 and 46 fix.
-  if (reason === "function_returns_implicit_none") {
-    const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
-    const SIDE_EFFECT_RE = /^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/;
-    const allLines = out.split("\n");
-    let injectedFn: { name: string; params: string } | null = null;
-    for (let i = 0; i < allLines.length; i++) {
-      const m = allLines[i].match(/^def\s+([a-z_][\w]*)\s*\(([^)]*)\)/);
-      if (!m) continue;
-      // v5.7.5 — full-body walk (mirrors validator). Detects happy-path
-      // implicit None even when an early guard `return None` exists.
-      let lastAssignLineIdx = -1;
-      let lastAssignVar: string | null = null;
-      let lastAssignIndent = "    ";
-      let lastNonSideEffectIsReturn = false;
-      let bodyEnd = allLines.length;
-      for (let j = i + 1; j < allLines.length; j++) {
-        const bl = allLines[j];
-        if (bl.trim() === "") continue;
-        const ind = bl.match(/^(\s*)/)![1].length;
-        if (ind === 0) { bodyEnd = j; break; }
-        if (SIDE_EFFECT_RE.test(bl)) continue;
-        lastNonSideEffectIsReturn = /^\s*return\b/.test(bl);
-        const am = bl.match(/^(\s+)([a-z_][\w]*)\s*=\s*[^=]/);
-        if (am) {
-          lastAssignLineIdx = j;
-          lastAssignVar = am[2];
-          lastAssignIndent = am[1];
-        }
-      }
-      if (lastNonSideEffectIsReturn || !lastAssignVar || !RESULT_ISH.test(lastAssignVar)) continue;
-      // Inject `<indent>return <var>` AT the end of the function body.
-      // v5.8.1 — CRITICAL BUG FIX: previously used `lastAssignIndent` which
-      // can be 8+ spaces (e.g. `totalliquido +=` inside `for + if` block).
-      // This put `return totalliquido` INSIDE the for/if, making it
-      // unreachable on the empty-list path and not the function's final
-      // statement (slide 13 escape route). Fix: always use the function's
-      // own body indent (def-line indent + 4 spaces) so the return is at
-      // the top level of the function body, after all loops/conditionals.
-      const defLineIndent = allLines[i].match(/^(\s*)/)?.[1] ?? "";
-      const returnIndent  = defLineIndent + "    ";
-      allLines.splice(bodyEnd, 0, `${returnIndent}return ${lastAssignVar}`);
-      injectedFn = { name: m[1], params: m[2] ?? "" };
-      console.log(
-        `[CODE-REPAIR] slide=${slideNum} pattern=inject_missing_return fn=${m[1]} var=${lastAssignVar}`,
-      );
-      break;
-    }
-    if (injectedFn) {
-      out = allLines.join("\n");
-      // v5.7.3: convergent loop in applyFinalGuardrails handles the
-      // follow-up call-demo on the next cycle. Always return out so the
-      // loop sees the progress and decides whether to iterate.
-      return out;
-    }
-  }
-
-  // Pattern: assignment_result_unused → append `print(<var>)`. Narrowly
-  // scoped via the validator's RESULT_ISH check, so this fires only when
-  // the user's last line is something like `resultado = somar(2, 3)` with
-  // no follow-up demonstration.
-  if (reason === "assignment_result_unused") {
-    const allLines = out.split("\n");
-    let lastNonBlankIdx = -1;
-    for (let i = allLines.length - 1; i >= 0; i--) {
-      if (allLines[i].trim() !== "") { lastNonBlankIdx = i; break; }
-    }
-    if (lastNonBlankIdx >= 0) {
-      const am = allLines[lastNonBlankIdx].match(/^([a-z_][\w]*)\s*=/);
-      if (am) {
-        out += `\nprint(${am[1]})`;
-        console.log(
-          `[CODE-REPAIR] slide=${slideNum} pattern=print_assignment_terminal var=${am[1]}`,
-        );
-        if (validateSemanticCodeCompleteness(out) === null) return out;
-      }
-    }
-  }
-
   // v5.7.1 — function_defined_but_uncalled repair: append a CALL DEMO
   // for the LAST top-level function defined in the snippet. Generates
   // sample arguments based on parameter name heuristics.
@@ -1110,78 +823,6 @@ function repairIncompleteCodeExample(
   return null;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// v5.8.0 — CoverageState
-// Module-scoped tracker for per-slide demotion decisions. Owned by the
-// outer pipeline loop (one instance per module), passed into
-// applyFinalGuardrails so that demotion of a code slide can be blocked
-// when it would leave the module with ZERO real code slides.
-//
-// Invariant: `current` always reflects code slides still in the module
-// after all guard mutations so far (not a snapshot of the input count).
-//
-// Decision authority lives at module scope: the individual guardrail
-// functions query `canDemoteCode()` and call `onDemote()` / `onSynth()`
-// instead of mutating counts directly. This avoids stale counts when
-// slides are later split, dropped by dedupe, or removed by QA cascade.
-// ─────────────────────────────────────────────────────────────────────
-class CoverageState {
-  readonly moduleIndex:  number;
-  readonly moduleTitle:  string;
-  readonly moduleKind:   string | null;
-  private  _current:     number;   // live code-slide count for this module
-  private  _demoted:     number = 0;
-  private  _synthesized: number = 0;
-
-  constructor(moduleIndex: number, moduleTitle: string, moduleKind: string | null, initialCodeCount: number) {
-    this.moduleIndex = moduleIndex;
-    this.moduleTitle = moduleTitle;
-    this.moduleKind  = moduleKind;
-    this._current    = initialCodeCount;
-  }
-
-  get current():     number { return this._current; }
-  get demoted():     number { return this._demoted; }
-  get synthesized(): number { return this._synthesized; }
-
-  // Returns true when demotion is safe (at least 1 code slide remains after).
-  canDemoteCode(): boolean { return this._current > 1; }
-
-  // Call AFTER demoting a slide. Decrements the live count.
-  onDemote(): void { this._current = Math.max(0, this._current - 1); this._demoted++; }
-
-  // Call AFTER synthesizing code into a previously empty/broken slide.
-  onSynth(): void { this._synthesized++; }
-
-  // Produce a ModuleCoverageRecord snapshot (called post-loop for logging).
-  toRecord(codeSlidesEntry: number, injectedByModule: boolean): ModuleCoverageRecord {
-    return {
-      moduleIndex:      this.moduleIndex,
-      moduleTitle:      this.moduleTitle,
-      moduleKind:       this.moduleKind,
-      codeSlidesEntry,
-      codeSlidesExit:   this._current,
-      demotedSlides:    this._demoted,
-      synthesizedSlides: this._synthesized,
-      injectedByModule,
-      status: this._current > 0 ? "PASS" : "FAIL",
-    };
-  }
-}
-
-// Record produced per-module for the [MODULE-COVERAGE] diagnostic log.
-interface ModuleCoverageRecord {
-  moduleIndex:       number;
-  moduleTitle:       string;
-  moduleKind:        string | null;
-  codeSlidesEntry:   number;
-  codeSlidesExit:    number;
-  demotedSlides:     number;
-  synthesizedSlides: number;
-  injectedByModule:  boolean;
-  status:            "PASS" | "FAIL";
-}
-
 // v5.7.0 — demoteCodeLayout
 // Single source of truth for "code → bullets" demotion. Used by both the
 // final-guardrail pass AND the QA cascade so we cannot leave a slide with
@@ -1232,18 +873,13 @@ function demoteCodeLayout(s: Slide, slideId: string | number, reason: string): S
 // snippet stays in the established domain (Carro/Livro/Pedido). Returns null
 // only when no canonical example exists for the kind — caller then demotes.
 //
-// v5.8.0 — added optional `semanticEntities` so OOP canonical snippet uses the
-// class name extracted from the slide title/items instead of hardcoded "Carro".
-//
 // Source labels emitted in [CODE-SYNTHESIS]:
-//   "module_ctx"       → reused class+method already shown earlier in module
-//   "semantic_oop"     → class name extracted from slide title/items
+//   "module_ctx"  → reused class+method already shown earlier in module
 //   "canonical_<kind>" → fallback canonical snippet for the kind
 function synthesizeMinimalCompleteExample(
   moduleKind: string | null,
   ctx: CodeSymbols,
   slideTitle: string,
-  semanticEntities?: { classes: string[]; domains: string[] },
 ): { code: string; source: string } | null {
   const title = (slideTitle || "").toLowerCase();
   const kind = moduleKind ?? "";
@@ -1263,15 +899,6 @@ function synthesizeMinimalCompleteExample(
       return {
         code: `${inst} = ${cls}("Toyota", "Corolla")\nprint(${inst})`,
         source: "module_ctx",
-      };
-    }
-    // v5.8.0 — use semantic entity from slide title when available
-    const semCls = semanticEntities?.classes[0];
-    if (semCls) {
-      const semInst = semCls.charAt(0).toLowerCase() + semCls.slice(1);
-      return {
-        code: `class ${semCls}:\n    def __init__(self, nome):\n        self.nome = nome\n    def exibir(self):\n        print(f"${semCls}: {self.nome}")\n\n${semInst} = ${semCls}("Exemplo")\n${semInst}.exibir()`,
-        source: "semantic_oop",
       };
     }
     return {
@@ -1351,166 +978,14 @@ function synthesizeMinimalCompleteExample(
   return null;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// v5.8.0 — extractSemanticEntities
-// Extracts class/domain names from a slide title + items for use in
-// context-aware synthesis (OOP canonical snippet naming).
-//
-// Priority order:
-//   1. Words between quotes ("""Livro"", 'Carro') → highest confidence
-//   2. Title-Case words ≥4 chars immediately after "Classe", "Objeto", "Módulo"
-//   3. General Title-Case words ≥4 chars that are not connectives/prepositions
-//
-// Returns { classes: string[], domains: string[] }. Empty arrays when no
-// clear entity is found (caller falls back to canonical/hardcoded snippet).
-// ─────────────────────────────────────────────────────────────────────
-const CONNECTIVES_PT = new Set([
-  "para", "com", "sem", "por", "sobre", "entre", "como", "que", "uma", "esse",
-  "esta", "este", "essa", "seus", "suas", "novo", "nova", "mais", "menos",
-  "cada", "todo", "toda", "todos", "todas", "numa", "pelo", "pela", "pelos",
-  "pelas", "usar", "usar", "criar", "fazer", "gerar", "usar", "criar",
-]);
-const QUOTED_ENTITY_RE_SYNTH = /["""']([A-Z][A-Za-zÀ-ÿ]{2,})["""']/g;
-const AFTER_KW_RE = /\b(?:Classe|Objeto|M[oó]dulo|Entidade|Instância)\s+([A-Z][A-Za-zÀ-ÿ]{3,})/g;
-const TITLE_CASE_RE = /\b([A-Z][A-Za-zÀ-ÿ]{3,})\b/g;
-
-function extractSemanticEntities(
-  title: string,
-  items: string[],
-): { classes: string[]; domains: string[] } {
-  const blob = [title, ...items].join(" ");
-  const classes: string[] = [];
-
-  // Priority 1: quoted entities
-  QUOTED_ENTITY_RE_SYNTH.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = QUOTED_ENTITY_RE_SYNTH.exec(blob)) !== null) {
-    if (!classes.includes(m[1])) classes.push(m[1]);
-  }
-  if (classes.length > 0) return { classes, domains: [] };
-
-  // Priority 2: after "Classe X", "Objeto X", etc.
-  AFTER_KW_RE.lastIndex = 0;
-  while ((m = AFTER_KW_RE.exec(blob)) !== null) {
-    if (!classes.includes(m[1])) classes.push(m[1]);
-  }
-  if (classes.length > 0) return { classes, domains: [] };
-
-  // Priority 3: general Title-Case words not in connectives list
-  TITLE_CASE_RE.lastIndex = 0;
-  while ((m = TITLE_CASE_RE.exec(title)) !== null) {
-    const word = m[1];
-    if (!CONNECTIVES_PT.has(word.toLowerCase()) && !classes.includes(word)) {
-      classes.push(word);
-    }
-  }
-  return { classes, domains: [] };
-}
-
-// v5.7.2 — Visual truncation repair for non-code text fields.
-// Planners occasionally emit bullets/items that exceed the layout's drawable
-// width; the renderer then truncates with a literal "..." or unicode "…",
-// shipping a half-sentence to the student ("comentários para…", "listar…").
-// This is a layout-engine symptom (proibido tocar no renderer), so we
-// transform the text BEFORE render: strip the ellipsis, drop a dangling
-// preposition/conjunction, ensure terminal punctuation. Cheap, deterministic,
-// no LLM. Operates only on items / leftItems / rightItems (NOT code).
-const TRAILING_PREP_RE = /\s+(para|de|da|do|das|dos|com|e|ou|que|em|no|na|nos|nas|ao|à|aos|às|por|sobre|entre|sem|sob|a|as|os|um|uma|uns|umas)\s*$/i;
-const ELLIPSIS_TAIL_RE = /^(.*?)(\s*(?:\.{2,}|…+|\.{2,}\s*…+|…+\s*\.{2,})\s*)$/;
-
-function repairVisualTruncationInItems(slide: Slide, slideNum: number | string): Slide {
-  const fields = ["items", "leftItems", "rightItems", "leftBullets", "rightBullets"] as const;
-  let out: any = slide;
-  let touched = false;
-  for (const field of fields) {
-    const arr = (slide as any)[field];
-    if (!Array.isArray(arr)) continue;
-    let fieldChanged = false;
-    const fixed = arr.map((item: any, i: number) => {
-      if (typeof item !== "string") return item;
-      const m = item.match(ELLIPSIS_TAIL_RE);
-      if (!m) return item;
-      let cleaned = m[1].trimEnd();
-      let droppedWords = 0;
-      while (TRAILING_PREP_RE.test(cleaned) && droppedWords < 2) {
-        cleaned = cleaned.replace(TRAILING_PREP_RE, "").trimEnd();
-        droppedWords++;
-      }
-      cleaned = cleaned.replace(/[,;:\-]+\s*$/, "").trimEnd();
-      const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
-      let action: string;
-      if (wordCount === 0) {
-        action = "dropped_empty";
-        cleaned = "";
-      } else if (wordCount < 2) {
-        action = "kept_short";
-      } else {
-        action = "stripped_and_capped";
-        if (!/[.!?:]$/.test(cleaned)) cleaned += ".";
-        if (wordCount < 3) action = "kept_short_punctuated";
-      }
-      console.log(
-        `[VISUAL-TRUNCATION] slide=${slideNum} field=${field}[${i}] action=${action} before=${JSON.stringify(item.slice(0, 80))} after=${JSON.stringify(cleaned.slice(0, 80))}`,
-      );
-      fieldChanged = true;
-      return cleaned;
-    }).filter((v: any) => !(typeof v === "string" && v === ""));
-    if (fieldChanged) {
-      out = { ...out, [field]: fixed };
-      touched = true;
-    }
-  }
-  return touched ? out : slide;
-}
-
-// ── v5.7.4 — code normalization for validator/repair alignment ──
-// All downstream walkers (validateSemanticCodeCompleteness, repair patterns,
-// narrative alignment) assume top-level Python code with `\n` line endings
-// and zero common leading whitespace. The planner sometimes emits code with
-// CRLF (Windows) or with a uniform 2/4-space prefix (when wrapped inside a
-// markdown list/quote). Without normalization, `^def\s+` regex misses the
-// def at column N and the validator silently passes broken code.
-function normalizeCodeForValidation(code: string): string {
-  if (!code) return code;
-  let s = code.replace(/\r\n?/g, "\n");
-  // Trim trailing whitespace on every line so `^\s*$` blanks normalize.
-  s = s.split("\n").map((l) => l.replace(/[ \t]+$/g, "")).join("\n");
-  // Compute common leading whitespace across non-blank lines and dedent.
-  const lines = s.split("\n");
-  let minIndent = Infinity;
-  for (const ln of lines) {
-    if (!ln.trim()) continue;
-    const m = ln.match(/^[ \t]*/);
-    const ind = m ? m[0].length : 0;
-    if (ind < minIndent) minIndent = ind;
-    if (minIndent === 0) break;
-  }
-  if (minIndent > 0 && minIndent !== Infinity) {
-    s = lines.map((ln) => ln.slice(minIndent)).join("\n");
-  }
-  return s;
-}
-
-// djb2 short hash for [FINAL-CODE-SNAPSHOT] identification. Cryptographically
-// useless; perfectly fine for "did the same code travel through both phases".
-function shortCodeHash(s: string): string {
-  if (!s) return "00000000";
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(16).padStart(8, "0").slice(0, 8);
-}
-
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
 // v5.5.5: accepts moduleKind + prevSymbols for semantic code repair.
 // v5.5.6: prevSymbols is now full module accumulator, not just last slide.
-// v5.8.0: accepts CoverageState to block demotion when it would leave the
-//         module with zero CODE slides (demotion must never hide pedagogy).
 function applyFinalGuardrails(
   s: Slide,
   slideNum: number | string,
   moduleKind: string | null = null,
   prevSymbols: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] },
-  coverageState: CoverageState | null = null,
 ): Slide {
   let out: Slide = s;
   // Guardrail 1: title polish (catches every bypass path)
@@ -1545,42 +1020,21 @@ function applyFinalGuardrails(
       out = { ...out, code: stripped };
     }
   }
-  // v5.7.4 — Guardrail 1d: normalize code BEFORE validator/repair walkers run.
-  // Eliminates the silent-bypass bug where CRLF or uniform leading indent made
-  // `^def\s+` regex miss the top-level def and the validator passed broken code.
-  if (out.code && out.code.trim()) {
-    const normalized = normalizeCodeForValidation(out.code);
-    if (normalized !== out.code) {
-      console.log(
-        `[CODE-NORMALIZE] slide=${slideNum} crlf_or_dedent_applied beforeLen=${out.code.length} afterLen=${normalized.length}`,
-      );
-      out = { ...out, code: normalized };
-    }
-  }
   // v5.5.8 — Guardrail 2 INVERTED: code layout without code → try to SYNTHESIZE
   // a minimal complete example BEFORE demoting. Demotion is the last-resort
   // fallback and now emits [CODE-SLIDE-CONVERSION] for full visibility.
-  // v5.8.0 — extractSemanticEntities provides module-aware class name for OOP
-  // synthesis; CoverageState blocks demotion when module would hit 0 CODE slides.
   if (out.layout === "code" && (!out.code || !out.code.trim())) {
-    const semEnt = extractSemanticEntities(out.title ?? "", out.items ?? []);
-    const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "", semEnt);
+    const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
     if (synth) {
       console.log(
         `[CODE-SYNTHESIS] slide=${slideNum} reason=empty_code beforeLines=0 afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
       );
       out = { ...out, code: synth.code };
-      coverageState?.onSynth();
-    } else if (coverageState && !coverageState.canDemoteCode()) {
-      console.warn(
-        `[COVERAGE-GUARD] slide=${slideNum} demotion BLOCKED (empty_code_no_synth) — module "${coverageState.moduleTitle}" would reach 0 code slides. Keeping CODE layout; module gate will handle.`,
-      );
     } else {
       console.warn(
         `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=empty_code_no_synth_available moduleKind=${moduleKind ?? "unknown"}`,
       );
       out = demoteCodeLayout(out, slideNum, "empty_code_no_synth");
-      coverageState?.onDemote();
     }
   }
   // Guardrail 3: dangling Python assignment → append print()
@@ -1597,101 +1051,61 @@ function applyFinalGuardrails(
     const fixed = repairBareInstancePrint(out.code, prevSymbols, slideNum);
     if (fixed !== out.code) out = { ...out, code: fixed };
   }
-  // v5.7.3 — Guardrail 4: CONVERGENT repair loop.
-  // Each cycle: validate → if reason → repair → re-validate. Loop until the
-  // validator returns null OR the repair makes no progress OR we hit
-  // MAX_REPAIR_CYCLES. The previous "1 validate + 1 repair + log PARTIAL"
-  // model only fixed the FIRST detected defect — slides 14/43 had two
-  // overlapping defects (function uncalled AND function returns None) and
-  // the second defect was logged as PARTIAL but never repaired.
-  //
-  // Emits structured `[OBSERVABLE-TRACE]` per cycle so prod logs prove the
-  // chain of detections + repairs end-to-end.
+  // v5.5.5 — Guardrail 4: semantic completeness check + repair attempt.
+  // If code still incomplete after dangling/strip repairs, try
+  // repairIncompleteCodeExample with prev-slide context. If repair fails
+  // and slide is layout=code, demote to bullets so we never render
+  // "# ..." or class-with-no-instance to a student.
   if (out.code && out.code.trim()) {
-    const MAX_REPAIR_CYCLES = 4;
-    let curCode = out.code;
-    const trace: Array<Record<string, unknown>> = [];
-    let cycle = 0;
-    let lastReason: string | null = null;
-    let firstReason: string | null = null;
-    while (cycle < MAX_REPAIR_CYCLES) {
-      const reason = validateSemanticCodeCompleteness(curCode);
-      if (cycle === 0) firstReason = reason;
-      trace.push({ cycle, phase: cycle === 0 ? "detect" : "revalidate", reason });
-      if (reason === null) { lastReason = null; break; }
-      lastReason = reason;
-      const repaired = repairIncompleteCodeExample(curCode, moduleKind, prevSymbols, slideNum);
-      if (!repaired) {
-        trace.push({ cycle, phase: "repair", reason, applied: false, skipReason: "repair_returned_null" });
-        break;
-      }
-      if (repaired === curCode) {
-        trace.push({ cycle, phase: "repair", reason, applied: false, skipReason: "no_progress" });
-        break;
-      }
-      trace.push({ cycle, phase: "repair", reason, applied: true });
-      curCode = repaired;
-      cycle++;
-    }
-    console.log(
-      `[OBSERVABLE-TRACE] slide=${slideNum} cycles=${cycle} firstReason=${firstReason ?? "null"} finalReason=${lastReason ?? "null"} trace=${JSON.stringify(trace)}`,
-    );
-    // v5.8.1 — structured [OBSERVABLE-OUTCOME] summary. Complements the
-    // detailed OBSERVABLE-TRACE; designed for quick log scans.
-    {
-      const obsStatus = lastReason === null ? "PASS" : "FAILED";
-      const missing: string[] = [];
-      if (lastReason) {
-        if (/implicit_none/.test(lastReason))    missing.push("return");
-        if (/uncalled/.test(lastReason))         missing.push("invocation");
-        if (!/print\s*\(|assert\s+|\blogging\.\w+\s*\(/.test(curCode)) missing.push("output");
-      }
-      console.log(
-        `[OBSERVABLE-OUTCOME] slide=${slideNum} status=${obsStatus} first_defect=${firstReason ?? "none"} residual=${lastReason ?? "none"} missing=${missing.length ? missing.join(",") : "none"}`,
-      );
-    }
-    if (curCode !== out.code) out = { ...out, code: curCode };
-    if (lastReason === null) {
-      if (firstReason !== null) {
-        console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair_loop firstReason=${firstReason} cycles=${cycle}`);
-      }
-    } else {
-      console.warn(`[CODE-COMPLETE] slide=${slideNum} status=PARTIAL_AFTER_LOOP repair_left=${lastReason} cycles=${cycle}`);
-      // v5.5.8 — exhausted repair budget. Before demoting layout=code,
-      // try to synthesize a complete minimal example from module context.
-      // Only demote if synthesis is also unavailable (last resort).
-      // v5.8.0 — CoverageState blocks demotion when module would hit 0 CODE.
-      if (out.layout === "code") {
-        const semEnt = extractSemanticEntities(out.title ?? "", out.items ?? []);
-        const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "", semEnt);
-        if (synth) {
-          console.log(
-            `[CODE-SYNTHESIS] slide=${slideNum} reason=repair_loop_exhausted (${lastReason}) beforeLines=${out.code.split("\n").length} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
-          );
-          out = { ...out, code: synth.code };
-          coverageState?.onSynth();
-        } else if (coverageState && !coverageState.canDemoteCode()) {
-          console.warn(
-            `[COVERAGE-GUARD] slide=${slideNum} demotion BLOCKED (incomplete_unrepairable) — module "${coverageState.moduleTitle}" would reach 0 code slides. Keeping CODE with partial code; module gate will handle.`,
-          );
+    const reason = validateSemanticCodeCompleteness(out.code);
+    if (reason !== null) {
+      const repaired = repairIncompleteCodeExample(out.code, moduleKind, prevSymbols, slideNum);
+      if (repaired) {
+        const reReason = validateSemanticCodeCompleteness(repaired);
+        if (reReason === null) {
+          out = { ...out, code: repaired };
+          console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair reason_was=${reason}`);
         } else {
-          console.warn(
-            `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${lastReason}) moduleKind=${moduleKind ?? "unknown"}`,
-          );
-          out = demoteCodeLayout(out, slideNum, `incomplete_unrepairable_${lastReason}`);
-          coverageState?.onDemote();
+          // v5.8.2 — PARTIAL_AFTER_LOOP is not acceptable for a technical CODE slide.
+          // Try synthesis before accepting broken code or demoting.
+          console.warn(`[CODE-COMPLETE] slide=${slideNum} status=PARTIAL repair_left=${reReason}`);
+          if (out.layout === "code") {
+            const synthP = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+            if (synthP) {
+              console.log(
+                `[CODE-SYNTHESIS] slide=${slideNum} reason=partial_after_loop (${reReason}) source=${synthP.source} moduleKind=${moduleKind ?? "unknown"}`,
+              );
+              out = { ...out, code: synthP.code };
+            } else {
+              console.warn(
+                `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=partial_after_loop_no_synth (${reReason}) moduleKind=${moduleKind ?? "unknown"}`,
+              );
+              out = demoteCodeLayout(out, slideNum, `partial_after_loop_${reReason}`);
+            }
+          } else {
+            out = { ...out, code: repaired };
+          }
+        }
+      } else {
+        console.warn(`[CODE-COMPLETE] slide=${slideNum} status=FAILED reason=${reason}`);
+        // v5.5.8 — repair failed. Before demoting layout=code, try to
+        // synthesize a complete minimal example from module context. Only
+        // demote if synthesis is also unavailable (last resort).
+        if (out.layout === "code") {
+          const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+          if (synth) {
+            console.log(
+              `[CODE-SYNTHESIS] slide=${slideNum} reason=repair_failed (${reason}) beforeLines=${out.code.split("\n").length} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
+            );
+            out = { ...out, code: synth.code };
+          } else {
+            console.warn(
+              `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${reason}) moduleKind=${moduleKind ?? "unknown"}`,
+            );
+            out = demoteCodeLayout(out, slideNum, `incomplete_unrepairable_${reason}`);
+          }
         }
       }
-    }
-  }
-  // v5.8.1 — Guardrail 4b: HTTP parity repair.
-  // If slide title/items promise both GET and POST but the code only
-  // demonstrates GET, append a concise requests.post() demo block.
-  if (out.layout === "code" && out.code) {
-    const httpTextBlob = [out.title ?? "", ...(out.items ?? []).map(String)].join(" ");
-    if (HTTP_GET_POST_TITLE_RE.test(httpTextBlob)) {
-      const repairedHttp = repairHttpParityCode(out.code, slideNum);
-      if (repairedHttp !== out.code) out = { ...out, code: repairedHttp };
     }
   }
   // v5.5.5 — Guardrail 5: code-slide integrity. Layout=code with too few
@@ -1705,351 +1119,57 @@ function applyFinalGuardrails(
     const hasSyntax = /[=()\[\]{}:]|^\s*(def|class|import|from|return|print|if|for|while|try)\b/m.test(out.code);
     if (codeLines < 3 || !hasSyntax) {
       console.warn(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=false codeLines=${codeLines} hasSyntax=${hasSyntax}`);
-      // v5.8.0 — semantic entities + CoverageState guard before demote.
-      const semEnt = extractSemanticEntities(out.title ?? "", out.items ?? []);
-      const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "", semEnt);
+      const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
       if (synth) {
         console.log(
           `[CODE-SYNTHESIS] slide=${slideNum} reason=integrity_fail (codeLines=${codeLines}, hasSyntax=${hasSyntax}) beforeLines=${codeLines} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
         );
         out = { ...out, code: synth.code };
-        coverageState?.onSynth();
-      } else if (coverageState && !coverageState.canDemoteCode()) {
-        console.warn(
-          `[COVERAGE-GUARD] slide=${slideNum} demotion BLOCKED (integrity_fail_no_synth) — module "${coverageState.moduleTitle}" would reach 0 code slides. Keeping CODE layout; module gate will handle.`,
-        );
       } else {
         console.warn(
           `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=integrity_fail_no_synth moduleKind=${moduleKind ?? "unknown"}`,
         );
         out = demoteCodeLayout(out, slideNum, "integrity_fail_no_synth");
-        coverageState?.onDemote();
       }
     } else {
       console.log(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=true codeLines=${codeLines}`);
     }
   }
-  // v5.7.2 — Guardrail 6: visual truncation in non-code text fields.
-  // Strips trailing "…" / "..." from items/leftItems/rightItems and cleans
-  // dangling prepositions. Pre-render, deterministic, no LLM.
-  out = repairVisualTruncationInItems(out, slideNum);
-
-  // v5.7.4 — [FINAL-CODE-SNAPSHOT] — last observable point before render.
-  // Static analysis confirmed (commit doc v5.7.4): no `slide.code` mutation
-  // happens between `kept.push(s)` (post-guardrail) and `renderModuleCover`/
-  // `renderCode` (the actual render). So this is the ground truth for what
-  // the user will see in the PPTX. If snapshot says hasReturnInDef=true and
-  // PPTX shows no return → deploy/cache problem, not code problem.
-  if (out.layout === "code" && out.code && out.code.trim()) {
-    const finalCode = out.code;
-    const finalHash = shortCodeHash(finalCode);
-    // v5.7.5 — hasReturnInDef now reflects HAPPY-PATH semantics (matches the
-    // validator). True iff the LAST non-side-effect line of any top-level def
-    // body is a `return`. A guard `return None` inside an early `if` does NOT
-    // count, because slide 42 (production) had exactly that pattern and the
-    // older "any return" snapshot would have lied (true) → wrong P1/P2 call.
-    let hasReturnInDef = false;
-    {
-      const ls = finalCode.split("\n");
-      const SIDE_EFFECT_RE = /^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/;
-      for (let i = 0; i < ls.length; i++) {
-        if (!/^def\s+/.test(ls[i])) continue;
-        let lastIsReturn = false;
-        let sawBody = false;
-        for (let j = i + 1; j < ls.length; j++) {
-          const bl = ls[j];
-          if (bl.trim() === "") continue;
-          const ind = bl.match(/^(\s*)/)![1].length;
-          if (ind === 0) break;
-          sawBody = true;
-          if (SIDE_EFFECT_RE.test(bl)) continue;
-          lastIsReturn = /^\s*return\b/.test(bl);
-        }
-        if (sawBody && lastIsReturn) { hasReturnInDef = true; break; }
-      }
-    }
-    // hasCallDemo: any top-level line that calls one of the defined fns
-    // (with our injected `resultado = fn(...)` / `print(fn(...))` form).
-    let hasCallDemo = false;
-    {
-      const fns: string[] = [];
-      const fnRe = /^def\s+([a-z_][\w]*)\s*\(/gm;
-      let m: RegExpExecArray | null;
-      while ((m = fnRe.exec(finalCode)) !== null) fns.push(m[1]);
-      const ls = finalCode.split("\n");
-      for (const ln of ls) {
-        if (/^\s/.test(ln)) continue; // top-level only
-        for (const fn of fns) {
-          // call form: `fn(...)` standalone OR `<var> = fn(...)` OR `print(fn(...))`
-          if (new RegExp(`(?<![\\w.])${fn}\\s*\\(`).test(ln) && !/^def\s+/.test(ln)) {
-            hasCallDemo = true; break;
+  // v5.8.2 — Guardrail 6: HTTP parity for json_apis slides.
+  // If a CODE slide's text fields promise GET/POST but the code doesn't
+  // demonstrate those methods (with .status_code + .json()), repair the
+  // code with a canonical combined example. Non-code slides are logged only.
+  const isHttpModule = moduleKind === "json_apis" || /\b(requests|http|api|rest)\b/i.test(out.title ?? "");
+  if (isHttpModule) {
+    const promised = getHttpMethodsPromised(out);
+    if (promised.size > 0) {
+      if (out.layout === "code" && out.code) {
+        const codeLower = out.code.toLowerCase();
+        const covered = new Set<string>();
+        if (/requests\.get/.test(codeLower)) covered.add("GET");
+        if (/requests\.post/.test(codeLower)) covered.add("POST");
+        if (/requests\.put/.test(codeLower)) covered.add("PUT");
+        if (/requests\.delete/.test(codeLower)) covered.add("DELETE");
+        const hasStatusCode = /\.status_code/.test(codeLower);
+        const hasJsonCall    = /\.json\(\)/.test(codeLower);
+        const missing = [...promised].filter((m) => !covered.has(m));
+        if (missing.length > 0 || !hasStatusCode || !hasJsonCall) {
+          console.warn(
+            `[HTTP-PARITY] slide=${slideNum} promised=${[...promised].join("+")} covered=${[...covered].join("+")||"none"} status_code=${hasStatusCode} json=${hasJsonCall} → repair`,
+          );
+          const parityCode = synthesizeHttpParityExample(promised);
+          const parityCheck = validateSemanticCodeCompleteness(parityCode);
+          if (parityCheck === null) {
+            out = { ...out, code: parityCode };
+            console.log(`[HTTP-PARITY] slide=${slideNum} repaired with ${[...promised].join("+")} + status_code + json()`);
           }
         }
-        if (hasCallDemo) break;
+      } else if (out.layout !== "code") {
+        console.log(`[HTTP-PARITY] slide=${slideNum} non-code slide promises ${[...promised].join("+")} — informational only`);
       }
     }
-    console.log(
-      `[FINAL-CODE-SNAPSHOT] slide=${slideNum} title=${JSON.stringify((out.title ?? "").slice(0, 60))} codeHash=${finalHash} codeLen=${finalCode.length} hasReturnInDef=${hasReturnInDef} hasCallDemo=${hasCallDemo} layout=${out.layout}`,
-    );
   }
   return out;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// v5.7.4 — Narrative ↔ code alignment scan
-// Detects the "Livro/Ebook title + class Carro code" class of bug. Pure
-// planner-side defect; we cannot rewrite without an LLM call. Strategy:
-// emit a HARD_CRITICAL `NARRATIVE_MISALIGNMENT` issue and let qaVeto
-// block the export with structured details so the user can regenerate.
-//
-// Conservative on FPs: only flags when the slide title contains an
-// EXPLICIT QUOTED entity (e.g. `Classe "Livro" e subclasse "Ebook"`)
-// and the code defines a `class XXX:` whose name matches NONE of the
-// quoted entities (case-insensitive substring both ways).
-// ─────────────────────────────────────────────────────────────────────
-function runNarrativeAlignmentScan(
-  allModuleSlides: Slide[][],
-  moduleTitlesArr: string[],
-): QAIssue[] {
-  const issues: QAIssue[] = [];
-  const QUOTED_ENTITY_RE = /["“”']([A-Z][A-Za-zÀ-ÿ]{2,})["“”']/g;
-  for (let mi = 0; mi < allModuleSlides.length; mi++) {
-    const moduleTitle = moduleTitlesArr[mi] ?? "";
-    for (let si = 0; si < allModuleSlides[mi].length; si++) {
-      const s = allModuleSlides[mi][si];
-      if (s.layout !== "code" || !s.code || !s.code.trim()) continue;
-      const title = s.title ?? "";
-      // Extract quoted entities from BOTH slide title and module title
-      const quotedEntities: string[] = [];
-      let q: RegExpExecArray | null;
-      QUOTED_ENTITY_RE.lastIndex = 0;
-      while ((q = QUOTED_ENTITY_RE.exec(title)) !== null) quotedEntities.push(q[1]);
-      QUOTED_ENTITY_RE.lastIndex = 0;
-      while ((q = QUOTED_ENTITY_RE.exec(moduleTitle)) !== null) quotedEntities.push(q[1]);
-      if (quotedEntities.length === 0) continue;
-      // Extract class/def names from the code, INCLUDING parent class names
-      // (e.g. `class Cachorro(Animal):` contributes both "Cachorro" and
-      // "Animal"). Without parent extraction the scan over-flagged inheritance
-      // examples where the title named the base class only.
-      const codeIdents: string[] = [];
-      const classRe = /^\s*class\s+([A-Z][A-Za-z0-9_]*)(?:\s*\(\s*([A-Z][A-Za-z0-9_,\s]*)\s*\))?/gm;
-      let cm: RegExpExecArray | null;
-      while ((cm = classRe.exec(s.code)) !== null) {
-        codeIdents.push(cm[1]);
-        if (cm[2]) {
-          for (const parent of cm[2].split(",").map((p) => p.trim()).filter(Boolean)) {
-            codeIdents.push(parent);
-          }
-        }
-      }
-      if (codeIdents.length === 0) continue; // no class defined; skip
-      // Match: any quoted entity ≈ any code ident (case-insensitive substring
-      // either direction). E.g. "Livro" ≈ "Livro", "LivroDigital" ≈ "Livro".
-      const matched = codeIdents.some((id) =>
-        quotedEntities.some(
-          (e) =>
-            id.toLowerCase().includes(e.toLowerCase()) ||
-            e.toLowerCase().includes(id.toLowerCase()),
-        ),
-      );
-      if (!matched) {
-        const slideId = `M${mi + 1}.S${si + 1}`;
-        const msg =
-          `Título cita entidade(s) ${JSON.stringify(quotedEntities)} mas código define ${JSON.stringify(codeIdents)} — domínios mutuamente exclusivos`;
-        console.warn(`[NARRATIVE-ALIGN] ${slideId} MISMATCH ${msg}`);
-        issues.push({
-          slideId,
-          type: "NARRATIVE_MISALIGNMENT",
-          severity: "CRITICAL",
-          message: msg,
-          resolutionStrategy:
-            "Bloqueio de export — planner emitiu código de domínio diferente do título; usuário deve regenerar este módulo",
-        });
-      }
-    }
-  }
-  return issues;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// v5.7.6 — Module-scope minimum code coverage HARD GATE
-// User contract: in a Python course, every TECHNICAL module MUST ship
-// at least 1 real CODE slide. Silent demotions (CODE → CONCEPT) from
-// the v5.5.8 repair/synth fallback chain are no longer acceptable: when
-// demotion strips the only code slide from a technical module, this
-// gate fires MODULE_CODE_COVERAGE_MISSING (HARD_CRITICAL) and qaVeto
-// returns 422 with the affected module list — instead of shipping a
-// "clean" deck whose code examples were silently removed.
-//
-// Pipeline contract for code slides remains: repair → synthesize → demote.
-// This gate runs at the END (post-cascade, pre-veto) so it observes the
-// FINAL deck shape, not intermediate states. A module that lost its only
-// code slide via demotion will be caught and BLOCK the export.
-// ─────────────────────────────────────────────────────────────────────
-// v5.7.7 — Module-level meta-slide regex used to (a) exempt meta modules from
-// the gate and (b) decide where to inject a synthesized code slide (BEFORE a
-// trailing takeaways/closing slide so the deck flow stays sensible).
-const META_SLIDE_TITLE_RE =
-  /^(takeaways?|principais\s+aprendizados?|aprendizados?\s+finais|recapitula[çc][ãa]o|s[íi]ntese|conclus[ãa]o|encerramento|pr[óo]ximos\s+passos|resumo)/i;
-
-function isMetaSlide(s: Slide): boolean {
-  if (s.layout === "takeaways" || s.layout === "closing" || s.layout === "module_cover" || s.layout === "toc") {
-    return true;
-  }
-  return META_SLIDE_TITLE_RE.test((s.title ?? "").trim());
-}
-
-function validateMinimumCodeCoverageByModule(
-  allModuleSlides: Slide[][],
-  moduleTitlesArr: string[],
-  courseTitle: string,
-): QAIssue[] {
-  const issues: QAIssue[] = [];
-  const domain = inferCourseDomain(courseTitle);
-  // Only enforce for explicitly code-heavy domains. Extend the set when
-  // the user signals (sql/javascript/java are natural candidates).
-  const ENFORCE_DOMAINS: ReadonlySet<ContentDomain> = new Set<ContentDomain>([
-    "python",
-  ]);
-  if (!ENFORCE_DOMAINS.has(domain)) {
-    console.log(
-      `[MODULE-CODE-COVERAGE] skipped — domain=${domain} not in enforce-list`,
-    );
-    return issues;
-  }
-  // Modules whose title is purely meta (intro-to-course, conclusion,
-  // takeaways) are exempt. A regular "Introdução a Python" / "Fundamentos"
-  // module is NOT exempt — even an introduction module must ship at least
-  // one code example (hello-world, basic syntax, etc).
-  const META_MODULE_RE =
-    /^(introdu[çc][ãa]o\s+(ao\s+curso|geral)|apresenta[çc][ãa]o|bem-vindo|sobre\s+o\s+curso|índice|sumário|conclus[ãa]o|encerramento|recapitula[çc][ãa]o|aprendizados?\s+finais|pr[óo]ximos\s+passos|takeaways?|síntese|consolida[çc][ãa]o)/i;
-  const missing: Array<{ index: number; title: string }> = [];
-  const injected: Array<{ index: number; title: string; source: string }> = [];
-  for (let mi = 0; mi < allModuleSlides.length; mi++) {
-    const moduleTitle = (moduleTitlesArr[mi] ?? "").trim();
-    if (META_MODULE_RE.test(moduleTitle)) {
-      console.log(
-        `[MODULE-CODE-COVERAGE] M${mi + 1} ("${moduleTitle}") skipped — meta module`,
-      );
-      continue;
-    }
-    let codeSlides = 0;
-    for (const s of allModuleSlides[mi]) {
-      if (s.layout === "code" && s.code && s.code.trim().length >= 10) {
-        codeSlides++;
-      }
-    }
-    console.log(
-      `[MODULE-CODE-COVERAGE] M${mi + 1} ("${moduleTitle}") codeSlides=${codeSlides}`,
-    );
-    if (codeSlides > 0) continue;
-
-    // ─── v5.7.7 — module-scope auto-heal via synthesizer ──────────────
-    // Per user contract: "Se um slide CODE estiver incompleto: 1. reparar;
-    // 2. sintetizar exemplo completo; 3. se falhar, QA_VETO." The per-slide
-    // pipeline already implements (1)+(2)+demote. The MODULE-level case
-    // (planner produced ZERO layout='code' slides for this module) was
-    // previously falling straight to veto. v5.7.7 adds module-scope step (2)
-    // BEFORE veto: classify the module via getModuleRule, accumulate code
-    // symbols from sibling slides (so OOP synth can reuse Carro/Livro from
-    // an earlier module slide), call synthesizeMinimalCompleteExample. If it
-    // returns code, INJECT a fresh layout='code' slide into the module. Only
-    // veto if synth ALSO fails.
-    const rule = getModuleRule(courseTitle, moduleTitle);
-    const moduleKind = rule ? rule.kind : null;
-    const moduleCtx: CodeSymbols = extractSemanticCodeContext(allModuleSlides[mi]);
-    const synth = synthesizeMinimalCompleteExample(moduleKind, moduleCtx, moduleTitle);
-    if (synth) {
-      const injectedSlide: Slide = {
-        layout: "code",
-        title: `Exemplo prático: ${moduleTitle}`,
-        code: synth.code,
-        moduleIndex: mi,
-      };
-      // Insert BEFORE the trailing meta slide (takeaways/closing/summary)
-      // when present; otherwise append at the end. Keeps narrative flow.
-      const slides = allModuleSlides[mi];
-      let insertAt = slides.length;
-      for (let k = slides.length - 1; k >= 0; k--) {
-        if (isMetaSlide(slides[k])) insertAt = k;
-        else break;
-      }
-      slides.splice(insertAt, 0, injectedSlide);
-      injected.push({ index: mi + 1, title: moduleTitle, source: synth.source });
-      console.log(
-        `[MODULE-CODE-COVERAGE-INJECT] M${mi + 1} ("${moduleTitle}") moduleKind=${moduleKind ?? "null"} source=${synth.source} insertAt=${insertAt} totalAfter=${slides.length}`,
-      );
-      continue;
-    }
-    // Synth unavailable — this module CANNOT be auto-healed. Veto.
-    console.warn(
-      `[MODULE-CODE-COVERAGE-INJECT] M${mi + 1} ("${moduleTitle}") moduleKind=${moduleKind ?? "null"} synth=null — falling through to veto`,
-    );
-    missing.push({ index: mi + 1, title: moduleTitle });
-  }
-  if (injected.length > 0) {
-    console.log(
-      `[MODULE-CODE-COVERAGE] AUTO-HEALED ${injected.length} módulo(s) via síntese: ${injected.map((m) => `M${m.index}(${m.source})`).join(", ")}`,
-    );
-  }
-  if (missing.length > 0) {
-    for (const m of missing) {
-      issues.push({
-        slideId: `M${m.index}.MODULE`,
-        type: "MODULE_CODE_COVERAGE_MISSING",
-        severity: "CRITICAL",
-        message:
-          `Módulo ${m.index} ("${m.title}") não contém slide de código e a síntese também falhou (sem template aplicável para o moduleKind detectado)`,
-        resolutionStrategy:
-          "Bloqueio de export — regenerar o módulo OU adicionar template SYNTH_TEMPLATES para esse moduleKind em synthesizeMinimalCompleteExample",
-      });
-    }
-    console.warn(
-      `[MODULE-CODE-COVERAGE] BLOCKED — ${missing.length} módulo(s) técnico(s) sem código E sem síntese: ${missing.map((m) => `M${m.index}`).join(", ")}`,
-    );
-  } else {
-    console.log(
-      `[MODULE-CODE-COVERAGE] PASSED — todos os módulos técnicos contêm ≥1 slide de código real (${injected.length} via auto-heal)`,
-    );
-  }
-  return issues;
-}
-
-// v5.7.4 — Module-scope JSON/API technical-token presence check (WARN only,
-// no veto). For modules classified as `json_apis`, verify at least one slide
-// mentions a recognizable HTTP/JSON token. Diagnostic signal that the
-// planner's content for that module is too conceptual.
-function runJsonApiWeaknessScan(
-  allModuleSlides: Slide[][],
-  moduleTitlesArr: string[],
-  courseTitle: string,
-): void {
-  const TOK_RE = /\b(requests\.|response\.status|response\.json|http\.|httpx|urllib|\.json\(\)|fetch\(|axios|api[._-]?key|GET\s|POST\s|application\/json|endpoint)/i;
-  for (let mi = 0; mi < allModuleSlides.length; mi++) {
-    const mTitle = moduleTitlesArr[mi] ?? "";
-    const rule = getModuleRule(courseTitle, mTitle);
-    if (!rule || rule.kind !== "json_apis") continue;
-    let hits = 0;
-    for (const s of allModuleSlides[mi]) {
-      const blob = [
-        s.title ?? "",
-        s.code ?? "",
-        ...(s.items ?? []).map(String),
-        ...(s.leftItems ?? []).map(String),
-        ...(s.rightItems ?? []).map(String),
-      ].join("\n");
-      if (TOK_RE.test(blob)) hits++;
-    }
-    if (hits === 0) {
-      console.warn(
-        `[NARRATIVE-WEAK-JSON] module=${mi + 1} title=${JSON.stringify(mTitle.slice(0, 60))} kind=json_apis tokenHits=0 → planner output is too conceptual; recommend regenerating module`,
-      );
-    } else {
-      console.log(
-        `[NARRATIVE-WEAK-JSON] module=${mi + 1} kind=json_apis tokenHits=${hits} → ok`,
-      );
-    }
-  }
 }
 
 // detectHeaderPromotionLeak — diagnostic scan AFTER region assignment.
@@ -2077,225 +1197,6 @@ function detectHeaderPromotionLeak(
     console.log(`[LAYOUT-REGION-DEBUG] slide=${slideNum} HEADER_PROMOTION_LEAK count=0 promotionDetected=false`);
   }
   return leaks;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// v5.8.0 — validateHttpNarrativeParity (WARN only, not HARD_CRITICAL)
-// Detects slides whose title/bullets promise both GET and POST semantics
-// but whose code only demonstrates GET. Ships as WARNING (diagnostic)
-// so exports are not blocked yet — promotes to HARD_CRITICAL in v5.9
-// after telemetry proves low false-positive rate on real exports.
-// ─────────────────────────────────────────────────────────────────────
-const HTTP_GET_POST_TITLE_RE = /\b(GET\s.*\bPOST\b|POST\s.*\bGET\b|enviar\s.*\brequisição\b|consumir\s.*\benviar\b|consultar\s.*\bcriar\b)/i;
-const HTTP_POST_CODE_RE = /requests\.post\s*\(|fetch\s*\([^)]+method\s*:\s*['"]?POST/i;
-const HTTP_GET_CODE_RE  = /requests\.get\s*\(|fetch\s*\([^)]+\)|axios\.get\s*\(/i;
-
-function validateHttpNarrativeParity(
-  slide: Slide,
-  slideId: string,
-): QAIssue | null {
-  if (slide.layout !== "code" || !slide.code) return null;
-  const textBlob = [
-    slide.title ?? "",
-    ...(slide.items ?? []).map(String),
-    ...(slide.leftItems ?? []).map(String),
-    ...(slide.rightItems ?? []).map(String),
-  ].join(" ");
-  if (!HTTP_GET_POST_TITLE_RE.test(textBlob)) return null;
-  if (!HTTP_GET_CODE_RE.test(slide.code)) return null;  // no GET either — skip
-  if (HTTP_POST_CODE_RE.test(slide.code)) return null;  // has POST → OK
-  const msg = `Slide "${(slide.title ?? "").slice(0, 60)}" descreve GET+POST mas código só demonstra GET (requests.post ausente)`;
-  console.warn(`[HTTP-PARITY] ${slideId} ${msg}`);
-  return {
-    slideId,
-    type: "HTTP_NARRATIVE_PARITY_MISSING",
-    severity: "WARNING",
-    message: msg,
-    resolutionStrategy:
-      "Adicionar bloco requests.post() ao snippet ou ajustar título/bullets para descrever apenas GET",
-  };
-}
-
-// v5.8.1 — repairHttpParityCode
-// If a code slide describes both GET and POST (via title/items) but the
-// code block only demonstrates GET, append a minimal requests.post() demo
-// block so the student sees both operations side by side.
-// Pure append — never modifies the existing GET block.
-function repairHttpParityCode(code: string, slideId: string): string {
-  if (!HTTP_GET_CODE_RE.test(code))  return code; // no GET in code → skip
-  if (HTTP_POST_CODE_RE.test(code))  return code; // POST already present → OK
-  const postBlock = [
-    "",
-    "# POST — envio de dados",
-    'url_post = "https://api.exemplo.com/dados"',
-    'payload  = {"chave": "valor"}',
-    "resp_post = requests.post(url_post, json=payload)",
-    "print(resp_post.status_code)  # 200 = sucesso",
-    "print(resp_post.json())",
-  ].join("\n");
-  console.log(`[HTTP-PARITY] ${slideId} repair=append_post_block`);
-  return code + postBlock;
-}
-
-// v5.8.1 — validateModuleTechCoverage
-// For Python tests_logs modules: verifies that the combined code across all
-// slides covers ALL three required topics (unittest, logging, pdb). If any
-// are missing, injects a targeted minimal synthesized snippet BEFORE meta
-// slides, mirroring the validateMinimumCodeCoverageByModule injection pattern.
-// Logs [MODULE-TECH-COVERAGE] per qualifying module regardless of outcome.
-function validateModuleTechCoverage(
-  allModuleSlides: Slide[][],
-  moduleTitlesArr: string[],
-  courseTitle: string,
-): void {
-  const domain = inferCourseDomain(courseTitle);
-  if (domain !== "python") return;
-
-  for (let mi = 0; mi < allModuleSlides.length; mi++) {
-    const moduleTitle = (moduleTitlesArr[mi] ?? "").trim();
-    const rule = getModuleRule(courseTitle, moduleTitle);
-    if (rule?.kind !== "tests_logs") continue;
-
-    const allCode = allModuleSlides[mi]
-      .filter((s) => s.layout === "code" && s.code && s.code.trim().length >= 10)
-      .map((s) => s.code ?? "")
-      .join("\n");
-
-    type TechTopic = "unittest" | "logging" | "pdb";
-    const required: TechTopic[] = ["unittest", "logging", "pdb"];
-    const found = required.filter((topic) => {
-      if (topic === "unittest") return /\bunittest\b|\bTestCase\b|\bself\.assert/i.test(allCode);
-      if (topic === "logging")  return /\blogging\.(debug|info|warning|error|critical)\s*\(/i.test(allCode);
-      if (topic === "pdb")      return /\bpdb\b|\bset_trace\s*\(|\bbreakpoint\s*\(/i.test(allCode);
-      return false;
-    });
-    const missing = required.filter((t) => !found.includes(t));
-
-    console.log(
-      `[MODULE-TECH-COVERAGE] M${mi + 1} kind=tests_logs title="${moduleTitle.slice(0, 60)}" required=${required.join(",")} found=${found.join(",") || "none"} missing=${missing.join(",") || "none"}`,
-    );
-
-    if (missing.length === 0) continue;
-
-    // Inject one targeted snippet slide per missing topic.
-    const TOPIC_CODE: Record<TechTopic, string> = {
-      unittest: `import unittest\n\nclass TestCalculadora(unittest.TestCase):\n    def test_soma(self):\n        self.assertEqual(2 + 2, 4)\n    def test_subtracao(self):\n        self.assertEqual(5 - 3, 2)\n\nif __name__ == "__main__":\n    unittest.main()`,
-      logging:  `import logging\n\nlogging.basicConfig(level=logging.DEBUG)\nlogging.debug("Depurando variável")\nlogging.info("Aplicação iniciada")\nlogging.warning("Memória acima de 80%")\nlogging.error("Falha na conexão")`,
-      pdb:      `import pdb\n\ndef calcular_total(valores):\n    total = 0\n    for v in valores:\n        pdb.set_trace()  # inspecionar 'v' e 'total'\n        total += v\n    return total\n\nprint(calcular_total([10, 20, 30]))`,
-    };
-    const TOPIC_TITLE: Record<TechTopic, string> = {
-      unittest: "Testes com unittest",
-      logging:  "Logging com o módulo logging",
-      pdb:      "Depuração interativa com pdb",
-    };
-
-    for (const topic of missing) {
-      const injectedSlide: Slide = {
-        layout: "code",
-        title: TOPIC_TITLE[topic],
-        items: [],
-        code: TOPIC_CODE[topic],
-        moduleIndex: mi,
-      };
-      const modSlides = allModuleSlides[mi];
-      // Insert before trailing meta slides (same pattern as synthesizer injection).
-      let insertAt = modSlides.length;
-      for (let k = modSlides.length - 1; k >= 0; k--) {
-        if (!isMetaSlide(modSlides[k])) { insertAt = k + 1; break; }
-      }
-      modSlides.splice(insertAt, 0, injectedSlide);
-      console.log(
-        `[MODULE-TECH-COVERAGE-INJECT] M${mi + 1} topic=${topic} insertAt=${insertAt} totalAfter=${modSlides.length}`,
-      );
-    }
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// v5.8.0 — runSlideJsonIntegrationCheck
-// Aggregator validator that runs on the FINAL JSON (post-cascade,
-// pre-render) and checks module-level invariants. Deduplicates issues
-// by (slideId, type) before merging into cascadeReport to avoid
-// double-reporting. Does NOT re-run checks already inside qaVeto —
-// only enforces pedagogical invariants not covered elsewhere:
-//
-//   1. Every technical module has ≥1 real CODE slide (redundant with
-//      MODULE_CODE_COVERAGE_MISSING gate but provides a unified log).
-//   2. Every CODE slide has an observable outcome (print/return/assert/
-//      logging call visible in the code).
-//   3. HTTP narrative parity per slide (GET+POST title → POST in code).
-//   4. No module demoted to 0 CODE slides by the guardrail/cascade.
-//   5. Zero NARRATIVE_MISALIGNMENT survivors (sanity re-check).
-//
-// Returns QAIssue[] — caller merges into cascadeReport.
-// ─────────────────────────────────────────────────────────────────────
-const OBSERVABLE_OUTCOME_RE = /\bprint\s*\(|\breturn\s+\S|\bassert\s+|\blogging\.\w+\s*\(|\bresponse\b/i;
-
-function runSlideJsonIntegrationCheck(
-  allModuleSlides: Slide[][],
-  moduleTitles: string[],
-  courseTitle: string,
-): QAIssue[] {
-  const domain = inferCourseDomain(courseTitle);
-  const isTechnical = domain === "python" || domain === "javascript" || domain === "java" || domain === "sql";
-  const META_MODULE_RE_IC =
-    /^(introdu[çc][ãa]o\s+(ao\s+curso|geral)|apresenta[çc][ãa]o|bem-vindo|sobre\s+o\s+curso|índice|sumário|conclus[ãa]o|encerramento|recapitula[çc][ãa]o|aprendizados?\s+finais|pr[óo]ximos\s+passos|takeaways?|síntese|consolida[çc][ãa]o)/i;
-
-  const rawIssues: QAIssue[] = [];
-  const seen = new Set<string>(); // dedupe key: `${slideId}:${type}`
-
-  function addIssue(issue: QAIssue): void {
-    const key = `${issue.slideId}:${issue.type}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    rawIssues.push(issue);
-  }
-
-  for (let mi = 0; mi < allModuleSlides.length; mi++) {
-    const moduleTitle = (moduleTitles[mi] ?? "").trim();
-    const slideId = (si: number) => `M${mi + 1}.S${si + 1}`;
-
-    // Check 3 — HTTP parity per CODE slide
-    for (let si = 0; si < allModuleSlides[mi].length; si++) {
-      const s = allModuleSlides[mi][si];
-      const parityIssue = validateHttpNarrativeParity(s, slideId(si));
-      if (parityIssue) addIssue(parityIssue);
-    }
-
-    if (!isTechnical || META_MODULE_RE_IC.test(moduleTitle)) continue;
-
-    const codeSlides = allModuleSlides[mi].filter(
-      (s) => s.layout === "code" && s.code && s.code.trim().length >= 10,
-    );
-
-    // Check 1 + 4 — module has at least 1 real CODE slide
-    if (codeSlides.length === 0) {
-      addIssue({
-        slideId: `M${mi + 1}.MODULE`,
-        type: "MODULE_CODE_COVERAGE_MISSING",
-        severity: "CRITICAL",
-        message: `[INTEGRATION-CHECK] Módulo ${mi + 1} ("${moduleTitle}") sem CODE slide no JSON final pré-render`,
-        resolutionStrategy: "Regenerar módulo ou adicionar template de síntese",
-      });
-    }
-
-    // Check 2 — observable outcome in each CODE slide
-    for (let si = 0; si < allModuleSlides[mi].length; si++) {
-      const s = allModuleSlides[mi][si];
-      if (s.layout !== "code" || !s.code || s.code.trim().length < 10) continue;
-      if (!OBSERVABLE_OUTCOME_RE.test(s.code)) {
-        console.warn(
-          `[INTEGRATION-CHECK] ${slideId(si)} CODE slide sem observable outcome (print/return/assert/logging/response) — title="${(s.title ?? "").slice(0, 60)}"`,
-        );
-      }
-    }
-  }
-
-  const passed = rawIssues.filter((i) => i.severity === "CRITICAL").length === 0;
-  console.log(
-    `[INTEGRATION-CHECK] ${passed ? "PASS" : "FAIL"} | issues=${rawIssues.length} (critical=${rawIssues.filter((i) => i.severity === "CRITICAL").length} warn=${rawIssues.filter((i) => i.severity === "WARNING").length})`,
-  );
-  return rawIssues;
 }
 
 const corsHeaders = {
@@ -8259,6 +7160,102 @@ function repairPythonRequestsSnippet(code: string): string | null {
   return lines.join("\n");
 }
 
+// ── v5.8.2 — HTTP Parity helpers ───────────────────────────────────────────
+// Scan ALL text fields of a slide (title, subtitle, items, leftItems,
+// rightItems) for mentions of HTTP methods. Returns the set of methods
+// *promised* by prose/bullets so guardrails can compare against the code.
+function getHttpMethodsPromised(s: Slide): Set<string> {
+  const text = [
+    s.title ?? "", s.subtitle ?? "", s.label ?? "",
+    ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+  ].join(" ").toLowerCase();
+  const methods = new Set<string>();
+  if (/\bget\b|requests\.get/.test(text)) methods.add("GET");
+  if (/\bpost\b|requests\.post/.test(text)) methods.add("POST");
+  if (/\bput\b|requests\.put/.test(text)) methods.add("PUT");
+  if (/\bdelete\b|requests\.delete/.test(text)) methods.add("DELETE");
+  return methods;
+}
+
+// Produce a combined GET+POST example (or whatever methods are in `methods`).
+// Always emits response.status_code + response.json() for parity.
+function synthesizeHttpParityExample(methods: Set<string>): string {
+  const lines: string[] = ["import requests", ""];
+  if (methods.has("GET") || methods.size === 0) {
+    lines.push(`url = "https://api.example.com/items"`);
+    lines.push(`response = requests.get(url)`);
+    lines.push(`print(response.status_code)`);
+    lines.push(`print(response.json())`);
+  }
+  if (methods.has("POST")) {
+    if (lines.length > 2) lines.push("");
+    lines.push(`payload = {"nome": "Produto A", "preco": 29.90}`);
+    lines.push(`resp_post = requests.post("https://api.example.com/items", json=payload)`);
+    lines.push(`print(resp_post.status_code)`);
+    lines.push(`print(resp_post.json())`);
+  }
+  return lines.join("\n");
+}
+
+// ── v5.8.2 — Module Skill Coverage Contracts ───────────────────────────────
+// Minimum observable patterns per moduleKind.
+// Each contract specifies required patterns that MUST collectively appear
+// in at least ONE code slide of the module. Missing contracts are logged
+// as [SKILL-CONTRACT] warnings and trigger a synthesis injection attempt.
+type SkillContract = {
+  name:             string;
+  requiredPatterns: RegExp[];  // ALL must appear in at least one code slide
+};
+
+const MODULE_SKILL_CONTRACTS: Record<string, SkillContract[]> = {
+  json_apis: [
+    { name: "http_get",   requiredPatterns: [/requests\.get\s*\(/] },
+    { name: "json_parse", requiredPatterns: [/\.status_code/, /\.json\(\)/] },
+  ],
+  tests_logs: [
+    { name: "unittest_or_pytest", requiredPatterns: [/import\s+unittest|import\s+pytest|def\s+test_/] },
+    { name: "logging_emit",       requiredPatterns: [/logging\.(info|debug|warning|error|critical)\s*\(/] },
+  ],
+  oop: [
+    { name: "class_with_init",  requiredPatterns: [/class\s+[A-Z]/, /__init__\s*\(/] },
+    { name: "instance_method",  requiredPatterns: [/\b[a-z_]\w*\s*\.\s*[a-z_]\w+\s*\(/] },
+  ],
+  files_exceptions: [
+    { name: "with_open",  requiredPatterns: [/with\s+open\s*\(/] },
+    { name: "try_except", requiredPatterns: [/try\s*:/, /except\b/] },
+  ],
+  best_practices: [
+    { name: "docstring_or_typehints", requiredPatterns: [/"""[\s\S]*?"""|def\s+\w+\s*\([^)]*:\s*\w+|->|requirements\.txt|venv/] },
+  ],
+};
+
+// Returns names of contracts that have NO code slide covering all their patterns.
+function checkModuleSkillContracts(
+  slides: Slide[],
+  moduleKind: string | null,
+  moduleTitle: string,
+  mi: number,
+): string[] {
+  if (!moduleKind || !(moduleKind in MODULE_SKILL_CONTRACTS)) return [];
+  const contracts = MODULE_SKILL_CONTRACTS[moduleKind];
+  const codeTexts = slides.filter((s) => s.layout === "code" && s.code).map((s) => s.code!);
+  const missing: string[] = [];
+  for (const contract of contracts) {
+    const covered = codeTexts.some((code) => contract.requiredPatterns.every((pat) => pat.test(code)));
+    if (!covered) {
+      missing.push(contract.name);
+      console.warn(
+        `[SKILL-CONTRACT] mi=${mi} title="${moduleTitle.slice(0, 60)}" kind=${moduleKind} MISSING=${contract.name} patterns=${contract.requiredPatterns.map((r) => r.source).join(" & ")}`,
+      );
+    } else {
+      console.log(
+        `[SKILL-CONTRACT] mi=${mi} title="${moduleTitle.slice(0, 60)}" kind=${moduleKind} OK=${contract.name}`,
+      );
+    }
+  }
+  return missing;
+}
+
 // ── Code completeness validator ────────────────────────────
 // Per-language structural completeness check. Returns true when the
 // code block looks safe to render (closed brackets, balanced quotes,
@@ -8358,13 +7355,7 @@ type QAIssueType =
   // ── v5.4.0 Technical Preservation Layer ─────────────────────
   | "TECHNICAL_TOKEN_LOSS"
   // ── v5.7.0 Final safety net (forbidden-pattern scan) ────────
-  | "FORBIDDEN_FINAL_PATTERN"
-  // ── v5.7.4 Narrative/title↔code alignment ────────────────────
-  | "NARRATIVE_MISALIGNMENT"
-  // ── v5.7.6 Module-scope minimum code coverage (Python) ───────
-  | "MODULE_CODE_COVERAGE_MISSING"
-  // ── v5.8.0 HTTP GET+POST narrative parity (WARN only) ────────
-  | "HTTP_NARRATIVE_PARITY_MISSING";
+  | "FORBIDDEN_FINAL_PATTERN";
 
 interface QAIssue {
   slideId:            string;
@@ -8839,17 +7830,6 @@ function runPptxQA(
         if (s.layout === "code" && s.code) {
           const itemsFallback = nonEmpty(s.items);
           if (itemsFallback.length >= 3) {
-            // v5.8.0 — CoverageGuard diagnostic: warn when demoting the last
-            // code slide in this module. The module gate post-cascade will
-            // detect the gap and inject a synthesized replacement before veto.
-            const codeCountExcludingThis_B1 = modSlides.filter(
-              (sl, idx) => idx !== si && keepMask[idx] !== false && sl.layout === "code" && sl.code && sl.code.trim().length >= 10,
-            ).length;
-            if (codeCountExcludingThis_B1 === 0) {
-              console.warn(
-                `[COVERAGE-GUARD] cascade DOMAIN_CONTAMINATION demotion for ${id} is removing last CODE slide in M${mi + 1} ("${moduleTitle.slice(0, 50)}") — module gate will auto-heal or veto`,
-              );
-            }
             fixedIssues.push({
               slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
               message: `Domínio contaminado em "${s.title}": ${contam.reason}`,
@@ -8910,15 +7890,6 @@ function runPptxQA(
           } else {
             const itemsFallback = nonEmpty(s.items);
             if (itemsFallback.length >= 3) {
-              // v5.8.0 — CoverageGuard diagnostic for INCOMPLETE_CODE demotion.
-              const codeCountExcludingThis_B2 = modSlides.filter(
-                (sl, idx) => idx !== si && keepMask[idx] !== false && sl.layout === "code" && sl.code && sl.code.trim().length >= 10,
-              ).length;
-              if (codeCountExcludingThis_B2 === 0) {
-                console.warn(
-                  `[COVERAGE-GUARD] cascade INCOMPLETE_CODE demotion for ${id} is removing last CODE slide in M${mi + 1} ("${moduleTitle.slice(0, 50)}") — module gate will auto-heal or veto`,
-                );
-              }
               fixedIssues.push({
                 slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
                 message: `Código incompleto em "${s.title}" (${lang}) — convertido para bullets`,
@@ -9740,14 +8711,6 @@ const HARD_CRITICAL_TYPES: ReadonlySet<QAIssueType> = new Set<QAIssueType>([
   // token loss after all repair passes. Preservation layer was either
   // bypassed or input was already corrupted upstream — block export.
   "TECHNICAL_TOKEN_LOSS",
-  // v5.7.4 — Slide title names a domain entity (Livro/Ebook) but code
-  // uses a different, mutually exclusive entity (Carro). Pure planner
-  // bug; cannot be silently demoted.
-  "NARRATIVE_MISALIGNMENT",
-  // v5.7.6 — Technical Python module shipped without any real CODE
-  // slide. Catches the case where repair/synth fallbacks demoted the
-  // module's only code slide to CONCEPT/PROCESSO (silent failure).
-  "MODULE_CODE_COVERAGE_MISSING",
 ]);
 
 function qaVeto(
@@ -10394,13 +9357,6 @@ async function runPipeline(
   let titleDedupCount = 0;
   let titleDedupDropCount = 0;
   let weakContinuationDropCount = 0;
-  // v5.8.0 — pre-compute code slide counts per module BEFORE the guardrail loop.
-  // Post-cascade snapshot so CoverageState is initialised with the correct entry
-  // count (cascade may have already demoted some slides via B1/B2).
-  const preCoverageCount = allModuleSlides.map((slides) =>
-    slides.filter((s) => s.layout === "code" && s.code && s.code.trim().length >= 10).length,
-  );
-  const coverageRecords: ModuleCoverageRecord[] = [];
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     let prevTitleNorm = "";
     let prevItemsNorm = "";
@@ -10418,12 +9374,6 @@ async function runPipeline(
     console.log(
       `[MODULE-CLASSIFY] mi=${mi + 1} title="${(moduleTitlesArr[mi] ?? "").slice(0, 80)}" kind=${moduleKind ?? "null"} course="${courseTitle.slice(0, 60)}"`,
     );
-    // v5.8.0 — CoverageState: module-scoped demotion tracker.
-    // Initialised with the post-cascade code count so that per-slide guard
-    // decisions are accurate even when the cascade already removed some slides.
-    const coverageState = new CoverageState(
-      mi + 1, moduleTitlesArr[mi] ?? "", moduleKind, preCoverageCount[mi],
-    );
     const kept: Slide[] = [];
     for (let si = 0; si < allModuleSlides[mi].length; si++) {
       guardrailSlideCounter++;
@@ -10432,7 +9382,6 @@ async function runPipeline(
         `M${mi + 1}.S${si + 1}`,
         moduleKind,
         moduleCtx,
-        coverageState,
       );
       // v5.5.4 — Adjacent duplicate dedup: if title matches previous AND
       // items are also similar (jaccard ≥0.6 on first 3 items), DROP this
@@ -10510,51 +9459,49 @@ async function runPipeline(
       // v5.5.6 — accumulate module context across ALL kept slides so
       // subsequent slides' repairs see the full vocabulary, not just last.
       moduleCtx = extractSemanticCodeContext(kept);
-      // v5.8.1 — [CONCEPT-DENSITY] heuristic: warn when 3+ consecutive
-      // non-code slides appear in a technical module. Non-blocking — the
-      // planner is the primary control, this is an operator visibility aid.
-      if (moduleKind !== null && kept.length >= 3) {
-        const tail3 = kept.slice(-3);
-        if (tail3.every((sl) => sl.layout !== "code")) {
-          // Only fire at the onset of the streak (exactly 3, or when the
-          // 4th+ slide extends a streak that just started at length 3).
-          const isOnset = kept.length === 3 || kept[kept.length - 4].layout === "code";
-          if (isOnset) {
-            console.warn(
-              `[CONCEPT-DENSITY] M${mi + 1} S${si + 1} 3 consecutive non-code slides in technical module (kind=${moduleKind}) — prefer CONCEPT→CODE alternation`,
-            );
-          }
-        }
-      }
     }
     allModuleSlides[mi] = kept;
-    // v5.8.0 — emit per-module coverage record BEFORE the module gate runs.
-    // "injectedByModule" is set to true later by validateMinimumCodeCoverageByModule
-    // if it injects a synthesized slide; here we snapshot the guardrail-loop state.
-    coverageRecords.push(coverageState.toRecord(preCoverageCount[mi], false));
-    console.log(
-      `[MODULE-COVERAGE] M${mi + 1} ("${(moduleTitlesArr[mi] ?? "").slice(0, 60)}") kind=${moduleKind ?? "null"} entry=${preCoverageCount[mi]} exit=${coverageState.current} demoted=${coverageState.demoted} synthesized=${coverageState.synthesized} status=${coverageState.current > 0 ? "PASS" : "PENDING-GATE"}`,
+
+    // v5.8.2 — Skill coverage contracts: after all per-slide guardrails,
+    // check that the module's code slides collectively cover the required
+    // skill patterns for its kind. Missing patterns trigger a synthesis
+    // injection BEFORE global safety-net so the injected slide benefits from
+    // all subsequent QA layers. One injection attempt per module max.
+    const missingContracts = checkModuleSkillContracts(
+      kept, moduleKind, moduleTitlesArr[mi] ?? "", mi + 1,
     );
-  }
-  {
-    const totalDemoted  = coverageRecords.reduce((a, r) => a + r.demotedSlides,     0);
-    const totalSynth    = coverageRecords.reduce((a, r) => a + r.synthesizedSlides,  0);
-    const pendingModules = coverageRecords.filter((r) => r.status === "FAIL").map((r) => `M${r.moduleIndex}`);
-    console.log(
-      `[MODULE-COVERAGE-SUMMARY] total_demoted=${totalDemoted} total_synthesized=${totalSynth} modules_pending_gate=${pendingModules.length} (${pendingModules.join(",") || "none"})`,
-    );
+    if (missingContracts.length > 0) {
+      console.warn(
+        `[SKILL-CONTRACT] mi=${mi + 1} missing=${missingContracts.join(",")} → attempting synthesis injection`,
+      );
+      const synth = synthesizeMinimalCompleteExample(moduleKind, moduleCtx, moduleTitlesArr[mi] ?? "");
+      if (synth) {
+        const injectedSlide: Slide = {
+          layout: "code",
+          title:  `Exemplo: ${missingContracts[0].replace(/_/g, " ")}`,
+          code:   synth.code,
+          label:  "CÓDIGO",
+          moduleIndex: mi,
+        };
+        // Insert before trailing meta slides so it stays in the module body.
+        const metaIdx = kept.findIndex((s) => isMetaSlide(s));
+        if (metaIdx > 0) kept.splice(metaIdx, 0, injectedSlide);
+        else kept.push(injectedSlide);
+        allModuleSlides[mi] = kept;
+        console.log(
+          `[SKILL-CONTRACT-INJECT] mi=${mi + 1} kind=${moduleKind} contract=${missingContracts[0]} injected title="${injectedSlide.title}"`,
+        );
+      } else {
+        console.warn(
+          `[SKILL-CONTRACT] mi=${mi + 1} kind=${moduleKind} — synthesis unavailable, contracts remain unmet: ${missingContracts.join(",")}`,
+        );
+      }
+    }
   }
   console.log(
     `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount} | adjacent_dropped=${titleDedupDropCount} | weak_continuation_dropped=${weakContinuationDropCount}`,
   );
   tCheckpoint = tlog("final_guardrails_done", tCheckpoint);
-
-  // ── v5.8.1 — MODULE TECH COVERAGE (tests_logs modules) ─────────────
-  // Ensures that modules promising unittest + logging + pdb deliver code
-  // examples for ALL three topics. Runs AFTER the guardrail loop (so
-  // CoverageState demotions are already resolved) but BEFORE the module
-  // coverage gate and global safety net.
-  validateModuleTechCoverage(allModuleSlides, moduleTitlesArr, courseTitle);
 
   // ── v5.1.8 — GLOBAL FIELD SAFETY NET ──────────────────────────────
   // Final pass: scan EVERY string field (extractAllStrings) of EVERY slide
@@ -10653,75 +9600,6 @@ async function runPipeline(
     };
   } else {
     console.log(`[TECH-TOKEN-QA] Clean — no technical token damage detected`);
-  }
-
-  // ── v5.7.4 — NARRATIVE ALIGNMENT + JSON/API WEAKNESS ──────────────────
-  // Final pre-veto scan: catches the "Livro/Ebook title + class Carro code"
-  // class of bug (HARD_CRITICAL → veto) and emits diagnostic warnings for
-  // json_apis modules that lack any HTTP/JSON token (no veto).
-  const narrativeIssues = runNarrativeAlignmentScan(allModuleSlides, moduleTitlesArr);
-  if (narrativeIssues.length > 0) {
-    console.warn(
-      `[NARRATIVE-ALIGN] ${narrativeIssues.length} narrative misalignment(s) detected — adding to QA report`,
-    );
-    cascadeReport = {
-      ...cascadeReport,
-      status: "FAILED",
-      issues: [...cascadeReport.issues, ...narrativeIssues],
-    };
-  } else {
-    console.log(`[NARRATIVE-ALIGN] Clean — title↔code domains aligned`);
-  }
-  runJsonApiWeaknessScan(allModuleSlides, moduleTitlesArr, courseTitle);
-
-  // ── v5.8.0 — SLIDE JSON INTEGRATION CHECK ──────────────────────────────
-  // Aggregator validator on the FINAL JSON (post-cascade, pre-render).
-  // Checks module pedagogical invariants, HTTP parity, observable outcomes.
-  // Deduplicates by (slideId, type) so it never double-reports issues that
-  // the module-coverage gate or narrative scan already surface.
-  const integrationIssues = runSlideJsonIntegrationCheck(allModuleSlides, moduleTitlesArr, courseTitle);
-  {
-    const integrationBlocking = integrationIssues.filter((i) => i.severity === "CRITICAL");
-    const integrationWarn     = integrationIssues.filter((i) => i.severity === "WARNING");
-    if (integrationBlocking.length > 0) {
-      // Merge blocking issues into cascadeReport so qaVeto can act on them.
-      // They are already deduped by runSlideJsonIntegrationCheck, but we skip
-      // any slideId+type pair already present to be safe.
-      const existingKeys = new Set(cascadeReport.issues.map((i) => `${i.slideId}:${i.type}`));
-      const newBlocking = integrationBlocking.filter((i) => !existingKeys.has(`${i.slideId}:${i.type}`));
-      if (newBlocking.length > 0) {
-        console.warn(`[INTEGRATION-CHECK] ${newBlocking.length} new blocking issue(s) merged into QA report`);
-        cascadeReport = {
-          ...cascadeReport,
-          status: "FAILED",
-          issues: [...cascadeReport.issues, ...newBlocking],
-        };
-      }
-    }
-    if (integrationWarn.length > 0) {
-      console.warn(`[INTEGRATION-CHECK] ${integrationWarn.length} WARNING(s) logged (non-blocking in v5.8.0)`);
-    }
-  }
-
-  // ── v5.7.6 — MODULE CODE COVERAGE HARD GATE ───────────────────────────
-  // Final pre-veto check: every TECHNICAL Python module must ship ≥1 real
-  // code slide. Catches silent demotion (CODE → CONCEPT) by repair-loop
-  // fallbacks. Pushes MODULE_CODE_COVERAGE_MISSING into the cascade report
-  // so qaVeto blocks export with structured details per affected module.
-  const moduleCoverageIssues = validateMinimumCodeCoverageByModule(
-    allModuleSlides,
-    moduleTitlesArr,
-    courseTitle,
-  );
-  if (moduleCoverageIssues.length > 0) {
-    console.warn(
-      `[MODULE-CODE-COVERAGE] ${moduleCoverageIssues.length} module(s) missing code — adding to QA report`,
-    );
-    cascadeReport = {
-      ...cascadeReport,
-      status: "FAILED",
-      issues: [...cascadeReport.issues, ...moduleCoverageIssues],
-    };
   }
 
   // ── QA VETO ─────────────────────────────────────────────────────────────
