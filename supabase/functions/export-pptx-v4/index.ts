@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.8.4";
+const ENGINE_VERSION = "5.8.5";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -751,6 +751,42 @@ function repairIncompleteCodeExample(
           return `"${n}"`;
         })
         .join(", ");
+      // v5.8.5 — accumulator pattern: function body ending with a derived
+      // variable but no `return`. Insert `return <lastVar>` BEFORE the call
+      // demo so the call actually produces meaningful output.
+      // Canonical case (slide 14): def calcularvalortotal(carrinho):
+      //   ... totalliquido = totalbruto - desconto   ← no return!
+      // → repair adds:  return totalliquido   then  resultado = fn(...)  print(resultado)
+      {
+        const defIdx = lastDef.index!;
+        const afterSig = out.slice(defIdx);
+        const sigLineEnd = afterSig.indexOf("\n") + 1;
+        const bodyLines = afterSig.slice(sigLineEnd).split("\n");
+        const funcBodyLines: string[] = [];
+        for (const bl of bodyLines) {
+          if (bl.trim() === "" || /^\s/.test(bl)) funcBodyLines.push(bl);
+          else break;
+        }
+        const hasReturn = funcBodyLines.some((l) => /^\s+return\b/.test(l));
+        if (!hasReturn && funcBodyLines.length > 2) {
+          let lastAssignVar: string | null = null;
+          for (let i = funcBodyLines.length - 1; i >= 0; i--) {
+            const m = funcBodyLines[i].match(/^    ([a-z_][\w]*)\s*=/);
+            if (m && !m[1].startsWith("_")) { lastAssignVar = m[1]; break; }
+          }
+          if (lastAssignVar) {
+            const hasAccumulator = funcBodyLines.some(
+              (l) =>
+                /\b(for|while)\b/.test(l) || /\+=|-=/.test(l) ||
+                /\b(total|soma|liquido|bruto|subtotal|contador|acumulador)\w*/.test(l),
+            );
+            out = out.trimEnd() + `\n    return ${lastAssignVar}`;
+            console.log(
+              `[OBSERVABLE-OUTCOME-TRACE] slide=${slideNum} detected=${hasAccumulator ? "accumulator_pattern" : "function_no_return"} missing=return,invocation,output repair_attempted=true last_var=${lastAssignVar}`,
+            );
+          }
+        }
+      }
       out += `\n\nresultado = ${fnName}(${args})\nprint(resultado)`;
       console.log(
         `[CODE-REPAIR] slide=${slideNum} pattern=function_call_demo fn=${fnName} args=${JSON.stringify(args)}`,
@@ -1075,6 +1111,14 @@ function applyFinalGuardrails(
       out = { ...out, code: stripped };
     }
   }
+  // v5.8.5 — Guardrail 1d: process slide density. Slides with layout=process
+  // and >5 items look like "walls of text". Trim to 5 items.
+  if (out.layout === "process" && Array.isArray(out.items) && out.items.length > 5) {
+    console.warn(
+      `[PROCESS-DENSITY] slide=${slideNum} layout=process items=${out.items.length} → trimmed to 5`,
+    );
+    out = { ...out, items: out.items.slice(0, 5) };
+  }
   // v5.5.8 — Guardrail 2 INVERTED: code layout without code → try to SYNTHESIZE
   // a minimal complete example BEFORE demoting. Demotion is the last-resort
   // fallback and now emits [CODE-SLIDE-CONVERSION] for full visibility.
@@ -1257,6 +1301,20 @@ function applyFinalGuardrails(
         `[EDITORIAL-TITLE] slide=${slideNum} title="${out.title.slice(0, 60)}" reason=generic_or_placeholder rewritten="${betterTitle}"`,
       );
       out = { ...out, title: betterTitle };
+    }
+  }
+
+  // v5.8.5 — Guardrail 8b: tech-specific title-snippet mismatch.
+  // Catches "Testes com unittest" + pdb-only code (slide 48 symptom).
+  // Runs AFTER Guardrail 8 so we operate on the already-polished title.
+  if (out.title && out.code) {
+    const { mismatch, titleEntities, codeEntities, suggestedTitle } =
+      detectTitleSnippetMismatch(out.title, out.code);
+    if (mismatch && suggestedTitle && suggestedTitle !== out.title) {
+      console.warn(
+        `[TITLE-SNIPPET-ALIGNMENT] slide=${slideNum} title_entities=${titleEntities.join(",")} snippet_entities=${codeEntities.join(",")} status=FAILED title_rewritten="${suggestedTitle}"`,
+      );
+      out = { ...out, title: suggestedTitle };
     }
   }
 
@@ -7309,6 +7367,7 @@ const CONTRACT_TITLE_MAP: Readonly<Record<string, string>> = {
   "with_open":              "Leitura de Arquivos com with open",
   "try_except":             "Tratamento de Exceções",
   "docstring_or_typehints": "Docstrings e Type Hints",
+  "pdb_debug":              "Depuração com pdb",
 };
 
 // ── v5.8.4 — Narrative Alignment ───────────────────────────────────────────
@@ -7450,6 +7509,70 @@ function rewriteTitleFromCode(
   return null;
 }
 
+// ── v5.8.5 — Title-Snippet Semantic Alignment ─────────────────────────────
+// Tech-specific mismatch: title says "unittest" but code has only "pdb".
+// More precise than the "X or Y" check (Guardrail 8) because it operates
+// on named technology entities rather than syntactic placeholder patterns.
+const TECH_ENTITY_PATTERNS: ReadonlyArray<{
+  key: string; titleRe: RegExp; codeRe: RegExp; canonicalTitle: string;
+}> = [
+  { key: "pdb",      titleRe: /\bpdb\b/i,       codeRe: /\bpdb\b|\.set_trace\s*\(/,              canonicalTitle: "Depuração com pdb"                  },
+  { key: "unittest", titleRe: /\bunittest\b/i,   codeRe: /import\s+unittest|unittest\.TestCase/,   canonicalTitle: "Testes com unittest"                },
+  { key: "pytest",   titleRe: /\bpytest\b/i,     codeRe: /import\s+pytest|@pytest\b|def\s+test_/,  canonicalTitle: "Testes com pytest"                  },
+  { key: "logging",  titleRe: /\blogging\b/i,    codeRe: /logging\.(info|debug|warning|error)/,    canonicalTitle: "Logging de Operações"               },
+  { key: "requests", titleRe: /\brequests\b/i,   codeRe: /requests\.(get|post|put|delete)\s*\(/,   canonicalTitle: "Requisições HTTP com requests"      },
+];
+
+function detectTitleSnippetMismatch(title: string, code: string | undefined): {
+  mismatch: boolean; titleEntities: string[]; codeEntities: string[]; suggestedTitle: string | null;
+} {
+  const none = { mismatch: false, titleEntities: [], codeEntities: [], suggestedTitle: null };
+  if (!title || !code) return none;
+  const titleEntities = TECH_ENTITY_PATTERNS.filter((p) => p.titleRe.test(title)).map((p) => p.key);
+  const codeEntities  = TECH_ENTITY_PATTERNS.filter((p) => p.codeRe.test(code)).map((p) => p.key);
+  // Only flag when title claims a specific tech that is NOT present in the code
+  if (titleEntities.length === 0 || codeEntities.length === 0) return none;
+  const mismatch = titleEntities.some((e) => !codeEntities.includes(e));
+  const suggestedTitle = mismatch
+    ? (TECH_ENTITY_PATTERNS.find((p) => p.key === codeEntities[0])?.canonicalTitle ?? null)
+    : null;
+  return { mismatch, titleEntities, codeEntities, suggestedTitle };
+}
+
+// ── v5.8.5 — Contract-Specific Synthesis ───────────────────────────────────
+// Maps CONTRACT_NAME → the canonical observable code example for that contract.
+// More precise than synthesizeMinimalCompleteExample because it bypasses
+// title-keyword guessing and always returns the exact required pattern.
+function synthesizeForContract(
+  contractName: string,
+  moduleKind: string | null,
+  moduleCtx: CodeSymbols,
+): { code: string; source: string } | null {
+  if (contractName === "pdb_debug") {
+    return {
+      code: `import pdb\n\ndef calcular(a, b):\n    pdb.set_trace()\n    return a + b\n\nprint(calcular(2, 3))`,
+      source: "canonical_pdb",
+    };
+  }
+  if (contractName === "logging_emit") {
+    return {
+      code: `import logging\n\nlogging.basicConfig(level=logging.INFO)\nlogging.info("Aplicação iniciada")\nlogging.warning("Operação demorada")`,
+      source: "canonical_logging",
+    };
+  }
+  if (contractName === "unittest_or_pytest") {
+    return {
+      code: `import unittest\n\nclass TestCalculadora(unittest.TestCase):\n    def test_soma(self):\n        self.assertEqual(2 + 2, 4)\n\nif __name__ == "__main__":\n    unittest.main()`,
+      source: "canonical_unittest",
+    };
+  }
+  // Fallback: module-based synthesis (handles json_apis, oop, files_exceptions, etc.)
+  return synthesizeMinimalCompleteExample(
+    moduleKind, moduleCtx,
+    contractName.replace(/_or_/g, " ").replace(/_/g, " "),
+  );
+}
+
 // ── v5.8.2 — Module Skill Coverage Contracts ───────────────────────────────
 // Minimum observable patterns per moduleKind.
 // Each contract specifies required patterns that MUST collectively appear
@@ -7468,6 +7591,7 @@ const MODULE_SKILL_CONTRACTS: Record<string, SkillContract[]> = {
   tests_logs: [
     { name: "unittest_or_pytest", requiredPatterns: [/import\s+unittest|import\s+pytest|def\s+test_/] },
     { name: "logging_emit",       requiredPatterns: [/logging\.(info|debug|warning|error|critical)\s*\(/] },
+    { name: "pdb_debug",          requiredPatterns: [/\bpdb\b|\.set_trace\s*\(/] },
   ],
   oop: [
     { name: "class_with_init",  requiredPatterns: [/class\s+[A-Z]/, /__init__\s*\(/] },
@@ -9727,38 +9851,41 @@ async function runPipeline(
     );
     if (missingContracts.length > 0) {
       console.warn(
-        `[SKILL-CONTRACT] mi=${mi + 1} missing=${missingContracts.join(",")} → attempting synthesis injection`,
+        `[SKILL-CONTRACT] mi=${mi + 1} missing=${missingContracts.join(",")} → attempting synthesis injection (one slide per contract)`,
       );
-      const synth = synthesizeMinimalCompleteExample(moduleKind, moduleCtx, moduleTitlesArr[mi] ?? "");
-      if (synth) {
-        // v5.8.4 — use professional Portuguese title from CONTRACT_TITLE_MAP
-        // instead of the raw internal identifier ("unittest_or_pytest" etc.)
-        const injectedTitle =
-          CONTRACT_TITLE_MAP[missingContracts[0]] ??
-          missingContracts[0]
-            .replace(/_or_/g, " e ")
-            .replace(/_/g, " ")
-            .replace(/\b\w/g, (c) => c.toUpperCase());
-        const injectedSlide: Slide = {
-          layout: "code",
-          title:  injectedTitle,
-          code:   synth.code,
-          label:  "CÓDIGO",
-          moduleIndex: mi,
-        };
-        // Insert before trailing meta slides so it stays in the module body.
-        const metaIdx = kept.findIndex((s) => isMetaSlide(s));
-        if (metaIdx > 0) kept.splice(metaIdx, 0, injectedSlide);
-        else kept.push(injectedSlide);
-        allModuleSlides[mi] = kept;
-        console.log(
-          `[SKILL-CONTRACT-INJECT] mi=${mi + 1} kind=${moduleKind} contract=${missingContracts[0]} injected title="${injectedSlide.title}"`,
-        );
-      } else {
-        console.warn(
-          `[SKILL-CONTRACT] mi=${mi + 1} kind=${moduleKind} — synthesis unavailable, contracts remain unmet: ${missingContracts.join(",")}`,
-        );
+      // v5.8.5 — inject one slide PER missing contract (was: one slide for first contract only).
+      // This ensures tests_logs modules always get all 3 real snippets:
+      // unittest + logging + pdb — not just whichever the title happened to match.
+      for (const contractName of missingContracts) {
+        const synth = synthesizeForContract(contractName, moduleKind, moduleCtx);
+        if (synth) {
+          const injectedTitle =
+            CONTRACT_TITLE_MAP[contractName] ??
+            contractName
+              .replace(/_or_/g, " e ")
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase());
+          const injectedSlide: Slide = {
+            layout: "code",
+            title:  injectedTitle,
+            code:   synth.code,
+            label:  "CÓDIGO",
+            moduleIndex: mi,
+          };
+          // Insert before trailing meta slides so it stays in the module body.
+          const metaIdx = kept.findIndex((s) => isMetaSlide(s));
+          if (metaIdx > 0) kept.splice(metaIdx, 0, injectedSlide);
+          else kept.push(injectedSlide);
+          console.log(
+            `[SKILL-CONTRACT-INJECT] mi=${mi + 1} kind=${moduleKind} contract=${contractName} source=${synth.source} injected title="${injectedTitle}"`,
+          );
+        } else {
+          console.warn(
+            `[SKILL-CONTRACT] mi=${mi + 1} kind=${moduleKind} contract=${contractName} — synthesis unavailable`,
+          );
+        }
       }
+      allModuleSlides[mi] = kept;
     }
   }
   console.log(
