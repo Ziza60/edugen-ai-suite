@@ -1,0 +1,246 @@
+A v5.8.x teve avanço importante no módulo API:
+- GET + POST + response.json() finalmente apareceu;
+- HTTP parity começou a funcionar corretamente.
+
+Porém houve regressões sérias em:
+- narrative alignment;
+- observable outcome;
+- títulos sintetizados.
+
+==================================================
+PROBLEMAS REAIS DO PPTX
+==================================================
+
+==================================================
+1. SLIDE 37 — narrative misalignment grave
+==================================================
+
+O texto do slide diz:
+- Cachorro
+- raça
+- latir
+
+Mas o código mostra:
+- class Carro
+- marca/modelo
+- exibir_info()
+
+Isso é exatamente o tipo de mismatch semântico que a v5.8.x deveria impedir.
+
+O detector:
+- detectou?
+- ignorou?
+- ficou WARN-only?
+- ou o synthesis sobrescreveu o contexto?
+
+Quero investigação específica desse caso.
+
+==================================================
+2. SLIDE 44 — observable outcome ainda incompleto
+==================================================
+
+O exemplo de logging:
+
+```python id="97ph69"
+def calcular_soma(numeros):
+
+continua:
+
+sem soma final;
+sem return soma;
+sem chamada;
+sem print/output.
+
+O observable outcome ainda falhou em caso real.
+
+==================================================
+3. SLIDE 45 — título semanticamente errado
+
+Título:
+“unittest or pytest”
+
+Código:
+apenas pdb.
+
+Isso não é só baixa cobertura.
+É título incorreto.
+
+==================================================
+4. SLIDE 50 — synthesis ruim
+
+Título:
+“docstring or typehints”
+
+Isso parece placeholder/synthesis parcial.
+Não parece título profissional.
+
+==================================================
+OBJETIVO DA PRÓXIMA RODADA
+
+Agora o foco deve ser:
+
+coerência narrativa;
+completude pedagógica;
+qualidade dos títulos;
+impedir drift semântico entre texto e código.
+
+Não quero:
+
+nova arquitetura;
+novos sistemas gigantes;
+mais heurísticas aleatórias.
+
+Quero:
+
+consolidar semantic alignment;
+consolidar observable outcome;
+melhorar synthesis editorial.
+==================================================
+CORREÇÕES SOLICITADAS
+
+==================================================
+
+NARRATIVE ALIGNMENT DEVE BLOQUEAR MISMATCHES ÓBVIOS
+==================================================
+
+Casos como:
+
+Cachorro ↔ Carro
+raça ↔ marca
+latir ↔ exibir_info
+
+não podem passar.
+
+Quero:
+
+detector usando entidades semânticas;
+comparação entre texto narrativo e snippet;
+mismatch forte → repair/synthesis contextual;
+persistindo → QA_VETO.
+
+Esse caso específico do slide 37 deve ser usado como teste real.
+
+==================================================
+2. OBSERVABLE OUTCOME — endurecer casos de logging/funções
+
+Funções devem:
+
+retornar algo;
+ou produzir output observável.
+
+O slide 44 deveria terminar com algo como:
+
+soma = sum(numeros)
+logging.info(f"Resultado: {soma}")
+return soma
+
+resultado = calcular_soma([1, 2, 3])
+print(resultado)
+
+Investigar por que o repair convergente ainda não cobre esse path.
+
+==================================================
+3. TITLE SYNTHESIS / EDITORIAL QUALITY
+
+Títulos como:
+
+“unittest or pytest”
+“docstring or typehints”
+
+não parecem slides profissionais.
+
+Criar regra editorial:
+
+Evitar:
+
+“X or Y”;
+placeholders;
+fragmentos híbridos;
+títulos semi-gerados.
+
+Preferir:
+
+“Depuração com pdb”
+“Docstrings e Type Hints”
+“Testes com unittest”
+“Boas Práticas de Tipagem”
+==================================================
+4. TÍTULO PRECISA REFLETIR O CÓDIGO REAL
+
+Se o código contém:
+
+pdb
+
+o título não pode ser:
+
+unittest or pytest.
+
+Se o código contém:
+
+type hints
+
+o título deve mencionar:
+
+tipagem/type hints.
+==================================================
+5. NÃO REGREDIR HTTP/API
+
+Muito importante:
+não perder o avanço do slide 31.
+
+Preservar:
+
+GET;
+POST;
+response.json();
+status_code;
+output observável.
+==================================================
+6. NOVOS LOGS
+
+Adicionar logs leves:
+
+[NARRATIVE-ALIGNMENT]
+slide=37
+expected_entities=Cachorro,raca,latir
+found_entities=Carro,marca,modelo
+status=FAILED
+
+[EDITORIAL-TITLE]
+slide=45
+title="unittest or pytest"
+reason=generic_or_placeholder
+rewritten="Depuração com pdb"
+
+==================================================
+7. CRITÉRIO DE ACEITE
+
+Novo export deve ter:
+
+Slide 37:
+
+texto e código semanticamente alinhados.
+
+Slide 44:
+
+logging com output observável;
+return/chamada/resultado.
+
+Slide 45:
+
+título coerente com pdb.
+
+Slide 50:
+
+título editorial profissional.
+
+Sem regressão:
+
+HTTP/API parity;
+anti-demotion;
+coverage modular;
+layout stability;
+module-aware synthesis.
+
+ENGINE_VERSION:
+5.8.x

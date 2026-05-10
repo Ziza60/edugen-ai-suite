@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.8.3";
+const ENGINE_VERSION = "5.8.4";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -801,6 +801,61 @@ function repairIncompleteCodeExample(
     );
     return validateSemanticCodeCompleteness(out) === null ? out : out;
   }
+  // v5.8.4 — bare function stub: def fnname(params): with NO body.
+  // Triggered when the planner emits only the signature line (trailing ":").
+  // Builds a complete function body + call based on function name heuristics.
+  if (reason === "trailing_open_bracket" || reason === "too_few_code_lines") {
+    const bareDefMatch = /^def\s+([a-z_][\w]*)\s*\(([^)]*)\)\s*:\s*$/.exec(out.trim());
+    if (bareDefMatch) {
+      const fnName = bareDefMatch[1];
+      const params = bareDefMatch[2];
+      const firstParam = (params.split(",")[0] ?? "valores")
+        .trim().split(/[:=]/)[0].trim().replace(/^\*+/, "") || "valores";
+      let body: string;
+      if (moduleKind === "tests_logs" || /log/i.test(fnName)) {
+        body = [
+          `import logging`,
+          ``,
+          `logging.basicConfig(level=logging.INFO)`,
+          ``,
+          `def ${fnName}(${params}):`,
+          `    resultado = sum(${firstParam}) if hasattr(${firstParam}, '__iter__') else ${firstParam}`,
+          `    logging.info(f"${fnName}: resultado = \${resultado}")`,
+          `    return resultado`,
+          ``,
+          `print(${fnName}([1, 2, 3]))`,
+        ].join("\n");
+      } else if (/soma|sum|total|somar/i.test(fnName)) {
+        body = [
+          `def ${fnName}(${params}):`,
+          `    soma = sum(${firstParam})`,
+          `    return soma`,
+          ``,
+          `print(${fnName}([1, 2, 3]))`,
+        ].join("\n");
+      } else if (/media|mean|avg|average/i.test(fnName)) {
+        body = [
+          `def ${fnName}(${params}):`,
+          `    if not ${firstParam}:`,
+          `        return 0`,
+          `    return sum(${firstParam}) / len(${firstParam})`,
+          ``,
+          `print(${fnName}([7.5, 8.0, 9.2]))`,
+        ].join("\n");
+      } else {
+        body = [
+          `def ${fnName}(${params}):`,
+          `    resultado = str(${firstParam}).upper()`,
+          `    return resultado`,
+          ``,
+          `print(${fnName}("exemplo"))`,
+        ].join("\n");
+      }
+      out = body;
+      console.log(`[CODE-REPAIR] slide=${slideNum} pattern=bare_def_stub fn=${fnName} moduleKind=${moduleKind ?? "unknown"}`);
+      return validateSemanticCodeCompleteness(out) === null ? out : out;
+    }
+  }
   if (/\btry\s*:\s*\n/.test(out) && !/\bexcept\b/.test(out)) {
     out += `\nexcept Exception as e:\n    print(f"Erro: {e}")`;
     console.log(`[CODE-REPAIR] slide=${slideNum} pattern=try_without_except`);
@@ -1169,6 +1224,42 @@ function applyFinalGuardrails(
       }
     }
   }
+
+  // v5.8.4 — Guardrail 7: narrative alignment.
+  // Detects code/text entity mismatch on OOP slides — e.g. text says
+  // "Cachorro/raça/latir" but code has "class Carro/marca/exibir_info".
+  // Attempts synthesis aligned to text entities; logs [NARRATIVE-ALIGNMENT].
+  if (out.layout === "code" && out.code && moduleKind === "oop") {
+    const { mismatch, textEntities, codeEntities } = detectNarrativeAlignment(out);
+    if (mismatch && textEntities.length > 0 && codeEntities.length > 0) {
+      console.warn(
+        `[NARRATIVE-ALIGNMENT] slide=${slideNum} status=FAILED expected_entities=${textEntities.join(",")} found_entities=${codeEntities.join(",")}`,
+      );
+      const aligned = synthesizeAlignedCode(textEntities, moduleKind, prevSymbols);
+      if (aligned) {
+        out = { ...out, code: aligned.code };
+        console.log(
+          `[NARRATIVE-ALIGNMENT] slide=${slideNum} status=REPAIRED source=${aligned.source}`,
+        );
+      } else {
+        console.warn(`[NARRATIVE-ALIGNMENT] slide=${slideNum} status=UNREPAIRED — mismatch persists`);
+      }
+    }
+  }
+
+  // v5.8.4 — Guardrail 8: title-code coherence.
+  // Rewrites "X or Y" / "Exemplo: contract_name" titles to professional
+  // Portuguese based on actual code content. Emits [EDITORIAL-TITLE] log.
+  if (out.title) {
+    const betterTitle = rewriteTitleFromCode(out.title, out.code, moduleKind, slideNum);
+    if (betterTitle && betterTitle !== out.title) {
+      console.log(
+        `[EDITORIAL-TITLE] slide=${slideNum} title="${out.title.slice(0, 60)}" reason=generic_or_placeholder rewritten="${betterTitle}"`,
+      );
+      out = { ...out, title: betterTitle };
+    }
+  }
+
   return out;
 }
 
@@ -7204,6 +7295,161 @@ function isMetaSlide(s: Slide): boolean {
   return ["takeaways", "summary", "closing", "module_cover"].includes(s.layout as string);
 }
 
+// ── v5.8.4 — CONTRACT_TITLE_MAP ────────────────────────────────────────────
+// Professional Portuguese titles for slides injected by skill coverage
+// contracts. Replaces internal identifiers like "unittest_or_pytest" with
+// readable titles like "Testes com unittest".
+const CONTRACT_TITLE_MAP: Readonly<Record<string, string>> = {
+  "http_get":               "Requisição GET com requests",
+  "json_parse":             "Consumindo APIs com JSON",
+  "unittest_or_pytest":     "Testes com unittest",
+  "logging_emit":           "Logging de Operações",
+  "class_with_init":        "Classes e Objetos em Python",
+  "instance_method":        "Métodos e Instâncias",
+  "with_open":              "Leitura de Arquivos com with open",
+  "try_except":             "Tratamento de Exceções",
+  "docstring_or_typehints": "Docstrings e Type Hints",
+};
+
+// ── v5.8.4 — Narrative Alignment ───────────────────────────────────────────
+// Detect semantic mismatch between a code slide's text (items/bullets) and
+// its actual code entities (class names). The canonical failing case:
+//   text  = "Cachorro / raça / latir"
+//   code  = "class Carro / marca / modelo / exibir_info()"
+// No 4-char-stem overlap → mismatch = true.
+const PT_STOPWORDS_NA = new Set([
+  "para", "como", "mais", "sobre", "este", "essa", "isso", "também",
+  "pela", "pelo", "numa", "usar", "pode", "cada", "quando", "tipos",
+  "forma", "caso", "valor", "dados", "lista", "com", "sem", "que",
+  "são", "uma", "ele", "ela", "seu", "sua", "das", "dos", "esta",
+  "estas", "esses", "essas", "exemplo", "define", "cria", "permite",
+  "mostra", "retorna", "verifica", "usando", "classe", "objeto",
+]);
+
+function detectNarrativeAlignment(s: Slide): {
+  mismatch: boolean; textEntities: string[]; codeEntities: string[];
+} {
+  const none = { mismatch: false, textEntities: [], codeEntities: [] };
+  if (s.layout !== "code" || !s.code) return none;
+
+  // Extract class names from code (primary entities)
+  const classMatches = [...s.code.matchAll(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/gm)];
+  if (classMatches.length === 0) return none; // only flag when a named class is present
+  const codeEntities = classMatches.map((m) => m[1].toLowerCase());
+
+  // Extract significant nouns from text fields
+  const textContent = [
+    ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+  ].join(" ").toLowerCase();
+  if (!textContent.trim()) return none;
+
+  const textWords = textContent
+    .replace(/[^\wáéíóúãõâêôàçÁÉÍÓÚÃÕÂÊÔÀÇ]/gi, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !PT_STOPWORDS_NA.has(w));
+  if (textWords.length === 0) return none;
+
+  // 4-char stem overlap: code entity vs text word
+  const hasOverlap = codeEntities.some((ce) =>
+    textWords.some(
+      (tw) =>
+        tw.slice(0, 4) === ce.slice(0, 4) ||
+        ce.includes(tw.slice(0, 5)) ||
+        tw.includes(ce.slice(0, 5)),
+    )
+  );
+  const textEntities = [...new Set(textWords)].slice(0, 6);
+  return { mismatch: !hasOverlap, textEntities, codeEntities };
+}
+
+// Synthesize OOP code aligned to text entities (e.g. "cachorro/raça/latir"
+// → class Cachorro with atributo=raca and método=latir).
+// Only activates for moduleKind="oop".
+function synthesizeAlignedCode(
+  textEntities: string[],
+  moduleKind: string | null,
+  _ctx: CodeSymbols,
+): { code: string; source: string } | null {
+  if (moduleKind !== "oop" || textEntities.length === 0) return null;
+  const primary = textEntities[0];
+  if (!primary || primary.length < 3) return null;
+
+  const className = primary.charAt(0).toUpperCase() + primary.slice(1);
+  const instVar   = primary.slice(0, 4).toLowerCase().replace(/[^a-z]/g, "x");
+
+  // Classify remaining entities by suffix: verb endings → methods; nouns → attributes
+  const verbEndings = /[aeiouáéíóú][rR]$/;
+  const methods = textEntities.slice(1).filter((w) => verbEndings.test(w));
+  const attrs   = textEntities.slice(1).filter((w) => !verbEndings.test(w) && w.length > 2);
+  const attrName   = (attrs[0]   ?? "nome").replace(/[^a-z_çã]/g, "");
+  const methodName = (methods[0] ?? "exibir").replace(/[^a-z_]/g, "");
+
+  const code = [
+    `class ${className}:`,
+    `    def __init__(self, ${attrName}):`,
+    `        self.${attrName} = ${attrName}`,
+    ``,
+    `    def ${methodName}(self):`,
+    `        print(f"${className}: {self.${attrName}}")`,
+    ``,
+    `${instVar} = ${className}("exemplo")`,
+    `${instVar}.${methodName}()`,
+  ].join("\n");
+  return { code, source: "narrative_aligned_synthesis" };
+}
+
+// ── v5.8.4 — Title-Code Coherence ──────────────────────────────────────────
+// Rewrite titles that look like internal identifiers ("X or Y", "X_or_Y",
+// "Exemplo: contract_name") to professional Portuguese based on code content.
+// Fires on any slide that has a code field.
+function rewriteTitleFromCode(
+  title: string,
+  code: string | undefined,
+  moduleKind: string | null,
+  slideNum: number | string,
+): string | null {
+  if (!title) return null;
+  const hasOrAnd     = /\b\w+\s+(?:or|and)\s+\w+\b/i.test(title) || /\w+_(?:or|and)_\w+/.test(title);
+  const looksPlaceholder = /^exemplo:\s*\w/i.test(title.trim());
+  if (!hasOrAnd && !looksPlaceholder) return null;
+
+  // Derive title from actual code content (most reliable signal)
+  if (code) {
+    if (/\bpdb\b|\.set_trace\s*\(/.test(code))              return "Depuração com pdb";
+    if (/import\s+pytest|@pytest\b/.test(code))              return "Testes com pytest";
+    if (/import\s+unittest|unittest\.TestCase/.test(code))   return "Testes com unittest";
+    if (/def\s+test_\w+/.test(code))                         return "Testes Automatizados";
+    if (/logging\.(info|debug|warning|error)/.test(code))    return "Logging de Operações";
+    if (/def\s+\w+[^)]*->\s*\w+|\"\"\"[\s\S]*?\"\"\"/m.test(code)) return "Docstrings e Type Hints";
+    if (/venv|pip\s+install|requirements\.txt/.test(code))   return "Ambiente Virtual e Dependências";
+    if (/with\s+open\s*\(/.test(code))                       return "Leitura de Arquivos";
+    if (/try\s*:\s*\n[\s\S]*?except\b/.test(code))           return "Tratamento de Exceções";
+  }
+
+  // Fallback: module kind
+  const kindFallbacks: Record<string, string> = {
+    tests_logs:       "Depuração e Testes",
+    best_practices:   "Boas Práticas de Código",
+    files_exceptions: "Arquivos e Exceções",
+    oop:              "Classes e Objetos",
+    json_apis:        "APIs e JSON",
+  };
+  if (moduleKind && kindFallbacks[moduleKind]) return kindFallbacks[moduleKind];
+
+  // Last resort: "X or Y" → "X e Y", strip "Exemplo:" prefix
+  let cleaned = title
+    .replace(/\b(\w+)\s+or\s+(\w+)\b/gi,  "$1 e $2")
+    .replace(/\b(\w+)\s+and\s+(\w+)\b/gi, "$1 e $2")
+    .replace(/_(?:or|and)_/gi, " e ")
+    .replace(/^exemplo:\s*/i, "");
+  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  if (cleaned !== title) {
+    console.log(`[EDITORIAL-TITLE] slide=${slideNum} title="${title.slice(0, 60)}" → "${cleaned}" reason=xory_cleanup`);
+    return cleaned;
+  }
+  return null;
+}
+
 // ── v5.8.2 — Module Skill Coverage Contracts ───────────────────────────────
 // Minimum observable patterns per moduleKind.
 // Each contract specifies required patterns that MUST collectively appear
@@ -7362,7 +7608,9 @@ type QAIssueType =
   // ── v5.4.0 Technical Preservation Layer ─────────────────────
   | "TECHNICAL_TOKEN_LOSS"
   // ── v5.7.0 Final safety net (forbidden-pattern scan) ────────
-  | "FORBIDDEN_FINAL_PATTERN";
+  | "FORBIDDEN_FINAL_PATTERN"
+  // ── v5.8.4 narrative alignment ──────────────────────────────
+  | "NARRATIVE_ALIGNMENT_FAILURE";
 
 interface QAIssue {
   slideId:            string;
@@ -9483,9 +9731,17 @@ async function runPipeline(
       );
       const synth = synthesizeMinimalCompleteExample(moduleKind, moduleCtx, moduleTitlesArr[mi] ?? "");
       if (synth) {
+        // v5.8.4 — use professional Portuguese title from CONTRACT_TITLE_MAP
+        // instead of the raw internal identifier ("unittest_or_pytest" etc.)
+        const injectedTitle =
+          CONTRACT_TITLE_MAP[missingContracts[0]] ??
+          missingContracts[0]
+            .replace(/_or_/g, " e ")
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase());
         const injectedSlide: Slide = {
           layout: "code",
-          title:  `Exemplo: ${missingContracts[0].replace(/_/g, " ")}`,
+          title:  injectedTitle,
           code:   synth.code,
           label:  "CÓDIGO",
           moduleIndex: mi,
