@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.8.6";
+const ENGINE_VERSION = "5.8.7";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -1218,7 +1218,10 @@ function applyFinalGuardrails(
         const reReason = validateSemanticCodeCompleteness(repaired);
         if (reReason === null) {
           out = { ...out, code: repaired };
+          // v5.8.7 — [REPAIR-PERSISTENCE] confirm repair is present post-guardrail-4.
+          const hasDemo = /\nresultado\s*=\s*/.test(repaired) && /\nprint\s*\(resultado\)/.test(repaired);
           console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair reason_was=${reason}`);
+          console.log(`[REPAIR-PERSISTENCE] slide=${slideNum} stage=post_guardrail4 repair=observable_outcome status=${hasDemo ? "PRESENT" : "ABSENT_demo_not_applicable"}`);
         } else {
           // v5.8.2 — PARTIAL_AFTER_LOOP is not acceptable for a technical CODE slide.
           // Try synthesis before accepting broken code or demoting.
@@ -7424,6 +7427,8 @@ const CONTRACT_TITLE_MAP: Readonly<Record<string, string>> = {
   "docstring_or_typehints": "Docstrings e Type Hints",
   "pdb_debug":              "Depuração com pdb",
   "collection_ops":         "Operações com Coleções em Python",
+  "http_post":              "Requisição POST com requests",
+  "file_write":             "Escrita de Arquivos em Python",
 };
 
 // ── v5.8.4 — Narrative Alignment ───────────────────────────────────────────
@@ -7622,6 +7627,37 @@ function synthesizeForContract(
       source: "canonical_unittest",
     };
   }
+  // v5.8.7 — http_post: canonical POST request with response.json() output.
+  if (contractName === "http_post") {
+    return {
+      code: [
+        `import requests`,
+        ``,
+        `url = "https://api.example.com/usuarios"`,
+        `payload = {"nome": "Ana", "email": "ana@example.com"}`,
+        `resposta = requests.post(url, json=payload)`,
+        `if resposta.status_code == 201:`,
+        `    dados = resposta.json()`,
+        `    print(dados)`,
+      ].join("\n"),
+      source: "canonical_http_post",
+    };
+  }
+  // v5.8.7 — file_write: write + read example to differentiate from with_open (read-only).
+  if (contractName === "file_write") {
+    return {
+      code: [
+        `with open("notas.txt", "w") as f:`,
+        `    f.write("Módulo 1: Aprovado\\n")`,
+        `    f.write("Módulo 2: Aprovado\\n")`,
+        ``,
+        `with open("notas.txt", "r") as f:`,
+        `    conteudo = f.read()`,
+        `    print(conteudo)`,
+      ].join("\n"),
+      source: "canonical_file_write",
+    };
+  }
   // v5.8.6 — data_structures: list + dict + tuple + set operations.
   if (contractName === "collection_ops") {
     return {
@@ -7665,6 +7701,7 @@ type SkillContract = {
 const MODULE_SKILL_CONTRACTS: Record<string, SkillContract[]> = {
   json_apis: [
     { name: "http_get",   requiredPatterns: [/requests\.get\s*\(/] },
+    { name: "http_post",  requiredPatterns: [/requests\.post\s*\(/] },
     { name: "json_parse", requiredPatterns: [/\.status_code/, /\.json\(\)/] },
   ],
   tests_logs: [
@@ -7678,13 +7715,14 @@ const MODULE_SKILL_CONTRACTS: Record<string, SkillContract[]> = {
   ],
   files_exceptions: [
     { name: "with_open",  requiredPatterns: [/with\s+open\s*\(/] },
+    { name: "file_write", requiredPatterns: [/open\s*\([^)]*["']w["']|\.write\s*\(/] },
     { name: "try_except", requiredPatterns: [/try\s*:/, /except\b/] },
   ],
   best_practices: [
     { name: "docstring_or_typehints", requiredPatterns: [/"""[\s\S]*?"""|def\s+\w+\s*\([^)]*:\s*\w+|->|requirements\.txt|venv/] },
   ],
   data_structures: [
-    { name: "collection_ops", requiredPatterns: [/\.append\s*\(/, /\[["']/, /set\s*\(\)|\.add\s*\(/] },
+    { name: "collection_ops", requiredPatterns: [/\.append\s*\(/, /\[["']/, /set\s*\(\)|\.add\s*\(/, /print\s*\(/] },
   ],
 };
 
@@ -8831,6 +8869,26 @@ function l2Replan(s: Slide, issue: QAIssue, moduleContent: string): Slide[] {
     }
     case "CODE_TOO_LONG": {
       const lines = (s.code || "").split("\n");
+      // v5.8.7 — protect observable outcome call demo from mid-split.
+      // If the code ends with the canonical repair pattern (blank line + "resultado = fn(...)"),
+      // trim the FUNCTION BODY to make room for the demo rather than splitting at mid.
+      // Root cause: l2 split at lines/2 was putting the call demo on Slide B,
+      // which then failed isRenderableSlide (too few lines) and got dropped.
+      const demoIdx = lines.findIndex(
+        (l, i) => l.trim() === "" && i > 0 && /^resultado\s*=\s*/.test(lines[i + 1] ?? ""),
+      );
+      if (demoIdx > 0) {
+        const funcLines = lines.slice(0, demoIdx);
+        const demoLines = lines.slice(demoIdx);
+        const maxFuncLines = QA.MAX_CODE_LINES - demoLines.length;
+        if (maxFuncLines > 0) {
+          const combined = [...funcLines.slice(0, maxFuncLines), ...demoLines];
+          console.log(
+            `[REPAIR-PERSISTENCE] slide=${s.title?.slice(0, 40)} stage=l2_code_too_long demo_protected=true func_trimmed=${Math.max(0, funcLines.length - maxFuncLines)}_lines`,
+          );
+          return [{ ...s, code: combined.join("\n") }];
+        }
+      }
       if (lines.length <= QA.MAX_CODE_LINES * 2) {
         const mid = Math.ceil(lines.length / 2);
         const p1: Slide = { ...s, title: `${s.title} (1/2)`, code: lines.slice(0, mid).join("\n") };
