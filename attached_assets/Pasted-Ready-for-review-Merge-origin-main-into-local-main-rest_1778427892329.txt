@@ -1,0 +1,50 @@
+Ready for review
+
+Merge origin/main into local main + restore frontend to v5.7.7 state
+Original task: Task #4 — fetch GitHub remote, merge it into local main
+(no force-push, no rebase), resolve conflicts conservatively, push to
+https://github.com/Ziza60/edugen-ai-suite.
+
+What I did (round 1):
+- Fetched origin/main via token URL.
+- 63 local-only commits vs ~1013 remote-only commits.
+- git merge --no-ff FETCH_HEAD produced 6 conflicts. Resolved per
+task policy:
+* ours (local) — export-pptx-v4/index.ts, replit.md,
+docs/pptx-engine-history.md
+* theirs (origin) — package.json, PptxExportDialog.tsx,
+generate-course/index.ts
+- Pushed: b47a660..c067f9d main -> main (success).
+
+What happened next:
+- After mark_task_complete, the platform initiated a rebase onto
+main-repl/main that would replay ~1013 GitHub commits — out of
+scope. Aborted via markRebaseCompleted({success:false,
+majorDivergence:true}).
+- User reported the in-app design had reverted because the merge had
+picked up older origin versions of frontend files (auto-merge of
+App.tsx, AppLayout.tsx, BlockEditor.tsx, TemplateSelector.tsx,
+Dashboard.tsx, Landing.tsx, CourseLanding.tsx, CourseView.tsx,
+CourseWizard.tsx, Plans.tsx, Analytics.tsx, ScriptGeneratorButton,
+useSubscription, index.css), plus the explicit "theirs" resolution
+on PptxExportDialog.tsx.
+- User chose option: restore the entire frontend to local v5.7.7 state.
+
+What I did (round 2):
+- git checkout 2066756 -- src/ to bring all 15 frontend files back
+to their pre-merge content.
+- Committed as e1bfaa2 "Restore frontend (src/) to pre-merge v5.7.7
+state" (15 files, +2933/-1863).
+- Pushed: c067f9d..e1bfaa2 main -> main on origin (success).
+
+Final state:
+- GitHub origin/main HEAD = e1bfaa2 (frontend restored, PPTX engine
+v5.7.7 retained, GitHub history preserved via merge commit c067f9d).
+- Local main matches.
+- Replit-side rebase intentionally aborted (drift recorded).
+
+
+Cancel
+
+Apply changes to main version
+

@@ -1,0 +1,75 @@
+Entendi perfeitamente. O Codex identificou um bloqueio técnico legítimo na infraestrutura do ambiente. Deixe-me verificar o branch diretamente para entender a situação:Entendi completamente a limitação relatada pelo Codex. Aqui está a análise da situação de acesso e bloqueadores técnicos:edugenai-v5/supabase
+
+🔴 BLOQUEADOR CONFIRMADO: Referência pptx-engine-v5.7.7-prod Inacessível
+O que o Codex tentou e falhou:
+Bash
+# ❌ FALHOU
+git fetch origin && git checkout pptx-engine-v5.7.7-prod
+# Erro: sem remote origin configurado no ambiente local
+O que consegui verificar via GitHub REST API:
+Filiais disponíveis publicamente:
+
+Código
+✅ main                  → commit e1bfaa2 (09 maio, 22:42 UTC)
+✅ edugenai-v5           → commit ebacedb (09 maio, 22:18 UTC)
+✅ replit-agent/v5.7.3   → commit 890ecf3
+❌ pptx-engine-v5.7.7-prod → NÃO EXISTE
+❌ pptx-engine-v5.7.5-prod → NÃO EXISTE
+❌ pptx-engine-v5.7.6-prod → NÃO EXISTE
+Tags:
+
+Endpoint não suportado pela API disponível/repos/.../tags
+Sem acesso a tags para confirmar v5.7.7-prod
+Por que o Codex falhou e eu também:
+Tentativa	Ferramenta	Resultado	Motivo
+git checkout pptx-engine-v5.7.7-prod	Git (Codex)	❌ FALHA	Ref não existe em remotes acessíveis
+Buscar ENGINE_VERSION = "5.7.7"	Busca Lexical	❌ FALHA	Repo inacessível via busca por código
+/repos/.../tags	GitHub API	❌ FALHA	Endpoint não suportado
+Arquivo direto em branches	getfile()	✅ SUCESSO	Mas retorna snippets parciais, sem linha 33
+📍 Achado: Divergência entre Branches
+Consegui comparar os dois branches que existem:
+
+Código
+main (e1bfaa2):       export-pptx-v4/index.ts → 7,783 linhas
+                      ENGINE_VERSION em algum lugar (não visível no snippet)
+
+edugenai-v5 (ebacedb): export-pptx-v4/index.ts → sem mudanças significativas
+                       (mesmo arquivo, hash do blob diferente)
+✅ Próximos Passos para Resolver
+Para acessar canonicamente v5.7.4, v5.7.5, v5.7.6 e v5.7.7, você precisa:
+
+Opção 1: Push das branches locais para GitHub
+Bash
+git push origin pptx-engine-v5.7.7-prod
+git push origin pptx-engine-v5.7.6-prod
+git push origin pptx-engine-v5.7.5-prod
+git push origin pptx-engine-v5.7.4-prod
+Opção 2: Criar etiquetas Git
+Bash
+git tag v5.7.7-prod [commit-hash]
+git tag v5.7.6-prod [commit-hash]
+git push origin --tags
+Opção 3: Fornecedor Bundle ou Patches
+Se essas versões existem localmente em seu workspace mas não em , você pode:origin
+
+Exportar como bundle: git bundle create pptx-engine-v5.7.x.bundle [refs]
+Fornecer commits diretos: git log --oneline -n 100 edugenai-v5/supabase
+📋 Recomendação: Diagnosticar Localmente
+Já que você está em Replit com acesso local, execute:
+
+Bash
+# Ver ENGINE_VERSION em cada versão
+grep -n "const ENGINE_VERSION" supabase/functions/export-pptx-v4/index.ts
+
+# Ver se há branches locais das versões
+git branch -a | grep -i "5.7"
+
+# Se existem commits, mapear qual é qual
+git log --oneline --graph --all | head -50
+
+# Exportar como relatório
+git log --format="%H %s %ad" --date=short --all > commit-timeline.txt
+Conclusão: O Codex relatou corretamente a limitação — sem acesso ao branch/tag , a verificação canônica é bloqueada. Você precisa disponibilizar essa referência no GitHub (via push ou tags) para que ferramentas externas (Codex, Copilot, APIs) possam acessá-la. 🔐pptx-engine-v5.7.7-prod
+
+O limite chegou logo
+Você usou 80% dos seus pedidos gratuitos este mês. Atualizações de planos estão temporariamente

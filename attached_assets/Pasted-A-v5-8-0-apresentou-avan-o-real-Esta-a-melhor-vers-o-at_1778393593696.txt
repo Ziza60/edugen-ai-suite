@@ -1,0 +1,273 @@
+A v5.8.0 apresentou avanço real. Esta é a melhor versão até agora.
+
+Os pontos positivos são claros:
+- cobertura de CODE voltou em todos os módulos técnicos;
+- anti-demotion está funcionando;
+- POO ficou semanticamente consistente;
+- módulo 8 ficou próximo do padrão profissional;
+- menos truncamentos/layout breaks;
+- menos destruição de conteúdo pedagógico.
+
+Agora entramos numa fase diferente:
+não é mais “salvar a arquitetura”.
+É refinamento pedagógico e semântico.
+
+==================================================
+PROBLEMAS REMANESCENTES
+==================================================
+
+==================================================
+1. SLIDE 13 — observable outcome ainda falha
+==================================================
+
+Ainda exporta:
+
+```python id="abxk4n"
+def calcularvalortotal(carrinhodecompras):
+
+sem:
+
+return totalliquido
+chamada da função
+print(resultado)
+
+Isso significa:
+o observable outcome ainda falha em casos reais de:
+
+for
+if/elif
+accumulator variable
+
+Quero investigação específica:
+por que esse caso ainda escapa do repair convergente?
+
+==================================================
+2. SLIDE 30 — HTTP/API truncado
+
+O slide promete:
+
+GET
+POST
+response.json()
+
+Mas o snippet para antes disso.
+
+O novo HTTP parity ainda não está efetivamente garantindo:
+
+requests.get
+requests.post
+response.json
+status_code/output
+
+O módulo API ainda parece “inacabado”.
+
+==================================================
+3. MÓDULO 7 — cobertura fraca
+
+O módulo promete:
+
+unittest
+logging
+depuração
+
+Mas o slide CODE mostra apenas:
+
+pdb
+
+Faltam exemplos reais de:
+
+unittest.TestCase
+assertEqual
+logging.debug/info/error
+
+A cobertura técnica está parcial.
+
+==================================================
+4. EXCESSO DE SLIDES CONCEITUAIS
+
+Módulos 5 e 7 ainda têm:
+
+conceitos demais;
+prática de menos.
+
+Quero balanceamento melhor:
+mais demonstração;
+menos definição abstrata.
+
+==================================================
+OBJETIVO DA PRÓXIMA RODADA
+
+Agora o foco é:
+refinamento pedagógico e densidade técnica.
+
+Não quero:
+
+nova arquitetura;
+novos hardening passes gigantes;
+novos sistemas de veto.
+
+Quero:
+
+melhorar a qualidade dos exemplos;
+aumentar completude;
+garantir demonstração prática.
+==================================================
+CORREÇÕES SOLICITADAS
+
+==================================================
+
+REFORÇAR OBSERVABLE OUTCOME
+==================================================
+
+Casos como:
+
+accumulator variable
+total/soma/contador
+loop + if/elif
+cálculo incremental
+
+devem obrigatoriamente terminar com:
+
+return
+chamada
+print/assert/log/output
+
+Exemplo esperado:
+
+return totalliquido
+
+resultado = calcularvalortotal(carrinhodecompras)
+print(resultado)
+
+Investigar especificamente:
+por que o caso do slide 13 ainda escapa.
+
+==================================================
+2. API/HTTP PARITY — PROMOVER PARA REPAIR REAL
+
+Hoje parece apenas diagnóstico.
+
+Quero:
+repair contextual seguro.
+
+Se título/items mencionam:
+
+GET e POST
+consumir e enviar
+leitura e escrita HTTP
+
+o snippet final deve conter:
+
+requests.get(...)
+requests.post(...)
+response.status_code
+response.json()
+
+Mesmo que seja exemplo simplificado.
+
+==================================================
+3. MÓDULO 7 — COBERTURA TÉCNICA MÍNIMA
+
+Criar regra de cobertura interna do módulo:
+
+Se módulo menciona:
+
+unittest
+logging
+pdb
+
+o conjunto final de slides precisa cobrir TODOS.
+
+Não basta:
+
+só pdb;
+só unittest;
+só logging.
+
+Quero:
+
+pelo menos 1 snippet unittest;
+pelo menos 1 snippet logging;
+pelo menos 1 snippet debug/pdb.
+==================================================
+4. REDUZIR CONCEITUAL EXCESSIVO
+
+Criar heurística leve:
+
+Em módulos técnicos:
+
+máximo de 2 slides puramente conceituais consecutivos;
+preferir alternância:
+CONCEITO → CODE → PROCESSO → CODE.
+
+Hoje alguns módulos ficam:
+CONCEITO → CONCEITO → CONCEITO → CODE curto.
+
+==================================================
+5. NÃO REGREDIR
+
+Muito importante:
+não quero regressão da v5.8.0.
+
+Preservar:
+
+anti-demotion;
+coverage por módulo;
+POO consistente;
+preservation layer;
+layout stability;
+module-aware synthesis.
+==================================================
+6. NOVOS LOGS
+
+Adicionar logs leves:
+
+[OBSERVABLE-OUTCOME]
+slide=13
+status=FAILED
+missing=return, invocation, output
+
+[HTTP-PARITY]
+slide=30
+required=get,post,response.json
+found=get
+
+[MODULE-TECH-COVERAGE]
+module=py_tests
+required=unittest,logging,pdb
+found=pdb
+
+==================================================
+7. CRITÉRIO DE ACEITE
+
+Novo export “Introdução à Programação em Python” deve ter:
+
+Módulo 2:
+
+return;
+chamada;
+print(resultado).
+
+Módulo 5:
+
+GET;
+POST;
+response.json;
+output/status_code.
+
+Módulo 7:
+
+unittest;
+logging;
+pdb.
+
+Sem regressão:
+
+visual;
+layouts;
+code coverage;
+anti-demotion;
+semantic alignment.
+
+ENGINE_VERSION:
+5.8.x

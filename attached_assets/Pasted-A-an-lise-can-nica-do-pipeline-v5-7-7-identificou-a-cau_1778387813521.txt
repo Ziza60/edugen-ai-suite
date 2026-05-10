@@ -1,0 +1,267 @@
+A análise canônica do pipeline v5.7.7 identificou a causa arquitetural central dos problemas atuais do PPTX.
+
+Resumo objetivo do diagnóstico:
+
+1. O comportamento de “sumiço” de slides CODE NÃO é bug aleatório.
+Ele é intencional no pipeline atual:
+
+- empty_code_no_synth_available
+- incomplete_unrepairable_no_synth
+- integrity_fail_no_synth
+
+→ convertem CODE para CONCEITO/PROCESSO ou removem o snippet.
+
+2. O pipeline prioriza integridade/segurança semântica acima da preservação pedagógica.
+
+3. O problema principal agora NÃO é mais observable outcome isolado.
+É:
+- demotion excessivo;
+- synthesis genérica;
+- falta de cobertura técnica mínima por módulo;
+- desalinhamento planner ↔ snippet ↔ narrativa.
+
+4. Há detector de NARRATIVE_MISALIGNMENT, mas ele não está impedindo exports pedagogicamente ruins.
+
+5. O caso GET sem POST NÃO possui regra semântica explícita.
+
+==================================================
+OBJETIVO DA NOVA RODADA
+==================================================
+
+Parar de usar demotion/synthesis como solução principal.
+
+A engine precisa:
+- preservar valor pedagógico;
+- preservar exemplos técnicos reais;
+- garantir cobertura mínima por módulo;
+- vetar planner ruim em vez de “esconder” o problema.
+
+==================================================
+CORREÇÕES SOLICITADAS
+==================================================
+
+==================================================
+1. HARD RULE:
+NUNCA DEMOVER CODE OBRIGATÓRIO
+==================================================
+
+Hoje:
+
+CODE inválido
+→ demote
+→ concept/process
+→ export segue
+
+Novo comportamento:
+
+Se módulo técnico perder todos os slides CODE reais:
+→ QA_VETO
+→ bloquear export
+
+Criar:
+
+validateMinimumTechnicalCoverage()
+
+Regras:
+
+Curso Python:
+- py_flow
+- py_datastructs
+- py_files
+- py_api/json
+- py_oop
+- py_tests
+- py_best_practices
+
+TODOS precisam ter >=1 slide CODE real.
+
+Exceções:
+- capa
+- índice
+- takeaways
+- closing
+
+==================================================
+2. DEMOTION DEVE SER ÚLTIMO RECURSO ABSOLUTO
+==================================================
+
+Hoje:
+demotion ocorre cedo demais.
+
+Novo fluxo:
+
+repair
+→ synthesize
+→ repair synthesized
+→ validate again
+→ only then demote
+
+E:
+se módulo ficar sem CODE após demotion
+→ veto
+
+==================================================
+3. ADD SEMANTIC HTTP COVERAGE RULE
+==================================================
+
+Problema real:
+Título:
+“GET e POST”
+Código:
+apenas GET
+
+Criar:
+
+validateHttpNarrativeParity()
+
+Se:
+title/subtitle/items mencionam:
+- GET + POST
+- leitura + escrita
+- consumir + enviar
+
+então snippet deve conter:
+- requests.get
+E
+- requests.post
+
+Caso contrário:
+- repair;
+OU
+- QA_VETO.
+
+==================================================
+4. FORTALECER NARRATIVE_MISALIGNMENT
+==================================================
+
+Hoje ele detecta mas aparentemente aceita synthesis fraca.
+
+Quero:
+severity = HARD_CRITICAL
+
+Detectar mismatch:
+- Livro vs Carro
+- API vs listas
+- JSON vs pizzaria
+- Banco vs e-commerce
+- Arquivo vs requests
+
+Se mismatch:
+- rewrite;
+- synthesize contextualizado;
+- ou veto.
+
+==================================================
+5. SYNTHESIS PRECISA SER MODULE-AWARE
+==================================================
+
+Hoje canonical synthesis parece genérica.
+
+Novo requisito:
+
+canonical snippets devem depender de:
+- moduleKind
+- keywords
+- semantic entities do título
+- entities do bullets
+- course context
+
+Exemplo:
+“Classe Livro”
+→ synthesize Livro/Ebook
+NUNCA Carro.
+
+==================================================
+6. PRESERVAR VALOR PEDAGÓGICO
+==================================================
+
+Hoje a engine prefere:
+“nenhum código”
+a
+“código parcialmente ruim”.
+
+Novo princípio:
+
+Preferir:
+- código reparado;
+- código sintetizado contextualizado;
+- exemplo simplificado;
+antes de:
+- remover CODE.
+
+==================================================
+7. OBSERVABLE OUTCOME:
+TORNAR OBRIGATÓRIO
+==================================================
+
+Slides CODE devem demonstrar:
+- retorno;
+- print;
+- chamada;
+- output;
+- assert;
+- logging visível;
+- response.status_code;
+- response.json();
+- unittest.main();
+etc.
+
+Se snippet não demonstra comportamento:
+→ repair obrigatório.
+
+==================================================
+8. ADD FINAL MODULE REPORT
+==================================================
+
+Novo log obrigatório:
+
+[MODULE-COVERAGE]
+
+Exemplo:
+
+module=py_oop
+codeSlidesBefore=3
+codeSlidesAfter=1
+demoted=2
+synthesized=1
+finalCoverage=PASS
+
+Quero ver claramente:
+- quantos slides CODE foram perdidos;
+- quantos foram sintetizados;
+- quais módulos ficaram frágeis.
+
+==================================================
+9. NÃO QUERO
+==================================================
+
+Não quero:
+- mais smoke tests artificiais;
+- mais regexes isoladas;
+- mais “passou no teste” mas falhou no PPTX;
+- mais esconder problema removendo slides.
+
+Quero:
+- teste de integração real;
+- export real;
+- cobertura pedagógica mínima;
+- pipeline semanticamente consistente.
+
+==================================================
+10. CRITÉRIO DE ACEITE
+==================================================
+
+Novo export “Introdução à Programação em Python” deve ter:
+
+- módulo funções com CODE real;
+- módulo POO com método chamado;
+- módulo API com GET e POST reais;
+- módulo testes com unittest/logging/pdb;
+- módulo boas práticas com docstring/type hints reais;
+- zero módulo técnico sem CODE;
+- zero demotion silencioso destruindo conteúdo didático.
+
+Além disso:
+- [MODULE-COVERAGE] completo;
+- engine_version 5.7.7;
+- sem regressão visual/layout/planner modular.

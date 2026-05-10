@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.7";
+const ENGINE_VERSION = "5.8.1";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -962,15 +962,17 @@ function repairIncompleteCodeExample(
         }
       }
       if (lastNonSideEffectIsReturn || !lastAssignVar || !RESULT_ISH.test(lastAssignVar)) continue;
-      // Inject `<indent>return <var>` immediately after the last assignment.
-      // We need to walk forward from lastAssignLineIdx to skip any
-      // subsequent body lines that belong to the same statement (e.g.
-      // `logging.debug(...)` after the assignment) — but in Python a
-      // simple assignment is one logical line, so insert right after.
-      // We insert AT the end of the function body to ensure the return
-      // is the last executed statement (handles slide 46 where logging
-      // comes after the assignment).
-      allLines.splice(bodyEnd, 0, `${lastAssignIndent}return ${lastAssignVar}`);
+      // Inject `<indent>return <var>` AT the end of the function body.
+      // v5.8.1 — CRITICAL BUG FIX: previously used `lastAssignIndent` which
+      // can be 8+ spaces (e.g. `totalliquido +=` inside `for + if` block).
+      // This put `return totalliquido` INSIDE the for/if, making it
+      // unreachable on the empty-list path and not the function's final
+      // statement (slide 13 escape route). Fix: always use the function's
+      // own body indent (def-line indent + 4 spaces) so the return is at
+      // the top level of the function body, after all loops/conditionals.
+      const defLineIndent = allLines[i].match(/^(\s*)/)?.[1] ?? "";
+      const returnIndent  = defLineIndent + "    ";
+      allLines.splice(bodyEnd, 0, `${returnIndent}return ${lastAssignVar}`);
       injectedFn = { name: m[1], params: m[2] ?? "" };
       console.log(
         `[CODE-REPAIR] slide=${slideNum} pattern=inject_missing_return fn=${m[1]} var=${lastAssignVar}`,
@@ -1108,6 +1110,78 @@ function repairIncompleteCodeExample(
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// v5.8.0 — CoverageState
+// Module-scoped tracker for per-slide demotion decisions. Owned by the
+// outer pipeline loop (one instance per module), passed into
+// applyFinalGuardrails so that demotion of a code slide can be blocked
+// when it would leave the module with ZERO real code slides.
+//
+// Invariant: `current` always reflects code slides still in the module
+// after all guard mutations so far (not a snapshot of the input count).
+//
+// Decision authority lives at module scope: the individual guardrail
+// functions query `canDemoteCode()` and call `onDemote()` / `onSynth()`
+// instead of mutating counts directly. This avoids stale counts when
+// slides are later split, dropped by dedupe, or removed by QA cascade.
+// ─────────────────────────────────────────────────────────────────────
+class CoverageState {
+  readonly moduleIndex:  number;
+  readonly moduleTitle:  string;
+  readonly moduleKind:   string | null;
+  private  _current:     number;   // live code-slide count for this module
+  private  _demoted:     number = 0;
+  private  _synthesized: number = 0;
+
+  constructor(moduleIndex: number, moduleTitle: string, moduleKind: string | null, initialCodeCount: number) {
+    this.moduleIndex = moduleIndex;
+    this.moduleTitle = moduleTitle;
+    this.moduleKind  = moduleKind;
+    this._current    = initialCodeCount;
+  }
+
+  get current():     number { return this._current; }
+  get demoted():     number { return this._demoted; }
+  get synthesized(): number { return this._synthesized; }
+
+  // Returns true when demotion is safe (at least 1 code slide remains after).
+  canDemoteCode(): boolean { return this._current > 1; }
+
+  // Call AFTER demoting a slide. Decrements the live count.
+  onDemote(): void { this._current = Math.max(0, this._current - 1); this._demoted++; }
+
+  // Call AFTER synthesizing code into a previously empty/broken slide.
+  onSynth(): void { this._synthesized++; }
+
+  // Produce a ModuleCoverageRecord snapshot (called post-loop for logging).
+  toRecord(codeSlidesEntry: number, injectedByModule: boolean): ModuleCoverageRecord {
+    return {
+      moduleIndex:      this.moduleIndex,
+      moduleTitle:      this.moduleTitle,
+      moduleKind:       this.moduleKind,
+      codeSlidesEntry,
+      codeSlidesExit:   this._current,
+      demotedSlides:    this._demoted,
+      synthesizedSlides: this._synthesized,
+      injectedByModule,
+      status: this._current > 0 ? "PASS" : "FAIL",
+    };
+  }
+}
+
+// Record produced per-module for the [MODULE-COVERAGE] diagnostic log.
+interface ModuleCoverageRecord {
+  moduleIndex:       number;
+  moduleTitle:       string;
+  moduleKind:        string | null;
+  codeSlidesEntry:   number;
+  codeSlidesExit:    number;
+  demotedSlides:     number;
+  synthesizedSlides: number;
+  injectedByModule:  boolean;
+  status:            "PASS" | "FAIL";
+}
+
 // v5.7.0 — demoteCodeLayout
 // Single source of truth for "code → bullets" demotion. Used by both the
 // final-guardrail pass AND the QA cascade so we cannot leave a slide with
@@ -1158,13 +1232,18 @@ function demoteCodeLayout(s: Slide, slideId: string | number, reason: string): S
 // snippet stays in the established domain (Carro/Livro/Pedido). Returns null
 // only when no canonical example exists for the kind — caller then demotes.
 //
+// v5.8.0 — added optional `semanticEntities` so OOP canonical snippet uses the
+// class name extracted from the slide title/items instead of hardcoded "Carro".
+//
 // Source labels emitted in [CODE-SYNTHESIS]:
-//   "module_ctx"  → reused class+method already shown earlier in module
+//   "module_ctx"       → reused class+method already shown earlier in module
+//   "semantic_oop"     → class name extracted from slide title/items
 //   "canonical_<kind>" → fallback canonical snippet for the kind
 function synthesizeMinimalCompleteExample(
   moduleKind: string | null,
   ctx: CodeSymbols,
   slideTitle: string,
+  semanticEntities?: { classes: string[]; domains: string[] },
 ): { code: string; source: string } | null {
   const title = (slideTitle || "").toLowerCase();
   const kind = moduleKind ?? "";
@@ -1184,6 +1263,15 @@ function synthesizeMinimalCompleteExample(
       return {
         code: `${inst} = ${cls}("Toyota", "Corolla")\nprint(${inst})`,
         source: "module_ctx",
+      };
+    }
+    // v5.8.0 — use semantic entity from slide title when available
+    const semCls = semanticEntities?.classes[0];
+    if (semCls) {
+      const semInst = semCls.charAt(0).toLowerCase() + semCls.slice(1);
+      return {
+        code: `class ${semCls}:\n    def __init__(self, nome):\n        self.nome = nome\n    def exibir(self):\n        print(f"${semCls}: {self.nome}")\n\n${semInst} = ${semCls}("Exemplo")\n${semInst}.exibir()`,
+        source: "semantic_oop",
       };
     }
     return {
@@ -1261,6 +1349,62 @@ function synthesizeMinimalCompleteExample(
   }
 
   return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// v5.8.0 — extractSemanticEntities
+// Extracts class/domain names from a slide title + items for use in
+// context-aware synthesis (OOP canonical snippet naming).
+//
+// Priority order:
+//   1. Words between quotes ("""Livro"", 'Carro') → highest confidence
+//   2. Title-Case words ≥4 chars immediately after "Classe", "Objeto", "Módulo"
+//   3. General Title-Case words ≥4 chars that are not connectives/prepositions
+//
+// Returns { classes: string[], domains: string[] }. Empty arrays when no
+// clear entity is found (caller falls back to canonical/hardcoded snippet).
+// ─────────────────────────────────────────────────────────────────────
+const CONNECTIVES_PT = new Set([
+  "para", "com", "sem", "por", "sobre", "entre", "como", "que", "uma", "esse",
+  "esta", "este", "essa", "seus", "suas", "novo", "nova", "mais", "menos",
+  "cada", "todo", "toda", "todos", "todas", "numa", "pelo", "pela", "pelos",
+  "pelas", "usar", "usar", "criar", "fazer", "gerar", "usar", "criar",
+]);
+const QUOTED_ENTITY_RE_SYNTH = /["""']([A-Z][A-Za-zÀ-ÿ]{2,})["""']/g;
+const AFTER_KW_RE = /\b(?:Classe|Objeto|M[oó]dulo|Entidade|Instância)\s+([A-Z][A-Za-zÀ-ÿ]{3,})/g;
+const TITLE_CASE_RE = /\b([A-Z][A-Za-zÀ-ÿ]{3,})\b/g;
+
+function extractSemanticEntities(
+  title: string,
+  items: string[],
+): { classes: string[]; domains: string[] } {
+  const blob = [title, ...items].join(" ");
+  const classes: string[] = [];
+
+  // Priority 1: quoted entities
+  QUOTED_ENTITY_RE_SYNTH.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = QUOTED_ENTITY_RE_SYNTH.exec(blob)) !== null) {
+    if (!classes.includes(m[1])) classes.push(m[1]);
+  }
+  if (classes.length > 0) return { classes, domains: [] };
+
+  // Priority 2: after "Classe X", "Objeto X", etc.
+  AFTER_KW_RE.lastIndex = 0;
+  while ((m = AFTER_KW_RE.exec(blob)) !== null) {
+    if (!classes.includes(m[1])) classes.push(m[1]);
+  }
+  if (classes.length > 0) return { classes, domains: [] };
+
+  // Priority 3: general Title-Case words not in connectives list
+  TITLE_CASE_RE.lastIndex = 0;
+  while ((m = TITLE_CASE_RE.exec(title)) !== null) {
+    const word = m[1];
+    if (!CONNECTIVES_PT.has(word.toLowerCase()) && !classes.includes(word)) {
+      classes.push(word);
+    }
+  }
+  return { classes, domains: [] };
 }
 
 // v5.7.2 — Visual truncation repair for non-code text fields.
@@ -1359,11 +1503,14 @@ function shortCodeHash(s: string): string {
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
 // v5.5.5: accepts moduleKind + prevSymbols for semantic code repair.
 // v5.5.6: prevSymbols is now full module accumulator, not just last slide.
+// v5.8.0: accepts CoverageState to block demotion when it would leave the
+//         module with zero CODE slides (demotion must never hide pedagogy).
 function applyFinalGuardrails(
   s: Slide,
   slideNum: number | string,
   moduleKind: string | null = null,
   prevSymbols: CodeSymbols = { classes: [], vars: [], funcs: [], imports: [] },
+  coverageState: CoverageState | null = null,
 ): Slide {
   let out: Slide = s;
   // Guardrail 1: title polish (catches every bypass path)
@@ -1413,18 +1560,27 @@ function applyFinalGuardrails(
   // v5.5.8 — Guardrail 2 INVERTED: code layout without code → try to SYNTHESIZE
   // a minimal complete example BEFORE demoting. Demotion is the last-resort
   // fallback and now emits [CODE-SLIDE-CONVERSION] for full visibility.
+  // v5.8.0 — extractSemanticEntities provides module-aware class name for OOP
+  // synthesis; CoverageState blocks demotion when module would hit 0 CODE slides.
   if (out.layout === "code" && (!out.code || !out.code.trim())) {
-    const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+    const semEnt = extractSemanticEntities(out.title ?? "", out.items ?? []);
+    const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "", semEnt);
     if (synth) {
       console.log(
         `[CODE-SYNTHESIS] slide=${slideNum} reason=empty_code beforeLines=0 afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
       );
       out = { ...out, code: synth.code };
+      coverageState?.onSynth();
+    } else if (coverageState && !coverageState.canDemoteCode()) {
+      console.warn(
+        `[COVERAGE-GUARD] slide=${slideNum} demotion BLOCKED (empty_code_no_synth) — module "${coverageState.moduleTitle}" would reach 0 code slides. Keeping CODE layout; module gate will handle.`,
+      );
     } else {
       console.warn(
         `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=empty_code_no_synth_available moduleKind=${moduleKind ?? "unknown"}`,
       );
       out = demoteCodeLayout(out, slideNum, "empty_code_no_synth");
+      coverageState?.onDemote();
     }
   }
   // Guardrail 3: dangling Python assignment → append print()
@@ -1480,6 +1636,20 @@ function applyFinalGuardrails(
     console.log(
       `[OBSERVABLE-TRACE] slide=${slideNum} cycles=${cycle} firstReason=${firstReason ?? "null"} finalReason=${lastReason ?? "null"} trace=${JSON.stringify(trace)}`,
     );
+    // v5.8.1 — structured [OBSERVABLE-OUTCOME] summary. Complements the
+    // detailed OBSERVABLE-TRACE; designed for quick log scans.
+    {
+      const obsStatus = lastReason === null ? "PASS" : "FAILED";
+      const missing: string[] = [];
+      if (lastReason) {
+        if (/implicit_none/.test(lastReason))    missing.push("return");
+        if (/uncalled/.test(lastReason))         missing.push("invocation");
+        if (!/print\s*\(|assert\s+|\blogging\.\w+\s*\(/.test(curCode)) missing.push("output");
+      }
+      console.log(
+        `[OBSERVABLE-OUTCOME] slide=${slideNum} status=${obsStatus} first_defect=${firstReason ?? "none"} residual=${lastReason ?? "none"} missing=${missing.length ? missing.join(",") : "none"}`,
+      );
+    }
     if (curCode !== out.code) out = { ...out, code: curCode };
     if (lastReason === null) {
       if (firstReason !== null) {
@@ -1490,20 +1660,38 @@ function applyFinalGuardrails(
       // v5.5.8 — exhausted repair budget. Before demoting layout=code,
       // try to synthesize a complete minimal example from module context.
       // Only demote if synthesis is also unavailable (last resort).
+      // v5.8.0 — CoverageState blocks demotion when module would hit 0 CODE.
       if (out.layout === "code") {
-        const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+        const semEnt = extractSemanticEntities(out.title ?? "", out.items ?? []);
+        const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "", semEnt);
         if (synth) {
           console.log(
             `[CODE-SYNTHESIS] slide=${slideNum} reason=repair_loop_exhausted (${lastReason}) beforeLines=${out.code.split("\n").length} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
           );
           out = { ...out, code: synth.code };
+          coverageState?.onSynth();
+        } else if (coverageState && !coverageState.canDemoteCode()) {
+          console.warn(
+            `[COVERAGE-GUARD] slide=${slideNum} demotion BLOCKED (incomplete_unrepairable) — module "${coverageState.moduleTitle}" would reach 0 code slides. Keeping CODE with partial code; module gate will handle.`,
+          );
         } else {
           console.warn(
             `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${lastReason}) moduleKind=${moduleKind ?? "unknown"}`,
           );
           out = demoteCodeLayout(out, slideNum, `incomplete_unrepairable_${lastReason}`);
+          coverageState?.onDemote();
         }
       }
+    }
+  }
+  // v5.8.1 — Guardrail 4b: HTTP parity repair.
+  // If slide title/items promise both GET and POST but the code only
+  // demonstrates GET, append a concise requests.post() demo block.
+  if (out.layout === "code" && out.code) {
+    const httpTextBlob = [out.title ?? "", ...(out.items ?? []).map(String)].join(" ");
+    if (HTTP_GET_POST_TITLE_RE.test(httpTextBlob)) {
+      const repairedHttp = repairHttpParityCode(out.code, slideNum);
+      if (repairedHttp !== out.code) out = { ...out, code: repairedHttp };
     }
   }
   // v5.5.5 — Guardrail 5: code-slide integrity. Layout=code with too few
@@ -1517,17 +1705,25 @@ function applyFinalGuardrails(
     const hasSyntax = /[=()\[\]{}:]|^\s*(def|class|import|from|return|print|if|for|while|try)\b/m.test(out.code);
     if (codeLines < 3 || !hasSyntax) {
       console.warn(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=false codeLines=${codeLines} hasSyntax=${hasSyntax}`);
-      const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+      // v5.8.0 — semantic entities + CoverageState guard before demote.
+      const semEnt = extractSemanticEntities(out.title ?? "", out.items ?? []);
+      const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "", semEnt);
       if (synth) {
         console.log(
           `[CODE-SYNTHESIS] slide=${slideNum} reason=integrity_fail (codeLines=${codeLines}, hasSyntax=${hasSyntax}) beforeLines=${codeLines} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
         );
         out = { ...out, code: synth.code };
+        coverageState?.onSynth();
+      } else if (coverageState && !coverageState.canDemoteCode()) {
+        console.warn(
+          `[COVERAGE-GUARD] slide=${slideNum} demotion BLOCKED (integrity_fail_no_synth) — module "${coverageState.moduleTitle}" would reach 0 code slides. Keeping CODE layout; module gate will handle.`,
+        );
       } else {
         console.warn(
           `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=integrity_fail_no_synth moduleKind=${moduleKind ?? "unknown"}`,
         );
         out = demoteCodeLayout(out, slideNum, "integrity_fail_no_synth");
+        coverageState?.onDemote();
       }
     } else {
       console.log(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=true codeLines=${codeLines}`);
@@ -1881,6 +2077,225 @@ function detectHeaderPromotionLeak(
     console.log(`[LAYOUT-REGION-DEBUG] slide=${slideNum} HEADER_PROMOTION_LEAK count=0 promotionDetected=false`);
   }
   return leaks;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// v5.8.0 — validateHttpNarrativeParity (WARN only, not HARD_CRITICAL)
+// Detects slides whose title/bullets promise both GET and POST semantics
+// but whose code only demonstrates GET. Ships as WARNING (diagnostic)
+// so exports are not blocked yet — promotes to HARD_CRITICAL in v5.9
+// after telemetry proves low false-positive rate on real exports.
+// ─────────────────────────────────────────────────────────────────────
+const HTTP_GET_POST_TITLE_RE = /\b(GET\s.*\bPOST\b|POST\s.*\bGET\b|enviar\s.*\brequisição\b|consumir\s.*\benviar\b|consultar\s.*\bcriar\b)/i;
+const HTTP_POST_CODE_RE = /requests\.post\s*\(|fetch\s*\([^)]+method\s*:\s*['"]?POST/i;
+const HTTP_GET_CODE_RE  = /requests\.get\s*\(|fetch\s*\([^)]+\)|axios\.get\s*\(/i;
+
+function validateHttpNarrativeParity(
+  slide: Slide,
+  slideId: string,
+): QAIssue | null {
+  if (slide.layout !== "code" || !slide.code) return null;
+  const textBlob = [
+    slide.title ?? "",
+    ...(slide.items ?? []).map(String),
+    ...(slide.leftItems ?? []).map(String),
+    ...(slide.rightItems ?? []).map(String),
+  ].join(" ");
+  if (!HTTP_GET_POST_TITLE_RE.test(textBlob)) return null;
+  if (!HTTP_GET_CODE_RE.test(slide.code)) return null;  // no GET either — skip
+  if (HTTP_POST_CODE_RE.test(slide.code)) return null;  // has POST → OK
+  const msg = `Slide "${(slide.title ?? "").slice(0, 60)}" descreve GET+POST mas código só demonstra GET (requests.post ausente)`;
+  console.warn(`[HTTP-PARITY] ${slideId} ${msg}`);
+  return {
+    slideId,
+    type: "HTTP_NARRATIVE_PARITY_MISSING",
+    severity: "WARNING",
+    message: msg,
+    resolutionStrategy:
+      "Adicionar bloco requests.post() ao snippet ou ajustar título/bullets para descrever apenas GET",
+  };
+}
+
+// v5.8.1 — repairHttpParityCode
+// If a code slide describes both GET and POST (via title/items) but the
+// code block only demonstrates GET, append a minimal requests.post() demo
+// block so the student sees both operations side by side.
+// Pure append — never modifies the existing GET block.
+function repairHttpParityCode(code: string, slideId: string): string {
+  if (!HTTP_GET_CODE_RE.test(code))  return code; // no GET in code → skip
+  if (HTTP_POST_CODE_RE.test(code))  return code; // POST already present → OK
+  const postBlock = [
+    "",
+    "# POST — envio de dados",
+    'url_post = "https://api.exemplo.com/dados"',
+    'payload  = {"chave": "valor"}',
+    "resp_post = requests.post(url_post, json=payload)",
+    "print(resp_post.status_code)  # 200 = sucesso",
+    "print(resp_post.json())",
+  ].join("\n");
+  console.log(`[HTTP-PARITY] ${slideId} repair=append_post_block`);
+  return code + postBlock;
+}
+
+// v5.8.1 — validateModuleTechCoverage
+// For Python tests_logs modules: verifies that the combined code across all
+// slides covers ALL three required topics (unittest, logging, pdb). If any
+// are missing, injects a targeted minimal synthesized snippet BEFORE meta
+// slides, mirroring the validateMinimumCodeCoverageByModule injection pattern.
+// Logs [MODULE-TECH-COVERAGE] per qualifying module regardless of outcome.
+function validateModuleTechCoverage(
+  allModuleSlides: Slide[][],
+  moduleTitlesArr: string[],
+  courseTitle: string,
+): void {
+  const domain = inferCourseDomain(courseTitle);
+  if (domain !== "python") return;
+
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const moduleTitle = (moduleTitlesArr[mi] ?? "").trim();
+    const rule = getModuleRule(courseTitle, moduleTitle);
+    if (rule?.kind !== "tests_logs") continue;
+
+    const allCode = allModuleSlides[mi]
+      .filter((s) => s.layout === "code" && s.code && s.code.trim().length >= 10)
+      .map((s) => s.code ?? "")
+      .join("\n");
+
+    type TechTopic = "unittest" | "logging" | "pdb";
+    const required: TechTopic[] = ["unittest", "logging", "pdb"];
+    const found = required.filter((topic) => {
+      if (topic === "unittest") return /\bunittest\b|\bTestCase\b|\bself\.assert/i.test(allCode);
+      if (topic === "logging")  return /\blogging\.(debug|info|warning|error|critical)\s*\(/i.test(allCode);
+      if (topic === "pdb")      return /\bpdb\b|\bset_trace\s*\(|\bbreakpoint\s*\(/i.test(allCode);
+      return false;
+    });
+    const missing = required.filter((t) => !found.includes(t));
+
+    console.log(
+      `[MODULE-TECH-COVERAGE] M${mi + 1} kind=tests_logs title="${moduleTitle.slice(0, 60)}" required=${required.join(",")} found=${found.join(",") || "none"} missing=${missing.join(",") || "none"}`,
+    );
+
+    if (missing.length === 0) continue;
+
+    // Inject one targeted snippet slide per missing topic.
+    const TOPIC_CODE: Record<TechTopic, string> = {
+      unittest: `import unittest\n\nclass TestCalculadora(unittest.TestCase):\n    def test_soma(self):\n        self.assertEqual(2 + 2, 4)\n    def test_subtracao(self):\n        self.assertEqual(5 - 3, 2)\n\nif __name__ == "__main__":\n    unittest.main()`,
+      logging:  `import logging\n\nlogging.basicConfig(level=logging.DEBUG)\nlogging.debug("Depurando variável")\nlogging.info("Aplicação iniciada")\nlogging.warning("Memória acima de 80%")\nlogging.error("Falha na conexão")`,
+      pdb:      `import pdb\n\ndef calcular_total(valores):\n    total = 0\n    for v in valores:\n        pdb.set_trace()  # inspecionar 'v' e 'total'\n        total += v\n    return total\n\nprint(calcular_total([10, 20, 30]))`,
+    };
+    const TOPIC_TITLE: Record<TechTopic, string> = {
+      unittest: "Testes com unittest",
+      logging:  "Logging com o módulo logging",
+      pdb:      "Depuração interativa com pdb",
+    };
+
+    for (const topic of missing) {
+      const injectedSlide: Slide = {
+        layout: "code",
+        title: TOPIC_TITLE[topic],
+        items: [],
+        code: TOPIC_CODE[topic],
+        moduleIndex: mi,
+      };
+      const modSlides = allModuleSlides[mi];
+      // Insert before trailing meta slides (same pattern as synthesizer injection).
+      let insertAt = modSlides.length;
+      for (let k = modSlides.length - 1; k >= 0; k--) {
+        if (!isMetaSlide(modSlides[k])) { insertAt = k + 1; break; }
+      }
+      modSlides.splice(insertAt, 0, injectedSlide);
+      console.log(
+        `[MODULE-TECH-COVERAGE-INJECT] M${mi + 1} topic=${topic} insertAt=${insertAt} totalAfter=${modSlides.length}`,
+      );
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// v5.8.0 — runSlideJsonIntegrationCheck
+// Aggregator validator that runs on the FINAL JSON (post-cascade,
+// pre-render) and checks module-level invariants. Deduplicates issues
+// by (slideId, type) before merging into cascadeReport to avoid
+// double-reporting. Does NOT re-run checks already inside qaVeto —
+// only enforces pedagogical invariants not covered elsewhere:
+//
+//   1. Every technical module has ≥1 real CODE slide (redundant with
+//      MODULE_CODE_COVERAGE_MISSING gate but provides a unified log).
+//   2. Every CODE slide has an observable outcome (print/return/assert/
+//      logging call visible in the code).
+//   3. HTTP narrative parity per slide (GET+POST title → POST in code).
+//   4. No module demoted to 0 CODE slides by the guardrail/cascade.
+//   5. Zero NARRATIVE_MISALIGNMENT survivors (sanity re-check).
+//
+// Returns QAIssue[] — caller merges into cascadeReport.
+// ─────────────────────────────────────────────────────────────────────
+const OBSERVABLE_OUTCOME_RE = /\bprint\s*\(|\breturn\s+\S|\bassert\s+|\blogging\.\w+\s*\(|\bresponse\b/i;
+
+function runSlideJsonIntegrationCheck(
+  allModuleSlides: Slide[][],
+  moduleTitles: string[],
+  courseTitle: string,
+): QAIssue[] {
+  const domain = inferCourseDomain(courseTitle);
+  const isTechnical = domain === "python" || domain === "javascript" || domain === "java" || domain === "sql";
+  const META_MODULE_RE_IC =
+    /^(introdu[çc][ãa]o\s+(ao\s+curso|geral)|apresenta[çc][ãa]o|bem-vindo|sobre\s+o\s+curso|índice|sumário|conclus[ãa]o|encerramento|recapitula[çc][ãa]o|aprendizados?\s+finais|pr[óo]ximos\s+passos|takeaways?|síntese|consolida[çc][ãa]o)/i;
+
+  const rawIssues: QAIssue[] = [];
+  const seen = new Set<string>(); // dedupe key: `${slideId}:${type}`
+
+  function addIssue(issue: QAIssue): void {
+    const key = `${issue.slideId}:${issue.type}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rawIssues.push(issue);
+  }
+
+  for (let mi = 0; mi < allModuleSlides.length; mi++) {
+    const moduleTitle = (moduleTitles[mi] ?? "").trim();
+    const slideId = (si: number) => `M${mi + 1}.S${si + 1}`;
+
+    // Check 3 — HTTP parity per CODE slide
+    for (let si = 0; si < allModuleSlides[mi].length; si++) {
+      const s = allModuleSlides[mi][si];
+      const parityIssue = validateHttpNarrativeParity(s, slideId(si));
+      if (parityIssue) addIssue(parityIssue);
+    }
+
+    if (!isTechnical || META_MODULE_RE_IC.test(moduleTitle)) continue;
+
+    const codeSlides = allModuleSlides[mi].filter(
+      (s) => s.layout === "code" && s.code && s.code.trim().length >= 10,
+    );
+
+    // Check 1 + 4 — module has at least 1 real CODE slide
+    if (codeSlides.length === 0) {
+      addIssue({
+        slideId: `M${mi + 1}.MODULE`,
+        type: "MODULE_CODE_COVERAGE_MISSING",
+        severity: "CRITICAL",
+        message: `[INTEGRATION-CHECK] Módulo ${mi + 1} ("${moduleTitle}") sem CODE slide no JSON final pré-render`,
+        resolutionStrategy: "Regenerar módulo ou adicionar template de síntese",
+      });
+    }
+
+    // Check 2 — observable outcome in each CODE slide
+    for (let si = 0; si < allModuleSlides[mi].length; si++) {
+      const s = allModuleSlides[mi][si];
+      if (s.layout !== "code" || !s.code || s.code.trim().length < 10) continue;
+      if (!OBSERVABLE_OUTCOME_RE.test(s.code)) {
+        console.warn(
+          `[INTEGRATION-CHECK] ${slideId(si)} CODE slide sem observable outcome (print/return/assert/logging/response) — title="${(s.title ?? "").slice(0, 60)}"`,
+        );
+      }
+    }
+  }
+
+  const passed = rawIssues.filter((i) => i.severity === "CRITICAL").length === 0;
+  console.log(
+    `[INTEGRATION-CHECK] ${passed ? "PASS" : "FAIL"} | issues=${rawIssues.length} (critical=${rawIssues.filter((i) => i.severity === "CRITICAL").length} warn=${rawIssues.filter((i) => i.severity === "WARNING").length})`,
+  );
+  return rawIssues;
 }
 
 const corsHeaders = {
@@ -7947,7 +8362,9 @@ type QAIssueType =
   // ── v5.7.4 Narrative/title↔code alignment ────────────────────
   | "NARRATIVE_MISALIGNMENT"
   // ── v5.7.6 Module-scope minimum code coverage (Python) ───────
-  | "MODULE_CODE_COVERAGE_MISSING";
+  | "MODULE_CODE_COVERAGE_MISSING"
+  // ── v5.8.0 HTTP GET+POST narrative parity (WARN only) ────────
+  | "HTTP_NARRATIVE_PARITY_MISSING";
 
 interface QAIssue {
   slideId:            string;
@@ -8422,6 +8839,17 @@ function runPptxQA(
         if (s.layout === "code" && s.code) {
           const itemsFallback = nonEmpty(s.items);
           if (itemsFallback.length >= 3) {
+            // v5.8.0 — CoverageGuard diagnostic: warn when demoting the last
+            // code slide in this module. The module gate post-cascade will
+            // detect the gap and inject a synthesized replacement before veto.
+            const codeCountExcludingThis_B1 = modSlides.filter(
+              (sl, idx) => idx !== si && keepMask[idx] !== false && sl.layout === "code" && sl.code && sl.code.trim().length >= 10,
+            ).length;
+            if (codeCountExcludingThis_B1 === 0) {
+              console.warn(
+                `[COVERAGE-GUARD] cascade DOMAIN_CONTAMINATION demotion for ${id} is removing last CODE slide in M${mi + 1} ("${moduleTitle.slice(0, 50)}") — module gate will auto-heal or veto`,
+              );
+            }
             fixedIssues.push({
               slideId: id, type: "DOMAIN_CONTAMINATION", severity: "CRITICAL",
               message: `Domínio contaminado em "${s.title}": ${contam.reason}`,
@@ -8482,6 +8910,15 @@ function runPptxQA(
           } else {
             const itemsFallback = nonEmpty(s.items);
             if (itemsFallback.length >= 3) {
+              // v5.8.0 — CoverageGuard diagnostic for INCOMPLETE_CODE demotion.
+              const codeCountExcludingThis_B2 = modSlides.filter(
+                (sl, idx) => idx !== si && keepMask[idx] !== false && sl.layout === "code" && sl.code && sl.code.trim().length >= 10,
+              ).length;
+              if (codeCountExcludingThis_B2 === 0) {
+                console.warn(
+                  `[COVERAGE-GUARD] cascade INCOMPLETE_CODE demotion for ${id} is removing last CODE slide in M${mi + 1} ("${moduleTitle.slice(0, 50)}") — module gate will auto-heal or veto`,
+                );
+              }
               fixedIssues.push({
                 slideId: id, type: "INCOMPLETE_CODE", severity: "CRITICAL",
                 message: `Código incompleto em "${s.title}" (${lang}) — convertido para bullets`,
@@ -9957,6 +10394,13 @@ async function runPipeline(
   let titleDedupCount = 0;
   let titleDedupDropCount = 0;
   let weakContinuationDropCount = 0;
+  // v5.8.0 — pre-compute code slide counts per module BEFORE the guardrail loop.
+  // Post-cascade snapshot so CoverageState is initialised with the correct entry
+  // count (cascade may have already demoted some slides via B1/B2).
+  const preCoverageCount = allModuleSlides.map((slides) =>
+    slides.filter((s) => s.layout === "code" && s.code && s.code.trim().length >= 10).length,
+  );
+  const coverageRecords: ModuleCoverageRecord[] = [];
   for (let mi = 0; mi < allModuleSlides.length; mi++) {
     let prevTitleNorm = "";
     let prevItemsNorm = "";
@@ -9974,6 +10418,12 @@ async function runPipeline(
     console.log(
       `[MODULE-CLASSIFY] mi=${mi + 1} title="${(moduleTitlesArr[mi] ?? "").slice(0, 80)}" kind=${moduleKind ?? "null"} course="${courseTitle.slice(0, 60)}"`,
     );
+    // v5.8.0 — CoverageState: module-scoped demotion tracker.
+    // Initialised with the post-cascade code count so that per-slide guard
+    // decisions are accurate even when the cascade already removed some slides.
+    const coverageState = new CoverageState(
+      mi + 1, moduleTitlesArr[mi] ?? "", moduleKind, preCoverageCount[mi],
+    );
     const kept: Slide[] = [];
     for (let si = 0; si < allModuleSlides[mi].length; si++) {
       guardrailSlideCounter++;
@@ -9982,6 +10432,7 @@ async function runPipeline(
         `M${mi + 1}.S${si + 1}`,
         moduleKind,
         moduleCtx,
+        coverageState,
       );
       // v5.5.4 — Adjacent duplicate dedup: if title matches previous AND
       // items are also similar (jaccard ≥0.6 on first 3 items), DROP this
@@ -10059,13 +10510,51 @@ async function runPipeline(
       // v5.5.6 — accumulate module context across ALL kept slides so
       // subsequent slides' repairs see the full vocabulary, not just last.
       moduleCtx = extractSemanticCodeContext(kept);
+      // v5.8.1 — [CONCEPT-DENSITY] heuristic: warn when 3+ consecutive
+      // non-code slides appear in a technical module. Non-blocking — the
+      // planner is the primary control, this is an operator visibility aid.
+      if (moduleKind !== null && kept.length >= 3) {
+        const tail3 = kept.slice(-3);
+        if (tail3.every((sl) => sl.layout !== "code")) {
+          // Only fire at the onset of the streak (exactly 3, or when the
+          // 4th+ slide extends a streak that just started at length 3).
+          const isOnset = kept.length === 3 || kept[kept.length - 4].layout === "code";
+          if (isOnset) {
+            console.warn(
+              `[CONCEPT-DENSITY] M${mi + 1} S${si + 1} 3 consecutive non-code slides in technical module (kind=${moduleKind}) — prefer CONCEPT→CODE alternation`,
+            );
+          }
+        }
+      }
     }
     allModuleSlides[mi] = kept;
+    // v5.8.0 — emit per-module coverage record BEFORE the module gate runs.
+    // "injectedByModule" is set to true later by validateMinimumCodeCoverageByModule
+    // if it injects a synthesized slide; here we snapshot the guardrail-loop state.
+    coverageRecords.push(coverageState.toRecord(preCoverageCount[mi], false));
+    console.log(
+      `[MODULE-COVERAGE] M${mi + 1} ("${(moduleTitlesArr[mi] ?? "").slice(0, 60)}") kind=${moduleKind ?? "null"} entry=${preCoverageCount[mi]} exit=${coverageState.current} demoted=${coverageState.demoted} synthesized=${coverageState.synthesized} status=${coverageState.current > 0 ? "PASS" : "PENDING-GATE"}`,
+    );
+  }
+  {
+    const totalDemoted  = coverageRecords.reduce((a, r) => a + r.demotedSlides,     0);
+    const totalSynth    = coverageRecords.reduce((a, r) => a + r.synthesizedSlides,  0);
+    const pendingModules = coverageRecords.filter((r) => r.status === "FAIL").map((r) => `M${r.moduleIndex}`);
+    console.log(
+      `[MODULE-COVERAGE-SUMMARY] total_demoted=${totalDemoted} total_synthesized=${totalSynth} modules_pending_gate=${pendingModules.length} (${pendingModules.join(",") || "none"})`,
+    );
   }
   console.log(
     `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount} | adjacent_dropped=${titleDedupDropCount} | weak_continuation_dropped=${weakContinuationDropCount}`,
   );
   tCheckpoint = tlog("final_guardrails_done", tCheckpoint);
+
+  // ── v5.8.1 — MODULE TECH COVERAGE (tests_logs modules) ─────────────
+  // Ensures that modules promising unittest + logging + pdb deliver code
+  // examples for ALL three topics. Runs AFTER the guardrail loop (so
+  // CoverageState demotions are already resolved) but BEFORE the module
+  // coverage gate and global safety net.
+  validateModuleTechCoverage(allModuleSlides, moduleTitlesArr, courseTitle);
 
   // ── v5.1.8 — GLOBAL FIELD SAFETY NET ──────────────────────────────
   // Final pass: scan EVERY string field (extractAllStrings) of EVERY slide
@@ -10184,6 +10673,35 @@ async function runPipeline(
     console.log(`[NARRATIVE-ALIGN] Clean — title↔code domains aligned`);
   }
   runJsonApiWeaknessScan(allModuleSlides, moduleTitlesArr, courseTitle);
+
+  // ── v5.8.0 — SLIDE JSON INTEGRATION CHECK ──────────────────────────────
+  // Aggregator validator on the FINAL JSON (post-cascade, pre-render).
+  // Checks module pedagogical invariants, HTTP parity, observable outcomes.
+  // Deduplicates by (slideId, type) so it never double-reports issues that
+  // the module-coverage gate or narrative scan already surface.
+  const integrationIssues = runSlideJsonIntegrationCheck(allModuleSlides, moduleTitlesArr, courseTitle);
+  {
+    const integrationBlocking = integrationIssues.filter((i) => i.severity === "CRITICAL");
+    const integrationWarn     = integrationIssues.filter((i) => i.severity === "WARNING");
+    if (integrationBlocking.length > 0) {
+      // Merge blocking issues into cascadeReport so qaVeto can act on them.
+      // They are already deduped by runSlideJsonIntegrationCheck, but we skip
+      // any slideId+type pair already present to be safe.
+      const existingKeys = new Set(cascadeReport.issues.map((i) => `${i.slideId}:${i.type}`));
+      const newBlocking = integrationBlocking.filter((i) => !existingKeys.has(`${i.slideId}:${i.type}`));
+      if (newBlocking.length > 0) {
+        console.warn(`[INTEGRATION-CHECK] ${newBlocking.length} new blocking issue(s) merged into QA report`);
+        cascadeReport = {
+          ...cascadeReport,
+          status: "FAILED",
+          issues: [...cascadeReport.issues, ...newBlocking],
+        };
+      }
+    }
+    if (integrationWarn.length > 0) {
+      console.warn(`[INTEGRATION-CHECK] ${integrationWarn.length} WARNING(s) logged (non-blocking in v5.8.0)`);
+    }
+  }
 
   // ── v5.7.6 — MODULE CODE COVERAGE HARD GATE ───────────────────────────
   // Final pre-veto check: every TECHNICAL Python module must ship ≥1 real
