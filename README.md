@@ -1,5 +1,7 @@
 # EduGenAI
 
+[![Deno Tests](https://github.com/Ziza60/edugen-ai-suite/actions/workflows/deno-tests.yml/badge.svg)](https://github.com/Ziza60/edugen-ai-suite/actions/workflows/deno-tests.yml)
+
 **Transforme conhecimento bruto em cursos completos, prontos para vender ou treinar equipes.**
 
 EduGenAI é uma plataforma SaaS que converte PDFs, apostilas, vídeos do YouTube e materiais internos em pacotes educacionais completos — com módulos, quizzes, flashcards, certificado, landing page e tutor com IA — em minutos, não em semanas.
