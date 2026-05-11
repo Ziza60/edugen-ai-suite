@@ -1,0 +1,30 @@
+name: Smoke Tests (PPTX Engine)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-tests:
+    name: Run Deno smoke tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Run smoke tests
+        run: |
+          deno test \
+            --allow-read \
+            supabase/functions/export-pptx-v4/__tests__/v571_code_completeness.smoke.ts \
+            supabase/functions/export-pptx-v4/__tests__/v541_fixes.smoke.ts \
+            supabase/functions/export-pptx-v4/__tests__/editorial.smoke.ts \
+            supabase/functions/export-pptx-v4/__tests__/v572_observable_outcome.smoke.ts
