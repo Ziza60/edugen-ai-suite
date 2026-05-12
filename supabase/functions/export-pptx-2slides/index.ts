@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ENGINE_VERSION = "2.0.0-2SLIDES";
+const ENGINE_VERSION = "2.1.0-2SLIDES";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -148,7 +148,7 @@ function buildUserInput(
   lines.push("");
 
   // ── 3. Módulos ────────────────────────────────────────────────────────────
-  const maxSubSections = 3;  // 3 sub-seções → 4 slides por módulo (cover + 3)
+  const maxSubSections = 5;  // 5 sub-seções → 6 slides por módulo (cover + 5)
   const maxBullets     = 4;  // 4 bullets força layout de lista (evita "statistic" slide)
   const maxBulletLen   = 150;
 
@@ -234,10 +234,11 @@ function buildUserInput(
 
   // Log de diagnóstico
   const h2Count = lines.filter(l => l.startsWith("## ")).length;
-  console.log(`[2SLIDES] userInput: ${result.length} chars | ${h2Count} slides esperados (##)`);
+  console.log(`[2SLIDES] userInput: ${result.length} chars | ${h2Count} slides esperados (##) | ${modules.length} módulos`);
 
-  // Proteção para inputs excepcionalmente grandes (cursos com 20+ módulos)
-  return truncate(result, 14000);
+  // Sem truncação artificial — a API 2Slides processa o curso completo.
+  // Cursos com 20+ módulos podem exceder 60k chars; a API suporta isso.
+  return result;
 }
 
 // ── Buscar themeId dinamicamente ─────────────────────────────────────────────
