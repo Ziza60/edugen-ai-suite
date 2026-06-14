@@ -14,7 +14,6 @@
 // and unit-testable under Node/Bun.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import PptxGenJS from "npm:pptxgenjs@3.12.0";
 
