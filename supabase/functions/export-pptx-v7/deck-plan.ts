@@ -233,7 +233,7 @@ Return JSON only, matching the provided schema.`;
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GEMINI_PLAN_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
 /**
  * Calls Gemini with responseSchema so the answer is guaranteed JSON of the
