@@ -23,7 +23,7 @@ import { normalizeDeck } from "./validate.ts";
 import { renderDeck } from "./render.ts";
 import { resolveImages } from "./images.ts";
 
-const ENGINE_VERSION = "7.1.0";
+const ENGINE_VERSION = "7.1.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,22 +38,17 @@ function json(body: unknown, status = 200) {
   });
 }
 
-/** Attach resolved image data URIs onto slides + cover. */
+/** Attach ONE resolved image per module (used by its section divider) + cover.
+ *  Keeping it to one image per module — not every slide — keeps the file light
+ *  and the edge runtime well under its CPU/time budget. */
 function attachImages(deck: PlannedDeck, images: Record<string, string>) {
   const lookup = (q?: string) =>
     q ? images[q.trim().toLowerCase()] : undefined;
-  // cover image from the course title
-  (deck as any).coverImage =
-    lookup(deck.courseTitle) ||
-    Object.values(images)[0] ||
-    undefined;
+  (deck as any).coverImage = lookup(deck.courseTitle) ||
+    Object.values(images)[0] || undefined;
   for (const m of deck.modules) {
-    for (const s of m.slides) {
-      if (s.imageQuery && !s.imageData) {
-        const data = lookup(s.imageQuery);
-        if (data) s.imageData = data;
-      }
-    }
+    const target = m.slides.find((s) => s.imageQuery && lookup(s.imageQuery));
+    if (target) target.imageData = lookup(target.imageQuery);
   }
 }
 
@@ -140,12 +135,14 @@ Deno.serve(async (req: Request) => {
 
     // 3. Optional images (best-effort)
     if (includeImages && pexelsKey) {
+      // One query per module (its first image-worthy slide) + the cover.
       const queries: string[] = [courseTitle];
       for (const m of deck.modules) {
-        for (const s of m.slides) if (s.imageQuery) queries.push(s.imageQuery);
+        const q = m.slides.find((s) => s.imageQuery)?.imageQuery;
+        if (q) queries.push(q);
       }
       try {
-        const images = await resolveImages(queries, pexelsKey);
+        const images = await resolveImages(queries, pexelsKey, queries.length);
         attachImages(deck, images);
         console.log(`[V7-IMAGES] resolved=${Object.keys(images).length}`);
       } catch (e) {

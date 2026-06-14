@@ -387,8 +387,9 @@ function renderBullets(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   const items = s.bullets ?? [];
   const totalChars = items.join("").length;
   const fs = autoBodyFontSize(items.length, totalChars);
-  const hasImg = !!s.imageData && items.length <= 4;
-  const listW = hasImg ? CW * 0.56 : CW;
+  // Full-width text. Photos live on the cover + module dividers only, which
+  // keeps content slides clean and the file light (avoids CPU/size blowups).
+  const listW = CW;
   const rowH = CONTENT_H / Math.max(items.length, 1);
   items.forEach((b, i) => {
     const y = CONTENT_Y + i * rowH;
@@ -412,14 +413,6 @@ function renderBullets(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
       lineSpacingMultiple: 1.02,
     });
   });
-  if (hasImg) {
-    maybeImage(slide, s, {
-      x: ML + listW + 0.2,
-      y: CONTENT_Y,
-      w: CW - listW - 0.2,
-      h: CONTENT_H,
-    });
-  }
   footer(slide, d, brand, num);
 }
 
