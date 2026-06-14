@@ -1,0 +1,2 @@
+- [Supabase deploy from Replit](supabase-deploy-replit.md) — use `--use-api` flag; Docker bundler has no network access from Replit containers.
+- [V7 Gemini model/batch](v7-gemini-config.md) — gemini-2.5-flash hits rate limits; use gemini-2.0-flash + batchSize=1 for reliable LLM planning.

@@ -233,7 +233,7 @@ Return JSON only, matching the provided schema.`;
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GEMINI_PLAN_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 /**
  * Calls Gemini with responseSchema so the answer is guaranteed JSON of the
@@ -489,7 +489,7 @@ export async function buildDeck(
   geminiKey: string | null,
   opts: { batchSize?: number } = {},
 ): Promise<{ deck: PlannedDeck; plannedCount: number; fallbackCount: number }> {
-  const batchSize = opts.batchSize ?? 3;
+  const batchSize = opts.batchSize ?? 1;
   const out: DeckModule[] = new Array(modules.length);
   let plannedCount = 0;
   let fallbackCount = 0;
