@@ -194,7 +194,9 @@ export function condenseForPlanning(md: string, maxChars = 6000): string {
     (_m, lang, body) => {
       const lines = String(body).split("\n");
       if (lines.length <= 8) return "```" + lang + "\n" + body + "```";
-      return "```" + lang + "\n" + lines.slice(0, 8).join("\n") + "\n# ...\n```";
+      // No "# ..." marker: the model used to echo it verbatim into the slide's
+      // code field. Just keep the first lines as a hint of the example.
+      return "```" + lang + "\n" + lines.slice(0, 8).join("\n") + "\n```";
     },
   );
   return condensed.length > maxChars ? condensed.slice(0, maxChars) : condensed;
@@ -229,13 +231,19 @@ PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premi
 UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - ONE idea per slide. Never cram two concepts together.
 - Titles are complete, specific phrases — never single words, never truncated.
-- Each bullet / card body / item: max ~14 words, a complete thought, no trailing
-  "...", no dangling preposition, ends cleanly.
-- Vary the slide types across the module — avoid 5 "bullets" slides in a row.
+- Bullets are SHORT, PARALLEL POINTS — not full sentences. DISTILL prose into
+  telegraphic fragments of ≤12 words (the way a real slide reads). If the source
+  is a paragraph, extract its key point; do NOT copy the sentence verbatim.
+- MAX 5 bullets/items per slide. If a topic needs more, split it across 2 slides
+  or use "cards"/"steps". Never produce a wall of long sentences.
+- No trailing "...", no dangling preposition; every point ends cleanly.
+- Vary the slide types across the module — avoid many "bullets" slides in a row.
 - 3 to 6 slides per module. Prefer fewer, denser-in-meaning slides.
 - The LAST slide MUST be "closing" with 3–5 key takeaways as bullets.
-- For visually rich slides (section/quote/stat/cards), suggest a short English
-  "imageQuery" (2–4 words) describing a relevant photo. Omit for code/compare.
+- ALWAYS add a short English "imageQuery" (2–4 words) on the FIRST slide of the
+  module and on any section/quote/stat/cards slide. Omit it for code/compare.
+- For code slides, put COMPLETE, runnable code in the "code" field — never insert
+  "...", "# ...", or "-- ..." placeholders.
 - Stay strictly faithful to the module content. Do NOT invent facts.
 
 MODULE CONTENT (markdown):

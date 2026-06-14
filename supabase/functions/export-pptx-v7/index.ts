@@ -23,7 +23,7 @@ import { normalizeDeck } from "./validate.ts";
 import { renderDeck } from "./render.ts";
 import { resolveImages } from "./images.ts";
 
-const ENGINE_VERSION = "7.1.1";
+const ENGINE_VERSION = "7.1.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,17 +38,23 @@ function json(body: unknown, status = 200) {
   });
 }
 
+/** The image query for a module: its planner imageQuery, else its title. */
+function moduleImageQuery(m: { title: string; slides: { imageQuery?: string }[] }): string {
+  return m.slides.find((s) => s.imageQuery)?.imageQuery || m.title;
+}
+
 /** Attach ONE resolved image per module (used by its section divider) + cover.
- *  Keeping it to one image per module — not every slide — keeps the file light
- *  and the edge runtime well under its CPU/time budget. */
+ *  One image per module — not every slide — keeps the file light and the edge
+ *  runtime well under its CPU/time budget. Falls back to the module title so
+ *  every divider gets a photo even when the planner omits an imageQuery. */
 function attachImages(deck: PlannedDeck, images: Record<string, string>) {
   const lookup = (q?: string) =>
     q ? images[q.trim().toLowerCase()] : undefined;
   (deck as any).coverImage = lookup(deck.courseTitle) ||
     Object.values(images)[0] || undefined;
   for (const m of deck.modules) {
-    const target = m.slides.find((s) => s.imageQuery && lookup(s.imageQuery));
-    if (target) target.imageData = lookup(target.imageQuery);
+    const img = lookup(moduleImageQuery(m));
+    if (img && m.slides[0]) m.slides[0].imageData = img;
   }
 }
 
@@ -135,12 +141,10 @@ Deno.serve(async (req: Request) => {
 
     // 3. Optional images (best-effort)
     if (includeImages && pexelsKey) {
-      // One query per module (its first image-worthy slide) + the cover.
+      // One query per module (planner hint, else module title) + the cover, so
+      // every module divider gets a photo.
       const queries: string[] = [courseTitle];
-      for (const m of deck.modules) {
-        const q = m.slides.find((s) => s.imageQuery)?.imageQuery;
-        if (q) queries.push(q);
-      }
+      for (const m of deck.modules) queries.push(moduleImageQuery(m));
       try {
         const images = await resolveImages(queries, pexelsKey, queries.length);
         attachImages(deck, images);

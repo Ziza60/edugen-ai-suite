@@ -93,5 +93,21 @@ const deck: PlannedDeck = { courseTitle: "SQL", modules: [{ title: "Manipulaçã
 const { deck: norm } = normalizeDeck(deck);
 check("normalized deck keeps the module non-empty", norm.modules[0].slides.length > 0);
 
+// v7.1.2 — code placeholder lines ("# ...", "-- ...", "...") are stripped
+const codeDeck: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{
+    title: "M",
+    slides: [{
+      kind: "code",
+      title: "Ex",
+      code: { language: "sql", text: "CREATE TABLE t (\n  id INT\n);\n# ...\n-- ...\n..." },
+    }],
+  }],
+};
+const { deck: cd } = normalizeDeck(codeDeck);
+const codeText = cd.modules[0].slides.find((s) => s.kind === "code")?.code?.text ?? "";
+check("code placeholder lines stripped", !/\.{2,}|…/.test(codeText) && codeText.includes("CREATE TABLE"));
+
 console.log(failures === 0 ? "\nALL PASS ✓" : `\n${failures} CHECK(S) FAILED ✗`);
 if (failures > 0) process.exit(1);

@@ -91,9 +91,14 @@ function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
     .slice(0, LIMITS.MAX_STEPS);
 }
 
+const CODE_PLACEHOLDER_LINE_RE = /^\s*(?:#|--|\/\/)?\s*(?:\.{2,}|…)\s*$/;
+
 function normCode(code: SlideSpec["code"]): SlideSpec["code"] | undefined {
   if (!code || !code.text) return undefined;
   let lines = String(code.text).replace(/\r\n/g, "\n").split("\n");
+  // Strip placeholder/ellipsis lines ("# ...", "-- ...", "...") left by input
+  // condensation or the model — they make the example look unfinished.
+  lines = lines.filter((l) => !CODE_PLACEHOLDER_LINE_RE.test(l));
   // Drop trailing blank lines, then hard-cap line count (no "..." injection).
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   if (lines.length > LIMITS.MAX_CODE_LINES) {
