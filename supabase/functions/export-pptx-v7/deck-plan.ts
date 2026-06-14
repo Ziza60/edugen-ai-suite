@@ -190,38 +190,42 @@ export function buildModulePlanPrompt(
 ): string {
   // NOTE: deliberately ZERO domain rules. We describe slide *shapes* and
   // universal visual-design quality, and let the model map ANY topic onto them.
-  // Keep input short so output fits in 8192 tokens: max 3500 chars of content.
-  const trimmed = moduleContent.slice(0, 3500);
-  return `You are a presentation designer. Turn the module below into EXACTLY 4 slides (no more, no fewer).
+  const trimmed = moduleContent.slice(0, 8000);
+  return `You are a world-class presentation designer (think Gamma / Apple Keynote).
+Turn the module below into a sequence of clean, render-ready slides.
 
 COURSE: "${courseTitle}"
 MODULE: "${moduleTitle}"
 OUTPUT LANGUAGE: ${language}
 
-SLIDE TYPES — pick the best fit for each idea:
-- "bullets"  → one concept, 3–4 short points (max 10 words each).
-- "cards"    → 2–4 parallel items, each with a 1-line body (max 10 words).
-- "steps"    → ordered process, 3–4 steps (max 10 words each).
-- "compare"  → two contrasting things, 2–3 items per side (max 8 words each).
-- "quote"    → one memorable principle or definition.
-- "code"     → a short code example (ONLY if source contains code; max 8 lines).
-- "closing"  → key takeaways (MUST be the 4th and final slide, 3–4 bullets).
+PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premium:
+- "bullets"  → a single concept with 3–5 short supporting points.
+- "cards"    → 2–4 parallel items (types, pillars, components) each with a 1-line body.
+- "steps"    → an ordered process or sequence (3–5 steps).
+- "compare"  → two contrasting things (left vs right), each with 2–4 short items.
+- "quote"    → a memorable principle, definition, or reflection prompt.
+- "stat"     → one striking number or metric worth a whole slide.
+- "code"     → a code/command example (ONLY if the source actually contains code).
+- "closing"  → the module's key takeaways (use as the LAST slide).
 
-STRICT RULES:
-- Produce EXACTLY 4 slides. Slide 4 MUST be "closing".
-- ONE idea per slide. Titles: specific phrase, never a single word.
-- Items: max 10 words each, complete thought, no trailing "...", ends cleanly.
-- Vary types across the 4 slides (avoid repeating the same type).
-- For "bullets"/"cards"/"steps": max 4 items. For "closing": max 4 bullets.
-- imageQuery: short English phrase (2–3 words) for slides with photos; omit for code/compare/closing.
-- Stay faithful to the module content. Do NOT invent facts.
+UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
+- ONE idea per slide. Never cram two concepts together.
+- Titles are complete, specific phrases — never single words, never truncated.
+- Each bullet / card body / item: max ~14 words, a complete thought, no trailing
+  "...", no dangling preposition, ends cleanly.
+- Vary the slide types across the module — avoid 5 "bullets" slides in a row.
+- 3 to 6 slides per module. Prefer fewer, denser-in-meaning slides.
+- The LAST slide MUST be "closing" with 3–5 key takeaways as bullets.
+- For visually rich slides (section/quote/stat/cards), suggest a short English
+  "imageQuery" (2–4 words) describing a relevant photo. Omit for code/compare.
+- Stay strictly faithful to the module content. Do NOT invent facts.
 
-MODULE CONTENT:
+MODULE CONTENT (markdown):
 """
 ${trimmed}
 """
 
-Return JSON only, matching the schema.`;
+Return JSON only, matching the provided schema.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,40 +261,25 @@ export async function planModuleSlides(
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.35,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 4000,
           responseMimeType: "application/json",
           responseSchema: SLIDE_RESPONSE_SCHEMA,
         },
       }),
     });
     if (!res.ok) {
-      const errBody = await res.text().catch(() => "");
       console.warn(
-        `[V7-PLAN] module "${moduleTitle}" LLM ${res.status} → fallback | ${errBody.slice(0, 200)}`,
+        `[V7-PLAN] module "${moduleTitle}" LLM ${res.status} → fallback`,
       );
       return null;
     }
     const data = await res.json();
-    const finishReason = data?.candidates?.[0]?.finishReason ?? "UNKNOWN";
     const text: string =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    if (!text) {
-      console.warn(`[V7-PLAN] module "${moduleTitle}" empty text finishReason=${finishReason} → fallback`);
-      return null;
-    }
-    let parsed: any;
-    try {
-      parsed = JSON.parse(text);
-    } catch (parseErr) {
-      console.warn(`[V7-PLAN] module "${moduleTitle}" JSON parse failed finishReason=${finishReason} textLen=${text.length} → fallback`);
-      return null;
-    }
+    if (!text) return null;
+    const parsed = JSON.parse(text);
     const slides = Array.isArray(parsed?.slides) ? parsed.slides : null;
-    if (!slides || slides.length === 0) {
-      console.warn(`[V7-PLAN] module "${moduleTitle}" no slides in response finishReason=${finishReason} → fallback`);
-      return null;
-    }
-    console.log(`[V7-PLAN] module "${moduleTitle}" OK slides=${slides.length} finishReason=${finishReason}`);
+    if (!slides || slides.length === 0) return null;
     // Tag every slide with the module eyebrow for consistent headers.
     return (slides as SlideSpec[]).map((s) => ({ ...s, eyebrow: moduleTitle }));
   } catch (err) {
@@ -500,7 +489,7 @@ export async function buildDeck(
   geminiKey: string | null,
   opts: { batchSize?: number } = {},
 ): Promise<{ deck: PlannedDeck; plannedCount: number; fallbackCount: number }> {
-  const batchSize = opts.batchSize ?? 1;
+  const batchSize = opts.batchSize ?? 3;
   const out: DeckModule[] = new Array(modules.length);
   let plannedCount = 0;
   let fallbackCount = 0;
