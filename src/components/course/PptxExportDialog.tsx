@@ -19,6 +19,7 @@ export interface PptxExportOptions {
   useV3: boolean;
   useV4: boolean;
   useV6: boolean;
+  useV7: boolean;
   useMagicSlides: boolean;
   use2Slides: boolean;
   usePresenton: boolean;
@@ -234,6 +235,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [useV3, setUseV3]                             = useState(false);
   const [useV4, setUseV4]                             = useState(true);
   const [useV6, setUseV6]                             = useState(false);
+  const [useV7, setUseV7]                             = useState(false);
   const [useMagicSlides, setUseMagicSlides]           = useState(false);
   const [use2Slides, setUse2Slides]                   = useState(false);
   const [usePresenton, setUsePresenton]               = useState(false);
@@ -259,7 +261,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useV4, useV6, useMagicSlides, use2Slides, usePresenton, twoSlidesTheme, courseType, footerBrand });
+    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useV4, useV6, useV7, useMagicSlides, use2Slides, usePresenton, twoSlidesTheme, courseType, footerBrand });
   };
 
   return (
@@ -503,6 +505,26 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
                   checked={useV4}
                   onCheckedChange={(v) => { setUseV4(v); if (v) { setUseV3(false); } }}
                   data-testid="switch-use-v4"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── V7 Adaptive Engine (BETA, opt-in for side-by-side testing) ── */}
+          {!use2Slides && !usePresenton && (
+            <div className={`space-y-1 p-3 rounded-xl border transition-colors ${useV7 ? "border-fuchsia-500/40 bg-fuchsia-500/5" : "border-border bg-muted/30"}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-fuchsia-400">🧪 EduGen v7 (Adaptive)</p>
+                    <Badge variant="outline" className="text-[10px] px-1 py-0 bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20">BETA</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Motor agnóstico a tema — plano estruturado por IA, sem veto. Quando ligado, substitui o v4 nesta exportação.</p>
+                </div>
+                <Switch
+                  checked={useV7}
+                  onCheckedChange={(v) => { setUseV7(v); if (v) { setUseV3(false); } }}
+                  data-testid="switch-use-v7"
                 />
               </div>
             </div>
