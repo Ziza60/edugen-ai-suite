@@ -13,9 +13,13 @@ async function toDataUri(url: string): Promise<string | null> {
     const res = await fetch(url);
     if (!res.ok) return null;
     const buf = new Uint8Array(await res.arrayBuffer());
-    // base64 encode
+    // base64 encode in 32KB chunks (per-byte concat is a CPU hog that can trip
+    // the edge runtime's CPU-time limit on image-heavy decks).
     let binary = "";
-    for (let i = 0; i < buf.length; i++) binary += String.fromCharCode(buf[i]);
+    const CHUNK = 0x8000;
+    for (let i = 0; i < buf.length; i += CHUNK) {
+      binary += String.fromCharCode(...buf.subarray(i, i + CHUNK));
+    }
     const b64 = btoa(binary);
     const ext = url.includes(".png") ? "png" : "jpeg";
     return `data:image/${ext};base64,${b64}`;
@@ -26,12 +30,14 @@ async function toDataUri(url: string): Promise<string | null> {
 
 /**
  * Resolve one landscape photo per unique query. Returns a map query→dataUri.
- * Caps total fetches to keep the export fast. Returns {} when no key is set.
+ * Uses the "large" (≈940px) size — big enough for slides, but far lighter than
+ * large2x. Capping count + resolution keeps the PPTX small and avoids the edge
+ * runtime's CPU/time limit during base64 embedding + pptx.write.
  */
 export async function resolveImages(
   queries: string[],
   apiKey: string | undefined,
-  maxImages = 12,
+  maxImages = 8,
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   if (!apiKey) return out;
@@ -48,7 +54,7 @@ export async function resolveImages(
         if (!res.ok) return;
         const data = await res.json();
         const photo = data?.photos?.[0];
-        const src = photo?.src?.large2x || photo?.src?.large || photo?.src?.medium;
+        const src = photo?.src?.large || photo?.src?.medium;
         if (!src) return;
         const dataUri = await toDataUri(src);
         if (dataUri) out[q] = dataUri;

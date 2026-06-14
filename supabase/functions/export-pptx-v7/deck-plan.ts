@@ -182,6 +182,24 @@ export const SLIDE_RESPONSE_SCHEMA = {
   required: ["slides"],
 } as const;
 
+/**
+ * Shrink planner INPUT so verbose modules (SQL/code) don't blow the token
+ * budget. Long fenced code blocks are the main hog — the planner doesn't need
+ * the full code to decide slide structure, so we collapse them to a few lines.
+ * Prose is kept intact, then the whole thing is capped.
+ */
+export function condenseForPlanning(md: string, maxChars = 6000): string {
+  const condensed = (md || "").replace(
+    /```(\w*)\n([\s\S]*?)```/g,
+    (_m, lang, body) => {
+      const lines = String(body).split("\n");
+      if (lines.length <= 8) return "```" + lang + "\n" + body + "```";
+      return "```" + lang + "\n" + lines.slice(0, 8).join("\n") + "\n# ...\n```";
+    },
+  );
+  return condensed.length > maxChars ? condensed.slice(0, maxChars) : condensed;
+}
+
 export function buildModulePlanPrompt(
   courseTitle: string,
   moduleTitle: string,
@@ -190,7 +208,7 @@ export function buildModulePlanPrompt(
 ): string {
   // NOTE: deliberately ZERO domain rules. We describe slide *shapes* and
   // universal visual-design quality, and let the model map ANY topic onto them.
-  const trimmed = moduleContent.slice(0, 8000);
+  const trimmed = condenseForPlanning(moduleContent, 6000);
   return `You are a world-class presentation designer (think Gamma / Apple Keynote).
 Turn the module below into a sequence of clean, render-ready slides.
 
@@ -236,6 +254,51 @@ const GEMINI_PLAN_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
 /**
+ * Extract the complete slide objects from a TRUNCATED planner response.
+ * When Gemini hits its output cap (finishReason=MAX_TOKENS) the JSON is cut
+ * mid-array, so JSON.parse fails. Rather than discard the whole module to
+ * fallback, we walk the `"slides": [ ... ` array and recover every object that
+ * was fully emitted before the cut. Topic-agnostic, string/escape aware.
+ */
+export function salvageSlidesFromTruncatedJson(text: string): SlideSpec[] {
+  const key = text.indexOf('"slides"');
+  if (key === -1) return [];
+  const bracket = text.indexOf("[", key);
+  if (bracket === -1) return [];
+  const out: SlideSpec[] = [];
+  const n = text.length;
+  let i = bracket + 1;
+  while (i < n) {
+    while (i < n && /[\s,]/.test(text[i])) i++; // skip whitespace/commas
+    if (i >= n || text[i] === "]") break;
+    if (text[i] !== "{") break;
+    let depth = 0, inStr = false, esc = false, j = i;
+    for (; j < n; j++) {
+      const c = text[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === "\\") esc = true;
+        else if (c === '"') inStr = false;
+      } else if (c === '"') inStr = true;
+      else if (c === "{") depth++;
+      else if (c === "}") {
+        depth--;
+        if (depth === 0) { j++; break; }
+      }
+    }
+    if (depth !== 0) break; // last object was cut off → stop here
+    try {
+      const obj = JSON.parse(text.slice(i, j));
+      if (obj && typeof obj === "object" && obj.kind && obj.title) {
+        out.push(obj as SlideSpec);
+      }
+    } catch { /* skip a malformed object */ }
+    i = j;
+  }
+  return out;
+}
+
+/**
  * Calls Gemini with responseSchema so the answer is guaranteed JSON of the
  * right shape. Returns SlideSpec[] for ONE module, or null on any failure
  * (caller falls back to the deterministic plan — never throws to the user).
@@ -261,7 +324,10 @@ export async function planModuleSlides(
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.35,
-          maxOutputTokens: 4000,
+          // gemini-2.5-flash supports a large output budget (~64k). The cap
+          // here is generous so verbose (SQL/code) modules don't get cut; if a
+          // cut still happens, salvageSlidesFromTruncatedJson recovers it.
+          maxOutputTokens: 24000,
           responseMimeType: "application/json",
           responseSchema: SLIDE_RESPONSE_SCHEMA,
         },
@@ -274,11 +340,24 @@ export async function planModuleSlides(
       return null;
     }
     const data = await res.json();
+    const finishReason = data?.candidates?.[0]?.finishReason ?? "";
     const text: string =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     if (!text) return null;
-    const parsed = JSON.parse(text);
-    const slides = Array.isArray(parsed?.slides) ? parsed.slides : null;
+    let slides: SlideSpec[] | null = null;
+    try {
+      const parsed = JSON.parse(text);
+      slides = Array.isArray(parsed?.slides) ? parsed.slides : null;
+    } catch {
+      // Truncated JSON (usually finishReason=MAX_TOKENS). Salvage instead of
+      // dropping the entire module to the deterministic fallback.
+      slides = salvageSlidesFromTruncatedJson(text);
+      if (slides.length) {
+        console.warn(
+          `[V7-PLAN] module "${moduleTitle}" salvaged ${slides.length} slides from truncated JSON (finishReason=${finishReason})`,
+        );
+      }
+    }
     if (!slides || slides.length === 0) return null;
     // Tag every slide with the module eyebrow for consistent headers.
     return (slides as SlideSpec[]).map((s) => ({ ...s, eyebrow: moduleTitle }));
@@ -310,22 +389,55 @@ interface MdBlock {
   bullets: string[];
   paras: string[];
   code: { language: string; text: string } | null;
+  tableRows: string[][];
+}
+
+const LEADING_EMOJI_RE =
+  /^(?:[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]\s*)+/u;
+
+/** Remove a leading emoji + space from a heading (e.g. "🎯 Objetivo" → "Objetivo"). */
+function stripLeadingEmoji(s: string): string {
+  return s.replace(LEADING_EMOJI_RE, "").trim();
+}
+
+/** Split prose into complete sentences (so we never cut mid-sentence). */
+function splitSentences(s: string): string[] {
+  return s
+    .split(/(?<=[.!?])\s+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/** Table separator row like |:---|---:| (no real content). */
+function isTableSeparator(cells: string[]): boolean {
+  return cells.length > 0 &&
+    cells.every((c) => /^:?-{2,}:?$/.test(c.replace(/\s/g, "")));
 }
 
 /** Very small markdown segmenter: groups content under ### headings. */
 function segmentMarkdown(md: string): MdBlock[] {
   const lines = md.replace(/\r\n/g, "\n").split("\n");
   const blocks: MdBlock[] = [];
-  let cur: MdBlock = { heading: "", bullets: [], paras: [], code: null };
+  const empty = (): MdBlock => ({
+    heading: "",
+    bullets: [],
+    paras: [],
+    code: null,
+    tableRows: [],
+  });
+  let cur: MdBlock = empty();
   let inCode = false;
   let codeLang = "";
   let codeBuf: string[] = [];
 
   const push = () => {
-    if (cur.heading || cur.bullets.length || cur.paras.length || cur.code) {
+    if (
+      cur.heading || cur.bullets.length || cur.paras.length || cur.code ||
+      cur.tableRows.length
+    ) {
       blocks.push(cur);
     }
-    cur = { heading: "", bullets: [], paras: [], code: null };
+    cur = empty();
   };
 
   for (const raw of lines) {
@@ -352,6 +464,14 @@ function segmentMarkdown(md: string): MdBlock[] {
       cur.heading = cleanLine(line);
       continue;
     }
+    const tl = line.trim();
+    if (tl.startsWith("|") && tl.includes("|", 1)) {
+      const cells = tl.split("|").slice(1, -1).map((c) => cleanLine(c.trim()));
+      if (!isTableSeparator(cells) && cells.some((c) => c)) {
+        cur.tableRows.push(cells);
+      }
+      continue;
+    }
     if (/^[-*+]\s+/.test(line) || /^\d+\.\s+/.test(line)) {
       const t = cleanLine(line);
       if (t) cur.bullets.push(t);
@@ -369,11 +489,51 @@ function segmentMarkdown(md: string): MdBlock[] {
 const TAKEAWAY_RE = /resumo|takeaway|key\s*takeaway|conclus|síntese|sintese/i;
 const OBJECTIVE_RE = /objetivo|aprende|ao final|learning|goals?/i;
 
-/** Split a string into sentence-ish chunks for bullet salvage. */
-function toShortPoint(s: string, maxWords = 16): string {
-  const words = s.split(/\s+/);
-  if (words.length <= maxWords) return s;
-  return words.slice(0, maxWords).join(" ");
+/**
+ * Turn a chunk of prose into ONE short, COMPLETE point. Uses the first full
+ * sentence (never cuts mid-sentence); if that sentence is still very long, it
+ * trims back to the last comma so the line ends on a clause, not a dangling
+ * word. This is what prevents fallback bullets like "...operações sigam".
+ */
+function toShortPoint(s: string, maxWords = 22): string {
+  const first = (splitSentences(s)[0] || s).trim();
+  const words = first.split(/\s+/);
+  if (words.length <= maxWords) return first;
+  const capped = words.slice(0, maxWords).join(" ");
+  const lastComma = capped.lastIndexOf(",");
+  return (lastComma > 20 ? capped.slice(0, lastComma) : capped).trim();
+}
+
+/** Convert a markdown table block into a real slide (never raw `|---|` text). */
+function tableToSlide(
+  heading: string,
+  moduleTitle: string,
+  rows: string[][],
+): SlideSpec {
+  const header = rows[0];
+  const data = rows.slice(1).filter((r) => r.some((c) => c));
+  const cols = Math.max(...rows.map((r) => r.length));
+  if (cols === 3 && data.length >= 1) {
+    const items = (idx: number) =>
+      data.slice(0, 4).map((r) =>
+        toShortPoint(`${r[0]}: ${r[idx] ?? ""}`.trim())
+      );
+    return {
+      kind: "compare",
+      title: heading,
+      eyebrow: moduleTitle,
+      left: { heading: header[1] || "Opção A", items: items(1) },
+      right: { heading: header[2] || "Opção B", items: items(2) },
+    };
+  }
+  return {
+    kind: "bullets",
+    title: heading,
+    eyebrow: moduleTitle,
+    bullets: data.slice(0, 5).map((r) =>
+      toShortPoint(`${r[0]} — ${r.slice(1).filter(Boolean).join(" / ")}`)
+    ),
+  };
 }
 
 /**
@@ -389,7 +549,7 @@ export function fallbackModuleSlides(
   let takeaways: string[] = [];
 
   for (const b of blocks) {
-    const heading = b.heading || moduleTitle;
+    const heading = stripLeadingEmoji(b.heading) || moduleTitle;
 
     if (b.code && b.code.text) {
       slides.push({
@@ -401,16 +561,25 @@ export function fallbackModuleSlides(
       continue;
     }
 
-    if (TAKEAWAY_RE.test(heading) && (b.bullets.length || b.paras.length)) {
-      takeaways = (b.bullets.length ? b.bullets : b.paras)
-        .map((x) => toShortPoint(x))
-        .slice(0, 5);
+    // Markdown tables become real comparison/bullet slides (never raw `|---|`).
+    if (b.tableRows.length >= 2) {
+      slides.push(tableToSlide(heading, moduleTitle, b.tableRows));
       continue;
     }
 
-    const points = (b.bullets.length ? b.bullets : b.paras)
-      .map((x) => toShortPoint(x))
-      .filter(Boolean);
+    if (TAKEAWAY_RE.test(heading) && (b.bullets.length || b.paras.length)) {
+      takeaways =
+        (b.bullets.length ? b.bullets : b.paras.flatMap(splitSentences))
+          .map((x) => toShortPoint(x))
+          .filter(Boolean)
+          .slice(0, 5);
+      continue;
+    }
+
+    const points =
+      (b.bullets.length ? b.bullets : b.paras.flatMap(splitSentences))
+        .map((x) => toShortPoint(x))
+        .filter(Boolean);
 
     if (points.length === 0) continue;
 
