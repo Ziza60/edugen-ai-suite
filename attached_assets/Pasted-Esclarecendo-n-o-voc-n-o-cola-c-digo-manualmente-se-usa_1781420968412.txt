@@ -1,0 +1,36 @@
+Esclarecendo: **não, você não cola código manualmente** se usar o Supabase CLI. O comando `supabase functions deploy export-pptx-v7` lê a pasta `supabase/functions/export-pptx-v7/` do **seu disco** e envia todos os arquivos automaticamente.
+
+Dois detalhes importantes:
+1. O CLI **não existe neste container** — você roda na **sua máquina**.
+2. A função é **multi-arquivo** (6 arquivos: `index.ts` + `deck-plan.ts`, `validate.ts`, `render.ts`, `images.ts`, `deno.json`). Por isso o copy-paste no Dashboard seria chato (teria que recriar arquivo por arquivo). **O CLI é o caminho certo.**
+
+## Passo a passo (na SUA máquina)
+
+```bash
+# 1. Baixar o código que eu publiquei
+git fetch origin claude/sharp-gauss-df0766
+git checkout claude/sharp-gauss-df0766
+git pull origin claude/sharp-gauss-df0766
+
+# 2. CLI: login + link (projeto já é o hqysyalrvxjeadmkujig)
+supabase login
+supabase link --project-ref hqysyalrvxjeadmkujig
+
+# 3. Deploy — lê a pasta inteira, sem colar nada
+supabase functions deploy export-pptx-v7
+```
+
+(Se ainda não tiver o CLI: `npm i -g supabase` ou `brew install supabase/tap/supabase`.)
+
+## Sobre segredos (env)
+- `GEMINI_API_KEY` — **já está configurado** (as outras funções usam). O planner por IA funciona de cara.
+- `PEXELS_API_KEY` — só se quiser imagens: `supabase secrets set PEXELS_API_KEY=xxxxx`. Sem ela, o motor gera normalmente, só sem fotos.
+- As variáveis `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`/`SUPABASE_ANON_KEY` são injetadas automaticamente pelo Supabase.
+
+## Sobre `verify_jwt`
+Não precisa adicionar nada ao `config.toml`. Sua função usa o default `verify_jwt = true`, e o frontend já envia o token do usuário logado (`Authorization: Bearer …`) — então passa. (A própria função também revalida o usuário internamente.)
+
+## Resumindo o fluxo todo
+1. `git pull` da branch → 2. `supabase functions deploy export-pptx-v7` → 3. no app, abrir curso → PPTX → ligar **🧪 EduGen v7** → Gerar.
+
+Quer que eu prepare um arquivo `DEPLOY.md` dentro da pasta da função com esses comandos, para você ter como referência no repo?

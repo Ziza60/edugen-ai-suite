@@ -1,0 +1,112 @@
+Sem mais nada a fazer aqui. Quando quiser, sigo com o teste do motor: a Opção B (deploy + chamada real) ou eu adiciono o botão opt-in no app (Opção C). É só dizer.
+opção C para mim  é melhor
+Boa escolha. Vou ler o ExportButtons.tsx e o PptxExportDialog.tsx para adicionar um caminho opt-in mínimo e reversível para o v7, sem mexer no fluxo padrão (v4).
+
+Ler
+PptxExportDialog.tsx
+Agora o ExportButtons.tsx para ver como as opções viram a chamada e onde inserir o caminho v7:
+
+Ler
+ExportButtons.tsx
+(240–439, 439–618)
+Entendi o fluxo completo. Vou ver o trecho do rótulo do arquivo para incluir o v7, depois faço as edições:
+
+Ler
+ExportButtons.tsx
+Tenho tudo. Vou fazer as edições. Primeiro o PptxExportDialog.tsx — adicionar useV7 ao tipo, estado, ao handleExport e um toggle na UI:
+
+Editado
+PptxExportDialog.tsx
++3
+-1
+Agora o toggle na UI — vou inseri-lo logo após o card do motor v4 (antes do toggle v3):
+
+Editado
+PptxExportDialog.tsx
++20
+-0
+Agora o ExportButtons.tsx — adicionar o branch v7 no topo da seleção de motores (roda primeiro e curto-circuita os demais) e o rótulo do arquivo:
+
+Editado
+ExportButtons.tsx
++63
+-1
+Agora vou validar que o frontend ainda compila (typecheck) — a mudança no tipo PptxExportOptions exige que todos os usos incluam useV7:
+
+Executado
+TypeScript typecheck frontend
+Esses erros são pré-existentes (em PdfImportScreen.tsx e Landing.tsx, ligados a versões de pdfjs-dist/framer-motion) — não têm relação com minha mudança. Vou confirmar que meus arquivos editados estão limpos:
+
+Executado
+Check my files have no type errors
+Meus arquivos estão limpos (os erros são pré-existentes, em arquivos que não toquei). Vou commitar e push:
+✅ Push concluído. Opção C entregue e publicada na branch.
+
+O que foi adicionado (opt-in, reversível)
+PptxExportDialog.tsx: novo toggle "🧪 EduGen v7 (Adaptive) · BETA" no diálogo de export. Desligado por padrão.
+ExportButtons.tsx: quando o v7 está ligado, ele roda primeiro e curto-circuita os demais motores. Em caso de falha, para e avisa (não cai silenciosamente no v4) — para o teste ser honesto.
+O v4 continua o padrão: se você não ligar o toggle, nada muda.
+Typecheck dos meus arquivos: limpo (os erros do tsc são pré-existentes, em PdfImportScreen/Landing, que não toquei).
+Como testar (passo a passo)
+Deploy da função (uma vez):
+supabase functions deploy export-pptx-v7
+Opcional, para imagens: supabase secrets set PEXELS_API_KEY=xxxxx (o GEMINI_API_KEY já existe).
+No app, abra um curso → botão PPTX → no diálogo, ligue 🧪 EduGen v7 (Adaptive) → Gerar PPTX.
+O arquivo baixa com sufixo PPTX-v7. No Console do navegador, o log [PPTX][DIAG] mostra slide_count, modules_planned_by_llm e modules_fallback (quantos módulos a IA planejou vs. fallback determinístico).
+Gere o mesmo curso com o toggle desligado (v4) e compare os dois .pptx lado a lado.
+Teste com temas variados (um técnico e um não-técnico) — é exatamente o que o v7 foi feito para resolver: o mesmo motor, sem ajuste por tema.
+
+Lembrete de segurança
+O token ghp_7D1c… ainda está ativo (acabei de usá-lo). Revogue-o agora no GitHub — eu não preciso mais dele para esta entrega.
+
+Quer que eu também adicione o v7 como opção na página PptxDebug (que já existe) para comparar métricas, ou seguimos para o deploy?
+
+Mesmo caso de antes — nada a corrigir aqui. Os dois commits já estão com o autor certo (Claude <noreply@anthropic.com>); o que o hook sinaliza é a falta de assinatura SSH, e a chave privada não existe neste container (só o .pub), então o git não consegue assinar. É um aviso cosmético (badge "Unverified" no GitHub) que não afeta o código nem o merge.
+
+Os trabalhos estão entregues e publicados:
+
+077f190 — motor export-pptx-v7 (agnóstico a tema)
+af02ed6 — toggle opt-in v7 no diálogo de export
+Se quiser commits "Verified" no futuro, isso se resolve do seu lado, num ambiente que tenha sua chave de assinatura registrada no GitHub.
+
+Quando estiver pronto, os próximos passos são: deploy da função (supabase functions deploy export-pptx-v7) e testar o toggle com temas variados. E não esqueça de revogar o token que você colou no chat. 🔒
+eu preciso colar esse código na edge function e fazer deploy? supabase functions deploy export-pptx-v7
+
+Boa pergunta — depende de como você faz o deploy. Deixa eu esclarecer, e checar a config do seu projeto:
+
+Executado
+Check project ref, config, function files, CLI
+Esclarecendo: não, você não cola código manualmente se usar o Supabase CLI. O comando supabase functions deploy export-pptx-v7 lê a pasta supabase/functions/export-pptx-v7/ do seu disco e envia todos os arquivos automaticamente.
+
+Dois detalhes importantes:
+
+O CLI não existe neste container — você roda na sua máquina.
+A função é multi-arquivo (6 arquivos: index.ts + deck-plan.ts, validate.ts, render.ts, images.ts, deno.json). Por isso o copy-paste no Dashboard seria chato (teria que recriar arquivo por arquivo). O CLI é o caminho certo.
+Passo a passo (na SUA máquina)
+# 1. Baixar o código que eu publiquei
+git fetch origin claude/sharp-gauss-df0766
+git checkout claude/sharp-gauss-df0766
+git pull origin claude/sharp-gauss-df0766
+
+# 2. CLI: login + link (projeto já é o hqysyalrvxjeadmkujig)
+supabase login
+supabase link --project-ref hqysyalrvxjeadmkujig
+
+# 3. Deploy — lê a pasta inteira, sem colar nada
+supabase functions deploy export-pptx-v7
+(Se ainda não tiver o CLI: npm i -g supabase ou brew install supabase/tap/supabase.)
+
+Sobre segredos (env)
+GEMINI_API_KEY — já está configurado (as outras funções usam). O planner por IA funciona de cara.
+PEXELS_API_KEY — só se quiser imagens: supabase secrets set PEXELS_API_KEY=xxxxx. Sem ela, o motor gera normalmente, só sem fotos.
+As variáveis SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY/SUPABASE_ANON_KEY são injetadas automaticamente pelo Supabase.
+Sobre verify_jwt
+Não precisa adicionar nada ao config.toml. Sua função usa o default verify_jwt = true, e o frontend já envia o token do usuário logado (Authorization: Bearer …) — então passa. (A própria função também revalida o usuário internamente.)
+
+Resumindo o fluxo todo
+git pull da branch → 2. supabase functions deploy export-pptx-v7 → 3. no app, abrir curso → PPTX → ligar 🧪 EduGen v7 → Gerar.
+Quer que eu prepare um arquivo DEPLOY.md dentro da pasta da função com esses comandos, para você ter como referência no repo?
+
+Sem ação necessária — é o mesmo aviso cosmético de assinatura SSH (a chave privada não existe neste container, então o git não consegue assinar). O autor dos commits já está correto (noreply@anthropic.com); só falta o selo "Verified", que se resolve do seu lado, num ambiente com sua chave de assinatura.
+
+Está tudo entregue e no GitHub. Quando quiser, sigo com o DEPLOY.md ou qualquer outro passo. 🚀
