@@ -1,0 +1,181 @@
+event_message,event_type,execution_id,function_id,id,level,timestamp
+shutdown,Shutdown,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,43f3c47d-ec7c-4cdc-a756-39ae06358d20,log,1781471113223000
+"[PPTX][DIAG-FINAL] engine=export-pptx-v7 version=7.0.0 slides=45 planned=3 fallback=2 status=exported
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,0eae5042-20c3-43dc-bc61-2a6f2bafbc9f,info,1781471113214000
+"[V7-WRITE] bytes=6379149 slides=45 total_ms=131972
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,d6b750d3-4ae5-408e-a810-8e7b4a0decd5,info,1781471112188000
+"[V7-IMAGES] resolved=11
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,ee2a4b27-9514-4fef-82e4-8add774bb57c,info,1781471110873000
+"[V7-NORMALIZE] in=41 out=41 split=0 dropped=0
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,8485254d-e97e-4073-9b79-f7e179b941a7,info,1781471109778000
+"[V7-PLAN] module ""Relacionamentos e Funções Avançadas"" JSON parse failed finishReason=MAX_TOKENS textLen=24074 → fallback
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,ce239a61-98e9-4ac0-b3a8-7b81d602f427,warning,1781471109774000
+"[V7-PLAN] module ""Estrutura e Definição de Dados (DDL)"" JSON parse failed finishReason=MAX_TOKENS textLen=24141 → fallback
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,832e5c69-9208-406c-85c3-23897d97aec0,warning,1781471072325000
+shutdown,Shutdown,874bbc83-626b-454e-8ca6-25352b2f193c,5d0ce925-7a2c-45db-9153-48e45a0ded6b,83f5c49c-ad7c-4bde-ac53-9940c00f90d4,log,1781471053277000
+"[V7-PLAN] module ""Manipulação de Dados (DML)"" OK slides=7 finishReason=STOP
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,fd3b5173-15d5-47bb-97f7-25d848e039e5,info,1781471037442000
+"[V7-PLAN] module ""Consultando Dados com SELECT"" OK slides=7 finishReason=STOP
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,b7907cb0-d1fd-4494-b7bf-0d35b1c80ff5,info,1781471018248000
+"[V7-PLAN] module ""Configuração do Ambiente e Primeiros Passos"" OK slides=7 finishReason=STOP
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,cdf5580b-ae86-43db-92d0-05d8bcfa37e5,info,1781470997853000
+"[V7] ENGINE=7.0.0 ""Introdução à linguagem SQL"" modules=5 llm=true images=true
+",Log,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,d0d42c61-15bc-433f-b6f2-e47acba51ed7,info,1781470980217000
+booted (time: 43ms),Boot,49793a5c-2603-4f91-aca1-992aa792c645,5d0ce925-7a2c-45db-9153-48e45a0ded6b,31ef1ccb-3033-4660-b707-19867b9d6126,log,1781470979638000
+booted (time: 60ms),Boot,874bbc83-626b-454e-8ca6-25352b2f193c,5d0ce925-7a2c-45db-9153-48e45a0ded6b,f1a65fb9-c21d-4ff2-8969-79e3b91aea76,log,1781470978256000
+shutdown,Shutdown,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,80a7bec0-a16f-4e6b-8cf8-13515dd9656f,log,1781470838600000
+"[PPTX][DIAG-FINAL] engine=export-pptx-v7 version=7.0.0 slides=54 planned=1 fallback=4 status=exported
+",Log,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,f244cf05-711f-4557-b5dc-62562d854863,info,1781470838593000
+"[V7-WRITE] bytes=4990924 slides=54 total_ms=94215
+",Log,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,821ec64d-c2ed-4374-ac5a-a8ccc5e92c33,info,1781470837921000
+"[V7-IMAGES] resolved=2
+",Log,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,99a2525a-116f-4489-af00-2971c62f63ce,info,1781470836037000
+"[V7-NORMALIZE] in=48 out=48 split=0 dropped=0
+",Log,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,928d1987-e4b4-4618-a960-4767ed23eb49,info,1781470834743000
+"[V7-PLAN] module ""Relacionamentos e Funções Avançadas"" threw → fallback: SyntaxError: Unterminated string in JSON at position 604 (line 6 column 497)
+    at JSON.parse (<anonymous>)
+    at planModuleSlides (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:248:25)
+    at eventLoopTick (ext:core/01_core.js:175:7)
+    at async file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:431:18
+    at async Promise.all (index 0)
+    at async buildDeck (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:427:5)
+    at async Object.handler (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/index.ts:102:60)
+    at async mapped (ext:runtime/http.js:246:20)
+",Log,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,4efabe7b-e888-4f6e-b840-cb500ad45dbb,warning,1781470834738000
+shutdown,Shutdown,99272403-667b-4073-822e-9d9a68d1fb98,5d0ce925-7a2c-45db-9153-48e45a0ded6b,c176047a-0cfd-4a32-9d21-533b21d9a429,log,1781470816805000
+"[V7-PLAN] module ""Manipulação de Dados (DML)"" threw → fallback: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at planModuleSlides (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:248:25)
+    at eventLoopTick (ext:core/01_core.js:175:7)
+    at async file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:431:18
+    at async Promise.all (index 0)
+    at async buildDeck (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:427:5)
+    at async Object.handler (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/index.ts:102:60)
+    at async mapped (ext:runtime/http.js:246:20)
+",Log,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,4d58b5e4-3acf-4115-a2c5-cefe8f80cc15,warning,1781470799382000
+"[V7-PLAN] module ""Consultando Dados com SELECT"" threw → fallback: SyntaxError: Unterminated string in JSON at position 569 (line 14 column 89)
+    at JSON.parse (<anonymous>)
+    at planModuleSlides (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:248:25)
+    at eventLoopTick (ext:core/01_core.js:175:7)
+    at async file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:431:18
+    at async Promise.all (index 0)
+    at async buildDeck (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:427:5)
+    at async Object.handler (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/index.ts:102:60)
+    at async mapped (ext:runtime/http.js:246:20)
+",Log,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,72edb49d-637b-4cd7-8897-8ef7ff244dab,warning,1781470781487000
+"[V7-PLAN] module ""Configuração do Ambiente e Primeiros Passos"" threw → fallback: SyntaxError: Expected double-quoted property name in JSON at position 554 (line 15 column 9)
+    at JSON.parse (<anonymous>)
+    at planModuleSlides (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:248:25)
+    at eventLoopTick (ext:core/01_core.js:175:7)
+    at async file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:431:18
+    at async Promise.all (index 0)
+    at async buildDeck (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:427:5)
+    at async Object.handler (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/index.ts:102:60)
+    at async mapped (ext:runtime/http.js:246:20)
+",Log,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,235bc3ee-7de1-4907-9287-3309e27d8614,warning,1781470762559000
+"[V7] ENGINE=7.0.0 ""Introdução à linguagem SQL"" modules=5 llm=true images=true
+",Log,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,b5f2553f-ceba-4940-bd0a-6ef1a74e3ec3,info,1781470743706000
+booted (time: 65ms),Boot,5f3fb778-ea40-46ec-a1e7-e603658b1218,5d0ce925-7a2c-45db-9153-48e45a0ded6b,613eaea4-20d4-4d8c-8f01-09793a81989d,log,1781470743161000
+booted (time: 57ms),Boot,99272403-667b-4073-822e-9d9a68d1fb98,5d0ce925-7a2c-45db-9153-48e45a0ded6b,991cf7ac-39b8-4ef8-9c7b-070525c7b6ef,log,1781470741785000
+shutdown,Shutdown,60cfb5a2-f3b0-4bc6-bb1e-45964d93359e,5d0ce925-7a2c-45db-9153-48e45a0ded6b,75c7b79a-b284-4009-836d-7645487d7d8a,log,1781470603524000
+shutdown,Shutdown,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,68e55d97-6d9e-409a-8430-4074c2d64144,log,1781470537199000
+"[PPTX][DIAG-FINAL] engine=export-pptx-v7 version=7.0.0 slides=58 planned=0 fallback=5 status=exported
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,9214508e-0ac7-4de0-963d-fccd84d63bfc,info,1781470537191000
+"[V7-WRITE] bytes=5025895 slides=58 total_ms=5493
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,37bd839b-82a2-40a4-8291-ebc5a470653c,info,1781470536337000
+"[V7-IMAGES] resolved=2
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,b5ac6a88-32de-4a18-85d3-6f291b8b22bc,info,1781470534326000
+"[V7-NORMALIZE] in=51 out=51 split=0 dropped=0
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,dca958b8-2b14-46e5-9bd9-2502b12dc0d6,info,1781470533262000
+"[V7-PLAN] module ""Relacionamentos e Funções Avançadas"" LLM 404 → fallback
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,a1bd9da4-babc-41fd-b7ee-a86ba1c4030e,warning,1781470533257000
+"[V7-PLAN] module ""Estrutura e Definição de Dados (DDL)"" LLM 404 → fallback
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,6919a5f8-aada-465e-b6e7-927c92249545,warning,1781470532894000
+"[V7-PLAN] module ""Manipulação de Dados (DML)"" LLM 404 → fallback
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,f59e3755-ef4a-4cba-ac67-60bf58310dfe,warning,1781470532263000
+"[V7-PLAN] module ""Consultando Dados com SELECT"" LLM 404 → fallback
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,72027ff0-0924-4da5-bc13-5c02bbbbf4de,warning,1781470531894000
+"[V7-PLAN] module ""Configuração do Ambiente e Primeiros Passos"" LLM 404 → fallback
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,b023f707-d3d2-4fe6-8ecf-5143c727b49b,warning,1781470531251000
+"[V7] ENGINE=7.0.0 ""Introdução à linguagem SQL"" modules=5 llm=true images=true
+",Log,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,6630bbdc-e880-4234-a711-364284c7e13a,info,1781470530840000
+booted (time: 55ms),Boot,e33ef768-a7bb-419c-8332-3dc4610ccf8f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,210cf63f-5db9-4991-a624-9df697fcd57a,log,1781470530017000
+booted (time: 62ms),Boot,60cfb5a2-f3b0-4bc6-bb1e-45964d93359e,5d0ce925-7a2c-45db-9153-48e45a0ded6b,7ab74c3f-5b1a-494a-b022-32d4be148ddd,log,1781470528482000
+shutdown,Shutdown,47759f4f-9eda-4c2b-bfb5-37c3c76f960c,5d0ce925-7a2c-45db-9153-48e45a0ded6b,4d314752-e332-4a17-8ee1-c01785f00211,log,1781470209860000
+booted (time: 40ms),Boot,47759f4f-9eda-4c2b-bfb5-37c3c76f960c,5d0ce925-7a2c-45db-9153-48e45a0ded6b,c3463055-a337-4043-a1d0-acbc976a2bb8,log,1781470134845000
+shutdown,Shutdown,94aeb7ee-a43a-47bb-8737-f5906179981d,5d0ce925-7a2c-45db-9153-48e45a0ded6b,fa02004c-8d15-4bf6-b91a-0e2496e1b7e4,log,1781469843598000
+shutdown,Shutdown,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,e79ece0e-1c50-4410-9065-95274dd695b1,log,1781469810683000
+"[PPTX][DIAG-FINAL] engine=export-pptx-v7 version=7.0.0 slides=55 planned=1 fallback=4 status=exported
+",Log,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,5c18fc3e-2d69-4ea9-acb4-e73f56da9588,info,1781469810674000
+"[V7-WRITE] bytes=5147731 slides=55 total_ms=39740
+",Log,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,42aedf74-1240-4fc0-b887-59c54b5fffc2,info,1781469810068000
+"[V7-IMAGES] resolved=4
+",Log,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,856c76ef-5ae6-4552-a372-83599aec7312,info,1781469808448000
+"[V7-NORMALIZE] in=48 out=49 split=1 dropped=0
+",Log,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,9d14f47e-1e14-4069-b6e0-be5babb513af,info,1781469806916000
+"[V7-PLAN] module ""Relacionamentos e Funções Avançadas"" threw → fallback: SyntaxError: Unterminated string in JSON at position 2650 (line 60 column 46)
+    at JSON.parse (<anonymous>)
+    at planModuleSlides (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:248:25)
+    at eventLoopTick (ext:core/01_core.js:175:7)
+    at async file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:431:18
+    at async Promise.all (index 1)
+    at async buildDeck (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:427:5)
+    at async Object.handler (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/index.ts:102:60)
+    at async mapped (ext:runtime/http.js:246:20)
+",Log,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,b8675c1f-5011-492b-b8fe-a11ad29890b0,warning,1781469806910000
+"[V7-PLAN] module ""Manipulação de Dados (DML)"" threw → fallback: SyntaxError: Unterminated string in JSON at position 613 (line 6 column 512)
+    at JSON.parse (<anonymous>)
+    at planModuleSlides (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:248:25)
+    at eventLoopTick (ext:core/01_core.js:175:7)
+    at async file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:431:18
+    at async Promise.all (index 2)
+    at async buildDeck (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:427:5)
+    at async Object.handler (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/index.ts:102:60)
+    at async mapped (ext:runtime/http.js:246:20)
+",Log,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,5e7ed821-e2dd-417c-bc1f-ec9788f2cf96,warning,1781469789235000
+"[V7-PLAN] module ""Configuração do Ambiente e Primeiros Passos"" threw → fallback: SyntaxError: Unterminated string in JSON at position 2186 (line 6 column 2068)
+    at JSON.parse (<anonymous>)
+    at planModuleSlides (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:248:25)
+    at eventLoopTick (ext:core/01_core.js:175:7)
+    at async file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:431:18
+    at async Promise.all (index 0)
+    at async buildDeck (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:427:5)
+    at async Object.handler (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/index.ts:102:60)
+    at async mapped (ext:runtime/http.js:246:20)
+",Log,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,2b642999-fcb4-4fb3-99ec-012affda04b4,warning,1781469787335000
+"[V7-PLAN] module ""Consultando Dados com SELECT"" threw → fallback: SyntaxError: Expected ',' or '}' after property value in JSON at position 542 (line 16 column 46)
+    at JSON.parse (<anonymous>)
+    at planModuleSlides (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:248:25)
+    at eventLoopTick (ext:core/01_core.js:175:7)
+    at async file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:431:18
+    at async Promise.all (index 1)
+    at async buildDeck (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/deck-plan.ts:427:5)
+    at async Object.handler (file:///var/tmp/sb-compile-edge-runtime/export-pptx-v7/index.ts:102:60)
+    at async mapped (ext:runtime/http.js:246:20)
+",Log,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,7e293bce-d5ab-4f6e-8f46-273936b7ae5f,warning,1781469787192000
+"[V7] ENGINE=7.0.0 ""Introdução à linguagem SQL"" modules=5 llm=true images=true
+",Log,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,a41c9305-b0fa-4277-84b4-c5e3741e919e,info,1781469770328000
+booted (time: 60ms),Boot,9c2b70ef-d126-4f1e-a2ab-396dabd0a3c2,5d0ce925-7a2c-45db-9153-48e45a0ded6b,4810b4e0-b2a1-4119-82be-4b27168ae5c4,log,1781469769836000
+booted (time: 40ms),Boot,94aeb7ee-a43a-47bb-8737-f5906179981d,5d0ce925-7a2c-45db-9153-48e45a0ded6b,942eb799-f68c-4a24-a802-251e3e895328,log,1781469768581000
+shutdown,Shutdown,d6fad984-ebb8-45af-92be-3103612a272f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,4e32b3a1-d8c3-41b0-8c24-7ebcae31e77d,log,1781469528891000
+booted (time: 39ms),Boot,d6fad984-ebb8-45af-92be-3103612a272f,5d0ce925-7a2c-45db-9153-48e45a0ded6b,0bf77c5c-ff71-41c3-bf81-5453dfb2d505,log,1781469453865000
+shutdown,Shutdown,22218c08-9ef2-4d70-92dc-b0ba488eac43,5d0ce925-7a2c-45db-9153-48e45a0ded6b,61f06243-08dd-469e-addc-fcc2e1d600ba,log,1781469323884000
+booted (time: 37ms),Boot,22218c08-9ef2-4d70-92dc-b0ba488eac43,5d0ce925-7a2c-45db-9153-48e45a0ded6b,e852ae81-01a5-4905-b54c-62d39ca071b4,log,1781469246262000
+"worker boot error: failed to bootstrap runtime: failed to create the graph: A remote specifier was requested: ""https://esm.sh/@supabase/supabase-js@2"", but --no-remote is specified.
+    at file:///src/index.ts:1:30",BootFailure,b18a0353-11a9-4f6c-a1ad-bad77d933497,5d0ce925-7a2c-45db-9153-48e45a0ded6b,3dd9b516-909f-4e25-bb8f-60d717fb3d5f,error,1781469232752000
+shutdown,Shutdown,47dc29f4-790b-4a58-acdf-62025f07b664,5d0ce925-7a2c-45db-9153-48e45a0ded6b,3f0b3597-6bf4-4617-a193-e37203753b0d,log,1781469230947000
+"worker boot error: failed to bootstrap runtime: failed to create the graph: A remote specifier was requested: ""https://esm.sh/@supabase/supabase-js@2"", but --no-remote is specified.
+    at file:///src/index.ts:1:30",BootFailure,3c5aaaf1-2c9f-4de7-a41a-bb480c9de906,5d0ce925-7a2c-45db-9153-48e45a0ded6b,c69bb4b1-a05a-4b15-b071-c1d9c4d9ecc1,error,1781469216485000
+"worker boot error: failed to bootstrap runtime: failed to create the graph: A remote specifier was requested: ""https://esm.sh/@supabase/supabase-js@2"", but --no-remote is specified.
+    at file:///src/index.ts:1:30",BootFailure,09c6a726-7758-4aa4-99b3-989bc41b6b68,5d0ce925-7a2c-45db-9153-48e45a0ded6b,d29d3c16-2a59-497e-8b8d-423053ea8c41,error,1781469190132000
+booted (time: 29ms),Boot,47dc29f4-790b-4a58-acdf-62025f07b664,5d0ce925-7a2c-45db-9153-48e45a0ded6b,6e408334-fd4e-41b4-b888-a79698dc66e6,log,1781469155900000
+"worker boot error: failed to bootstrap runtime: failed to create the graph: A remote specifier was requested: ""https://esm.sh/@supabase/supabase-js@2"", but --no-remote is specified.
+    at file:///src/index.ts:1:30",BootFailure,8be850f0-0b88-4d31-aac9-785ea9b0cdfc,5d0ce925-7a2c-45db-9153-48e45a0ded6b,906c0222-9171-48bd-9984-fcba5e75284f,error,1781469127794000
+"worker boot error: failed to bootstrap runtime: failed to create the graph: A remote specifier was requested: ""https://esm.sh/@supabase/supabase-js@2"", but --no-remote is specified.
+    at file:///src/index.ts:1:30",BootFailure,b833cfde-b579-4830-8cce-738c56956c84,5d0ce925-7a2c-45db-9153-48e45a0ded6b,ced947f0-64d8-443b-aca0-becf12e017f1,error,1781469054706000
+"worker boot error: failed to bootstrap runtime: failed to create the graph: A remote specifier was requested: ""https://esm.sh/@supabase/supabase-js@2"", but --no-remote is specified.
+    at file:///src/index.ts:1:30",BootFailure,181e0cca-1f40-4c25-947a-825815e7403c,5d0ce925-7a2c-45db-9153-48e45a0ded6b,1485f176-9238-4249-99f6-03975a0720a6,error,1781468933338000
+"worker boot error: failed to bootstrap runtime: failed to create the graph: JSR package manifest for '@supabase/functions-js' failed to load. A remote specifier was requested: ""https://jsr.io/@supabase/functions-js/meta.json"", but --no-remote is specified.
+    at file:///src/index.ts:1:8",BootFailure,82fc2d1d-f3a7-4008-9f37-f6988a1d283d,5d0ce925-7a2c-45db-9153-48e45a0ded6b,94b856da-7144-4941-8643-ed3b73085bec,error,1781468861709000
+"worker boot error: failed to bootstrap runtime: failed to create the graph: JSR package manifest for '@supabase/functions-js' failed to load. A remote specifier was requested: ""https://jsr.io/@supabase/functions-js/meta.json"", but --no-remote is specified.
+    at file:///src/index.ts:1:8",BootFailure,7799ad62-bbfd-4597-819f-6923b160180c,5d0ce925-7a2c-45db-9153-48e45a0ded6b,158522bc-6c61-4b0e-9d97-0c8988f3860a,error,1781468795338000

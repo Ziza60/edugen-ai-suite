@@ -190,42 +190,38 @@ export function buildModulePlanPrompt(
 ): string {
   // NOTE: deliberately ZERO domain rules. We describe slide *shapes* and
   // universal visual-design quality, and let the model map ANY topic onto them.
-  const trimmed = moduleContent.slice(0, 8000);
-  return `You are a world-class presentation designer (think Gamma / Apple Keynote).
-Turn the module below into a sequence of clean, render-ready slides.
+  // Keep input short so output fits in 8192 tokens: max 3500 chars of content.
+  const trimmed = moduleContent.slice(0, 3500);
+  return `You are a presentation designer. Turn the module below into EXACTLY 4 slides (no more, no fewer).
 
 COURSE: "${courseTitle}"
 MODULE: "${moduleTitle}"
 OUTPUT LANGUAGE: ${language}
 
-PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premium:
-- "bullets"  → a single concept with 3–5 short supporting points.
-- "cards"    → 2–4 parallel items (types, pillars, components) each with a 1-line body.
-- "steps"    → an ordered process or sequence (3–5 steps).
-- "compare"  → two contrasting things (left vs right), each with 2–4 short items.
-- "quote"    → a memorable principle, definition, or reflection prompt.
-- "stat"     → one striking number or metric worth a whole slide.
-- "code"     → a code/command example (ONLY if the source actually contains code).
-- "closing"  → the module's key takeaways (use as the LAST slide).
+SLIDE TYPES — pick the best fit for each idea:
+- "bullets"  → one concept, 3–4 short points (max 10 words each).
+- "cards"    → 2–4 parallel items, each with a 1-line body (max 10 words).
+- "steps"    → ordered process, 3–4 steps (max 10 words each).
+- "compare"  → two contrasting things, 2–3 items per side (max 8 words each).
+- "quote"    → one memorable principle or definition.
+- "code"     → a short code example (ONLY if source contains code; max 8 lines).
+- "closing"  → key takeaways (MUST be the 4th and final slide, 3–4 bullets).
 
-UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
-- ONE idea per slide. Never cram two concepts together.
-- Titles are complete, specific phrases — never single words, never truncated.
-- Each bullet / card body / item: max ~14 words, a complete thought, no trailing
-  "...", no dangling preposition, ends cleanly.
-- Vary the slide types across the module — avoid 5 "bullets" slides in a row.
-- 3 to 6 slides per module. Prefer fewer, denser-in-meaning slides.
-- The LAST slide MUST be "closing" with 3–5 key takeaways as bullets.
-- For visually rich slides (section/quote/stat/cards), suggest a short English
-  "imageQuery" (2–4 words) describing a relevant photo. Omit for code/compare.
-- Stay strictly faithful to the module content. Do NOT invent facts.
+STRICT RULES:
+- Produce EXACTLY 4 slides. Slide 4 MUST be "closing".
+- ONE idea per slide. Titles: specific phrase, never a single word.
+- Items: max 10 words each, complete thought, no trailing "...", ends cleanly.
+- Vary types across the 4 slides (avoid repeating the same type).
+- For "bullets"/"cards"/"steps": max 4 items. For "closing": max 4 bullets.
+- imageQuery: short English phrase (2–3 words) for slides with photos; omit for code/compare/closing.
+- Stay faithful to the module content. Do NOT invent facts.
 
-MODULE CONTENT (markdown):
+MODULE CONTENT:
 """
 ${trimmed}
 """
 
-Return JSON only, matching the provided schema.`;
+Return JSON only, matching the schema.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
