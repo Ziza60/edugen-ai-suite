@@ -167,6 +167,63 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                 }
               }
 
+              // ── V7 ADAPTIVE ENGINE (BETA, explicit opt-in) ──
+              // Runs after 2Slides and short-circuits the rest. Topic-agnostic engine
+              // with no QA veto. On failure we hard-stop (explicit beta test).
+              if (!data?.url && options.useV7) {
+                console.log("[PPTX] Using export-pptx-v7 (adaptive engine, beta opt-in)...");
+                const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-pptx-v7`;
+                const EXPORT_TIMEOUT_MS = 480000;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), EXPORT_TIMEOUT_MS);
+                try {
+                  const res = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${session.access_token}`,
+                      "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                    },
+                    body: JSON.stringify({
+                      course_id: courseId,
+                      palette: options.palette,
+                      includeImages: options.includeImages,
+                      footerBrand: options.footerBrand,
+                      language: "Português (Brasil)",
+                    }),
+                    signal: controller.signal,
+                  });
+                  const responseText = await res.text();
+                  let v7data: any = {};
+                  try { v7data = responseText ? JSON.parse(responseText) : {}; } catch { /* ignore */ }
+                  if (res.ok && v7data?.url) {
+                    data = v7data;
+                    engineUsed = "v7-adaptive";
+                    console.log("[PPTX][DIAG]", JSON.stringify({
+                      engine: v7data.engine ?? "export-pptx-v7",
+                      engine_version: v7data.engine_version,
+                      status: v7data.status ?? "exported",
+                      slide_count: v7data.slide_count,
+                      modules_planned_by_llm: v7data.modules_planned_by_llm,
+                      modules_fallback: v7data.modules_fallback,
+                    }));
+                  } else {
+                    const errMsg = v7data?.error || `HTTP ${res.status}`;
+                    console.error("[PPTX] v7 falhou:", errMsg);
+                    toast({ title: "EduGen v7 falhou", description: String(errMsg), duration: 6000, variant: "destructive" });
+                    setExportingPptx(false);
+                    return;
+                  }
+                } catch (errV7: any) {
+                  console.error("[PPTX] v7 crash:", errV7);
+                  toast({ title: "EduGen v7 indisponível", description: String(errV7?.message ?? errV7), duration: 6000, variant: "destructive" });
+                  setExportingPptx(false);
+                  return;
+                } finally {
+                  clearTimeout(timeoutId);
+                }
+              }
+
               // ── MAGICSLIDES PRO (Try first if enabled) ──
               if (!data?.url && options.useMagicSlides) {
                 console.log("[PPTX] Attempting MagicSlides Pro export...");
@@ -309,6 +366,8 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
               a.href = blobUrl;
               const downloadLabel = engineUsed === "2slides"
                 ? "PPTX-2SLIDES"
+                : engineUsed === "v7-adaptive"
+                ? "PPTX-v7"
                 : engineUsed === "magicslides"
                 ? "PPTX-PRO"
                 : "PPTX";
@@ -325,11 +384,15 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
 
               const toastTitle = engineUsed === "2slides"
                 ? "PowerPoint 2Slides gerado!"
+                : engineUsed === "v7-adaptive"
+                ? "🧪 PowerPoint v7 (Adaptive) gerado!"
                 : engineUsed === "magicslides"
                 ? "PowerPoint Pro gerado!"
                 : "PowerPoint gerado!";
               const toastDesc = engineUsed === "2slides"
                 ? `${data.slide_count ?? "?"} slides gerados com design premium.`
+                : engineUsed === "v7-adaptive"
+                ? `${data.slide_count || 0} slides • ${data.modules_planned_by_llm ?? 0} módulos via IA`
                 : data.quality_report
                 ? `Score: ${data.quality_report.quality_score}/100`
                 : engineUsed === "magicslides"
