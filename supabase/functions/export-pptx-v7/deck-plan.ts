@@ -261,25 +261,40 @@ export async function planModuleSlides(
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.35,
-          maxOutputTokens: 4000,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json",
           responseSchema: SLIDE_RESPONSE_SCHEMA,
         },
       }),
     });
     if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
       console.warn(
-        `[V7-PLAN] module "${moduleTitle}" LLM ${res.status} → fallback`,
+        `[V7-PLAN] module "${moduleTitle}" LLM ${res.status} → fallback | ${errBody.slice(0, 200)}`,
       );
       return null;
     }
     const data = await res.json();
+    const finishReason = data?.candidates?.[0]?.finishReason ?? "UNKNOWN";
     const text: string =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    if (!text) return null;
-    const parsed = JSON.parse(text);
+    if (!text) {
+      console.warn(`[V7-PLAN] module "${moduleTitle}" empty text finishReason=${finishReason} → fallback`);
+      return null;
+    }
+    let parsed: any;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      console.warn(`[V7-PLAN] module "${moduleTitle}" JSON parse failed finishReason=${finishReason} textLen=${text.length} → fallback`);
+      return null;
+    }
     const slides = Array.isArray(parsed?.slides) ? parsed.slides : null;
-    if (!slides || slides.length === 0) return null;
+    if (!slides || slides.length === 0) {
+      console.warn(`[V7-PLAN] module "${moduleTitle}" no slides in response finishReason=${finishReason} → fallback`);
+      return null;
+    }
+    console.log(`[V7-PLAN] module "${moduleTitle}" OK slides=${slides.length} finishReason=${finishReason}`);
     // Tag every slide with the module eyebrow for consistent headers.
     return (slides as SlideSpec[]).map((s) => ({ ...s, eyebrow: moduleTitle }));
   } catch (err) {
