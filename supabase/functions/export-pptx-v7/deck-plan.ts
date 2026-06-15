@@ -313,6 +313,8 @@ export function salvageSlidesFromTruncatedJson(text: string): SlideSpec[] {
  * right shape. Returns SlideSpec[] for ONE module, or null on any failure
  * (caller falls back to the deterministic plan — never throws to the user).
  */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function planModuleSlides(
   courseTitle: string,
   moduleTitle: string,
@@ -320,72 +322,110 @@ export async function planModuleSlides(
   language: string,
   geminiKey: string,
 ): Promise<SlideSpec[] | null> {
-  try {
-    const prompt = buildModulePlanPrompt(
-      courseTitle,
-      moduleTitle,
-      moduleContent,
-      language,
-    );
-    // Per-call timeout. Planning runs in parallel and images+write take only a
-    // few seconds, so we can afford a generous budget here — this is what lets
-    // verbose (SQL/code) modules finish via the LLM instead of falling back.
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000);
-    let res: Response;
+  const prompt = buildModulePlanPrompt(
+    courseTitle,
+    moduleTitle,
+    moduleContent,
+    language,
+  );
+  const body = JSON.stringify({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.35,
+      maxOutputTokens: 10000,
+      responseMimeType: "application/json",
+      responseSchema: SLIDE_RESPONSE_SCHEMA,
+    },
+  });
+
+  // Up to 3 attempts: transient failures (429 rate-limit / 5xx / empty) on the
+  // shared Gemini key are the main cause of modules dropping to fallback. A
+  // short exponential backoff recovers most of them.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const last = attempt === MAX_ATTEMPTS;
+    const backoff = 1500 * attempt; // 1.5s, 3s
     try {
-      res = await fetch(`${GEMINI_PLAN_URL}?key=${geminiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.35,
-            // The tighter prompt keeps each module's JSON small (~2–4k tokens),
-            // so a modest cap bounds per-call time and avoids 504s. Any rare
-            // truncation is recovered by salvageSlidesFromTruncatedJson.
-            maxOutputTokens: 10000,
-            responseMimeType: "application/json",
-            responseSchema: SLIDE_RESPONSE_SCHEMA,
-          },
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
-    if (!res.ok) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
+      let res: Response;
+      try {
+        res = await fetch(`${GEMINI_PLAN_URL}?key=${geminiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      if (!res.ok) {
+        const retryable = res.status === 429 || res.status >= 500;
+        console.warn(
+          `[V7-PLAN] "${moduleTitle}" attempt ${attempt}/${MAX_ATTEMPTS} HTTP ${res.status}${retryable && !last ? " → retry" : " → fallback"}`,
+        );
+        if (retryable && !last) {
+          await sleep(backoff);
+          continue;
+        }
+        return null;
+      }
+
+      const data = await res.json();
+      const cand = data?.candidates?.[0];
+      const finishReason = cand?.finishReason ?? "";
+      const text: string = cand?.content?.parts?.[0]?.text ?? "";
+
+      if (!text) {
+        const reason = data?.promptFeedback?.blockReason || finishReason ||
+          "empty";
+        console.warn(
+          `[V7-PLAN] "${moduleTitle}" attempt ${attempt}/${MAX_ATTEMPTS} empty (${reason})${last ? " → fallback" : " → retry"}`,
+        );
+        if (!last) {
+          await sleep(backoff);
+          continue;
+        }
+        return null;
+      }
+
+      let slides: SlideSpec[] | null = null;
+      try {
+        const parsed = JSON.parse(text);
+        slides = Array.isArray(parsed?.slides) ? parsed.slides : null;
+      } catch {
+        slides = salvageSlidesFromTruncatedJson(text);
+      }
+
+      if (slides && slides.length) {
+        console.log(
+          `[V7-PLAN] "${moduleTitle}" OK slides=${slides.length} finishReason=${finishReason} attempt=${attempt}`,
+        );
+        return slides.map((s) => ({ ...s, eyebrow: moduleTitle }));
+      }
+
       console.warn(
-        `[V7-PLAN] module "${moduleTitle}" LLM ${res.status} → fallback`,
+        `[V7-PLAN] "${moduleTitle}" attempt ${attempt}/${MAX_ATTEMPTS} no slides (finishReason=${finishReason} textLen=${text.length})${last ? " → fallback" : " → retry"}`,
       );
+      if (!last) {
+        await sleep(backoff);
+        continue;
+      }
+      return null;
+    } catch (err) {
+      console.warn(
+        `[V7-PLAN] "${moduleTitle}" attempt ${attempt}/${MAX_ATTEMPTS} threw${last ? " → fallback" : " → retry"}:`,
+        err,
+      );
+      if (!last) {
+        await sleep(backoff);
+        continue;
+      }
       return null;
     }
-    const data = await res.json();
-    const finishReason = data?.candidates?.[0]?.finishReason ?? "";
-    const text: string =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    if (!text) return null;
-    let slides: SlideSpec[] | null = null;
-    try {
-      const parsed = JSON.parse(text);
-      slides = Array.isArray(parsed?.slides) ? parsed.slides : null;
-    } catch {
-      // Truncated JSON (usually finishReason=MAX_TOKENS). Salvage instead of
-      // dropping the entire module to the deterministic fallback.
-      slides = salvageSlidesFromTruncatedJson(text);
-      if (slides.length) {
-        console.warn(
-          `[V7-PLAN] module "${moduleTitle}" salvaged ${slides.length} slides from truncated JSON (finishReason=${finishReason})`,
-        );
-      }
-    }
-    if (!slides || slides.length === 0) return null;
-    // Tag every slide with the module eyebrow for consistent headers.
-    return (slides as SlideSpec[]).map((s) => ({ ...s, eyebrow: moduleTitle }));
-  } catch (err) {
-    console.warn(`[V7-PLAN] module "${moduleTitle}" threw → fallback:`, err);
-    return null;
   }
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -678,9 +718,10 @@ export async function buildDeck(
   geminiKey: string | null,
   opts: { batchSize?: number } = {},
 ): Promise<{ deck: PlannedDeck; plannedCount: number; fallbackCount: number }> {
-  // Plan all modules concurrently (capped) so total wall-time ≈ the slowest
-  // single call, not the sum — critical to stay under the gateway timeout.
-  const batchSize = opts.batchSize ?? 5;
+  // Plan modules concurrently but capped at 3 — firing all at once overloaded
+  // the shared Gemini key (429s → fallback). 3-wide + retry keeps wall-time low
+  // while staying within rate limits.
+  const batchSize = opts.batchSize ?? 3;
   const out: DeckModule[] = new Array(modules.length);
   let plannedCount = 0;
   let fallbackCount = 0;
