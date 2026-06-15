@@ -863,14 +863,98 @@ function isGenericTitle(title: string): boolean {
 // The planner often opens a module with a title like "Bem-vindo ao Módulo 1:
 // <nome>", which duplicates the module name already shown in the divider and the
 // slide eyebrow right above it. Strip the "Bem-vindo ao Módulo X:" / "Welcome to
-// Module X:" scaffolding and keep the real subject. Topic-agnostic.
+// Module X:" scaffolding (and the bare "Módulo N:" / "Module N:" form) and keep
+// the real subject. Topic-agnostic.
 const MODULE_INTRO_PREFIX_RE =
   /^\s*(?:bem[-\s]?vindos?\s+ao|welcome\s+to(?:\s+the)?)\s+m[óo]dul[oe]\s*\d*\s*[:\-–—]\s*/i;
+const MODULE_NUM_PREFIX_RE = /^\s*m[óo]dul[oe]\s*\d+\s*[:\-–—]\s*/i;
 function stripModuleIntroPrefix(title: string): string {
-  const cleaned = title.replace(MODULE_INTRO_PREFIX_RE, "").trim();
+  let cleaned = title.replace(MODULE_INTRO_PREFIX_RE, "").trim();
+  cleaned = cleaned.replace(MODULE_NUM_PREFIX_RE, "").trim();
   // Never blank out a title; if the prefix WAS the whole title, keep original.
   return cleaned.length >= 3 ? cleaned : title;
 }
+
+// Accent-insensitive comparison key (lowercase, no diacritics, single-spaced).
+function normKey(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+// When the FIRST content slide's title is just the module name (already shown in
+// the divider + eyebrow), demote it to a localized "module overview" label so we
+// don't print the same name three times. Unknown language → keep the title.
+function moduleOverviewLabel(language: string): string {
+  const l = language.toLowerCase();
+  if (/portug/.test(l)) return "Visão Geral do Módulo";
+  if (/espa|spanish/.test(l)) return "Visión General del Módulo";
+  if (/fran|french/.test(l)) return "Vue d'ensemble du module";
+  if (/ingl|engl/.test(l)) return "Module Overview";
+  return "";
+}
+
+// ── Cross-module near-duplicate removal ──────────────────────────────────────
+// The title-ledger stops the planner from RESTATING a theme, but when two
+// modules' source text overlaps it still renders the same content under
+// different titles (e.g. M2's "Documentos Chave do Planejamento" vs M3's
+// "Documentos Fundamentais Pós-Planejamento" — identical cards). This
+// deterministic pass fingerprints each content slide's BODY (never its title)
+// and drops a LATER slide whose body is near-identical to an earlier one.
+const DUP_STOPWORDS = new Set(
+  "para com como uma dos das que the and for sao seu sua suas seus mais nao por entre cada todos toda este esta esse essa pela pelo num numa aos nas nos ser sobre".split(" "),
+);
+function contentTokens(s: SlideSpec): Set<string> {
+  const parts: string[] = [];
+  if (s.bullets) parts.push(...s.bullets);
+  if (s.cards) for (const c of s.cards) parts.push(c.heading, c.body);
+  if (s.steps) for (const st of s.steps) parts.push(st.heading, st.body ?? "");
+  if (s.left) parts.push(s.left.heading, ...s.left.items);
+  if (s.right) parts.push(s.right.heading, ...s.right.items);
+  if (s.quote) parts.push(s.quote);
+  const text = parts.join(" ").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+  const toks = (text.match(/[a-z]{4,}/g) ?? [])
+    .filter((t) => !DUP_STOPWORDS.has(t) && t !== "edugenai");
+  return new Set(toks);
+}
+function overlapMin(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  let common = 0;
+  for (const t of small) if (large.has(t)) common++;
+  return common / small.size;
+}
+// Tuned empirically on a real overlapping deck: targets land at 0.65–0.75 while
+// the nearest legitimate pair sits at 0.53. min-size 10 excludes dividers /
+// quotes / overview slides whose tiny token sets cause spurious matches.
+const DUP_SIM_THRESHOLD = 0.6;
+const DUP_MIN_TOKENS = 10;
+function dedupeModules(modules: DeckModule[]): number {
+  const seen: Set<string>[] = [];
+  let dropped = 0;
+  for (const m of modules) {
+    const kept: SlideSpec[] = [];
+    for (const sp of m.slides) {
+      // Never drop a module's own closing slide (takeaways are module-specific).
+      if (sp.kind === "closing") {
+        kept.push(sp);
+        continue;
+      }
+      const tk = contentTokens(sp);
+      if (tk.size >= DUP_MIN_TOKENS) {
+        if (seen.some((p) => overlapMin(p, tk) >= DUP_SIM_THRESHOLD)) {
+          dropped++;
+          continue;
+        }
+        seen.push(tk);
+      }
+      kept.push(sp);
+    }
+    m.slides = kept;
+  }
+  return dropped;
+}
+
 
 /**
  * Builds the full deck. Tries the structured planner per module (sequentially,
@@ -921,11 +1005,17 @@ export async function buildDeck(
       slides = fallbackModuleSlides(m.title, m.content);
       fallbackCount++;
     }
-    // Drop the redundant "Bem-vindo ao Módulo X:" prefix the planner likes to
-    // put on the opening slide (the module name is already in the divider +
-    // eyebrow right above it).
+    // Drop the redundant "Bem-vindo ao Módulo X:" / "Módulo N:" prefix the
+    // planner likes to put on the opening slide (the module name is already in
+    // the divider + eyebrow right above it).
     for (const sp of slides) {
       if (sp.title) sp.title = stripModuleIntroPrefix(sp.title);
+    }
+    // If the first content slide's title is just the module name, demote it to a
+    // localized "overview" label so the name isn't printed divider+eyebrow+title.
+    const overview = moduleOverviewLabel(language);
+    if (overview && slides[0]?.title && normKey(slides[0].title) === normKey(m.title)) {
+      slides[0].title = overview;
     }
     // Feed this module's substantive slide titles into the ledger for the next
     // modules. Skip generic recap/intro slides so we don't suppress every
@@ -936,6 +1026,12 @@ export async function buildDeck(
     }
     out[idx] = { title: m.title, slides };
   }
+
+  // Deterministic safety net: remove cross-module near-duplicate slides the
+  // title-ledger couldn't prevent (overlapping source rendered under different
+  // titles). Runs after all modules are planned so it sees the full deck.
+  const deduped = dedupeModules(out);
+  if (deduped) console.log(`[V7-DEDUP] dropped=${deduped} near-duplicate slides`);
 
   return {
     deck: { courseTitle, subtitle, modules: out },
