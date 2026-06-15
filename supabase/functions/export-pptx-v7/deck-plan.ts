@@ -274,7 +274,7 @@ slide doesn't use; never add other keys):
       "right": { "heading": "string", "items": ["..."] },
       "quote": "string",
       "stat":  { "value": "42%", "label": "string" },
-      "code":  "line1\\nline2",
+      "code":  { "language": "sql", "text": "SELECT id FROM users;\\nSELECT 1;" },
       "imageQuery": "two to four english words"
     }
   ]

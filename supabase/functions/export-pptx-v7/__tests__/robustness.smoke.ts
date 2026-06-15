@@ -121,6 +121,18 @@ const { deck: cd } = normalizeDeck(codeDeck);
 const codeText = cd.modules[0].slides.find((s) => s.kind === "code")?.code?.text ?? "";
 check("code placeholder lines stripped", !/\.{2,}|…/.test(codeText) && codeText.includes("CREATE TABLE"));
 
+// v7.1.10 — code returned as a BARE STRING (not {text}) is coerced, not dropped
+const strCode = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [
+    { kind: "code", title: "Ex SQL", code: "SELECT id FROM users;\nSELECT 1;" },
+  ] }],
+} as unknown as PlannedDeck;
+const { deck: sc, stats: scStats } = normalizeDeck(strCode);
+check("string-form code slide is kept (not dropped)",
+  scStats.slidesDropped === 0 &&
+  sc.modules[0].slides.some((s) => s.kind === "code" && !!s.code?.text));
+
 // v7.1.4 — single-line multi-statement code gets line breaks back
 const oneLine: PlannedDeck = {
   courseTitle: "X",
