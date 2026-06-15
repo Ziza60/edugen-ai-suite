@@ -12,7 +12,7 @@ import {
   salvageSlidesFromTruncatedJson,
 } from "../deck-plan.ts";
 import { normalizeDeck } from "../validate.ts";
-import type { DeckModule, ModuleInput, PlannedDeck } from "../deck-plan.ts";
+import type { DeckModule, ModuleInput, PlannedDeck, SlideSpec } from "../deck-plan.ts";
 
 let failures = 0;
 function check(name: string, cond: boolean) {
@@ -201,6 +201,50 @@ check("floor: closing is the last slide", m4.slides[m4.slides.length - 1].kind =
 check("floor: reported it added a closing", res.closingsAdded >= 1 && res.backfilled >= 1);
 check("floor: healthy module left intact", hollow[1].slides.length === before);
 check("floor: every module has a closing", hollow.every((m) => m.slides.some((s) => s.kind === "closing")));
+
+// ── v7.9.0 — anti-monotony: runs of bullet slides alternate with "tiles" ──
+const sb = (title: string, items: string[]): SlideSpec =>
+  ({ kind: "bullets", title, bullets: items } as SlideSpec);
+const shortList = ["Cruciais para o sucesso", "Otimizam a interação", "Garantem entendimento", "Agilizam a resolução"];
+const runDeck: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{
+    title: "Comunicação",
+    slides: [
+      sb("Lista 1", shortList),
+      sb("Lista 2", shortList),
+      sb("Lista 3", shortList),
+      sb("Lista 4", shortList),
+    ],
+  }],
+};
+const rk = normalizeDeck(runDeck).deck.modules[0].slides.map((s) => s.kind);
+check("run of bullets becomes bullets/tiles/bullets/tiles", rk.join(",") === "bullets,tiles,bullets,tiles");
+let noPair = true;
+for (let k = 1; k < rk.length; k++) if (rk[k] === "bullets" && rk[k - 1] === "bullets") noPair = false;
+check("no two bullet slides remain back-to-back", noPair);
+
+// a 5-item short list is still tile-eligible (badge grid supports up to 6)
+const five = ["um curto", "dois curto", "três curto", "quatro curto", "cinco curto"];
+const fiveDeck: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [sb("A", five), sb("B", five)] }],
+};
+const fk = normalizeDeck(fiveDeck).deck.modules[0].slides.map((s) => s.kind);
+check("second of two 5-item lists becomes tiles", fk[1] === "tiles");
+
+// a long-phrase list is NOT promoted (tiles are for scannable short points)
+const longItems = [
+  "Esta é uma frase bastante longa que claramente não cabe bem em um tile compacto de grade",
+  "Outra explicação extensa com muitas palavras que deve permanecer como item de lista vertical",
+  "Mais um ponto longo o suficiente para reprovar a elegibilidade de tiles neste slide",
+];
+const longDeck: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [sb("A", longItems), sb("B", longItems)] }],
+};
+const lk = normalizeDeck(longDeck).deck.modules[0].slides.map((s) => s.kind);
+check("long-phrase lists stay bullets (not promoted to tiles)", lk.every((k) => k === "bullets"));
 
 console.log(failures === 0 ? "\nALL PASS ✓" : `\n${failures} CHECK(S) FAILED ✗`);
 if (failures > 0) process.exit(1);

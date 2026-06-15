@@ -25,6 +25,7 @@ export type SlideKind =
   | "toc" // agenda / table of contents
   | "section" // module divider
   | "bullets" // title + up to 5 supporting points
+  | "tiles" // 3–6 short points as an icon/badge grid (visual variant of bullets)
   | "cards" // 2–4 concept cards
   | "steps" // ordered process / sequence
   | "compare" // two-column comparison

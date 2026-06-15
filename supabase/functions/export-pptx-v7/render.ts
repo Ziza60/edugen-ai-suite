@@ -434,6 +434,63 @@ function renderBullets(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   footer(slide, d, brand, num);
 }
 
+/**
+ * Tiles: a short list (3–6 brief points) shown as a grid of badge tiles instead
+ * of a vertical bullet list. Each tile carries a numbered accent badge (a clean
+ * geometric stand-in for an icon — never a guessed semantic icon) and the point,
+ * centered. Used by the anti-monotony pass to break runs of bullet slides.
+ */
+function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = (s.bullets ?? []).filter((b) => b && b.trim());
+  const n = items.length;
+  const cols = n <= 3 ? n : n === 4 ? 2 : 3;
+  const rows = Math.ceil(n / cols);
+  const gap = 0.3;
+  const tileW = (CW - gap * (cols - 1)) / cols;
+  const tileH = (CONTENT_H - gap * (rows - 1)) / rows;
+  const badge = Math.min(0.62, tileH * 0.32);
+  const textFs = n > 4 ? 13 : tileH > 2 ? 16 : 14;
+
+  items.forEach((b, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    // Center a short final row (e.g. 5 items → 3 + 2) instead of left-hugging it.
+    const itemsInRow = Math.min(cols, n - row * cols);
+    const rowOffset = (CW - (itemsInRow * tileW + gap * (itemsInRow - 1))) / 2;
+    const x = ML + rowOffset + col * (tileW + gap);
+    const y = CONTENT_Y + row * (tileH + gap);
+
+    slide.addShape("roundRect", {
+      x, y, w: tileW, h: tileH, rectRadius: 0.08,
+      fill: { color: d.surface },
+      line: { color: d.border, width: 1 },
+    });
+    const bx = x + tileW / 2 - badge / 2;
+    const by = y + Math.min(0.3, tileH * 0.14);
+    slide.addShape("ellipse", {
+      x: bx, y: by, w: badge, h: badge,
+      fill: { color: d.accent },
+      line: { type: "none" },
+    });
+    slide.addText(String(i + 1), {
+      x: bx, y: by, w: badge, h: badge,
+      fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.onAccent,
+      align: "center", valign: "middle",
+    });
+    slide.addText(b, {
+      x: x + 0.18,
+      y: by + badge + 0.12,
+      w: tileW - 0.36,
+      h: y + tileH - (by + badge + 0.12) - 0.12,
+      fontFace: FONT_BODY, fontSize: textFs, color: d.text,
+      align: "center", valign: "top", lineSpacingMultiple: 1.03,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
 function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
@@ -913,6 +970,9 @@ export function renderDeck(
         switch (s.kind) {
           case "section":
             renderSection(slide, s, d, mi + 1);
+            break;
+          case "tiles":
+            renderTiles(slide, s, d, brand, num, m.title);
             break;
           case "cards":
             renderCards(slide, s, d, brand, num, m.title);
