@@ -355,47 +355,41 @@ function renderTOC(slide: AnySlide, deck: PlannedDeck, d: Palette, brand: string
 
 function renderSection(slide: AnySlide, s: SlideSpec, d: Palette, index: number) {
   bgFill(slide, d.coverBg);
-  const hasImg = maybeImage(slide, s, { x: 7.6, y: 0, w: 5.73, h: H });
+  const numStr = String(index).padStart(2, "0");
+  // Full-bleed photo (when available), dimmed for legibility — heavier scrim on
+  // the left third where the text lives, lighter over the image on the right.
+  const hasImg = maybeImage(slide, s, { x: 0, y: 0, w: W, h: H });
   if (hasImg) {
     slide.addShape("rect", {
-      x: 6.6,
-      y: 0,
-      w: 1.2,
-      h: H,
-      fill: { color: d.coverBg, transparency: 10 },
+      x: 0, y: 0, w: W, h: H,
+      fill: { color: d.coverBg, transparency: 28 },
+      line: { type: "none" },
+    });
+    slide.addShape("rect", {
+      x: 0, y: 0, w: 8.2, h: H,
+      fill: { color: d.coverBg, transparency: 6 },
       line: { type: "none" },
     });
   }
-  slide.addText(`MÓDULO ${String(index).padStart(2, "0")}`, {
-    x: ML,
-    y: 2.7,
-    w: 6.2,
-    h: 0.4,
-    fontFace: FONT_BODY,
-    fontSize: 13,
-    bold: true,
-    color: d.accent2,
-    charSpacing: 3,
+  // Eyebrow + GIANT module number (inverted colours, big type, little text).
+  slide.addText("MÓDULO", {
+    x: ML, y: 1.4, w: 7, h: 0.45,
+    fontFace: FONT_BODY, fontSize: 15, bold: true,
+    color: d.accent2, charSpacing: 5,
+  });
+  slide.addText(numStr, {
+    x: ML - 0.08, y: 1.7, w: 6, h: 2.7,
+    fontFace: FONT_TITLE, fontSize: 200, bold: true,
+    color: d.accent2, align: "left", valign: "middle",
   });
   slide.addShape("rect", {
-    x: ML,
-    y: 3.18,
-    w: 0.9,
-    h: 0.08,
-    fill: { color: d.accent2 },
-    line: { type: "none" },
+    x: ML + 0.04, y: 4.5, w: 1.1, h: 0.09,
+    fill: { color: d.accent2 }, line: { type: "none" },
   });
   slide.addText(s.title, {
-    x: ML,
-    y: 3.4,
-    w: hasImg ? 5.8 : 11,
-    h: 2.4,
-    fontFace: FONT_TITLE,
-    fontSize: s.title.length > 40 ? 30 : 38,
-    bold: true,
-    color: "FFFFFF",
-    valign: "top",
-    lineSpacingMultiple: 1.03,
+    x: ML, y: 4.78, w: hasImg ? 7.9 : 11.4, h: 2.1,
+    fontFace: FONT_TITLE, fontSize: s.title.length > 44 ? 32 : 42, bold: true,
+    color: "FFFFFF", valign: "top", lineSpacingMultiple: 1.02,
   });
 }
 
@@ -739,48 +733,40 @@ function renderCompare(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
 function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number) {
   bgFill(slide, d.surface);
   slide.addShape("rect", {
-    x: 0,
-    y: 0,
-    w: 0.18,
-    h: H,
-    fill: { color: d.accent2 },
-    line: { type: "none" },
+    x: 0, y: 0, w: 0.18, h: H,
+    fill: { color: d.accent2 }, line: { type: "none" },
   });
+  const text = s.quote ?? s.title;
+  // Giant decorative quotation marks as a faint watermark behind the text. We use
+  // the light border colour (not transparency, which not every client honours) so
+  // the watermark reads on any palette without washing out the quote.
   slide.addText("“", {
-    x: ML,
-    y: 0.9,
-    w: 2,
-    h: 1.6,
-    fontFace: FONT_TITLE,
-    fontSize: 120,
-    bold: true,
-    color: d.accent2,
-    align: "left",
-    valign: "top",
+    x: W / 2 - 3.2, y: 0.15, w: 6.4, h: 3.4,
+    fontFace: FONT_TITLE, fontSize: 320, bold: true,
+    color: d.border, align: "center", valign: "top",
   });
-  slide.addText(s.quote ?? s.title, {
-    x: ML + 0.2,
-    y: 2.4,
-    w: CW - 0.4,
-    h: 3.0,
+  slide.addText("”", {
+    x: W / 2 - 3.2, y: H - 3.7, w: 6.4, h: 3.4,
+    fontFace: FONT_TITLE, fontSize: 320, bold: true,
+    color: d.border, align: "center", valign: "bottom",
+  });
+  // The quote itself: centred, italic, large — scales down for longer passages.
+  slide.addText(text, {
+    x: 1.4, y: 2.2, w: W - 2.8, h: 3.0,
     fontFace: FONT_TITLE,
-    fontSize: (s.quote ?? s.title).length > 120 ? 26 : 32,
-    italic: true,
-    color: d.text,
-    align: "left",
-    valign: "top",
-    lineSpacingMultiple: 1.1,
+    fontSize: text.length > 170 ? 23 : text.length > 95 ? 28 : 34,
+    italic: true, color: d.text,
+    align: "center", valign: "middle", lineSpacingMultiple: 1.12,
+  });
+  slide.addShape("rect", {
+    x: W / 2 - 0.5, y: 5.45, w: 1.0, h: 0.06,
+    fill: { color: d.accent2 }, line: { type: "none" },
   });
   if (s.attribution) {
     slide.addText(`— ${s.attribution}`, {
-      x: ML + 0.2,
-      y: 5.7,
-      w: CW - 0.4,
-      h: 0.5,
-      fontFace: FONT_BODY,
-      fontSize: 14,
-      bold: true,
-      color: d.accent,
+      x: 2, y: 5.62, w: W - 4, h: 0.5,
+      fontFace: FONT_BODY, fontSize: 14, bold: true, color: d.accent,
+      align: "center",
     });
   }
   footer(slide, d, brand, num);

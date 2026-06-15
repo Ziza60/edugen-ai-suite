@@ -23,7 +23,7 @@ import { normalizeDeck } from "./validate.ts";
 import { renderDeck } from "./render.ts";
 import { resolveImages } from "./images.ts";
 
-const ENGINE_VERSION = "7.9.0";
+const ENGINE_VERSION = "7.10.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
