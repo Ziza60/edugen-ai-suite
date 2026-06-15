@@ -93,16 +93,18 @@ export interface ModuleInput {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * The schema the model MUST fill. This is the single most important defense:
- * the shape is guaranteed by responseSchema, so we never parse free prose into
- * slides — the model hands us render-ready objects. No topic rules required.
+ * Reference shape of a planned deck. NOTE: this is no longer passed to Gemini
+ * as a responseSchema — a rich schema made the constrained decoder slow and, with
+ * array maxItems, triggered HTTP 400 ("constraint has too many states"). We now
+ * use plain JSON mode (responseMimeType) and describe this shape in the prompt;
+ * salvageSlidesFromTruncatedJson + normalizeDeck enforce it downstream. Kept as
+ * documentation of the contract the prompt asks for.
  */
 export const SLIDE_RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     slides: {
       type: "array",
-      maxItems: "7",
       items: {
         type: "object",
         properties: {
@@ -122,10 +124,9 @@ export const SLIDE_RESPONSE_SCHEMA = {
           },
           title: { type: "string" },
           subtitle: { type: "string" },
-          bullets: { type: "array", maxItems: "6", items: { type: "string" } },
+          bullets: { type: "array", items: { type: "string" } },
           cards: {
             type: "array",
-            maxItems: "4",
             items: {
               type: "object",
               properties: {
@@ -137,7 +138,6 @@ export const SLIDE_RESPONSE_SCHEMA = {
           },
           steps: {
             type: "array",
-            maxItems: "5",
             items: {
               type: "object",
               properties: {
@@ -151,14 +151,14 @@ export const SLIDE_RESPONSE_SCHEMA = {
             type: "object",
             properties: {
               heading: { type: "string" },
-              items: { type: "array", maxItems: "5", items: { type: "string" } },
+              items: { type: "array", items: { type: "string" } },
             },
           },
           right: {
             type: "object",
             properties: {
               heading: { type: "string" },
-              items: { type: "array", maxItems: "5", items: { type: "string" } },
+              items: { type: "array", items: { type: "string" } },
             },
           },
           quote: { type: "string" },
@@ -259,7 +259,27 @@ MODULE CONTENT (markdown):
 ${trimmed}
 """
 
-Return JSON only, matching the provided schema.`;
+OUTPUT FORMAT — return ONLY a JSON object of this exact shape (omit fields a
+slide doesn't use; never add other keys):
+{
+  "slides": [
+    {
+      "kind": "bullets|cards|steps|compare|quote|stat|code|closing",
+      "title": "string (required, complete phrase)",
+      "subtitle": "string (optional)",
+      "bullets": ["short point", "..."],
+      "cards": [{ "heading": "string", "body": "string" }],
+      "steps": [{ "heading": "string", "body": "string" }],
+      "left":  { "heading": "string", "items": ["..."] },
+      "right": { "heading": "string", "items": ["..."] },
+      "quote": "string",
+      "stat":  { "value": "42%", "label": "string" },
+      "code":  "line1\\nline2",
+      "imageQuery": "two to four english words"
+    }
+  ]
+}
+Return the JSON object only — no markdown fences, no prose before or after.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -320,11 +340,21 @@ export function salvageSlidesFromTruncatedJson(text: string): SlideSpec[] {
   return out;
 }
 
-/** Recover the complete leading key:value pairs of a truncated object. */
+/**
+ * Recover as much of a truncated object as possible. A comma (outside a string)
+ * always follows a COMPLETE value, so the longest prefix ending at a comma is
+ * valid once we close every still-open bracket. Taking the LAST such comma keeps
+ * not just the leading fields (kind/title) but also the complete elements of a
+ * trailing array that was cut mid-flight — e.g. a giant "bullets":[...] keeps
+ * every bullet that fully landed, instead of dropping the whole slide.
+ */
 function recoverPartialObject(s: string): SlideSpec | null {
   const open = s.indexOf("{");
   if (open === -1) return null;
-  let depth = 0, inStr = false, esc = false, lastSafe = -1;
+  const stack: string[] = [];
+  let inStr = false, esc = false;
+  let cutIdx = -1; // index of the last comma outside a string
+  let cutStack: string[] = []; // bracket stack at that comma
   for (let j = open; j < s.length; j++) {
     const c = s[j];
     if (inStr) {
@@ -334,13 +364,21 @@ function recoverPartialObject(s: string): SlideSpec | null {
       continue;
     }
     if (c === '"') inStr = true;
-    else if (c === "{" || c === "[") depth++;
-    else if (c === "}" || c === "]") depth--;
-    else if (c === "," && depth === 1) lastSafe = j; // end of a top-level pair
+    else if (c === "{" || c === "[") stack.push(c);
+    else if (c === "}" || c === "]") stack.pop();
+    else if (c === "," && stack.length >= 1) {
+      cutIdx = j;
+      cutStack = [...stack];
+    }
   }
-  if (lastSafe === -1) return null;
+  if (cutIdx === -1) return null;
+  // Close every open bracket (innermost first) to balance the prefix.
+  const closers = cutStack
+    .reverse()
+    .map((b) => (b === "{" ? "}" : "]"))
+    .join("");
   try {
-    const o = JSON.parse(s.slice(open, lastSafe) + "}");
+    const o = JSON.parse(s.slice(open, cutIdx) + closers);
     if (o && typeof o === "object" && o.kind && o.title) return o as SlideSpec;
   } catch { /* unrecoverable */ }
   return null;
@@ -370,12 +408,15 @@ export async function planModuleSlides(
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.35,
-      // With maxItems hard-capping the structure (schema), output is naturally
-      // small, so a low ceiling is plenty and keeps each call fast. If a model
-      // still overflows, salvageSlidesFromTruncatedJson recovers the slides.
+      // JSON mode WITHOUT a responseSchema. A rich responseSchema made Gemini's
+      // constrained decoder (a) slow and (b) blow up with HTTP 400 "schema
+      // produces a constraint that has too many states" once we added maxItems
+      // to bound the structure. responseMimeType still guarantees syntactically
+      // valid JSON; the shape is specified in the prompt and enforced downstream
+      // by salvageSlidesFromTruncatedJson + normalizeDeck. The token cap bounds
+      // wall-time; salvage recovers complete slides (and partial arrays) on cut.
       maxOutputTokens: 8000,
       responseMimeType: "application/json",
-      responseSchema: SLIDE_RESPONSE_SCHEMA,
     },
   });
 

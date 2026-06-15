@@ -28,6 +28,18 @@ const salvaged = salvageSlidesFromTruncatedJson(truncated);
 check("salvage recovers the 2 complete slides", salvaged.length === 2);
 check("salvage keeps order/fields", salvaged[0].title === "Slide um" && salvaged[1].kind === "cards");
 
+// ── #2b partial-array recovery: a single giant object cut mid-"bullets" ──
+// Previously this yielded 0 slides (whole module → fallback). Now the complete
+// bullets that landed before the cut are recovered into one usable slide.
+const giant = `{"slides":[{"kind":"bullets","title":"Conceitos","bullets":[` +
+  `"primeiro ponto","segundo ponto","terceiro ponto","quarto pont`; // cut mid-string
+const rec = salvageSlidesFromTruncatedJson(giant);
+check("partial-array salvage yields a slide", rec.length === 1);
+check("partial-array salvage keeps complete bullets",
+  rec.length === 1 && Array.isArray(rec[0].bullets) && rec[0].bullets!.length === 3);
+check("partial-array salvage keeps title/kind",
+  rec.length === 1 && rec[0].title === "Conceitos" && rec[0].kind === "bullets");
+
 // ── #3 condense collapses long fenced code ──
 const longCode = "Intro\n```sql\n" + Array.from({ length: 40 }, (_, i) => `linha ${i};`).join("\n") + "\n```\nFim";
 const condensed = condenseForPlanning(longCode, 6000);
