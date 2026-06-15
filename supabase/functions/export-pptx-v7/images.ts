@@ -8,9 +8,24 @@
 
 const PEXELS_SEARCH = "https://api.pexels.com/v1/search";
 
+/** fetch with a hard timeout (images must never stall the export into a 504). */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  ms = 12000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 async function toDataUri(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return null;
     const buf = new Uint8Array(await res.arrayBuffer());
     // base64 encode in 32KB chunks (per-byte concat is a CPU hog that can trip
@@ -50,7 +65,9 @@ export async function resolveImages(
       try {
         const url =
           `${PEXELS_SEARCH}?query=${encodeURIComponent(q)}&per_page=1&orientation=landscape`;
-        const res = await fetch(url, { headers: { Authorization: apiKey } });
+        const res = await fetchWithTimeout(url, {
+          headers: { Authorization: apiKey },
+        }, 10000);
         if (!res.ok) return;
         const data = await res.json();
         const photo = data?.photos?.[0];
