@@ -102,7 +102,7 @@ export const SLIDE_RESPONSE_SCHEMA = {
   properties: {
     slides: {
       type: "array",
-      maxItems: 7,
+      maxItems: "7",
       items: {
         type: "object",
         properties: {
@@ -122,10 +122,10 @@ export const SLIDE_RESPONSE_SCHEMA = {
           },
           title: { type: "string" },
           subtitle: { type: "string" },
-          bullets: { type: "array", maxItems: 6, items: { type: "string" } },
+          bullets: { type: "array", maxItems: "6", items: { type: "string" } },
           cards: {
             type: "array",
-            maxItems: 4,
+            maxItems: "4",
             items: {
               type: "object",
               properties: {
@@ -137,7 +137,7 @@ export const SLIDE_RESPONSE_SCHEMA = {
           },
           steps: {
             type: "array",
-            maxItems: 5,
+            maxItems: "5",
             items: {
               type: "object",
               properties: {
@@ -151,14 +151,14 @@ export const SLIDE_RESPONSE_SCHEMA = {
             type: "object",
             properties: {
               heading: { type: "string" },
-              items: { type: "array", maxItems: 5, items: { type: "string" } },
+              items: { type: "array", maxItems: "5", items: { type: "string" } },
             },
           },
           right: {
             type: "object",
             properties: {
               heading: { type: "string" },
-              items: { type: "array", maxItems: 5, items: { type: "string" } },
+              items: { type: "array", maxItems: "5", items: { type: "string" } },
             },
           },
           quote: { type: "string" },
@@ -403,8 +403,11 @@ export async function planModuleSlides(
 
       if (!res.ok) {
         const retryable = res.status === 429 || res.status >= 500;
+        // Capture the API error body (e.g. a rejected schema) so a 4xx is
+        // debuggable from logs instead of an opaque "HTTP 400".
+        const errBody = await res.text().catch(() => "");
         console.warn(
-          `[V7-PLAN] "${moduleTitle}" attempt ${attempt}/${MAX_ATTEMPTS} HTTP ${res.status}${retryable && !last ? " → retry" : " → fallback"}`,
+          `[V7-PLAN] "${moduleTitle}" attempt ${attempt}/${MAX_ATTEMPTS} HTTP ${res.status}${retryable && !last ? " → retry" : " → fallback"} ${errBody.slice(0, 300)}`,
         );
         if (retryable && !last) {
           await sleep(backoff);
