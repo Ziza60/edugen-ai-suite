@@ -10,7 +10,7 @@ import { Loader2, Presentation, ImageOff, Info, Check } from "lucide-react";
 
 // ── Exported options type ──────────────────────────────────────────
 export interface PptxExportOptions {
-  palette: "default" | "ocean" | "forest" | "sunset" | "monochrome";
+  palette: "default" | "ocean" | "forest" | "sunset" | "violet" | "monochrome";
   density: "compact" | "standard" | "detailed";
   includeImages: boolean;
   theme: "light" | "dark";
@@ -199,6 +199,7 @@ const PALETTES: Record<string, { label: string; colors: string[] }> = {
   ocean:      { label: "Oceano",        colors: ["#2980B9", "#3498DB", "#1ABC9C", "#16A085", "#2C3E50"] },
   forest:     { label: "Floresta",      colors: ["#27AE60", "#2ECC71", "#1ABC9C", "#16A085", "#2C3E50"] },
   sunset:     { label: "Pôr do Sol",    colors: ["#E74C3C", "#E67E22", "#F39C12", "#D35400", "#C0392B"] },
+  violet:     { label: "Violeta",       colors: ["#6D28D9", "#8B5CF6", "#A78BFA", "#7C3AED", "#5B21B6"] },
   monochrome: { label: "Monocromático", colors: ["#2C3E50", "#34495E", "#7F8C8D", "#95A5A6", "#BDC3C7"] },
 };
 

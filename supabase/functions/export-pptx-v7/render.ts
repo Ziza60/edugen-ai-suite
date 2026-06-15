@@ -99,6 +99,18 @@ export const PALETTES: Record<string, Palette> = {
     coverBg: "2A0A05",
     onAccent: "FFFFFF",
   },
+  monochrome: {
+    name: "monochrome",
+    bg: "FFFFFF",
+    surface: "F2F4F6",
+    text: "1F2A33",
+    subtext: "5A6B78",
+    border: "DCE1E6",
+    accent: "2C3E50",
+    accent2: "64748B",
+    coverBg: "1E2A35",
+    onAccent: "FFFFFF",
+  },
 };
 
 export interface RenderOptions {
@@ -435,21 +447,26 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
 
   // Size cards to their CONTENT, not the full slide height, then center the
   // block vertically. Otherwise a single row of short cards stretches into
-  // tall, mostly-empty boxes (the #19/#26 cohesion bug) while multi-row grids
-  // (e.g. 2x2) look fine. Capping at fullCardH keeps dense grids unchanged.
+  // tall, mostly-empty boxes while multi-row grids look fine.
   const innerW = cardW - 0.5;
-  const headPerLine = Math.max(10, innerW * 7); // ~chars/line @15pt bold
-  const bodyPerLine = Math.max(12, innerW * 9); // ~chars/line @12pt
-  let maxHeadLines = 1;
-  let maxBodyLines = 0;
+  const headPerLine = Math.max(12, innerW * 8.6); // ~chars/line @15pt bold
+  const bodyPerLine = Math.max(14, innerW * 11); // ~chars/line @12pt
+  const anyBody = cards.some((c) => c.body);
+  let bodyLines = 1;
+  let headLines = 1;
   for (const c of cards) {
-    maxHeadLines = Math.max(maxHeadLines, Math.ceil((c.heading?.length || 1) / headPerLine));
-    if (c.body) maxBodyLines = Math.max(maxBodyLines, Math.ceil(c.body.length / bodyPerLine));
+    if (c.body) bodyLines = Math.max(bodyLines, Math.min(3, Math.ceil(c.body.length / bodyPerLine)));
+    headLines = Math.max(headLines, Math.min(3, Math.ceil((c.heading?.length || 1) / headPerLine)));
   }
-  const padT = 0.2, numH = 0.36, headLH = 0.27, bodyLH = 0.2, midGap = 0.1, padB = 0.22;
-  const headBoxH = maxHeadLines * headLH;
-  const bodyBoxH = maxBodyLines ? maxBodyLines * bodyLH + 0.1 : 0;
-  const naturalH = padT + numH + headBoxH + (maxBodyLines ? midGap + bodyBoxH : 0) + padB;
+  const padT = 0.2, numH = 0.36, headLH = 0.28, bodyLH = 0.21, midGap = 0.1, padB = 0.22;
+  // Uniform heading slot (2 lines, middle-aligned) when cards carry bodies, so
+  // equal-structure card slides render identically regardless of how a single
+  // heading happens to wrap (fixes the #27-vs-#28 spacing discrepancy where one
+  // longer title silently pushed its whole grid down). Heading-only cards size
+  // to their content.
+  const headBoxH = anyBody ? 2 * headLH : headLines * headLH;
+  const bodyBoxH = anyBody ? bodyLines * bodyLH + 0.06 : 0;
+  const naturalH = padT + numH + 0.04 + headBoxH + (anyBody ? midGap + bodyBoxH : 0) + padB;
   const cardH = Math.min(fullCardH, Math.max(1.3, naturalH));
   const blockH = rows * cardH + gap * (rows - 1);
   const startY = CONTENT_Y + Math.max(0, (CONTENT_H - blockH) / 2);
@@ -488,19 +505,19 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     });
     slide.addText(c.heading, {
       x: x + 0.25,
-      y: y + padT + numH,
+      y: y + padT + numH + 0.04,
       w: cardW - 0.5,
       h: c.body ? headBoxH : cardH - padT - numH - padB,
       fontFace: FONT_BODY,
       fontSize: 15,
       bold: true,
       color: d.text,
-      valign: "top",
+      valign: c.body ? "middle" : "top",
     });
     if (c.body) {
       slide.addText(c.body, {
         x: x + 0.25,
-        y: y + padT + numH + headBoxH + midGap,
+        y: y + padT + numH + 0.04 + headBoxH + midGap,
         w: cardW - 0.5,
         h: bodyBoxH,
         fontFace: FONT_BODY,
