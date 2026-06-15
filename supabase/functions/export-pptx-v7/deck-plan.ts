@@ -955,6 +955,65 @@ function dedupeModules(modules: DeckModule[]): number {
   return dropped;
 }
 
+// ── Per-module floor (the invariant that ends "hollow module" regressions) ────
+// The sequential planner + anti-repetition ledger can starve a module whose
+// source overlaps an earlier one: the LLM, told its themes are "already
+// covered", returns just an objectives slide (sometimes no closing). The
+// cross-module dedup can also thin a module. Rather than chase each symptom, we
+// enforce a hard invariant on the ASSEMBLED deck: every module renders with at
+// least FLOOR_MIN_CONTENT content slides AND exactly one closing. Shortfalls are
+// backfilled deterministically from the module's OWN source text (which is
+// self-contained and ledger-free), skipping only slides that would near-
+// duplicate one already in the same module. Completeness wins over a blank
+// module; the cross-module dedup still prevents wholesale repetition elsewhere.
+// 2 = at least an objectives/overview slide PLUS one substantive content slide,
+// then a closing. We never force a higher floor by fabricating: a thin source
+// yields a thin (but complete and honest) module rather than padding.
+const FLOOR_MIN_CONTENT = 2;
+const INTRA_DUP_THRESHOLD = 0.85;
+export function enforceModuleFloors(
+  out: DeckModule[],
+  inputs: ModuleInput[],
+): { backfilled: number; closingsAdded: number } {
+  let backfilled = 0;
+  let closingsAdded = 0;
+  for (let i = 0; i < out.length; i++) {
+    const m = out[i];
+    const content = m.slides.filter((s) => s.kind !== "closing");
+    let closing = m.slides.find((s) => s.kind === "closing") ?? null;
+    const hadClosing = closing !== null;
+
+    if (content.length < FLOOR_MIN_CONTENT) {
+      const fb = fallbackModuleSlides(m.title, inputs[i]?.content ?? "");
+      for (const s of fb) {
+        if (content.length >= FLOOR_MIN_CONTENT) break;
+        if (s.kind === "closing") continue;
+        const tk = contentTokens(s);
+        const dup = content.some(
+          (c) => overlapMin(contentTokens(c), tk) >= INTRA_DUP_THRESHOLD,
+        );
+        if (!dup) {
+          content.push(s);
+          backfilled++;
+        }
+      }
+      if (!closing) closing = fb.find((s) => s.kind === "closing") ?? null;
+    }
+
+    if (!closing) {
+      closing = {
+        kind: "closing",
+        title: "Principais aprendizados",
+        eyebrow: m.title,
+        bullets: content.map((s) => s.title).filter(Boolean).slice(0, 5),
+      };
+    }
+    if (!hadClosing) closingsAdded++;
+    m.slides = [...content, closing];
+  }
+  return { backfilled, closingsAdded };
+}
+
 
 /**
  * Builds the full deck. Tries the structured planner per module (sequentially,
@@ -1011,10 +1070,15 @@ export async function buildDeck(
     for (const sp of slides) {
       if (sp.title) sp.title = stripModuleIntroPrefix(sp.title);
     }
-    // If the first content slide's title is just the module name, demote it to a
-    // localized "overview" label so the name isn't printed divider+eyebrow+title.
+    // If the first content slide's title is just the module name (or the course
+    // title — the planner sometimes echoes it on a starved module), demote it to
+    // a localized "overview" label so the name isn't printed divider+eyebrow+title.
     const overview = moduleOverviewLabel(language);
-    if (overview && slides[0]?.title && normKey(slides[0].title) === normKey(m.title)) {
+    const firstTitle = slides[0]?.title ? normKey(slides[0].title) : "";
+    if (
+      overview && firstTitle &&
+      (firstTitle === normKey(m.title) || firstTitle === normKey(courseTitle))
+    ) {
       slides[0].title = overview;
     }
     // Feed this module's substantive slide titles into the ledger for the next
@@ -1032,6 +1096,15 @@ export async function buildDeck(
   // titles). Runs after all modules are planned so it sees the full deck.
   const deduped = dedupeModules(out);
   if (deduped) console.log(`[V7-DEDUP] dropped=${deduped} near-duplicate slides`);
+
+  // Invariant: never ship a hollow module. Backfill from source / guarantee a
+  // closing AFTER dedup so cross-module cleanup can't leave a module starved.
+  const floor = enforceModuleFloors(out, modules);
+  if (floor.backfilled || floor.closingsAdded) {
+    console.log(
+      `[V7-FLOOR] backfilled=${floor.backfilled} closingsAdded=${floor.closingsAdded}`,
+    );
+  }
 
   return {
     deck: { courseTitle, subtitle, modules: out },

@@ -7,11 +7,12 @@
 
 import {
   condenseForPlanning,
+  enforceModuleFloors,
   fallbackModuleSlides,
   salvageSlidesFromTruncatedJson,
 } from "../deck-plan.ts";
 import { normalizeDeck } from "../validate.ts";
-import type { PlannedDeck } from "../deck-plan.ts";
+import type { DeckModule, ModuleInput, PlannedDeck } from "../deck-plan.ts";
 
 let failures = 0;
 function check(name: string, cond: boolean) {
@@ -159,6 +160,47 @@ check("exactly one closing slide", closings.length === 1);
 const conts = ds.filter((s) => /\(cont\.\)/.test(s.title));
 const orphanCont = conts.some((s) => (s.bullets?.length ?? 0) <= 1);
 check("no orphan (cont.) slide with a single bullet", !orphanCont);
+
+// ── v7.8.0 — per-module floor invariant: a starved module never ships hollow ──
+// Reproduces the real M4 regression: the planner returned a single objectives
+// slide and NO closing because the ledger told it everything was "covered".
+const richSource = `## Comunicação e Colaboração da Equipe
+### Conteúdo
+- A comunicação contínua é essencial para o sucesso da auditoria operacional.
+- Estratégias de compartilhamento de informações mantêm a equipe alinhada.
+- O pensamento visual ajuda a criar um retrato compartilhado do trabalho.
+- Espaços de trabalho colaborativos potencializam a produtividade da equipe.
+- A gestão de conflitos preserva o foco nos objetivos da auditoria.`;
+const hollow: DeckModule[] = [
+  {
+    title: "Comunicação e Colaboração da Equipe",
+    slides: [{ kind: "bullets", title: "Objetivos do Módulo", eyebrow: "x", bullets: ["um", "dois"] }],
+  },
+  {
+    title: "Módulo Saudável",
+    slides: [
+      { kind: "bullets", title: "A", bullets: ["1", "2"] },
+      { kind: "cards", title: "B", cards: [{ heading: "h", body: "b" }] },
+      { kind: "bullets", title: "C", bullets: ["3", "4"] },
+      { kind: "closing", title: "Principais aprendizados", bullets: ["z"] },
+    ],
+  },
+];
+const inputs: ModuleInput[] = [
+  { title: "Comunicação e Colaboração da Equipe", content: richSource },
+  { title: "Módulo Saudável", content: "irrelevante" },
+];
+const before = hollow[1].slides.length;
+const res = enforceModuleFloors(hollow, inputs);
+const m4 = hollow[0];
+const m4content = m4.slides.filter((s) => s.kind !== "closing");
+const m4closings = m4.slides.filter((s) => s.kind === "closing");
+check("floor: starved module backfilled to >=2 content slides", m4content.length >= 2);
+check("floor: starved module ends with exactly one closing", m4closings.length === 1);
+check("floor: closing is the last slide", m4.slides[m4.slides.length - 1].kind === "closing");
+check("floor: reported it added a closing", res.closingsAdded >= 1 && res.backfilled >= 1);
+check("floor: healthy module left intact", hollow[1].slides.length === before);
+check("floor: every module has a closing", hollow.every((m) => m.slides.some((s) => s.kind === "closing")));
 
 console.log(failures === 0 ? "\nALL PASS ✓" : `\n${failures} CHECK(S) FAILED ✗`);
 if (failures > 0) process.exit(1);
