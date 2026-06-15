@@ -205,6 +205,29 @@ export function condenseForPlanning(md: string, maxChars = 6000): string {
   return condensed.length > maxChars ? condensed.slice(0, maxChars) : condensed;
 }
 
+export type Density = "compact" | "standard" | "detailed";
+// Density maps directly to the per-module slide-count band advertised in the
+// export dialog (PptxExportDialog DENSITY_LABELS). The engine has no hard slide
+// cap (only per-slide content caps), so this band is what actually makes the
+// "Compacto / Padrão / Detalhado" control change the deck.
+const DENSITY_SPECS: Record<Density, { min: number; max: number; note: string }> = {
+  compact: {
+    min: 5,
+    max: 7,
+    note: "Lean & visual: prefer FEWER slides with breathing room; keep only the essential points.",
+  },
+  standard: {
+    min: 6,
+    max: 8,
+    note: "Balanced coverage — the default rhythm.",
+  },
+  detailed: {
+    min: 7,
+    max: 9,
+    note: "Thorough: split the material into MORE focused slides; add supporting cards/steps where it helps comprehension.",
+  },
+};
+
 export function buildModulePlanPrompt(
   courseTitle: string,
   moduleTitle: string,
@@ -213,7 +236,9 @@ export function buildModulePlanPrompt(
   outline: string[] = [],
   moduleIndex = 0,
   covered: string[] = [],
+  density: Density = "standard",
 ): string {
+  const dspec = DENSITY_SPECS[density] ?? DENSITY_SPECS.standard;
   // NOTE: deliberately ZERO domain rules. We describe slide *shapes* and
   // universal visual-design quality, and let the model map ANY topic onto them.
   const trimmed = condenseForPlanning(moduleContent, 4000);
@@ -269,11 +294,11 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - MAX 5 bullets/items per slide. If a topic needs more, split it across 2 slides
   or use "cards"/"steps". Never produce a wall of long sentences.
 - BE CONCISE: your JSON must be SHORTER than the source. SUMMARIZE for slides —
-  do not elaborate, do not re-teach the whole text. HARD LIMIT: 6 slides total.
+  do not elaborate, do not re-teach the whole text. HARD LIMIT: ${dspec.max} slides total.
 - Code fields: at most 10 lines. Never paste a long script.
 - No trailing "...", no dangling preposition; every point ends cleanly.
 - Vary the slide types across the module — avoid many "bullets" slides in a row.
-- 3 to 6 slides per module. Prefer fewer, denser-in-meaning slides.
+- ${dspec.min} to ${dspec.max} slides per module. ${dspec.note}
 - The LAST slide MUST be "closing" with 3–5 key takeaways as bullets. These
   takeaways must be SPECIFIC to THIS module's content — not generic restatements
   of the whole course's themes.
@@ -431,6 +456,7 @@ export async function planModuleSlides(
   outline: string[] = [],
   moduleIndex = 0,
   covered: string[] = [],
+  density: Density = "standard",
 ): Promise<SlideSpec[] | null> {
   const prompt = buildModulePlanPrompt(
     courseTitle,
@@ -440,6 +466,7 @@ export async function planModuleSlides(
     outline,
     moduleIndex,
     covered,
+    density,
   );
   const body = JSON.stringify({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -833,6 +860,18 @@ function isGenericTitle(title: string): boolean {
   return GENERIC_TITLE_RE.test(title);
 }
 
+// The planner often opens a module with a title like "Bem-vindo ao Módulo 1:
+// <nome>", which duplicates the module name already shown in the divider and the
+// slide eyebrow right above it. Strip the "Bem-vindo ao Módulo X:" / "Welcome to
+// Module X:" scaffolding and keep the real subject. Topic-agnostic.
+const MODULE_INTRO_PREFIX_RE =
+  /^\s*(?:bem[-\s]?vindos?\s+ao|welcome\s+to(?:\s+the)?)\s+m[óo]dul[oe]\s*\d*\s*[:\-–—]\s*/i;
+function stripModuleIntroPrefix(title: string): string {
+  const cleaned = title.replace(MODULE_INTRO_PREFIX_RE, "").trim();
+  // Never blank out a title; if the prefix WAS the whole title, keep original.
+  return cleaned.length >= 3 ? cleaned : title;
+}
+
 /**
  * Builds the full deck. Tries the structured planner per module (sequentially,
  * so each module can de-duplicate against earlier ones) and falls back
@@ -845,8 +884,9 @@ export async function buildDeck(
   modules: ModuleInput[],
   language: string,
   geminiKey: string | null,
-  opts: { batchSize?: number } = {},
+  opts: { batchSize?: number; density?: Density } = {},
 ): Promise<{ deck: PlannedDeck; plannedCount: number; fallbackCount: number }> {
+  const density = opts.density ?? "standard";
   // Modules are planned SEQUENTIALLY (not the old 3-wide concurrent batches) so
   // each call can receive the slide titles already produced by earlier modules
   // and skip duplicate subtopics. This is the cross-module de-duplication fix:
@@ -872,6 +912,7 @@ export async function buildDeck(
         outline,
         idx,
         covered,
+        density,
       );
     }
     if (slides && slides.length) {
@@ -879,6 +920,12 @@ export async function buildDeck(
     } else {
       slides = fallbackModuleSlides(m.title, m.content);
       fallbackCount++;
+    }
+    // Drop the redundant "Bem-vindo ao Módulo X:" prefix the planner likes to
+    // put on the opening slide (the module name is already in the divider +
+    // eyebrow right above it).
+    for (const sp of slides) {
+      if (sp.title) sp.title = stripModuleIntroPrefix(sp.title);
     }
     // Feed this module's substantive slide titles into the ledger for the next
     // modules. Skip generic recap/intro slides so we don't suppress every

@@ -23,7 +23,7 @@ import { normalizeDeck } from "./validate.ts";
 import { renderDeck } from "./render.ts";
 import { resolveImages } from "./images.ts";
 
-const ENGINE_VERSION = "7.5.0";
+const ENGINE_VERSION = "7.6.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,6 +87,7 @@ Deno.serve(async (req: Request) => {
     const {
       course_id,
       palette = "default",
+      density = "standard",
       includeImages = true,
       footerBrand = "EduGenAI",
       language = "Português (Brasil)",
@@ -121,7 +122,7 @@ Deno.serve(async (req: Request) => {
 
     const t0 = Date.now();
     console.log(
-      `[V7] ENGINE=${ENGINE_VERSION} "${courseTitle}" modules=${modules.length} llm=${!!geminiKey} images=${includeImages && !!pexelsKey}`,
+      `[V7] ENGINE=${ENGINE_VERSION} "${courseTitle}" modules=${modules.length} llm=${!!geminiKey} images=${includeImages && !!pexelsKey} density=${density}`,
     );
 
     // 1. Build deck (structured planner + deterministic fallback)
@@ -131,6 +132,7 @@ Deno.serve(async (req: Request) => {
       modules,
       language,
       geminiKey,
+      { density },
     );
 
     // 2. Universal normalization (graceful, never vetoes)
