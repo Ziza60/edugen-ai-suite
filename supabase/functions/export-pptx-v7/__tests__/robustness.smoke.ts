@@ -109,5 +109,32 @@ const { deck: cd } = normalizeDeck(codeDeck);
 const codeText = cd.modules[0].slides.find((s) => s.kind === "code")?.code?.text ?? "";
 check("code placeholder lines stripped", !/\.{2,}|…/.test(codeText) && codeText.includes("CREATE TABLE"));
 
+// v7.1.4 — single-line multi-statement code gets line breaks back
+const oneLine: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [{ kind: "code", title: "E",
+    code: { language: "sql", text: "CREATE DATABASE d; INSERT INTO t VALUES (1); SELECT * FROM t;" } }] }],
+};
+const { deck: ol } = normalizeDeck(oneLine);
+const olText = ol.modules[0].slides[0].code?.text ?? "";
+check("single-line code split into multiple lines", olText.split("\n").length >= 3);
+
+// v7.1.4 — a takeaway-like section ("Principais Aprendizados") is the closing,
+// not duplicated as bullet slides; and no orphan "(cont.)" with one item
+const dedupMd = `## M
+### Conteúdo
+- Ponto A.
+- Ponto B.
+### Principais Aprendizados
+- Aprendeu X.
+- Aprendeu Y.
+- Aprendeu Z.`;
+const ds = fallbackModuleSlides("M", dedupMd);
+const closings = ds.filter((s) => s.kind === "closing");
+check("exactly one closing slide", closings.length === 1);
+const conts = ds.filter((s) => /\(cont\.\)/.test(s.title));
+const orphanCont = conts.some((s) => (s.bullets?.length ?? 0) <= 1);
+check("no orphan (cont.) slide with a single bullet", !orphanCont);
+
 console.log(failures === 0 ? "\nALL PASS ✓" : `\n${failures} CHECK(S) FAILED ✗`);
 if (failures > 0) process.exit(1);
