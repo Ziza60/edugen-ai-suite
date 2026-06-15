@@ -210,7 +210,7 @@ export function buildModulePlanPrompt(
 ): string {
   // NOTE: deliberately ZERO domain rules. We describe slide *shapes* and
   // universal visual-design quality, and let the model map ANY topic onto them.
-  const trimmed = condenseForPlanning(moduleContent, 5000);
+  const trimmed = condenseForPlanning(moduleContent, 4000);
   return `You are a world-class presentation designer (think Gamma / Apple Keynote).
 Turn the module below into a sequence of clean, render-ready slides.
 
@@ -236,6 +236,9 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
   is a paragraph, extract its key point; do NOT copy the sentence verbatim.
 - MAX 5 bullets/items per slide. If a topic needs more, split it across 2 slides
   or use "cards"/"steps". Never produce a wall of long sentences.
+- BE CONCISE: your JSON must be SHORTER than the source. SUMMARIZE for slides —
+  do not elaborate, do not re-teach the whole text. HARD LIMIT: 6 slides total.
+- Code fields: at most 10 lines. Never paste a long script.
 - No trailing "...", no dangling preposition; every point ends cleanly.
 - Vary the slide types across the module — avoid many "bullets" slides in a row.
 - 3 to 6 slides per module. Prefer fewer, denser-in-meaning slides.
@@ -332,15 +335,18 @@ export async function planModuleSlides(
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.35,
-      maxOutputTokens: 10000,
+      // Headroom so dense (SQL/code) modules FINISH (finishReason=STOP) instead
+      // of truncating. Generation time scales with tokens actually produced, not
+      // the cap, so a higher ceiling costs ~nothing for normal modules.
+      maxOutputTokens: 16000,
       responseMimeType: "application/json",
       responseSchema: SLIDE_RESPONSE_SCHEMA,
     },
   });
 
-  // Up to 3 attempts: transient failures (429 rate-limit / 5xx / empty) on the
-  // shared Gemini key are the main cause of modules dropping to fallback. A
-  // short exponential backoff recovers most of them.
+  // Retry ONLY transient failures (429 / 5xx / empty / network). A truncated
+  // response (MAX_TOKENS) is NOT retried — retrying just truncates again and
+  // burns the time budget; we salvage what we can, else fall back immediately.
   const MAX_ATTEMPTS = 3;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const last = attempt === MAX_ATTEMPTS;
@@ -406,12 +412,9 @@ export async function planModuleSlides(
       }
 
       console.warn(
-        `[V7-PLAN] "${moduleTitle}" attempt ${attempt}/${MAX_ATTEMPTS} no slides (finishReason=${finishReason} textLen=${text.length})${last ? " → fallback" : " → retry"}`,
+        `[V7-PLAN] "${moduleTitle}" attempt ${attempt} no slides (finishReason=${finishReason} textLen=${text.length}) → fallback`,
       );
-      if (!last) {
-        await sleep(backoff);
-        continue;
-      }
+      // Truncation / unsalvageable: do NOT retry (it just truncates again).
       return null;
     } catch (err) {
       console.warn(
