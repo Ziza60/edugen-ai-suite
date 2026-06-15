@@ -102,6 +102,7 @@ export const SLIDE_RESPONSE_SCHEMA = {
   properties: {
     slides: {
       type: "array",
+      maxItems: 7,
       items: {
         type: "object",
         properties: {
@@ -121,9 +122,10 @@ export const SLIDE_RESPONSE_SCHEMA = {
           },
           title: { type: "string" },
           subtitle: { type: "string" },
-          bullets: { type: "array", items: { type: "string" } },
+          bullets: { type: "array", maxItems: 6, items: { type: "string" } },
           cards: {
             type: "array",
+            maxItems: 4,
             items: {
               type: "object",
               properties: {
@@ -135,6 +137,7 @@ export const SLIDE_RESPONSE_SCHEMA = {
           },
           steps: {
             type: "array",
+            maxItems: 5,
             items: {
               type: "object",
               properties: {
@@ -148,14 +151,14 @@ export const SLIDE_RESPONSE_SCHEMA = {
             type: "object",
             properties: {
               heading: { type: "string" },
-              items: { type: "array", items: { type: "string" } },
+              items: { type: "array", maxItems: 5, items: { type: "string" } },
             },
           },
           right: {
             type: "object",
             properties: {
               heading: { type: "string" },
-              items: { type: "array", items: { type: "string" } },
+              items: { type: "array", maxItems: 5, items: { type: "string" } },
             },
           },
           quote: { type: "string" },
@@ -299,7 +302,13 @@ export function salvageSlidesFromTruncatedJson(text: string): SlideSpec[] {
         if (depth === 0) { j++; break; }
       }
     }
-    if (depth !== 0) break; // last object was cut off → stop here
+    if (depth !== 0) {
+      // Last object was cut off. Try to recover its complete leading fields
+      // (kind/title/etc.) so we still get a slide instead of nothing.
+      const partial = recoverPartialObject(text.slice(i));
+      if (partial) out.push(partial);
+      break;
+    }
     try {
       const obj = JSON.parse(text.slice(i, j));
       if (obj && typeof obj === "object" && obj.kind && obj.title) {
@@ -309,6 +318,32 @@ export function salvageSlidesFromTruncatedJson(text: string): SlideSpec[] {
     i = j;
   }
   return out;
+}
+
+/** Recover the complete leading key:value pairs of a truncated object. */
+function recoverPartialObject(s: string): SlideSpec | null {
+  const open = s.indexOf("{");
+  if (open === -1) return null;
+  let depth = 0, inStr = false, esc = false, lastSafe = -1;
+  for (let j = open; j < s.length; j++) {
+    const c = s[j];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") depth--;
+    else if (c === "," && depth === 1) lastSafe = j; // end of a top-level pair
+  }
+  if (lastSafe === -1) return null;
+  try {
+    const o = JSON.parse(s.slice(open, lastSafe) + "}");
+    if (o && typeof o === "object" && o.kind && o.title) return o as SlideSpec;
+  } catch { /* unrecoverable */ }
+  return null;
 }
 
 /**
@@ -335,10 +370,10 @@ export async function planModuleSlides(
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.35,
-      // Headroom so dense (SQL/code) modules FINISH (finishReason=STOP) instead
-      // of truncating. Generation time scales with tokens actually produced, not
-      // the cap, so a higher ceiling costs ~nothing for normal modules.
-      maxOutputTokens: 16000,
+      // With maxItems hard-capping the structure (schema), output is naturally
+      // small, so a low ceiling is plenty and keeps each call fast. If a model
+      // still overflows, salvageSlidesFromTruncatedJson recovers the slides.
+      maxOutputTokens: 8000,
       responseMimeType: "application/json",
       responseSchema: SLIDE_RESPONSE_SCHEMA,
     },
