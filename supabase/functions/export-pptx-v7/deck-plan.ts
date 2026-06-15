@@ -325,22 +325,32 @@ export async function planModuleSlides(
       moduleContent,
       language,
     );
-    const res = await fetch(`${GEMINI_PLAN_URL}?key=${geminiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.35,
-          // gemini-2.5-flash supports a large output budget (~64k). The cap
-          // here is generous so verbose (SQL/code) modules don't get cut; if a
-          // cut still happens, salvageSlidesFromTruncatedJson recovers it.
-          maxOutputTokens: 24000,
-          responseMimeType: "application/json",
-          responseSchema: SLIDE_RESPONSE_SCHEMA,
-        },
-      }),
-    });
+    // Per-call timeout: a single slow module must never stall the whole export
+    // into a gateway 504 — it falls back instead.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    let res: Response;
+    try {
+      res = await fetch(`${GEMINI_PLAN_URL}?key=${geminiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.35,
+            // The tighter prompt keeps each module's JSON small (~2–4k tokens),
+            // so a modest cap bounds per-call time and avoids 504s. Any rare
+            // truncation is recovered by salvageSlidesFromTruncatedJson.
+            maxOutputTokens: 10000,
+            responseMimeType: "application/json",
+            responseSchema: SLIDE_RESPONSE_SCHEMA,
+          },
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
     if (!res.ok) {
       console.warn(
         `[V7-PLAN] module "${moduleTitle}" LLM ${res.status} → fallback`,
@@ -666,7 +676,9 @@ export async function buildDeck(
   geminiKey: string | null,
   opts: { batchSize?: number } = {},
 ): Promise<{ deck: PlannedDeck; plannedCount: number; fallbackCount: number }> {
-  const batchSize = opts.batchSize ?? 3;
+  // Plan all modules concurrently (capped) so total wall-time ≈ the slowest
+  // single call, not the sum — critical to stay under the gateway timeout.
+  const batchSize = opts.batchSize ?? 5;
   const out: DeckModule[] = new Array(modules.length);
   let plannedCount = 0;
   let fallbackCount = 0;
