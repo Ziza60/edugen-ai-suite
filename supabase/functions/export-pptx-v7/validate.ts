@@ -94,13 +94,17 @@ function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
 const CODE_PLACEHOLDER_LINE_RE = /^\s*(?:#|--|\/\/)?\s*(?:\.{2,}|…)\s*$/;
 
 function normCode(code: SlideSpec["code"]): SlideSpec["code"] | undefined {
-  if (!code || !code.text) return undefined;
-  let lines = String(code.text).replace(/\r\n/g, "\n").split("\n");
+  // Tolerate a bare string: some planner outputs return code as "..." instead
+  // of { text, language }. Coerce so the slide isn't needlessly dropped.
+  const c: { language?: string; text?: string } | undefined =
+    typeof code === "string" ? { text: code } : code;
+  if (!c || !c.text) return undefined;
+  let lines = String(c.text).replace(/\r\n/g, "\n").split("\n");
   // Safety net: if the model returned multi-statement code on a single line,
   // restore a line break after each ";" so it doesn't render as a wall.
   if (lines.filter((l) => l.trim()).length <= 1 &&
-      (code.text.match(/;/g)?.length ?? 0) >= 2) {
-    lines = code.text.replace(/;\s*/g, ";\n").split("\n");
+      (c.text.match(/;/g)?.length ?? 0) >= 2) {
+    lines = c.text.replace(/;\s*/g, ";\n").split("\n");
   }
   // Strip placeholder/ellipsis lines ("# ...", "-- ...", "...") left by input
   // condensation or the model — they make the example look unfinished.
@@ -112,7 +116,7 @@ function normCode(code: SlideSpec["code"]): SlideSpec["code"] | undefined {
   }
   const text = lines.join("\n");
   if (!text.trim()) return undefined;
-  return { language: (code.language || "").toLowerCase(), text };
+  return { language: (c.language || "").toLowerCase(), text };
 }
 
 /** A slide is renderable if its kind has the minimum content it needs. */
