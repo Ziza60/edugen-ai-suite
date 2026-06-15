@@ -431,12 +431,34 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const rows = Math.ceil(n / cols);
   const gap = 0.3;
   const cardW = (CW - gap * (cols - 1)) / cols;
-  const cardH = (CONTENT_H - gap * (rows - 1)) / rows;
+  const fullCardH = (CONTENT_H - gap * (rows - 1)) / rows;
+
+  // Size cards to their CONTENT, not the full slide height, then center the
+  // block vertically. Otherwise a single row of short cards stretches into
+  // tall, mostly-empty boxes (the #19/#26 cohesion bug) while multi-row grids
+  // (e.g. 2x2) look fine. Capping at fullCardH keeps dense grids unchanged.
+  const innerW = cardW - 0.5;
+  const headPerLine = Math.max(10, innerW * 7); // ~chars/line @15pt bold
+  const bodyPerLine = Math.max(12, innerW * 9); // ~chars/line @12pt
+  let maxHeadLines = 1;
+  let maxBodyLines = 0;
+  for (const c of cards) {
+    maxHeadLines = Math.max(maxHeadLines, Math.ceil((c.heading?.length || 1) / headPerLine));
+    if (c.body) maxBodyLines = Math.max(maxBodyLines, Math.ceil(c.body.length / bodyPerLine));
+  }
+  const padT = 0.2, numH = 0.36, headLH = 0.27, bodyLH = 0.2, midGap = 0.1, padB = 0.22;
+  const headBoxH = maxHeadLines * headLH;
+  const bodyBoxH = maxBodyLines ? maxBodyLines * bodyLH + 0.1 : 0;
+  const naturalH = padT + numH + headBoxH + (maxBodyLines ? midGap + bodyBoxH : 0) + padB;
+  const cardH = Math.min(fullCardH, Math.max(1.3, naturalH));
+  const blockH = rows * cardH + gap * (rows - 1);
+  const startY = CONTENT_Y + Math.max(0, (CONTENT_H - blockH) / 2);
+
   cards.forEach((c, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = ML + col * (cardW + gap);
-    const y = CONTENT_Y + row * (cardH + gap);
+    const y = startY + row * (cardH + gap);
     slide.addShape("roundRect", {
       x,
       y,
@@ -456,9 +478,9 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     });
     slide.addText(String(i + 1).padStart(2, "0"), {
       x: x + 0.25,
-      y: y + 0.2,
+      y: y + padT,
       w: cardW - 0.5,
-      h: 0.4,
+      h: numH,
       fontFace: FONT_TITLE,
       fontSize: 18,
       bold: true,
@@ -466,9 +488,9 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     });
     slide.addText(c.heading, {
       x: x + 0.25,
-      y: y + 0.62,
+      y: y + padT + numH,
       w: cardW - 0.5,
-      h: c.body ? 0.6 : cardH - 0.8,
+      h: c.body ? headBoxH : cardH - padT - numH - padB,
       fontFace: FONT_BODY,
       fontSize: 15,
       bold: true,
@@ -478,9 +500,9 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     if (c.body) {
       slide.addText(c.body, {
         x: x + 0.25,
-        y: y + 1.2,
+        y: y + padT + numH + headBoxH + midGap,
         w: cardW - 0.5,
-        h: cardH - 1.35,
+        h: bodyBoxH,
         fontFace: FONT_BODY,
         fontSize: 12,
         color: d.subtext,
