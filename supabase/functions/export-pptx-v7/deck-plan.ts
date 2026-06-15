@@ -205,6 +205,29 @@ export function condenseForPlanning(md: string, maxChars = 6000): string {
   return condensed.length > maxChars ? condensed.slice(0, maxChars) : condensed;
 }
 
+export type Density = "compact" | "standard" | "detailed";
+// Density maps directly to the per-module slide-count band advertised in the
+// export dialog (PptxExportDialog DENSITY_LABELS). The engine has no hard slide
+// cap (only per-slide content caps), so this band is what actually makes the
+// "Compacto / Padrão / Detalhado" control change the deck.
+const DENSITY_SPECS: Record<Density, { min: number; max: number; note: string }> = {
+  compact: {
+    min: 5,
+    max: 7,
+    note: "Lean & visual: prefer FEWER slides with breathing room; keep only the essential points.",
+  },
+  standard: {
+    min: 6,
+    max: 8,
+    note: "Balanced coverage — the default rhythm.",
+  },
+  detailed: {
+    min: 7,
+    max: 9,
+    note: "Thorough: split the material into MORE focused slides; add supporting cards/steps where it helps comprehension.",
+  },
+};
+
 export function buildModulePlanPrompt(
   courseTitle: string,
   moduleTitle: string,
@@ -212,7 +235,10 @@ export function buildModulePlanPrompt(
   language: string,
   outline: string[] = [],
   moduleIndex = 0,
+  covered: string[] = [],
+  density: Density = "standard",
 ): string {
+  const dspec = DENSITY_SPECS[density] ?? DENSITY_SPECS.standard;
   // NOTE: deliberately ZERO domain rules. We describe slide *shapes* and
   // universal visual-design quality, and let the model map ANY topic onto them.
   const trimmed = condenseForPlanning(moduleContent, 4000);
@@ -231,13 +257,24 @@ re-explain concepts that belong to the other modules listed above; assume the
 audience will see those separately. Do not restate the course's overarching
 premise on its own slide unless THIS module is specifically about it.\n`
     : "";
+  // Running ledger of slide titles already produced by EARLIER modules. Titles
+  // alone (the v1 scope discipline) weren't enough — the source content of
+  // several modules overlaps, so each call faithfully re-rendered the same
+  // subtopic (e.g. "Documentos Pós-Planejamento" appeared in 3 modules). Naming
+  // the exact slides already made lets the model actually skip the duplicates.
+  const coveredBlock = covered.length
+    ? `\nALREADY COVERED in earlier modules (do NOT repeat these — even if this
+module's source text overlaps, omit the duplicate or reference it in one line
+instead of a full slide):\n` +
+      covered.slice(0, 40).map((t) => `  • ${t}`).join("\n") + "\n"
+    : "";
   return `You are a world-class presentation designer (think Gamma / Apple Keynote).
 Turn the module below into a sequence of clean, render-ready slides.
 
 COURSE: "${courseTitle}"
 MODULE: "${moduleTitle}"
 OUTPUT LANGUAGE: ${language}
-${outlineBlock}
+${outlineBlock}${coveredBlock}
 PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premium:
 - "bullets"  → a single concept with 3–5 short supporting points.
 - "cards"    → 2–4 parallel items (types, pillars, components) each with a 1-line body.
@@ -257,11 +294,11 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - MAX 5 bullets/items per slide. If a topic needs more, split it across 2 slides
   or use "cards"/"steps". Never produce a wall of long sentences.
 - BE CONCISE: your JSON must be SHORTER than the source. SUMMARIZE for slides —
-  do not elaborate, do not re-teach the whole text. HARD LIMIT: 6 slides total.
+  do not elaborate, do not re-teach the whole text. HARD LIMIT: ${dspec.max} slides total.
 - Code fields: at most 10 lines. Never paste a long script.
 - No trailing "...", no dangling preposition; every point ends cleanly.
 - Vary the slide types across the module — avoid many "bullets" slides in a row.
-- 3 to 6 slides per module. Prefer fewer, denser-in-meaning slides.
+- ${dspec.min} to ${dspec.max} slides per module. ${dspec.note}
 - The LAST slide MUST be "closing" with 3–5 key takeaways as bullets. These
   takeaways must be SPECIFIC to THIS module's content — not generic restatements
   of the whole course's themes.
@@ -418,6 +455,8 @@ export async function planModuleSlides(
   geminiKey: string,
   outline: string[] = [],
   moduleIndex = 0,
+  covered: string[] = [],
+  density: Density = "standard",
 ): Promise<SlideSpec[] | null> {
   const prompt = buildModulePlanPrompt(
     courseTitle,
@@ -426,6 +465,8 @@ export async function planModuleSlides(
     language,
     outline,
     moduleIndex,
+    covered,
+    density,
   );
   const body = JSON.stringify({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -810,10 +851,32 @@ export function fallbackModuleSlides(
 // 4. DECK ASSEMBLY
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Recap/intro/closing slides legitimately recur once per module, so they must
+// NOT enter the de-dup ledger (otherwise module 2's closing would suppress
+// module 3's). Matches common PT/EN scaffolding titles, topic-agnostically.
+const GENERIC_TITLE_RE =
+  /(principais\s+(aprendizados|conclus|pontos)|aprendizados|conclus[õo]es|objetivos|vis[ãa]o\s+geral|introdu[çc][ãa]o|bem[-\s]?vindo|resumo|s[íi]ntese|recapitula|key\s+takeaways|takeaways|summary|overview|objectives|welcome|introduction|conclusion)/i;
+function isGenericTitle(title: string): boolean {
+  return GENERIC_TITLE_RE.test(title);
+}
+
+// The planner often opens a module with a title like "Bem-vindo ao Módulo 1:
+// <nome>", which duplicates the module name already shown in the divider and the
+// slide eyebrow right above it. Strip the "Bem-vindo ao Módulo X:" / "Welcome to
+// Module X:" scaffolding and keep the real subject. Topic-agnostic.
+const MODULE_INTRO_PREFIX_RE =
+  /^\s*(?:bem[-\s]?vindos?\s+ao|welcome\s+to(?:\s+the)?)\s+m[óo]dul[oe]\s*\d*\s*[:\-–—]\s*/i;
+function stripModuleIntroPrefix(title: string): string {
+  const cleaned = title.replace(MODULE_INTRO_PREFIX_RE, "").trim();
+  // Never blank out a title; if the prefix WAS the whole title, keep original.
+  return cleaned.length >= 3 ? cleaned : title;
+}
+
 /**
- * Builds the full deck. Tries the structured planner per module (in small
- * concurrent batches) and falls back deterministically per module on failure.
- * NEVER throws — always returns a renderable deck.
+ * Builds the full deck. Tries the structured planner per module (sequentially,
+ * so each module can de-duplicate against earlier ones) and falls back
+ * deterministically per module on failure. NEVER throws — always returns a
+ * renderable deck.
  */
 export async function buildDeck(
   courseTitle: string,
@@ -821,43 +884,57 @@ export async function buildDeck(
   modules: ModuleInput[],
   language: string,
   geminiKey: string | null,
-  opts: { batchSize?: number } = {},
+  opts: { batchSize?: number; density?: Density } = {},
 ): Promise<{ deck: PlannedDeck; plannedCount: number; fallbackCount: number }> {
-  // Plan modules concurrently but capped at 3 — firing all at once overloaded
-  // the shared Gemini key (429s → fallback). 3-wide + retry keeps wall-time low
-  // while staying within rate limits.
-  const batchSize = opts.batchSize ?? 3;
+  const density = opts.density ?? "standard";
+  // Modules are planned SEQUENTIALLY (not the old 3-wide concurrent batches) so
+  // each call can receive the slide titles already produced by earlier modules
+  // and skip duplicate subtopics. This is the cross-module de-duplication fix:
+  // passing only module titles wasn't enough because the source content itself
+  // overlaps. Trade-off: we lose parallelism, but the export stays well within
+  // the 480s timeout and the deck no longer repeats whole slides across modules.
   const out: DeckModule[] = new Array(modules.length);
   const outline = modules.map((m) => m.title); // for cross-module scope discipline
+  const covered: string[] = []; // running ledger of slide titles already made
   let plannedCount = 0;
   let fallbackCount = 0;
 
-  for (let start = 0; start < modules.length; start += batchSize) {
-    const batch = modules.slice(start, start + batchSize);
-    await Promise.all(
-      batch.map(async (m, j) => {
-        const idx = start + j;
-        let slides: SlideSpec[] | null = null;
-        if (geminiKey) {
-          slides = await planModuleSlides(
-            courseTitle,
-            m.title,
-            m.content,
-            language,
-            geminiKey,
-            outline,
-            idx,
-          );
-        }
-        if (slides && slides.length) {
-          plannedCount++;
-        } else {
-          slides = fallbackModuleSlides(m.title, m.content);
-          fallbackCount++;
-        }
-        out[idx] = { title: m.title, slides };
-      }),
-    );
+  for (let idx = 0; idx < modules.length; idx++) {
+    const m = modules[idx];
+    let slides: SlideSpec[] | null = null;
+    if (geminiKey) {
+      slides = await planModuleSlides(
+        courseTitle,
+        m.title,
+        m.content,
+        language,
+        geminiKey,
+        outline,
+        idx,
+        covered,
+        density,
+      );
+    }
+    if (slides && slides.length) {
+      plannedCount++;
+    } else {
+      slides = fallbackModuleSlides(m.title, m.content);
+      fallbackCount++;
+    }
+    // Drop the redundant "Bem-vindo ao Módulo X:" prefix the planner likes to
+    // put on the opening slide (the module name is already in the divider +
+    // eyebrow right above it).
+    for (const sp of slides) {
+      if (sp.title) sp.title = stripModuleIntroPrefix(sp.title);
+    }
+    // Feed this module's substantive slide titles into the ledger for the next
+    // modules. Skip generic recap/intro slides so we don't suppress every
+    // module's own closing or objectives slide.
+    for (const sp of slides) {
+      const title = (sp.title || "").trim();
+      if (title.length >= 6 && !isGenericTitle(title)) covered.push(title);
+    }
+    out[idx] = { title: m.title, slides };
   }
 
   return {
