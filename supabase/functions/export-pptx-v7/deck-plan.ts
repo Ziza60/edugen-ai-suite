@@ -210,17 +210,34 @@ export function buildModulePlanPrompt(
   moduleTitle: string,
   moduleContent: string,
   language: string,
+  outline: string[] = [],
+  moduleIndex = 0,
 ): string {
   // NOTE: deliberately ZERO domain rules. We describe slide *shapes* and
   // universal visual-design quality, and let the model map ANY topic onto them.
   const trimmed = condenseForPlanning(moduleContent, 4000);
+  // Cross-module awareness: each module is planned in isolation, so without the
+  // course outline the model re-derives shared themes in every module (e.g. it
+  // re-explains the same overarching premise) → a repetitive deck. We give it
+  // its position + the other module titles and tell it to stay in its lane.
+  const others = outline.filter((_, i) => i !== moduleIndex);
+  const outlineBlock = outline.length > 1
+    ? `\nCOURSE OUTLINE (this is module ${moduleIndex + 1} of ${outline.length}):\n` +
+      outline.map((t, i) =>
+        `  ${i + 1}. ${t}${i === moduleIndex ? "  ← THIS MODULE" : ""}`
+      ).join("\n") +
+      `\nSCOPE DISCIPLINE: cover ONLY what is unique to THIS module. Do NOT
+re-explain concepts that belong to the other modules listed above; assume the
+audience will see those separately. Do not restate the course's overarching
+premise on its own slide unless THIS module is specifically about it.\n`
+    : "";
   return `You are a world-class presentation designer (think Gamma / Apple Keynote).
 Turn the module below into a sequence of clean, render-ready slides.
 
 COURSE: "${courseTitle}"
 MODULE: "${moduleTitle}"
 OUTPUT LANGUAGE: ${language}
-
+${outlineBlock}
 PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premium:
 - "bullets"  → a single concept with 3–5 short supporting points.
 - "cards"    → 2–4 parallel items (types, pillars, components) each with a 1-line body.
@@ -245,7 +262,9 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - No trailing "...", no dangling preposition; every point ends cleanly.
 - Vary the slide types across the module — avoid many "bullets" slides in a row.
 - 3 to 6 slides per module. Prefer fewer, denser-in-meaning slides.
-- The LAST slide MUST be "closing" with 3–5 key takeaways as bullets.
+- The LAST slide MUST be "closing" with 3–5 key takeaways as bullets. These
+  takeaways must be SPECIFIC to THIS module's content — not generic restatements
+  of the whole course's themes.
 - ALWAYS add a short English "imageQuery" (2–4 words) on the FIRST slide of the
   module and on any section/quote/stat/cards slide. Omit it for code/compare.
 - For code slides, put COMPLETE, runnable code in the "code" field, with a REAL
@@ -397,12 +416,16 @@ export async function planModuleSlides(
   moduleContent: string,
   language: string,
   geminiKey: string,
+  outline: string[] = [],
+  moduleIndex = 0,
 ): Promise<SlideSpec[] | null> {
   const prompt = buildModulePlanPrompt(
     courseTitle,
     moduleTitle,
     moduleContent,
     language,
+    outline,
+    moduleIndex,
   );
   const body = JSON.stringify({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -805,6 +828,7 @@ export async function buildDeck(
   // while staying within rate limits.
   const batchSize = opts.batchSize ?? 3;
   const out: DeckModule[] = new Array(modules.length);
+  const outline = modules.map((m) => m.title); // for cross-module scope discipline
   let plannedCount = 0;
   let fallbackCount = 0;
 
@@ -821,6 +845,8 @@ export async function buildDeck(
             m.content,
             language,
             geminiKey,
+            outline,
+            idx,
           );
         }
         if (slides && slides.length) {
