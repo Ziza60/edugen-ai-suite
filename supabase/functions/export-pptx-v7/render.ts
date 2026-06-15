@@ -237,30 +237,36 @@ function renderCover(slide: AnySlide, deck: PlannedDeck, d: Palette, brand: stri
     line: { type: "none" },
   });
   const tw = hasImg ? 6.6 : 11.0;
+  // Tier the title size by length AND auto-shrink to fit its box, so a long
+  // course title can't overflow into the subtitle (the cover-overlap bug).
+  const tl = deck.courseTitle.length;
+  const titleSize = tl > 72 ? 28 : tl > 56 ? 32 : tl > 40 ? 38 : 46;
   slide.addText(deck.courseTitle, {
     x: ML,
-    y: 2.8,
+    y: 2.7,
     w: tw,
-    h: 2.0,
+    h: 2.3,
     fontFace: FONT_TITLE,
-    fontSize: deck.courseTitle.length > 48 ? 36 : 46,
+    fontSize: titleSize,
     bold: true,
     color: "FFFFFF",
     align: "left",
     valign: "top",
     lineSpacingMultiple: 1.02,
+    fit: "shrink",
   });
   if (deck.subtitle) {
     slide.addText(deck.subtitle, {
       x: ML,
-      y: 4.85,
+      y: 5.15, // below the (taller) title box; boxes no longer overlap
       w: tw,
-      h: 1.0,
+      h: 1.4,
       fontFace: FONT_BODY,
-      fontSize: 16,
+      fontSize: 15,
       color: "C9D4E0",
       align: "left",
       valign: "top",
+      fit: "shrink",
     });
   }
   slide.addText(brand.toUpperCase(), {
