@@ -48,7 +48,23 @@ async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = 
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  const raw: string = data.choices?.[0]?.message?.content || "";
+
+  // Guard: Gemini sometimes wraps plain-text responses in a JSON object
+  // e.g. { "content": "## Title\n\n..." } — unwrap it silently.
+  if (!isJson && raw.trimStart().startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw);
+      const unwrapped: string =
+        parsed.content ?? parsed.text ?? parsed.markdown ?? parsed.result ?? "";
+      if (unwrapped && typeof unwrapped === "string") {
+        console.warn(`[generate-course] callAI: unwrapped accidental JSON wrapper (key=${Object.keys(parsed)[0]})`);
+        return unwrapped;
+      }
+    } catch { /* not valid JSON — return raw as-is */ }
+  }
+
+  return raw;
 }
 
 
