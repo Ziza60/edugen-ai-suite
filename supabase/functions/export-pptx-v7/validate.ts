@@ -96,6 +96,12 @@ const CODE_PLACEHOLDER_LINE_RE = /^\s*(?:#|--|\/\/)?\s*(?:\.{2,}|…)\s*$/;
 function normCode(code: SlideSpec["code"]): SlideSpec["code"] | undefined {
   if (!code || !code.text) return undefined;
   let lines = String(code.text).replace(/\r\n/g, "\n").split("\n");
+  // Safety net: if the model returned multi-statement code on a single line,
+  // restore a line break after each ";" so it doesn't render as a wall.
+  if (lines.filter((l) => l.trim()).length <= 1 &&
+      (code.text.match(/;/g)?.length ?? 0) >= 2) {
+    lines = code.text.replace(/;\s*/g, ";\n").split("\n");
+  }
   // Strip placeholder/ellipsis lines ("# ...", "-- ...", "...") left by input
   // condensation or the model — they make the example look unfinished.
   lines = lines.filter((l) => !CODE_PLACEHOLDER_LINE_RE.test(l));
@@ -189,16 +195,20 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
       base.bullets = [];
       return hasMinimumContent(base) ? [base] : [];
     }
-    if (all.length <= LIMITS.MAX_BULLETS) {
+    // Up to 6 fit on one slide (font auto-shrinks); only split beyond that, and
+    // split into BALANCED chunks so we never get a "(cont.)" with a single item.
+    if (all.length <= 6) {
       base.bullets = all;
       return [base];
     }
+    const slidesNeeded = Math.ceil(all.length / LIMITS.MAX_BULLETS);
+    const per = Math.ceil(all.length / slidesNeeded);
     const out: SlideSpec[] = [];
-    for (let i = 0; i < all.length; i += LIMITS.MAX_BULLETS) {
+    for (let i = 0; i < all.length; i += per) {
       out.push({
         ...base,
         title: i === 0 ? base.title : `${base.title} (cont.)`,
-        bullets: all.slice(i, i + LIMITS.MAX_BULLETS),
+        bullets: all.slice(i, i + per),
       });
     }
     return out;

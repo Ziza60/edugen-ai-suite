@@ -210,7 +210,7 @@ export function buildModulePlanPrompt(
 ): string {
   // NOTE: deliberately ZERO domain rules. We describe slide *shapes* and
   // universal visual-design quality, and let the model map ANY topic onto them.
-  const trimmed = condenseForPlanning(moduleContent, 6000);
+  const trimmed = condenseForPlanning(moduleContent, 5000);
   return `You are a world-class presentation designer (think Gamma / Apple Keynote).
 Turn the module below into a sequence of clean, render-ready slides.
 
@@ -242,8 +242,10 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - The LAST slide MUST be "closing" with 3–5 key takeaways as bullets.
 - ALWAYS add a short English "imageQuery" (2–4 words) on the FIRST slide of the
   module and on any section/quote/stat/cards slide. Omit it for code/compare.
-- For code slides, put COMPLETE, runnable code in the "code" field — never insert
-  "...", "# ...", or "-- ..." placeholders.
+- For code slides, put COMPLETE, runnable code in the "code" field, with a REAL
+  newline (\n) ending every statement and comment — one statement per line.
+  Never put two statements on the same line; never insert "...", "# ...", or
+  "-- ..." placeholders.
 - Stay strictly faithful to the module content. Do NOT invent facts.
 
 MODULE CONTENT (markdown):
@@ -325,10 +327,11 @@ export async function planModuleSlides(
       moduleContent,
       language,
     );
-    // Per-call timeout: a single slow module must never stall the whole export
-    // into a gateway 504 — it falls back instead.
+    // Per-call timeout. Planning runs in parallel and images+write take only a
+    // few seconds, so we can afford a generous budget here — this is what lets
+    // verbose (SQL/code) modules finish via the LLM instead of falling back.
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
     let res: Response;
     try {
       res = await fetch(`${GEMINI_PLAN_URL}?key=${geminiKey}`, {
@@ -504,7 +507,8 @@ function segmentMarkdown(md: string): MdBlock[] {
   return blocks;
 }
 
-const TAKEAWAY_RE = /resumo|takeaway|key\s*takeaway|conclus|síntese|sintese/i;
+const TAKEAWAY_RE =
+  /resumo|takeaway|key\s*takeaway|conclus|s[íi]ntese|aprendizad|recapitul|pontos?\s+principais|o que aprend/i;
 const OBJECTIVE_RE = /objetivo|aprende|ao final|learning|goals?/i;
 
 /**
@@ -513,7 +517,7 @@ const OBJECTIVE_RE = /objetivo|aprende|ao final|learning|goals?/i;
  * trims back to the last comma so the line ends on a clause, not a dangling
  * word. This is what prevents fallback bullets like "...operações sigam".
  */
-function toShortPoint(s: string, maxWords = 22): string {
+function toShortPoint(s: string, maxWords = 18): string {
   const first = (splitSentences(s)[0] || s).trim();
   const words = first.split(/\s+/);
   if (words.length <= maxWords) return first;
@@ -618,16 +622,14 @@ export function fallbackModuleSlides(
       continue;
     }
 
-    // Otherwise bullets, chunked to 5 per slide.
-    for (let i = 0; i < points.length; i += 5) {
-      const chunk = points.slice(i, i + 5);
-      slides.push({
-        kind: "bullets",
-        title: i === 0 ? heading : `${heading} (cont.)`,
-        eyebrow: moduleTitle,
-        bullets: chunk,
-      });
-    }
+    // Otherwise bullets — emit one slide; validate.normalizeDeck splits it
+    // into balanced slides if needed (no orphan "(cont.)" with a single item).
+    slides.push({
+      kind: "bullets",
+      title: heading,
+      eyebrow: moduleTitle,
+      bullets: points,
+    });
   }
 
   // Always end with a closing slide.
