@@ -15,11 +15,11 @@ src/                          # React frontend
   pages/                      # Route pages
 
 supabase/functions/           # Supabase Edge Functions (Deno)
-  export-pptx/index.ts        # PPTX exporter v1 (legacy)
-  export-pptx-v2/index.ts     # PPTX exporter v2 (legacy)
-  export-pptx-v3/index.ts     # PPTX exporter v3 (v4.0.0-COMMERCIAL, DEFAULT native engine)
-  export-pptx-2slides/        # PPTX via 2Slides AI API (v1.0.0-2SLIDES) — premium design
-  export-pptx-v3-magicslides/ # PPTX via MagicSlides API (legacy, requires paid credits)
+  export-pptx-v7/             # PPTX exporter v7 "Adaptive" — DEFAULT engine
+  export-pptx-v4/             # PPTX exporter (engine v5.x) — fallback engine
+  # Legacy/external engines removed in the v7-definitive cleanup:
+  #   export-pptx (v1), export-pptx-v2, export-pptx-v3, export-pptx-v3-magicslides,
+  #   export-pptx-v6, export-pptx-2slides, export-pptx-presenton, get-2slides-themes
   generate-course/            # AI course generation
   export-pdf/                 # PDF export
   export-scorm/               # SCORM export
@@ -63,7 +63,15 @@ Public URL where students access a course without registration. Shares the same 
 - **Fluxo**: TemplateSelector → card YouTube → YouTubeImportScreen → auto-preenche formulário (title/theme/audience/language/modules) + ativa useSources com a transcrição como fonte → wizard pré-preenchido
 - **Compatível**: qualquer vídeo com legendas automáticas ou manuais (pt-BR, pt, en, es, fr, de)
 
-## PPTX Exporter v5 (Active Engine — export-pptx-v4)
+## PPTX Exporter — engines
+
+**Active engine = export-pptx-v7** ("Adaptive"). The frontend (`ExportButtons.tsx`)
+calls v7 first; on ANY v7 failure it falls back to **export-pptx-v4** (engine
+v5.x), whose semantic QA veto (HTTP 422) is a hard stop. All other engines
+(v1/v2/v3/v6, MagicSlides, 2Slides, Presenton) were removed in the v7-definitive
+cleanup. The v5 section below documents the fallback engine.
+
+## PPTX Exporter v5 (Fallback Engine — export-pptx-v4)
 
 **Files**
 - `supabase/functions/export-pptx-v4/index.ts` (~7700 lines, `ENGINE_VERSION="5.3.0"`) — pipeline orchestrator + renderer
