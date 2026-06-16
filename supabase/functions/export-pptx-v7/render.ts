@@ -209,10 +209,10 @@ function maybeImage(slide: AnySlide, s: SlideSpec, box: {
   y: number;
   w: number;
   h: number;
-}) {
+}, extra: Record<string, unknown> = {}) {
   if (!s.imageData) return false;
   try {
-    slide.addImage({ data: s.imageData, ...box, sizing: { type: "cover", w: box.w, h: box.h } });
+    slide.addImage({ data: s.imageData, ...box, sizing: { type: "cover", w: box.w, h: box.h }, ...extra });
     return true;
   } catch {
     return false;
@@ -380,7 +380,7 @@ function renderSection(slide: AnySlide, s: SlideSpec, d: Palette, index: number)
   slide.addText(numStr, {
     x: ML - 0.08, y: 1.7, w: 6, h: 2.7,
     fontFace: FONT_TITLE, fontSize: 200, bold: true,
-    color: d.accent2, align: "left", valign: "middle",
+    color: d.accent2, transparency: 22, align: "left", valign: "middle",
   });
   slide.addShape("rect", {
     x: ML + 0.04, y: 4.5, w: 1.1, h: 0.09,
@@ -402,7 +402,10 @@ function renderSection(slide: AnySlide, s: SlideSpec, d: Palette, index: number)
 function renderSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
   bgFill(slide, d.bg);
   const imgX = 7.8;
-  maybeImage(slide, s, { x: imgX, y: 0, w: W - imgX, h: H });
+  // Soft outer shadow cast leftward gives the bleeding photo depth at the seam.
+  maybeImage(slide, s, { x: imgX, y: 0, w: W - imgX, h: H }, {
+    shadow: { type: "outer", color: "000000", blur: 9, offset: 3, angle: 180, opacity: 0.22 },
+  });
   // Soft blend strip so the photo's left edge melts into the page (no hard seam).
   slide.addShape("rect", {
     x: imgX, y: 0, w: 0.7, h: H,
