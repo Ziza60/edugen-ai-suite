@@ -209,10 +209,10 @@ function maybeImage(slide: AnySlide, s: SlideSpec, box: {
   y: number;
   w: number;
   h: number;
-}) {
+}, extra: Record<string, unknown> = {}) {
   if (!s.imageData) return false;
   try {
-    slide.addImage({ data: s.imageData, ...box, sizing: { type: "cover", w: box.w, h: box.h } });
+    slide.addImage({ data: s.imageData, ...box, sizing: { type: "cover", w: box.w, h: box.h }, ...extra });
     return true;
   } catch {
     return false;
@@ -355,51 +355,110 @@ function renderTOC(slide: AnySlide, deck: PlannedDeck, d: Palette, brand: string
 
 function renderSection(slide: AnySlide, s: SlideSpec, d: Palette, index: number) {
   bgFill(slide, d.coverBg);
-  const hasImg = maybeImage(slide, s, { x: 7.6, y: 0, w: 5.73, h: H });
+  const numStr = String(index).padStart(2, "0");
+  // Full-bleed photo (when available), dimmed for legibility — heavier scrim on
+  // the left third where the text lives, lighter over the image on the right.
+  const hasImg = maybeImage(slide, s, { x: 0, y: 0, w: W, h: H });
   if (hasImg) {
     slide.addShape("rect", {
-      x: 6.6,
-      y: 0,
-      w: 1.2,
-      h: H,
-      fill: { color: d.coverBg, transparency: 10 },
+      x: 0, y: 0, w: W, h: H,
+      fill: { color: d.coverBg, transparency: 28 },
+      line: { type: "none" },
+    });
+    slide.addShape("rect", {
+      x: 0, y: 0, w: 8.2, h: H,
+      fill: { color: d.coverBg, transparency: 6 },
       line: { type: "none" },
     });
   }
-  slide.addText(`MÓDULO ${String(index).padStart(2, "0")}`, {
-    x: ML,
-    y: 2.7,
-    w: 6.2,
-    h: 0.4,
-    fontFace: FONT_BODY,
-    fontSize: 13,
-    bold: true,
-    color: d.accent2,
-    charSpacing: 3,
+  // Eyebrow + GIANT module number (inverted colours, big type, little text).
+  slide.addText("MÓDULO", {
+    x: ML, y: 1.4, w: 7, h: 0.45,
+    fontFace: FONT_BODY, fontSize: 15, bold: true,
+    color: d.accent2, charSpacing: 5,
+  });
+  slide.addText(numStr, {
+    x: ML - 0.08, y: 1.7, w: 6, h: 2.7,
+    fontFace: FONT_TITLE, fontSize: 200, bold: true,
+    color: d.accent2, transparency: 22, align: "left", valign: "middle",
   });
   slide.addShape("rect", {
-    x: ML,
-    y: 3.18,
-    w: 0.9,
-    h: 0.08,
-    fill: { color: d.accent2 },
-    line: { type: "none" },
+    x: ML + 0.04, y: 4.5, w: 1.1, h: 0.09,
+    fill: { color: d.accent2 }, line: { type: "none" },
   });
   slide.addText(s.title, {
-    x: ML,
-    y: 3.4,
-    w: hasImg ? 5.8 : 11,
-    h: 2.4,
-    fontFace: FONT_TITLE,
-    fontSize: s.title.length > 40 ? 30 : 38,
-    bold: true,
-    color: "FFFFFF",
-    valign: "top",
-    lineSpacingMultiple: 1.03,
+    x: ML, y: 4.78, w: hasImg ? 7.9 : 11.4, h: 2.1,
+    fontFace: FONT_TITLE, fontSize: s.title.length > 44 ? 32 : 42, bold: true,
+    color: "FFFFFF", valign: "top", lineSpacingMultiple: 1.02,
+  });
+}
+
+/**
+ * Split layout: text column on the left, a photo "bleeding" off the right/top/
+ * bottom edges. Used for one hero content slide per module, reusing the module's
+ * already-resolved image (no extra fetches). Gracefully degrades: if no image
+ * resolved, the caller routes to the plain bullets layout instead.
+ */
+function renderSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  const imgX = 7.8;
+  // Soft outer shadow cast leftward gives the bleeding photo depth at the seam.
+  maybeImage(slide, s, { x: imgX, y: 0, w: W - imgX, h: H }, {
+    shadow: { type: "outer", color: "000000", blur: 9, offset: 3, angle: 180, opacity: 0.22 },
+  });
+  // Soft blend strip so the photo's left edge melts into the page (no hard seam).
+  slide.addShape("rect", {
+    x: imgX, y: 0, w: 0.7, h: H,
+    fill: { color: d.bg, transparency: 35 }, line: { type: "none" },
+  });
+  const colW = imgX - ML - 0.45;
+  // Left-column header (narrower than the standard full-width header).
+  slide.addShape("rect", {
+    x: ML, y: 0.72, w: 0.07, h: 0.42,
+    fill: { color: d.accent2 }, line: { type: "none" },
+  });
+  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
+    x: ML + 0.18, y: 0.68, w: colW - 0.18, h: 0.3,
+    fontFace: FONT_BODY, fontSize: 10, bold: true, color: d.accent2,
+    charSpacing: 2, valign: "middle",
+  });
+  slide.addText(s.title, {
+    x: ML + 0.18, y: 1.02, w: colW - 0.18, h: 1.2,
+    fontFace: FONT_TITLE, fontSize: s.title.length > 40 ? 23 : 27, bold: true,
+    color: d.text, valign: "top", lineSpacingMultiple: 1.02,
+  });
+  const items = s.bullets ?? [];
+  const startY = 2.45;
+  const listH = FOOTER_Y - startY - 0.15;
+  const rowH = listH / Math.max(items.length, 1);
+  items.forEach((b, i) => {
+    const y = startY + i * rowH;
+    slide.addShape("rect", {
+      x: ML, y: y + rowH / 2 - 0.06, w: 0.14, h: 0.14,
+      fill: { color: d.accent2 }, line: { type: "none" },
+    });
+    slide.addText(b, {
+      x: ML + 0.3, y, w: colW - 0.4, h: rowH,
+      fontFace: FONT_BODY, fontSize: 15, color: d.text,
+      valign: "middle", lineSpacingMultiple: 1.03,
+    });
+  });
+  // Footer kept inside the left column so the page number never sits over the photo.
+  slide.addText(brand, {
+    x: ML, y: FOOTER_Y, w: colW - 0.5, h: 0.3,
+    fontFace: FONT_BODY, fontSize: 9, color: d.subtext, valign: "middle",
+  });
+  slide.addText(String(num), {
+    x: ML + colW - 0.5, y: FOOTER_Y, w: 0.5, h: 0.3,
+    fontFace: FONT_BODY, fontSize: 9, color: d.subtext, align: "right", valign: "middle",
   });
 }
 
 function renderBullets(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  // A hero bullets slide carrying a module image renders as text + bleeding photo.
+  if (s.imageData && (s.bullets?.length ?? 0) > 0) {
+    return renderSplit(slide, s, d, brand, num, moduleLabel);
+  }
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
   const items = s.bullets ?? [];
@@ -429,6 +488,63 @@ function renderBullets(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
       color: d.text,
       valign: "middle",
       lineSpacingMultiple: 1.02,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/**
+ * Tiles: a short list (3–6 brief points) shown as a grid of badge tiles instead
+ * of a vertical bullet list. Each tile carries a numbered accent badge (a clean
+ * geometric stand-in for an icon — never a guessed semantic icon) and the point,
+ * centered. Used by the anti-monotony pass to break runs of bullet slides.
+ */
+function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = (s.bullets ?? []).filter((b) => b && b.trim());
+  const n = items.length;
+  const cols = n <= 3 ? n : n === 4 ? 2 : 3;
+  const rows = Math.ceil(n / cols);
+  const gap = 0.3;
+  const tileW = (CW - gap * (cols - 1)) / cols;
+  const tileH = (CONTENT_H - gap * (rows - 1)) / rows;
+  const badge = Math.min(0.62, tileH * 0.32);
+  const textFs = n > 4 ? 13 : tileH > 2 ? 16 : 14;
+
+  items.forEach((b, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    // Center a short final row (e.g. 5 items → 3 + 2) instead of left-hugging it.
+    const itemsInRow = Math.min(cols, n - row * cols);
+    const rowOffset = (CW - (itemsInRow * tileW + gap * (itemsInRow - 1))) / 2;
+    const x = ML + rowOffset + col * (tileW + gap);
+    const y = CONTENT_Y + row * (tileH + gap);
+
+    slide.addShape("roundRect", {
+      x, y, w: tileW, h: tileH, rectRadius: 0.08,
+      fill: { color: d.surface },
+      line: { color: d.border, width: 1 },
+    });
+    const bx = x + tileW / 2 - badge / 2;
+    const by = y + Math.min(0.3, tileH * 0.14);
+    slide.addShape("ellipse", {
+      x: bx, y: by, w: badge, h: badge,
+      fill: { color: d.accent },
+      line: { type: "none" },
+    });
+    slide.addText(String(i + 1), {
+      x: bx, y: by, w: badge, h: badge,
+      fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.onAccent,
+      align: "center", valign: "middle",
+    });
+    slide.addText(b, {
+      x: x + 0.18,
+      y: by + badge + 0.12,
+      w: tileW - 0.36,
+      h: y + tileH - (by + badge + 0.12) - 0.12,
+      fontFace: FONT_BODY, fontSize: textFs, color: d.text,
+      align: "center", valign: "top", lineSpacingMultiple: 1.03,
     });
   });
   footer(slide, d, brand, num);
@@ -682,48 +798,45 @@ function renderCompare(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
 function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number) {
   bgFill(slide, d.surface);
   slide.addShape("rect", {
-    x: 0,
-    y: 0,
-    w: 0.18,
-    h: H,
-    fill: { color: d.accent2 },
-    line: { type: "none" },
+    x: 0, y: 0, w: 0.18, h: H,
+    fill: { color: d.accent2 }, line: { type: "none" },
   });
+  const text = s.quote ?? s.title;
+  // Decorative quotation marks as a subtle adornment in the corners (not behind
+  // the text), in an elegant serif and the accent colour at 20% opacity — the
+  // "respiro" premium look. pptxgenjs renders text transparency as <a:alpha>.
   slide.addText("“", {
-    x: ML,
-    y: 0.9,
-    w: 2,
-    h: 1.6,
-    fontFace: FONT_TITLE,
-    fontSize: 120,
-    bold: true,
-    color: d.accent2,
-    align: "left",
-    valign: "top",
+    x: ML - 0.1, y: 0.05, w: 3, h: 2.4,
+    fontFace: "Georgia", fontSize: 200, bold: true,
+    color: d.accent2, transparency: 80,
+    align: "left", valign: "top",
   });
-  slide.addText(s.quote ?? s.title, {
-    x: ML + 0.2,
-    y: 2.4,
-    w: CW - 0.4,
-    h: 3.0,
-    fontFace: FONT_TITLE,
-    fontSize: (s.quote ?? s.title).length > 120 ? 26 : 32,
-    italic: true,
-    color: d.text,
-    align: "left",
-    valign: "top",
-    lineSpacingMultiple: 1.1,
+  slide.addText("”", {
+    x: W - 3 - (ML - 0.1), y: H - 2.6, w: 3, h: 2.4,
+    fontFace: "Georgia", fontSize: 200, bold: true,
+    color: d.accent2, transparency: 80,
+    align: "right", valign: "bottom",
+  });
+  // The quote: centred, italic, in the modern sans body face (not serif) with a
+  // generous side margin so it never touches the edges. Scales for longer text.
+  slide.addText(text, {
+    x: 1.5, y: 2.15, w: W - 3.0, h: 3.0,
+    fontFace: FONT_BODY,
+    fontSize: text.length > 170 ? 24 : text.length > 95 ? 29 : 34,
+    italic: true, color: d.text,
+    align: "center", valign: "middle", lineSpacingMultiple: 1.18,
+  });
+  // Centred accent rule + attribution styled for sophisticated contrast:
+  // uppercase, bold, accent colour, letter-spaced — against the italic quote.
+  slide.addShape("rect", {
+    x: W / 2 - 0.5, y: 5.42, w: 1.0, h: 0.055,
+    fill: { color: d.accent2 }, line: { type: "none" },
   });
   if (s.attribution) {
-    slide.addText(`— ${s.attribution}`, {
-      x: ML + 0.2,
-      y: 5.7,
-      w: CW - 0.4,
-      h: 0.5,
-      fontFace: FONT_BODY,
-      fontSize: 14,
-      bold: true,
-      color: d.accent,
+    slide.addText(s.attribution.toUpperCase(), {
+      x: 2, y: 5.62, w: W - 4, h: 0.5,
+      fontFace: FONT_BODY, fontSize: 14, bold: true,
+      color: d.accent2, charSpacing: 2, align: "center",
     });
   }
   footer(slide, d, brand, num);
@@ -913,6 +1026,9 @@ export function renderDeck(
         switch (s.kind) {
           case "section":
             renderSection(slide, s, d, mi + 1);
+            break;
+          case "tiles":
+            renderTiles(slide, s, d, brand, num, m.title);
             break;
           case "cards":
             renderCards(slide, s, d, brand, num, m.title);

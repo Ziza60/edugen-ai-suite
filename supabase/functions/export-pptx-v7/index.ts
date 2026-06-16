@@ -22,7 +22,7 @@ import { normalizeDeck } from "./validate.ts";
 import { renderDeck } from "./render.ts";
 import { resolveImages } from "./images.ts";
 
-const ENGINE_VERSION = "7.8.0";
+const ENGINE_VERSION = "7.12.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,10 +42,11 @@ function moduleImageQuery(m: { title: string; slides: { imageQuery?: string }[] 
   return m.slides.find((s) => s.imageQuery)?.imageQuery || m.title;
 }
 
-/** Attach ONE resolved image per module (used by its section divider) + cover.
- *  One image per module — not every slide — keeps the file light and the edge
- *  runtime well under its CPU/time budget. Falls back to the module title so
- *  every divider gets a photo even when the planner omits an imageQuery. */
+/** Attach ONE resolved image per module (used by its section divider AND one
+ *  "hero" text+image content slide) + the cover. One image per module — not every
+ *  slide — keeps the file light and the edge runtime under its CPU/time budget.
+ *  The same module image is reused for both the divider and the hero slide (no
+ *  extra fetches). The divider picks up whichever slide carries the image. */
 function attachImages(deck: PlannedDeck, images: Record<string, string>) {
   const lookup = (q?: string) =>
     q ? images[q.trim().toLowerCase()] : undefined;
@@ -53,7 +54,16 @@ function attachImages(deck: PlannedDeck, images: Record<string, string>) {
     Object.values(images)[0] || undefined;
   for (const m of deck.modules) {
     const img = lookup(moduleImageQuery(m));
-    if (img && m.slides[0]) m.slides[0].imageData = img;
+    if (!img) continue;
+    // Hero = first short bullets slide (2–4 brief points), which renders as a
+    // text + bleeding-image split. Fall back to slides[0] so the divider — which
+    // reads the image off any slide that has one — always gets a photo too.
+    const hero = m.slides.find((s) =>
+      s.kind === "bullets" &&
+      (s.bullets?.length ?? 0) >= 2 && (s.bullets?.length ?? 0) <= 4 &&
+      (s.bullets ?? []).every((b) => b.trim().length <= 95)
+    );
+    (hero ?? m.slides[0]).imageData = img;
   }
 }
 

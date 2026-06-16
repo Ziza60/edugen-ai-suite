@@ -123,6 +123,7 @@ function normCode(code: SlideSpec["code"]): SlideSpec["code"] | undefined {
 function hasMinimumContent(s: SlideSpec): boolean {
   switch (s.kind) {
     case "bullets":
+    case "tiles":
     case "closing":
       return (s.bullets?.length ?? 0) > 0;
     case "cards":
@@ -231,34 +232,41 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
 }
 
 /**
- * Anti-monotony: never render 3 identical layouts in a row. If we detect a run,
- * nudge the 3rd toward "cards" when its content allows it. Purely visual.
+ * A bullets slide qualifies for the "tiles" treatment when it is a short,
+ * scannable list: 3–6 items, each a brief phrase. Such lists read far better as
+ * an icon/badge grid than as yet another vertical bullet list.
+ */
+function tilesEligible(s: SlideSpec): boolean {
+  if (s.kind !== "bullets") return false;
+  const b = s.bullets ?? [];
+  return b.length >= 3 && b.length <= 6 &&
+    b.every((x) => x.trim().length > 0 && x.trim().split(/\s+/).length <= 10);
+}
+
+/**
+ * Anti-monotony: never render two same-looking content slides back to back. The
+ * planner overwhelmingly emits "bullets", producing tiring runs of identical
+ * vertical lists. Whenever a bullets slide would follow another bullets slide,
+ * we promote it to the "tiles" grid (same content, distinct layout). Because the
+ * promoted slide becomes "tiles", the next bullets slide differs again — so a
+ * run of N bullet slides renders as bullets / tiles / bullets / tiles… Purely
+ * visual; content is untouched.
  */
 function breakLayoutRuns(slides: SlideSpec[]): SlideSpec[] {
-  let run = 0;
   let prev = "";
   return slides.map((s) => {
-    if (s.kind === prev) run++;
-    else run = 0;
-    prev = s.kind;
-    if (
-      run >= 2 &&
-      s.kind === "bullets" &&
-      (s.bullets?.length ?? 0) >= 3 &&
-      (s.bullets?.length ?? 0) <= 4 &&
-      s.bullets!.every((b) => b.split(/\s+/).length <= 9)
-    ) {
-      run = 0;
-      prev = "cards";
-      return {
-        kind: "cards",
+    let out = s;
+    if (s.kind === "bullets" && prev === "bullets" && tilesEligible(s)) {
+      out = {
+        kind: "tiles",
         title: s.title,
         eyebrow: s.eyebrow,
-        cards: s.bullets!.map((b) => ({ heading: b, body: "" })),
+        bullets: s.bullets,
         imageQuery: s.imageQuery,
       } as SlideSpec;
     }
-    return s;
+    prev = out.kind;
+    return out;
   });
 }
 
