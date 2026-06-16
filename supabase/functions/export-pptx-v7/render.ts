@@ -113,8 +113,53 @@ export const PALETTES: Record<string, Palette> = {
   },
 };
 
+// ── Visual Templates (dark / premium) ──────────────────────────────────────
+// Each template is a full dark palette: dark canvas, light text, subtle
+// surface/border and a strong accent pair. Mirrors the 5 presets offered in
+// the export dialog (PptxExportDialog VISUAL_TEMPLATES). Because every renderer
+// only reads palette tokens (d.bg / d.text / d.surface / d.accent / …), making
+// the canvas dark here turns the WHOLE deck premium-dark with no per-slide code.
+export const THEMES: Record<string, Palette> = {
+  // Navy & Gold — corporate classic
+  default_v5: {
+    name: "default_v5",
+    bg: "0A1628", surface: "152740", text: "F1F5F9", subtext: "AEC0D2",
+    border: "263A54", accent: "2E6DA4", accent2: "D4A24C",
+    coverBg: "071120", onAccent: "FFFFFF",
+  },
+  // Neon & Cyber — dark tech
+  futuristic_background: {
+    name: "futuristic_background",
+    bg: "040D1C", surface: "0C1E36", text: "D6ECFF", subtext: "8FB4D6",
+    border: "16314C", accent: "1E90E0", accent2: "27E0C6",
+    coverBg: "020814", onAccent: "FFFFFF",
+  },
+  // Gold & Dark — elegant
+  dark_theme: {
+    name: "dark_theme",
+    bg: "0D1117", surface: "171D26", text: "E6EDF3", subtext: "A2B0BE",
+    border: "28323D", accent: "D9810A", accent2: "F0B23C",
+    coverBg: "080B11", onAccent: "FFFFFF",
+  },
+  // Violet & Gold — premium luxury
+  dark_elegance_xl: {
+    name: "dark_elegance_xl",
+    bg: "0B0912", surface: "171125", text: "ECE8F5", subtext: "B0A6C6",
+    border: "2B2142", accent: "8B2FC9", accent2: "D4AF37",
+    coverBg: "070510", onAccent: "FFFFFF",
+  },
+  // Red & Fire — bold
+  dark_style_theme: {
+    name: "dark_style_theme",
+    bg: "0F1219", surface: "1B212B", text: "F0F4F8", subtext: "A8B4C2",
+    border: "2C333E", accent: "D63B3B", accent2: "E8943A",
+    coverBg: "0A0D13", onAccent: "FFFFFF",
+  },
+};
+
 export interface RenderOptions {
   palette?: string;
+  template?: string;
   footerBrand?: string;
 }
 
@@ -122,8 +167,22 @@ type AnySlide = any;
 type AnyPptx = any;
 
 // ── small helpers ─────────────────────────────────────────────────────────
-function p(pal: string | undefined): Palette {
-  return PALETTES[pal ?? "default"] ?? PALETTES.default;
+// Resolve the active palette from render options.
+// - A visual template (always dark/premium) defines the whole look and wins.
+//   When a non-"default" colour palette is also chosen, it recolours ONLY the
+//   accent pair so users can retint a dark template.
+// - Without a template (e.g. a direct API call) we fall back to the legacy
+//   light palette selected by name.
+function resolvePalette(opts: RenderOptions): Palette {
+  const theme = opts.template ? THEMES[opts.template] : undefined;
+  if (theme) {
+    if (opts.palette && opts.palette !== "default" && PALETTES[opts.palette]) {
+      const pal = PALETTES[opts.palette];
+      return { ...theme, accent: pal.accent, accent2: pal.accent2 };
+    }
+    return theme;
+  }
+  return PALETTES[opts.palette ?? "default"] ?? PALETTES.default;
 }
 
 function bgFill(slide: AnySlide, color: string) {
@@ -508,9 +567,23 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const rows = Math.ceil(n / cols);
   const gap = 0.3;
   const tileW = (CW - gap * (cols - 1)) / cols;
-  const tileH = (CONTENT_H - gap * (rows - 1)) / rows;
-  const badge = Math.min(0.62, tileH * 0.32);
-  const textFs = n > 4 ? 13 : tileH > 2 ? 16 : 14;
+  // Size tiles to their CONTENT (badge + text lines), NOT the full row height,
+  // then center the block vertically. Otherwise a single row of short tiles
+  // (e.g. 3 items → 1 row) stretches into tall, mostly-empty boxes — the
+  // "big box, little text" problem.
+  const fullRowH = (CONTENT_H - gap * (rows - 1)) / rows;
+  const innerW = tileW - 0.36;
+  const perLine = Math.max(10, innerW * 9); // ~chars/line for centered body text
+  let textLines = 1;
+  for (const b of items) {
+    textLines = Math.max(textLines, Math.min(4, Math.ceil(b.trim().length / perLine)));
+  }
+  const padTop = 0.26, badge = 0.56, gapBelowBadge = 0.16, lineH = 0.27, padBottom = 0.22;
+  const naturalH = padTop + badge + gapBelowBadge + textLines * lineH + padBottom;
+  const tileH = Math.min(fullRowH, Math.max(1.35, naturalH));
+  const textFs = n > 4 ? 13 : 15;
+  const blockH = rows * tileH + gap * (rows - 1);
+  const startY = CONTENT_Y + Math.max(0, (CONTENT_H - blockH) / 2);
 
   items.forEach((b, i) => {
     const col = i % cols;
@@ -519,7 +592,7 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     const itemsInRow = Math.min(cols, n - row * cols);
     const rowOffset = (CW - (itemsInRow * tileW + gap * (itemsInRow - 1))) / 2;
     const x = ML + rowOffset + col * (tileW + gap);
-    const y = CONTENT_Y + row * (tileH + gap);
+    const y = startY + row * (tileH + gap);
 
     slide.addShape("roundRect", {
       x, y, w: tileW, h: tileH, rectRadius: 0.08,
@@ -527,7 +600,7 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       line: { color: d.border, width: 1 },
     });
     const bx = x + tileW / 2 - badge / 2;
-    const by = y + Math.min(0.3, tileH * 0.14);
+    const by = y + padTop;
     slide.addShape("ellipse", {
       x: bx, y: by, w: badge, h: badge,
       fill: { color: d.accent },
@@ -540,11 +613,11 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     });
     slide.addText(b, {
       x: x + 0.18,
-      y: by + badge + 0.12,
+      y: by + badge + gapBelowBadge,
       w: tileW - 0.36,
-      h: y + tileH - (by + badge + 0.12) - 0.12,
+      h: tileH - padTop - badge - gapBelowBadge - 0.06,
       fontFace: FONT_BODY, fontSize: textFs, color: d.text,
-      align: "center", valign: "top", lineSpacingMultiple: 1.03,
+      align: "center", valign: "top", lineSpacingMultiple: 1.04,
     });
   });
   footer(slide, d, brand, num);
@@ -991,7 +1064,7 @@ export function renderDeck(
   deck: PlannedDeck,
   opts: RenderOptions = {},
 ): { pptx: AnyPptx; slideCount: number } {
-  const d = p(opts.palette);
+  const d = resolvePalette(opts);
   const brand = opts.footerBrand || "EduGenAI";
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "EDU16x9", width: W, height: H });
