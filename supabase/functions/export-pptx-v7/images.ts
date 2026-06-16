@@ -1,0 +1,84 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// EduGenAI — PPTX v7 "Adaptive Engine"  ·  images.ts
+//
+// Optional, best-effort decorative images via the Pexels API. Topic-agnostic:
+// it just resolves the free-text `imageQuery` the planner suggested. Every
+// failure is swallowed — images are an enhancement, never a hard dependency.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PEXELS_SEARCH = "https://api.pexels.com/v1/search";
+
+/** fetch with a hard timeout (images must never stall the export into a 504). */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  ms = 12000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+async function toDataUri(url: string): Promise<string | null> {
+  try {
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) return null;
+    const buf = new Uint8Array(await res.arrayBuffer());
+    // base64 encode in 32KB chunks (per-byte concat is a CPU hog that can trip
+    // the edge runtime's CPU-time limit on image-heavy decks).
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < buf.length; i += CHUNK) {
+      binary += String.fromCharCode(...buf.subarray(i, i + CHUNK));
+    }
+    const b64 = btoa(binary);
+    const ext = url.includes(".png") ? "png" : "jpeg";
+    return `data:image/${ext};base64,${b64}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve one landscape photo per unique query. Returns a map query→dataUri.
+ * Uses the "large" (≈940px) size — big enough for slides, but far lighter than
+ * large2x. Capping count + resolution keeps the PPTX small and avoids the edge
+ * runtime's CPU/time limit during base64 embedding + pptx.write.
+ */
+export async function resolveImages(
+  queries: string[],
+  apiKey: string | undefined,
+  maxImages = 8,
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (!apiKey) return out;
+  const unique = Array.from(
+    new Set(queries.map((q) => q.trim().toLowerCase()).filter(Boolean)),
+  ).slice(0, maxImages);
+
+  await Promise.all(
+    unique.map(async (q) => {
+      try {
+        const url =
+          `${PEXELS_SEARCH}?query=${encodeURIComponent(q)}&per_page=1&orientation=landscape`;
+        const res = await fetchWithTimeout(url, {
+          headers: { Authorization: apiKey },
+        }, 10000);
+        if (!res.ok) return;
+        const data = await res.json();
+        const photo = data?.photos?.[0];
+        const src = photo?.src?.large || photo?.src?.medium;
+        if (!src) return;
+        const dataUri = await toDataUri(src);
+        if (dataUri) out[q] = dataUri;
+      } catch {
+        /* swallow — images are optional */
+      }
+    }),
+  );
+  return out;
+}

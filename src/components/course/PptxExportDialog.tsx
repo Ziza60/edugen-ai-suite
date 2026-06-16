@@ -10,19 +10,11 @@ import { Loader2, Presentation, ImageOff, Info, Check } from "lucide-react";
 
 // ── Exported options type ──────────────────────────────────────────
 export interface PptxExportOptions {
-  palette: "default" | "ocean" | "forest" | "sunset" | "monochrome";
+  palette: "default" | "ocean" | "forest" | "sunset" | "violet" | "monochrome";
   density: "compact" | "standard" | "detailed";
   includeImages: boolean;
   theme: "light" | "dark";
   template: string;
-  useV2: boolean;
-  useV3: boolean;
-  useV4: boolean;
-  useV6: boolean;
-  useMagicSlides: boolean;
-  use2Slides: boolean;
-  usePresenton: boolean;
-  twoSlidesTheme: string;
   courseType: string;
   footerBrand: string | null;
 }
@@ -198,6 +190,7 @@ const PALETTES: Record<string, { label: string; colors: string[] }> = {
   ocean:      { label: "Oceano",        colors: ["#2980B9", "#3498DB", "#1ABC9C", "#16A085", "#2C3E50"] },
   forest:     { label: "Floresta",      colors: ["#27AE60", "#2ECC71", "#1ABC9C", "#16A085", "#2C3E50"] },
   sunset:     { label: "Pôr do Sol",    colors: ["#E74C3C", "#E67E22", "#F39C12", "#D35400", "#C0392B"] },
+  violet:     { label: "Violeta",       colors: ["#6D28D9", "#8B5CF6", "#A78BFA", "#7C3AED", "#5B21B6"] },
   monochrome: { label: "Monocromático", colors: ["#2C3E50", "#34495E", "#7F8C8D", "#95A5A6", "#BDC3C7"] },
 };
 
@@ -230,14 +223,6 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   const [courseType, setCourseType]                   = useState("CURSO COMPLETO");
   const [footerBrandEnabled, setFooterBrandEnabled]   = useState(true);
   const [footerBrandValue, setFooterBrandValue]       = useState("EduGenAI");
-  const [useV2]                                       = useState(true);
-  const [useV3, setUseV3]                             = useState(false);
-  const [useV4, setUseV4]                             = useState(true);
-  const [useV6, setUseV6]                             = useState(false);
-  const [useMagicSlides, setUseMagicSlides]           = useState(false);
-  const [use2Slides, setUse2Slides]                   = useState(false);
-  const [usePresenton, setUsePresenton]               = useState(false);
-  const [twoSlidesTheme, setTwoSlidesTheme]           = useState("blue-gradient");
 
   const selectedTpl = VISUAL_TEMPLATES[template] || VISUAL_TEMPLATES.default_v5;
   const theme = selectedTpl.theme;
@@ -259,7 +244,7 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
 
   const handleExport = () => {
     setOpen(false);
-    onExport({ palette, density, includeImages, theme, template, useV2, useV3, useV4, useV6, useMagicSlides, use2Slides, usePresenton, twoSlidesTheme, courseType, footerBrand });
+    onExport({ palette, density, includeImages, theme, template, courseType, footerBrand });
   };
 
   return (
@@ -405,123 +390,6 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
               />
             )}
           </div>
-
-          {/* ── Presenton AI Engine ── */}
-          <div className={`space-y-3 p-3 rounded-xl border transition-colors ${usePresenton ? "border-violet-500/40 bg-violet-500/5" : "border-border bg-muted/30"}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-semibold text-violet-400">✨ Presenton AI (Recomendado)</p>
-                  <Badge variant="outline" className="text-[10px] px-1 py-0 bg-violet-500/10 text-violet-400 border-violet-500/20">NOVO</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">Slides profissionais gerados por IA com templates premium</p>
-              </div>
-              <Switch
-                checked={usePresenton}
-                onCheckedChange={(v) => {
-                  setUsePresenton(v);
-                  if (v) setUse2Slides(false);
-                }}
-                data-testid="switch-use-presenton"
-              />
-            </div>
-            {usePresenton && (
-              <p className="text-[10px] text-muted-foreground pl-0.5">
-                O template visual selecionado acima será usado para escolher o design do Presenton.
-              </p>
-            )}
-          </div>
-
-          {/* ── 2Slides AI Engine ── */}
-          <div className={`space-y-3 p-3 rounded-xl border transition-colors ${use2Slides ? "border-sky-500/40 bg-sky-500/5" : "border-border bg-muted/30"}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-semibold text-sky-400">⚡ 2Slides AI</p>
-                </div>
-                <p className="text-xs text-muted-foreground">Design profissional gerado por IA — templates premium</p>
-              </div>
-              <Switch
-                checked={use2Slides}
-                onCheckedChange={(v) => {
-                  setUse2Slides(v);
-                  if (v) setUsePresenton(false);
-                }}
-                data-testid="switch-use-2slides"
-              />
-            </div>
-
-            {use2Slides && (
-              <div className="space-y-1.5 pt-1">
-                <Label className="text-xs text-muted-foreground">Tema Visual</Label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {[
-                    { key: "blue-gradient",   label: "Azul Gradiente",    desc: "Moderno • Claro",    color: "#3B82F6" },
-                    { key: "blue-modern",     label: "Azul Moderno",      desc: "Limpo • Claro",      color: "#2563EB" },
-                    { key: "dark-pro",        label: "Profissional Dark", desc: "Elegante • Escuro",  color: "#374151" },
-                    { key: "training-orange", label: "Treinamento",       desc: "Energético • Claro", color: "#F97316" },
-                  ].map(({ key, label, desc, color }) => (
-                    <button
-                      key={key}
-                      data-testid={`theme-2slides-${key}`}
-                      onClick={() => setTwoSlidesTheme(key)}
-                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition-all text-xs ${
-                        twoSlidesTheme === key
-                          ? "border-sky-500 bg-sky-500/10"
-                          : "border-border hover:border-sky-500/40"
-                      }`}
-                    >
-                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                      <div>
-                        <p className="font-medium leading-tight">{label}</p>
-                        <p className="text-muted-foreground leading-tight">{desc}</p>
-                      </div>
-                      {twoSlidesTheme === key && <Check className="h-3 w-3 text-sky-400 ml-auto shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[10px] text-muted-foreground pt-0.5 pl-0.5">
-                  💡 10 créditos por slide — novo signup inclui 880 créditos grátis
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* ── V6 Engine (template ZIP) — HIDDEN: not user-selectable, kept in code for explicit dev/admin opt-in only ── */}
-
-          {/* ── V4 Native Engine (CANONICAL) ── */}
-          {!use2Slides && !usePresenton && (
-            <div className={`space-y-1 p-3 rounded-xl border transition-colors ${useV4 ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-muted/30"}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-semibold text-emerald-400">🚀 EduGen v5</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Engine v5 — slides centrados, paletas expandidas, prompt McKinsey</p>
-                </div>
-                <Switch
-                  checked={useV4}
-                  onCheckedChange={(v) => { setUseV4(v); if (v) { setUseV3(false); } }}
-                  data-testid="switch-use-v4"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* ── V3 AI Generation toggle (legacy) ── */}
-          {!use2Slides && !usePresenton && (
-            <div className="flex items-center justify-between px-1">
-              <div>
-                <p className="text-sm font-medium">EduGen v3 (motor anterior)</p>
-                <p className="text-xs text-muted-foreground">Motor estável — use para comparar com v4/v6</p>
-              </div>
-              <Switch
-                checked={useV3}
-                onCheckedChange={(v) => { setUseV3(v); if (v) { setUseV4(false); } }}
-                data-testid="switch-use-v3"
-              />
-            </div>
-          )}
 
           {/* ── Compatibility note ── */}
           <div className="rounded-md border border-border bg-muted/50 p-3">
