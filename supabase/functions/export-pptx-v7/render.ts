@@ -737,36 +737,41 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     fill: { color: d.accent2 }, line: { type: "none" },
   });
   const text = s.quote ?? s.title;
-  // Giant decorative quotation marks as a faint watermark behind the text. We use
-  // the light border colour (not transparency, which not every client honours) so
-  // the watermark reads on any palette without washing out the quote.
+  // Decorative quotation marks as a subtle adornment in the corners (not behind
+  // the text), in an elegant serif and the accent colour at 20% opacity — the
+  // "respiro" premium look. pptxgenjs renders text transparency as <a:alpha>.
   slide.addText("“", {
-    x: W / 2 - 3.2, y: 0.15, w: 6.4, h: 3.4,
-    fontFace: FONT_TITLE, fontSize: 320, bold: true,
-    color: d.border, align: "center", valign: "top",
+    x: ML - 0.1, y: 0.05, w: 3, h: 2.4,
+    fontFace: "Georgia", fontSize: 200, bold: true,
+    color: d.accent2, transparency: 80,
+    align: "left", valign: "top",
   });
   slide.addText("”", {
-    x: W / 2 - 3.2, y: H - 3.7, w: 6.4, h: 3.4,
-    fontFace: FONT_TITLE, fontSize: 320, bold: true,
-    color: d.border, align: "center", valign: "bottom",
+    x: W - 3 - (ML - 0.1), y: H - 2.6, w: 3, h: 2.4,
+    fontFace: "Georgia", fontSize: 200, bold: true,
+    color: d.accent2, transparency: 80,
+    align: "right", valign: "bottom",
   });
-  // The quote itself: centred, italic, large — scales down for longer passages.
+  // The quote: centred, italic, in the modern sans body face (not serif) with a
+  // generous side margin so it never touches the edges. Scales for longer text.
   slide.addText(text, {
-    x: 1.4, y: 2.2, w: W - 2.8, h: 3.0,
-    fontFace: FONT_TITLE,
-    fontSize: text.length > 170 ? 23 : text.length > 95 ? 28 : 34,
+    x: 1.5, y: 2.15, w: W - 3.0, h: 3.0,
+    fontFace: FONT_BODY,
+    fontSize: text.length > 170 ? 24 : text.length > 95 ? 29 : 34,
     italic: true, color: d.text,
-    align: "center", valign: "middle", lineSpacingMultiple: 1.12,
+    align: "center", valign: "middle", lineSpacingMultiple: 1.18,
   });
+  // Centred accent rule + attribution styled for sophisticated contrast:
+  // uppercase, bold, accent colour, letter-spaced — against the italic quote.
   slide.addShape("rect", {
-    x: W / 2 - 0.5, y: 5.45, w: 1.0, h: 0.06,
+    x: W / 2 - 0.5, y: 5.42, w: 1.0, h: 0.055,
     fill: { color: d.accent2 }, line: { type: "none" },
   });
   if (s.attribution) {
-    slide.addText(`— ${s.attribution}`, {
+    slide.addText(s.attribution.toUpperCase(), {
       x: 2, y: 5.62, w: W - 4, h: 0.5,
-      fontFace: FONT_BODY, fontSize: 14, bold: true, color: d.accent,
-      align: "center",
+      fontFace: FONT_BODY, fontSize: 14, bold: true,
+      color: d.accent2, charSpacing: 2, align: "center",
     });
   }
   footer(slide, d, brand, num);
