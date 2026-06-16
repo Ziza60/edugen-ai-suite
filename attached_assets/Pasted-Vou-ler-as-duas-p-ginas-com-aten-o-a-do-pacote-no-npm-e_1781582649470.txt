@@ -1,0 +1,53 @@
+Vou ler as duas páginas com atenção — a do pacote no npm e a demo de Slide Masters.
+
+
+Navegado a web, usado uma ferramenta
+Ambas retornaram 403. Vou buscar as mesmas informações nas fontes-espelho (README do repo no GitHub e o site de docs), que é o conteúdo que aparece no npm:
+
+
+Navegado a web
+README capturado. A doc de masters e a demo deram 403, mas o código-fonte da demo no repo é o mais concreto. Vou buscar o módulo da demo de Slide Masters e a doc em markdown direto do repo:
+
+
+Navegado a web
+O melhor fonte é o arquivo de tipos (.d.ts), que mostra exatamente o que a API aceita. Vou buscá-lo:
+
+Buscado
+https://raw.githubusercontent.com/gitbrent/PptxGenJS/master/types/index.d.ts
+Consegui as informações autoritativas direto dos tipos TypeScript da lib (types/index.d.ts) — fonte mais confiável que a página. Aqui está o que dá pra aproveitar, com uma correção importante a algo que eu te disse antes.
+
+Correção importante (a favor do seu pedido sobre citações)
+Eu havia sido cauteloso dizendo que transparência de texto podia não ser confiável. Os tipos confirmam que é suportada: transparency?: number (0–100) em texto. Ou seja, consigo fazer exatamente o que você pediu na refinação premium da citação: aspas douradas com 20% de opacidade (color: accent2, transparency: 80). Não preciso mais do truque da cor de borda.
+
+O que a lib REALMENTE oferece (e podemos usar)
+1. defineSlideMaster com placeholders — existe, mas limitado
+
+defineSlideMaster({ title, background, margin, slideNumber, objects: [
+  { rect|line|text|image|chart },
+  { placeholder: { options: { name, type, ...pos }, text } }
+]})
+Tipos de placeholder: só title | body | pic | chart | tbl | media. Não existe placeholder de "card/tile/step".
+Confirma o que eu disse: não dá pra importar um .potx de designer; o master é definido em código. Componentes complexos (cards, tiles, steps) continuam desenhados por código. O ganho real do master é centralizar o "cromo" repetido (fundo, faixa de cabeçalho, rodapé, número de página) e os placeholders simples (título/corpo/imagem).
+2. Texto: transparency, glow, outline ✅ — dá pra fazer marca d'água sutil, brilho e contorno (efeitos premium).
+
+3. Imagem: shadow, rounding, sizing: cover/contain/crop, transparency, rotate, flipH/V ✅ — sombra e cantos arredondados deixam a foto do divisor/split mais polida.
+
+4. Gradiente: NÃO existe (só solid + transparency). Confirma que a minha "graduação" do divisor (dois retângulos com transparências diferentes) é o caminho certo.
+
+5. Outros: SVG, GIF animado, YouTube embed, RTL, fontes asiáticas, HTML-<table>→slides, charts nativos. Nada disso é necessário para o seu caso (deck estático), exceto talvez charts um dia, se quiser gráficos de dados.
+
+O que eu recomendo aproveitar (ordenado por valor)
+Recurso	Uso concreto	Risco
+transparency em texto	Completar a citação premium que você pediu: aspas douradas 20% nos cantos + número gigante do divisor como marca d'água	Baixo
+shadow/rounding em imagem	Polir foto do split, divisor e capa	Baixo
+defineSlideMaster (cromo + placeholders simples)	Centralizar fundo/rodapé/cabeçalho; manutenção	Médio (refactor, sem mudança visual)
+glow/outline	Acentos pontuais (ex.: título do divisor sobre foto)	Baixo, usar com parcimônia
+Charts nativos	Só se você quiser slides de dados/gráficos	—
+Não vale a pena: importar .potx, SmartArt (inexistente), gradientes (inexistentes).
+
+Minha proposta
+Como a transparência destrava o seu pedido anterior, sugiro eu já implementar o pacote de maior valor e menor risco:
+
+Citação premium completa (sua lista): aspas douradas a 20% movidas para os cantos (abrir em cima-esq., fechar embaixo-dir.), texto da citação em sans-serif itálico (Calibri, em vez do serif atual), e autoria em maiúsculas, negrito, dourado, com espaçamento.
+Polimento das fotos: shadow + leve rounding no split e no divisor; número gigante do divisor como marca d'água com transparência.
+O defineSlideMaster eu deixaria para um passo separado (é refactor de manutenção, sem mudança visível).
