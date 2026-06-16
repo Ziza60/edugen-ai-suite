@@ -7,6 +7,7 @@
 
 import {
   condenseForPlanning,
+  echoesTitle,
   enforceModuleFloors,
   fallbackModuleSlides,
   salvageSlidesFromTruncatedJson,
@@ -245,6 +246,18 @@ const longDeck: PlannedDeck = {
 };
 const lk = normalizeDeck(longDeck).deck.modules[0].slides.map((s) => s.kind);
 check("long-phrase lists stay bullets (not promoted to tiles)", lk.every((k) => k === "bullets"));
+
+// ── v7.12.2 — title-echo detection (course title minus subtitle, etc.) ──
+const COURSE = "Dominando o Planejamento de Auditorias Operacionais: Fundamentos e Boas Práticas";
+check("echo: exact course title", echoesTitle(COURSE, COURSE));
+check("echo: course title minus its subtitle (the S19/S34 case)",
+  echoesTitle("Dominando o Planejamento de Auditorias Operacionais", COURSE));
+check("echo: accent/case-insensitive module name",
+  echoesTitle("comunicacao e colaboracao da equipe", "Comunicação e Colaboração da Equipe"));
+check("echo: distinct short title is NOT an echo",
+  !echoesTitle("Documentos Essenciais", COURSE));
+check("echo: module name is not falsely matched by a longer specific title",
+  !echoesTitle("Documentos Essenciais Pós-Planejamento da Auditoria", "Documentos"));
 
 console.log(failures === 0 ? "\nALL PASS ✓" : `\n${failures} CHECK(S) FAILED ✗`);
 if (failures > 0) process.exit(1);

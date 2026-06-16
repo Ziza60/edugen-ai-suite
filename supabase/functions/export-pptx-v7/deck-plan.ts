@@ -887,6 +887,19 @@ function normKey(s: string): string {
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+// True when `a` is essentially the same as `ref` — exact match OR a leading slice
+// covering most of it. The planner often echoes the COURSE title minus its
+// subtitle (e.g. "Dominando o Planejamento de Auditorias Operacionais" vs the
+// full "…: Fundamentos e Boas Práticas"), which an exact check would miss.
+export function echoesTitle(a: string, ref: string): boolean {
+  const x = normKey(a);
+  const y = normKey(ref);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return long.startsWith(short) && short.length >= long.length * 0.6;
+}
+
 // When the FIRST content slide's title is just the module name (already shown in
 // the divider + eyebrow), demote it to a localized "module overview" label so we
 // don't print the same name three times. Unknown language → keep the title.
@@ -1076,17 +1089,20 @@ export async function buildDeck(
     for (const sp of slides) {
       if (sp.title) sp.title = stripModuleIntroPrefix(sp.title);
     }
-    // If the first content slide's title is just the module name (or the course
-    // title — the planner sometimes echoes it on a starved module), demote it to
-    // a localized "overview" label so the name isn't printed divider+eyebrow+title.
+    // Kill titles that just echo the module name or the COURSE title (the planner
+    // often repeats one of them — sometimes the course title minus its subtitle —
+    // which then prints divider + eyebrow + title all saying the same thing). The
+    // opening slide becomes a localized "overview"; a later slide that echoes the
+    // COURSE title falls back to the module name (never the whole course name).
     const overview = moduleOverviewLabel(language);
-    const firstTitle = slides[0]?.title ? normKey(slides[0].title) : "";
-    if (
-      overview && firstTitle &&
-      (firstTitle === normKey(m.title) || firstTitle === normKey(courseTitle))
-    ) {
-      slides[0].title = overview;
-    }
+    slides.forEach((sp, i) => {
+      if (!sp.title) return;
+      const echoesModule = echoesTitle(sp.title, m.title);
+      const echoesCourse = echoesTitle(sp.title, courseTitle);
+      if (!echoesModule && !echoesCourse) return;
+      if (i === 0 && overview) sp.title = overview;
+      else if (echoesCourse) sp.title = m.title;
+    });
     // Feed this module's substantive slide titles into the ledger for the next
     // modules. Skip generic recap/intro slides so we don't suppress every
     // module's own closing or objectives slide.
