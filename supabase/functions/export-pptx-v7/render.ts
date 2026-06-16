@@ -508,9 +508,23 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const rows = Math.ceil(n / cols);
   const gap = 0.3;
   const tileW = (CW - gap * (cols - 1)) / cols;
-  const tileH = (CONTENT_H - gap * (rows - 1)) / rows;
-  const badge = Math.min(0.62, tileH * 0.32);
-  const textFs = n > 4 ? 13 : tileH > 2 ? 16 : 14;
+  // Size tiles to their CONTENT (badge + text lines), NOT the full row height,
+  // then center the block vertically. Otherwise a single row of short tiles
+  // (e.g. 3 items → 1 row) stretches into tall, mostly-empty boxes — the
+  // "big box, little text" problem.
+  const fullRowH = (CONTENT_H - gap * (rows - 1)) / rows;
+  const innerW = tileW - 0.36;
+  const perLine = Math.max(10, innerW * 9); // ~chars/line for centered body text
+  let textLines = 1;
+  for (const b of items) {
+    textLines = Math.max(textLines, Math.min(4, Math.ceil(b.trim().length / perLine)));
+  }
+  const padTop = 0.26, badge = 0.56, gapBelowBadge = 0.16, lineH = 0.27, padBottom = 0.22;
+  const naturalH = padTop + badge + gapBelowBadge + textLines * lineH + padBottom;
+  const tileH = Math.min(fullRowH, Math.max(1.35, naturalH));
+  const textFs = n > 4 ? 13 : 15;
+  const blockH = rows * tileH + gap * (rows - 1);
+  const startY = CONTENT_Y + Math.max(0, (CONTENT_H - blockH) / 2);
 
   items.forEach((b, i) => {
     const col = i % cols;
@@ -519,7 +533,7 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     const itemsInRow = Math.min(cols, n - row * cols);
     const rowOffset = (CW - (itemsInRow * tileW + gap * (itemsInRow - 1))) / 2;
     const x = ML + rowOffset + col * (tileW + gap);
-    const y = CONTENT_Y + row * (tileH + gap);
+    const y = startY + row * (tileH + gap);
 
     slide.addShape("roundRect", {
       x, y, w: tileW, h: tileH, rectRadius: 0.08,
@@ -527,7 +541,7 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       line: { color: d.border, width: 1 },
     });
     const bx = x + tileW / 2 - badge / 2;
-    const by = y + Math.min(0.3, tileH * 0.14);
+    const by = y + padTop;
     slide.addShape("ellipse", {
       x: bx, y: by, w: badge, h: badge,
       fill: { color: d.accent },
@@ -540,11 +554,11 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     });
     slide.addText(b, {
       x: x + 0.18,
-      y: by + badge + 0.12,
+      y: by + badge + gapBelowBadge,
       w: tileW - 0.36,
-      h: y + tileH - (by + badge + 0.12) - 0.12,
+      h: tileH - padTop - badge - gapBelowBadge - 0.06,
       fontFace: FONT_BODY, fontSize: textFs, color: d.text,
-      align: "center", valign: "top", lineSpacingMultiple: 1.03,
+      align: "center", valign: "top", lineSpacingMultiple: 1.04,
     });
   });
   footer(slide, d, brand, num);
