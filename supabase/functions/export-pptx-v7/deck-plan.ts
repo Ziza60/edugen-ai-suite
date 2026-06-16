@@ -305,6 +305,11 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
   of the whole course's themes.
 - ALWAYS add a short English "imageQuery" (2–4 words) on the FIRST slide of the
   module and on any section/quote/stat/cards slide. Omit it for code/compare.
+  The imageQuery must describe a CONCRETE, photographable scene that visually
+  evokes the topic — a real thing a stock photo could show (e.g. "team meeting
+  whiteboard", "person reviewing documents", "city infrastructure inspection").
+  NEVER use abstract nouns alone ("communication", "quality", "planning"); turn
+  the concept into a literal scene with people, objects or places.
 - For code slides, put COMPLETE, runnable code in the "code" field, with a REAL
   newline (\n) ending every statement and comment — one statement per line.
   Never put two statements on the same line; never insert "...", "# ...", or

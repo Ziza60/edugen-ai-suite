@@ -393,7 +393,69 @@ function renderSection(slide: AnySlide, s: SlideSpec, d: Palette, index: number)
   });
 }
 
+/**
+ * Split layout: text column on the left, a photo "bleeding" off the right/top/
+ * bottom edges. Used for one hero content slide per module, reusing the module's
+ * already-resolved image (no extra fetches). Gracefully degrades: if no image
+ * resolved, the caller routes to the plain bullets layout instead.
+ */
+function renderSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  const imgX = 7.8;
+  maybeImage(slide, s, { x: imgX, y: 0, w: W - imgX, h: H });
+  // Soft blend strip so the photo's left edge melts into the page (no hard seam).
+  slide.addShape("rect", {
+    x: imgX, y: 0, w: 0.7, h: H,
+    fill: { color: d.bg, transparency: 35 }, line: { type: "none" },
+  });
+  const colW = imgX - ML - 0.45;
+  // Left-column header (narrower than the standard full-width header).
+  slide.addShape("rect", {
+    x: ML, y: 0.72, w: 0.07, h: 0.42,
+    fill: { color: d.accent2 }, line: { type: "none" },
+  });
+  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
+    x: ML + 0.18, y: 0.68, w: colW - 0.18, h: 0.3,
+    fontFace: FONT_BODY, fontSize: 10, bold: true, color: d.accent2,
+    charSpacing: 2, valign: "middle",
+  });
+  slide.addText(s.title, {
+    x: ML + 0.18, y: 1.02, w: colW - 0.18, h: 1.2,
+    fontFace: FONT_TITLE, fontSize: s.title.length > 40 ? 23 : 27, bold: true,
+    color: d.text, valign: "top", lineSpacingMultiple: 1.02,
+  });
+  const items = s.bullets ?? [];
+  const startY = 2.45;
+  const listH = FOOTER_Y - startY - 0.15;
+  const rowH = listH / Math.max(items.length, 1);
+  items.forEach((b, i) => {
+    const y = startY + i * rowH;
+    slide.addShape("rect", {
+      x: ML, y: y + rowH / 2 - 0.06, w: 0.14, h: 0.14,
+      fill: { color: d.accent2 }, line: { type: "none" },
+    });
+    slide.addText(b, {
+      x: ML + 0.3, y, w: colW - 0.4, h: rowH,
+      fontFace: FONT_BODY, fontSize: 15, color: d.text,
+      valign: "middle", lineSpacingMultiple: 1.03,
+    });
+  });
+  // Footer kept inside the left column so the page number never sits over the photo.
+  slide.addText(brand, {
+    x: ML, y: FOOTER_Y, w: colW - 0.5, h: 0.3,
+    fontFace: FONT_BODY, fontSize: 9, color: d.subtext, valign: "middle",
+  });
+  slide.addText(String(num), {
+    x: ML + colW - 0.5, y: FOOTER_Y, w: 0.5, h: 0.3,
+    fontFace: FONT_BODY, fontSize: 9, color: d.subtext, align: "right", valign: "middle",
+  });
+}
+
 function renderBullets(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  // A hero bullets slide carrying a module image renders as text + bleeding photo.
+  if (s.imageData && (s.bullets?.length ?? 0) > 0) {
+    return renderSplit(slide, s, d, brand, num, moduleLabel);
+  }
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
   const items = s.bullets ?? [];
