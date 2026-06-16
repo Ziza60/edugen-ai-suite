@@ -1,0 +1,69 @@
+Você mergeou o PR 🎉. Agora faltam dois ajustes no Supabase: (1) publicar o export-pptx-v7 (com os temas escuros) e (2) apagar as 8 funções legadas que ainda estão vivas no servidor. Deixa eu pegar o identificador do seu projeto pra te dar os comandos exatos:
+
+Executado
+Find supabase project ref and list functions
+Peguei tudo. Seu project ref é hhlzaryhsyqbqktxdgyb. O repositório já está limpo (só export-pptx-v4 e export-pptx-v7), mas no servidor Supabase ainda faltam dois ajustes. Vou explicar bem devagar.
+
+O que precisa acontecer e por quê
+Publicar o export-pptx-v7 → o código novo (com os temas escuros) só vale depois que você fizer o deploy da função. Mergear no GitHub não publica no Supabase.
+Apagar 8 funções antigas → elas foram removidas do código, mas continuam rodando no servidor. Apagar evita confusão e custo.
+Onde rodar os comandos: o jeito mais fácil é o Shell do Replit (lá já está o código mergeado). Se preferir, pode ser no terminal do seu computador, dentro da pasta do projeto.
+
+Passo 0 — Garantir que o código local está atualizado
+No Shell do Replit, confirme que está no branch mergeado e atualizado:
+
+git checkout edugenai-v5
+git pull
+Isso garante que o export-pptx-v7 local é a versão com os temas escuros.
+
+Passo 1 — Instalar o Supabase CLI (se ainda não tiver)
+npm install -g supabase
+supabase --version
+Se npm install -g der erro de permissão, use sem instalar: troque supabase por npx supabase em todos os comandos abaixo.
+
+Passo 2 — Fazer login
+supabase login
+Ele mostra um link/código. Abra no navegador (logado na sua conta Supabase), autorize, e o terminal conecta sozinho.
+
+Passo 3 — Conectar ao seu projeto (link)
+supabase link --project-ref hhlzaryhsyqbqktxdgyb
+Pode pedir a senha do banco — é a do seu projeto Supabase (Dashboard → Project Settings → Database). Isso só "aponta" o CLI para o projeto certo.
+
+Passo 4 — Publicar o motor v7 (o importante!)
+A partir da raiz do projeto (onde existe a pasta supabase/):
+
+supabase functions deploy export-pptx-v7
+Isso envia o código novo para o servidor.
+Não mexe nas suas chaves/secrets (GEMINI, PEXELS, etc.) — elas continuam lá.
+Não precisa republicar o export-pptx-v4; ele não mudou.
+Ao final aparece algo como "Deployed Function export-pptx-v7". ✅
+
+Passo 5 — Apagar as 8 funções antigas
+Cole este bloco (apaga uma a uma):
+
+for f in export-pptx export-pptx-v2 export-pptx-v3 export-pptx-v3-magicslides \
+         export-pptx-v6 export-pptx-2slides export-pptx-presenton get-2slides-themes; do
+  supabase functions delete "$f" --project-ref hhlzaryhsyqbqktxdgyb
+done
+Se alguma já não existir, ele só avisa e segue — sem problema.
+
+Passo 6 — Conferir o resultado
+supabase functions list
+Você deve ver export-pptx-v7 e export-pptx-v4 na lista, e nenhuma das 8 antigas. 🎯
+
+Alternativa sem terminal (só para apagar)
+Se quiser apagar pelo navegador: Dashboard → Edge Functions → clique em cada função antiga → Delete.
+⚠️ Mas o deploy do v7 (Passo 4) precisa do CLI — pelo Dashboard não dá para publicar o código do repositório.
+
+Resumo de uma linha
+Login → Link → deploy export-pptx-v7 → apagar as 8 antigas → functions list para conferir.
+
+Depois disso, com o frontend já deployado pelo Replit, é só abrir um curso e exportar: o v7 vai gerar os slides escuros/premium. Quer que eu te ajude a validar algo depois do deploy (ex.: testar a exportação ou ajustar cores)?
+
+Sem ação nova de minha parte — o aviso do hook é só sobre assinatura de commits (cosmético).
+
+O passo a passo do Supabase está na minha mensagem anterior. Resumo de uma linha:
+
+Login → Link (hhlzaryhsyqbqktxdgyb) → supabase functions deploy export-pptx-v7 → apagar as 8 antigas → supabase functions list para conferir.
+
+Quando rodar, me avise se algum comando der erro (login, link/senha do banco, ou deploy) que eu te ajudo a destravar. E depois do deploy, posso te ajudar a validar a exportação ou ajustar as cores dos temas. 👍
