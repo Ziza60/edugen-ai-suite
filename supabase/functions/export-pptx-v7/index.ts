@@ -97,6 +97,7 @@ Deno.serve(async (req: Request) => {
     const {
       course_id,
       palette = "default",
+      template = "default_v5",
       density = "standard",
       includeImages = true,
       footerBrand = "EduGenAI",
@@ -132,7 +133,7 @@ Deno.serve(async (req: Request) => {
 
     const t0 = Date.now();
     console.log(
-      `[V7] ENGINE=${ENGINE_VERSION} "${courseTitle}" modules=${modules.length} llm=${!!geminiKey} images=${includeImages && !!pexelsKey} density=${density}`,
+      `[V7] ENGINE=${ENGINE_VERSION} "${courseTitle}" modules=${modules.length} llm=${!!geminiKey} images=${includeImages && !!pexelsKey} density=${density} template=${template} palette=${palette}`,
     );
 
     // 1. Build deck (structured planner + deterministic fallback)
@@ -169,6 +170,7 @@ Deno.serve(async (req: Request) => {
     // 4. Render
     const { pptx, slideCount } = renderDeck(PptxGenJS, deck, {
       palette,
+      template,
       footerBrand,
     });
 

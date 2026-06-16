@@ -113,8 +113,53 @@ export const PALETTES: Record<string, Palette> = {
   },
 };
 
+// ── Visual Templates (dark / premium) ──────────────────────────────────────
+// Each template is a full dark palette: dark canvas, light text, subtle
+// surface/border and a strong accent pair. Mirrors the 5 presets offered in
+// the export dialog (PptxExportDialog VISUAL_TEMPLATES). Because every renderer
+// only reads palette tokens (d.bg / d.text / d.surface / d.accent / …), making
+// the canvas dark here turns the WHOLE deck premium-dark with no per-slide code.
+export const THEMES: Record<string, Palette> = {
+  // Navy & Gold — corporate classic
+  default_v5: {
+    name: "default_v5",
+    bg: "0A1628", surface: "152740", text: "F1F5F9", subtext: "AEC0D2",
+    border: "263A54", accent: "2E6DA4", accent2: "D4A24C",
+    coverBg: "071120", onAccent: "FFFFFF",
+  },
+  // Neon & Cyber — dark tech
+  futuristic_background: {
+    name: "futuristic_background",
+    bg: "040D1C", surface: "0C1E36", text: "D6ECFF", subtext: "8FB4D6",
+    border: "16314C", accent: "1E90E0", accent2: "27E0C6",
+    coverBg: "020814", onAccent: "FFFFFF",
+  },
+  // Gold & Dark — elegant
+  dark_theme: {
+    name: "dark_theme",
+    bg: "0D1117", surface: "171D26", text: "E6EDF3", subtext: "A2B0BE",
+    border: "28323D", accent: "D9810A", accent2: "F0B23C",
+    coverBg: "080B11", onAccent: "FFFFFF",
+  },
+  // Violet & Gold — premium luxury
+  dark_elegance_xl: {
+    name: "dark_elegance_xl",
+    bg: "0B0912", surface: "171125", text: "ECE8F5", subtext: "B0A6C6",
+    border: "2B2142", accent: "8B2FC9", accent2: "D4AF37",
+    coverBg: "070510", onAccent: "FFFFFF",
+  },
+  // Red & Fire — bold
+  dark_style_theme: {
+    name: "dark_style_theme",
+    bg: "0F1219", surface: "1B212B", text: "F0F4F8", subtext: "A8B4C2",
+    border: "2C333E", accent: "D63B3B", accent2: "E8943A",
+    coverBg: "0A0D13", onAccent: "FFFFFF",
+  },
+};
+
 export interface RenderOptions {
   palette?: string;
+  template?: string;
   footerBrand?: string;
 }
 
@@ -122,8 +167,22 @@ type AnySlide = any;
 type AnyPptx = any;
 
 // ── small helpers ─────────────────────────────────────────────────────────
-function p(pal: string | undefined): Palette {
-  return PALETTES[pal ?? "default"] ?? PALETTES.default;
+// Resolve the active palette from render options.
+// - A visual template (always dark/premium) defines the whole look and wins.
+//   When a non-"default" colour palette is also chosen, it recolours ONLY the
+//   accent pair so users can retint a dark template.
+// - Without a template (e.g. a direct API call) we fall back to the legacy
+//   light palette selected by name.
+function resolvePalette(opts: RenderOptions): Palette {
+  const theme = opts.template ? THEMES[opts.template] : undefined;
+  if (theme) {
+    if (opts.palette && opts.palette !== "default" && PALETTES[opts.palette]) {
+      const pal = PALETTES[opts.palette];
+      return { ...theme, accent: pal.accent, accent2: pal.accent2 };
+    }
+    return theme;
+  }
+  return PALETTES[opts.palette ?? "default"] ?? PALETTES.default;
 }
 
 function bgFill(slide: AnySlide, color: string) {
@@ -1005,7 +1064,7 @@ export function renderDeck(
   deck: PlannedDeck,
   opts: RenderOptions = {},
 ): { pptx: AnyPptx; slideCount: number } {
-  const d = p(opts.palette);
+  const d = resolvePalette(opts);
   const brand = opts.footerBrand || "EduGenAI";
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "EDU16x9", width: W, height: H });

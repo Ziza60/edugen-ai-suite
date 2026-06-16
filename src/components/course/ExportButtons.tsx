@@ -311,6 +311,8 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
                     body: JSON.stringify({
                       course_id: courseId,
                       palette: options.palette,
+                      template: options.template,
+                      density: options.density,
                       includeImages: options.includeImages,
                       footerBrand: options.footerBrand,
                       language: "Português (Brasil)",
