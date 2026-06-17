@@ -31,6 +31,7 @@ export type SlideKind =
   | "steps" // ordered process / sequence
   | "compare" // two-column comparison
   | "matrix" // 2×2 quadrant analysis (SWOT, effort×impact) — uses 4 cards
+  | "table" // multi-column comparison grid (N options × M criteria)
   | "quote" // pull-quote / reflection prompt
   | "stat" // single big-number highlight
   | "code" // monospace code block
@@ -51,6 +52,12 @@ export interface DeckColumn {
   items: string[];
 }
 
+/** One row of a comparison table: a criterion label plus one cell per column. */
+export interface DeckTableRow {
+  label: string;
+  cells: string[];
+}
+
 /** A normalized, render-ready slide. The renderer never re-interprets prose. */
 export interface SlideSpec {
   kind: SlideKind;
@@ -63,6 +70,10 @@ export interface SlideSpec {
   steps?: DeckStep[];
   left?: DeckColumn;
   right?: DeckColumn;
+  /** "table" kind: option headers across the top (the row-label column is implicit). */
+  columns?: string[];
+  /** "table" kind: one row per criterion; cells align to `columns`. */
+  rows?: DeckTableRow[];
   quote?: string;
   attribution?: string;
   stat?: { value: string; label: string };
@@ -218,8 +229,8 @@ export type Density = "compact" | "standard" | "detailed";
 // "Compacto / Padrão / Detalhado" control change the deck.
 const DENSITY_SPECS: Record<Density, { min: number; max: number; note: string }> = {
   compact: {
-    min: 5,
-    max: 7,
+    min: 4,
+    max: 6,
     note: "Lean & visual: prefer FEWER slides with breathing room; keep only the essential points.",
   },
   standard: {
@@ -289,6 +300,12 @@ PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premi
 - "matrix"   → a 2×2 quadrant analysis (SWOT, risk×impact, effort×value). Provide
   EXACTLY 4 "cards": each card heading is the quadrant label, body a 1-line note.
   Use ONLY for genuine cartesian classifications — not for any list of 4 things.
+- "table"    → a multi-column comparison: 2–5 options ("columns") compared across
+  2–6 criteria ("rows"). Each row has a "label" (the criterion) and one short
+  "cells" entry per column, in column order. Use this — NOT bullets or "compare" —
+  whenever 3+ things are compared on several attributes (e.g. data types across
+  Order/Mutability/Syntax; file modes; HTTP methods). Keep every cell to a short
+  phrase, never a sentence.
 - "quote"    → a memorable principle, definition, or reflection prompt.
 - "stat"     → one striking number or metric worth a whole slide.
 - "code"     → a code/command example (ONLY if the source actually contains code).
@@ -322,6 +339,19 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
   newline (\n) ending every statement and comment — one statement per line.
   Never put two statements on the same line; never insert "...", "# ...", or
   "-- ..." placeholders.
+- VARY THE LAYOUT — do NOT make every module the same bullets/cards/steps rhythm:
+  • If the module teaches programming or shows commands/code, INCLUDE at least one
+    "code" slide with the real snippet.
+  • Use "compare" for any Problem-vs-Solution, Before-vs-After or A-vs-B contrast
+    (e.g. a "Desafio/Solução" idea) — NOT a numbered steps list.
+  • Use "matrix" when 4 items classify along two axes (SWOT, effort×impact).
+  • Use "table" when 3+ options are compared across several criteria (a
+    comparison that would otherwise become a cramped bullet list).
+  • Add ONE "quote" OR "stat" per module when the source offers a striking
+    principle or number, to break the visual rhythm.
+- Do NOT prepend ordinals ("1.", "2)") inside a step's heading — the renderer
+  numbers steps automatically. Write the heading as plain text.
+- Plain text only in every field — NO Markdown emphasis (no asterisks, backticks or #).
 - Stay strictly faithful to the module content. Do NOT invent facts.
 
 MODULE CONTENT (markdown):
@@ -334,7 +364,7 @@ slide doesn't use; never add other keys):
 {
   "slides": [
     {
-      "kind": "bullets|cards|steps|compare|quote|stat|code|closing",
+      "kind": "bullets|cards|steps|compare|matrix|table|quote|stat|code|closing",
       "title": "string (required, complete phrase)",
       "subtitle": "string (optional)",
       "bullets": ["short point", "..."],
@@ -342,6 +372,8 @@ slide doesn't use; never add other keys):
       "steps": [{ "heading": "string", "body": "string" }],
       "left":  { "heading": "string", "items": ["..."] },
       "right": { "heading": "string", "items": ["..."] },
+      "columns": ["Option A", "Option B", "Option C"],
+      "rows": [{ "label": "Criterion", "cells": ["cell A", "cell B", "cell C"] }],
       "quote": "string",
       "stat":  { "value": "42%", "label": "string" },
       "code":  { "language": "sql", "text": "SELECT id FROM users;\\nSELECT 1;" },

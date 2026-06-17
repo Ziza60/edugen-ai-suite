@@ -267,6 +267,55 @@ const matrixEmpty: PlannedDeck = {
 const mek = normalizeDeck(matrixEmpty).deck.modules[0].slides.map((s) => s.kind);
 check("matrix without cards is salvaged to bullets (graceful)", mek.length === 1 && mek[0] === "bullets");
 
+// ── Markdown emphasis must never reach the slide as literal characters ──
+const mdDeck: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [
+    { kind: "bullets", title: "T", bullets: ["**Desafio:** gerar docs", "Usar `prompt` few-shot", "__Viés__ nos dados"] } as SlideSpec,
+  ] }],
+};
+const mdOut = (normalizeDeck(mdDeck).deck.modules[0].slides[0].bullets ?? []).join(" ");
+check("markdown ** __ ` stripped from bullets", !/[*_`]/.test(mdOut) && mdOut.includes("Desafio:") && mdOut.includes("prompt"));
+
+// ── Steps must not double-number ("1. 1.") — leading ordinal stripped ──
+const stepDeck: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [
+    { kind: "steps", title: "T", steps: [
+      { heading: "1. Recuperação", body: "a" },
+      { heading: "2) Geração", body: "b" },
+      { heading: "Resposta Aprimorada", body: "c" },
+    ] } as SlideSpec,
+  ] }],
+};
+const stHeads = (normalizeDeck(stepDeck).deck.modules[0].slides[0].steps ?? []).map((s) => s.heading);
+check("steps headings have no leading ordinal", stHeads[0] === "Recuperação" && stHeads[1] === "Geração" && stHeads[2] === "Resposta Aprimorada");
+
+// ── table: ragged rows are squared to the column count ──
+const tblDeck: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [
+    { kind: "table", title: "Coleções", columns: ["Listas", "Tuplas", "Conjuntos"], rows: [
+      { label: "Mutabilidade", cells: ["Mutável", "Imutável", "Mutável"] },
+      { label: "Sintaxe", cells: ["[]", "()"] },                 // short → padded
+      { label: "Duplicatas", cells: ["Sim", "Sim", "Não", "X"] }, // long → trimmed
+    ] } as SlideSpec,
+  ] }],
+};
+const tbl = normalizeDeck(tblDeck).deck.modules[0].slides[0];
+const rect = (tbl.rows ?? []).every((r) => r.cells.length === (tbl.columns?.length ?? 0));
+check("table kept as table with rectangular rows", tbl.kind === "table" && (tbl.columns?.length ?? 0) === 3 && rect);
+
+// ── table with <2 columns is salvaged to bullets (graceful) ──
+const tblBad: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [
+    { kind: "table", title: "T", columns: ["Só uma"], rows: [{ label: "a", cells: ["b"] }], bullets: ["fallback ponto"] } as SlideSpec,
+  ] }],
+};
+const tb = normalizeDeck(tblBad).deck.modules[0].slides[0];
+check("degenerate table salvaged to bullets", tb.kind === "bullets" && (tb.bullets?.length ?? 0) === 1);
+
 // ── v7.12.2 — title-echo detection (course title minus subtitle, etc.) ──
 const COURSE = "Dominando o Planejamento de Auditorias Operacionais: Fundamentos e Boas Práticas";
 check("echo: exact course title", echoesTitle(COURSE, COURSE));
