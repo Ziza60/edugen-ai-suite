@@ -453,6 +453,39 @@ function recoverPartialObject(s: string): SlideSpec | null {
  */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Extract the slides array from a successfully-parsed Gemini JSON response.
+ *
+ * We ask for `{ "slides": [...] }` in the prompt, but because we run JSON mode
+ * WITHOUT a responseSchema (a rich schema made the constrained decoder slow /
+ * blow up), the model occasionally ships the SAME slides in a different
+ * envelope — most often a bare top-level array `[ {...} ]`, or under an
+ * alternately-named/cased key. Without this tolerance those valid responses
+ * were discarded and the module dropped to the deterministic fallback even
+ * though finishReason=STOP and the JSON was complete. We accept:
+ *   1. a top-level array,
+ *   2. `parsed.slides` (canonical),
+ *   3. otherwise the longest array-of-objects among the top-level values.
+ * Downstream normalizeDeck still validates/repairs every slide.
+ */
+export function extractSlidesArray(parsed: any): SlideSpec[] | null {
+  if (Array.isArray(parsed)) return parsed.length ? (parsed as SlideSpec[]) : null;
+  if (parsed && typeof parsed === "object") {
+    if (Array.isArray(parsed.slides) && parsed.slides.length) return parsed.slides;
+    let best: any[] | null = null;
+    for (const v of Object.values(parsed)) {
+      if (
+        Array.isArray(v) && v.length &&
+        typeof v[0] === "object" && v[0] !== null && !Array.isArray(v[0])
+      ) {
+        if (!best || v.length > best.length) best = v;
+      }
+    }
+    if (best) return best as SlideSpec[];
+  }
+  return null;
+}
+
 export async function planModuleSlides(
   courseTitle: string,
   moduleTitle: string,
@@ -548,7 +581,7 @@ export async function planModuleSlides(
       let slides: SlideSpec[] | null = null;
       try {
         const parsed = JSON.parse(text);
-        slides = Array.isArray(parsed?.slides) ? parsed.slides : null;
+        slides = extractSlidesArray(parsed);
       } catch {
         slides = salvageSlidesFromTruncatedJson(text);
       }
