@@ -26,9 +26,11 @@ export type SlideKind =
   | "section" // module divider
   | "bullets" // title + up to 5 supporting points
   | "tiles" // 3–6 short points as an icon/badge grid (visual variant of bullets)
+  | "bento" // 2–4 short points as surface cards (anti-monotony variant of bullets)
   | "cards" // 2–4 concept cards
   | "steps" // ordered process / sequence
   | "compare" // two-column comparison
+  | "matrix" // 2×2 quadrant analysis (SWOT, effort×impact) — uses 4 cards
   | "quote" // pull-quote / reflection prompt
   | "stat" // single big-number highlight
   | "code" // monospace code block
@@ -69,6 +71,8 @@ export interface SlideSpec {
   imageQuery?: string;
   /** base64 data URI, populated at runtime when images are enabled. */
   imageData?: string;
+  /** How a hero image is laid out (set at runtime): bleed right/left, or top. */
+  imageLayout?: "split-right" | "split-left" | "top";
   /** Speaker notes. */
   notes?: string;
 }
@@ -117,6 +121,7 @@ export const SLIDE_RESPONSE_SCHEMA = {
               "cards",
               "steps",
               "compare",
+              "matrix",
               "quote",
               "stat",
               "code",
@@ -281,6 +286,9 @@ PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premi
 - "cards"    → 2–4 parallel items (types, pillars, components) each with a 1-line body.
 - "steps"    → an ordered process or sequence (3–5 steps).
 - "compare"  → two contrasting things (left vs right), each with 2–4 short items.
+- "matrix"   → a 2×2 quadrant analysis (SWOT, risk×impact, effort×value). Provide
+  EXACTLY 4 "cards": each card heading is the quadrant label, body a 1-line note.
+  Use ONLY for genuine cartesian classifications — not for any list of 4 things.
 - "quote"    → a memorable principle, definition, or reflection prompt.
 - "stat"     → one striking number or metric worth a whole slide.
 - "code"     → a code/command example (ONLY if the source actually contains code).
@@ -453,6 +461,39 @@ function recoverPartialObject(s: string): SlideSpec | null {
  */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Extract the slides array from a successfully-parsed Gemini JSON response.
+ *
+ * We ask for `{ "slides": [...] }` in the prompt, but because we run JSON mode
+ * WITHOUT a responseSchema (a rich schema made the constrained decoder slow /
+ * blow up), the model occasionally ships the SAME slides in a different
+ * envelope — most often a bare top-level array `[ {...} ]`, or under an
+ * alternately-named/cased key. Without this tolerance those valid responses
+ * were discarded and the module dropped to the deterministic fallback even
+ * though finishReason=STOP and the JSON was complete. We accept:
+ *   1. a top-level array,
+ *   2. `parsed.slides` (canonical),
+ *   3. otherwise the longest array-of-objects among the top-level values.
+ * Downstream normalizeDeck still validates/repairs every slide.
+ */
+export function extractSlidesArray(parsed: any): SlideSpec[] | null {
+  if (Array.isArray(parsed)) return parsed.length ? (parsed as SlideSpec[]) : null;
+  if (parsed && typeof parsed === "object") {
+    if (Array.isArray(parsed.slides) && parsed.slides.length) return parsed.slides;
+    let best: any[] | null = null;
+    for (const v of Object.values(parsed)) {
+      if (
+        Array.isArray(v) && v.length &&
+        typeof v[0] === "object" && v[0] !== null && !Array.isArray(v[0])
+      ) {
+        if (!best || v.length > best.length) best = v;
+      }
+    }
+    if (best) return best as SlideSpec[];
+  }
+  return null;
+}
+
 export async function planModuleSlides(
   courseTitle: string,
   moduleTitle: string,
@@ -548,7 +589,7 @@ export async function planModuleSlides(
       let slides: SlideSpec[] | null = null;
       try {
         const parsed = JSON.parse(text);
-        slides = Array.isArray(parsed?.slides) ? parsed.slides : null;
+        slides = extractSlidesArray(parsed);
       } catch {
         slides = salvageSlidesFromTruncatedJson(text);
       }

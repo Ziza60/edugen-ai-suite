@@ -127,6 +127,7 @@ function hasMinimumContent(s: SlideSpec): boolean {
     case "closing":
       return (s.bullets?.length ?? 0) > 0;
     case "cards":
+    case "matrix":
       return (s.cards?.length ?? 0) > 0;
     case "steps":
       return (s.steps?.length ?? 0) > 0;
@@ -243,27 +244,45 @@ function tilesEligible(s: SlideSpec): boolean {
     b.every((x) => x.trim().length > 0 && x.trim().split(/\s+/).length <= 10);
 }
 
+/** 2–4 short points → eligible for the roomy "bento" surface-card grid. */
+function bentoEligible(s: SlideSpec): boolean {
+  if (s.kind !== "bullets") return false;
+  const b = s.bullets ?? [];
+  return b.length >= 2 && b.length <= 4 &&
+    b.every((x) => x.trim().length > 0 && x.trim().split(/\s+/).length <= 12);
+}
+
 /**
  * Anti-monotony: never render two same-looking content slides back to back. The
  * planner overwhelmingly emits "bullets", producing tiring runs of identical
- * vertical lists. Whenever a bullets slide would follow another bullets slide,
- * we promote it to the "tiles" grid (same content, distinct layout). Because the
- * promoted slide becomes "tiles", the next bullets slide differs again — so a
- * run of N bullet slides renders as bullets / tiles / bullets / tiles… Purely
- * visual; content is untouched.
+ * vertical lists. Whenever a plain (image-less) bullets slide would follow
+ * another "listy" slide, we recast it — rotating across the eligible variants
+ * ("tiles" badge grid, "bento" surface cards) — so a run of N bullet slides
+ * renders as bullets / tiles / bento / tiles… Hero bullets slides (which carry a
+ * module image and render as a split / image-top) are left untouched. Purely
+ * visual; content is identical.
  */
 function breakLayoutRuns(slides: SlideSpec[]): SlideSpec[] {
   let prev = "";
+  let variant = 0;
+  const listy = (k: string) => k === "bullets" || k === "tiles" || k === "bento";
   return slides.map((s) => {
     let out = s;
-    if (s.kind === "bullets" && prev === "bullets" && tilesEligible(s)) {
-      out = {
-        kind: "tiles",
-        title: s.title,
-        eyebrow: s.eyebrow,
-        bullets: s.bullets,
-        imageQuery: s.imageQuery,
-      } as SlideSpec;
+    if (s.kind === "bullets" && !s.imageData && listy(prev)) {
+      const options: string[] = [];
+      if (tilesEligible(s)) options.push("tiles");
+      if (bentoEligible(s)) options.push("bento");
+      if (options.length) {
+        const kind = options[variant % options.length];
+        variant++;
+        out = {
+          kind,
+          title: s.title,
+          eyebrow: s.eyebrow,
+          bullets: s.bullets,
+          imageQuery: s.imageQuery,
+        } as SlideSpec;
+      }
     }
     prev = out.kind;
     return out;
