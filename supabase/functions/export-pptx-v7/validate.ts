@@ -86,7 +86,7 @@ function normCards(cards: DeckCard[] | undefined): DeckCard[] {
   return cards
     .map((c) => ({
       heading: capText(String(c?.heading ?? ""), 8, 48),
-      body: capText(String(c?.body ?? ""), 16, LIMITS.MAX_CARD_BODY_CHARS),
+      body: capText(String(c?.body ?? ""), 12, LIMITS.MAX_CARD_BODY_CHARS),
     }))
     .filter((c) => c.heading.length > 0)
     .slice(0, LIMITS.MAX_CARDS);
@@ -103,7 +103,7 @@ function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
   return steps
     .map((s) => ({
       heading: capText(stripLeadingOrdinal(String(s?.heading ?? "")), 8, 48),
-      body: s?.body ? capText(String(s.body), 16, 90) : undefined,
+      body: s?.body ? capText(String(s.body), 12, 90) : undefined,
     }))
     .filter((s) => s.heading.length > 0)
     .slice(0, LIMITS.MAX_STEPS);
@@ -127,7 +127,7 @@ function normTable(slide: SlideSpec):
   const rows = (Array.isArray(slide.rows) ? slide.rows : [])
     .map((r) => {
       const cells = (Array.isArray(r?.cells) ? r.cells : [])
-        .map((c) => capText(String(c ?? ""), 14, LIMITS.MAX_TABLE_CELL_CHARS));
+        .map((c) => capText(String(c ?? ""), 12, LIMITS.MAX_TABLE_CELL_CHARS));
       // Force each row to exactly n cells (pad short, drop overflow).
       while (cells.length < n) cells.push("");
       return {
