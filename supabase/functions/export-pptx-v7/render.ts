@@ -1319,13 +1319,19 @@ function renderStat(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, nu
       align: "center",
     });
   }
-  slide.addText(s.stat?.value ?? s.title, {
+  // A fixed 130pt figure overflowed long values ("47 Bilhões de Dólares") past the
+  // box, colliding with the eyebrow above and the label below. Scale by length so
+  // the value always fits — short figures keep the dramatic size.
+  const statVal = s.stat?.value ?? s.title;
+  const vlen = statVal.length;
+  const valSize = vlen <= 12 ? 130 : vlen <= 16 ? 100 : vlen <= 22 ? 70 : vlen <= 30 ? 52 : 40;
+  slide.addText(statVal, {
     x: ML,
     y: 2.3,
     w: CW,
     h: 2.2,
     fontFace: FONT_TITLE,
-    fontSize: 130,
+    fontSize: valSize,
     bold: true,
     color: "FFFFFF",
     align: "center",
