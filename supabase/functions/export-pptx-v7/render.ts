@@ -1094,8 +1094,45 @@ function renderDarkSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: strin
   footer(slide, d, brand, num);
 }
 
-function renderCompare(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
-  if (darkSplitEligible(s)) return renderDarkSplit(slide, s, d, brand, num);
+/**
+ * Horizontal twin of renderDarkSplit: top half on the page colour, bottom half
+ * a full-bleed accent panel. Same polarised A-vs-B contrast, rotated 90° so a
+ * deck with several short compares doesn't repeat one silhouette. Tokens only.
+ */
+function renderDarkSplitH(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number) {
+  bgFill(slide, d.bg);
+  slide.addShape("rect", {
+    x: 0, y: H / 2, w: W, h: H / 2,
+    fill: { color: d.accent }, line: { type: "none" },
+  });
+  const halves = [
+    { col: s.left!, y: 0.85, headColor: d.accent2, bodyColor: d.text },
+    { col: s.right!, y: H / 2 + 0.45, headColor: d.onAccent, bodyColor: d.onAccent },
+  ];
+  for (const { col, y, headColor, bodyColor } of halves) {
+    slide.addText((col.heading || "").toUpperCase(), {
+      x: 0.9, y, w: W - 1.8, h: 0.9,
+      fontFace: FONT_TITLE, fontSize: 26, bold: true, color: headColor,
+      valign: "bottom", lineSpacingMultiple: 1.0,
+    });
+    slide.addText((col.items ?? []).join("\n"), {
+      x: 0.9, y: y + 0.95, w: W - 1.8, h: 1.55,
+      fontFace: FONT_BODY, fontSize: 16, color: bodyColor,
+      valign: "top", lineSpacingMultiple: 1.2,
+    });
+  }
+  footer(slide, d, brand, num);
+}
+
+function renderCompare(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string, variant = 0) {
+  // Round-robin so repeated contrasts don't all look identical: alternate the
+  // dramatic VERTICAL split with a HORIZONTAL (top/bottom) one. Only short
+  // one-statement sides qualify for either; list-y compares keep the two cards.
+  if (darkSplitEligible(s)) {
+    return variant % 2 === 0
+      ? renderDarkSplit(slide, s, d, brand, num)
+      : renderDarkSplitH(slide, s, d, brand, num);
+  }
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
   const gap = 0.5;
@@ -1423,6 +1460,7 @@ export function renderDeck(
     num++;
     return pptx.addSlide();
   };
+  let compareCount = 0; // drives the compare round-robin across the whole deck
 
   // Cover
   renderCover(add(), deck, d, brand);
@@ -1459,7 +1497,7 @@ export function renderDeck(
             renderSteps(slide, s, d, brand, num, m.title);
             break;
           case "compare":
-            renderCompare(slide, s, d, brand, num, m.title);
+            renderCompare(slide, s, d, brand, num, m.title, compareCount++);
             break;
           case "matrix":
             renderMatrix(slide, s, d, brand, num, m.title);
