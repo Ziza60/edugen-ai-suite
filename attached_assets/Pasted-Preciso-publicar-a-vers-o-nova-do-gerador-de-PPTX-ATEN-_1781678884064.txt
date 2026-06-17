@@ -1,0 +1,33 @@
+Preciso publicar a versão nova do gerador de PPTX. ATENÇÃO: na última vez você
+rebuildou só o site e isso NÃO atualizou os layouts — porque o motor de slides
+roda como uma Supabase Edge Function, não no build do frontend. São DOIS alvos
+de deploy independentes. Faça os dois, nesta ordem, e verifique.
+CONTEXTO DA ARQUITETURA
+- O frontend (ExportButtons.tsx / PptxExportDialog.tsx) só faz fetch para
+  `${VITE_SUPABASE_URL}/functions/v1/export-pptx-v7` e envia opções
+  (palette/template/density). Ele NÃO desenha os slides.
+- Toda a lógica de layout (render.ts, validate.ts, deck-plan.ts) está na
+  Edge Function `supabase/functions/export-pptx-v7`. As novidades (timeline,
+  matrix 2x2, dark-split, TABELA comparativa, fixes de markdown/numeração)
+  vivem AÍ. Um rebuild do site não toca nessa função.
+- Não há CI: a função NÃO é deployada automaticamente no merge.
+PASSO 1 — Sincronizar o código
+- Faça pull/checkout da branch `edugenai-v5` (já contém a v7.16.0 mergeada).
+- Confirme que o arquivo `supabase/functions/export-pptx-v7/index.ts` tem
+  `const ENGINE_VERSION = "7.16.0";`. Se não tiver, o pull não veio completo —
+  pare e me avise.
+PASSO 2 — Deploy da Edge Function (este é o passo que faltou da última vez)
+- Rode: `supabase functions deploy export-pptx-v7`
+- Se pedir, use o project-ref/link já configurado deste projeto Supabase.
+- Aguarde concluir com sucesso.
+PASSO 3 — Rebuild + Publish do frontend (para as opções de UI do diálogo)
+- `npm run build`
+- Publique o site (clicar em Publish / republicar) — sem isso as mudanças de
+  UI não vão ao ar.
+PASSO 4 — VERIFICAÇÃO (obrigatória)
+- Gere um PPTX de teste pelo app e, no console do navegador, confira o log
+  `[PPTX][DIAG]`: o campo `engine_version` DEVE ser `7.16.0`.
+- Se vier uma versão antiga (ex.: 7.12.x ou 7.14.x), o deploy da função NÃO
+  pegou — refaça o PASSO 2 e me diga o erro exato.
+Me dê no final: o resultado do deploy da função e o `engine_version` que
+apareceu no teste. Não conclua só com "site publicado".

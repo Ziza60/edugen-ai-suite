@@ -22,7 +22,7 @@ import { normalizeDeck } from "./validate.ts";
 import { renderDeck } from "./render.ts";
 import { resolveImages } from "./images.ts";
 
-const ENGINE_VERSION = "7.12.2";
+const ENGINE_VERSION = "7.16.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,19 +52,27 @@ function attachImages(deck: PlannedDeck, images: Record<string, string>) {
     q ? images[q.trim().toLowerCase()] : undefined;
   (deck as any).coverImage = lookup(deck.courseTitle) ||
     Object.values(images)[0] || undefined;
-  for (const m of deck.modules) {
+  // One image per module on a single "feature" slide (reused by the module
+  // divider — no extra fetch/decode). A quote slide, when present, wins the image
+  // and renders FULL-BLEED (cinematic). Otherwise a short bullets "hero" gets it
+  // and renders as a bleeding split / image-top, with the orientation rotating
+  // per module to break the "image always on the same side" rhythm.
+  const orientations = ["split-right", "top", "split-left"] as const;
+  deck.modules.forEach((m, mi) => {
     const img = lookup(moduleImageQuery(m));
-    if (!img) continue;
-    // Hero = first short bullets slide (2–4 brief points), which renders as a
-    // text + bleeding-image split. Fall back to slides[0] so the divider — which
-    // reads the image off any slide that has one — always gets a photo too.
+    if (!img) return;
+    const quote = m.slides.find((s) => s.kind === "quote");
     const hero = m.slides.find((s) =>
       s.kind === "bullets" &&
       (s.bullets?.length ?? 0) >= 2 && (s.bullets?.length ?? 0) <= 4 &&
       (s.bullets ?? []).every((b) => b.trim().length <= 95)
     );
-    (hero ?? m.slides[0]).imageData = img;
-  }
+    const feature = quote ?? hero ?? m.slides[0];
+    feature.imageData = img;
+    if (feature.kind !== "quote") {
+      feature.imageLayout = orientations[mi % orientations.length];
+    }
+  });
 }
 
 Deno.serve(async (req: Request) => {

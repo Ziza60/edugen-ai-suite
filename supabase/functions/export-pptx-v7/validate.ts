@@ -12,6 +12,7 @@ import type {
   DeckCard,
   DeckModule,
   DeckStep,
+  DeckTableRow,
   PlannedDeck,
   SlideSpec,
 } from "./deck-plan.ts";
@@ -26,6 +27,9 @@ export const LIMITS = {
   MAX_TITLE_CHARS: 90,
   MAX_CODE_LINES: 16,
   MAX_CARD_BODY_CHARS: 90,
+  MAX_TABLE_COLS: 5,
+  MAX_TABLE_ROWS: 6,
+  MAX_TABLE_CELL_CHARS: 80,
 } as const;
 
 const TRAILING_JUNK_RE = /[\s,;:\-–—]+$/;
@@ -37,6 +41,14 @@ const DANGLING_PREP_RE =
 function cleanFragment(raw: string): string {
   let t = (raw ?? "").replace(/\s+/g, " ").trim();
   if (!t) return "";
+  // Strip Markdown emphasis the planner sometimes leaks into prose (it would
+  // otherwise render as literal **asterisks**/`backticks` on the slide).
+  t = t
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*/g, "")
+    .trim();
   t = t.replace(ELLIPSIS_RE, "");
   // Drop up to two dangling connector words left by truncation.
   for (let i = 0; i < 2; i++) {
@@ -80,15 +92,53 @@ function normCards(cards: DeckCard[] | undefined): DeckCard[] {
     .slice(0, LIMITS.MAX_CARDS);
 }
 
+/** The steps renderer prepends its own index, so drop any leading "1." / "2)" /
+ *  "3 -" the planner already baked into the heading (avoids "1. 1. ..."). */
+function stripLeadingOrdinal(s: string): string {
+  return s.replace(/^\s*\d{1,2}\s*[.)\-–]\s+/, "");
+}
+
 function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
   if (!Array.isArray(steps)) return [];
   return steps
     .map((s) => ({
-      heading: capText(String(s?.heading ?? ""), 8, 48),
+      heading: capText(stripLeadingOrdinal(String(s?.heading ?? "")), 8, 48),
       body: s?.body ? capText(String(s.body), 16, 90) : undefined,
     }))
     .filter((s) => s.heading.length > 0)
     .slice(0, LIMITS.MAX_STEPS);
+}
+
+/**
+ * Normalize a comparison table into a rectangular grid. Columns and per-row
+ * cells are trimmed/padded to the same width so the renderer never sees a ragged
+ * table. Returns null when there isn't enough to draw (so the slide falls back
+ * to bullets, like matrix does) — never throws.
+ */
+function normTable(slide: SlideSpec):
+  | { columns: string[]; rows: DeckTableRow[] }
+  | null {
+  const columns = (Array.isArray(slide.columns) ? slide.columns : [])
+    .map((c) => capText(String(c ?? ""), 6, 28))
+    .filter((c) => c.length > 0)
+    .slice(0, LIMITS.MAX_TABLE_COLS);
+  if (columns.length < 2) return null;
+  const n = columns.length;
+  const rows = (Array.isArray(slide.rows) ? slide.rows : [])
+    .map((r) => {
+      const cells = (Array.isArray(r?.cells) ? r.cells : [])
+        .map((c) => capText(String(c ?? ""), 14, LIMITS.MAX_TABLE_CELL_CHARS));
+      // Force each row to exactly n cells (pad short, drop overflow).
+      while (cells.length < n) cells.push("");
+      return {
+        label: capText(String(r?.label ?? ""), 8, 32),
+        cells: cells.slice(0, n),
+      };
+    })
+    .filter((r) => r.label.length > 0 || r.cells.some((c) => c.length > 0))
+    .slice(0, LIMITS.MAX_TABLE_ROWS);
+  if (rows.length < 1) return null;
+  return { columns, rows };
 }
 
 const CODE_PLACEHOLDER_LINE_RE = /^\s*(?:#|--|\/\/)?\s*(?:\.{2,}|…)\s*$/;
@@ -127,7 +177,10 @@ function hasMinimumContent(s: SlideSpec): boolean {
     case "closing":
       return (s.bullets?.length ?? 0) > 0;
     case "cards":
+    case "matrix":
       return (s.cards?.length ?? 0) > 0;
+    case "table":
+      return (s.columns?.length ?? 0) >= 2 && (s.rows?.length ?? 0) > 0;
     case "steps":
       return (s.steps?.length ?? 0) > 0;
     case "compare":
@@ -157,10 +210,14 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
   const eyebrow = slide.eyebrow ? capText(slide.eyebrow, 10, 60) : undefined;
   let title = capText(slide.title ?? "", 14, LIMITS.MAX_TITLE_CHARS);
 
+  const table = slide.kind === "table" ? normTable(slide) : null;
+
   const base: SlideSpec = {
     ...slide,
     title,
     eyebrow,
+    columns: table?.columns,
+    rows: table?.rows,
     subtitle: slide.subtitle
       ? capText(slide.subtitle, 22, 160)
       : undefined,
@@ -243,27 +300,45 @@ function tilesEligible(s: SlideSpec): boolean {
     b.every((x) => x.trim().length > 0 && x.trim().split(/\s+/).length <= 10);
 }
 
+/** 2–4 short points → eligible for the roomy "bento" surface-card grid. */
+function bentoEligible(s: SlideSpec): boolean {
+  if (s.kind !== "bullets") return false;
+  const b = s.bullets ?? [];
+  return b.length >= 2 && b.length <= 4 &&
+    b.every((x) => x.trim().length > 0 && x.trim().split(/\s+/).length <= 12);
+}
+
 /**
  * Anti-monotony: never render two same-looking content slides back to back. The
  * planner overwhelmingly emits "bullets", producing tiring runs of identical
- * vertical lists. Whenever a bullets slide would follow another bullets slide,
- * we promote it to the "tiles" grid (same content, distinct layout). Because the
- * promoted slide becomes "tiles", the next bullets slide differs again — so a
- * run of N bullet slides renders as bullets / tiles / bullets / tiles… Purely
- * visual; content is untouched.
+ * vertical lists. Whenever a plain (image-less) bullets slide would follow
+ * another "listy" slide, we recast it — rotating across the eligible variants
+ * ("tiles" badge grid, "bento" surface cards) — so a run of N bullet slides
+ * renders as bullets / tiles / bento / tiles… Hero bullets slides (which carry a
+ * module image and render as a split / image-top) are left untouched. Purely
+ * visual; content is identical.
  */
 function breakLayoutRuns(slides: SlideSpec[]): SlideSpec[] {
   let prev = "";
+  let variant = 0;
+  const listy = (k: string) => k === "bullets" || k === "tiles" || k === "bento";
   return slides.map((s) => {
     let out = s;
-    if (s.kind === "bullets" && prev === "bullets" && tilesEligible(s)) {
-      out = {
-        kind: "tiles",
-        title: s.title,
-        eyebrow: s.eyebrow,
-        bullets: s.bullets,
-        imageQuery: s.imageQuery,
-      } as SlideSpec;
+    if (s.kind === "bullets" && !s.imageData && listy(prev)) {
+      const options: string[] = [];
+      if (tilesEligible(s)) options.push("tiles");
+      if (bentoEligible(s)) options.push("bento");
+      if (options.length) {
+        const kind = options[variant % options.length];
+        variant++;
+        out = {
+          kind,
+          title: s.title,
+          eyebrow: s.eyebrow,
+          bullets: s.bullets,
+          imageQuery: s.imageQuery,
+        } as SlideSpec;
+      }
     }
     prev = out.kind;
     return out;
