@@ -688,7 +688,8 @@ function renderBento(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   header(slide, d, s, moduleLabel);
   const items = (s.bullets ?? []).filter((b) => b && b.trim());
   const n = items.length;
-  const cols = n <= 2 ? n : 2;
+  // 3 items → one row of 3 (NOT 2+1, which leaves a lopsided hole); 4 → 2×2.
+  const cols = n === 3 ? 3 : (n <= 2 ? n : 2);
   const rows = Math.ceil(n / cols);
   const gap = 0.3;
   const cardW = (CW - gap * (cols - 1)) / cols;
@@ -1014,23 +1015,29 @@ function renderTable(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const headFs = ncol >= 5 ? 11 : 12;
   const bodyFs = ncol >= 5 ? 9 : ncol >= 4 ? 10 : 11;
 
+  // Modern table: NO vertical grid lines. The eye is guided by the accent header
+  // and subtle horizontal hairlines only — it "breathes" through whitespace.
+  const none = { type: "none" } as const;
+  const hair = { type: "solid", color: d.border, pt: 0.75 } as const;
+  const headRule = { type: "solid", color: d.accent, pt: 1.5 } as const;
+  // pptxgenjs border order: [top, right, bottom, left].
+  const headBorder = [none, none, headRule, none];
+  const bodyBorder = [none, none, hair, none];
+
   const headerRow = [
-    { text: "", options: { fill: { color: d.accent } } },
+    { text: "", options: { border: headBorder } },
     ...columns.map((c) => ({
       text: c,
-      options: { fill: { color: d.accent }, color: d.onAccent, bold: true, align: "center", fontSize: headFs },
+      options: { border: headBorder, color: d.accent, bold: true, align: "left", fontSize: headFs },
     })),
   ];
-  const bodyRows = rows.map((r, ri) => {
-    const zebra = ri % 2 === 0 ? d.surface : d.bg;
-    return [
-      { text: r.label, options: { fill: { color: d.surface }, color: d.text, bold: true, align: "left", fontSize: bodyFs } },
-      ...r.cells.map((cell) => ({
-        text: cell,
-        options: { fill: { color: zebra }, color: d.text, align: "left", fontSize: bodyFs },
-      })),
-    ];
-  });
+  const bodyRows = rows.map((r) => [
+    { text: r.label, options: { border: bodyBorder, color: d.accent2, bold: true, align: "left", fontSize: bodyFs } },
+    ...r.cells.map((cell) => ({
+      text: cell,
+      options: { border: bodyBorder, color: d.text, align: "left", fontSize: bodyFs },
+    })),
+  ]);
 
   slide.addTable([headerRow, ...bodyRows], {
     x: ML, y: CONTENT_Y, w: CW,
@@ -1038,8 +1045,7 @@ function renderTable(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     rowH: Array(rows.length + 1).fill(rowH),
     fontFace: FONT_BODY,
     valign: "middle",
-    border: { type: "solid", color: d.border, pt: 1 },
-    margin: [3, 6, 3, 6],
+    margin: [5, 10, 5, 10],
     autoPage: false,
   });
   footer(slide, d, brand, num);
@@ -1360,39 +1366,34 @@ function renderClosing(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
   const items = s.bullets ?? [];
-  const rowH = CONTENT_H / Math.max(items.length, 1);
+  const n = Math.max(items.length, 1);
+  // Every module ends on a takeaways slide; a single vertical ✓ list 8× in a row
+  // is the deck's most repetitive beat. With 4+ items lay them out as a 2-column
+  // "cheat sheet" card grid; 1–3 items stay a clean single column.
+  const cols = n >= 4 ? 2 : 1;
+  const rows = Math.ceil(n / cols);
+  const gap = 0.28;
+  const colW = (CW - gap * (cols - 1)) / cols;
+  const cellH = (CONTENT_H - gap * (rows - 1)) / rows;
+  const fs = cols === 2 ? 14 : 15;
   items.forEach((b, i) => {
-    const y = CONTENT_Y + i * rowH;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = ML + col * (colW + gap);
+    const y = CONTENT_Y + row * (cellH + gap);
     slide.addShape("roundRect", {
-      x: ML,
-      y: y + 0.06,
-      w: CW,
-      h: rowH - 0.18,
-      rectRadius: 0.06,
-      fill: { color: d.surface },
-      line: { type: "none" },
+      x, y: y + 0.06, w: colW, h: cellH - 0.12, rectRadius: 0.06,
+      fill: { color: d.surface }, line: { type: "none" },
     });
     slide.addText("✓", {
-      x: ML + 0.2,
-      y: y + 0.06,
-      w: 0.5,
-      h: rowH - 0.18,
-      fontFace: FONT_BODY,
-      fontSize: 18,
-      bold: true,
-      color: d.accent2,
-      align: "center",
-      valign: "middle",
+      x: x + 0.18, y: y + 0.06, w: 0.46, h: cellH - 0.12,
+      fontFace: FONT_BODY, fontSize: 17, bold: true, color: d.accent2,
+      align: "center", valign: "middle",
     });
     slide.addText(b, {
-      x: ML + 0.78,
-      y: y + 0.06,
-      w: CW - 1.0,
-      h: rowH - 0.18,
-      fontFace: FONT_BODY,
-      fontSize: 15,
-      color: d.text,
-      valign: "middle",
+      x: x + 0.72, y: y + 0.06, w: colW - 0.92, h: cellH - 0.12,
+      fontFace: FONT_BODY, fontSize: fs, color: d.text,
+      valign: "middle", lineSpacingMultiple: 1.04,
     });
   });
   footer(slide, d, brand, num);
