@@ -7,6 +7,7 @@
 
 import {
   condenseForPlanning,
+  dedupeModules,
   echoesTitle,
   enforceModuleFloors,
   fallbackModuleSlides,
@@ -315,6 +316,22 @@ const tblBad: PlannedDeck = {
 };
 const tb = normalizeDeck(tblBad).deck.modules[0].slides[0];
 check("degenerate table salvaged to bullets", tb.kind === "bullets" && (tb.bullets?.length ?? 0) === 1);
+
+// ── the SAME big-number stat must not survive across two modules ──
+const statDupMods: DeckModule[] = [
+  { title: "Módulo A", slides: [
+    { kind: "stat", title: "Mercado", stat: { value: "US$ 47 Bilhões", label: "Valor de mercado projetado até 2030" } } as SlideSpec,
+  ] },
+  { title: "Módulo B", slides: [
+    { kind: "stat", title: "Mercado", stat: { value: "US$ 47 Bilhões", label: "Valor projetado do mercado até 2030" } } as SlideSpec,
+    { kind: "stat", title: "Outro", stat: { value: "90%", label: "Taxa de adoção" } } as SlideSpec,
+  ] },
+];
+const droppedStats = dedupeModules(statDupMods);
+const remainingStats = statDupMods.flatMap((m) => m.slides).filter((s) => s.kind === "stat");
+check("duplicate stat across modules dropped (distinct one kept)",
+  droppedStats === 1 && remainingStats.length === 2 &&
+  remainingStats.some((s) => s.stat?.value === "90%"));
 
 // ── v7.12.2 — title-echo detection (course title minus subtitle, etc.) ──
 const COURSE = "Dominando o Planejamento de Auditorias Operacionais: Fundamentos e Boas Práticas";

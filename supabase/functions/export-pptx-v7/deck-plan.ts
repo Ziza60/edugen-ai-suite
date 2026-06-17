@@ -352,6 +352,8 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - Do NOT prepend ordinals ("1.", "2)") inside a step's heading — the renderer
   numbers steps automatically. Write the heading as plain text.
 - Plain text only in every field — NO Markdown emphasis (no asterisks, backticks or #).
+- For cards, tiles, steps and table cells, enforce a MAXIMUM of ~12 words per text
+  block. Be ruthless in your summarization — these layouts must stay minimalist.
 - Stay strictly faithful to the module content. Do NOT invent facts.
 
 MODULE CONTENT (markdown):
@@ -1003,6 +1005,14 @@ function contentTokens(s: SlideSpec): Set<string> {
   if (s.left) parts.push(s.left.heading, ...s.left.items);
   if (s.right) parts.push(s.right.heading, ...s.right.items);
   if (s.quote) parts.push(s.quote);
+  // Previously omitted: stat / code / table slides were invisible to the dedup,
+  // which let the SAME big-number stat resurface in two modules (e.g. a "US$ 47
+  // bilhões" market-size slide). Fold their text in too.
+  if (s.stat) parts.push(s.stat.value, s.stat.label);
+  if (s.code?.text) parts.push(s.code.text);
+  if (s.columns) parts.push(...s.columns);
+  if (s.rows) for (const r of s.rows) parts.push(r.label, ...r.cells);
+  if (s.subtitle) parts.push(s.subtitle);
   const text = parts.join(" ").normalize("NFD").replace(/[̀-ͯ]/g, "")
     .toLowerCase();
   const toks = (text.match(/[a-z]{4,}/g) ?? [])
@@ -1021,8 +1031,15 @@ function overlapMin(a: Set<string>, b: Set<string>): number {
 // quotes / overview slides whose tiny token sets cause spurious matches.
 const DUP_SIM_THRESHOLD = 0.6;
 const DUP_MIN_TOKENS = 10;
-function dedupeModules(modules: DeckModule[]): number {
+/** Normalize a stat value to a comparable signature ("US$ 47 Bilhões" → "47bilhoes"). */
+function statSignature(value: string): string {
+  return value.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+export function dedupeModules(modules: DeckModule[]): number {
   const seen: Set<string>[] = [];
+  const seenStats = new Set<string>();
   let dropped = 0;
   for (const m of modules) {
     const kept: SlideSpec[] = [];
@@ -1031,6 +1048,18 @@ function dedupeModules(modules: DeckModule[]): number {
       if (sp.kind === "closing") {
         kept.push(sp);
         continue;
+      }
+      // A big-number stat repeated across modules is pure redundancy; its token
+      // set is too small for the overlap test, so match on the value itself.
+      if (sp.kind === "stat" && sp.stat?.value) {
+        const sig = statSignature(sp.stat.value);
+        if (sig) {
+          if (seenStats.has(sig)) {
+            dropped++;
+            continue;
+          }
+          seenStats.add(sig);
+        }
       }
       const tk = contentTokens(sp);
       if (tk.size >= DUP_MIN_TOKENS) {

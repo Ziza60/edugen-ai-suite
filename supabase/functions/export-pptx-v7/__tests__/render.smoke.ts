@@ -172,6 +172,20 @@ async function run() {
     check(`table deck renders a valid pptx (${JSON.stringify(opts)})`, tc >= 1 && tbuf[0] === 0x50 && tbuf.byteLength > 5000);
   }
 
+  // ── 6. Two short compares exercise BOTH dark-split variants (vertical + horizontal) ──
+  const mkCompare = (h: string) => ({
+    kind: "compare", title: h,
+    left: { heading: "Antes", items: ["Processo manual e lento"] },
+    right: { heading: "Depois", items: ["Fluxo automatizado"] },
+  });
+  const cmpDeck = normalizeDeck({
+    courseTitle: "Contrastes",
+    modules: [{ title: "M", slides: [mkCompare("A"), mkCompare("B"), mkCompare("C")] as any }],
+  }).deck;
+  const { pptx: cp, slideCount: cc } = renderDeck(PptxGenJS, cmpDeck, { template: "dark_elegance_xl" } as any);
+  const cbuf: Uint8Array = (await cp.write({ outputType: "uint8array" })) as Uint8Array;
+  check("compare round-robin renders a valid pptx (both variants)", cc >= 3 && cbuf[0] === 0x50 && cbuf.byteLength > 5000);
+
   console.log(
     failures === 0
       ? "\nALL PASS ✓"
