@@ -26,6 +26,7 @@ export type SlideKind =
   | "section" // module divider
   | "bullets" // title + up to 5 supporting points
   | "tiles" // 3–6 short points as an icon/badge grid (visual variant of bullets)
+  | "bento" // 2–4 short points as surface cards (anti-monotony variant of bullets)
   | "cards" // 2–4 concept cards
   | "steps" // ordered process / sequence
   | "compare" // two-column comparison
@@ -69,6 +70,8 @@ export interface SlideSpec {
   imageQuery?: string;
   /** base64 data URI, populated at runtime when images are enabled. */
   imageData?: string;
+  /** How a hero image is laid out (set at runtime): bleed right/left, or top. */
+  imageLayout?: "split-right" | "split-left" | "top";
   /** Speaker notes. */
   notes?: string;
 }

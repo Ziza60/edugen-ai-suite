@@ -203,7 +203,7 @@ check("floor: reported it added a closing", res.closingsAdded >= 1 && res.backfi
 check("floor: healthy module left intact", hollow[1].slides.length === before);
 check("floor: every module has a closing", hollow.every((m) => m.slides.some((s) => s.kind === "closing")));
 
-// ── v7.9.0 — anti-monotony: runs of bullet slides alternate with "tiles" ──
+// ── anti-monotony: runs of bullet slides rotate across tiles/bento variants ──
 const sb = (title: string, items: string[]): SlideSpec =>
   ({ kind: "bullets", title, bullets: items } as SlideSpec);
 const shortList = ["Cruciais para o sucesso", "Otimizam a interação", "Garantem entendimento", "Agilizam a resolução"];
@@ -220,7 +220,7 @@ const runDeck: PlannedDeck = {
   }],
 };
 const rk = normalizeDeck(runDeck).deck.modules[0].slides.map((s) => s.kind);
-check("run of bullets becomes bullets/tiles/bullets/tiles", rk.join(",") === "bullets,tiles,bullets,tiles");
+check("run of bullets rotates bullets/tiles/bento/tiles", rk.join(",") === "bullets,tiles,bento,tiles");
 let noPair = true;
 for (let k = 1; k < rk.length; k++) if (rk[k] === "bullets" && rk[k - 1] === "bullets") noPair = false;
 check("no two bullet slides remain back-to-back", noPair);

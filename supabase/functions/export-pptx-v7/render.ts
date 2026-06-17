@@ -458,31 +458,34 @@ function renderSection(slide: AnySlide, s: SlideSpec, d: Palette, index: number)
  * already-resolved image (no extra fetches). Gracefully degrades: if no image
  * resolved, the caller routes to the plain bullets layout instead.
  */
-function renderSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+function renderSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string, side: "left" | "right" = "right") {
   bgFill(slide, d.bg);
-  const imgX = 7.8;
-  // Soft outer shadow cast leftward gives the bleeding photo depth at the seam.
-  maybeImage(slide, s, { x: imgX, y: 0, w: W - imgX, h: H }, {
-    shadow: { type: "outer", color: "000000", blur: 9, offset: 3, angle: 180, opacity: 0.22 },
+  const imgW = W - 7.8; // bleeding photo width (~5.53")
+  const imgX = side === "right" ? W - imgW : 0;
+  // Soft outer shadow toward the page gives the bleeding photo depth at the seam.
+  maybeImage(slide, s, { x: imgX, y: 0, w: imgW, h: H }, {
+    shadow: { type: "outer", color: "000000", blur: 9, offset: 3, angle: side === "right" ? 180 : 0, opacity: 0.22 },
   });
-  // Soft blend strip so the photo's left edge melts into the page (no hard seam).
+  // Soft blend strip so the photo's inner edge melts into the page (no hard seam).
+  const stripX = side === "right" ? imgX : imgX + imgW - 0.7;
   slide.addShape("rect", {
-    x: imgX, y: 0, w: 0.7, h: H,
+    x: stripX, y: 0, w: 0.7, h: H,
     fill: { color: d.bg, transparency: 35 }, line: { type: "none" },
   });
-  const colW = imgX - ML - 0.45;
-  // Left-column header (narrower than the standard full-width header).
+  // Text column on the side opposite the photo.
+  const colX = side === "right" ? ML : imgW + 0.45;
+  const colW = (side === "right" ? imgX : (W - MR)) - colX - 0.45;
   slide.addShape("rect", {
-    x: ML, y: 0.72, w: 0.07, h: 0.42,
+    x: colX, y: 0.72, w: 0.07, h: 0.42,
     fill: { color: d.accent2 }, line: { type: "none" },
   });
   slide.addText(eyebrow(s.eyebrow || moduleLabel), {
-    x: ML + 0.18, y: 0.68, w: colW - 0.18, h: 0.3,
+    x: colX + 0.18, y: 0.68, w: colW - 0.18, h: 0.3,
     fontFace: FONT_BODY, fontSize: 10, bold: true, color: d.accent2,
     charSpacing: 2, valign: "middle",
   });
   slide.addText(s.title, {
-    x: ML + 0.18, y: 1.02, w: colW - 0.18, h: 1.2,
+    x: colX + 0.18, y: 1.02, w: colW - 0.18, h: 1.2,
     fontFace: FONT_TITLE, fontSize: s.title.length > 40 ? 23 : 27, bold: true,
     color: d.text, valign: "top", lineSpacingMultiple: 1.02,
   });
@@ -493,30 +496,82 @@ function renderSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   items.forEach((b, i) => {
     const y = startY + i * rowH;
     slide.addShape("rect", {
-      x: ML, y: y + rowH / 2 - 0.06, w: 0.14, h: 0.14,
+      x: colX, y: y + rowH / 2 - 0.06, w: 0.14, h: 0.14,
       fill: { color: d.accent2 }, line: { type: "none" },
     });
     slide.addText(b, {
-      x: ML + 0.3, y, w: colW - 0.4, h: rowH,
+      x: colX + 0.3, y, w: colW - 0.4, h: rowH,
       fontFace: FONT_BODY, fontSize: 15, color: d.text,
       valign: "middle", lineSpacingMultiple: 1.03,
     });
   });
-  // Footer kept inside the left column so the page number never sits over the photo.
+  // Footer kept inside the text column so the page number never sits over the photo.
   slide.addText(brand, {
-    x: ML, y: FOOTER_Y, w: colW - 0.5, h: 0.3,
+    x: colX, y: FOOTER_Y, w: colW - 0.5, h: 0.3,
     fontFace: FONT_BODY, fontSize: 9, color: d.subtext, valign: "middle",
   });
   slide.addText(String(num), {
-    x: ML + colW - 0.5, y: FOOTER_Y, w: 0.5, h: 0.3,
+    x: colX + colW - 0.5, y: FOOTER_Y, w: 0.5, h: 0.3,
     fontFace: FONT_BODY, fontSize: 9, color: d.subtext, align: "right", valign: "middle",
   });
 }
 
+/**
+ * Image-top layout: the photo bleeds across the top ~46% of the slide and the
+ * title + points sit on the page below. Inverting the usual "title on top"
+ * structure is the single cheapest way to break a run of identical slides.
+ */
+function renderImageTop(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  const imgH = H * 0.46;
+  maybeImage(slide, s, { x: 0, y: 0, w: W, h: imgH }, {
+    shadow: { type: "outer", color: "000000", blur: 9, offset: 3, angle: 90, opacity: 0.22 },
+  });
+  // Blend strip along the photo's bottom edge so it melts into the page.
+  slide.addShape("rect", {
+    x: 0, y: imgH - 0.55, w: W, h: 0.55,
+    fill: { color: d.bg, transparency: 35 }, line: { type: "none" },
+  });
+  const ty = imgH + 0.18;
+  slide.addShape("rect", {
+    x: ML, y: ty + 0.05, w: 0.07, h: 0.42,
+    fill: { color: d.accent2 }, line: { type: "none" },
+  });
+  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
+    x: ML + 0.18, y: ty, w: CW - 0.18, h: 0.3,
+    fontFace: FONT_BODY, fontSize: 10, bold: true, color: d.accent2,
+    charSpacing: 2, valign: "middle",
+  });
+  slide.addText(s.title, {
+    x: ML + 0.18, y: ty + 0.32, w: CW - 0.18, h: 0.72,
+    fontFace: FONT_TITLE, fontSize: s.title.length > 50 ? 22 : 26, bold: true,
+    color: d.text, valign: "top", lineSpacingMultiple: 1.02,
+  });
+  const items = s.bullets ?? [];
+  const startY = ty + 1.12;
+  const listH = FOOTER_Y - startY - 0.12;
+  const rowH = listH / Math.max(items.length, 1);
+  items.forEach((b, i) => {
+    const y = startY + i * rowH;
+    slide.addShape("rect", {
+      x: ML, y: y + rowH / 2 - 0.06, w: 0.14, h: 0.14,
+      fill: { color: d.accent2 }, line: { type: "none" },
+    });
+    slide.addText(b, {
+      x: ML + 0.32, y, w: CW - 0.5, h: rowH,
+      fontFace: FONT_BODY, fontSize: 14, color: d.text,
+      valign: "middle", lineSpacingMultiple: 1.02,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
 function renderBullets(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
-  // A hero bullets slide carrying a module image renders as text + bleeding photo.
+  // A hero bullets slide carrying a module image renders as an image layout:
+  // a bleeding photo (right/left) or image-top, per its rotated imageLayout.
   if (s.imageData && (s.bullets?.length ?? 0) > 0) {
-    return renderSplit(slide, s, d, brand, num, moduleLabel);
+    if (s.imageLayout === "top") return renderImageTop(slide, s, d, brand, num, moduleLabel);
+    return renderSplit(slide, s, d, brand, num, moduleLabel, s.imageLayout === "split-left" ? "left" : "right");
   }
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
@@ -618,6 +673,53 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       h: tileH - padTop - badge - gapBelowBadge - 0.06,
       fontFace: FONT_BODY, fontSize: textFs, color: d.text,
       align: "center", valign: "top", lineSpacingMultiple: 1.04,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/**
+ * Bento grid: 2–4 short points as roomy surface cards (Apple-style "bento"),
+ * each with an accent index chip. A premium alternative to a vertical list or
+ * the tighter badge tiles — used by the anti-monotony pass to vary list runs.
+ */
+function renderBento(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = (s.bullets ?? []).filter((b) => b && b.trim());
+  const n = items.length;
+  const cols = n <= 2 ? n : 2;
+  const rows = Math.ceil(n / cols);
+  const gap = 0.3;
+  const cardW = (CW - gap * (cols - 1)) / cols;
+  const cardH = (CONTENT_H - gap * (rows - 1)) / rows;
+  const chip = 0.5;
+  items.forEach((b, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const itemsInRow = Math.min(cols, n - row * cols);
+    const rowOffset = (CW - (itemsInRow * cardW + gap * (itemsInRow - 1))) / 2;
+    const x = ML + rowOffset + col * (cardW + gap);
+    const y = CONTENT_Y + row * (cardH + gap);
+    slide.addShape("roundRect", {
+      x, y, w: cardW, h: cardH, rectRadius: 0.1,
+      fill: { color: d.surface }, line: { color: d.border, width: 1 },
+      shadow: { type: "outer", color: "000000", blur: 7, offset: 2, angle: 90, opacity: 0.18 },
+    });
+    slide.addShape("roundRect", {
+      x: x + 0.28, y: y + 0.28, w: chip, h: chip, rectRadius: 0.06,
+      fill: { color: d.accent }, line: { type: "none" },
+    });
+    slide.addText(String(i + 1), {
+      x: x + 0.28, y: y + 0.28, w: chip, h: chip,
+      fontFace: FONT_TITLE, fontSize: 18, bold: true, color: d.onAccent,
+      align: "center", valign: "middle",
+    });
+    slide.addText(b, {
+      x: x + 0.28, y: y + 0.28 + chip + 0.14, w: cardW - 0.56,
+      h: cardH - (0.28 + chip + 0.14) - 0.24,
+      fontFace: FONT_BODY, fontSize: n <= 2 ? 17 : 15, color: d.text,
+      align: "left", valign: "top", lineSpacingMultiple: 1.06,
     });
   });
   footer(slide, d, brand, num);
@@ -726,56 +828,41 @@ function renderSteps(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const steps = s.steps ?? [];
   const n = steps.length;
   const rowH = CONTENT_H / Math.max(n, 1);
-  const spineX = ML + 0.32;
+  const numW = 1.45;
+  // Oversized "ghost" ordinal as a design element on the left (Apple/Gamma look),
+  // replacing the small numbered dot + spine. Heading + body sit to the right.
+  const numFs = Math.min(54, Math.max(34, rowH * 72 * 0.8));
   steps.forEach((st, i) => {
     const y = CONTENT_Y + i * rowH;
-    const cy = y + rowH / 2;
-    if (i < n - 1) {
-      slide.addShape("line", {
-        x: spineX,
-        y: cy,
-        w: 0,
-        h: rowH,
-        line: { color: d.border, width: 1.5 },
-      });
-    }
-    slide.addShape("ellipse", {
-      x: spineX - 0.26,
-      y: cy - 0.26,
-      w: 0.52,
-      h: 0.52,
-      fill: { color: d.accent },
-      line: { type: "none" },
-    });
-    slide.addText(String(i + 1), {
-      x: spineX - 0.26,
-      y: cy - 0.26,
-      w: 0.52,
-      h: 0.52,
-      fontFace: FONT_BODY,
-      fontSize: 16,
-      bold: true,
-      color: d.onAccent,
-      align: "center",
-      valign: "middle",
+    slide.addText(String(i + 1).padStart(2, "0"), {
+      x: ML, y, w: numW, h: rowH,
+      fontFace: FONT_TITLE, fontSize: numFs, bold: true,
+      color: d.accent2, transparency: 60,
+      align: "left", valign: "middle",
     });
     slide.addText(
       [
-        { text: st.heading, options: { bold: true, fontSize: 16, color: d.text, breakLine: true } },
+        { text: st.heading, options: { bold: true, fontSize: 17, color: d.text, breakLine: true } },
         ...(st.body
           ? [{ text: st.body, options: { fontSize: 12.5, color: d.subtext } }]
           : []),
       ],
       {
-        x: spineX + 0.5,
+        x: ML + numW + 0.2,
         y,
-        w: CW - 1.0,
+        w: CW - numW - 0.4,
         h: rowH,
         fontFace: FONT_BODY,
         valign: "middle",
-        lineSpacingMultiple: 1.02,
+        lineSpacingMultiple: 1.03,
       },
     );
+    if (i < n - 1) {
+      slide.addShape("line", {
+        x: ML + numW + 0.2, y: y + rowH, w: CW - numW - 0.4, h: 0,
+        line: { color: d.border, width: 0.75 },
+      });
+    }
   });
   footer(slide, d, brand, num);
 }
@@ -869,12 +956,48 @@ function renderCompare(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
 }
 
 function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number) {
+  const text = s.quote ?? s.title;
+  // Full-bleed cinematic variant: a photo fills the whole slide, a dark scrim
+  // over it, big white quote on top. Fires when the module image was routed here.
+  if (s.imageData) {
+    bgFill(slide, d.coverBg);
+    maybeImage(slide, s, { x: 0, y: 0, w: W, h: H });
+    slide.addShape("rect", {
+      x: 0, y: 0, w: W, h: H,
+      fill: { color: "000000", transparency: 42 }, line: { type: "none" },
+    });
+    slide.addText("“", {
+      x: 0.6, y: 0.05, w: 3, h: 2.4,
+      fontFace: "Georgia", fontSize: 200, bold: true,
+      color: "FFFFFF", transparency: 82, align: "left", valign: "top",
+    });
+    slide.addText(text, {
+      x: 1.2, y: 1.9, w: W - 2.4, h: 3.2,
+      fontFace: FONT_TITLE,
+      fontSize: text.length > 170 ? 28 : text.length > 95 ? 34 : 40,
+      italic: true, bold: true, color: "FFFFFF",
+      align: "center", valign: "middle", lineSpacingMultiple: 1.15,
+      shadow: { type: "outer", color: "000000", blur: 6, offset: 2, opacity: 0.5 },
+    });
+    slide.addShape("rect", {
+      x: W / 2 - 0.5, y: 5.5, w: 1.0, h: 0.055,
+      fill: { color: d.accent2 }, line: { type: "none" },
+    });
+    if (s.attribution) {
+      slide.addText(s.attribution.toUpperCase(), {
+        x: 2, y: 5.7, w: W - 4, h: 0.5,
+        fontFace: FONT_BODY, fontSize: 14, bold: true,
+        color: d.accent2, charSpacing: 2, align: "center",
+      });
+    }
+    footer(slide, d, brand, num);
+    return;
+  }
   bgFill(slide, d.surface);
   slide.addShape("rect", {
     x: 0, y: 0, w: 0.18, h: H,
     fill: { color: d.accent2 }, line: { type: "none" },
   });
-  const text = s.quote ?? s.title;
   // Decorative quotation marks as a subtle adornment in the corners (not behind
   // the text), in an elegant serif and the accent colour at 20% opacity — the
   // "respiro" premium look. pptxgenjs renders text transparency as <a:alpha>.
@@ -1102,6 +1225,9 @@ export function renderDeck(
             break;
           case "tiles":
             renderTiles(slide, s, d, brand, num, m.title);
+            break;
+          case "bento":
+            renderBento(slide, s, d, brand, num, m.title);
             break;
           case "cards":
             renderCards(slide, s, d, brand, num, m.title);
