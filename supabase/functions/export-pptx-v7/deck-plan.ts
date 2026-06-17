@@ -218,8 +218,8 @@ export type Density = "compact" | "standard" | "detailed";
 // "Compacto / Padrão / Detalhado" control change the deck.
 const DENSITY_SPECS: Record<Density, { min: number; max: number; note: string }> = {
   compact: {
-    min: 5,
-    max: 7,
+    min: 4,
+    max: 6,
     note: "Lean & visual: prefer FEWER slides with breathing room; keep only the essential points.",
   },
   standard: {
@@ -322,6 +322,17 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
   newline (\n) ending every statement and comment — one statement per line.
   Never put two statements on the same line; never insert "...", "# ...", or
   "-- ..." placeholders.
+- VARY THE LAYOUT — do NOT make every module the same bullets/cards/steps rhythm:
+  • If the module teaches programming or shows commands/code, INCLUDE at least one
+    "code" slide with the real snippet.
+  • Use "compare" for any Problem-vs-Solution, Before-vs-After or A-vs-B contrast
+    (e.g. a "Desafio/Solução" idea) — NOT a numbered steps list.
+  • Use "matrix" when 4 items classify along two axes (SWOT, effort×impact).
+  • Add ONE "quote" OR "stat" per module when the source offers a striking
+    principle or number, to break the visual rhythm.
+- Do NOT prepend ordinals ("1.", "2)") inside a step's heading — the renderer
+  numbers steps automatically. Write the heading as plain text.
+- Plain text only in every field — NO Markdown emphasis (no asterisks, backticks or #).
 - Stay strictly faithful to the module content. Do NOT invent facts.
 
 MODULE CONTENT (markdown):

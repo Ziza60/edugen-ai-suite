@@ -37,6 +37,14 @@ const DANGLING_PREP_RE =
 function cleanFragment(raw: string): string {
   let t = (raw ?? "").replace(/\s+/g, " ").trim();
   if (!t) return "";
+  // Strip Markdown emphasis the planner sometimes leaks into prose (it would
+  // otherwise render as literal **asterisks**/`backticks` on the slide).
+  t = t
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*/g, "")
+    .trim();
   t = t.replace(ELLIPSIS_RE, "");
   // Drop up to two dangling connector words left by truncation.
   for (let i = 0; i < 2; i++) {
@@ -80,11 +88,17 @@ function normCards(cards: DeckCard[] | undefined): DeckCard[] {
     .slice(0, LIMITS.MAX_CARDS);
 }
 
+/** The steps renderer prepends its own index, so drop any leading "1." / "2)" /
+ *  "3 -" the planner already baked into the heading (avoids "1. 1. ..."). */
+function stripLeadingOrdinal(s: string): string {
+  return s.replace(/^\s*\d{1,2}\s*[.)\-–]\s+/, "");
+}
+
 function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
   if (!Array.isArray(steps)) return [];
   return steps
     .map((s) => ({
-      heading: capText(String(s?.heading ?? ""), 8, 48),
+      heading: capText(stripLeadingOrdinal(String(s?.heading ?? "")), 8, 48),
       body: s?.body ? capText(String(s.body), 16, 90) : undefined,
     }))
     .filter((s) => s.heading.length > 0)
