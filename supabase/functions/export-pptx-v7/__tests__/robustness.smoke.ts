@@ -247,6 +247,26 @@ const longDeck: PlannedDeck = {
 const lk = normalizeDeck(longDeck).deck.modules[0].slides.map((s) => s.kind);
 check("long-phrase lists stay bullets (not promoted to tiles)", lk.every((k) => k === "bullets"));
 
+// ── matrix (2×2 quadrant) kind: kept with cards, salvaged to bullets when empty ──
+const matrixDeck: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [
+    { kind: "matrix", title: "SWOT", cards: [
+      { heading: "Forças", body: "a" }, { heading: "Fraquezas", body: "b" },
+      { heading: "Oportunidades", body: "c" }, { heading: "Ameaças", body: "d" },
+    ] } as SlideSpec,
+  ] }],
+};
+check("matrix with 4 cards is kept as matrix", normalizeDeck(matrixDeck).deck.modules[0].slides[0].kind === "matrix");
+const matrixEmpty: PlannedDeck = {
+  courseTitle: "X",
+  modules: [{ title: "M", slides: [
+    { kind: "matrix", title: "SWOT", bullets: ["ponto a", "ponto b"] } as SlideSpec,
+  ] }],
+};
+const mek = normalizeDeck(matrixEmpty).deck.modules[0].slides.map((s) => s.kind);
+check("matrix without cards is salvaged to bullets (graceful)", mek.length === 1 && mek[0] === "bullets");
+
 // ── v7.12.2 — title-echo detection (course title minus subtitle, etc.) ──
 const COURSE = "Dominando o Planejamento de Auditorias Operacionais: Fundamentos e Boas Práticas";
 check("echo: exact course title", echoesTitle(COURSE, COURSE));

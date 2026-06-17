@@ -939,7 +939,106 @@ function renderSteps(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   footer(slide, d, brand, num);
 }
 
+/**
+ * 2×2 matrix: a cartesian cross with one labelled card per quadrant. Distinct
+ * from "bento"/"cards" (a free grid of items) — this implies axes and a genuine
+ * classification (SWOT, effort×impact). Uses the first 4 cards; padding/gaps are
+ * computed so it scales cleanly. All colours from palette tokens (any theme).
+ */
+function renderMatrix(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const cells = (s.cards ?? []).slice(0, 4);
+  const midX = ML + CW / 2;
+  const midY = CONTENT_Y + CONTENT_H / 2;
+  const g = 0.16; // half-gap around the central cross
+  const cellW = CW / 2 - g;
+  const cellH = CONTENT_H / 2 - g;
+  const zones = [
+    { x: ML, y: CONTENT_Y },          // top-left
+    { x: midX + g, y: CONTENT_Y },     // top-right
+    { x: ML, y: midY + g },            // bottom-left
+    { x: midX + g, y: midY + g },      // bottom-right
+  ];
+  cells.forEach((c, i) => {
+    const z = zones[i];
+    slide.addShape("roundRect", {
+      x: z.x, y: z.y, w: cellW, h: cellH, rectRadius: 0.08,
+      fill: { color: d.surface, transparency: 18 },
+      line: { color: d.border, width: 1 },
+    });
+    slide.addShape("rect", {
+      x: z.x + 0.26, y: z.y + 0.3, w: 0.13, h: 0.13,
+      fill: { color: d.accent2 }, line: { type: "none" },
+    });
+    slide.addText(c.heading, {
+      x: z.x + 0.5, y: z.y + 0.22, w: cellW - 0.7, h: 0.4,
+      fontFace: FONT_BODY, fontSize: 16, bold: true, color: d.accent2, valign: "middle",
+    });
+    if (c.body) {
+      slide.addText(c.body, {
+        x: z.x + 0.28, y: z.y + 0.72, w: cellW - 0.56, h: cellH - 0.94,
+        fontFace: FONT_BODY, fontSize: 13, color: d.text, valign: "top", lineSpacingMultiple: 1.05,
+      });
+    }
+  });
+  // Central cross drawn over the gaps so the quadrant structure reads instantly.
+  slide.addShape("line", {
+    x: midX, y: CONTENT_Y, w: 0, h: CONTENT_H,
+    line: { color: d.accent2, width: 1.5, transparency: 35 },
+  });
+  slide.addShape("line", {
+    x: ML, y: midY, w: CW, h: 0,
+    line: { color: d.accent2, width: 1.5, transparency: 35 },
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Two short columns (≤2 brief items each) → eligible for the dramatic split. */
+function darkSplitEligible(s: SlideSpec): boolean {
+  const ok = (c?: { items?: string[] }) => {
+    const items = c?.items ?? [];
+    return items.length >= 1 && items.length <= 2 &&
+      items.every((x) => x.trim().split(/\s+/).length <= 9);
+  };
+  return ok(s.left) && ok(s.right);
+}
+
+/**
+ * Dramatic "dark split": left on the page colour, right on a full-bleed accent
+ * panel — a polarised State-A-vs-State-B contrast. Adapted from a light-theme
+ * reference into tokens (right-panel text uses onAccent so it reads on any
+ * accent). Used when each side is one punchy statement; list-y comparisons keep
+ * the two-card layout below.
+ */
+function renderDarkSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number) {
+  bgFill(slide, d.bg);
+  slide.addShape("rect", {
+    x: W / 2, y: 0, w: W / 2, h: H,
+    fill: { color: d.accent }, line: { type: "none" },
+  });
+  const sides = [
+    { col: s.left!, x: 0.9, headColor: d.accent2, bodyColor: d.text },
+    { col: s.right!, x: W / 2 + 0.6, headColor: d.onAccent, bodyColor: d.onAccent },
+  ];
+  for (const { col, x, headColor, bodyColor } of sides) {
+    const w = W / 2 - 1.5;
+    slide.addText((col.heading || "").toUpperCase(), {
+      x, y: 1.7, w, h: 1.2,
+      fontFace: FONT_TITLE, fontSize: 30, bold: true, color: headColor,
+      valign: "bottom", lineSpacingMultiple: 1.0,
+    });
+    slide.addText((col.items ?? []).join("\n"), {
+      x, y: 3.05, w, h: 2.6,
+      fontFace: FONT_BODY, fontSize: 17, color: bodyColor,
+      valign: "top", lineSpacingMultiple: 1.25,
+    });
+  }
+  footer(slide, d, brand, num);
+}
+
 function renderCompare(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  if (darkSplitEligible(s)) return renderDarkSplit(slide, s, d, brand, num);
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
   const gap = 0.5;
@@ -1309,6 +1408,9 @@ export function renderDeck(
             break;
           case "compare":
             renderCompare(slide, s, d, brand, num, m.title);
+            break;
+          case "matrix":
+            renderMatrix(slide, s, d, brand, num, m.title);
             break;
           case "quote":
             renderQuote(slide, s, d, brand, num);

@@ -30,6 +30,7 @@ export type SlideKind =
   | "cards" // 2–4 concept cards
   | "steps" // ordered process / sequence
   | "compare" // two-column comparison
+  | "matrix" // 2×2 quadrant analysis (SWOT, effort×impact) — uses 4 cards
   | "quote" // pull-quote / reflection prompt
   | "stat" // single big-number highlight
   | "code" // monospace code block
@@ -120,6 +121,7 @@ export const SLIDE_RESPONSE_SCHEMA = {
               "cards",
               "steps",
               "compare",
+              "matrix",
               "quote",
               "stat",
               "code",
@@ -284,6 +286,9 @@ PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premi
 - "cards"    → 2–4 parallel items (types, pillars, components) each with a 1-line body.
 - "steps"    → an ordered process or sequence (3–5 steps).
 - "compare"  → two contrasting things (left vs right), each with 2–4 short items.
+- "matrix"   → a 2×2 quadrant analysis (SWOT, risk×impact, effort×value). Provide
+  EXACTLY 4 "cards": each card heading is the quadrant label, body a 1-line note.
+  Use ONLY for genuine cartesian classifications — not for any list of 4 things.
 - "quote"    → a memorable principle, definition, or reflection prompt.
 - "stat"     → one striking number or metric worth a whole slide.
 - "code"     → a code/command example (ONLY if the source actually contains code).

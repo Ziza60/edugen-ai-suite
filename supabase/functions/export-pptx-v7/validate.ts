@@ -127,6 +127,7 @@ function hasMinimumContent(s: SlideSpec): boolean {
     case "closing":
       return (s.bullets?.length ?? 0) > 0;
     case "cards":
+    case "matrix":
       return (s.cards?.length ?? 0) > 0;
     case "steps":
       return (s.steps?.length ?? 0) > 0;
