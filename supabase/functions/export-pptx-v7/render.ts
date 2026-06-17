@@ -822,11 +822,83 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   footer(slide, d, brand, num);
 }
 
-function renderSteps(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+/**
+ * Horizontal alternating timeline: numbered nodes on a central spine, labels
+ * alternating above/below. The premium "process" look — node spacing is computed
+ * from the item count (3 steps → wide, 5 → tighter, always balanced). Used for
+ * short, scannable step sequences; steps that carry real explanation fall back
+ * to the vertical giant-number layout (renderSteps) which has room to read.
+ */
+function renderTimeline(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
   const steps = s.steps ?? [];
   const n = steps.length;
+  const cy = CONTENT_Y + CONTENT_H / 2; // spine vertical centre
+  // Central spine — a subtle gold rule spanning the content width.
+  slide.addShape("rect", {
+    x: ML, y: cy - 0.015, w: CW, h: 0.03,
+    fill: { color: d.accent2, transparency: 55 }, line: { type: "none" },
+  });
+  const slot = CW / n; // equal slot per node → labels never collide
+  const node = 0.36;
+  steps.forEach((st, i) => {
+    const nodeX = ML + slot * (i + 0.5);
+    const isTop = i % 2 === 0;
+    const w = slot - 0.3;
+    const x = nodeX - w / 2;
+    // Connector tick from spine toward the label.
+    slide.addShape("line", {
+      x: nodeX, y: isTop ? cy - 0.46 : cy + 0.16, w: 0, h: 0.3,
+      line: { color: d.accent2, width: 1 },
+    });
+    // Faint halo ring + numbered node on the spine.
+    slide.addShape("ellipse", {
+      x: nodeX - 0.27, y: cy - 0.27, w: 0.54, h: 0.54,
+      fill: { color: d.accent2, transparency: 78 }, line: { type: "none" },
+    });
+    slide.addShape("ellipse", {
+      x: nodeX - node / 2, y: cy - node / 2, w: node, h: node,
+      fill: { color: d.accent }, line: { type: "none" },
+    });
+    slide.addText(String(i + 1), {
+      x: nodeX - node / 2, y: cy - node / 2, w: node, h: node,
+      fontFace: FONT_BODY, fontSize: 12, bold: true, color: d.onAccent,
+      align: "center", valign: "middle",
+    });
+    // Heading near the spine, description further out.
+    const headY = isTop ? cy - 0.95 : cy + 0.5;
+    const bodyY = isTop ? CONTENT_Y + 0.05 : headY + 0.5;
+    const bodyH = isTop ? headY - (CONTENT_Y + 0.05) - 0.04 : FOOTER_Y - bodyY - 0.1;
+    slide.addText(st.heading, {
+      x, y: headY, w, h: 0.45,
+      fontFace: FONT_BODY, fontSize: 15, bold: true, color: d.accent2,
+      align: "center", valign: isTop ? "bottom" : "top",
+    });
+    if (st.body) {
+      slide.addText(st.body, {
+        x, y: bodyY, w, h: Math.max(0.4, bodyH),
+        fontFace: FONT_BODY, fontSize: 11.5, color: d.subtext,
+        align: "center", valign: isTop ? "bottom" : "top", lineSpacingMultiple: 1.03,
+      });
+    }
+  });
+  footer(slide, d, brand, num);
+}
+
+function renderSteps(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  const steps = s.steps ?? [];
+  const n = steps.length;
+  // Content-driven choice: short, scannable steps → cinematic horizontal
+  // timeline; steps with real explanation → vertical giant-number list (room to
+  // read). This is the "controle de condicionais" / dynamic-layout idea applied.
+  const shortHeads = steps.every((st) => (st.heading?.length ?? 0) <= 24);
+  const bodyLight = steps.every((st) => !st.body || st.body.length <= 70);
+  if (n >= 3 && n <= 5 && shortHeads && bodyLight) {
+    return renderTimeline(slide, s, d, brand, num, moduleLabel);
+  }
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
   const rowH = CONTENT_H / Math.max(n, 1);
   const numW = 1.45;
   // Oversized "ghost" ordinal as a design element on the left (Apple/Gamma look),
