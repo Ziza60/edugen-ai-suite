@@ -1031,10 +1031,25 @@ function overlapMin(a: Set<string>, b: Set<string>): number {
 // quotes / overview slides whose tiny token sets cause spurious matches.
 const DUP_SIM_THRESHOLD = 0.6;
 const DUP_MIN_TOKENS = 10;
-/** Normalize a stat value to a comparable signature ("US$ 47 Bilhões" → "47bilhoes"). */
+/**
+ * Normalize a stat value to a comparable signature. The same figure dressed
+ * differently ("$47 Bilhões" vs "47 Bilhões de Dólares") must collapse to ONE
+ * signature, so when a scale/magnitude word is present we key on just the leading
+ * number + a canonical scale letter (47 + "b"). Without a scale word we keep the
+ * full normalized text, to avoid merging unrelated bare numbers.
+ */
 function statSignature(value: string): string {
-  return value.normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]/g, "");
+  const norm = value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const num = (norm.match(/\d[\d.,]*/)?.[0] ?? "").replace(/[.,]/g, "");
+  if (!num) return norm.replace(/[^a-z0-9]/g, "");
+  let scale = "";
+  if (/tril|trillion/.test(norm)) scale = "t";
+  else if (/bilh|billion|\bbi\b|\bbn\b/.test(norm)) scale = "b";
+  else if (/milh|million|\bmi\b|\bmm\b/.test(norm)) scale = "m";
+  else if (/\bmil\b|thousand|\bk\b/.test(norm)) scale = "k";
+  else if (/%|percent|por\s*cento/.test(norm)) scale = "p";
+  else if (/\bx\b|vezes|\btimes\b/.test(norm)) scale = "x";
+  return scale ? num + scale : norm.replace(/[^a-z0-9]/g, "");
 }
 
 export function dedupeModules(modules: DeckModule[]): number {
