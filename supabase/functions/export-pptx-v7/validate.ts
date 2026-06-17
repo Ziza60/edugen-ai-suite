@@ -12,6 +12,7 @@ import type {
   DeckCard,
   DeckModule,
   DeckStep,
+  DeckTableRow,
   PlannedDeck,
   SlideSpec,
 } from "./deck-plan.ts";
@@ -26,6 +27,9 @@ export const LIMITS = {
   MAX_TITLE_CHARS: 90,
   MAX_CODE_LINES: 16,
   MAX_CARD_BODY_CHARS: 90,
+  MAX_TABLE_COLS: 5,
+  MAX_TABLE_ROWS: 6,
+  MAX_TABLE_CELL_CHARS: 80,
 } as const;
 
 const TRAILING_JUNK_RE = /[\s,;:\-–—]+$/;
@@ -105,6 +109,38 @@ function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
     .slice(0, LIMITS.MAX_STEPS);
 }
 
+/**
+ * Normalize a comparison table into a rectangular grid. Columns and per-row
+ * cells are trimmed/padded to the same width so the renderer never sees a ragged
+ * table. Returns null when there isn't enough to draw (so the slide falls back
+ * to bullets, like matrix does) — never throws.
+ */
+function normTable(slide: SlideSpec):
+  | { columns: string[]; rows: DeckTableRow[] }
+  | null {
+  const columns = (Array.isArray(slide.columns) ? slide.columns : [])
+    .map((c) => capText(String(c ?? ""), 6, 28))
+    .filter((c) => c.length > 0)
+    .slice(0, LIMITS.MAX_TABLE_COLS);
+  if (columns.length < 2) return null;
+  const n = columns.length;
+  const rows = (Array.isArray(slide.rows) ? slide.rows : [])
+    .map((r) => {
+      const cells = (Array.isArray(r?.cells) ? r.cells : [])
+        .map((c) => capText(String(c ?? ""), 14, LIMITS.MAX_TABLE_CELL_CHARS));
+      // Force each row to exactly n cells (pad short, drop overflow).
+      while (cells.length < n) cells.push("");
+      return {
+        label: capText(String(r?.label ?? ""), 8, 32),
+        cells: cells.slice(0, n),
+      };
+    })
+    .filter((r) => r.label.length > 0 || r.cells.some((c) => c.length > 0))
+    .slice(0, LIMITS.MAX_TABLE_ROWS);
+  if (rows.length < 1) return null;
+  return { columns, rows };
+}
+
 const CODE_PLACEHOLDER_LINE_RE = /^\s*(?:#|--|\/\/)?\s*(?:\.{2,}|…)\s*$/;
 
 function normCode(code: SlideSpec["code"]): SlideSpec["code"] | undefined {
@@ -143,6 +179,8 @@ function hasMinimumContent(s: SlideSpec): boolean {
     case "cards":
     case "matrix":
       return (s.cards?.length ?? 0) > 0;
+    case "table":
+      return (s.columns?.length ?? 0) >= 2 && (s.rows?.length ?? 0) > 0;
     case "steps":
       return (s.steps?.length ?? 0) > 0;
     case "compare":
@@ -172,10 +210,14 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
   const eyebrow = slide.eyebrow ? capText(slide.eyebrow, 10, 60) : undefined;
   let title = capText(slide.title ?? "", 14, LIMITS.MAX_TITLE_CHARS);
 
+  const table = slide.kind === "table" ? normTable(slide) : null;
+
   const base: SlideSpec = {
     ...slide,
     title,
     eyebrow,
+    columns: table?.columns,
+    rows: table?.rows,
     subtitle: slide.subtitle
       ? capText(slide.subtitle, 22, 160)
       : undefined,

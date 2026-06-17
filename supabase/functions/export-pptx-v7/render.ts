@@ -994,6 +994,57 @@ function renderMatrix(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
   footer(slide, d, brand, num);
 }
 
+/**
+ * Multi-column comparison table: N options ("columns") compared across M criteria
+ * ("rows"). Distinct from "compare" (2 columns) and "matrix" (2×2) — this is the
+ * only layout that scales a true comparison grid. Drawn with the native table so
+ * cells wrap cleanly; every colour is a palette token (theme-agnostic). The grid
+ * is already rectangular and capped by validate.ts, so geometry is simple.
+ */
+function renderTable(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const columns = s.columns ?? [];
+  const rows = s.rows ?? [];
+  const ncol = columns.length;
+  const labelW = Math.min(3.0, Math.max(2.0, CW * 0.22));
+  const dataW = (CW - labelW) / ncol;
+  const colW = [labelW, ...Array(ncol).fill(dataW)];
+  const rowH = CONTENT_H / (rows.length + 1);
+  const headFs = ncol >= 5 ? 11 : 12;
+  const bodyFs = ncol >= 5 ? 9 : ncol >= 4 ? 10 : 11;
+
+  const headerRow = [
+    { text: "", options: { fill: { color: d.accent } } },
+    ...columns.map((c) => ({
+      text: c,
+      options: { fill: { color: d.accent }, color: d.onAccent, bold: true, align: "center", fontSize: headFs },
+    })),
+  ];
+  const bodyRows = rows.map((r, ri) => {
+    const zebra = ri % 2 === 0 ? d.surface : d.bg;
+    return [
+      { text: r.label, options: { fill: { color: d.surface }, color: d.text, bold: true, align: "left", fontSize: bodyFs } },
+      ...r.cells.map((cell) => ({
+        text: cell,
+        options: { fill: { color: zebra }, color: d.text, align: "left", fontSize: bodyFs },
+      })),
+    ];
+  });
+
+  slide.addTable([headerRow, ...bodyRows], {
+    x: ML, y: CONTENT_Y, w: CW,
+    colW,
+    rowH: Array(rows.length + 1).fill(rowH),
+    fontFace: FONT_BODY,
+    valign: "middle",
+    border: { type: "solid", color: d.border, pt: 1 },
+    margin: [3, 6, 3, 6],
+    autoPage: false,
+  });
+  footer(slide, d, brand, num);
+}
+
 /** Two short columns (≤2 brief items each) → eligible for the dramatic split. */
 function darkSplitEligible(s: SlideSpec): boolean {
   const ok = (c?: { items?: string[] }) => {
@@ -1411,6 +1462,9 @@ export function renderDeck(
             break;
           case "matrix":
             renderMatrix(slide, s, d, brand, num, m.title);
+            break;
+          case "table":
+            renderTable(slide, s, d, brand, num, m.title);
             break;
           case "quote":
             renderQuote(slide, s, d, brand, num);

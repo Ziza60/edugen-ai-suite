@@ -152,6 +152,26 @@ async function run() {
   const jbuf: Uint8Array = (await jp.write({ outputType: "uint8array" })) as Uint8Array;
   check("empty course still renders a valid pptx", jc >= 1 && jbuf[0] === 0x50);
 
+  // ── 5. A comparison table renders without throwing, light palette + dark template ──
+  const tableDeck = normalizeDeck({
+    courseTitle: "Tabela",
+    modules: [{ title: "Coleções", slides: [{
+      kind: "table", title: "Listas vs Tuplas vs Conjuntos vs Dicionários",
+      columns: ["Listas", "Tuplas", "Conjuntos", "Dicionários"],
+      rows: [
+        { label: "Ordem", cells: ["Mantém", "Mantém", "Sem ordem", "Inserção (3.7+)"] },
+        { label: "Mutabilidade", cells: ["Mutável", "Imutável", "Mutável", "Mutável"] },
+        { label: "Sintaxe", cells: ["[]", "()", "{} / set()", "{k: v}"] },
+      ],
+    } as any] }],
+  }).deck;
+  check("table survives normalization", tableDeck.modules[0].slides[0].kind === "table");
+  for (const opts of [{ palette: "default" }, { template: "dark_elegance_xl" }]) {
+    const { pptx: tp, slideCount: tc } = renderDeck(PptxGenJS, tableDeck, opts as any);
+    const tbuf: Uint8Array = (await tp.write({ outputType: "uint8array" })) as Uint8Array;
+    check(`table deck renders a valid pptx (${JSON.stringify(opts)})`, tc >= 1 && tbuf[0] === 0x50 && tbuf.byteLength > 5000);
+  }
+
   console.log(
     failures === 0
       ? "\nALL PASS ✓"
