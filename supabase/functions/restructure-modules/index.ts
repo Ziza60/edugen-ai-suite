@@ -12,8 +12,9 @@ const REQUIRED_SECTIONS = [
   { emoji: "🧠", label: "Fundamentos" },
   { emoji: "⚙️", label: "Como funciona" },
   // 🧩 Modelos / Tipos é OPCIONAL — omitida quando não há comparação real
-  // Order matches generate-course buildRefinementPrompt: Exemplo prático before Aplicações reais.
+  // Order matches generate-course buildRefinementPrompt: Exemplo prático -> Atividade Prática -> Aplicações reais.
   { emoji: "💡", label: "Exemplo prático" },
+  { emoji: "🎓", label: "Atividade Prática" },
   { emoji: "🛠️", label: "Aplicações reais" },
   { emoji: "⚠️", label: "Desafios e cuidados" },
   { emoji: "🧾", label: "Resumo do Módulo" },
@@ -21,8 +22,8 @@ const REQUIRED_SECTIONS = [
 ];
 
 // KEEP IN SYNC with generate-course/index.ts buildRefinementPrompt: same section
-// order (Exemplo prático before Aplicações reais), same example phase order, and
-// Key Takeaways 5-6.
+// order (Exemplo prático -> Atividade Prática -> Aplicações reais), same example
+// phase order, mandatory 🎓 Atividade Prática, and Key Takeaways 5-6.
 const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestruture o conteúdo do módulo de curso abaixo aplicando TODAS as regras a seguir. Retorne APENAS o markdown reestruturado, sem explicações.
 
 ## Regras obrigatórias:
@@ -41,6 +42,8 @@ const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestr
    - ### 💡 Exemplo prático — ORDEM OBRIGATÓRIA e IMUTÁVEL das fases, sempre nesta sequência:
      **Contexto:** (ou **Cenário:**) → **Desafio:** → **Solução:** → **Resultado:**
      PROIBIDO inverter ou embaralhar esta ordem. Se o conteúdo vier em outra ordem, reordene mantendo os textos originais.
+   - ---
+   - ### 🎓 Atividade Prática — uma tarefa hands-on acionável: enunciado claro + 3 a 6 passos numerados (ou checklist). Concreta e aplicável, não teórica. Se faltar no conteúdo, crie com base no tema.
    - ---
    - ### 🛠️ Aplicações reais (MÍNIMO 4 itens distintos, cada um com 1 frase objetiva — se o conteúdo tiver menos de 4, consolide slides/parágrafos próximos para completar)
    - ---

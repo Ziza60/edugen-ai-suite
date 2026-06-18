@@ -110,7 +110,7 @@ export default function CourseWizard() {
 
   // ── Reading time estimate ──
   const calcReadingTime = () => {
-    const wordsPerModule = { compact: 400, standard: 700, detailed: 1100 };
+    const wordsPerModule = { compact: 600, standard: 1000, detailed: 1550 };
     const wpm = 200;
     const totalMinutes = Math.round((form.numModules * wordsPerModule[form.density]) / wpm);
     if (totalMinutes < 60) return `~${totalMinutes} min de conteúdo`;
@@ -316,6 +316,7 @@ export default function CourseWizard() {
             include_quiz: form.includeQuiz,
             include_flashcards: form.includeFlashcards,
             include_images: form.includeImages,
+            density: form.density,
             use_sources: useSources,
             temp_course_id: useSources ? tempCourseId : undefined,
           }),
@@ -783,9 +784,9 @@ export default function CourseWizard() {
                           <Select value={form.density} onValueChange={(v) => updateForm("density", v)}>
                             <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="compact">Compacto — resumos objetivos</SelectItem>
+                              <SelectItem value="compact">Compacto — visão geral, curso mais rápido</SelectItem>
                               <SelectItem value="standard">Padrão — equilíbrio ideal</SelectItem>
-                              <SelectItem value="detailed">Detalhado — explicações aprofundadas</SelectItem>
+                              <SelectItem value="detailed">Detalhado — aprofundado, curso mais longo</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
