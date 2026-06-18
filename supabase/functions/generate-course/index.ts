@@ -587,8 +587,14 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
           .eq("course_id", body.temp_course_id).eq("user_id", userId);
       }
 
-      // ── STAGE 3: Generate content per module (parallel batches of 3) ──
-      const BATCH_SIZE = 3;
+      // ── STAGE 3: Generate content for ALL modules in parallel ──
+      // Each module chain (draft → refine → gemini-2.5-pro elevation → assessment)
+      // is dominated by the slow ~30-40s 2.5-pro pass. Batching in groups of 3 made a
+      // 6-module course run 2 serial batches and exceed the 150s edge-function
+      // wall-clock limit (the course got stuck at ~85% when the function was killed).
+      // Running every module in one parallel batch keeps total wall-time ≈ a single
+      // module chain (~90s), independent of module count (max 10).
+      const BATCH_SIZE = structure.modules.length;
       for (let batchStart = 0; batchStart < structure.modules.length; batchStart += BATCH_SIZE) {
         const batch = structure.modules.slice(batchStart, batchStart + BATCH_SIZE);
 
