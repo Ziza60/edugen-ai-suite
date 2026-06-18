@@ -12,13 +12,17 @@ const REQUIRED_SECTIONS = [
   { emoji: "🧠", label: "Fundamentos" },
   { emoji: "⚙️", label: "Como funciona" },
   // 🧩 Modelos / Tipos é OPCIONAL — omitida quando não há comparação real
-  { emoji: "🛠️", label: "Aplicações reais" },
+  // Order matches generate-course buildRefinementPrompt: Exemplo prático before Aplicações reais.
   { emoji: "💡", label: "Exemplo prático" },
+  { emoji: "🛠️", label: "Aplicações reais" },
   { emoji: "⚠️", label: "Desafios e cuidados" },
   { emoji: "🧾", label: "Resumo do Módulo" },
   { emoji: "📌", label: "Key Takeaways" },
 ];
 
+// KEEP IN SYNC with generate-course/index.ts buildRefinementPrompt: same section
+// order (Exemplo prático before Aplicações reais), same example phase order, and
+// Key Takeaways 5-6.
 const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestruture o conteúdo do módulo de curso abaixo aplicando TODAS as regras a seguir. Retorne APENAS o markdown reestruturado, sem explicações.
 
 ## Regras obrigatórias:
@@ -34,11 +38,11 @@ const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestr
    - ---
    - ### 🧩 Modelos / Tipos — CONDICIONAL: inclua SOMENTE se o conteúdo já contiver 2+ modelos/tipos/categorias DISTINTOS para comparar. Se não existir no conteúdo recebido, OMITA completamente esta seção — não crie título sem conteúdo, não invente categorias. Quando existir: tabela comparativa com 2-4 colunas e 2-5 linhas de dados reais.
    - --- (apenas se a seção 🧩 foi incluída)
-   - ### 🛠️ Aplicações reais (MÍNIMO 4 itens distintos, cada um com 1 frase objetiva — se o conteúdo tiver menos de 4, consolide slides/parágrafos próximos para completar)
-   - ---
    - ### 💡 Exemplo prático — ORDEM OBRIGATÓRIA e IMUTÁVEL das fases, sempre nesta sequência:
      **Contexto:** (ou **Cenário:**) → **Desafio:** → **Solução:** → **Resultado:**
      PROIBIDO inverter ou embaralhar esta ordem. Se o conteúdo vier em outra ordem, reordene mantendo os textos originais.
+   - ---
+   - ### 🛠️ Aplicações reais (MÍNIMO 4 itens distintos, cada um com 1 frase objetiva — se o conteúdo tiver menos de 4, consolide slides/parágrafos próximos para completar)
    - ---
    - ### ⚠️ Desafios e cuidados (lista de 5 itens máximo)
    - ---
@@ -151,8 +155,8 @@ function validateModuleMarkdown(content: string, moduleIndex: number, title: str
     const ktLines = ktMatch[0].split("\n").filter(l => /^\s*[-*]\s/.test(l));
     keyTakeawaysCount = ktLines.length;
   }
-  if (keyTakeawaysCount < 5 || keyTakeawaysCount > 7) {
-    errors.push(`Key Takeaways: ${keyTakeawaysCount} itens (esperado 5-7)`);
+  if (keyTakeawaysCount < 5 || keyTakeawaysCount > 6) {
+    errors.push(`Key Takeaways: ${keyTakeawaysCount} itens (esperado 5-6)`);
   }
 
   // 7. Lists within limit (no list > 7 items)

@@ -55,7 +55,12 @@ async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = 
 }
 
 
-// PROMPT MESTRE v2: Official Pedagogical Template
+// PROMPT MESTRE v2: Official Pedagogical Template.
+// KEEP IN SYNC with restructure-modules/index.ts (TEMPLATE_PROMPT, REQUIRED_SECTIONS
+// and validateModuleMarkdown). Invariants that must match across both files:
+//   - section order: Exemplo prático BEFORE Aplicações reais
+//   - example phases: Contexto -> Desafio -> Solução -> Resultado
+//   - Key Takeaways: 5-6 bullets
 function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {
   return `Você é um designer instrucional sênior especializado em e-learning premium.
 
@@ -482,7 +487,9 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 4000, true);
+      // 8000 tokens: a 10-module Pro course with quiz+flashcards is a large single
+      // JSON; 4000 risked truncated/invalid JSON for big courses.
+      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 8000, true);
       let structure;
       try {
         const cleaned = structureRaw.trim();
