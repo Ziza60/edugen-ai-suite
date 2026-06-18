@@ -122,8 +122,9 @@ function validateModuleMarkdown(content: string, moduleIndex: number, title: str
 
   // 3. Separators: count --- lines, should be >= 8 (between 9+ sections)
   const separatorCount = lines.filter(l => /^---\s*$/.test(l.trim())).length;
-  const separatorsConsistent = separatorCount >= 7;
-  if (!separatorsConsistent) errors.push(`Separadores insuficientes: ${separatorCount} (min 7)`);
+  // >= 6 tolerates the optional 🧩 Modelos/Tipos section being legitimately omitted.
+  const separatorsConsistent = separatorCount >= 6;
+  if (!separatorsConsistent) errors.push(`Separadores insuficientes: ${separatorCount} (min 6)`);
 
   // 4. Example practical completeness: must have Cenário, Solução, Resultado
   const hasExampleSection = /###.*💡/.test(content);
@@ -366,7 +367,8 @@ Deno.serve(async (req: Request) => {
         const moduleIdx = modules.indexOf(mod);
         const validation = validateModuleMarkdown(restructured, moduleIdx, mod.title);
 
-        // Update module content regardless (it's always better than before)
+        // Persist the restructured content (manual rewrite mode only; the
+        // generate-course pipeline calls this function with validate_only).
         const { error: updateErr } = await serviceClient
           .from("course_modules")
           .update({ content: restructured, updated_at: new Date().toISOString() })
