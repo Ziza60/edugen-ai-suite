@@ -63,8 +63,9 @@ async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = 
 // PROMPT MESTRE v2: Official Pedagogical Template.
 // KEEP IN SYNC with restructure-modules/index.ts (TEMPLATE_PROMPT, REQUIRED_SECTIONS
 // and validateModuleMarkdown). Invariants that must match across both files:
-//   - section order: Exemplo prático BEFORE Aplicações reais
+//   - section order: Exemplo prático -> Atividade Prática -> Aplicações reais
 //   - example phases: Contexto -> Desafio -> Solução -> Resultado
+//   - 🎓 Atividade Prática is mandatory in every module
 //   - Key Takeaways: 5-6 bullets
 function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {
   return `Você é um designer instrucional sênior especializado em e-learning premium.
@@ -111,6 +112,12 @@ Organize o conteúdo do módulo usando os seguintes blocos, NA ORDEM em que fize
   **Resultado:** [o que mudou, com número ou indicador concreto quando possível]
 - O exemplo deve ser ancorado num setor ou perfil de empresa específico (não "uma empresa").
 - PROIBIDO inverter ou embaralhar essa ordem.
+
+#### 🎓 Atividade Prática (OBRIGATÓRIA)
+- Proponha UMA atividade hands-on para o aluno aplicar o conteúdo do módulo.
+- Deve ser concreta e acionável: o que fazer, com qual ferramenta/insumo, e qual o resultado/entregável esperado.
+- Formato: um enunciado de tarefa claro seguido de 3 a 6 passos numerados (ou um checklist).
+- Ancore no domínio do curso e, quando fizer sentido, no contexto do público-alvo. NÃO é teoria — é "mão na massa".
 
 #### 🛠️ Aplicações reais
 - REGRA CRÍTICA: Mínimo 4 aplicações distintas, cada uma com 1 frase objetiva.
@@ -218,7 +225,9 @@ function buildQualityElevationPrompt(
 ): string {
   return `Você é um supervisor sênior de qualidade de cursos online com 15 anos de experiência avaliando e elevando material didático para plataformas de e-learning B2B e corporativas.
 
-Você recebeu o módulo abaixo, que já passou por revisão estrutural e está pedagogicamente formatado. Sua tarefa NÃO é reformatar — a estrutura já está correta. Sua tarefa é identificar os trechos que falham nos 5 Critérios de Qualidade de Conteúdo e reescrevê-los com maior profundidade e especificidade.
+Você recebeu o módulo abaixo, que já passou por uma formatação inicial. Esta é a PASSAGEM FINAL: o resultado será publicado como está. Você tem DUAS tarefas:
+(A) Garantir que a ESTRUTURA do template oficial esteja COMPLETA e correta.
+(B) Elevar a QUALIDADE do conteúdo segundo os 5 Critérios abaixo.
 
 ## CONTEXTO DO CURSO
 - Curso: "${courseTitle}"
@@ -256,22 +265,35 @@ Aprovado (acionável): "Antes de cada reunião com o Economic Buyer, prepare 3 m
 Reprovado: bullets curtos que apenas nomeiam conceitos sem explicar.
 Aprovado: bullets que nomeiam E explicam o porquê ou como aplicar.
 
+## ESTRUTURA OBRIGATÓRIA (garantir que TODAS estejam presentes, nesta ordem, com estes títulos/emojis exatos)
+1. \`## ${moduleTitle}\`
+2. \`### 🎯 Objetivo do Módulo\` (3 bullets)
+3. \`### 🧠 Fundamentos\`
+4. \`### ⚙️ Como funciona\`
+5. \`### 🧩 Modelos / Tipos\` — OPCIONAL: inclua SÓ se houver 2+ itens reais para comparar numa tabela com linhas de dados. Se não houver, OMITA a seção inteira. PROIBIDO deixar tabela vazia ou só com cabeçalho (ex.: "| Aspecto |" sem linhas).
+6. \`### 💡 Exemplo prático\` — fases na ordem **Contexto → Desafio → Solução → Resultado**.
+7. \`### 🎓 Atividade Prática\` — uma tarefa hands-on acionável (enunciado + 3-6 passos).
+8. \`### 🛠️ Aplicações reais\` — mínimo 4 itens.
+9. \`### ⚠️ Desafios e cuidados\`
+10. \`> 💭 **Pare um momento e reflita:**\` (após Desafios, antes do Resumo)
+11. \`### 🧾 Resumo do Módulo\` (1 parágrafo)
+12. \`### 📌 Key Takeaways\` (5-6 bullets, cada um uma ideia acionável iniciando com verbo)
+Separe as grandes seções com \`---\`.
+
 ## COMO PROCEDER
 1. Leia o módulo completo abaixo.
-2. Para cada seção, avalie internamente os 5 critérios.
-3. Reescreva APENAS os trechos que reprovam em pelo menos 1 critério.
-4. Mantenha INTACTO o que já está aprovado.
-5. Retorne o módulo COMPLETO com as melhorias aplicadas.
+2. **Complete a estrutura:** se qualquer seção obrigatória acima estiver faltando, CRIE-A com base no conteúdo/tema (sem inventar fatos). Corrija títulos fora do padrão para os títulos canônicos. Conserte ou remova tabelas quebradas/vazias.
+3. **Eleve a qualidade:** reescreva os trechos que reprovam em pelo menos 1 dos 5 Critérios, com mais profundidade e especificidade.
+4. Mantenha o que já está bom.
+5. Retorne o módulo COMPLETO.
 
 ## RESTRIÇÕES ABSOLUTAS
-- NÃO altere títulos de seções, emojis ou separadores (---)
-- NÃO adicione seções novas nem remova seções existentes
-- NÃO aumente o número de bullets de nenhuma seção — substitua bullets fracos por versões mais específicas, mantendo a mesma quantidade
-- NÃO adicione subseções ou subtítulos novos que não existiam no original
-- O volume total de texto deve ser similar ao original (±20%) — eleve qualidade, não quantidade
-- Comece DIRETAMENTE com ## [título do módulo] — ZERO preamble, saudação ou explicação antes do conteúdo
-- Mantenha o idioma: ${language}
-- Retorne APENAS o markdown melhorado, sem comentários
+- Use EXATAMENTE os títulos/emojis canônicos da estrutura acima (não invente nomes como "Conceitos-Chave" ou "Chatbots").
+- NÃO deixe nenhuma seção obrigatória faltando. NÃO deixe tabela com só cabeçalho.
+- Preserve 100% da correção técnica; NÃO invente fatos novos só para preencher.
+- Comece DIRETAMENTE com \`## ${moduleTitle}\` — ZERO preâmbulo, saudação ou explicação antes do conteúdo.
+- Mantenha o idioma: ${language}.
+- Retorne APENAS o markdown final, sem comentários nem cercas de código.
 
 ---
 
@@ -643,9 +665,9 @@ Write 800-1200 words. Be thorough and educational.`;
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          // 4000 tokens: a fully reformatted PT module (~1000-1200 words + structure)
-          // exceeds 1500 output tokens and was being truncated mid-content.
-          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 4000);
+          // 8000 tokens: the full template (now incl. Atividade Prática) for a PT
+          // module is long; smaller caps were truncating modules mid-content/table.
+          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 8000);
 
           // Step C: Quality Elevation
           let elevatedContent = refinedContent;
@@ -656,7 +678,7 @@ Write 800-1200 words. Be thorough and educational.`;
               target_audience || "profissionais da área", language || "pt-BR",
               theme || "",
             );
-            const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 4000);
+            const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 8000);
             // Strip markdown fences AND any preamble before the first ## heading
             const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
@@ -673,7 +695,10 @@ Write 800-1200 words. Be thorough and educational.`;
               return idx > 0 ? s.slice(idx).trim() : s;
             };
             const finalQuality = preambleGuard(cleanedQuality);
-            if (finalQuality.length >= refinedContent.length * 0.75) {
+            // Elevation now also completes missing sections, so the result should
+            // grow, not shrink. Only fall back to the refined text if it came back
+            // suspiciously short (<50% = likely truncated/broken).
+            if (finalQuality.length >= refinedContent.length * 0.5) {
               elevatedContent = finalQuality;
               console.log(`[generate-course] Quality Elevation OK: ${refinedContent.length} → ${elevatedContent.length} chars`);
             } else {
