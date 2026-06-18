@@ -310,7 +310,10 @@ ${includeFlashcards ? `  "flashcards": [{"front": "Pergunta explícita com verbo
 }
 ${includeQuiz ? "- EXACTLY 3 quiz questions, 4 options each; \"correct\" is the 0-based index of the right option." : ""}
 ${includeFlashcards ? "- EXACTLY 5 flashcards." : ""}
-- Perfect spelling and grammar in ${language}.`;
+- Perfect spelling and grammar in ${language}.
+- CRITICAL: output a SINGLE, syntactically valid JSON object. No text before or after,
+  no markdown fences, no comments, no trailing commas. Escape any double quotes inside
+  strings. Keep each string on one line.`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -690,43 +693,60 @@ Write 800-1200 words. Be thorough and educational.`;
             .select().single();
           if (moduleError) throw moduleError;
 
-          // Generate quiz + flashcards for THIS module (one small JSON call).
-          // Non-blocking: a malformed assessment never aborts the course.
+          // Generate quiz + flashcards for THIS module. Non-blocking, with a robust
+          // parse + one retry: the assessment JSON was failing to parse for every
+          // module (stray tokens / truncation), so quizzes & flashcards were silently
+          // never saved.
           if (include_quiz || include_flashcards) {
-            try {
-              const assessmentPrompt = buildAssessmentPrompt(
-                mod.title, mod.summary || mod.title, title, theme || "",
-                language || "pt-BR", !!include_quiz, !!include_flashcards,
-              );
-              const assessmentRaw = await callAI("gemini-2.5-flash", assessmentPrompt, 2000, true);
-              const aMatch = assessmentRaw.match(/\{[\s\S]*\}/);
-              const assessments = aMatch ? JSON.parse(aMatch[0]) : JSON.parse(assessmentRaw);
-
-              if (include_quiz && Array.isArray(assessments.quiz) && assessments.quiz.length > 0) {
-                const quizInserts = assessments.quiz.map((q: any) => ({
-                  module_id: moduleData.id, question: q.question,
-                  options: q.options, correct_answer: q.correct ?? 0,
-                  explanation: q.explanation || null,
-                }));
-                await serviceClient.from("course_quiz_questions").insert(quizInserts);
+            const assessmentPrompt = buildAssessmentPrompt(
+              mod.title, mod.summary || mod.title, title, theme || "",
+              language || "pt-BR", !!include_quiz, !!include_flashcards,
+            );
+            const parseAssessment = (raw: string): any | null => {
+              const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+              try { return JSON.parse(cleaned); } catch { /* fall through */ }
+              const m = cleaned.match(/\{[\s\S]*\}/);
+              if (m) { try { return JSON.parse(m[0]); } catch { /* fall through */ } }
+              return null;
+            };
+            let assessments: any = null;
+            for (let attempt = 0; attempt < 2 && !assessments; attempt++) {
+              try {
+                const assessmentRaw = await callAI("gemini-2.5-flash", assessmentPrompt, 4000, true);
+                assessments = parseAssessment(assessmentRaw);
+                if (!assessments) console.warn(`[generate-course] Assessment parse failed (attempt ${attempt + 1}) for "${mod.title}"`);
+              } catch (assessErr: any) {
+                console.warn(`[generate-course] Assessment call failed (attempt ${attempt + 1}) for "${mod.title}": ${assessErr.message}`);
               }
-
-              if (include_flashcards && Array.isArray(assessments.flashcards) && assessments.flashcards.length > 0) {
-                const fcInserts = assessments.flashcards.map((fc: any) => ({
-                  module_id: moduleData.id, front: fc.front, back: fc.back,
-                }));
-                await serviceClient.from("course_flashcards").insert(fcInserts);
+            }
+            if (assessments) {
+              try {
+                if (include_quiz && Array.isArray(assessments.quiz) && assessments.quiz.length > 0) {
+                  const quizInserts = assessments.quiz.map((q: any) => ({
+                    module_id: moduleData.id, question: q.question,
+                    options: q.options, correct_answer: q.correct ?? 0,
+                    explanation: q.explanation || null,
+                  }));
+                  await serviceClient.from("course_quiz_questions").insert(quizInserts);
+                }
+                if (include_flashcards && Array.isArray(assessments.flashcards) && assessments.flashcards.length > 0) {
+                  const fcInserts = assessments.flashcards.map((fc: any) => ({
+                    module_id: moduleData.id, front: fc.front, back: fc.back,
+                  }));
+                  await serviceClient.from("course_flashcards").insert(fcInserts);
+                }
+              } catch (insErr: any) {
+                console.warn(`[generate-course] Assessment insert failed (non-blocking) for "${mod.title}": ${insErr.message}`);
               }
-            } catch (assessErr: any) {
-              console.warn(`[generate-course] Assessment generation failed (non-blocking) for "${mod.title}": ${assessErr.message}`);
             }
           }
 
           // Generate AI image (non-blocking)
           if (include_images) {
             try {
-              const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
-STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstract shapes, icons, conceptual diagrams, visual metaphors. Style: modern, minimalist, soft colors, 16:9.`;
+              const imagePrompt = `A purely abstract, minimalist conceptual illustration evoking the theme "${mod.title}" (course: "${title}").
+Style: flat vector, geometric shapes, soft gradient colors, modern and clean, 16:9, generous negative space.
+ABSOLUTELY NO TEXT of any kind: no letters, words, numbers, captions, labels, titles, watermarks, signatures, UI, charts with axes, or any typography or letterforms anywhere in the image. It must be 100% wordless — only abstract shapes, icons and visual metaphors. If you would normally add a caption or label, leave that space empty instead.`;
 
               // Native Gemini 2.5 Flash Image (Nano Banana) via personal GEMINI_API_KEY.
               // Replaces the Lovable gateway. Imagen 4 was avoided (deprecated 2026-08-17).
