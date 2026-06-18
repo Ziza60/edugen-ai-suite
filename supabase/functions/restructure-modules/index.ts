@@ -125,7 +125,8 @@ function validateModuleMarkdown(content: string, moduleIndex: number, title: str
   const hasExampleSection = /###.*💡/.test(content);
   let examplePracticalComplete = false;
   if (hasExampleSection) {
-    const hasCenario = /\*\*Cenário[:\s]/i.test(content) || /cenário:/i.test(content);
+    // The template emits "**Contexto:**" (with "Cenário" as an accepted alias).
+    const hasCenario = /\*\*(?:Cen[áa]rio|Contexto)[:\s]/i.test(content) || /(?:cen[áa]rio|contexto):/i.test(content);
     const hasSolucao = /\*\*Solução[:\s]/i.test(content) || /solução:/i.test(content);
     const hasResultado = /\*\*Resultado[:\s]/i.test(content) || /resultado:/i.test(content);
     examplePracticalComplete = hasCenario && hasSolucao && hasResultado;
@@ -228,7 +229,10 @@ async function callLLM(prompt: string, content: string): Promise<string> {
   if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  const model = "gemini-3-flash-preview"; 
+  // Valid native id (the previous "gemini-3-flash-preview" likely 404'd, making the
+  // manual rewrite path fail). Only used in rewrite mode; the generate-course pipeline
+  // now calls this function with validate_only and never reaches here.
+  const model = "gemini-2.5-flash";
 
   const response = await fetch(url, {
     method: "POST",

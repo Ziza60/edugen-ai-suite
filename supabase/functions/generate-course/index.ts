@@ -592,11 +592,13 @@ ${sourceContentInstruction}
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
 Write 800-1200 words. Be thorough and educational.`;
 
-          const rawContent = await callAI("gemini-2.5-flash", contentPrompt);
+          const rawContent = await callAI("gemini-2.5-flash", contentPrompt, 4000);
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 1500);
+          // 4000 tokens: a fully reformatted PT module (~1000-1200 words + structure)
+          // exceeds 1500 output tokens and was being truncated mid-content.
+          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 4000);
 
           // Step C: Quality Elevation
           let elevatedContent = refinedContent;
@@ -607,7 +609,7 @@ Write 800-1200 words. Be thorough and educational.`;
               target_audience || "profissionais da área", language || "pt-BR",
               theme || "",
             );
-            const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 2000);
+            const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 4000);
             // Strip markdown fences AND any preamble before the first ## heading
             const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
@@ -739,9 +741,14 @@ STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstra
       }
       await serviceClient.from("usage_events").insert(usageInserts);
 
-      // ── STAGE 5: Auto-restructure (non-blocking, don't wait for SSE) ──
+      // ── STAGE 5: Quality validation (non-blocking, validate-only) ──
+      // Deliberately do NOT rewrite here. The per-module pipeline already applies
+      // the pedagogical template (Step B) and elevates the writing on gemini-2.5-pro
+      // (Step C). Re-running the template via restructure-modules would overwrite the
+      // 2.5-pro output with a cheaper re-format, undoing Step C. So we only request
+      // the deterministic quality report (validate_only) and log it.
       try {
-        console.log("[generate-course] Auto-invoking restructure-modules...");
+        console.log("[generate-course] Invoking restructure-modules (validate_only)...");
         const restructureUrl = `${supabaseUrl}/functions/v1/restructure-modules`;
         fetch(restructureUrl, {
           method: "POST",
@@ -750,19 +757,19 @@ STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstra
             "Authorization": authHeader,
             "apikey": anonKey,
           },
-          body: JSON.stringify({ course_id: course.id }),
+          body: JSON.stringify({ course_id: course.id, validate_only: true }),
         }).then(async (res) => {
           if (res.ok) {
             const data = await res.json();
-            console.log("[generate-course] Auto-restructure complete:", data.message);
+            console.log("[generate-course] Quality report:", JSON.stringify(data.markdown_quality_report?.summary ?? {}));
           } else {
-            console.warn("[generate-course] Auto-restructure failed:", await res.text());
+            console.warn("[generate-course] Quality validation failed:", await res.text());
           }
         }).catch((err) => {
-          console.warn("[generate-course] Auto-restructure error:", err.message);
+          console.warn("[generate-course] Quality validation error:", err.message);
         });
       } catch (e: any) {
-        console.warn("[generate-course] Auto-restructure error (non-blocking):", e.message);
+        console.warn("[generate-course] Quality validation error (non-blocking):", e.message);
       }
 
       // Send completion event
