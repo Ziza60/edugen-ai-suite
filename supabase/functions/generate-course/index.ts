@@ -280,6 +280,39 @@ Aprovado: bullets que nomeiam E explicam o porquê ou como aplicar.
 ${structuredContent}`;
 }
 
+// Generated PER MODULE (not in the structure call) so the structure JSON stays
+// small and reliably parseable regardless of module count.
+function buildAssessmentPrompt(
+  moduleTitle: string,
+  moduleSummary: string,
+  courseTitle: string,
+  theme: string,
+  language: string,
+  includeQuiz: boolean,
+  includeFlashcards: boolean,
+): string {
+  return `You are an educational assessment designer. Return ONLY valid JSON (no markdown fences, no commentary).
+
+Course: "${courseTitle}" — Theme: "${theme}"
+Module: "${moduleTitle}"
+Summary: ${moduleSummary}
+Language: ${language}
+
+DOMAIN RULE (HARD): every question, option and answer MUST stay strictly within the
+technical domain of "${courseTitle}" / "${theme}" and its native ecosystem. For a
+programming-language course use ONLY that language; never SQL/Bash/HTML unless that
+IS the subject.
+
+Return JSON in EXACTLY this shape:
+{
+${includeQuiz ? `  "quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "..."}]${includeFlashcards ? "," : ""}` : ""}
+${includeFlashcards ? `  "flashcards": [{"front": "Pergunta explícita com verbo e ponto de interrogação (?)", "back": "Resposta completa e pedagógica"}]` : ""}
+}
+${includeQuiz ? "- EXACTLY 3 quiz questions, 4 options each; \"correct\" is the 0-based index of the right option." : ""}
+${includeFlashcards ? "- EXACTLY 5 flashcards." : ""}
+- Perfect spelling and grammar in ${language}.`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -476,65 +509,58 @@ Course details:
 - Language: ${language || "pt-BR"}
 - EXACTLY ${actualModules} modules
 ${use_sources ? "- Base the course structure EXCLUSIVELY on the content in <SOURCES>" : ""}
-${include_quiz ? "- Include 3 quiz questions per module" : ""}
-${include_flashcards ? "- Include 5 flashcards per module" : ""}
 
-Return ONLY valid JSON with this structure:
+Return ONLY valid JSON with this structure (titles + summaries ONLY — quizzes and
+flashcards are generated separately per module to keep this JSON small and valid):
 {
   "description": "course description",
   "modules": [
     {
       "title": "Module title",
       "summary": "brief summary for content generation"
-      ${include_quiz ? ',"quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "..."}]' : ""}
-      ${include_flashcards ? ',"flashcards": [{"front": "Pergunta EXPLÍCITA com verbo e ponto de interrogação (?)", "back": "Resposta completa e pedagógica"}]' : ""}
     }
   ]
 }`;
 
-      // 8000 tokens: a 10-module Pro course with quiz+flashcards is a large single
-      // JSON; 4000 risked truncated/invalid JSON for big courses.
-      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 8000, true);
-      let structure;
-      try {
-        const cleaned = structureRaw.trim();
-        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-        const jsonString = jsonMatch ? jsonMatch[0] : cleaned;
-        structure = JSON.parse(jsonString);
-      } catch (parseErr) {
-        console.error("[generate-course] Failed to parse structure. Raw response length:", structureRaw.length);
-        console.error("[generate-course] Start of response:", structureRaw.substring(0, 500));
-        throw new Error("Falha ao processar a estrutura do curso gerada pela IA. Por favor, tente novamente.");
-      }
+      // Structure is now lightweight (titles + summaries only), so 4000 tokens is
+      // ample even for 10 modules — quizzes/flashcards are generated per module later.
+      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 4000, true);
 
-      // Hard validation: enforce exact module count
-      if (!structure.modules || structure.modules.length !== actualModules) {
-        console.warn(`Module count mismatch: got ${structure.modules?.length ?? 0}, expected ${actualModules}. Retrying...`);
+      const parseStructure = (raw: string): any | null => {
+        try {
+          const m = raw.match(/\{[\s\S]*\}/);
+          return JSON.parse(m ? m[0] : raw.trim());
+        } catch {
+          return null;
+        }
+      };
+
+      let structure = parseStructure(structureRaw);
+
+      // One retry covers BOTH a failed parse and a wrong module count.
+      if (!structure || !Array.isArray(structure.modules) || structure.modules.length !== actualModules) {
+        console.warn(`[generate-course] Structure retry (parsed=${!!structure}, modules=${structure?.modules?.length ?? 0}, expected ${actualModules}).`);
         sendSSE({ type: "status", message: "Ajustando estrutura..." });
 
         const retryPrompt = `Generate a course structure with EXACTLY ${actualModules} modules for "${title}" (${theme}).
 Language: ${language || "pt-BR"}. Target audience: ${target_audience || "general"}. Tone: ${tone || "professional"}.
-${include_quiz ? "Include 3 quiz questions per module." : ""}
-${include_flashcards ? "Include 5 flashcards per module." : ""}
 
 CRITICAL DOMAIN INTEGRITY (HARD RULE):
-- ALL module titles, summaries, quizzes, flashcards and examples MUST stay strictly within the technical domain of "${title}" / "${theme}" and its native ecosystem.
+- ALL module titles and summaries MUST stay strictly within the technical domain of "${title}" / "${theme}" and its native ecosystem.
 - If the course is about a programming language (Python, JavaScript, Java, etc.): use ONLY that language's syntax/idioms/standard library. NEVER use SQL DDL/DML (CREATE TABLE, ALTER TABLE, INSERT, etc.) unless the course is explicitly about SQL/databases.
-- "Data Structures" in a Python course = lists/tuples/dicts/sets, NOT SQL tables.
 - Module summaries must cite the language/tool by name when possible.
 
-Return ONLY valid JSON with "description" and "modules" array containing EXACTLY ${actualModules} items.`;
+Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "summary": "..."}]} with EXACTLY ${actualModules} items.`;
 
-        const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 1000, true);
-        try {
-          const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
-          structure = JSON.parse(retryMatch ? retryMatch[0] : retryRaw);
-        } catch {
-          throw new Error("Failed to parse AI retry response");
+        const retryRaw = await callAI("gemini-2.5-flash", retryPrompt, 4000, true);
+        structure = parseStructure(retryRaw);
+
+        if (!structure) {
+          console.error("[generate-course] Structure parse failed twice. Raw length:", retryRaw.length, "start:", retryRaw.substring(0, 300));
+          throw new Error("Falha ao processar a estrutura do curso gerada pela IA. Por favor, tente novamente.");
         }
-
-        if (!structure.modules || structure.modules.length !== actualModules) {
-          throw new Error(`Failed to generate exactly ${actualModules} modules after retry.`);
+        if (!Array.isArray(structure.modules) || structure.modules.length !== actualModules) {
+          throw new Error(`Falha ao gerar exatamente ${actualModules} módulos após nova tentativa.`);
         }
       }
 
@@ -658,22 +684,36 @@ Write 800-1200 words. Be thorough and educational.`;
             .select().single();
           if (moduleError) throw moduleError;
 
-          // Insert quiz questions
-          if (include_quiz && mod.quiz?.length > 0) {
-            const quizInserts = mod.quiz.map((q: any) => ({
-              module_id: moduleData.id, question: q.question,
-              options: q.options, correct_answer: q.correct ?? 0,
-              explanation: q.explanation || null,
-            }));
-            await serviceClient.from("course_quiz_questions").insert(quizInserts);
-          }
+          // Generate quiz + flashcards for THIS module (one small JSON call).
+          // Non-blocking: a malformed assessment never aborts the course.
+          if (include_quiz || include_flashcards) {
+            try {
+              const assessmentPrompt = buildAssessmentPrompt(
+                mod.title, mod.summary || mod.title, title, theme || "",
+                language || "pt-BR", !!include_quiz, !!include_flashcards,
+              );
+              const assessmentRaw = await callAI("gemini-2.5-flash", assessmentPrompt, 2000, true);
+              const aMatch = assessmentRaw.match(/\{[\s\S]*\}/);
+              const assessments = aMatch ? JSON.parse(aMatch[0]) : JSON.parse(assessmentRaw);
 
-          // Insert flashcards
-          if (include_flashcards && mod.flashcards?.length > 0) {
-            const fcInserts = mod.flashcards.map((fc: any) => ({
-              module_id: moduleData.id, front: fc.front, back: fc.back,
-            }));
-            await serviceClient.from("course_flashcards").insert(fcInserts);
+              if (include_quiz && Array.isArray(assessments.quiz) && assessments.quiz.length > 0) {
+                const quizInserts = assessments.quiz.map((q: any) => ({
+                  module_id: moduleData.id, question: q.question,
+                  options: q.options, correct_answer: q.correct ?? 0,
+                  explanation: q.explanation || null,
+                }));
+                await serviceClient.from("course_quiz_questions").insert(quizInserts);
+              }
+
+              if (include_flashcards && Array.isArray(assessments.flashcards) && assessments.flashcards.length > 0) {
+                const fcInserts = assessments.flashcards.map((fc: any) => ({
+                  module_id: moduleData.id, front: fc.front, back: fc.back,
+                }));
+                await serviceClient.from("course_flashcards").insert(fcInserts);
+              }
+            } catch (assessErr: any) {
+              console.warn(`[generate-course] Assessment generation failed (non-blocking) for "${mod.title}": ${assessErr.message}`);
+            }
           }
 
           // Generate AI image (non-blocking)
