@@ -52,7 +52,9 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-lite",
+      // Native Google endpoint rejects "google/"-prefixed ids; use a valid Gemini id.
+      // Falls back to the Lovable model name only when routing through that gateway.
+      model: geminiKey ? "gemini-2.5-flash" : "google/gemini-3-flash-lite",
       messages: [
         {
           role: "user",

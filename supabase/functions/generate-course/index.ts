@@ -668,27 +668,36 @@ Write 800-1200 words. Be thorough and educational.`;
               const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
 STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstract shapes, icons, conceptual diagrams, visual metaphors. Style: modern, minimalist, soft colors, 16:9.`;
 
-              const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
+              // Native Gemini 2.5 Flash Image (Nano Banana) via personal GEMINI_API_KEY.
+              // Replaces the Lovable gateway. Imagen 4 was avoided (deprecated 2026-08-17).
+              const geminiKey = Deno.env.get("GEMINI_API_KEY");
+              const imgRes = await fetch(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": geminiKey ?? "",
+                  },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: imagePrompt }] }],
+                    generationConfig: {
+                      responseModalities: ["IMAGE"],
+                      imageConfig: { aspectRatio: "16:9" },
+                    },
+                  }),
                 },
-                body: JSON.stringify({
-                  model: "google/gemini-3-flash-image",
-                  messages: [{ role: "user", content: imagePrompt }],
-                  modalities: ["image", "text"],
-                  max_tokens: 500, // Limite para geração de imagem
-                }),
-              });
+              );
 
               if (imgRes.ok) {
                 const imgData = await imgRes.json();
-                const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-                if (imageUrl && imageUrl.startsWith("data:image")) {
-                  const base64Data = imageUrl.split(",")[1];
+                const parts = imgData.candidates?.[0]?.content?.parts ?? [];
+                const imgPart = parts.find((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+                if (imgPart?.inlineData?.data) {
+                  const base64Data = imgPart.inlineData.data;
                   const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-                  const ext = imageUrl.includes("png") ? "png" : "jpg";
+                  const mimeType: string = imgPart.inlineData.mimeType || "image/png";
+                  const ext = mimeType.includes("png") ? "png" : "jpg";
                   const storagePath = `${userId}/module-${moduleData.id}.${ext}`;
 
                   const { error: uploadErr } = await serviceClient.storage
