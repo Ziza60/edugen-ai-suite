@@ -398,8 +398,18 @@ Deno.serve(async (req: Request) => {
       const {
         title: rawTitle, theme, target_audience, tone, language,
         num_modules, include_quiz, include_flashcards, include_images,
-        use_sources,
+        use_sources, density,
       } = body;
+
+      // Detail level → per-module depth. Previously the wizard's "nível de
+      // detalhamento" was never sent to the backend, so every course was generated
+      // at the same depth. This maps it to target length per module.
+      const DEPTH_PROFILES = {
+        compact:  { words: "500-700",   label: "conciso (curso rápido)" },
+        standard: { words: "800-1200",  label: "equilibrado" },
+        detailed: { words: "1300-1800", label: "aprofundado (curso longo)" },
+      } as const;
+      const depth = DEPTH_PROFILES[(density as keyof typeof DEPTH_PROFILES)] ?? DEPTH_PROFILES.standard;
 
       const title = (rawTitle || "").trim().replace(/\s{2,}/g, " ");
       if (!title || title.length < 3) {
@@ -664,7 +674,7 @@ CRITICAL DOMAIN INTEGRITY (HARD RULE):
 ${sourceContentInstruction}${brLocalization}
 
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
-Write 800-1200 words. Be thorough and educational.`;
+Write ${depth.words} words — nível ${depth.label}. Be thorough and educational.`;
 
           const rawContent = await callAI("gemini-2.5-flash", contentPrompt, 4000);
 
