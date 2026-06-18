@@ -16,9 +16,12 @@ const PLAN_LIMITS = {
 async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false) {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  
-  // Use gemini-2.5-flash as requested
-  const aiModel = "gemini-2.5-flash";
+
+  // Honor the per-stage model requested by the caller. The Google native endpoint
+  // expects bare model ids (e.g. "gemini-2.5-flash"), NOT vendor-prefixed names
+  // like "google/...". Unknown values fall back to flash to stay safe/cheap.
+  const ALLOWED_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro"];
+  const aiModel = ALLOWED_MODELS.includes(model) ? model : "gemini-2.5-flash";
 
   console.log(`Calling Gemini API directly with model: ${aiModel}`);
 
@@ -52,7 +55,12 @@ async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = 
 }
 
 
-// PROMPT MESTRE v2: Official Pedagogical Template
+// PROMPT MESTRE v2: Official Pedagogical Template.
+// KEEP IN SYNC with restructure-modules/index.ts (TEMPLATE_PROMPT, REQUIRED_SECTIONS
+// and validateModuleMarkdown). Invariants that must match across both files:
+//   - section order: Exemplo prático BEFORE Aplicações reais
+//   - example phases: Contexto -> Desafio -> Solução -> Resultado
+//   - Key Takeaways: 5-6 bullets
 function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {
   return `Você é um designer instrucional sênior especializado em e-learning premium.
 
@@ -479,7 +487,9 @@ Return ONLY valid JSON with this structure:
   ]
 }`;
 
-      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 4000, true);
+      // 8000 tokens: a 10-module Pro course with quiz+flashcards is a large single
+      // JSON; 4000 risked truncated/invalid JSON for big courses.
+      const structureRaw = await callAI("gemini-2.5-flash", structurePrompt, 8000, true);
       let structure;
       try {
         const cleaned = structureRaw.trim();
@@ -589,11 +599,13 @@ ${sourceContentInstruction}
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
 Write 800-1200 words. Be thorough and educational.`;
 
-          const rawContent = await callAI("google/gemini-3-flash-preview", contentPrompt);
+          const rawContent = await callAI("gemini-2.5-flash", contentPrompt, 4000);
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          const refinedContent = await callAI("google/gemini-3-flash-lite", refinementPrompt, 1500);
+          // 4000 tokens: a fully reformatted PT module (~1000-1200 words + structure)
+          // exceeds 1500 output tokens and was being truncated mid-content.
+          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 4000);
 
           // Step C: Quality Elevation
           let elevatedContent = refinedContent;
@@ -604,7 +616,7 @@ Write 800-1200 words. Be thorough and educational.`;
               target_audience || "profissionais da área", language || "pt-BR",
               theme || "",
             );
-            const qualityResult = await callAI("google/gemini-3-flash-preview", qualityPrompt, 2000);
+            const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 4000);
             // Strip markdown fences AND any preamble before the first ## heading
             const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
@@ -665,27 +677,36 @@ Write 800-1200 words. Be thorough and educational.`;
               const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
 STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstract shapes, icons, conceptual diagrams, visual metaphors. Style: modern, minimalist, soft colors, 16:9.`;
 
-              const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
+              // Native Gemini 2.5 Flash Image (Nano Banana) via personal GEMINI_API_KEY.
+              // Replaces the Lovable gateway. Imagen 4 was avoided (deprecated 2026-08-17).
+              const geminiKey = Deno.env.get("GEMINI_API_KEY");
+              const imgRes = await fetch(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": geminiKey ?? "",
+                  },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: imagePrompt }] }],
+                    generationConfig: {
+                      responseModalities: ["IMAGE"],
+                      imageConfig: { aspectRatio: "16:9" },
+                    },
+                  }),
                 },
-                body: JSON.stringify({
-                  model: "google/gemini-3-flash-image",
-                  messages: [{ role: "user", content: imagePrompt }],
-                  modalities: ["image", "text"],
-                  max_tokens: 500, // Limite para geração de imagem
-                }),
-              });
+              );
 
               if (imgRes.ok) {
                 const imgData = await imgRes.json();
-                const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-                if (imageUrl && imageUrl.startsWith("data:image")) {
-                  const base64Data = imageUrl.split(",")[1];
+                const parts = imgData.candidates?.[0]?.content?.parts ?? [];
+                const imgPart = parts.find((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+                if (imgPart?.inlineData?.data) {
+                  const base64Data = imgPart.inlineData.data;
                   const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-                  const ext = imageUrl.includes("png") ? "png" : "jpg";
+                  const mimeType: string = imgPart.inlineData.mimeType || "image/png";
+                  const ext = mimeType.includes("png") ? "png" : "jpg";
                   const storagePath = `${userId}/module-${moduleData.id}.${ext}`;
 
                   const { error: uploadErr } = await serviceClient.storage
@@ -727,9 +748,14 @@ STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstra
       }
       await serviceClient.from("usage_events").insert(usageInserts);
 
-      // ── STAGE 5: Auto-restructure (non-blocking, don't wait for SSE) ──
+      // ── STAGE 5: Quality validation (non-blocking, validate-only) ──
+      // Deliberately do NOT rewrite here. The per-module pipeline already applies
+      // the pedagogical template (Step B) and elevates the writing on gemini-2.5-pro
+      // (Step C). Re-running the template via restructure-modules would overwrite the
+      // 2.5-pro output with a cheaper re-format, undoing Step C. So we only request
+      // the deterministic quality report (validate_only) and log it.
       try {
-        console.log("[generate-course] Auto-invoking restructure-modules...");
+        console.log("[generate-course] Invoking restructure-modules (validate_only)...");
         const restructureUrl = `${supabaseUrl}/functions/v1/restructure-modules`;
         fetch(restructureUrl, {
           method: "POST",
@@ -738,19 +764,19 @@ STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstra
             "Authorization": authHeader,
             "apikey": anonKey,
           },
-          body: JSON.stringify({ course_id: course.id }),
+          body: JSON.stringify({ course_id: course.id, validate_only: true }),
         }).then(async (res) => {
           if (res.ok) {
             const data = await res.json();
-            console.log("[generate-course] Auto-restructure complete:", data.message);
+            console.log("[generate-course] Quality report:", JSON.stringify(data.markdown_quality_report?.summary ?? {}));
           } else {
-            console.warn("[generate-course] Auto-restructure failed:", await res.text());
+            console.warn("[generate-course] Quality validation failed:", await res.text());
           }
         }).catch((err) => {
-          console.warn("[generate-course] Auto-restructure error:", err.message);
+          console.warn("[generate-course] Quality validation error:", err.message);
         });
       } catch (e: any) {
-        console.warn("[generate-course] Auto-restructure error (non-blocking):", e.message);
+        console.warn("[generate-course] Quality validation error (non-blocking):", e.message);
       }
 
       // Send completion event
