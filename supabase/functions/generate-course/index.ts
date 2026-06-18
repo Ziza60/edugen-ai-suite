@@ -62,8 +62,9 @@ async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = 
 // PROMPT MESTRE v2: Official Pedagogical Template.
 // KEEP IN SYNC with restructure-modules/index.ts (TEMPLATE_PROMPT, REQUIRED_SECTIONS
 // and validateModuleMarkdown). Invariants that must match across both files:
-//   - section order: Exemplo prático BEFORE Aplicações reais
+//   - section order: Exemplo prático -> Atividade Prática -> Aplicações reais
 //   - example phases: Contexto -> Desafio -> Solução -> Resultado
+//   - 🎓 Atividade Prática is mandatory in every module
 //   - Key Takeaways: 5-6 bullets
 function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {
   return `Você é um designer instrucional sênior especializado em e-learning premium.
@@ -110,6 +111,12 @@ Organize o conteúdo do módulo usando os seguintes blocos, NA ORDEM em que fize
   **Resultado:** [o que mudou, com número ou indicador concreto quando possível]
 - O exemplo deve ser ancorado num setor ou perfil de empresa específico (não "uma empresa").
 - PROIBIDO inverter ou embaralhar essa ordem.
+
+#### 🎓 Atividade Prática (OBRIGATÓRIA)
+- Proponha UMA atividade hands-on para o aluno aplicar o conteúdo do módulo.
+- Deve ser concreta e acionável: o que fazer, com qual ferramenta/insumo, e qual o resultado/entregável esperado.
+- Formato: um enunciado de tarefa claro seguido de 3 a 6 passos numerados (ou um checklist).
+- Ancore no domínio do curso e, quando fizer sentido, no contexto do público-alvo. NÃO é teoria — é "mão na massa".
 
 #### 🛠️ Aplicações reais
 - REGRA CRÍTICA: Mínimo 4 aplicações distintas, cada uma com 1 frase objetiva.
@@ -217,7 +224,9 @@ function buildQualityElevationPrompt(
 ): string {
   return `Você é um supervisor sênior de qualidade de cursos online com 15 anos de experiência avaliando e elevando material didático para plataformas de e-learning B2B e corporativas.
 
-Você recebeu o módulo abaixo, que já passou por revisão estrutural e está pedagogicamente formatado. Sua tarefa NÃO é reformatar — a estrutura já está correta. Sua tarefa é identificar os trechos que falham nos 5 Critérios de Qualidade de Conteúdo e reescrevê-los com maior profundidade e especificidade.
+Você recebeu o módulo abaixo, que já passou por uma formatação inicial. Esta é a PASSAGEM FINAL: o resultado será publicado como está. Você tem DUAS tarefas:
+(A) Garantir que a ESTRUTURA do template oficial esteja COMPLETA e correta.
+(B) Elevar a QUALIDADE do conteúdo segundo os 5 Critérios abaixo.
 
 ## CONTEXTO DO CURSO
 - Curso: "${courseTitle}"
@@ -231,7 +240,7 @@ Você recebeu o módulo abaixo, que já passou por revisão estrutural e está p
 - Se o curso é sobre uma linguagem de programação (Python, JavaScript, Java, etc.): use APENAS sintaxe/idiomática/biblioteca padrão dessa linguagem. NUNCA introduza SQL DDL/DML (CREATE TABLE, ALTER TABLE, INSERT, UPDATE, DELETE, SELECT, JOIN) salvo se o curso for explicitamente sobre SQL/bancos.
 - Mesma regra para shell/Bash, HTML/CSS ou outras linguagens — não traga exemplos de fora do domínio.
 - Ao "elevar a qualidade", NÃO substitua exemplos da linguagem-alvo por exemplos de outra tecnologia, mesmo que pareçam mais ricos.
-
+${language.toLowerCase().startsWith("pt") ? "\n## LOCALIZAÇÃO (BRASIL)\n- Quando agregar valor e sem forçar, ancore exemplos no contexto brasileiro: LGPD (dados pessoais), referenciais nacionais quando pertinente (ex.: BNCC na educação) e ferramentas/plataformas/empresas usadas no Brasil, além das internacionais. NÃO invente fatos.\n" : ""}
 ## OS 5 CRITÉRIOS DE QUALIDADE DE CONTEÚDO
 
 ### Critério 1 — ESPECIFICIDADE
@@ -255,22 +264,35 @@ Aprovado (acionável): "Antes de cada reunião com o Economic Buyer, prepare 3 m
 Reprovado: bullets curtos que apenas nomeiam conceitos sem explicar.
 Aprovado: bullets que nomeiam E explicam o porquê ou como aplicar.
 
+## ESTRUTURA OBRIGATÓRIA (garantir que TODAS estejam presentes, nesta ordem, com estes títulos/emojis exatos)
+1. \`## ${moduleTitle}\`
+2. \`### 🎯 Objetivo do Módulo\` (3 bullets)
+3. \`### 🧠 Fundamentos\`
+4. \`### ⚙️ Como funciona\`
+5. \`### 🧩 Modelos / Tipos\` — OPCIONAL: inclua SÓ se houver 2+ itens reais para comparar numa tabela com linhas de dados. Se não houver, OMITA a seção inteira. PROIBIDO deixar tabela vazia ou só com cabeçalho (ex.: "| Aspecto |" sem linhas).
+6. \`### 💡 Exemplo prático\` — fases na ordem **Contexto → Desafio → Solução → Resultado**.
+7. \`### 🎓 Atividade Prática\` — uma tarefa hands-on acionável (enunciado + 3-6 passos).
+8. \`### 🛠️ Aplicações reais\` — mínimo 4 itens.
+9. \`### ⚠️ Desafios e cuidados\`
+10. \`> 💭 **Pare um momento e reflita:**\` (após Desafios, antes do Resumo)
+11. \`### 🧾 Resumo do Módulo\` (1 parágrafo)
+12. \`### 📌 Key Takeaways\` (5-6 bullets, cada um uma ideia acionável iniciando com verbo)
+Separe as grandes seções com \`---\`.
+
 ## COMO PROCEDER
 1. Leia o módulo completo abaixo.
-2. Para cada seção, avalie internamente os 5 critérios.
-3. Reescreva APENAS os trechos que reprovam em pelo menos 1 critério.
-4. Mantenha INTACTO o que já está aprovado.
-5. Retorne o módulo COMPLETO com as melhorias aplicadas.
+2. **Complete a estrutura:** se qualquer seção obrigatória acima estiver faltando, CRIE-A com base no conteúdo/tema (sem inventar fatos). Corrija títulos fora do padrão para os títulos canônicos. Conserte ou remova tabelas quebradas/vazias.
+3. **Eleve a qualidade:** reescreva os trechos que reprovam em pelo menos 1 dos 5 Critérios, com mais profundidade e especificidade.
+4. Mantenha o que já está bom.
+5. Retorne o módulo COMPLETO.
 
 ## RESTRIÇÕES ABSOLUTAS
-- NÃO altere títulos de seções, emojis ou separadores (---)
-- NÃO adicione seções novas nem remova seções existentes
-- NÃO aumente o número de bullets de nenhuma seção — substitua bullets fracos por versões mais específicas, mantendo a mesma quantidade
-- NÃO adicione subseções ou subtítulos novos que não existiam no original
-- O volume total de texto deve ser similar ao original (±20%) — eleve qualidade, não quantidade
-- Comece DIRETAMENTE com ## [título do módulo] — ZERO preamble, saudação ou explicação antes do conteúdo
-- Mantenha o idioma: ${language}
-- Retorne APENAS o markdown melhorado, sem comentários
+- Use EXATAMENTE os títulos/emojis canônicos da estrutura acima (não invente nomes como "Conceitos-Chave" ou "Chatbots").
+- NÃO deixe nenhuma seção obrigatória faltando. NÃO deixe tabela com só cabeçalho.
+- Preserve 100% da correção técnica; NÃO invente fatos novos só para preencher.
+- Comece DIRETAMENTE com \`## ${moduleTitle}\` — ZERO preâmbulo, saudação ou explicação antes do conteúdo.
+- Mantenha o idioma: ${language}.
+- Retorne APENAS o markdown final, sem comentários nem cercas de código.
 
 ---
 
@@ -309,7 +331,10 @@ ${includeFlashcards ? `  "flashcards": [{"front": "Pergunta explícita com verbo
 }
 ${includeQuiz ? "- EXACTLY 3 quiz questions, 4 options each; \"correct\" is the 0-based index of the right option." : ""}
 ${includeFlashcards ? "- EXACTLY 5 flashcards." : ""}
-- Perfect spelling and grammar in ${language}.`;
+- Perfect spelling and grammar in ${language}.
+- CRITICAL: output a SINGLE, syntactically valid JSON object. No text before or after,
+  no markdown fences, no comments, no trailing commas. Escape any double quotes inside
+  strings. Keep each string on one line.`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -372,8 +397,18 @@ Deno.serve(async (req: Request) => {
       const {
         title: rawTitle, theme, target_audience, tone, language,
         num_modules, include_quiz, include_flashcards, include_images,
-        use_sources,
+        use_sources, density,
       } = body;
+
+      // Detail level → per-module depth. Previously the wizard's "nível de
+      // detalhamento" was never sent to the backend, so every course was generated
+      // at the same depth. This maps it to target length per module.
+      const DEPTH_PROFILES = {
+        compact:  { words: "500-700",   label: "conciso (curso rápido)" },
+        standard: { words: "800-1200",  label: "equilibrado" },
+        detailed: { words: "1300-1800", label: "aprofundado (curso longo)" },
+      } as const;
+      const depth = DEPTH_PROFILES[(density as keyof typeof DEPTH_PROFILES)] ?? DEPTH_PROFILES.standard;
 
       const title = (rawTitle || "").trim().replace(/\s{2,}/g, " ");
       if (!title || title.length < 3) {
@@ -613,6 +648,11 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
             ? `\n\nCRITICAL: Use ONLY the content in <SOURCES> below.\n<SOURCES>\n${sourcesBlock}\n</SOURCES>`
             : "";
 
+          // Brazil localization (pt-BR courses only): adapt examples to local context.
+          const brLocalization = (language || "pt-BR").toLowerCase().startsWith("pt")
+            ? `\n\nLOCALIZAÇÃO (BRASIL): quando agregar valor e sem forçar, ancore exemplos no contexto brasileiro — regulamentações locais (ex.: LGPD para dados pessoais), referenciais nacionais quando pertinente (ex.: BNCC na educação) e ferramentas/plataformas/empresas usadas no Brasil, além das internacionais. NÃO invente fatos; adapte só quando fizer sentido para o público.`
+            : "";
+
           const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
 
 Course: ${title}
@@ -630,18 +670,18 @@ CRITICAL DOMAIN INTEGRITY (HARD RULE):
   · "Data structures" in a Python course = lists, tuples, dicts, sets — NOT SQL tables/columns.
   · "Functions" in a Python course = def, lambda, decorators, *args/**kwargs — NOT SQL stored procedures.
 - Learning objectives, key takeaways and bullets MUST cite concrete language-native concepts (e.g. "Manipular listas, dicionários, tuplas e conjuntos em Python") and avoid generic verbs like "Aplicar X" without an application context.
-${sourceContentInstruction}
+${sourceContentInstruction}${brLocalization}
 
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
-Write 800-1200 words. Be thorough and educational.`;
+Write ${depth.words} words — nível ${depth.label}. Be thorough and educational.`;
 
           const rawContent = await callAI("gemini-2.5-flash", contentPrompt, 4000);
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          // 4000 tokens: a fully reformatted PT module (~1000-1200 words + structure)
-          // exceeds 1500 output tokens and was being truncated mid-content.
-          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 4000);
+          // 8000 tokens: the full template (now incl. Atividade Prática) for a PT
+          // module is long; smaller caps were truncating modules mid-content/table.
+          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 8000);
 
           // Step C: Quality Elevation
           let elevatedContent = refinedContent;
@@ -652,7 +692,7 @@ Write 800-1200 words. Be thorough and educational.`;
               target_audience || "profissionais da área", language || "pt-BR",
               theme || "",
             );
-            const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 4000);
+            const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 8000);
             // Strip markdown fences AND any preamble before the first ## heading
             const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
@@ -669,7 +709,10 @@ Write 800-1200 words. Be thorough and educational.`;
               return idx > 0 ? s.slice(idx).trim() : s;
             };
             const finalQuality = preambleGuard(cleanedQuality);
-            if (finalQuality.length >= refinedContent.length * 0.75) {
+            // Elevation now also completes missing sections, so the result should
+            // grow, not shrink. Only fall back to the refined text if it came back
+            // suspiciously short (<50% = likely truncated/broken).
+            if (finalQuality.length >= refinedContent.length * 0.5) {
               elevatedContent = finalQuality;
               console.log(`[generate-course] Quality Elevation OK: ${refinedContent.length} → ${elevatedContent.length} chars`);
             } else {
@@ -689,43 +732,60 @@ Write 800-1200 words. Be thorough and educational.`;
             .select().single();
           if (moduleError) throw moduleError;
 
-          // Generate quiz + flashcards for THIS module (one small JSON call).
-          // Non-blocking: a malformed assessment never aborts the course.
+          // Generate quiz + flashcards for THIS module. Non-blocking, with a robust
+          // parse + one retry: the assessment JSON was failing to parse for every
+          // module (stray tokens / truncation), so quizzes & flashcards were silently
+          // never saved.
           if (include_quiz || include_flashcards) {
-            try {
-              const assessmentPrompt = buildAssessmentPrompt(
-                mod.title, mod.summary || mod.title, title, theme || "",
-                language || "pt-BR", !!include_quiz, !!include_flashcards,
-              );
-              const assessmentRaw = await callAI("gemini-2.5-flash", assessmentPrompt, 2000, true);
-              const aMatch = assessmentRaw.match(/\{[\s\S]*\}/);
-              const assessments = aMatch ? JSON.parse(aMatch[0]) : JSON.parse(assessmentRaw);
-
-              if (include_quiz && Array.isArray(assessments.quiz) && assessments.quiz.length > 0) {
-                const quizInserts = assessments.quiz.map((q: any) => ({
-                  module_id: moduleData.id, question: q.question,
-                  options: q.options, correct_answer: q.correct ?? 0,
-                  explanation: q.explanation || null,
-                }));
-                await serviceClient.from("course_quiz_questions").insert(quizInserts);
+            const assessmentPrompt = buildAssessmentPrompt(
+              mod.title, mod.summary || mod.title, title, theme || "",
+              language || "pt-BR", !!include_quiz, !!include_flashcards,
+            );
+            const parseAssessment = (raw: string): any | null => {
+              const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+              try { return JSON.parse(cleaned); } catch { /* fall through */ }
+              const m = cleaned.match(/\{[\s\S]*\}/);
+              if (m) { try { return JSON.parse(m[0]); } catch { /* fall through */ } }
+              return null;
+            };
+            let assessments: any = null;
+            for (let attempt = 0; attempt < 2 && !assessments; attempt++) {
+              try {
+                const assessmentRaw = await callAI("gemini-2.5-flash", assessmentPrompt, 4000, true);
+                assessments = parseAssessment(assessmentRaw);
+                if (!assessments) console.warn(`[generate-course] Assessment parse failed (attempt ${attempt + 1}) for "${mod.title}"`);
+              } catch (assessErr: any) {
+                console.warn(`[generate-course] Assessment call failed (attempt ${attempt + 1}) for "${mod.title}": ${assessErr.message}`);
               }
-
-              if (include_flashcards && Array.isArray(assessments.flashcards) && assessments.flashcards.length > 0) {
-                const fcInserts = assessments.flashcards.map((fc: any) => ({
-                  module_id: moduleData.id, front: fc.front, back: fc.back,
-                }));
-                await serviceClient.from("course_flashcards").insert(fcInserts);
+            }
+            if (assessments) {
+              try {
+                if (include_quiz && Array.isArray(assessments.quiz) && assessments.quiz.length > 0) {
+                  const quizInserts = assessments.quiz.map((q: any) => ({
+                    module_id: moduleData.id, question: q.question,
+                    options: q.options, correct_answer: q.correct ?? 0,
+                    explanation: q.explanation || null,
+                  }));
+                  await serviceClient.from("course_quiz_questions").insert(quizInserts);
+                }
+                if (include_flashcards && Array.isArray(assessments.flashcards) && assessments.flashcards.length > 0) {
+                  const fcInserts = assessments.flashcards.map((fc: any) => ({
+                    module_id: moduleData.id, front: fc.front, back: fc.back,
+                  }));
+                  await serviceClient.from("course_flashcards").insert(fcInserts);
+                }
+              } catch (insErr: any) {
+                console.warn(`[generate-course] Assessment insert failed (non-blocking) for "${mod.title}": ${insErr.message}`);
               }
-            } catch (assessErr: any) {
-              console.warn(`[generate-course] Assessment generation failed (non-blocking) for "${mod.title}": ${assessErr.message}`);
             }
           }
 
           // Generate AI image (non-blocking)
           if (include_images) {
             try {
-              const imagePrompt = `Create a professional, clean, educational illustration for a course module about "${mod.title}" in the course "${title}". 
-STRICT RULES: No readable text, letters, words, numbers, labels. Use ONLY abstract shapes, icons, conceptual diagrams, visual metaphors. Style: modern, minimalist, soft colors, 16:9.`;
+              const imagePrompt = `A purely abstract, minimalist conceptual illustration evoking the theme "${mod.title}" (course: "${title}").
+Style: flat vector, geometric shapes, soft gradient colors, modern and clean, 16:9, generous negative space.
+ABSOLUTELY NO TEXT of any kind: no letters, words, numbers, captions, labels, titles, watermarks, signatures, UI, charts with axes, or any typography or letterforms anywhere in the image. It must be 100% wordless — only abstract shapes, icons and visual metaphors. If you would normally add a caption or label, leave that space empty instead.`;
 
               // Native Gemini 2.5 Flash Image (Nano Banana) via personal GEMINI_API_KEY.
               // Replaces the Lovable gateway. Imagen 4 was avoided (deprecated 2026-08-17).
