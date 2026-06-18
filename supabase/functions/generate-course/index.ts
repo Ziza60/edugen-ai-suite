@@ -16,9 +16,12 @@ const PLAN_LIMITS = {
 async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false) {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  
-  // Use gemini-2.5-flash as requested
-  const aiModel = "gemini-2.5-flash";
+
+  // Honor the per-stage model requested by the caller. The Google native endpoint
+  // expects bare model ids (e.g. "gemini-2.5-flash"), NOT vendor-prefixed names
+  // like "google/...". Unknown values fall back to flash to stay safe/cheap.
+  const ALLOWED_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro"];
+  const aiModel = ALLOWED_MODELS.includes(model) ? model : "gemini-2.5-flash";
 
   console.log(`Calling Gemini API directly with model: ${aiModel}`);
 
@@ -589,11 +592,11 @@ ${sourceContentInstruction}
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
 Write 800-1200 words. Be thorough and educational.`;
 
-          const rawContent = await callAI("google/gemini-3-flash-preview", contentPrompt);
+          const rawContent = await callAI("gemini-2.5-flash", contentPrompt);
 
           // Step B: Pedagogical refinement
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
-          const refinedContent = await callAI("google/gemini-3-flash-lite", refinementPrompt, 1500);
+          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 1500);
 
           // Step C: Quality Elevation
           let elevatedContent = refinedContent;
@@ -604,7 +607,7 @@ Write 800-1200 words. Be thorough and educational.`;
               target_audience || "profissionais da área", language || "pt-BR",
               theme || "",
             );
-            const qualityResult = await callAI("google/gemini-3-flash-preview", qualityPrompt, 2000);
+            const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 2000);
             // Strip markdown fences AND any preamble before the first ## heading
             const strippedFences = qualityResult
               .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
