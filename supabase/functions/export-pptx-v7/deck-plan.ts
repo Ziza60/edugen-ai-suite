@@ -635,10 +635,18 @@ export async function planModuleSlides(
         return slides.map((s) => ({ ...s, eyebrow: moduleTitle }));
       }
 
+      // finishReason STOP with text but no extractable slides means the model
+      // returned prose / mis-fenced JSON, NOT a length cut-off — a retry can
+      // fix it (this is what dropped Module 8 to the plain-text fallback). Only
+      // a genuine truncation (MAX_TOKENS/LENGTH) would just truncate again.
+      const truncated = /MAX_TOKENS|LENGTH/i.test(finishReason);
       console.warn(
-        `[V7-PLAN] "${moduleTitle}" attempt ${attempt} no slides (finishReason=${finishReason} textLen=${text.length}) → fallback`,
+        `[V7-PLAN] "${moduleTitle}" attempt ${attempt}/${MAX_ATTEMPTS} no slides (finishReason=${finishReason} textLen=${text.length})${!truncated && !last ? " → retry" : " → fallback"}`,
       );
-      // Truncation / unsalvageable: do NOT retry (it just truncates again).
+      if (!truncated && !last) {
+        await sleep(backoff);
+        continue;
+      }
       return null;
     } catch (err) {
       console.warn(
@@ -784,7 +792,7 @@ const OBJECTIVE_RE = /objetivo|aprende|ao final|learning|goals?/i;
  * trims back to the last comma so the line ends on a clause, not a dangling
  * word. This is what prevents fallback bullets like "...operações sigam".
  */
-function toShortPoint(s: string, maxWords = 18): string {
+function toShortPoint(s: string, maxWords = 14): string {
   const first = (splitSentences(s)[0] || s).trim();
   const words = first.split(/\s+/);
   if (words.length <= maxWords) return first;

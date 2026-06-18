@@ -186,6 +186,21 @@ async function run() {
   const cbuf: Uint8Array = (await cp.write({ outputType: "uint8array" })) as Uint8Array;
   check("compare round-robin renders a valid pptx (both variants)", cc >= 3 && cbuf[0] === 0x50 && cbuf.byteLength > 5000);
 
+  // ── 7. v7.18 render-side guards: sidebar anti-repeat, single-item highlight,
+  //        question→provocation — exercised together; must render valid pptx ──
+  const v718 = normalizeDeck({
+    courseTitle: "v718",
+    modules: [{ title: "Mx", slides: [
+      { kind: "cards", title: "Grid 1", cards: [{ heading: "A", body: "x" }, { heading: "B", body: "y" }, { heading: "C", body: "z" }] },
+      { kind: "cards", title: "Grid 2", cards: [{ heading: "U", body: "1" }, { heading: "D", body: "2" }, { heading: "T", body: "3" }, { heading: "Q", body: "4" }] },
+      { kind: "bullets", title: "Único", bullets: ["Um só ponto que ficaria vazio num grid"] },
+      { kind: "quote", title: "R", quote: "Isto é uma pergunta retórica?" },
+    ] as any }],
+  }).deck;
+  const { pptx: vp, slideCount: vc } = renderDeck(PptxGenJS, v718, { template: "dark_elegance_xl" } as any);
+  const vbuf: Uint8Array = (await vp.write({ outputType: "uint8array" })) as Uint8Array;
+  check("v7.18 guards (sidebar/highlight/provocation) render a valid pptx", vc >= 4 && vbuf[0] === 0x50 && vbuf.byteLength > 5000);
+
   console.log(
     failures === 0
       ? "\nALL PASS ✓"
