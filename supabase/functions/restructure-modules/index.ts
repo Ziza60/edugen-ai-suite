@@ -1,4 +1,3 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -12,13 +11,17 @@ const REQUIRED_SECTIONS = [
   { emoji: "🧠", label: "Fundamentos" },
   { emoji: "⚙️", label: "Como funciona" },
   // 🧩 Modelos / Tipos é OPCIONAL — omitida quando não há comparação real
-  { emoji: "🛠️", label: "Aplicações reais" },
+  // Order matches generate-course buildRefinementPrompt: Exemplo prático before Aplicações reais.
   { emoji: "💡", label: "Exemplo prático" },
+  { emoji: "🛠️", label: "Aplicações reais" },
   { emoji: "⚠️", label: "Desafios e cuidados" },
   { emoji: "🧾", label: "Resumo do Módulo" },
   { emoji: "📌", label: "Key Takeaways" },
 ];
 
+// KEEP IN SYNC with generate-course/index.ts buildRefinementPrompt: same section
+// order (Exemplo prático before Aplicações reais), same example phase order, and
+// Key Takeaways 5-6.
 const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestruture o conteúdo do módulo de curso abaixo aplicando TODAS as regras a seguir. Retorne APENAS o markdown reestruturado, sem explicações.
 
 ## Regras obrigatórias:
@@ -34,11 +37,11 @@ const TEMPLATE_PROMPT = `Você é um especialista em design instrucional. Reestr
    - ---
    - ### 🧩 Modelos / Tipos — CONDICIONAL: inclua SOMENTE se o conteúdo já contiver 2+ modelos/tipos/categorias DISTINTOS para comparar. Se não existir no conteúdo recebido, OMITA completamente esta seção — não crie título sem conteúdo, não invente categorias. Quando existir: tabela comparativa com 2-4 colunas e 2-5 linhas de dados reais.
    - --- (apenas se a seção 🧩 foi incluída)
-   - ### 🛠️ Aplicações reais (MÍNIMO 4 itens distintos, cada um com 1 frase objetiva — se o conteúdo tiver menos de 4, consolide slides/parágrafos próximos para completar)
-   - ---
    - ### 💡 Exemplo prático — ORDEM OBRIGATÓRIA e IMUTÁVEL das fases, sempre nesta sequência:
      **Contexto:** (ou **Cenário:**) → **Desafio:** → **Solução:** → **Resultado:**
      PROIBIDO inverter ou embaralhar esta ordem. Se o conteúdo vier em outra ordem, reordene mantendo os textos originais.
+   - ---
+   - ### 🛠️ Aplicações reais (MÍNIMO 4 itens distintos, cada um com 1 frase objetiva — se o conteúdo tiver menos de 4, consolide slides/parágrafos próximos para completar)
    - ---
    - ### ⚠️ Desafios e cuidados (lista de 5 itens máximo)
    - ---
@@ -118,14 +121,16 @@ function validateModuleMarkdown(content: string, moduleIndex: number, title: str
 
   // 3. Separators: count --- lines, should be >= 8 (between 9+ sections)
   const separatorCount = lines.filter(l => /^---\s*$/.test(l.trim())).length;
-  const separatorsConsistent = separatorCount >= 7;
-  if (!separatorsConsistent) errors.push(`Separadores insuficientes: ${separatorCount} (min 7)`);
+  // >= 6 tolerates the optional 🧩 Modelos/Tipos section being legitimately omitted.
+  const separatorsConsistent = separatorCount >= 6;
+  if (!separatorsConsistent) errors.push(`Separadores insuficientes: ${separatorCount} (min 6)`);
 
   // 4. Example practical completeness: must have Cenário, Solução, Resultado
   const hasExampleSection = /###.*💡/.test(content);
   let examplePracticalComplete = false;
   if (hasExampleSection) {
-    const hasCenario = /\*\*Cenário[:\s]/i.test(content) || /cenário:/i.test(content);
+    // The template emits "**Contexto:**" (with "Cenário" as an accepted alias).
+    const hasCenario = /\*\*(?:Cen[áa]rio|Contexto)[:\s]/i.test(content) || /(?:cen[áa]rio|contexto):/i.test(content);
     const hasSolucao = /\*\*Solução[:\s]/i.test(content) || /solução:/i.test(content);
     const hasResultado = /\*\*Resultado[:\s]/i.test(content) || /resultado:/i.test(content);
     examplePracticalComplete = hasCenario && hasSolucao && hasResultado;
@@ -150,8 +155,8 @@ function validateModuleMarkdown(content: string, moduleIndex: number, title: str
     const ktLines = ktMatch[0].split("\n").filter(l => /^\s*[-*]\s/.test(l));
     keyTakeawaysCount = ktLines.length;
   }
-  if (keyTakeawaysCount < 5 || keyTakeawaysCount > 7) {
-    errors.push(`Key Takeaways: ${keyTakeawaysCount} itens (esperado 5-7)`);
+  if (keyTakeawaysCount < 5 || keyTakeawaysCount > 6) {
+    errors.push(`Key Takeaways: ${keyTakeawaysCount} itens (esperado 5-6)`);
   }
 
   // 7. Lists within limit (no list > 7 items)
@@ -228,7 +233,10 @@ async function callLLM(prompt: string, content: string): Promise<string> {
   if (!geminiKey) throw new Error("GEMINI_API_KEY não configurada.");
 
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-  const model = "gemini-3-flash-preview"; 
+  // Valid native id (the previous "gemini-3-flash-preview" likely 404'd, making the
+  // manual rewrite path fail). Only used in rewrite mode; the generate-course pipeline
+  // now calls this function with validate_only and never reaches here.
+  const model = "gemini-2.5-flash";
 
   const response = await fetch(url, {
     method: "POST",
@@ -358,7 +366,8 @@ Deno.serve(async (req: Request) => {
         const moduleIdx = modules.indexOf(mod);
         const validation = validateModuleMarkdown(restructured, moduleIdx, mod.title);
 
-        // Update module content regardless (it's always better than before)
+        // Persist the restructured content (manual rewrite mode only; the
+        // generate-course pipeline calls this function with validate_only).
         const { error: updateErr } = await serviceClient
           .from("course_modules")
           .update({ content: restructured, updated_at: new Date().toISOString() })
