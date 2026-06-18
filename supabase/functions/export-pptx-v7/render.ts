@@ -1150,7 +1150,7 @@ function renderTable(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   });
 
   const headerRow = [
-    { text: "", options: { border: headBorder } },
+    { text: s.rowHeader ?? "", options: { border: headBorder, color: d.accent, bold: true, align: "left", fontSize: headFs } },
     ...columns.map((c, ci) => ({
       text: c,
       options: { border: headBorder, color: d.accent, bold: true, align: colAligns[ci], fontSize: headFs },
