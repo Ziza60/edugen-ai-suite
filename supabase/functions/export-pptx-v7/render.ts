@@ -823,6 +823,108 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   footer(slide, d, brand, num);
 }
 
+// ── Card-family helpers (shared by the single-item & anti-repetition guards) ──
+
+/** How many discrete content items a card/bento/tiles/bullets/steps slide holds. */
+function contentItemCount(s: SlideSpec): number {
+  if (s.kind === "cards") return (s.cards ?? []).length;
+  if (s.kind === "steps") return (s.steps ?? []).length;
+  return (s.bullets ?? []).filter((b) => b && b.trim()).length;
+}
+
+/** Flatten any card-family slide into "heading"/"body" pairs for re-layout. */
+function slideItemPairs(s: SlideSpec): { heading: string; body?: string }[] {
+  if (s.cards?.length) return s.cards.map((c) => ({ heading: c.heading, body: c.body }));
+  if (s.steps?.length) return s.steps.map((st) => ({ heading: st.heading, body: st.body }));
+  return (s.bullets ?? []).filter((b) => b && b.trim()).map((b) => ({ heading: b }));
+}
+
+/**
+ * Single-item rescue: a card/bento/bullets slide that ended up with ONE point
+ * would draw a giant, mostly-empty card. Instead we promote that one statement
+ * to a dark, cover-style "highlight" — it reads as a deliberate emphasis beat
+ * rather than a layout that failed to fill. Tokens only.
+ */
+function renderHighlight(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.coverBg);
+  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
+    x: ML, y: 1.5, w: CW, h: 0.4,
+    fontFace: FONT_BODY, fontSize: 12, bold: true, color: d.accent2,
+    charSpacing: 3, align: "center",
+  });
+  slide.addText(s.title, {
+    x: 1.5, y: 2.05, w: W - 3, h: 0.95,
+    fontFace: FONT_TITLE, fontSize: s.title.length > 50 ? 26 : 30, bold: true,
+    color: "FFFFFF", align: "center", valign: "middle",
+  });
+  const pair = slideItemPairs(s)[0];
+  const txt = [pair?.heading, pair?.body].filter(Boolean).join(" — ") || s.subtitle || "";
+  const fs = txt.length <= 60 ? 38 : txt.length <= 120 ? 30 : 24;
+  slide.addText(txt, {
+    x: 1.6, y: 3.15, w: W - 3.2, h: 2.5,
+    fontFace: FONT_BODY, fontSize: fs, color: "E8EEF5",
+    align: "center", valign: "middle", lineSpacingMultiple: 1.2,
+  });
+  slide.addShape("rect", {
+    x: W / 2 - 0.5, y: 5.95, w: 1.0, h: 0.05,
+    fill: { color: d.accent2 }, line: { type: "none" },
+  });
+  footer(slide, { ...d, subtext: "8595A6" }, brand, num);
+}
+
+/**
+ * Sidebar layout: a full-height accent panel on the left carries the eyebrow +
+ * title (the focal point); the points list flows on the right. Used by the
+ * deterministic anti-repetition guard so two card grids in a row don't read as
+ * the same silhouette — the renderer swaps the SECOND one for this. The planner
+ * never sees it, so it adds zero decision load to the LLM. Tokens only.
+ */
+function renderSidebar(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  const sbW = W * 0.34;
+  slide.addShape("rect", { x: 0, y: 0, w: sbW, h: H, fill: { color: d.accent }, line: { type: "none" } });
+  slide.addShape("rect", { x: 0.55, y: 0.9, w: 0.5, h: 0.07, fill: { color: d.accent2 }, line: { type: "none" } });
+  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
+    x: 0.55, y: 1.05, w: sbW - 0.95, h: 0.5,
+    fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent,
+    charSpacing: 2, valign: "top",
+  });
+  slide.addText(s.title, {
+    x: 0.55, y: 1.55, w: sbW - 0.95, h: 4.4,
+    fontFace: FONT_TITLE, fontSize: s.title.length > 42 ? 24 : 29, bold: true,
+    color: d.onAccent, valign: "top", lineSpacingMultiple: 1.05,
+  });
+
+  const pairs = slideItemPairs(s);
+  const rightX = sbW + 0.55;
+  const rightW = W - rightX - 0.7;
+  const n = Math.max(pairs.length, 1);
+  const slotH = (CONTENT_H + 0.6) / n;
+  pairs.forEach((p, i) => {
+    const y = CONTENT_Y - 0.55 + i * slotH;
+    slide.addShape("rect", {
+      x: rightX, y: y + 0.06, w: 0.11, h: Math.min(slotH - 0.35, 0.9),
+      fill: { color: d.accent2 }, line: { type: "none" },
+    });
+    slide.addText(p.heading, {
+      x: rightX + 0.32, y, w: rightW - 0.32, h: p.body ? 0.42 : slotH - 0.3,
+      fontFace: FONT_TITLE, fontSize: 17, bold: true, color: d.text,
+      valign: "middle", lineSpacingMultiple: 1.0,
+    });
+    if (p.body) {
+      slide.addText(p.body, {
+        x: rightX + 0.32, y: y + 0.44, w: rightW - 0.32, h: slotH - 0.55,
+        fontFace: FONT_BODY, fontSize: 13, color: d.subtext,
+        valign: "top", lineSpacingMultiple: 1.1,
+      });
+    }
+  });
+  slide.addText(String(num), {
+    x: rightX, y: FOOTER_Y, w: rightW, h: 0.3,
+    fontFace: FONT_BODY, fontSize: 9, color: d.subtext, align: "right", valign: "middle",
+  });
+}
+
 /**
  * Horizontal alternating timeline: numbered nodes on a central spine, labels
  * alternating above/below. The premium "process" look — node spacing is computed
@@ -1258,6 +1360,30 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     footer(slide, d, brand, num);
     return;
   }
+  // A rhetorical question is not a quotation — giant decorative quote marks
+  // around a "?" read as a mistake. Render it as a "provocation": full accent
+  // field, centred bold prompt, no quote glyphs. (Render-side only.)
+  if (text.trim().endsWith("?")) {
+    bgFill(slide, d.accent);
+    slide.addText(text, {
+      x: 1.4, y: 1.7, w: W - 2.8, h: 4.0,
+      fontFace: FONT_TITLE, fontSize: text.length > 140 ? 30 : 38, bold: true,
+      color: d.onAccent, align: "center", valign: "middle", lineSpacingMultiple: 1.2,
+    });
+    slide.addShape("rect", {
+      x: W / 2 - 0.6, y: 5.95, w: 1.2, h: 0.05,
+      fill: { color: d.accent2 }, line: { type: "none" },
+    });
+    if (s.attribution) {
+      slide.addText(s.attribution.toUpperCase(), {
+        x: 2, y: 6.15, w: W - 4, h: 0.5,
+        fontFace: FONT_BODY, fontSize: 13, bold: true,
+        color: d.onAccent, charSpacing: 2, align: "center",
+      });
+    }
+    footer(slide, { ...d, subtext: d.onAccent }, brand, num);
+    return;
+  }
   bgFill(slide, d.surface);
   slide.addShape("rect", {
     x: 0, y: 0, w: 0.18, h: H,
@@ -1483,9 +1609,28 @@ export function renderDeck(
         imageData: m.slides.find((x) => x.imageData)?.imageData,
       }, d, mi + 1);
     }
+    // Per-module memory for the anti-repetition guard: two card-family grids in
+    // a row are visually monotonous, so the SECOND becomes a sidebar layout.
+    let prevCardLike = false;
+    const cardLikeKind = (k: string) => k === "cards" || k === "bento" || k === "tiles";
     for (const s of m.slides) {
       try {
         const slide = add();
+        const cardLike = cardLikeKind(s.kind);
+        // (1) Single-point card/bullets/steps slide → high-impact statement
+        // instead of one giant near-empty card.
+        if ((cardLike || s.kind === "bullets" || s.kind === "steps") && contentItemCount(s) === 1) {
+          renderHighlight(slide, s, d, brand, num, m.title);
+          prevCardLike = false;
+          continue;
+        }
+        // (2) Two card grids back-to-back → swap the 2nd for a sidebar layout.
+        if (cardLike && prevCardLike) {
+          renderSidebar(slide, s, d, brand, num, m.title);
+          prevCardLike = false;
+          continue;
+        }
+        prevCardLike = cardLike;
         switch (s.kind) {
           case "section":
             renderSection(slide, s, d, mi + 1);
