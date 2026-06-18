@@ -241,7 +241,7 @@ Você recebeu o módulo abaixo, que já passou por uma formatação inicial. Est
 - Se o curso é sobre uma linguagem de programação (Python, JavaScript, Java, etc.): use APENAS sintaxe/idiomática/biblioteca padrão dessa linguagem. NUNCA introduza SQL DDL/DML (CREATE TABLE, ALTER TABLE, INSERT, UPDATE, DELETE, SELECT, JOIN) salvo se o curso for explicitamente sobre SQL/bancos.
 - Mesma regra para shell/Bash, HTML/CSS ou outras linguagens — não traga exemplos de fora do domínio.
 - Ao "elevar a qualidade", NÃO substitua exemplos da linguagem-alvo por exemplos de outra tecnologia, mesmo que pareçam mais ricos.
-
+${language.toLowerCase().startsWith("pt") ? "\n## LOCALIZAÇÃO (BRASIL)\n- Quando agregar valor e sem forçar, ancore exemplos no contexto brasileiro: LGPD (dados pessoais), referenciais nacionais quando pertinente (ex.: BNCC na educação) e ferramentas/plataformas/empresas usadas no Brasil, além das internacionais. NÃO invente fatos.\n" : ""}
 ## OS 5 CRITÉRIOS DE QUALIDADE DE CONTEÚDO
 
 ### Critério 1 — ESPECIFICIDADE
@@ -639,6 +639,11 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
             ? `\n\nCRITICAL: Use ONLY the content in <SOURCES> below.\n<SOURCES>\n${sourcesBlock}\n</SOURCES>`
             : "";
 
+          // Brazil localization (pt-BR courses only): adapt examples to local context.
+          const brLocalization = (language || "pt-BR").toLowerCase().startsWith("pt")
+            ? `\n\nLOCALIZAÇÃO (BRASIL): quando agregar valor e sem forçar, ancore exemplos no contexto brasileiro — regulamentações locais (ex.: LGPD para dados pessoais), referenciais nacionais quando pertinente (ex.: BNCC na educação) e ferramentas/plataformas/empresas usadas no Brasil, além das internacionais. NÃO invente fatos; adapte só quando fizer sentido para o público.`
+            : "";
+
           const contentPrompt = `Write detailed educational content for this module in ${language || "pt-BR"}.
 
 Course: ${title}
@@ -656,7 +661,7 @@ CRITICAL DOMAIN INTEGRITY (HARD RULE):
   · "Data structures" in a Python course = lists, tuples, dicts, sets — NOT SQL tables/columns.
   · "Functions" in a Python course = def, lambda, decorators, *args/**kwargs — NOT SQL stored procedures.
 - Learning objectives, key takeaways and bullets MUST cite concrete language-native concepts (e.g. "Manipular listas, dicionários, tuplas e conjuntos em Python") and avoid generic verbs like "Aplicar X" without an application context.
-${sourceContentInstruction}
+${sourceContentInstruction}${brLocalization}
 
 Write in Markdown format. Include clear introduction, main concepts, examples, key takeaways.
 Write 800-1200 words. Be thorough and educational.`;
