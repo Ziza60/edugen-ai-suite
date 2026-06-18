@@ -784,9 +784,9 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           // Generate AI image (non-blocking)
           if (include_images) {
             try {
-              const imagePrompt = `A purely abstract, minimalist conceptual illustration evoking the theme "${mod.title}" (course: "${title}").
-Style: flat vector, geometric shapes, soft gradient colors, modern and clean, 16:9, generous negative space.
-ABSOLUTELY NO TEXT of any kind: no letters, words, numbers, captions, labels, titles, watermarks, signatures, UI, charts with axes, or any typography or letterforms anywhere in the image. It must be 100% wordless — only abstract shapes, icons and visual metaphors. If you would normally add a caption or label, leave that space empty instead.`;
+              const imagePrompt = `Generate a premium, minimalist conceptual illustration evoking the theme "${mod.title}" (course: "${title}") — a clean graphic asset for an educational interface.
+Style: flat vector / soft 3D, geometric shapes, smooth matte surfaces, soft gradient colors, modern and elegant, 16:9 aspect, with generous negative space.
+Strict design directive: the output is 100% visual, built exclusively from geometric forms, lighting and texture. Any surface that would normally carry writing — screens, signs, book covers, panels, banners — must be rendered as a blank, smooth, matte surface. Keep all negative space intact, empty and clean. Purely visual, non-verbal design — graphics only, with no typography, lettering, numerals, logos, signatures or watermarks.`;
 
               // Native Gemini 2.5 Flash Image (Nano Banana) via personal GEMINI_API_KEY.
               // Replaces the Lovable gateway. Imagen 4 was avoided (deprecated 2026-08-17).
