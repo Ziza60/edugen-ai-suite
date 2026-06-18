@@ -1176,6 +1176,12 @@ function renderDarkSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: strin
     x: W / 2, y: 0, w: W / 2, h: H,
     fill: { color: d.accent }, line: { type: "none" },
   });
+  // "Billboard" scaling: when each side carries little text the static sizes
+  // left a 50/50 field looking empty. Short content becomes the hero (big type,
+  // block centred vertically) so the whitespace reads as deliberate "respiro".
+  const sc = splitScale(s);
+  const headY = sc.short ? 2.35 : 1.7;
+  const bodyY = sc.short ? 3.75 : 3.05;
   const sides = [
     { col: s.left!, x: 0.9, headColor: d.accent2, bodyColor: d.text },
     { col: s.right!, x: W / 2 + 0.6, headColor: d.onAccent, bodyColor: d.onAccent },
@@ -1183,17 +1189,33 @@ function renderDarkSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: strin
   for (const { col, x, headColor, bodyColor } of sides) {
     const w = W / 2 - 1.5;
     slide.addText((col.heading || "").toUpperCase(), {
-      x, y: 1.7, w, h: 1.2,
-      fontFace: FONT_TITLE, fontSize: 30, bold: true, color: headColor,
+      x, y: headY, w, h: 1.3,
+      fontFace: FONT_TITLE, fontSize: sc.headFs, bold: true, color: headColor,
       valign: "bottom", lineSpacingMultiple: 1.0,
     });
     slide.addText((col.items ?? []).join("\n"), {
-      x, y: 3.05, w, h: 2.6,
-      fontFace: FONT_BODY, fontSize: 17, color: bodyColor,
-      valign: "top", lineSpacingMultiple: 1.25,
+      x, y: bodyY, w, h: 2.6,
+      fontFace: FONT_BODY, fontSize: sc.bodyFs, color: bodyColor,
+      valign: "top", lineSpacingMultiple: sc.short ? 1.3 : 1.25,
     });
   }
   footer(slide, d, brand, num);
+}
+
+/**
+ * Dynamic "billboard" sizes for the dark-split, shared across BOTH sides so they
+ * stay balanced. Short → big hero type; long → compact. Based on the wordiest
+ * side so the larger column never overflows.
+ */
+function splitScale(s: SlideSpec): { headFs: number; bodyFs: number; short: boolean } {
+  const cols = [s.left, s.right];
+  const itemsLen = Math.max(...cols.map((c) => (c?.items ?? []).join(" ").length || 0));
+  const itemCount = Math.max(...cols.map((c) => (c?.items ?? []).length || 0));
+  const headLen = Math.max(...cols.map((c) => (c?.heading ?? "").length || 0));
+  const short = itemsLen <= 70 && itemCount <= 2;
+  const headFs = short ? (headLen <= 22 ? 40 : 33) : 28;
+  const bodyFs = itemsLen <= 40 ? 30 : itemsLen <= 80 ? 24 : itemsLen <= 140 ? 19 : 16;
+  return { headFs, bodyFs, short };
 }
 
 /**
@@ -1207,6 +1229,11 @@ function renderDarkSplitH(slide: AnySlide, s: SlideSpec, d: Palette, brand: stri
     x: 0, y: H / 2, w: W, h: H / 2,
     fill: { color: d.accent }, line: { type: "none" },
   });
+  // Billboard scaling (capped lower than the vertical split — each half has less
+  // room), so short top/bottom contrasts fill their band instead of floating.
+  const sc = splitScale(s);
+  const headFs = Math.min(sc.headFs, 34);
+  const bodyFs = Math.min(sc.bodyFs, 26);
   const halves = [
     { col: s.left!, y: 0.85, headColor: d.accent2, bodyColor: d.text },
     { col: s.right!, y: H / 2 + 0.45, headColor: d.onAccent, bodyColor: d.onAccent },
@@ -1214,12 +1241,12 @@ function renderDarkSplitH(slide: AnySlide, s: SlideSpec, d: Palette, brand: stri
   for (const { col, y, headColor, bodyColor } of halves) {
     slide.addText((col.heading || "").toUpperCase(), {
       x: 0.9, y, w: W - 1.8, h: 0.9,
-      fontFace: FONT_TITLE, fontSize: 26, bold: true, color: headColor,
+      fontFace: FONT_TITLE, fontSize: headFs, bold: true, color: headColor,
       valign: "bottom", lineSpacingMultiple: 1.0,
     });
     slide.addText((col.items ?? []).join("\n"), {
       x: 0.9, y: y + 0.95, w: W - 1.8, h: 1.55,
-      fontFace: FONT_BODY, fontSize: 16, color: bodyColor,
+      fontFace: FONT_BODY, fontSize: bodyFs, color: bodyColor,
       valign: "top", lineSpacingMultiple: 1.2,
     });
   }
@@ -1337,6 +1364,13 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       x: 0.6, y: 0.05, w: 3, h: 2.4,
       fontFace: "Georgia", fontSize: 200, bold: true,
       color: "FFFFFF", transparency: 82, align: "left", valign: "top",
+    });
+    // Closing mark too (was missing — only the opening glyph showed), mirrored
+    // bottom-right so the cinematic quote reads as a complete quotation.
+    slide.addText("”", {
+      x: W - 3.6, y: H - 2.5, w: 3, h: 2.4,
+      fontFace: "Georgia", fontSize: 200, bold: true,
+      color: "FFFFFF", transparency: 82, align: "right", valign: "bottom",
     });
     slide.addText(text, {
       x: 1.2, y: 1.9, w: W - 2.4, h: 3.2,
@@ -1476,6 +1510,51 @@ function renderStat(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, nu
     lineSpacingMultiple: 1.05,
   });
   footer(slide, { ...d, subtext: "8595A6" }, brand, num);
+}
+
+/**
+ * Native chart slide — donut (parts of a whole) or horizontal bar (ranking of
+ * magnitudes). Uses pptxgenjs's real chart engine (editable in PowerPoint), so
+ * the planner only ever supplies label/value pairs — nothing to mis-draw. The
+ * first two series colours are palette tokens (on-brand); the rest are a neutral
+ * fallback ramp for many-slice donuts.
+ */
+function renderChart(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const c = s.chart!;
+  const labels = c.points.map((p) => p.label);
+  const values = c.points.map((p) => p.value);
+  const data = [{ name: s.title || "Dados", labels, values }];
+  const series = [d.accent, d.accent2, "5B8FB9", "B6CFE0", "D8A657", "8E7DBE"];
+  const chartColors = labels.map((_, i) => series[i % series.length]);
+
+  if (c.type === "bar") {
+    slide.addChart("bar", data, {
+      x: ML, y: CONTENT_Y, w: CW, h: CONTENT_H,
+      barDir: "bar", // horizontal bars
+      chartColors: [d.accent],
+      showLegend: false,
+      showTitle: false,
+      showValue: true,
+      dataLabelColor: d.text, dataLabelFontFace: FONT_BODY, dataLabelFontSize: 12, dataLabelPosition: "outEnd",
+      catAxisLabelColor: d.text, catAxisLabelFontFace: FONT_BODY, catAxisLabelFontSize: 12,
+      valAxisHidden: true, valGridLine: { style: "none" },
+      catAxisLineShow: false, valAxisLineShow: false,
+      barGapWidthPct: 45,
+    });
+  } else {
+    slide.addChart("doughnut", data, {
+      x: ML, y: CONTENT_Y, w: CW, h: CONTENT_H,
+      holeSize: 62,
+      chartColors,
+      showLegend: true, legendPos: "r", legendColor: d.text, legendFontFace: FONT_BODY, legendFontSize: 12,
+      showTitle: false,
+      showValue: false, showPercent: true,
+      dataLabelColor: "FFFFFF", dataLabelFontFace: FONT_BODY, dataLabelFontSize: 11, dataLabelFontBold: true,
+    });
+  }
+  footer(slide, d, brand, num);
 }
 
 function renderCode(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
@@ -1661,6 +1740,9 @@ export function renderDeck(
             break;
           case "stat":
             renderStat(slide, s, d, brand, num);
+            break;
+          case "chart":
+            renderChart(slide, s, d, brand, num, m.title);
             break;
           case "code":
             renderCode(slide, s, d, brand, num, m.title);
