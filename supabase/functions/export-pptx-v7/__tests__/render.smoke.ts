@@ -201,6 +201,21 @@ async function run() {
   const vbuf: Uint8Array = (await vp.write({ outputType: "uint8array" })) as Uint8Array;
   check("v7.18 guards (sidebar/highlight/provocation) render a valid pptx", vc >= 4 && vbuf[0] === 0x50 && vbuf.byteLength > 5000);
 
+  // ── 8. v7.19 charts: donut + horizontal bar render; degenerate chart salvages ──
+  const chartNorm = normalizeDeck({
+    courseTitle: "charts",
+    modules: [{ title: "Mc", slides: [
+      { kind: "chart", title: "Proporção", chart: { type: "donut", unit: "%", points: [{ label: "A", value: 50 }, { label: "B", value: 30 }, { label: "C", value: 20 }] } },
+      { kind: "chart", title: "Ranking", chart: { type: "bar", points: [{ label: "X", value: 9 }, { label: "Y", value: 5 }, { label: "Z", value: 3 }] } },
+      { kind: "chart", title: "Degenerado", chart: { type: "donut", points: [{ label: "só", value: 1 }] } },
+    ] as any }],
+  }).deck;
+  const chartKinds = chartNorm.modules[0].slides.map((s) => s.kind);
+  check("chart: donut & bar kept, degenerate salvaged to bullets", chartKinds.filter((k) => k === "chart").length === 2 && chartKinds.includes("bullets"));
+  const { pptx: chp, slideCount: chc } = renderDeck(PptxGenJS, chartNorm, { template: "dark_theme" } as any);
+  const chbuf: Uint8Array = (await chp.write({ outputType: "uint8array" })) as Uint8Array;
+  check("v7.19 charts render a valid pptx", chc >= 3 && chbuf[0] === 0x50 && chbuf.byteLength > 5000);
+
   console.log(
     failures === 0
       ? "\nALL PASS ✓"

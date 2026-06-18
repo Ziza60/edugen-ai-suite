@@ -1365,6 +1365,13 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       fontFace: "Georgia", fontSize: 200, bold: true,
       color: "FFFFFF", transparency: 82, align: "left", valign: "top",
     });
+    // Closing mark too (was missing — only the opening glyph showed), mirrored
+    // bottom-right so the cinematic quote reads as a complete quotation.
+    slide.addText("”", {
+      x: W - 3.6, y: H - 2.5, w: 3, h: 2.4,
+      fontFace: "Georgia", fontSize: 200, bold: true,
+      color: "FFFFFF", transparency: 82, align: "right", valign: "bottom",
+    });
     slide.addText(text, {
       x: 1.2, y: 1.9, w: W - 2.4, h: 3.2,
       fontFace: FONT_TITLE,
@@ -1503,6 +1510,51 @@ function renderStat(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, nu
     lineSpacingMultiple: 1.05,
   });
   footer(slide, { ...d, subtext: "8595A6" }, brand, num);
+}
+
+/**
+ * Native chart slide — donut (parts of a whole) or horizontal bar (ranking of
+ * magnitudes). Uses pptxgenjs's real chart engine (editable in PowerPoint), so
+ * the planner only ever supplies label/value pairs — nothing to mis-draw. The
+ * first two series colours are palette tokens (on-brand); the rest are a neutral
+ * fallback ramp for many-slice donuts.
+ */
+function renderChart(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const c = s.chart!;
+  const labels = c.points.map((p) => p.label);
+  const values = c.points.map((p) => p.value);
+  const data = [{ name: s.title || "Dados", labels, values }];
+  const series = [d.accent, d.accent2, "5B8FB9", "B6CFE0", "D8A657", "8E7DBE"];
+  const chartColors = labels.map((_, i) => series[i % series.length]);
+
+  if (c.type === "bar") {
+    slide.addChart("bar", data, {
+      x: ML, y: CONTENT_Y, w: CW, h: CONTENT_H,
+      barDir: "bar", // horizontal bars
+      chartColors: [d.accent],
+      showLegend: false,
+      showTitle: false,
+      showValue: true,
+      dataLabelColor: d.text, dataLabelFontFace: FONT_BODY, dataLabelFontSize: 12, dataLabelPosition: "outEnd",
+      catAxisLabelColor: d.text, catAxisLabelFontFace: FONT_BODY, catAxisLabelFontSize: 12,
+      valAxisHidden: true, valGridLine: { style: "none" },
+      catAxisLineShow: false, valAxisLineShow: false,
+      barGapWidthPct: 45,
+    });
+  } else {
+    slide.addChart("doughnut", data, {
+      x: ML, y: CONTENT_Y, w: CW, h: CONTENT_H,
+      holeSize: 62,
+      chartColors,
+      showLegend: true, legendPos: "r", legendColor: d.text, legendFontFace: FONT_BODY, legendFontSize: 12,
+      showTitle: false,
+      showValue: false, showPercent: true,
+      dataLabelColor: "FFFFFF", dataLabelFontFace: FONT_BODY, dataLabelFontSize: 11, dataLabelFontBold: true,
+    });
+  }
+  footer(slide, d, brand, num);
 }
 
 function renderCode(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
@@ -1688,6 +1740,9 @@ export function renderDeck(
             break;
           case "stat":
             renderStat(slide, s, d, brand, num);
+            break;
+          case "chart":
+            renderChart(slide, s, d, brand, num, m.title);
             break;
           case "code":
             renderCode(slide, s, d, brand, num, m.title);
