@@ -34,8 +34,14 @@ export type SlideKind =
   | "table" // multi-column comparison grid (N options × M criteria)
   | "quote" // pull-quote / reflection prompt
   | "stat" // single big-number highlight
+  | "chart" // donut (proportions) or horizontal bar (magnitudes)
   | "code" // monospace code block
   | "closing"; // summary / key takeaways
+
+export interface DeckChartPoint {
+  label: string;
+  value: number;
+}
 
 export interface DeckCard {
   heading: string;
@@ -77,6 +83,8 @@ export interface SlideSpec {
   quote?: string;
   attribution?: string;
   stat?: { value: string; label: string };
+  /** "chart" kind: donut (proportions) or horizontal bar (magnitude ranking). */
+  chart?: { type: "donut" | "bar"; points: DeckChartPoint[]; unit?: string };
   code?: { language: string; text: string };
   /** Free-text search query for an optional decorative image. */
   imageQuery?: string;
@@ -135,6 +143,7 @@ export const SLIDE_RESPONSE_SCHEMA = {
               "matrix",
               "quote",
               "stat",
+              "chart",
               "code",
               "closing",
             ],
@@ -308,6 +317,14 @@ PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premi
   phrase, never a sentence.
 - "quote"    → a memorable principle, definition, or reflection prompt.
 - "stat"     → one striking number or metric worth a whole slide.
+- "chart"    → quantitative data worth visualizing. Provide "chart" with a "type"
+  and 2–6 "points", each { "label", "value" } (value is a NUMBER, no units in it):
+    • type "donut" → parts of a whole / proportions that add up (market share,
+      time split, % breakdown). Optionally set "unit":"%".
+    • type "bar"   → ranking/comparison of magnitudes across categories (adoption
+      by tool, cost per option, scores).
+  ONLY use real numbers present or clearly implied by the source — never invent
+  data. If you have no numbers, do NOT use "chart".
 - "code"     → a code/command example (ONLY if the source actually contains code).
 - "closing"  → the module's key takeaways (use as the LAST slide).
 
@@ -349,6 +366,8 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
     comparison that would otherwise become a cramped bullet list).
   • Add ONE "quote" OR "stat" per module when the source offers a striking
     principle or number, to break the visual rhythm.
+  • Use "chart" (donut for proportions, bar for ranking magnitudes) when the
+    source gives REAL numbers worth visualizing — never with invented data.
 - Do NOT prepend ordinals ("1.", "2)") inside a step's heading — the renderer
   numbers steps automatically. Write the heading as plain text.
 - Plain text only in every field — NO Markdown emphasis (no asterisks, backticks or #).
@@ -366,7 +385,7 @@ slide doesn't use; never add other keys):
 {
   "slides": [
     {
-      "kind": "bullets|cards|steps|compare|matrix|table|quote|stat|code|closing",
+      "kind": "bullets|cards|steps|compare|matrix|table|quote|stat|chart|code|closing",
       "title": "string (required, complete phrase)",
       "subtitle": "string (optional)",
       "bullets": ["short point", "..."],
@@ -378,6 +397,7 @@ slide doesn't use; never add other keys):
       "rows": [{ "label": "Criterion", "cells": ["cell A", "cell B", "cell C"] }],
       "quote": "string",
       "stat":  { "value": "42%", "label": "string" },
+      "chart": { "type": "donut|bar", "unit": "%", "points": [{ "label": "string", "value": 42 }] },
       "code":  { "language": "sql", "text": "SELECT id FROM users;\\nSELECT 1;" },
       "imageQuery": "two to four english words"
     }

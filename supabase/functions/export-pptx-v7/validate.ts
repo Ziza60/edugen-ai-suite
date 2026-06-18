@@ -30,6 +30,7 @@ export const LIMITS = {
   MAX_TABLE_COLS: 5,
   MAX_TABLE_ROWS: 6,
   MAX_TABLE_CELL_CHARS: 80,
+  MAX_CHART_POINTS: 6,
 } as const;
 
 const TRAILING_JUNK_RE = /[\s,;:\-–—]+$/;
@@ -141,6 +142,29 @@ function normTable(slide: SlideSpec):
   return { columns, rows };
 }
 
+/**
+ * Normalize a chart: coerce values to finite non-negative numbers, cap the
+ * number of points, drop empty labels. Returns null when fewer than 2 valid
+ * points remain (the slide then salvages to bullets — never throws).
+ */
+function normChart(slide: SlideSpec):
+  | { type: "donut" | "bar"; points: { label: string; value: number }[]; unit?: string }
+  | null {
+  const c = slide.chart;
+  if (!c) return null;
+  const type = c.type === "bar" ? "bar" : "donut";
+  const points = (Array.isArray(c.points) ? c.points : [])
+    .map((p) => ({
+      label: capText(String(p?.label ?? ""), 6, 26),
+      value: Number(p?.value),
+    }))
+    .filter((p) => p.label.length > 0 && Number.isFinite(p.value) && p.value >= 0)
+    .slice(0, LIMITS.MAX_CHART_POINTS);
+  if (points.length < 2) return null;
+  const unit = c.unit ? capText(String(c.unit), 2, 6) : undefined;
+  return { type, points, unit };
+}
+
 const CODE_PLACEHOLDER_LINE_RE = /^\s*(?:#|--|\/\/)?\s*(?:\.{2,}|…)\s*$/;
 
 function normCode(code: SlideSpec["code"]): SlideSpec["code"] | undefined {
@@ -191,6 +215,8 @@ function hasMinimumContent(s: SlideSpec): boolean {
       return !!s.quote && s.quote.length > 0;
     case "stat":
       return !!s.stat?.value;
+    case "chart":
+      return (s.chart?.points?.length ?? 0) >= 2;
     case "code":
       return !!s.code?.text;
     case "section":
@@ -211,6 +237,7 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
   let title = capText(slide.title ?? "", 14, LIMITS.MAX_TITLE_CHARS);
 
   const table = slide.kind === "table" ? normTable(slide) : null;
+  const chart = slide.kind === "chart" ? normChart(slide) : null;
 
   const base: SlideSpec = {
     ...slide,
@@ -218,6 +245,7 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
     eyebrow,
     columns: table?.columns,
     rows: table?.rows,
+    chart: chart ?? undefined,
     subtitle: slide.subtitle
       ? capText(slide.subtitle, 22, 160)
       : undefined,
@@ -279,7 +307,12 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
   // For other kinds: if minimum content missing, try to salvage as bullets,
   // otherwise drop the slide (degrade, never veto).
   if (!hasMinimumContent(base)) {
-    const salvage = normItems(slide.bullets, LIMITS.MAX_BULLETS);
+    // A degenerate chart still has its points as data → salvage to bullets
+    // ("label: value") instead of dropping the slide.
+    const fromChart = (slide.chart?.points ?? [])
+      .map((p) => `${p?.label ?? ""}: ${p?.value ?? ""}${slide.chart?.unit ?? ""}`.trim());
+    const source = (slide.bullets?.length ? slide.bullets : fromChart);
+    const salvage = normItems(source, LIMITS.MAX_BULLETS);
     if (salvage.length > 0) {
       return [{ kind: "bullets", title: base.title, eyebrow, bullets: salvage }];
     }
