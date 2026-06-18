@@ -1131,18 +1131,36 @@ function renderTable(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const headBorder = [none, none, headRule, none];
   const bodyBorder = [none, none, hair, none];
 
+  // Per-column horizontal alignment: a column whose cells are mostly numeric or
+  // very short reads better CENTERED (numbers, "Sim/Não", short labels); a column
+  // with prose stays LEFT. The header takes its column's alignment so the title
+  // always sits directly over its cells (fixes header/content not lining up).
+  const isShortOrNumeric = (s: string) => {
+    const t = (s || "").trim();
+    if (!t) return true;
+    if (/^[\d\s.,:%$+\-–—x×/()º°]+$/.test(t)) return true; // numbers, %, ranges
+    return t.split(/\s+/).length <= 2 && t.length <= 14;
+  };
+  const colAligns: ("center" | "left")[] = columns.map((_, ci) => {
+    const cells = rows.map((r) => r.cells[ci] ?? "");
+    const shortCount = cells.filter(isShortOrNumeric).length;
+    return cells.length > 0 && shortCount >= Math.ceil(cells.length / 2)
+      ? "center"
+      : "left";
+  });
+
   const headerRow = [
     { text: "", options: { border: headBorder } },
-    ...columns.map((c) => ({
+    ...columns.map((c, ci) => ({
       text: c,
-      options: { border: headBorder, color: d.accent, bold: true, align: "left", fontSize: headFs },
+      options: { border: headBorder, color: d.accent, bold: true, align: colAligns[ci], fontSize: headFs },
     })),
   ];
   const bodyRows = rows.map((r) => [
     { text: r.label, options: { border: bodyBorder, color: d.accent2, bold: true, align: "left", fontSize: bodyFs } },
-    ...r.cells.map((cell) => ({
+    ...r.cells.map((cell, ci) => ({
       text: cell,
-      options: { border: bodyBorder, color: d.text, align: "left", fontSize: bodyFs },
+      options: { border: bodyBorder, color: d.text, align: colAligns[ci], fontSize: bodyFs },
     })),
   ]);
 
