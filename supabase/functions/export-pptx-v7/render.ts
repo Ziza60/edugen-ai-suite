@@ -1113,7 +1113,12 @@ function renderTable(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const labelW = Math.min(3.0, Math.max(2.0, CW * 0.22));
   const dataW = (CW - labelW) / ncol;
   const colW = [labelW, ...Array(ncol).fill(dataW)];
-  const rowH = CONTENT_H / (rows.length + 1);
+  // Cap row height so a 1–2 row table doesn't stretch to fill the whole content
+  // area (which left huge vertical gaps and made the header float far above its
+  // data, reading as a misaligned table). Few rows now render compact at the top;
+  // a full 6-row table (CONTENT_H/7 ≈ 0.77) is unaffected.
+  const nRows = rows.length + 1;
+  const rowH = Math.min(0.95, CONTENT_H / nRows);
   const headFs = ncol >= 5 ? 11 : 12;
   const bodyFs = ncol >= 5 ? 9 : ncol >= 4 ? 10 : 11;
 
@@ -1368,7 +1373,9 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     // Closing mark too (was missing — only the opening glyph showed), mirrored
     // bottom-right so the cinematic quote reads as a complete quotation.
     slide.addText("”", {
-      x: W - 3.6, y: H - 2.5, w: 3, h: 2.4,
+      // Mirror the opening glyph exactly: same 0.05 inset from the bottom edge as
+      // the opening has from the top, so both marks sit equidistant from the text.
+      x: W - 3.6, y: H - 2.45, w: 3, h: 2.4,
       fontFace: "Georgia", fontSize: 200, bold: true,
       color: "FFFFFF", transparency: 82, align: "right", valign: "bottom",
     });
@@ -1433,7 +1440,9 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     align: "left", valign: "top",
   });
   slide.addText("”", {
-    x: W - 3 - (ML - 0.1), y: H - 2.6, w: 3, h: 2.4,
+    // Mirror the opening glyph exactly (same 0.05 inset from the bottom edge as
+    // the opening has from the top) so both marks are equidistant from the text.
+    x: W - 3 - (ML - 0.1), y: H - 2.45, w: 3, h: 2.4,
     fontFace: "Georgia", fontSize: 200, bold: true,
     color: d.accent2, transparency: 80,
     align: "right", valign: "bottom",

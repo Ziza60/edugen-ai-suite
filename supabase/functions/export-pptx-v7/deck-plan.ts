@@ -359,8 +359,11 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - VARY THE LAYOUT — do NOT make every module the same bullets/cards/steps rhythm:
   • If the module teaches programming or shows commands/code, INCLUDE at least one
     "code" slide with the real snippet.
-  • Use "compare" for any Problem-vs-Solution, Before-vs-After or A-vs-B contrast
-    (e.g. a "Desafio/Solução" idea) — NOT a numbered steps list.
+  • Use "compare" for any Problem-vs-Solution, Before-vs-After, Manual-vs-IA or
+    Tradicional-vs-Otimizado contrast — it genuinely aids comprehension, so do NOT
+    flatten these into plain bullets. BUT if the module has SEVERAL such contrasts,
+    render only the 1–2 STRONGEST as "compare" and turn the rest into a "table" or
+    "cards" — never 3+ near-identical "compare" slides in a row.
   • Use "matrix" when 4 items classify along two axes (SWOT, effort×impact).
   • Use "table" when 3+ options are compared across several criteria (a
     comparison that would otherwise become a cramped bullet list).
@@ -374,6 +377,13 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - For cards, tiles, steps and table cells, enforce a MAXIMUM of ~12 words per text
   block. Be ruthless in your summarization — these layouts must stay minimalist.
 - Stay strictly faithful to the module content. Do NOT invent facts.
+- PRESERVE THE PRACTICAL CONTENT — it is what makes the course actionable, so it
+  must reach the deck (never silently drop it):
+  • Worked example ("Exemplo prático", usually with Contexto/Desafio/Solução/
+    Resultado): give it its OWN slide — a "compare" (Desafio vs Solução) or a
+    "steps" slide (Contexto → Desafio → Solução → Resultado).
+  • Hands-on activity ("Atividade Prática" / "Mão na massa"): render it as a
+    "steps" slide titled after the activity, each step as one short heading.
 
 MODULE CONTENT (markdown):
 """
