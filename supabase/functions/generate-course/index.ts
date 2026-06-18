@@ -1,3 +1,4 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -10,6 +11,11 @@ const PLAN_LIMITS = {
   free: { maxCourses: 3, maxModules: 5, images: false },
   pro: { maxCourses: 5, maxModules: 10, images: true },
 };
+
+// TESTING_MODE: fase de testes sem usuários reais. Destrava TODOS os gates de
+// plano Pro (imagens IA, fontes próprias, limite mensal de cursos e nº de
+// módulos). Para reativar a monetização, basta voltar para `false`.
+const TESTING_MODE = true;
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
 async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false) {
@@ -350,12 +356,12 @@ Deno.serve(async (req: Request) => {
       const { data: sub } = await serviceClient
         .from("subscriptions").select("plan").eq("user_id", userId).single();
       const plan = (sub?.plan || "free") as "free" | "pro";
-      const limits = PLAN_LIMITS[plan];
+      const limits = TESTING_MODE ? PLAN_LIMITS.pro : PLAN_LIMITS[plan];
 
       // Check dev status
       const { data: profile, error: profileError } = await serviceClient
         .from("profiles").select("is_dev").eq("user_id", userId).maybeSingle();
-      let isDev = profile?.is_dev === true;
+      let isDev = profile?.is_dev === true || TESTING_MODE;
       if (!isDev && profileError) {
         const { data: profileById } = await serviceClient
           .from("profiles").select("is_dev").eq("id", userId).maybeSingle();

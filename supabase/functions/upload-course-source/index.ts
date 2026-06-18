@@ -1,3 +1,4 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -11,6 +12,11 @@ const MAX_FILES_PRO = 20;
 const ALLOWED_TYPES = ["application/pdf", "text/plain", "text/markdown"];
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
 const MAX_TOTAL_CHARS = 500_000;
+
+// TESTING_MODE: fase de testes sem usuários reais — destrava o gate de plano Pro
+// para fontes próprias (e usa o limite de arquivos do Pro). Voltar para `false`
+// para reativar a monetização.
+const TESTING_MODE = true;
 
 // Simple text normalizer: collapse whitespace, remove repeated headers/footers
 function normalizeText(raw: string): string {
@@ -132,7 +138,7 @@ Deno.serve(async (req: Request) => {
       .select("is_dev")
       .eq("user_id", userId)
       .maybeSingle();
-    const isDev = profile?.is_dev === true;
+    const isDev = profile?.is_dev === true || TESTING_MODE;
 
     if (plan !== "pro" && !isDev) {
       return new Response(
