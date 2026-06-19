@@ -1397,20 +1397,19 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       x: 0, y: 0, w: W, h: H,
       fill: { color: "000000", transparency: 42 }, line: { type: "none" },
     });
-    // Marks placed SYMMETRICALLY about the text block's vertical centre
-    // (textCenter ∓ offset) with a tight box + middle valign, so both sit truly
-    // equidistant from the text. Edge-anchored boxes drifted because the 200pt
-    // glyph hangs from the top of its line regardless of valign.
+    // Opening mark sits above the text; the closing mark drops further below it
+    // (qOffClose > qOffOpen) so it clears the bottom of the quote instead of
+    // hugging it. Tight box + middle valign keeps each glyph centred on its mark.
     {
       const textCenter = 1.9 + 3.2 / 2; // text box: y=1.9, h=3.2
-      const qOff = 1.7, qH = 1.95;
+      const qOffOpen = 1.7, qOffClose = 2.35, qH = 1.95;
       slide.addText("“", {
-        x: 0.6, y: textCenter - qOff - qH / 2, w: 3, h: qH,
+        x: 0.6, y: textCenter - qOffOpen - qH / 2, w: 3, h: qH,
         fontFace: "Georgia", fontSize: 200, bold: true,
         color: "FFFFFF", transparency: 82, align: "left", valign: "middle",
       });
       slide.addText("”", {
-        x: W - 3.6, y: textCenter + qOff - qH / 2, w: 3, h: qH,
+        x: W - 3.6, y: textCenter + qOffClose - qH / 2, w: 3, h: qH,
         fontFace: "Georgia", fontSize: 200, bold: true,
         color: "FFFFFF", transparency: 82, align: "right", valign: "middle",
       });
@@ -1469,17 +1468,17 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   // Decorative quotation marks as a subtle adornment in the corners (not behind
   // the text), in an elegant serif and the accent colour at 20% opacity — the
   // "respiro" premium look. pptxgenjs renders text transparency as <a:alpha>.
-  // Symmetric about the text block's vertical centre (see cinematic branch above).
+  // Opening above the text; closing drops further below (see cinematic branch).
   {
     const textCenter = 2.15 + 3.0 / 2; // text box: y=2.15, h=3.0
-    const qOff = 1.7, qH = 1.95;
+    const qOffOpen = 1.7, qOffClose = 2.3, qH = 1.95;
     slide.addText("“", {
-      x: ML - 0.1, y: textCenter - qOff - qH / 2, w: 3, h: qH,
+      x: ML - 0.1, y: textCenter - qOffOpen - qH / 2, w: 3, h: qH,
       fontFace: "Georgia", fontSize: 200, bold: true,
       color: d.accent2, transparency: 80, align: "left", valign: "middle",
     });
     slide.addText("”", {
-      x: W - 3 - (ML - 0.1), y: textCenter + qOff - qH / 2, w: 3, h: qH,
+      x: W - 3 - (ML - 0.1), y: textCenter + qOffClose - qH / 2, w: 3, h: qH,
       fontFace: "Georgia", fontSize: 200, bold: true,
       color: d.accent2, transparency: 80, align: "right", valign: "middle",
     });
