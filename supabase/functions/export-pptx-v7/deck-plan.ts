@@ -1206,68 +1206,84 @@ export async function buildDeck(
   opts: { batchSize?: number; density?: Density } = {},
 ): Promise<{ deck: PlannedDeck; plannedCount: number; fallbackCount: number }> {
   const density = opts.density ?? "standard";
-  // Modules are planned SEQUENTIALLY (not the old 3-wide concurrent batches) so
-  // each call can receive the slide titles already produced by earlier modules
-  // and skip duplicate subtopics. This is the cross-module de-duplication fix:
-  // passing only module titles wasn't enough because the source content itself
-  // overlaps. Trade-off: we lose parallelism, but the export stays well within
-  // the 480s timeout and the deck no longer repeats whole slides across modules.
+  // Modules are planned in small CONCURRENT BATCHES (default 3-wide). Pure
+  // sequential planning let each call see every earlier module's slide titles
+  // (best cross-module de-duplication) but cost ~16s/module — a 10-module course
+  // then ran ~160s and was KILLED by the Edge Function wall-clock limit (~150s)
+  // before it could render, surfacing to the user as the v4-fallback QA veto.
+  // Batching keeps the cross-module ledger BETWEEN batches (batch N still sees
+  // batches 1..N-1) and cuts wall-time ~Nx (10 modules → ~4 batches ≈ 60s); the
+  // only overlap it can't catch is WITHIN a batch, which the deterministic
+  // dedupeModules() net below removes.
+  const BATCH = Math.max(1, opts.batchSize ?? 3);
   const out: DeckModule[] = new Array(modules.length);
   const outline = modules.map((m) => m.title); // for cross-module scope discipline
   const covered: string[] = []; // running ledger of slide titles already made
+  const overview = moduleOverviewLabel(language);
   let plannedCount = 0;
   let fallbackCount = 0;
 
-  for (let idx = 0; idx < modules.length; idx++) {
-    const m = modules[idx];
-    let slides: SlideSpec[] | null = null;
-    if (geminiKey) {
-      slides = await planModuleSlides(
-        courseTitle,
-        m.title,
-        m.content,
-        language,
-        geminiKey,
-        outline,
-        idx,
-        covered,
-        density,
-      );
+  for (let start = 0; start < modules.length; start += BATCH) {
+    const batch = modules.slice(start, start + BATCH);
+    // Snapshot the ledger so every module in this batch sees the SAME prior
+    // context (they run concurrently and cannot observe each other's titles).
+    const ledgerSnapshot = covered.slice();
+    const results = await Promise.all(
+      batch.map(async (m, j) => {
+        const idx = start + j;
+        let slides: SlideSpec[] | null = null;
+        if (geminiKey) {
+          slides = await planModuleSlides(
+            courseTitle,
+            m.title,
+            m.content,
+            language,
+            geminiKey,
+            outline,
+            idx,
+            ledgerSnapshot,
+            density,
+          );
+        }
+        const planned = !!(slides && slides.length);
+        if (!planned) slides = fallbackModuleSlides(m.title, m.content);
+        return { idx, m, slides: slides!, planned };
+      }),
+    );
+
+    // Per-module cleanup + ledger feed, applied IN ORDER after the batch so the
+    // result is deterministic and the next batch's snapshot is stable.
+    for (const r of results) {
+      if (r.planned) plannedCount++;
+      else fallbackCount++;
+      // Drop the redundant "Bem-vindo ao Módulo X:" / "Módulo N:" prefix the
+      // planner likes to put on the opening slide (the module name is already in
+      // the divider + eyebrow right above it).
+      for (const sp of r.slides) {
+        if (sp.title) sp.title = stripModuleIntroPrefix(sp.title);
+      }
+      // Kill titles that just echo the module name or the COURSE title (the
+      // planner often repeats one — sometimes the course title minus its
+      // subtitle — printing divider + eyebrow + title all saying the same
+      // thing). The opening slide becomes a localized "overview"; a later slide
+      // that echoes the COURSE title falls back to the module name.
+      r.slides.forEach((sp, i) => {
+        if (!sp.title) return;
+        const echoesModule = echoesTitle(sp.title, r.m.title);
+        const echoesCourse = echoesTitle(sp.title, courseTitle);
+        if (!echoesModule && !echoesCourse) return;
+        if (i === 0 && overview) sp.title = overview;
+        else if (echoesCourse) sp.title = r.m.title;
+      });
+      // Feed this module's substantive slide titles into the ledger for the next
+      // batches. Skip generic recap/intro slides so we don't suppress every
+      // module's own closing or objectives slide.
+      for (const sp of r.slides) {
+        const title = (sp.title || "").trim();
+        if (title.length >= 6 && !isGenericTitle(title)) covered.push(title);
+      }
+      out[r.idx] = { title: r.m.title, slides: r.slides };
     }
-    if (slides && slides.length) {
-      plannedCount++;
-    } else {
-      slides = fallbackModuleSlides(m.title, m.content);
-      fallbackCount++;
-    }
-    // Drop the redundant "Bem-vindo ao Módulo X:" / "Módulo N:" prefix the
-    // planner likes to put on the opening slide (the module name is already in
-    // the divider + eyebrow right above it).
-    for (const sp of slides) {
-      if (sp.title) sp.title = stripModuleIntroPrefix(sp.title);
-    }
-    // Kill titles that just echo the module name or the COURSE title (the planner
-    // often repeats one of them — sometimes the course title minus its subtitle —
-    // which then prints divider + eyebrow + title all saying the same thing). The
-    // opening slide becomes a localized "overview"; a later slide that echoes the
-    // COURSE title falls back to the module name (never the whole course name).
-    const overview = moduleOverviewLabel(language);
-    slides.forEach((sp, i) => {
-      if (!sp.title) return;
-      const echoesModule = echoesTitle(sp.title, m.title);
-      const echoesCourse = echoesTitle(sp.title, courseTitle);
-      if (!echoesModule && !echoesCourse) return;
-      if (i === 0 && overview) sp.title = overview;
-      else if (echoesCourse) sp.title = m.title;
-    });
-    // Feed this module's substantive slide titles into the ledger for the next
-    // modules. Skip generic recap/intro slides so we don't suppress every
-    // module's own closing or objectives slide.
-    for (const sp of slides) {
-      const title = (sp.title || "").trim();
-      if (title.length >= 6 && !isGenericTitle(title)) covered.push(title);
-    }
-    out[idx] = { title: m.title, slides };
   }
 
   // Deterministic safety net: remove cross-module near-duplicate slides the
