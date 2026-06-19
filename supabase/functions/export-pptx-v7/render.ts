@@ -1877,6 +1877,247 @@ function renderStairs(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
   footer(slide, d, brand, num);
 }
 
+// ── infographic layouts (rotate into the BULLETS family to break the "every
+//    slide is a card grid" monotony). Each consumes s.bullets (short items),
+//    uses palette tokens only, and degrades gracefully on any theme. ──────────
+
+/** Blend two RRGGBB hex colours (t: 0 → a, 1 → b). Drives segment/ramp colours. */
+function hexLerp(a: string, b: string, t: number): string {
+  const ca = [0, 2, 4].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const cb = [0, 2, 4].map((i) => parseInt(b.slice(i, i + 2), 16));
+  return ca
+    .map((v, i) => Math.round(v + (cb[i] - v) * t).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
+/** Trimmed, non-empty bullets, capped. */
+function bulletItems(s: SlideSpec, max: number): string[] {
+  return (s.bullets ?? []).map((b) => (b || "").trim()).filter(Boolean).slice(0, max);
+}
+
+/** Horizontal chevron flow — an ordered process / sequence. */
+function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const n = Math.max(items.length, 1);
+  const gap = 0.1;
+  const chW = (CW - gap * (n - 1)) / n;
+  const chH = 2.3;
+  const y = CONTENT_Y + (CONTENT_H - chH) / 2;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  items.forEach((b, i) => {
+    const x = ML + i * (chW + gap);
+    const accent = i % 2 === 0;
+    slide.addShape("chevron", {
+      x, y, w: chW, h: chH,
+      fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 },
+    });
+    // The chevron's left notch + right point eat into the box; inset the text.
+    const inset = i === 0 ? 0.3 : 0.55;
+    slide.addText(String(i + 1), {
+      x: x + inset, y: y + 0.24, w: chW - inset - 0.5, h: 0.6,
+      fontFace: FONT_TITLE, fontSize: 26, bold: true,
+      color: d.accent2, align: "center", valign: "middle",
+    });
+    slide.addText(b, {
+      x: x + inset, y: y + 0.9, w: chW - inset - 0.5, h: chH - 1.15,
+      fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.text,
+      align: "center", valign: "top", lineSpacingMultiple: 1.0,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Segmented ring (donut split into wedges) + legend — a cycle / categories. */
+function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const D = Math.min(4.6, CONTENT_H - 0.2);
+  const ringX = ML + 0.2;
+  const ringY = CONTENT_Y + (CONTENT_H - D) / 2;
+  const cxr = ringX + D / 2, cyr = ringY + D / 2;
+  const seg = 360 / n;
+  for (let i = 0; i < n; i++) {
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("pie", {
+      x: ringX, y: ringY, w: D, h: D,
+      fill: { color }, line: { color: d.bg, width: 2.5 },
+      angleRange: [i * seg, (i + 1) * seg],
+    });
+  }
+  const hole = D * 0.5;
+  slide.addShape("ellipse", {
+    x: cxr - hole / 2, y: cyr - hole / 2, w: hole, h: hole,
+    fill: { color: d.bg }, line: { type: "none" },
+  });
+  slide.addText(String(n), {
+    x: cxr - hole / 2, y: cyr - hole / 2, w: hole, h: hole,
+    fontFace: FONT_TITLE, fontSize: 40, bold: true, color: d.accent2,
+    align: "center", valign: "middle",
+  });
+  const legX = ringX + D + 0.55;
+  const legW = ML + CW - legX;
+  const rowH = Math.min(1.1, CONTENT_H / n);
+  const startY = CONTENT_Y + (CONTENT_H - rowH * n) / 2;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  items.forEach((b, i) => {
+    const ry = startY + i * rowH;
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("ellipse", {
+      x: legX, y: ry + rowH / 2 - 0.16, w: 0.32, h: 0.32,
+      fill: { color }, line: { type: "none" },
+    });
+    slide.addText(b, {
+      x: legX + 0.5, y: ry, w: legW - 0.5, h: rowH,
+      fontFace: FONT_BODY, fontSize: fs, color: d.text,
+      valign: "middle", lineSpacingMultiple: 1.02,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Stacked pyramid (trapezoid tiers) — hierarchy / foundation → peak. */
+function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const n = Math.max(items.length, 1);
+  const cx = ML + CW / 2;
+  const gap = 0.12;
+  const topY = CONTENT_Y + 0.15;
+  const tierH = (CONTENT_H - 0.3 - gap * (n - 1)) / n;
+  const maxW = Math.min(CW * 0.78, 9.2);
+  const fs = autoBodyFontSize(n, items.join("").length);
+  items.forEach((b, i) => {
+    const w = maxW * ((i + 1) / n); // i=0 narrow top → i=n-1 wide base
+    const y = topY + i * (tierH + gap);
+    const color = n > 1 ? hexLerp(d.accent2, d.accent, i / (n - 1)) : d.accent;
+    slide.addShape("trapezoid", {
+      x: cx - w / 2, y, w, h: tierH, fill: { color }, line: { color: d.bg, width: 2 },
+    });
+    slide.addText(b, {
+      x: cx - w / 2 + 0.25, y, w: w - 0.5, h: tierH,
+      fontFace: FONT_BODY, fontSize: fs, bold: true, color: d.onAccent,
+      align: "center", valign: "middle", lineSpacingMultiple: 0.98,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Zig-zag path — a journey through ordered points. */
+function renderZigzag(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const n = Math.max(items.length, 1);
+  const padX = 0.5;
+  const usableW = CW - 2 * padX;
+  const yTop = CONTENT_Y + 1.0;
+  const yBot = CONTENT_Y + CONTENT_H - 1.0;
+  const r = 0.34;
+  const pos = items.map((_, i) => ({
+    x: ML + padX + (n > 1 ? usableW * (i / (n - 1)) : usableW / 2),
+    y: i % 2 === 0 ? yTop : yBot,
+  }));
+  for (let i = 0; i < n - 1; i++) {
+    const a = pos[i], b = pos[i + 1];
+    slide.addShape("line", {
+      x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+      w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
+      flipH: b.x < a.x, flipV: b.y < a.y,
+      line: { color: d.accent2, width: 2, dashType: "dash" },
+    });
+  }
+  const fs = autoBodyFontSize(n, items.join("").length);
+  pos.forEach((p, i) => {
+    slide.addShape("ellipse", {
+      x: p.x - r, y: p.y - r, w: r * 2, h: r * 2,
+      fill: { color: d.accent }, line: { color: d.bg, width: 2 },
+    });
+    slide.addText(String(i + 1), {
+      x: p.x - r, y: p.y - r, w: r * 2, h: r * 2,
+      fontFace: FONT_TITLE, fontSize: 16, bold: true, color: d.onAccent,
+      align: "center", valign: "middle",
+    });
+    const lblAbove = p.y === yBot;
+    const lblW = Math.min(usableW / n + 0.4, CW);
+    const lblH = 0.9;
+    // Keep end labels on-canvas (centring on the first/last node would overflow).
+    const lblX = Math.max(ML, Math.min(p.x - lblW / 2, ML + CW - lblW));
+    slide.addText(items[i], {
+      x: lblX, y: lblAbove ? p.y - r - lblH - 0.05 : p.y + r + 0.05,
+      w: lblW, h: lblH,
+      fontFace: FONT_BODY, fontSize: fs, color: d.text,
+      align: "center", valign: lblAbove ? "bottom" : "top", lineSpacingMultiple: 1.0,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Mountain peaks — comparative magnitudes / ascending emphasis. */
+function renderMountain(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const n = Math.max(items.length, 1);
+  const baseY = CONTENT_Y + CONTENT_H - 0.7; // room for labels below the baseline
+  const slotW = CW / n;
+  const triW = slotW * 1.18; // slight overlap → a connected range
+  const maxH = CONTENT_H - 1.5;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  slide.addShape("line", { x: ML, y: baseY, w: CW, h: 0, line: { color: d.border, width: 1 } });
+  items.forEach((b, i) => {
+    const cxi = ML + slotW * (i + 0.5);
+    const hgt = maxH * (i % 2 === 0 ? 1 : 0.72); // alternate peak heights
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("triangle", {
+      x: cxi - triW / 2, y: baseY - hgt, w: triW, h: hgt,
+      fill: { color }, line: { type: "none" },
+    });
+    slide.addText(b, {
+      x: cxi - slotW / 2 + 0.05, y: baseY + 0.12, w: slotW - 0.1, h: 0.55,
+      fontFace: FONT_BODY, fontSize: fs, color: d.text,
+      align: "center", valign: "top", lineSpacingMultiple: 1.0,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Geometric-marker list — a lighter alternative to plain bullets, and the safe
+ *  fallback for longer / denser bullet sets. */
+function renderMarkers(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const rowH = CONTENT_H / n;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  const mk = 0.34;
+  items.forEach((b, i) => {
+    const y = CONTENT_Y + i * rowH;
+    slide.addShape("triangle", {
+      x: ML + 0.05, y: y + rowH / 2 - mk / 2, w: mk, h: mk, rotate: 90,
+      fill: { color: i % 2 === 0 ? d.accent2 : d.accent }, line: { type: "none" },
+    });
+    slide.addText(b, {
+      x: ML + 0.6, y, w: CW - 0.7, h: rowH,
+      fontFace: FONT_BODY, fontSize: fs, color: d.text,
+      valign: "middle", lineSpacingMultiple: 1.03,
+    });
+    if (i < n - 1) {
+      slide.addShape("line", {
+        x: ML + 0.6, y: y + rowH, w: CW - 0.7, h: 0,
+        line: { color: d.border, width: 0.5 },
+      });
+    }
+  });
+  footer(slide, d, brand, num);
+}
+
 // ── orchestrator ────────────────────────────────────────────────────────────
 
 /**
@@ -1995,7 +2236,15 @@ export function renderDeck(
             if (s.imageData) {
               renderBullets(slide, s, d, brand, num, m.title);
             } else {
-              const variants = [renderBullets, renderBands, renderNumberedList];
+              const its = (s.bullets ?? []).map((b) => (b || "").trim()).filter(Boolean);
+              const k = its.length;
+              // Diagram infographics need SHORT items (they place text inside
+              // shapes); long or 6+ item lists stay list-style to avoid overflow.
+              const short = its.every((b) => b.length <= 58);
+              const variants = (k >= 3 && k <= 5 && short)
+                ? [renderBullets, renderProcessArrows, renderSegmentedRing,
+                   renderPyramid, renderZigzag, renderMountain, renderMarkers]
+                : [renderBullets, renderMarkers];
               variants[bulletsVar++ % variants.length](slide, s, d, brand, num, m.title);
             }
             break;
