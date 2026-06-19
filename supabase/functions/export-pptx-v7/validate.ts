@@ -117,29 +117,50 @@ function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
  * to bullets, like matrix does) — never throws.
  */
 function normTable(slide: SlideSpec):
-  | { columns: string[]; rows: DeckTableRow[] }
+  | { columns: string[]; rows: DeckTableRow[]; rowHeader: string }
   | null {
-  const columns = (Array.isArray(slide.columns) ? slide.columns : [])
+  let columns = (Array.isArray(slide.columns) ? slide.columns : [])
     .map((c) => capText(String(c ?? ""), 6, 28))
     .filter((c) => c.length > 0)
     .slice(0, LIMITS.MAX_TABLE_COLS);
   if (columns.length < 2) return null;
+  const rawRows = (Array.isArray(slide.rows) ? slide.rows : [])
+    .map((r) => ({
+      label: capText(String(r?.label ?? ""), 8, 32),
+      cells: (Array.isArray(r?.cells) ? r.cells : [])
+        .map((c) => capText(String(c ?? ""), 12, LIMITS.MAX_TABLE_CELL_CHARS)),
+    }))
+    .filter((r) => r.label.length > 0 || r.cells.some((c) => c.length > 0));
+  if (rawRows.length < 1) return null;
+
+  // Off-by-one fix: the planner sometimes lists the FIRST data column as a header
+  // (e.g. "Operador") but puts its value in `label` (==, !=), so each row carries
+  // one fewer cell than there are columns. Padding to columns.length then shifts
+  // every cell under the wrong header and leaves the last column empty. When the
+  // data rows consistently have columns-1 cells, treat columns[0] as the header
+  // of the row-label column instead, keeping all data aligned with its header.
+  let rowHeader = "";
+  const dataRows = rawRows.filter((r) => r.cells.length > 0);
+  if (
+    columns.length >= 3 &&
+    dataRows.length > 0 &&
+    dataRows.every((r) => r.cells.length === columns.length - 1)
+  ) {
+    rowHeader = columns[0];
+    columns = columns.slice(1);
+  }
+
   const n = columns.length;
-  const rows = (Array.isArray(slide.rows) ? slide.rows : [])
+  const rows = rawRows
     .map((r) => {
-      const cells = (Array.isArray(r?.cells) ? r.cells : [])
-        .map((c) => capText(String(c ?? ""), 12, LIMITS.MAX_TABLE_CELL_CHARS));
+      const cells = r.cells.slice();
       // Force each row to exactly n cells (pad short, drop overflow).
       while (cells.length < n) cells.push("");
-      return {
-        label: capText(String(r?.label ?? ""), 8, 32),
-        cells: cells.slice(0, n),
-      };
+      return { label: r.label, cells: cells.slice(0, n) };
     })
-    .filter((r) => r.label.length > 0 || r.cells.some((c) => c.length > 0))
     .slice(0, LIMITS.MAX_TABLE_ROWS);
   if (rows.length < 1) return null;
-  return { columns, rows };
+  return { columns, rows, rowHeader };
 }
 
 /**
@@ -245,6 +266,7 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
     eyebrow,
     columns: table?.columns,
     rows: table?.rows,
+    rowHeader: table?.rowHeader,
     chart: chart ?? undefined,
     subtitle: slide.subtitle
       ? capText(slide.subtitle, 22, 160)

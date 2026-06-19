@@ -80,6 +80,8 @@ export interface SlideSpec {
   columns?: string[];
   /** "table" kind: one row per criterion; cells align to `columns`. */
   rows?: DeckTableRow[];
+  /** "table" kind: optional header for the row-label column (top-left cell). */
+  rowHeader?: string;
   quote?: string;
   attribution?: string;
   stat?: { value: string; label: string };
