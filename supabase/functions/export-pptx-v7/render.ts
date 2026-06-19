@@ -1674,6 +1674,175 @@ function renderClosing(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   footer(slide, d, brand, num);
 }
 
+// ── extra premium layouts (rotated in to break the bullets/cards monotony) ──
+
+/** Bullets as full-width horizontal bands, alternating accent / surface, each
+ *  with a numbered chip. A clean, magazine-like rhythm distinct from a plain list. */
+function renderBands(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = (s.bullets ?? []).slice(0, 6);
+  const n = Math.max(items.length, 1);
+  const gap = 0.16;
+  const bandH = (CONTENT_H - gap * (n - 1)) / n;
+  const fs = autoBodyFontSize(items.length, items.join("").length);
+  items.forEach((b, i) => {
+    const y = CONTENT_Y + i * (bandH + gap);
+    const accentBand = i % 2 === 0;
+    slide.addShape("roundRect", {
+      x: ML, y, w: CW, h: bandH, rectRadius: 0.06,
+      fill: { color: accentBand ? d.accent : d.surface }, line: { type: "none" },
+    });
+    slide.addShape("ellipse", {
+      x: ML + 0.24, y: y + bandH / 2 - 0.22, w: 0.44, h: 0.44,
+      fill: { color: accentBand ? d.accent2 : d.accent }, line: { type: "none" },
+    });
+    slide.addText(String(i + 1), {
+      x: ML + 0.24, y: y + bandH / 2 - 0.22, w: 0.44, h: 0.44,
+      fontFace: FONT_BODY, fontSize: 14, bold: true, color: d.onAccent,
+      align: "center", valign: "middle",
+    });
+    slide.addText(b, {
+      x: ML + 0.94, y, w: CW - 1.2, h: bandH,
+      fontFace: FONT_BODY, fontSize: fs, color: accentBand ? d.onAccent : d.text,
+      valign: "middle", lineSpacingMultiple: 1.02,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Bullets as a vertical timeline-style spine with numbered nodes. */
+function renderNumberedList(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = (s.bullets ?? []).slice(0, 6);
+  const n = Math.max(items.length, 1);
+  const rowH = CONTENT_H / n;
+  const lineX = ML + 0.4;
+  const fs = autoBodyFontSize(items.length, items.join("").length);
+  if (n > 1) {
+    slide.addShape("line", {
+      x: lineX, y: CONTENT_Y + rowH / 2, w: 0, h: rowH * (n - 1),
+      line: { color: d.border, width: 1.5 },
+    });
+  }
+  items.forEach((b, i) => {
+    const cy = CONTENT_Y + i * rowH + rowH / 2;
+    slide.addShape("ellipse", {
+      x: lineX - 0.27, y: cy - 0.27, w: 0.54, h: 0.54,
+      fill: { color: d.accent }, line: { color: d.bg, width: 2 },
+    });
+    slide.addText(String(i + 1), {
+      x: lineX - 0.27, y: cy - 0.27, w: 0.54, h: 0.54,
+      fontFace: FONT_BODY, fontSize: 15, bold: true, color: d.onAccent,
+      align: "center", valign: "middle",
+    });
+    slide.addText(b, {
+      x: lineX + 0.55, y: cy - rowH / 2, w: ML + CW - (lineX + 0.55) - 0.1, h: rowH,
+      fontFace: FONT_BODY, fontSize: fs, color: d.text,
+      valign: "middle", lineSpacingMultiple: 1.03,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Cards as a radial hub-and-spokes diagram: a central concept with satellites
+ *  arranged on a ring, joined by connector lines. Premium, distinct from a grid. */
+function renderRadial(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const cards = (s.cards ?? []).slice(0, 5);
+  const N = Math.max(cards.length, 1);
+  const cx = ML + CW / 2;
+  const cy = CONTENT_Y + CONTENT_H / 2;
+  const hubR = 0.9;
+  const ringRx = CW / 2 - 1.55;
+  const ringRy = CONTENT_H / 2 - 0.55;
+  const pos = cards.map((_, i) => {
+    const ang = -Math.PI / 2 + (2 * Math.PI * i) / N;
+    return { x: cx + ringRx * Math.cos(ang), y: cy + ringRy * Math.sin(ang) };
+  });
+  // connectors (drawn first, behind the nodes)
+  pos.forEach((p) => {
+    slide.addShape("line", {
+      x: cx, y: cy, w: p.x - cx, h: p.y - cy,
+      line: { color: d.border, width: 1.25 },
+    });
+  });
+  // hub
+  slide.addShape("ellipse", {
+    x: cx - hubR, y: cy - hubR, w: hubR * 2, h: hubR * 2,
+    fill: { color: d.accent }, line: { type: "none" },
+  });
+  const hub = s.title.split(/\s+/).slice(0, 2).join(" ").slice(0, 18);
+  slide.addText(hub, {
+    x: cx - hubR, y: cy - hubR, w: hubR * 2, h: hubR * 2,
+    fontFace: FONT_BODY, fontSize: 12, bold: true, color: d.onAccent,
+    align: "center", valign: "middle", lineSpacingMultiple: 0.95,
+  });
+  // satellites
+  const satW = 2.5, satH = 1.0;
+  cards.forEach((c, i) => {
+    const p = pos[i];
+    slide.addShape("roundRect", {
+      x: p.x - satW / 2, y: p.y - satH / 2, w: satW, h: satH, rectRadius: 0.07,
+      fill: { color: d.surface }, line: { color: d.border, width: 1 },
+    });
+    slide.addText(c.heading ?? "", {
+      x: p.x - satW / 2 + 0.12, y: p.y - satH / 2 + 0.08, w: satW - 0.24, h: 0.34,
+      fontFace: FONT_BODY, fontSize: 12, bold: true, color: d.accent2,
+      align: "center", valign: "middle",
+    });
+    if (c.body) {
+      slide.addText(c.body, {
+        x: p.x - satW / 2 + 0.12, y: p.y - satH / 2 + 0.42, w: satW - 0.24, h: satH - 0.5,
+        fontFace: FONT_BODY, fontSize: 10, color: d.text,
+        align: "center", valign: "top", lineSpacingMultiple: 0.98,
+      });
+    }
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Steps as an ascending cascade of panels (a "staircase") — conveys progression. */
+function renderStairs(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const steps = (s.steps ?? []).slice(0, 5);
+  const n = Math.max(steps.length, 1);
+  const rowH = CONTENT_H / n;
+  const indentMax = Math.min(2.2, CW * 0.2);
+  steps.forEach((st, i) => {
+    const indent = n > 1 ? (indentMax * i) / (n - 1) : 0;
+    const y = CONTENT_Y + i * rowH;
+    const x = ML + indent;
+    const w = CW - indent;
+    const accent = i % 2 === 0;
+    slide.addShape("roundRect", {
+      x, y: y + 0.06, w, h: rowH - 0.12, rectRadius: 0.06,
+      fill: { color: accent ? d.accent : d.surface }, line: { type: "none" },
+    });
+    slide.addText(String(i + 1), {
+      x: x + 0.18, y: y + 0.06, w: 0.7, h: rowH - 0.12,
+      fontFace: FONT_TITLE, fontSize: 24, bold: true,
+      color: accent ? d.onAccent : d.accent2, align: "left", valign: "middle",
+    });
+    slide.addText(st.heading ?? "", {
+      x: x + 0.95, y: y + 0.1, w: w - 1.15, h: (rowH - 0.12) * (st.body ? 0.5 : 1),
+      fontFace: FONT_BODY, fontSize: 14, bold: true,
+      color: accent ? d.onAccent : d.text, valign: "middle",
+    });
+    if (st.body) {
+      slide.addText(st.body, {
+        x: x + 0.95, y: y + (rowH - 0.12) * 0.5, w: w - 1.15, h: (rowH - 0.12) * 0.45,
+        fontFace: FONT_BODY, fontSize: 11,
+        color: accent ? d.onAccent : d.subtext, valign: "middle", lineSpacingMultiple: 1.0,
+      });
+    }
+  });
+  footer(slide, d, brand, num);
+}
+
 // ── orchestrator ────────────────────────────────────────────────────────────
 
 /**
@@ -1699,6 +1868,9 @@ export function renderDeck(
     return pptx.addSlide();
   };
   let compareCount = 0; // drives the compare round-robin across the whole deck
+  let bulletsVar = 0;   // rotates bullet-family layouts (list / bands / numbered)
+  let cardsVar = 0;     // rotates card-family layouts (grid / radial)
+  let stepsVar = 0;     // rotates step-family layouts (list / staircase)
 
   // Cover
   renderCover(add(), deck, d, brand);
@@ -1747,11 +1919,18 @@ export function renderDeck(
           case "bento":
             renderBento(slide, s, d, brand, num, m.title);
             break;
-          case "cards":
-            renderCards(slide, s, d, brand, num, m.title);
+          case "cards": {
+            const nc = (s.cards ?? []).length;
+            if (nc >= 3 && nc <= 5 && cardsVar++ % 2 === 1) {
+              renderRadial(slide, s, d, brand, num, m.title);
+            } else {
+              renderCards(slide, s, d, brand, num, m.title);
+            }
             break;
+          }
           case "steps":
-            renderSteps(slide, s, d, brand, num, m.title);
+            if (stepsVar++ % 2 === 1) renderStairs(slide, s, d, brand, num, m.title);
+            else renderSteps(slide, s, d, brand, num, m.title);
             break;
           case "compare":
             renderCompare(slide, s, d, brand, num, m.title, compareCount++);
@@ -1778,9 +1957,15 @@ export function renderDeck(
             renderClosing(slide, s, d, brand, num, m.title);
             break;
           case "bullets":
-          default:
-            renderBullets(slide, s, d, brand, num, m.title);
+          default: {
+            if (s.imageData) {
+              renderBullets(slide, s, d, brand, num, m.title);
+            } else {
+              const variants = [renderBullets, renderBands, renderNumberedList];
+              variants[bulletsVar++ % variants.length](slide, s, d, brand, num, m.title);
+            }
             break;
+          }
         }
       } catch (err) {
         console.warn(`[V7-RENDER] slide failed (${s.kind}) — skipped:`, err);
