@@ -331,9 +331,32 @@ export default function CourseWizard() {
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let courseId: string | null = null;
+      let completed = false;
+      // The server emits a heartbeat every 12s; 45s of total silence means the
+      // function died (edge wall-clock kill). The watchdog below then recovers.
+      const STALL_MS = 45000;
+
+      const goToCourse = (id: string, partial = false) => {
+        completed = true;
+        setGenerationProgress(100);
+        setGenerationStep("Concluído!");
+        setGenerationMessage("");
+        toast(
+          partial
+            ? { title: "Curso gerado", description: "Alguns extras (imagens/quiz) podem levar um instante para aparecer." }
+            : { title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." },
+        );
+        setTimeout(() => navigate(`/app/courses/${id}`), 1000);
+      };
 
       while (true) {
-        const { done, value } = await reader.read();
+        const read = await Promise.race([
+          reader.read(),
+          new Promise<"stall">((r) => setTimeout(() => r("stall"), STALL_MS)),
+        ]);
+        if (read === "stall") { try { await reader.cancel(); } catch { /* noop */ } break; }
+        const { done, value } = read;
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -343,6 +366,9 @@ export default function CourseWizard() {
           if (!line.startsWith("data: ")) continue;
           try {
             const event = JSON.parse(line.replace("data: ", ""));
+            if (event.type === "course_created") {
+              courseId = event.courseId;
+            }
             if (event.type === "status") {
               setGenerationStep(event.message);
             }
@@ -361,11 +387,7 @@ export default function CourseWizard() {
               setGenerationProgress(pct);
             }
             if (event.type === "complete") {
-              setGenerationProgress(100);
-              setGenerationStep("Concluído!");
-              setGenerationMessage("");
-              toast({ title: "Curso gerado com sucesso!", description: "Redirecionando para o editor..." });
-              setTimeout(() => navigate(`/app/courses/${event.courseId}`), 1000);
+              goToCourse(event.courseId);
             }
             if (event.type === "debug") {
               console.warn("[CourseGen DEBUG]", event);
@@ -377,6 +399,26 @@ export default function CourseWizard() {
           } catch (parseErr: any) {
             if (parseErr.message && !parseErr.message.includes("JSON")) throw parseErr;
           }
+        }
+        if (completed) break;
+      }
+
+      // Watchdog recovery: the stream ended or stalled WITHOUT a `complete` event.
+      // Never leave the user stuck — recover the (possibly partial) course from the
+      // DB. If modules already exist, treat it as success; otherwise offer a retry.
+      if (!completed) {
+        if (courseId) {
+          const { count } = await supabase
+            .from("course_modules")
+            .select("id", { count: "exact", head: true })
+            .eq("course_id", courseId);
+          if ((count ?? 0) > 0) {
+            goToCourse(courseId, true);
+          } else {
+            throw new Error("A geração demorou mais que o esperado e não concluiu. Tente novamente.");
+          }
+        } else {
+          throw new Error("A geração foi interrompida antes de criar o curso. Tente novamente.");
         }
       }
     } catch (error: any) {

@@ -385,7 +385,12 @@ Deno.serve(async (req: Request) => {
 
   // Start processing in background, return stream immediately
   (async () => {
+    // Heartbeat: during the long 2.5-pro elevation there are no progress events for
+    // ~100s. Without a keepalive the client can't tell "still working" from "died".
+    // A 12s heartbeat lets the client watchdog use a short stall timeout.
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
     try {
+      heartbeat = setInterval(() => sendSSE({ type: "heartbeat" }), 12000);
       const authHeader = req.headers.get("Authorization");
       if (!authHeader) {
         sendSSE({ type: "error", message: "Not authenticated" });
@@ -632,6 +637,10 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
         .select().single();
 
       if (courseError) throw courseError;
+
+      // Tell the client the courseId EARLY so its watchdog can recover the (partial)
+      // course from the DB even if the stream dies before `complete`.
+      sendSSE({ type: "course_created", courseId: course.id });
 
       // Reassign sources
       if (use_sources && body.temp_course_id) {
@@ -954,6 +963,8 @@ Strict design directive: the output is 100% visual, built exclusively from geome
       console.error("Generate course error:", error);
       sendSSE({ type: "error", message: error.message || "Erro interno ao gerar curso" });
       controller?.close();
+    } finally {
+      if (heartbeat) clearInterval(heartbeat);
     }
   })();
 
