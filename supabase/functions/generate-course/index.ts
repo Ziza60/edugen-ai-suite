@@ -18,7 +18,7 @@ const PLAN_LIMITS = {
 const TESTING_MODE = true;
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
-async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false) {
+async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false, timeoutMs = 90000) {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
@@ -34,7 +34,14 @@ async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = 
     throw new Error("GEMINI_API_KEY não configurada.");
   }
 
-    const res = await fetch(url, {
+  // Hard timeout: a single slow/hung Gemini call must not consume the whole edge
+  // wall-clock budget and leave generation stuck. Aborts cleanly; the elevation
+  // and assessment callers already treat a failure as non-blocking.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -47,7 +54,17 @@ async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = 
         temperature: 0.1, // Even lower temperature for more predictable structure
         ...(isJson ? { response_format: { type: "json_object" } } : {})
       }),
+      signal: controller.signal,
     });
+  } catch (e: any) {
+    throw new Error(
+      e?.name === "AbortError"
+        ? `Gemini timeout (${aiModel}, ${timeoutMs}ms)`
+        : `Gemini fetch error (${aiModel}): ${e?.message || e}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!res.ok) {
     const errText = await res.text();
@@ -733,10 +750,11 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
             .select().single();
           if (moduleError) throw moduleError;
 
-          // Generate quiz + flashcards for THIS module. Non-blocking, with a robust
-          // parse + one retry: the assessment JSON was failing to parse for every
-          // module (stray tokens / truncation), so quizzes & flashcards were silently
-          // never saved.
+          // Run quiz/flashcards AND the illustration CONCURRENTLY (they are
+          // independent and both optional). Doing them in series pushed the
+          // per-module chain past the edge wall-clock limit, leaving generation
+          // stuck at ~78%. Both swallow their own errors (non-blocking).
+          const assessmentTask = (async () => {
           if (include_quiz || include_flashcards) {
             const assessmentPrompt = buildAssessmentPrompt(
               mod.title, mod.summary || mod.title, title, theme || "",
@@ -780,8 +798,10 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
               }
             }
           }
+          })();
 
           // Generate AI image (non-blocking)
+          const imageTask = (async () => {
           if (include_images) {
             try {
               const imagePrompt = `Generate a premium, minimalist conceptual illustration evoking the theme "${mod.title}" (course: "${title}") — a clean graphic asset for an educational interface.
@@ -791,6 +811,8 @@ Strict design directive: the output is 100% visual, built exclusively from geome
               // Native Gemini 2.5 Flash Image (Nano Banana) via personal GEMINI_API_KEY.
               // Replaces the Lovable gateway. Imagen 4 was avoided (deprecated 2026-08-17).
               const geminiKey = Deno.env.get("GEMINI_API_KEY");
+              const imgController = new AbortController();
+              const imgTimer = setTimeout(() => imgController.abort(), 45000);
               const imgRes = await fetch(
                 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
                 {
@@ -806,8 +828,9 @@ Strict design directive: the output is 100% visual, built exclusively from geome
                       imageConfig: { aspectRatio: "16:9" },
                     },
                   }),
+                  signal: imgController.signal,
                 },
-              );
+              ).finally(() => clearTimeout(imgTimer));
 
               if (imgRes.ok) {
                 const imgData = await imgRes.json();
@@ -842,7 +865,9 @@ Strict design directive: the output is 100% visual, built exclusively from geome
               console.error("Image generation failed for module", mod.title, imgErr);
             }
           }
+          })();
 
+          await Promise.all([assessmentTask, imageTask]);
           sendSSE({ type: "module_done", module: i + 1, total: actualModules });
         }));
       }
