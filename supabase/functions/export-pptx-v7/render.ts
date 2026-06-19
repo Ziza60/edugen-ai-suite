@@ -693,15 +693,29 @@ function renderBento(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const rows = Math.ceil(n / cols);
   const gap = 0.3;
   const cardW = (CW - gap * (cols - 1)) / cols;
-  const cardH = (CONTENT_H - gap * (rows - 1)) / rows;
   const chip = 0.5;
+  // Size cards to their CONTENT (chip + text lines), not the full row height,
+  // then centre the block vertically — otherwise a single row of short items
+  // stretches into tall, mostly-empty boxes (the "big box, little text" bug).
+  const fullCardH = (CONTENT_H - gap * (rows - 1)) / rows;
+  const innerW = cardW - 0.56;
+  const perLine = Math.max(12, innerW * (n <= 2 ? 9.5 : 11));
+  let textLines = 1;
+  for (const b of items) {
+    textLines = Math.max(textLines, Math.min(5, Math.ceil(b.trim().length / perLine)));
+  }
+  const padTop = 0.28, gapBelowChip = 0.14, lineH = n <= 2 ? 0.3 : 0.27, padBottom = 0.24;
+  const naturalH = padTop + chip + gapBelowChip + textLines * lineH + padBottom;
+  const cardH = Math.min(fullCardH, Math.max(1.4, naturalH));
+  const blockH = rows * cardH + gap * (rows - 1);
+  const startY = CONTENT_Y + Math.max(0, (CONTENT_H - blockH) / 2);
   items.forEach((b, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
     const itemsInRow = Math.min(cols, n - row * cols);
     const rowOffset = (CW - (itemsInRow * cardW + gap * (itemsInRow - 1))) / 2;
     const x = ML + rowOffset + col * (cardW + gap);
-    const y = CONTENT_Y + row * (cardH + gap);
+    const y = startY + row * (cardH + gap);
     slide.addShape("roundRect", {
       x, y, w: cardW, h: cardH, rectRadius: 0.1,
       fill: { color: d.surface }, line: { color: d.border, width: 1 },
@@ -1383,20 +1397,24 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       x: 0, y: 0, w: W, h: H,
       fill: { color: "000000", transparency: 42 }, line: { type: "none" },
     });
-    slide.addText("“", {
-      x: 0.6, y: 0.05, w: 3, h: 2.4,
-      fontFace: "Georgia", fontSize: 200, bold: true,
-      color: "FFFFFF", transparency: 82, align: "left", valign: "top",
-    });
-    // Closing mark too (was missing — only the opening glyph showed), mirrored
-    // bottom-right so the cinematic quote reads as a complete quotation.
-    slide.addText("”", {
-      // Mirror the opening glyph exactly: same 0.05 inset from the bottom edge as
-      // the opening has from the top, so both marks sit equidistant from the text.
-      x: W - 3.6, y: H - 2.45, w: 3, h: 2.4,
-      fontFace: "Georgia", fontSize: 200, bold: true,
-      color: "FFFFFF", transparency: 82, align: "right", valign: "bottom",
-    });
+    // Marks placed SYMMETRICALLY about the text block's vertical centre
+    // (textCenter ∓ offset) with a tight box + middle valign, so both sit truly
+    // equidistant from the text. Edge-anchored boxes drifted because the 200pt
+    // glyph hangs from the top of its line regardless of valign.
+    {
+      const textCenter = 1.9 + 3.2 / 2; // text box: y=1.9, h=3.2
+      const qOff = 1.7, qH = 1.95;
+      slide.addText("“", {
+        x: 0.6, y: textCenter - qOff - qH / 2, w: 3, h: qH,
+        fontFace: "Georgia", fontSize: 200, bold: true,
+        color: "FFFFFF", transparency: 82, align: "left", valign: "middle",
+      });
+      slide.addText("”", {
+        x: W - 3.6, y: textCenter + qOff - qH / 2, w: 3, h: qH,
+        fontFace: "Georgia", fontSize: 200, bold: true,
+        color: "FFFFFF", transparency: 82, align: "right", valign: "middle",
+      });
+    }
     slide.addText(text, {
       x: 1.2, y: 1.9, w: W - 2.4, h: 3.2,
       fontFace: FONT_TITLE,
@@ -1451,20 +1469,21 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   // Decorative quotation marks as a subtle adornment in the corners (not behind
   // the text), in an elegant serif and the accent colour at 20% opacity — the
   // "respiro" premium look. pptxgenjs renders text transparency as <a:alpha>.
-  slide.addText("“", {
-    x: ML - 0.1, y: 0.05, w: 3, h: 2.4,
-    fontFace: "Georgia", fontSize: 200, bold: true,
-    color: d.accent2, transparency: 80,
-    align: "left", valign: "top",
-  });
-  slide.addText("”", {
-    // Mirror the opening glyph exactly (same 0.05 inset from the bottom edge as
-    // the opening has from the top) so both marks are equidistant from the text.
-    x: W - 3 - (ML - 0.1), y: H - 2.45, w: 3, h: 2.4,
-    fontFace: "Georgia", fontSize: 200, bold: true,
-    color: d.accent2, transparency: 80,
-    align: "right", valign: "bottom",
-  });
+  // Symmetric about the text block's vertical centre (see cinematic branch above).
+  {
+    const textCenter = 2.15 + 3.0 / 2; // text box: y=2.15, h=3.0
+    const qOff = 1.7, qH = 1.95;
+    slide.addText("“", {
+      x: ML - 0.1, y: textCenter - qOff - qH / 2, w: 3, h: qH,
+      fontFace: "Georgia", fontSize: 200, bold: true,
+      color: d.accent2, transparency: 80, align: "left", valign: "middle",
+    });
+    slide.addText("”", {
+      x: W - 3 - (ML - 0.1), y: textCenter + qOff - qH / 2, w: 3, h: qH,
+      fontFace: "Georgia", fontSize: 200, bold: true,
+      color: d.accent2, transparency: 80, align: "right", valign: "middle",
+    });
+  }
   // The quote: centred, italic, in the modern sans body face (not serif) with a
   // generous side margin so it never touches the edges. Scales for longer text.
   slide.addText(text, {
@@ -1762,10 +1781,14 @@ function renderRadial(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
     const ang = -Math.PI / 2 + (2 * Math.PI * i) / N;
     return { x: cx + ringRx * Math.cos(ang), y: cy + ringRy * Math.sin(ang) };
   });
-  // connectors (drawn first, behind the nodes)
+  // connectors (drawn first, behind the nodes). PowerPoint DROPS shapes whose
+  // <a:ext> is negative, so a raw negative w/h (nodes left of / above the hub)
+  // renders no line at all. Use an absolute bounding box + flipH/flipV instead.
   pos.forEach((p) => {
     slide.addShape("line", {
-      x: cx, y: cy, w: p.x - cx, h: p.y - cy,
+      x: Math.min(cx, p.x), y: Math.min(cy, p.y),
+      w: Math.abs(p.x - cx), h: Math.abs(p.y - cy),
+      flipH: p.x < cx, flipV: p.y < cy,
       line: { color: d.border, width: 1.25 },
     });
   });
@@ -1774,11 +1797,23 @@ function renderRadial(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
     x: cx - hubR, y: cy - hubR, w: hubR * 2, h: hubR * 2,
     fill: { color: d.accent }, line: { type: "none" },
   });
-  const hub = s.title.split(/\s+/).slice(0, 2).join(" ").slice(0, 18);
+  // Central label = the SUBJECT of the title, not its first two words (which are
+  // often a framing noun + connector, e.g. "Pilares da" → meaningless). Drop a
+  // leading framing word and any connectors, then keep the key term(s).
+  const HUB_STOP = new Set([
+    "a", "o", "as", "os", "da", "de", "do", "das", "dos", "e", "em", "na", "no",
+    "nas", "nos", "por", "para", "com", "sobre", "the", "of", "to", "and", "in", "on", "for",
+  ]);
+  const hubWords = s.title.split(/\s+/).filter(Boolean);
+  let hs = 0;
+  if (hubWords.length > 2 && HUB_STOP.has((hubWords[1] || "").toLowerCase())) hs = 1;
+  while (hs < hubWords.length && HUB_STOP.has((hubWords[hs] || "").toLowerCase())) hs++;
+  const hubPick = (hs < hubWords.length ? hubWords.slice(hs) : hubWords).slice(0, 2);
+  const hub = hubPick.join(" ").slice(0, 22);
   slide.addText(hub, {
-    x: cx - hubR, y: cy - hubR, w: hubR * 2, h: hubR * 2,
-    fontFace: FONT_BODY, fontSize: 12, bold: true, color: d.onAccent,
-    align: "center", valign: "middle", lineSpacingMultiple: 0.95,
+    x: cx - hubR + 0.05, y: cy - hubR, w: hubR * 2 - 0.1, h: hubR * 2,
+    fontFace: FONT_BODY, fontSize: hub.length > 14 ? 11 : 12, bold: true,
+    color: d.onAccent, align: "center", valign: "middle", lineSpacingMultiple: 0.95,
   });
   // satellites
   const satW = 2.5, satH = 1.0;
