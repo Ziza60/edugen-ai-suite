@@ -647,12 +647,25 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
       // wall-clock limit (the course got stuck at ~85% when the function was killed).
       // Running every module in one parallel batch keeps total wall-time ≈ a single
       // module chain (~90s), independent of module count (max 10).
+      // ── Wall-clock blindagem ──
+      // The edge function is killed at ~150s. We track a soft budget and SKIP the
+      // optional steps (2.5-pro elevation, quiz) when time runs low, so the function
+      // ALWAYS finishes and emits `complete` instead of being killed mid-stream
+      // (which froze the UI at e.g. 78%). Module CONTENT is saved early (right after
+      // the template) so nothing is ever lost; images run in the BACKGROUND.
+      const GEN_START = Date.now();
+      const SOFT_DEADLINE_MS = 110000;
+      const msLeft = () => SOFT_DEADLINE_MS - (Date.now() - GEN_START);
+      const imageTasks: Promise<unknown>[] = [];
       const BATCH_SIZE = structure.modules.length;
       for (let batchStart = 0; batchStart < structure.modules.length; batchStart += BATCH_SIZE) {
         const batch = structure.modules.slice(batchStart, batchStart + BATCH_SIZE);
 
         await Promise.all(batch.map(async (mod: any, batchIdx: number) => {
           const i = batchStart + batchIdx;
+          // Per-module isolation: one module failing/timing out must NEVER abort
+          // the whole course (Promise.all would reject). We always advance progress.
+          try {
 
           sendSSE({
             type: "module_start",
@@ -701,61 +714,60 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           // module is long; smaller caps were truncating modules mid-content/table.
           const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 8000);
 
-          // Step C: Quality Elevation
-          let elevatedContent = refinedContent;
-          try {
-            console.log(`[generate-course] Quality Elevation: module ${i + 1} "${mod.title}"`);
-            const qualityPrompt = buildQualityElevationPrompt(
-              mod.title, refinedContent, title,
-              target_audience || "profissionais da área", language || "pt-BR",
-              theme || "",
-            );
-            const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 8000);
-            // Strip markdown fences AND any preamble before the first ## heading
-            const strippedFences = qualityResult
-              .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
-            const firstHeading = strippedFences.indexOf("\n## ");
-            const cleanedQuality = firstHeading > 0
-              ? strippedFences.slice(firstHeading).trim()
-              : strippedFences.startsWith("## ")
-                ? strippedFences
-                : strippedFences;
-            // Additional preamble guard: if result starts with a conversational line
-            // (no ##), extract from first ## occurrence
-            const preambleGuard = (s: string) => {
-              const idx = s.search(/^## /m);
-              return idx > 0 ? s.slice(idx).trim() : s;
-            };
-            const finalQuality = preambleGuard(cleanedQuality);
-            // Elevation now also completes missing sections, so the result should
-            // grow, not shrink. Only fall back to the refined text if it came back
-            // suspiciously short (<50% = likely truncated/broken).
-            if (finalQuality.length >= refinedContent.length * 0.5) {
-              elevatedContent = finalQuality;
-              console.log(`[generate-course] Quality Elevation OK: ${refinedContent.length} → ${elevatedContent.length} chars`);
-            } else {
-              console.warn(`[generate-course] Quality Elevation result too short, keeping refined content`);
-            }
-          } catch (elevationErr: any) {
-            console.warn(`[generate-course] Quality Elevation failed (non-blocking): ${elevationErr.message}`);
-          }
-
-          // Step D: Save
+          // Step D (EARLY SAVE): persist the refined module IMMEDIATELY so its
+          // content is never lost if a later optional step times out or is skipped.
           const { data: moduleData, error: moduleError } = await serviceClient
             .from("course_modules")
             .insert({
               course_id: course.id, title: mod.title,
-              content: elevatedContent, order_index: i,
+              content: refinedContent, order_index: i,
             })
             .select().single();
           if (moduleError) throw moduleError;
+
+          // Step C: Quality Elevation — best-effort, TIME-BUDGETED, runs in PARALLEL
+          // with the assessment below. The 2.5-pro pass needs ~70s, so we only start
+          // it when enough budget remains; otherwise we keep the saved refined text.
+          // On success it UPDATEs the already-saved module.
+          const elevationDone = (async () => {
+            if (msLeft() < 65000) {
+              console.warn(`[generate-course] Elevation SKIPPED (low budget) for module ${i + 1}`);
+              return;
+            }
+            try {
+              console.log(`[generate-course] Quality Elevation: module ${i + 1} "${mod.title}"`);
+              const qualityPrompt = buildQualityElevationPrompt(
+                mod.title, refinedContent, title,
+                target_audience || "profissionais da área", language || "pt-BR",
+                theme || "",
+              );
+              const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 8000);
+              const strippedFences = qualityResult
+                .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
+              const firstHeading = strippedFences.indexOf("\n## ");
+              const cleanedQuality = firstHeading > 0
+                ? strippedFences.slice(firstHeading).trim()
+                : strippedFences;
+              const hIdx = cleanedQuality.search(/^## /m);
+              const finalQuality = hIdx > 0 ? cleanedQuality.slice(hIdx).trim() : cleanedQuality;
+              if (finalQuality.length >= refinedContent.length * 0.5) {
+                await serviceClient.from("course_modules")
+                  .update({ content: finalQuality }).eq("id", moduleData.id);
+                console.log(`[generate-course] Quality Elevation OK: ${refinedContent.length} → ${finalQuality.length} chars`);
+              } else {
+                console.warn(`[generate-course] Quality Elevation too short, keeping refined`);
+              }
+            } catch (elevationErr: any) {
+              console.warn(`[generate-course] Quality Elevation failed (non-blocking): ${elevationErr.message}`);
+            }
+          })();
 
           // Run quiz/flashcards AND the illustration CONCURRENTLY (they are
           // independent and both optional). Doing them in series pushed the
           // per-module chain past the edge wall-clock limit, leaving generation
           // stuck at ~78%. Both swallow their own errors (non-blocking).
           const assessmentTask = (async () => {
-          if (include_quiz || include_flashcards) {
+          if ((include_quiz || include_flashcards) && msLeft() > 15000) {
             const assessmentPrompt = buildAssessmentPrompt(
               mod.title, mod.summary || mod.title, title, theme || "",
               language || "pt-BR", !!include_quiz, !!include_flashcards,
@@ -867,9 +879,28 @@ Strict design directive: the output is 100% visual, built exclusively from geome
           }
           })();
 
-          await Promise.all([assessmentTask, imageTask]);
+          // Image runs in the BACKGROUND (never blocks readiness). We only await the
+          // content-critical work: elevation (best-effort) + assessment.
+          imageTasks.push(imageTask);
+          await Promise.all([elevationDone, assessmentTask]);
           sendSSE({ type: "module_done", module: i + 1, total: actualModules });
+          } catch (modErr: any) {
+            console.error(`[generate-course] Module ${i + 1} failed (non-blocking): ${modErr?.message || modErr}`);
+            sendSSE({ type: "module_done", module: i + 1, total: actualModules });
+          }
         }));
+      }
+
+      // Flush background images so they finish even after the response closes
+      // (best-effort, never blocks course completion).
+      if (imageTasks.length) {
+        const allImages = Promise.allSettled(imageTasks);
+        const wu = (globalThis as any).EdgeRuntime?.waitUntil;
+        if (typeof wu === "function") {
+          wu.call((globalThis as any).EdgeRuntime, allImages);
+        } else {
+          try { await Promise.race([allImages, new Promise((r) => setTimeout(r, Math.max(0, msLeft())))]); } catch { /* best-effort */ }
+        }
       }
 
       // ── STAGE 4: Log usage ──
