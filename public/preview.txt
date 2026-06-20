@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>PPTX Preview</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#060d1f;font-family:system-ui,sans-serif;padding:20px}
+h1{font-size:12px;color:#475569;margin-bottom:16px;letter-spacing:.04em}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+.wrap{display:flex;flex-direction:column;gap:6px}
+.n{font-size:11px;color:#64748b;font-weight:600}
+svg{width:100%;height:auto;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.7);display:block;aspect-ratio:16/9}
+</style></head>
+<body>
+<h1>PPTX Preview — amostra.pptx · Slides 1–12 / 12</h1>
+<div class="grid">
+<div class="wrap"><span class="n">Slide 1</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#071120"/>
+    <rect x="53.2" y="194.0" width="83.6" height="6.8" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="56.2" y="230.7" font-size="24.3" font-weight="bold" fill="#FFFFFF" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Comunicação Eficaz no Trabalho</text>
+    <text x="56.2" y="400.8" font-size="7.9" font-weight="normal" fill="#C9D4E0" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Um guia prático para apresentar ideias com clareza</text>
+    <text x="56.2" y="525.3" font-size="6.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EDUGENAI</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 2</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#0A1628"/>
+    <text x="56.2" y="70.8" font-size="6.3" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">AGENDA</text>
+    <text x="56.2" y="112.2" font-size="15.8" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Conteúdo do curso</text>
+    <text x="56.2" y="195.2" font-size="11.6" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">01</text>
+    <text x="113.2" y="193.8" font-size="7.9" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Estruturando uma Mensagem Clara</text>
+    <text x="56.2" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EduGenAI</text>
+    <text x="957.1" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">2</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 3</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#071120"/>
+    <text x="56.2" y="126.5" font-size="7.9" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">MÓDULO</text>
+    <text x="50.1" y="242.9" font-size="30.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">01</text>
+    <rect x="56.2" y="342.4" width="83.6" height="6.8" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="56.2" y="386.9" font-size="22.2" font-weight="bold" fill="#FFFFFF" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Estruturando uma Mensagem Clara</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 4</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#0A1628"/>
+    <rect x="53.2" y="41.8" width="5.3" height="38.0" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="69.9" y="50.9" font-size="6.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">FUNDAMENTOS</text>
+    <text x="69.9" y="87.9" font-size="13.7" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Os pilares de uma boa comunicação</text>
+    <rect x="53.2" y="161.9" width="10.6" height="10.7" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="80.5" y="169.1" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Clareza no objetivo</text>
+    <rect x="53.2" y="266.5" width="10.6" height="10.7" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="80.5" y="273.7" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Empatia com o público</text>
+    <rect x="53.2" y="371.1" width="10.6" height="10.7" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="80.5" y="378.3" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Estrutura lógica</text>
+    <rect x="53.2" y="475.7" width="10.6" height="10.7" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="80.5" y="483.0" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Chamada à ação</text>
+    <text x="56.2" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EduGenAI</text>
+    <text x="957.1" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">4</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 5</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#0A1628"/>
+    <rect x="53.2" y="41.8" width="5.3" height="38.0" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="69.9" y="50.9" font-size="6.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">FUNDAMENTOS</text>
+    <text x="69.9" y="87.9" font-size="13.7" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Tipos de mensagem</text>
+    <rect x="53.2" y="178.8" width="442.1" height="133.2" rx="8.0" fill="#152740" stroke="#263A54" stroke-width="0.7" opacity="1.00"/>
+    <rect x="53.2" y="178.8" width="442.1" height="6.1" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="75.2" y="211.1" font-size="9.5" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">01</text>
+    <text x="75.2" y="248.6" font-size="7.9" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Informativa</text>
+    <text x="75.2" y="282.0" font-size="6.3" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Transmite fatos e dados</text>
+    <rect x="518.1" y="178.8" width="442.1" height="133.2" rx="8.0" fill="#152740" stroke="#263A54" stroke-width="0.7" opacity="1.00"/>
+    <rect x="518.1" y="178.8" width="442.1" height="6.1" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="540.1" y="211.1" font-size="9.5" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">02</text>
+    <text x="540.1" y="248.6" font-size="7.9" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Persuasiva</text>
+    <text x="540.1" y="282.0" font-size="6.3" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Busca convencer e engajar</text>
+    <rect x="53.2" y="334.8" width="442.1" height="133.2" rx="8.0" fill="#152740" stroke="#263A54" stroke-width="0.7" opacity="1.00"/>
+    <rect x="53.2" y="334.8" width="442.1" height="6.1" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="75.2" y="367.1" font-size="9.5" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">03</text>
+    <text x="75.2" y="404.6" font-size="7.9" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Instrutiva</text>
+    <text x="75.2" y="438.0" font-size="6.3" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Orienta passo a passo</text>
+    <rect x="518.1" y="334.8" width="442.1" height="133.2" rx="8.0" fill="#152740" stroke="#263A54" stroke-width="0.7" opacity="1.00"/>
+    <rect x="518.1" y="334.8" width="442.1" height="6.1" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="540.1" y="367.1" font-size="9.5" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">04</text>
+    <text x="540.1" y="404.6" font-size="7.9" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Relacional</text>
+    <text x="540.1" y="438.0" font-size="6.3" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Fortalece vínculos</text>
+    <text x="56.2" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EduGenAI</text>
+    <text x="957.1" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">5</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 6</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#0A1628"/>
+    <rect x="53.2" y="41.8" width="5.3" height="38.0" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="69.9" y="50.9" font-size="6.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">MÉTODO</text>
+    <text x="69.9" y="87.9" font-size="13.7" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Como preparar uma fala</text>
+    <rect x="53.2" y="322.2" width="906.9" height="2.3" rx="0" fill="#D4A24C" stroke="none" opacity="0.55"/>
+    <ellipse cx="166.6" cy="323.4" rx="20.5" ry="20.5" fill="#D4A24C" stroke="none" opacity="0.78"/>
+    <ellipse cx="166.6" cy="323.4" rx="13.7" ry="13.7" fill="#2E6DA4" stroke="none" opacity="1.00"/>
+    <text x="166.6" y="325.7" font-size="6.3" font-weight="bold" fill="#FFFFFF" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">1</text>
+    <text x="166.6" y="282.3" font-size="7.9" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Definir o objetivo</text>
+    <text x="166.6" y="245.0" font-size="6.1" font-weight="normal" fill="#AEC0D2" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">O que a audiência deve fazer depois</text>
+    <ellipse cx="393.3" cy="323.4" rx="20.5" ry="20.5" fill="#D4A24C" stroke="none" opacity="0.78"/>
+    <ellipse cx="393.3" cy="323.4" rx="13.7" ry="13.7" fill="#2E6DA4" stroke="none" opacity="1.00"/>
+    <text x="393.3" y="325.7" font-size="6.3" font-weight="bold" fill="#FFFFFF" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">2</text>
+    <text x="393.3" y="370.3" font-size="7.9" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Mapear o público</text>
+    <text x="393.3" y="406.5" font-size="6.1" font-weight="normal" fill="#AEC0D2" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Nível, interesses, objeções</text>
+    <ellipse cx="620.0" cy="323.4" rx="20.5" ry="20.5" fill="#D4A24C" stroke="none" opacity="0.78"/>
+    <ellipse cx="620.0" cy="323.4" rx="13.7" ry="13.7" fill="#2E6DA4" stroke="none" opacity="1.00"/>
+    <text x="620.0" y="325.7" font-size="6.3" font-weight="bold" fill="#FFFFFF" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">3</text>
+    <text x="620.0" y="282.3" font-size="7.9" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Estruturar a mensagem</text>
+    <text x="620.0" y="245.0" font-size="6.1" font-weight="normal" fill="#AEC0D2" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Abertura, corpo, fechamento</text>
+    <ellipse cx="846.7" cy="323.4" rx="20.5" ry="20.5" fill="#D4A24C" stroke="none" opacity="0.78"/>
+    <ellipse cx="846.7" cy="323.4" rx="13.7" ry="13.7" fill="#2E6DA4" stroke="none" opacity="1.00"/>
+    <text x="846.7" y="325.7" font-size="6.3" font-weight="bold" fill="#FFFFFF" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">4</text>
+    <text x="846.7" y="370.3" font-size="7.9" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Ensaiar em voz alta</text>
+    <text x="846.7" y="406.5" font-size="6.1" font-weight="normal" fill="#AEC0D2" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Ajustar ritmo e tempo</text>
+    <text x="56.2" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EduGenAI</text>
+    <text x="957.1" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">6</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 7</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#0A1628"/>
+    <rect x="53.2" y="41.8" width="5.3" height="38.0" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="69.9" y="50.9" font-size="6.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">MÉTODO</text>
+    <text x="69.9" y="87.9" font-size="13.7" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Etapas do ciclo de feedback</text>
+    <rect x="53.2" y="235.9" width="221.0" height="175.0" rx="0" fill="#2E6DA4" stroke="#263A54" stroke-width="0.7" opacity="1.00"/>
+    <text x="156.1" y="281.9" font-size="13.7" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">1</text>
+    <text x="156.1" y="312.7" font-size="7.4" font-weight="normal" fill="#FFFFFF" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Observar o comportamento</text>
+    <rect x="281.8" y="235.9" width="221.0" height="175.0" rx="0" fill="#152740" stroke="#263A54" stroke-width="0.7" opacity="1.00"/>
+    <text x="394.2" y="281.9" font-size="13.7" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">2</text>
+    <text x="394.2" y="312.7" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Descrever o impacto</text>
+    <rect x="510.5" y="235.9" width="221.0" height="175.0" rx="0" fill="#2E6DA4" stroke="#263A54" stroke-width="0.7" opacity="1.00"/>
+    <text x="622.9" y="281.9" font-size="13.7" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">3</text>
+    <text x="622.9" y="312.7" font-size="7.4" font-weight="normal" fill="#FFFFFF" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Sugerir a mudança</text>
+    <rect x="739.1" y="235.9" width="221.0" height="175.0" rx="0" fill="#152740" stroke="#263A54" stroke-width="0.7" opacity="1.00"/>
+    <text x="851.5" y="281.9" font-size="13.7" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">4</text>
+    <text x="851.5" y="312.7" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">Combinar próximos passos</text>
+    <text x="56.2" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EduGenAI</text>
+    <text x="957.1" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">7</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 8</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#0A1628"/>
+    <rect x="53.2" y="41.8" width="5.3" height="38.0" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="69.9" y="50.9" font-size="6.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">PRÁTICA</text>
+    <text x="69.9" y="87.9" font-size="13.7" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Reunião improvisada vs planejada</text>
+    <rect x="53.2" y="114.1" width="434.5" height="418.5" rx="8.0" fill="#152740" stroke="#263A54" stroke-width="0.7" opacity="1.00"/>
+    <rect x="53.2" y="114.1" width="434.5" height="47.2" rx="0" fill="#2E6DA4" stroke="none" opacity="1.00"/>
+</svg></div>
+<div class="wrap"><span class="n">Slide 9</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#0A1628"/>
+    <rect x="53.2" y="41.8" width="5.3" height="38.0" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="69.9" y="50.9" font-size="6.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">PRÁTICA</text>
+    <text x="69.9" y="87.9" font-size="13.7" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Barreiras comuns à clareza</text>
+    <rect x="68.4" y="148.4" width="349.6" height="350.0" rx="0" fill="#2E6DA4" stroke="#0A1628" stroke-width="0.7" opacity="1.00"/>
+    <rect x="68.4" y="148.4" width="349.6" height="350.0" rx="0" fill="#587A8E" stroke="#0A1628" stroke-width="0.7" opacity="1.00"/>
+    <rect x="68.4" y="148.4" width="349.6" height="350.0" rx="0" fill="#818878" stroke="#0A1628" stroke-width="0.7" opacity="1.00"/>
+    <rect x="68.4" y="148.4" width="349.6" height="350.0" rx="0" fill="#AB9562" stroke="#0A1628" stroke-width="0.7" opacity="1.00"/>
+    <rect x="68.4" y="148.4" width="349.6" height="350.0" rx="0" fill="#D4A24C" stroke="#0A1628" stroke-width="0.7" opacity="1.00"/>
+    <ellipse cx="243.2" cy="323.4" rx="87.4" ry="87.5" fill="#0A1628" stroke="none" opacity="1.00"/>
+    <text x="243.2" y="331.0" font-size="21.1" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">5</text>
+    <ellipse cx="472.0" cy="156.0" rx="12.2" ry="12.2" fill="#2E6DA4" stroke="none" opacity="1.00"/>
+    <text x="500.8" y="158.5" font-size="6.9" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Excesso de jargão</text>
+    <ellipse cx="472.0" cy="239.7" rx="12.2" ry="12.2" fill="#587A8E" stroke="none" opacity="1.00"/>
+    <text x="500.8" y="242.2" font-size="6.9" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Falta de contexto</text>
+    <ellipse cx="472.0" cy="323.4" rx="12.2" ry="12.2" fill="#818878" stroke="none" opacity="1.00"/>
+    <text x="500.8" y="325.8" font-size="6.9" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Mensagens longas demais</text>
+    <ellipse cx="472.0" cy="407.1" rx="12.2" ry="12.2" fill="#AB9562" stroke="none" opacity="1.00"/>
+    <text x="500.8" y="409.5" font-size="6.9" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Ausência de exemplos</text>
+    <ellipse cx="472.0" cy="490.8" rx="12.2" ry="12.2" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="500.8" y="493.2" font-size="6.9" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Tom inadequado</text>
+    <text x="56.2" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EduGenAI</text>
+    <text x="957.1" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">9</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 10</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#071120"/>
+    <text x="506.7" y="124.0" font-size="6.3" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">IMPACTO</text>
+    <text x="506.7" y="269.5" font-size="30.0" font-weight="bold" fill="#FFFFFF" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">70%</text>
+    <text x="506.7" y="369.2" font-size="10.6" font-weight="normal" fill="#C9D4E0" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">dos problemas em projetos têm origem em falha de comunicação</text>
+    <text x="56.2" y="555.3" font-size="6.0" font-weight="normal" fill="#8595A6" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EduGenAI</text>
+    <text x="957.1" y="555.3" font-size="6.0" font-weight="normal" fill="#8595A6" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">10</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 11</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#152740"/>
+    <rect x="0.0" y="0.0" width="13.7" height="570.7" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="48.6" y="159.2" font-size="30.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">“</text>
+    <text x="964.7" y="463.5" font-size="30.0" font-weight="bold" fill="#D4A24C" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">”</text>
+    <text x="506.7" y="284.2" font-size="17.9" font-weight="normal" fill="#F1F5F9" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">A boa comunicação não é o que você diz, mas o que o outro entende.</text>
+    <rect x="468.7" y="412.4" width="76.0" height="4.2" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="56.2" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EduGenAI</text>
+    <text x="957.1" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">11</text>
+</svg></div>
+<div class="wrap"><span class="n">Slide 12</span>
+<svg viewBox="0 0 760 428" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
+    <rect width="760" height="428" fill="#0A1628"/>
+    <rect x="53.2" y="41.8" width="5.3" height="38.0" rx="0" fill="#D4A24C" stroke="none" opacity="1.00"/>
+    <text x="69.9" y="50.9" font-size="6.0" font-weight="bold" fill="#D4A24C" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">MÓDULO 1</text>
+    <text x="69.9" y="87.9" font-size="13.7" font-weight="bold" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Principais aprendizados</text>
+    <rect x="53.2" y="118.7" width="442.8" height="189.5" rx="8.0" fill="#152740" stroke="none" opacity="1.00"/>
+    <text x="84.4" y="216.7" font-size="9.0" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">✓</text>
+    <text x="110.9" y="216.1" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Defina o objetivo antes de falar</text>
+    <rect x="517.3" y="118.7" width="442.8" height="189.5" rx="8.0" fill="#152740" stroke="none" opacity="1.00"/>
+    <text x="548.5" y="216.7" font-size="9.0" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">✓</text>
+    <text x="575.0" y="216.1" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Adapte a mensagem ao público</text>
+    <rect x="53.2" y="338.6" width="442.8" height="189.5" rx="8.0" fill="#152740" stroke="none" opacity="1.00"/>
+    <text x="84.4" y="436.6" font-size="9.0" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">✓</text>
+    <text x="110.9" y="436.0" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Estruture com começo, meio e fim</text>
+    <rect x="517.3" y="338.6" width="442.8" height="189.5" rx="8.0" fill="#152740" stroke="none" opacity="1.00"/>
+    <text x="548.5" y="436.6" font-size="9.0" font-weight="bold" fill="#D4A24C" text-anchor="middle" style="font-family:'Segoe UI',Arial,sans-serif">✓</text>
+    <text x="575.0" y="436.0" font-size="7.4" font-weight="normal" fill="#F1F5F9" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">Feedback é um ciclo, não um evento</text>
+    <text x="56.2" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="start" style="font-family:'Segoe UI',Arial,sans-serif">EduGenAI</text>
+    <text x="957.1" y="555.3" font-size="6.0" font-weight="normal" fill="#AEC0D2" text-anchor="end" style="font-family:'Segoe UI',Arial,sans-serif">12</text>
+</svg></div>
+</div></body></html>

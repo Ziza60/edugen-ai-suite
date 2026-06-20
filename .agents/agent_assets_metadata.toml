@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "U67it0VK_PPRvZTwV-rw9"
+uri = "file://public/preview.txt"
+type = "text"
+title = "Preview dos slides (abrir como HTML)"
