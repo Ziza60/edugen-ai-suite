@@ -2019,43 +2019,66 @@ function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
   footer(slide, d, brand, num);
 }
 
-/** Stacked pyramid — pointed triangular apex over trapezoid tiers (foundation → peak). */
+/**
+ * Stacked pyramid — pointed triangular apex over trapezoid tiers, LEFT-aligned,
+ * with the short title INSIDE each tier and a longer description pulled out to
+ * the right, joined by a connector line in that tier's colour (foundation →
+ * peak). Form adapted from a user-supplied light-theme reference; here it reads
+ * heading/body pairs and uses the active dark palette so it matches the deck.
+ * Falls back gracefully: tiers whose item has no body just show the title.
+ */
 function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
-  const items = bulletItems(s, 5);
-  const n = Math.max(items.length, 1);
-  const cx = ML + CW / 2;
-  const gap = 0.12;
-  const topY = CONTENT_Y + 0.15;
-  const tierH = (CONTENT_H - 0.3 - gap * (n - 1)) / n;
-  const maxW = Math.min(CW * 0.82, 9.4);
-  const fs = autoBodyFontSize(n, items.join("").length);
-  items.forEach((b, i) => {
-    // Continuous pyramid silhouette: each tier's width grows toward the base.
-    // Floor it so short labels never get squeezed into a razor-thin sliver.
-    const w = Math.max(maxW * ((i + 1) / n), maxW * 0.34);
-    const y = topY + i * (tierH + gap);
+  const pairs = slideItemPairs(s).slice(0, 5);
+  const n = Math.max(pairs.length, 1);
+
+  // ── geometry (16:9, left-aligned pyramid; descriptions fill the right) ──
+  const gap = 0.14;
+  const tierH = (CONTENT_H - gap * (n - 1)) / n;
+  const baseW = Math.min(5.0, CW * 0.42);          // widest (base) tier
+  const topW = Math.max(1.7, baseW * 0.34);        // narrowest (apex) tier
+  const inc = n > 1 ? (baseW - topW) / (n - 1) : 0; // linear growth per tier
+  const pcx = ML + baseW / 2;                       // pyramid centre x
+  const descX = ML + baseW + 0.9;                   // description column start
+  const descW = (W - MR) - descX;
+  const titleFs = n <= 3 ? 15 : 13;
+  const descFs = n <= 3 ? 13 : 12;
+
+  pairs.forEach((p, i) => {
+    const isTop = i === 0;
+    const w = topW + i * inc;
+    const y = CONTENT_Y + i * (tierH + gap);
     const color = n > 1 ? hexLerp(d.accent2, d.accent, i / (n - 1)) : d.accent;
-    if (i === 0) {
-      // Real pointed apex (this is the "tip" of the pyramid). Text sits in the
-      // lower, wider portion of the triangle so it isn't clipped by the point.
-      slide.addShape("triangle", {
-        x: cx - w / 2, y, w, h: tierH, fill: { color }, line: { color: d.bg, width: 2 },
+
+    // 1 · the tier shape — triangle for the pointed apex, trapezoid below.
+    slide.addShape(isTop ? "triangle" : "trapezoid", {
+      x: pcx - w / 2, y, w, h: tierH,
+      fill: { color }, line: { color: d.bg, width: 2 },
+    });
+
+    // 2 · short title INSIDE the tier. For the apex, sit it in the lower, wider
+    //     half of the triangle so the point doesn't clip it.
+    slide.addText(p.heading, {
+      x: pcx - w / 2 + 0.18,
+      y: isTop ? y + tierH * 0.32 : y,
+      w: w - 0.36, h: isTop ? tierH * 0.66 : tierH,
+      fontFace: FONT_BODY, fontSize: titleFs, bold: true, color: d.onAccent,
+      align: "center", valign: "middle", lineSpacingMultiple: 0.98,
+    });
+
+    // 3 · connector line + 4 · description, only when a body exists.
+    if (p.body && p.body.trim()) {
+      const rightEdge = pcx + w / 2;
+      slide.addShape("line", {
+        x: rightEdge - 0.05, y: y + tierH / 2,
+        w: descX - 0.2 - (rightEdge - 0.05), h: 0,
+        line: { color, width: 2 },
       });
-      slide.addText(b, {
-        x: cx - w / 2 + 0.18, y: y + tierH * 0.40, w: w - 0.36, h: tierH * 0.58,
-        fontFace: FONT_BODY, fontSize: fs, bold: true, color: d.onAccent,
-        align: "center", valign: "middle", lineSpacingMultiple: 0.98,
-      });
-    } else {
-      slide.addShape("trapezoid", {
-        x: cx - w / 2, y, w, h: tierH, fill: { color }, line: { color: d.bg, width: 2 },
-      });
-      slide.addText(b, {
-        x: cx - w / 2 + 0.25, y, w: w - 0.5, h: tierH,
-        fontFace: FONT_BODY, fontSize: fs, bold: true, color: d.onAccent,
-        align: "center", valign: "middle", lineSpacingMultiple: 0.98,
+      slide.addText(p.body, {
+        x: descX, y, w: descW, h: tierH,
+        fontFace: FONT_BODY, fontSize: descFs, color: d.text,
+        align: "left", valign: "middle", lineSpacingMultiple: 1.05,
       });
     }
   });
@@ -2369,8 +2392,15 @@ export function renderDeck(
             break;
           case "cards": {
             const nc = (s.cards ?? []).length;
-            if (nc >= 3 && nc <= 5 && cardsVar++ % 2 === 1) {
-              renderRadial(slide, s, d, brand, num, m.title);
+            if (nc >= 3 && nc <= 5) {
+              // Rotate cards across cards / radial / pyramid so a module with
+              // several card slides doesn't repeat the same grid. The pyramid
+              // (title inside + description on the right) needs heading+body —
+              // which cards always carry.
+              const v = cardsVar++ % 3;
+              if (v === 1) renderRadial(slide, s, d, brand, num, m.title);
+              else if (v === 2) renderPyramid(slide, s, d, brand, num, m.title);
+              else renderCards(slide, s, d, brand, num, m.title);
             } else {
               renderCards(slide, s, d, brand, num, m.title);
             }
@@ -2425,7 +2455,7 @@ export function renderDeck(
                 // Curated pool (v7.28): tiles dropped (bento owns the grid role),
                 // zig-zag + mountain demoted in favour of the clean bullet timeline.
                 variants.push(renderProcessArrows);
-                variants.push(renderSegmentedRing, renderPyramid, renderNetwork);
+                variants.push(renderSegmentedRing, renderNetwork);
                 if (wordShort && k <= 4) variants.push(renderBento);
                 variants.push(
                   renderSpiral, renderBulletTimeline, renderNumberedIcons,
