@@ -2026,6 +2026,14 @@ function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
  * peak). Form adapted from a user-supplied light-theme reference; here it reads
  * heading/body pairs and uses the active dark palette so it matches the deck.
  * Falls back gracefully: tiers whose item has no body just show the title.
+ *
+ * Geometry: every tier's top/bottom width is derived from a SINGLE pyramid
+ * slope (half-width grows linearly with distance below the apex). Because the
+ * tiers are separated by a small gap, each tier's floor is strictly NARROWER
+ * than the ceiling of the tier below it — a true, continuous pyramid silhouette
+ * with no overhang. The PowerPoint "trapezoid" preset can't express an arbitrary
+ * top/bottom ratio (its top edge is locked at ~50% of the base), so the trapezoid
+ * tiers are drawn as custom geometry with exact corner points.
  */
 function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
   bgFill(slide, d.bg);
@@ -2034,42 +2042,64 @@ function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   const n = Math.max(pairs.length, 1);
 
   // ── geometry (16:9, left-aligned pyramid; descriptions fill the right) ──
-  const gap = 0.14;
+  const gap = 0.16;
   const tierH = (CONTENT_H - gap * (n - 1)) / n;
-  const baseW = Math.min(5.0, CW * 0.42);          // widest (base) tier
-  const topW = Math.max(1.7, baseW * 0.34);        // narrowest (apex) tier
-  const inc = n > 1 ? (baseW - topW) / (n - 1) : 0; // linear growth per tier
-  const pcx = ML + baseW / 2;                       // pyramid centre x
-  const descX = ML + baseW + 0.9;                   // description column start
+  const totalH = n * tierH + (n - 1) * gap; // apex tip → base
+  const baseW = Math.min(5.0, CW * 0.42);   // widest (base) tier
+  const slope = baseW / 2 / totalH;         // half-width gained per unit height
+  const cx = ML + baseW / 2;                 // pyramid centre x
+  const descX = ML + baseW + 0.9;            // description column start
   const descW = (W - MR) - descX;
   const titleFs = n <= 3 ? 15 : 13;
   const descFs = n <= 3 ? 13 : 12;
+  const halfAt = (relY: number) => slope * relY; // half-width at relY below apex
 
   pairs.forEach((p, i) => {
     const isTop = i === 0;
-    const w = topW + i * inc;
     const y = CONTENT_Y + i * (tierH + gap);
+    const relTop = i * (tierH + gap);     // this tier's top, measured from apex
+    const wTop = 2 * halfAt(relTop);      // ceiling width (0 for the apex)
+    const wBot = 2 * halfAt(relTop + tierH); // floor width
     const color = n > 1 ? hexLerp(d.accent2, d.accent, i / (n - 1)) : d.accent;
 
-    // 1 · the tier shape — triangle for the pointed apex, trapezoid below.
-    slide.addShape(isTop ? "triangle" : "trapezoid", {
-      x: pcx - w / 2, y, w, h: tierH,
-      fill: { color }, line: { color: d.bg, width: 2 },
-    });
+    // 1 · the tier shape. Apex = pointed triangle; the rest = custom trapezoids
+    //     whose exact top/bottom widths follow the single pyramid slope.
+    if (isTop) {
+      slide.addShape("triangle", {
+        x: cx - wBot / 2, y, w: wBot, h: tierH,
+        fill: { color }, line: { color: d.bg, width: 2 },
+      });
+    } else {
+      slide.addShape("custGeom", {
+        x: cx - wBot / 2, y, w: wBot, h: tierH,
+        fill: { color }, line: { color: d.bg, width: 2 },
+        points: [
+          { x: (wBot - wTop) / 2, y: 0 },
+          { x: (wBot + wTop) / 2, y: 0 },
+          { x: wBot, y: tierH },
+          { x: 0, y: tierH },
+          { close: true },
+        ],
+      });
+    }
 
     // 2 · short title INSIDE the tier. For the apex, sit it in the lower, wider
-    //     half of the triangle so the point doesn't clip it.
+    //     half of the triangle so the point doesn't clip it. The box hugs the
+    //     tier's narrower TOP width so text never spills past the sloped sides.
+    const innerW = Math.max(wTop, wBot * 0.55) - 0.24;
     slide.addText(p.heading, {
-      x: pcx - w / 2 + 0.18,
-      y: isTop ? y + tierH * 0.32 : y,
-      w: w - 0.36, h: isTop ? tierH * 0.66 : tierH,
-      fontFace: FONT_BODY, fontSize: titleFs, bold: true, color: d.onAccent,
-      align: "center", valign: "middle", lineSpacingMultiple: 0.98,
+      x: cx - innerW / 2,
+      y: isTop ? y + tierH * 0.34 : y,
+      w: innerW, h: isTop ? tierH * 0.64 : tierH,
+      fontFace: FONT_BODY, fontSize: isTop ? titleFs - 1 : titleFs, bold: true,
+      color: d.onAccent, align: "center", valign: "middle", lineSpacingMultiple: 0.96,
     });
 
-    // 3 · connector line + 4 · description, only when a body exists.
+    // 3 · connector line + 4 · description, only when a body exists. The line
+    //     meets the sloped right edge at the tier's vertical midpoint.
     if (p.body && p.body.trim()) {
-      const rightEdge = pcx + w / 2;
+      const midW = (wTop + wBot) / 2;
+      const rightEdge = cx + midW / 2;
       slide.addShape("line", {
         x: rightEdge - 0.05, y: y + tierH / 2,
         w: descX - 0.2 - (rightEdge - 0.05), h: 0,
