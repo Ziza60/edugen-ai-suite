@@ -246,7 +246,7 @@ svg{width:100%;height:auto;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.7
 <h1>PPTX Preview — ${escXml(path.basename(pptxPath))} · Slides ${startSlide}–${startSlide+slides.length-1} / ${total}</h1>
 <div class="grid">
 ${slides.map(s=>`<div class="wrap"><span class="n">Slide ${s.num}</span>
-<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" overflow="hidden">
     ${s.content}
 </svg></div>`).join("\n")}
 </div></body></html>`;
