@@ -1,12 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // EduGenAI — PPTX v7 "Adaptive Engine"  ·  images.ts
 //
-// Optional, best-effort decorative images via the Pexels API. Topic-agnostic:
-// it just resolves the free-text `imageQuery` the planner suggested. Every
-// failure is swallowed — images are an enhancement, never a hard dependency.
+// Optional, best-effort decorative images via Pexels (primary) with a Pixabay
+// fallback. Topic-agnostic: it just resolves the free-text `imageQuery` the
+// planner suggested. Every failure is swallowed — images are an enhancement,
+// never a hard dependency.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PEXELS_SEARCH = "https://api.pexels.com/v1/search";
+const PIXABAY_SEARCH = "https://pixabay.com/api/";
 
 /** fetch with a hard timeout (images must never stall the export into a 504). */
 async function fetchWithTimeout(
@@ -43,19 +45,56 @@ async function toDataUri(url: string): Promise<string | null> {
   }
 }
 
+/** Resolve a landscape photo URL from Pexels (≈940px "large"). null on any miss. */
+async function pexelsPhoto(q: string, apiKey: string): Promise<string | null> {
+  try {
+    const url =
+      `${PEXELS_SEARCH}?query=${encodeURIComponent(q)}&per_page=1&orientation=landscape`;
+    const res = await fetchWithTimeout(url, { headers: { Authorization: apiKey } }, 10000);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const photo = data?.photos?.[0];
+    return photo?.src?.large || photo?.src?.medium || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve a landscape photo URL from Pixabay. null on any miss.
+ *  (Pixabay requires per_page >= 3; we just take the first horizontal photo.) */
+async function pixabayPhoto(q: string, apiKey: string): Promise<string | null> {
+  try {
+    const url = `${PIXABAY_SEARCH}?key=${encodeURIComponent(apiKey)}` +
+      `&q=${encodeURIComponent(q)}&image_type=photo&orientation=horizontal` +
+      `&safesearch=true&per_page=3`;
+    const res = await fetchWithTimeout(url, {}, 10000);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const hit = data?.hits?.[0];
+    return hit?.largeImageURL || hit?.webformatURL || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve one landscape photo per unique query. Returns a map query→dataUri.
- * Uses the "large" (≈940px) size — big enough for slides, but far lighter than
- * large2x. Capping count + resolution keeps the PPTX small and avoids the edge
- * runtime's CPU/time limit during base64 embedding + pptx.write.
+ * Primary source is Pexels; Pixabay is a best-effort fallback that kicks in
+ * whenever Pexels returns nothing for a query — covering rate-limits / outages
+ * AND catalogue gaps (a term Pexels can't match, Pixabay often can). Capping
+ * count + resolution keeps the PPTX small and avoids the edge runtime's CPU/time
+ * limit during base64 embedding + pptx.write. Both keys are optional: with
+ * neither configured this is a no-op and the renderer falls back to vector-only
+ * layouts.
  */
 export async function resolveImages(
   queries: string[],
-  apiKey: string | undefined,
+  pexelsKey: string | undefined,
   maxImages = 8,
+  pixabayKey?: string | undefined,
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  if (!apiKey) return out;
+  if (!pexelsKey && !pixabayKey) return out;
   const unique = Array.from(
     new Set(queries.map((q) => q.trim().toLowerCase()).filter(Boolean)),
   ).slice(0, maxImages);
@@ -63,15 +102,8 @@ export async function resolveImages(
   await Promise.all(
     unique.map(async (q) => {
       try {
-        const url =
-          `${PEXELS_SEARCH}?query=${encodeURIComponent(q)}&per_page=1&orientation=landscape`;
-        const res = await fetchWithTimeout(url, {
-          headers: { Authorization: apiKey },
-        }, 10000);
-        if (!res.ok) return;
-        const data = await res.json();
-        const photo = data?.photos?.[0];
-        const src = photo?.src?.large || photo?.src?.medium;
+        let src = pexelsKey ? await pexelsPhoto(q, pexelsKey) : null;
+        if (!src && pixabayKey) src = await pixabayPhoto(q, pixabayKey);
         if (!src) return;
         const dataUri = await toDataUri(src);
         if (dataUri) out[q] = dataUri;
