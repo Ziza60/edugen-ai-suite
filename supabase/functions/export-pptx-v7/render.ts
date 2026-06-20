@@ -1291,21 +1291,43 @@ function renderDarkSplitH(slide: AnySlide, s: SlideSpec, d: Palette, brand: stri
 }
 
 function renderCompare(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string, variant = 0) {
+  // Defensive: a compare slide MUST have two populated sides. Production
+  // normalization guarantees this, but if a malformed slide ever reaches here
+  // (e.g. the contrast arrived as "cards" or bullets) we rebuild the sides so we
+  // never half-render an empty panel with no text.
+  let left = s.left, right = s.right;
+  const hasSides = (left?.items?.length ?? 0) > 0 && (right?.items?.length ?? 0) > 0;
+  if (!hasSides) {
+    const splitBody = (v?: string) =>
+      (v ? v.split(/[;\n•]+/).map((x) => x.trim()).filter(Boolean) : []);
+    const cards = (s.cards ?? []).filter((c) => c.heading || c.body);
+    if (cards.length >= 2) {
+      left = { heading: cards[0].heading ?? "", items: splitBody(cards[0].body).length ? splitBody(cards[0].body) : [cards[0].heading ?? ""] };
+      right = { heading: cards[1].heading ?? "", items: splitBody(cards[1].body).length ? splitBody(cards[1].body) : [cards[1].heading ?? ""] };
+    } else if ((s.bullets?.length ?? 0) >= 2) {
+      const mid = Math.ceil(s.bullets!.length / 2);
+      left = { heading: "", items: s.bullets!.slice(0, mid) };
+      right = { heading: "", items: s.bullets!.slice(mid) };
+    } else {
+      return renderBullets(slide, s, d, brand, num, moduleLabel);
+    }
+  }
+  const sx: SlideSpec = { ...s, left, right };
   // Round-robin so repeated contrasts don't all look identical: alternate the
   // dramatic VERTICAL split with a HORIZONTAL (top/bottom) one. Only short
   // one-statement sides qualify for either; list-y compares keep the two cards.
-  if (darkSplitEligible(s)) {
+  if (darkSplitEligible(sx)) {
     return variant % 2 === 0
-      ? renderDarkSplit(slide, s, d, brand, num)
-      : renderDarkSplitH(slide, s, d, brand, num);
+      ? renderDarkSplit(slide, sx, d, brand, num)
+      : renderDarkSplitH(slide, sx, d, brand, num);
   }
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
   const gap = 0.5;
   const colW = (CW - gap) / 2;
   const cols = [
-    { col: s.left!, x: ML, accent: d.accent },
-    { col: s.right!, x: ML + colW + gap, accent: d.accent2 },
+    { col: sx.left!, x: ML, accent: d.accent },
+    { col: sx.right!, x: ML + colW + gap, accent: d.accent2 },
   ];
   for (const { col, x, accent } of cols) {
     slide.addShape("roundRect", {
@@ -1914,15 +1936,16 @@ function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
       x, y, w: chW, h: chH,
       fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 },
     });
-    // The chevron's left notch + right point eat into the box; inset the text.
-    const inset = i === 0 ? 0.3 : 0.55;
+    // A chevron has a notch on the LEFT and a point on the RIGHT; both eat into
+    // the box. Inset the text generously on both sides so it never gets clipped.
+    const inL = 0.5, inR = 0.55;
     slide.addText(String(i + 1), {
-      x: x + inset, y: y + 0.24, w: chW - inset - 0.5, h: 0.6,
+      x: x + inL, y: y + 0.24, w: chW - inL - inR, h: 0.6,
       fontFace: FONT_TITLE, fontSize: 26, bold: true,
       color: d.accent2, align: "center", valign: "middle",
     });
     slide.addText(b, {
-      x: x + inset, y: y + 0.9, w: chW - inset - 0.5, h: chH - 1.15,
+      x: x + inL, y: y + 0.9, w: chW - inL - inR, h: chH - 1.15,
       fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.text,
       align: "center", valign: "top", lineSpacingMultiple: 1.0,
     });
@@ -2242,8 +2265,11 @@ export function renderDeck(
               // shapes); long or 6+ item lists stay list-style to avoid overflow.
               const short = its.every((b) => b.length <= 58);
               const variants = (k >= 3 && k <= 5 && short)
-                ? [renderBullets, renderProcessArrows, renderSegmentedRing,
-                   renderPyramid, renderZigzag, renderMountain, renderMarkers]
+                // 3-5 SHORT items → always an infographic (a plain bullet list is
+                // the "auto-converted" look we want to avoid for short content).
+                ? [renderProcessArrows, renderSegmentedRing, renderPyramid,
+                   renderZigzag, renderMountain, renderMarkers]
+                // long or 6+ items → list-style (clean, no overflow).
                 : [renderBullets, renderMarkers];
               variants[bulletsVar++ % variants.length](slide, s, d, brand, num, m.title);
             }
