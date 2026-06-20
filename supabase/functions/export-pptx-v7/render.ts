@@ -204,24 +204,32 @@ function header(slide: AnySlide, d: Palette, s: SlideSpec, moduleLabel: string) 
     fill: { color: d.accent2 },
     line: { type: "none" },
   });
-  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
-    x: ML + 0.18,
-    y: 0.5,
-    w: CW - 0.4,
-    h: 0.28,
-    fontFace: FONT_BODY,
-    fontSize: 10,
-    bold: true,
-    color: d.accent2,
-    charSpacing: 2,
-    align: "left",
-    valign: "middle",
-  });
+  // Kicker (super-title). Drop it when it merely echoes the slide title — a
+  // repeated super-title reads as a templating glitch, not a designed deck. The
+  // module-context kicker (the moduleLabel fallback) is intentional and stays.
+  const normLabel = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
+  const kicker = (s.eyebrow || moduleLabel || "").trim();
+  const showKicker = kicker.length > 0 && normLabel(kicker) !== normLabel(s.title);
+  if (showKicker) {
+    slide.addText(eyebrow(kicker), {
+      x: ML + 0.18,
+      y: 0.5,
+      w: CW - 0.4,
+      h: 0.28,
+      fontFace: FONT_BODY,
+      fontSize: 10,
+      bold: true,
+      color: d.accent2,
+      charSpacing: 2,
+      align: "left",
+      valign: "middle",
+    });
+  }
   slide.addText(s.title, {
     x: ML + 0.18,
-    y: 0.78,
+    y: showKicker ? 0.78 : 0.5,
     w: CW - 0.4,
-    h: 0.62,
+    h: showKicker ? 0.62 : 0.9,
     fontFace: FONT_TITLE,
     fontSize: s.title.length > 56 ? 22 : 26,
     bold: true,
@@ -2141,6 +2149,196 @@ function renderMarkers(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   footer(slide, d, brand, num);
 }
 
+// ── infographic layouts · batch 2 ───────────────────────────────────────────
+
+/** Spiral of numbered nodes (left) + numbered legend (right) — an evolving cycle. */
+function renderSpiral(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const cx = ML + 2.5, cy = CONTENT_Y + CONTENT_H / 2;
+  const rMin = 0.35, rMax = 2.05, turns = 1.6;
+  const pos = items.map((_, i) => {
+    const t = n > 1 ? i / (n - 1) : 0;
+    const ang = -Math.PI / 2 + t * turns * 2 * Math.PI;
+    const r = rMin + t * (rMax - rMin);
+    return { x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang) };
+  });
+  for (let i = 0; i < n - 1; i++) {
+    const a = pos[i], b = pos[i + 1];
+    slide.addShape("line", {
+      x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+      w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
+      flipH: b.x < a.x, flipV: b.y < a.y, line: { color: d.border, width: 1.5 },
+    });
+  }
+  const r = 0.3;
+  pos.forEach((p, i) => {
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("ellipse", { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2, fill: { color }, line: { color: d.bg, width: 2 } });
+    slide.addText(String(i + 1), { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2, fontFace: FONT_TITLE, fontSize: 14, bold: true, color: d.onAccent, align: "center", valign: "middle" });
+  });
+  const legX = ML + 5.1, legW = ML + CW - legX;
+  const rowH = Math.min(1.1, CONTENT_H / n);
+  const startY = CONTENT_Y + (CONTENT_H - rowH * n) / 2;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  items.forEach((b, i) => {
+    const ry = startY + i * rowH;
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("ellipse", { x: legX, y: ry + rowH / 2 - 0.16, w: 0.34, h: 0.34, fill: { color }, line: { type: "none" } });
+    slide.addText(String(i + 1), { x: legX, y: ry + rowH / 2 - 0.16, w: 0.34, h: 0.34, fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent, align: "center", valign: "middle" });
+    slide.addText(b, { x: legX + 0.5, y: ry, w: legW - 0.5, h: rowH, fontFace: FONT_BODY, fontSize: fs, color: d.text, valign: "middle", lineSpacingMultiple: 1.02 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Network: a central concept with satellites joined by hub + peer links. */
+function renderNetwork(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const N = Math.max(items.length, 1);
+  const cx = ML + CW / 2, cy = CONTENT_Y + CONTENT_H / 2;
+  const ringRx = CW / 2 - 1.7, ringRy = CONTENT_H / 2 - 0.7;
+  const pos = items.map((_, i) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / N;
+    return { x: cx + ringRx * Math.cos(a), y: cy + ringRy * Math.sin(a) };
+  });
+  pos.forEach((p) => slide.addShape("line", {
+    x: Math.min(cx, p.x), y: Math.min(cy, p.y), w: Math.abs(p.x - cx), h: Math.abs(p.y - cy),
+    flipH: p.x < cx, flipV: p.y < cy, line: { color: d.border, width: 1 },
+  }));
+  if (N >= 3) {
+    for (let i = 0; i < N; i++) {
+      const a = pos[i], b = pos[(i + 1) % N];
+      slide.addShape("line", {
+        x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
+        flipH: b.x < a.x, flipV: b.y < a.y, line: { color: d.border, width: 0.75, dashType: "dash" },
+      });
+    }
+  }
+  const hubR = 0.7;
+  slide.addShape("ellipse", { x: cx - hubR, y: cy - hubR, w: hubR * 2, h: hubR * 2, fill: { color: d.accent }, line: { type: "none" } });
+  const stop = new Set(["a", "o", "as", "os", "da", "de", "do", "das", "dos", "e", "em", "na", "no", "para", "com", "the", "of", "to", "and", "in", "on"]);
+  const words = s.title.split(/\s+/).filter((w) => w && !stop.has(w.toLowerCase()));
+  const hub = (words.slice(0, 2).join(" ") || s.title).slice(0, 18);
+  slide.addText(hub, { x: cx - hubR + 0.04, y: cy - hubR, w: hubR * 2 - 0.08, h: hubR * 2, fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent, align: "center", valign: "middle", lineSpacingMultiple: 0.95 });
+  const sw = 2.5, sh = 0.9;
+  const fs = autoBodyFontSize(N, items.join("").length);
+  items.forEach((b, i) => {
+    const p = pos[i];
+    slide.addShape("roundRect", { x: p.x - sw / 2, y: p.y - sh / 2, w: sw, h: sh, rectRadius: 0.08, fill: { color: d.surface }, line: { color: d.border, width: 1 } });
+    slide.addText(b, { x: p.x - sw / 2 + 0.14, y: p.y - sh / 2, w: sw - 0.28, h: sh, fontFace: FONT_BODY, fontSize: fs, color: d.text, align: "center", valign: "middle", lineSpacingMultiple: 0.98 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Asymmetric modular panels: a bold feature panel + a stack of smaller ones. */
+function renderAsymPanels(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const n = Math.max(items.length, 1);
+  const gap = 0.18;
+  const featW = CW * 0.44;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  slide.addShape("roundRect", { x: ML, y: CONTENT_Y, w: featW, h: CONTENT_H, rectRadius: 0.06, fill: { color: d.accent }, line: { type: "none" } });
+  slide.addText("01", { x: ML + 0.3, y: CONTENT_Y + 0.3, w: featW - 0.6, h: 0.8, fontFace: FONT_TITLE, fontSize: 34, bold: true, color: d.accent2, align: "left", valign: "top" });
+  slide.addText(items[0] ?? "", { x: ML + 0.3, y: CONTENT_Y + 1.1, w: featW - 0.6, h: CONTENT_H - 1.4, fontFace: FONT_BODY, fontSize: fs + 2, bold: true, color: d.onAccent, align: "left", valign: "middle", lineSpacingMultiple: 1.03 });
+  const rest = items.slice(1);
+  const rx = ML + featW + gap, rw = CW - featW - gap;
+  const m = Math.max(rest.length, 1);
+  const rh = (CONTENT_H - gap * (m - 1)) / m;
+  rest.forEach((b, i) => {
+    const y = CONTENT_Y + i * (rh + gap);
+    slide.addShape("roundRect", { x: rx, y, w: rw, h: rh, rectRadius: 0.06, fill: { color: d.surface }, line: { color: d.border, width: 1 } });
+    slide.addText(String(i + 2).padStart(2, "0"), { x: rx + 0.22, y, w: 0.7, h: rh, fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.accent2, align: "left", valign: "middle" });
+    slide.addText(b, { x: rx + 1.0, y, w: rw - 1.2, h: rh, fontFace: FONT_BODY, fontSize: fs, color: d.text, align: "left", valign: "middle", lineSpacingMultiple: 1.0 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Numbered circular icons in a grid — a clean, scannable enumerated list. */
+function renderNumberedIcons(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const cols = n <= 3 ? 1 : 2;
+  const rows = Math.ceil(n / cols);
+  const gapX = 0.5, gapY = 0.22;
+  const cellW = (CW - gapX * (cols - 1)) / cols;
+  const cellH = (CONTENT_H - gapY * (rows - 1)) / rows;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  const cr = 0.34;
+  items.forEach((b, i) => {
+    const c = i % cols, r = Math.floor(i / cols);
+    const x = ML + c * (cellW + gapX), y = CONTENT_Y + r * (cellH + gapY);
+    const cyc = y + cellH / 2;
+    slide.addShape("ellipse", { x, y: cyc - cr, w: cr * 2, h: cr * 2, fill: { color: n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent }, line: { type: "none" } });
+    slide.addText(String(i + 1), { x, y: cyc - cr, w: cr * 2, h: cr * 2, fontFace: FONT_TITLE, fontSize: 16, bold: true, color: d.onAccent, align: "center", valign: "middle" });
+    slide.addText(b, { x: x + cr * 2 + 0.25, y, w: cellW - cr * 2 - 0.35, h: cellH, fontFace: FONT_BODY, fontSize: fs, color: d.text, align: "left", valign: "middle", lineSpacingMultiple: 1.02 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Staggered cards joined by diagonal arrows — a flowing, ordered progression. */
+function renderDiagonalArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const n = Math.max(items.length, 1);
+  const padX = 0.3;
+  const usableW = CW - 2 * padX;
+  const slot = usableW / n;
+  const cardW = Math.min(2.6, slot - 0.1);
+  const cardH = 1.5;
+  const yTop = CONTENT_Y + 0.4, yBot = FOOTER_Y - 0.15 - cardH;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  const pos = items.map((_, i) => ({ x: ML + padX + slot * i + (slot - cardW) / 2, y: i % 2 === 0 ? yTop : yBot }));
+  for (let i = 0; i < n - 1; i++) {
+    const a = { x: pos[i].x + cardW, y: pos[i].y + cardH / 2 };
+    const b = { x: pos[i + 1].x, y: pos[i + 1].y + cardH / 2 };
+    slide.addShape("line", {
+      x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
+      flipH: b.x < a.x, flipV: b.y < a.y, line: { color: d.accent2, width: 2, endArrowType: "triangle" },
+    });
+  }
+  items.forEach((b, i) => {
+    const p = pos[i], accent = i % 2 === 0;
+    slide.addShape("roundRect", { x: p.x, y: p.y, w: cardW, h: cardH, rectRadius: 0.08, fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 } });
+    slide.addText(String(i + 1), { x: p.x + 0.14, y: p.y + 0.1, w: cardW - 0.28, h: 0.5, fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.accent2, align: "left", valign: "top" });
+    slide.addText(b, { x: p.x + 0.16, y: p.y + 0.6, w: cardW - 0.32, h: cardH - 0.7, fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.text, align: "left", valign: "top", lineSpacingMultiple: 1.0 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Connection lines: a hub fanning out to labelled nodes (a mind-map spread). */
+function renderConnectionLines(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const ox = ML + 0.5, oy = CONTENT_Y + CONTENT_H / 2;
+  const nodeX = ML + 3.4;
+  const rowH = Math.min(1.1, CONTENT_H / n);
+  const startY = CONTENT_Y + (CONTENT_H - rowH * n) / 2;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  slide.addShape("ellipse", { x: ox - 0.28, y: oy - 0.28, w: 0.56, h: 0.56, fill: { color: d.accent }, line: { type: "none" } });
+  items.forEach((b, i) => {
+    const ny = startY + i * rowH + rowH / 2;
+    slide.addShape("line", {
+      x: Math.min(ox, nodeX), y: Math.min(oy, ny), w: Math.abs(nodeX - ox), h: Math.abs(ny - oy),
+      flipH: nodeX < ox, flipV: ny < oy, line: { color: d.border, width: 1.25 },
+    });
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("ellipse", { x: nodeX - 0.16, y: ny - 0.16, w: 0.32, h: 0.32, fill: { color }, line: { color: d.bg, width: 1.5 } });
+    slide.addText(b, { x: nodeX + 0.32, y: ny - rowH / 2, w: ML + CW - (nodeX + 0.32) - 0.1, h: rowH, fontFace: FONT_BODY, fontSize: fs, color: d.text, align: "left", valign: "middle", lineSpacingMultiple: 1.02 });
+  });
+  footer(slide, d, brand, num);
+}
+
 // ── orchestrator ────────────────────────────────────────────────────────────
 
 /**
@@ -2274,13 +2472,17 @@ export function renderDeck(
               if (k >= 3 && k <= 5 && short) {
                 variants.push(renderProcessArrows);
                 if (wordShort) variants.push(renderTiles);
-                variants.push(renderSegmentedRing, renderPyramid);
+                variants.push(renderSegmentedRing, renderPyramid, renderNetwork);
                 if (wordShort && k <= 4) variants.push(renderBento);
-                variants.push(renderZigzag, renderMountain, renderMarkers);
+                variants.push(
+                  renderZigzag, renderSpiral, renderMountain, renderNumberedIcons,
+                  renderDiagonalArrows, renderAsymPanels, renderConnectionLines, renderMarkers,
+                );
               } else if (k === 2 && wordShort) {
                 variants.push(renderBullets, renderBento, renderMarkers);
               } else {
                 variants.push(renderBullets, renderMarkers);
+                if (k <= 6) variants.push(renderNumberedIcons, renderConnectionLines);
               }
               variants[bulletsVar++ % variants.length](slide, s, d, brand, num, m.title);
             }
