@@ -2259,18 +2259,29 @@ export function renderDeck(
             if (s.imageData) {
               renderBullets(slide, s, d, brand, num, m.title);
             } else {
+              // SINGLE source of bullet-slide variety (consolidated from the old
+              // normalize-level breakLayoutRuns). Every short, image-less bullets
+              // slide rotates across one rich pool so no two look the same — a
+              // plain vertical list is the "auto-converted" look we avoid here.
               const its = (s.bullets ?? []).map((b) => (b || "").trim()).filter(Boolean);
               const k = its.length;
-              // Diagram infographics need SHORT items (they place text inside
-              // shapes); long or 6+ item lists stay list-style to avoid overflow.
+              // Shape-based diagrams place text INSIDE shapes, so they need short
+              // items; tiles/bento need scannable short phrases. Long / 6+ item
+              // lists stay list-style (bullets / markers) to avoid overflow.
               const short = its.every((b) => b.length <= 58);
-              const variants = (k >= 3 && k <= 5 && short)
-                // 3-5 SHORT items → always an infographic (a plain bullet list is
-                // the "auto-converted" look we want to avoid for short content).
-                ? [renderProcessArrows, renderSegmentedRing, renderPyramid,
-                   renderZigzag, renderMountain, renderMarkers]
-                // long or 6+ items → list-style (clean, no overflow).
-                : [renderBullets, renderMarkers];
+              const wordShort = its.every((b) => b.trim().split(/\s+/).length <= 10);
+              const variants: Array<typeof renderBullets> = [];
+              if (k >= 3 && k <= 5 && short) {
+                variants.push(renderProcessArrows);
+                if (wordShort) variants.push(renderTiles);
+                variants.push(renderSegmentedRing, renderPyramid);
+                if (wordShort && k <= 4) variants.push(renderBento);
+                variants.push(renderZigzag, renderMountain, renderMarkers);
+              } else if (k === 2 && wordShort) {
+                variants.push(renderBullets, renderBento, renderMarkers);
+              } else {
+                variants.push(renderBullets, renderMarkers);
+              }
               variants[bulletsVar++ % variants.length](slide, s, d, brand, num, m.title);
             }
             break;
