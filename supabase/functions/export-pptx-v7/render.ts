@@ -741,7 +741,7 @@ function renderBento(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     slide.addText(b, {
       x: x + 0.28, y: y + 0.28 + chip + 0.14, w: cardW - 0.56,
       h: cardH - (0.28 + chip + 0.14) - 0.24,
-      fontFace: FONT_BODY, fontSize: n <= 2 ? 17 : 15, color: d.text,
+      fontFace: FONT_BODY, fontSize: n <= 2 ? 17 : 15, color: d.subtext,
       align: "left", valign: "top", lineSpacingMultiple: 1.06,
     });
   });
@@ -1954,7 +1954,7 @@ function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
     });
     slide.addText(b, {
       x: x + inL, y: y + 0.9, w: chW - inL - inR, h: chH - 1.15,
-      fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.text,
+      fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.subtext,
       align: "center", valign: "top", lineSpacingMultiple: 1.0,
     });
   });
@@ -1990,6 +1990,14 @@ function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
     fontFace: FONT_TITLE, fontSize: 40, bold: true, color: d.accent2,
     align: "center", valign: "middle",
   });
+  // Bright studs on the segment divisions (premium donut detail).
+  const Rmid = (D / 2 + hole / 2) / 2;
+  for (let i = 0; i < n; i++) {
+    const th = (i * seg * Math.PI) / 180;
+    const px = cxr + Rmid * Math.sin(th), py = cyr - Rmid * Math.cos(th);
+    slide.addShape("ellipse", { x: px - 0.09, y: py - 0.09, w: 0.18, h: 0.18, fill: { color: d.bg }, line: { type: "none" } });
+    slide.addShape("ellipse", { x: px - 0.05, y: py - 0.05, w: 0.1, h: 0.1, fill: { color: d.accent2 }, line: { type: "none" } });
+  }
   const legX = ringX + D + 0.55;
   const legW = ML + CW - legX;
   const rowH = Math.min(1.1, CONTENT_H / n);
@@ -2004,7 +2012,7 @@ function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
     });
     slide.addText(b, {
       x: legX + 0.5, y: ry, w: legW - 0.5, h: rowH,
-      fontFace: FONT_BODY, fontSize: fs, color: d.text,
+      fontFace: FONT_BODY, fontSize: fs, color: d.subtext,
       valign: "middle", lineSpacingMultiple: 1.02,
     });
   });
@@ -2024,7 +2032,9 @@ function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   const maxW = Math.min(CW * 0.78, 9.2);
   const fs = autoBodyFontSize(n, items.join("").length);
   items.forEach((b, i) => {
-    const w = maxW * ((i + 1) / n); // i=0 narrow top → i=n-1 wide base
+    // Floor the top tiers' width so short labels don't get squeezed into a
+    // razor-thin apex (still clearly a pyramid: 0.4·maxW → maxW base).
+    const w = maxW * (0.4 + 0.6 * ((i + 1) / n)); // narrow top → wide base
     const y = topY + i * (tierH + gap);
     const color = n > 1 ? hexLerp(d.accent2, d.accent, i / (n - 1)) : d.accent;
     slide.addShape("trapezoid", {
@@ -2034,85 +2044,6 @@ function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
       x: cx - w / 2 + 0.25, y, w: w - 0.5, h: tierH,
       fontFace: FONT_BODY, fontSize: fs, bold: true, color: d.onAccent,
       align: "center", valign: "middle", lineSpacingMultiple: 0.98,
-    });
-  });
-  footer(slide, d, brand, num);
-}
-
-/** Zig-zag path — a journey through ordered points. */
-function renderZigzag(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
-  bgFill(slide, d.bg);
-  header(slide, d, s, moduleLabel);
-  const items = bulletItems(s, 5);
-  const n = Math.max(items.length, 1);
-  const padX = 0.5;
-  const usableW = CW - 2 * padX;
-  const yTop = CONTENT_Y + 1.0;
-  const yBot = CONTENT_Y + CONTENT_H - 1.0;
-  const r = 0.34;
-  const pos = items.map((_, i) => ({
-    x: ML + padX + (n > 1 ? usableW * (i / (n - 1)) : usableW / 2),
-    y: i % 2 === 0 ? yTop : yBot,
-  }));
-  for (let i = 0; i < n - 1; i++) {
-    const a = pos[i], b = pos[i + 1];
-    slide.addShape("line", {
-      x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
-      w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
-      flipH: b.x < a.x, flipV: b.y < a.y,
-      line: { color: d.accent2, width: 2, dashType: "dash" },
-    });
-  }
-  const fs = autoBodyFontSize(n, items.join("").length);
-  pos.forEach((p, i) => {
-    slide.addShape("ellipse", {
-      x: p.x - r, y: p.y - r, w: r * 2, h: r * 2,
-      fill: { color: d.accent }, line: { color: d.bg, width: 2 },
-    });
-    slide.addText(String(i + 1), {
-      x: p.x - r, y: p.y - r, w: r * 2, h: r * 2,
-      fontFace: FONT_TITLE, fontSize: 16, bold: true, color: d.onAccent,
-      align: "center", valign: "middle",
-    });
-    const lblAbove = p.y === yBot;
-    const lblW = Math.min(usableW / n + 0.4, CW);
-    const lblH = 0.9;
-    // Keep end labels on-canvas (centring on the first/last node would overflow).
-    const lblX = Math.max(ML, Math.min(p.x - lblW / 2, ML + CW - lblW));
-    slide.addText(items[i], {
-      x: lblX, y: lblAbove ? p.y - r - lblH - 0.05 : p.y + r + 0.05,
-      w: lblW, h: lblH,
-      fontFace: FONT_BODY, fontSize: fs, color: d.text,
-      align: "center", valign: lblAbove ? "bottom" : "top", lineSpacingMultiple: 1.0,
-    });
-  });
-  footer(slide, d, brand, num);
-}
-
-/** Mountain peaks — comparative magnitudes / ascending emphasis. */
-function renderMountain(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
-  bgFill(slide, d.bg);
-  header(slide, d, s, moduleLabel);
-  const items = bulletItems(s, 5);
-  const n = Math.max(items.length, 1);
-  const baseY = CONTENT_Y + CONTENT_H - 0.7; // room for labels below the baseline
-  const slotW = CW / n;
-  const triW = slotW * 1.18; // slight overlap → a connected range
-  const maxH = CONTENT_H - 1.5;
-  const fs = autoBodyFontSize(n, items.join("").length);
-  slide.addShape("line", { x: ML, y: baseY, w: CW, h: 0, line: { color: d.border, width: 1 } });
-  items.forEach((b, i) => {
-    const cxi = ML + slotW * (i + 0.5);
-    const hgt = maxH * (i % 2 === 0 ? 1 : 0.72); // alternate peak heights
-    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
-    slide.addShape("triangle", {
-      x: cxi - triW / 2, y: baseY - hgt, w: triW, h: hgt,
-      fill: { color }, line: { type: "none" },
-    });
-    slide.addText(b, {
-      x: cxi - slotW / 2 + 0.05, y: baseY + 0.12, w: slotW - 0.1, h: 0.55,
-      fontFace: FONT_BODY, fontSize: fs, color: d.text,
-      align: "center", valign: "top", lineSpacingMultiple: 1.0,
     });
   });
   footer(slide, d, brand, num);
@@ -2136,7 +2067,7 @@ function renderMarkers(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
     });
     slide.addText(b, {
       x: ML + 0.6, y, w: CW - 0.7, h: rowH,
-      fontFace: FONT_BODY, fontSize: fs, color: d.text,
+      fontFace: FONT_BODY, fontSize: fs, color: d.subtext,
       valign: "middle", lineSpacingMultiple: 1.03,
     });
     if (i < n - 1) {
@@ -2188,7 +2119,7 @@ function renderSpiral(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
     const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
     slide.addShape("ellipse", { x: legX, y: ry + rowH / 2 - 0.16, w: 0.34, h: 0.34, fill: { color }, line: { type: "none" } });
     slide.addText(String(i + 1), { x: legX, y: ry + rowH / 2 - 0.16, w: 0.34, h: 0.34, fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent, align: "center", valign: "middle" });
-    slide.addText(b, { x: legX + 0.5, y: ry, w: legW - 0.5, h: rowH, fontFace: FONT_BODY, fontSize: fs, color: d.text, valign: "middle", lineSpacingMultiple: 1.02 });
+    slide.addText(b, { x: legX + 0.5, y: ry, w: legW - 0.5, h: rowH, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, valign: "middle", lineSpacingMultiple: 1.02 });
   });
   footer(slide, d, brand, num);
 }
@@ -2229,7 +2160,7 @@ function renderNetwork(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   items.forEach((b, i) => {
     const p = pos[i];
     slide.addShape("roundRect", { x: p.x - sw / 2, y: p.y - sh / 2, w: sw, h: sh, rectRadius: 0.08, fill: { color: d.surface }, line: { color: d.border, width: 1 } });
-    slide.addText(b, { x: p.x - sw / 2 + 0.14, y: p.y - sh / 2, w: sw - 0.28, h: sh, fontFace: FONT_BODY, fontSize: fs, color: d.text, align: "center", valign: "middle", lineSpacingMultiple: 0.98 });
+    slide.addText(b, { x: p.x - sw / 2 + 0.14, y: p.y - sh / 2, w: sw - 0.28, h: sh, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, align: "center", valign: "middle", lineSpacingMultiple: 0.98 });
   });
   footer(slide, d, brand, num);
 }
@@ -2254,7 +2185,7 @@ function renderAsymPanels(slide: AnySlide, s: SlideSpec, d: Palette, brand: stri
     const y = CONTENT_Y + i * (rh + gap);
     slide.addShape("roundRect", { x: rx, y, w: rw, h: rh, rectRadius: 0.06, fill: { color: d.surface }, line: { color: d.border, width: 1 } });
     slide.addText(String(i + 2).padStart(2, "0"), { x: rx + 0.22, y, w: 0.7, h: rh, fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.accent2, align: "left", valign: "middle" });
-    slide.addText(b, { x: rx + 1.0, y, w: rw - 1.2, h: rh, fontFace: FONT_BODY, fontSize: fs, color: d.text, align: "left", valign: "middle", lineSpacingMultiple: 1.0 });
+    slide.addText(b, { x: rx + 1.0, y, w: rw - 1.2, h: rh, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, align: "left", valign: "middle", lineSpacingMultiple: 1.0 });
   });
   footer(slide, d, brand, num);
 }
@@ -2278,7 +2209,7 @@ function renderNumberedIcons(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
     const cyc = y + cellH / 2;
     slide.addShape("ellipse", { x, y: cyc - cr, w: cr * 2, h: cr * 2, fill: { color: n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent }, line: { type: "none" } });
     slide.addText(String(i + 1), { x, y: cyc - cr, w: cr * 2, h: cr * 2, fontFace: FONT_TITLE, fontSize: 16, bold: true, color: d.onAccent, align: "center", valign: "middle" });
-    slide.addText(b, { x: x + cr * 2 + 0.25, y, w: cellW - cr * 2 - 0.35, h: cellH, fontFace: FONT_BODY, fontSize: fs, color: d.text, align: "left", valign: "middle", lineSpacingMultiple: 1.02 });
+    slide.addText(b, { x: x + cr * 2 + 0.25, y, w: cellW - cr * 2 - 0.35, h: cellH, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, align: "left", valign: "middle", lineSpacingMultiple: 1.02 });
   });
   footer(slide, d, brand, num);
 }
@@ -2302,14 +2233,14 @@ function renderDiagonalArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: 
     const b = { x: pos[i + 1].x, y: pos[i + 1].y + cardH / 2 };
     slide.addShape("line", {
       x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
-      flipH: b.x < a.x, flipV: b.y < a.y, line: { color: d.accent2, width: 2, endArrowType: "triangle" },
+      flipH: b.x < a.x, flipV: b.y < a.y, line: { color: d.subtext, width: 1.25, endArrowType: "triangle" },
     });
   }
   items.forEach((b, i) => {
     const p = pos[i], accent = i % 2 === 0;
     slide.addShape("roundRect", { x: p.x, y: p.y, w: cardW, h: cardH, rectRadius: 0.08, fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 } });
     slide.addText(String(i + 1), { x: p.x + 0.14, y: p.y + 0.1, w: cardW - 0.28, h: 0.5, fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.accent2, align: "left", valign: "top" });
-    slide.addText(b, { x: p.x + 0.16, y: p.y + 0.6, w: cardW - 0.32, h: cardH - 0.7, fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.text, align: "left", valign: "top", lineSpacingMultiple: 1.0 });
+    slide.addText(b, { x: p.x + 0.16, y: p.y + 0.6, w: cardW - 0.32, h: cardH - 0.7, fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.subtext, align: "left", valign: "top", lineSpacingMultiple: 1.0 });
   });
   footer(slide, d, brand, num);
 }
@@ -2334,9 +2265,17 @@ function renderConnectionLines(slide: AnySlide, s: SlideSpec, d: Palette, brand:
     });
     const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
     slide.addShape("ellipse", { x: nodeX - 0.16, y: ny - 0.16, w: 0.32, h: 0.32, fill: { color }, line: { color: d.bg, width: 1.5 } });
-    slide.addText(b, { x: nodeX + 0.32, y: ny - rowH / 2, w: ML + CW - (nodeX + 0.32) - 0.1, h: rowH, fontFace: FONT_BODY, fontSize: fs, color: d.text, align: "left", valign: "middle", lineSpacingMultiple: 1.02 });
+    slide.addText(b, { x: nodeX + 0.32, y: ny - rowH / 2, w: ML + CW - (nodeX + 0.32) - 0.1, h: rowH, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, align: "left", valign: "middle", lineSpacingMultiple: 1.02 });
   });
   footer(slide, d, brand, num);
+}
+
+/** Bullet-fed horizontal timeline — a clean, continuous sequence. Curated
+ *  replacement for the noisier zig-zag / mountain layouts: feeds short bullets
+ *  into the polished step timeline as heading-only nodes. */
+function renderBulletTimeline(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  const items = bulletItems(s, 6);
+  renderTimeline(slide, { ...s, steps: items.map((t) => ({ heading: t })) } as SlideSpec, d, brand, num, moduleLabel);
 }
 
 // ── orchestrator ────────────────────────────────────────────────────────────
@@ -2470,12 +2409,13 @@ export function renderDeck(
               const wordShort = its.every((b) => b.trim().split(/\s+/).length <= 10);
               const variants: Array<typeof renderBullets> = [];
               if (k >= 3 && k <= 5 && short) {
+                // Curated pool (v7.28): tiles dropped (bento owns the grid role),
+                // zig-zag + mountain demoted in favour of the clean bullet timeline.
                 variants.push(renderProcessArrows);
-                if (wordShort) variants.push(renderTiles);
                 variants.push(renderSegmentedRing, renderPyramid, renderNetwork);
                 if (wordShort && k <= 4) variants.push(renderBento);
                 variants.push(
-                  renderZigzag, renderSpiral, renderMountain, renderNumberedIcons,
+                  renderSpiral, renderBulletTimeline, renderNumberedIcons,
                   renderDiagonalArrows, renderAsymPanels, renderConnectionLines, renderMarkers,
                 );
               } else if (k === 2 && wordShort) {
