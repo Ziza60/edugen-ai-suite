@@ -2019,7 +2019,7 @@ function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
   footer(slide, d, brand, num);
 }
 
-/** Stacked pyramid (trapezoid tiers) — hierarchy / foundation → peak. */
+/** Stacked pyramid — pointed triangular apex over trapezoid tiers (foundation → peak). */
 function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
@@ -2029,22 +2029,35 @@ function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   const gap = 0.12;
   const topY = CONTENT_Y + 0.15;
   const tierH = (CONTENT_H - 0.3 - gap * (n - 1)) / n;
-  const maxW = Math.min(CW * 0.78, 9.2);
+  const maxW = Math.min(CW * 0.82, 9.4);
   const fs = autoBodyFontSize(n, items.join("").length);
   items.forEach((b, i) => {
-    // Floor the top tiers' width so short labels don't get squeezed into a
-    // razor-thin apex (still clearly a pyramid: 0.4·maxW → maxW base).
-    const w = maxW * (0.4 + 0.6 * ((i + 1) / n)); // narrow top → wide base
+    // Continuous pyramid silhouette: each tier's width grows toward the base.
+    // Floor it so short labels never get squeezed into a razor-thin sliver.
+    const w = Math.max(maxW * ((i + 1) / n), maxW * 0.34);
     const y = topY + i * (tierH + gap);
     const color = n > 1 ? hexLerp(d.accent2, d.accent, i / (n - 1)) : d.accent;
-    slide.addShape("trapezoid", {
-      x: cx - w / 2, y, w, h: tierH, fill: { color }, line: { color: d.bg, width: 2 },
-    });
-    slide.addText(b, {
-      x: cx - w / 2 + 0.25, y, w: w - 0.5, h: tierH,
-      fontFace: FONT_BODY, fontSize: fs, bold: true, color: d.onAccent,
-      align: "center", valign: "middle", lineSpacingMultiple: 0.98,
-    });
+    if (i === 0) {
+      // Real pointed apex (this is the "tip" of the pyramid). Text sits in the
+      // lower, wider portion of the triangle so it isn't clipped by the point.
+      slide.addShape("triangle", {
+        x: cx - w / 2, y, w, h: tierH, fill: { color }, line: { color: d.bg, width: 2 },
+      });
+      slide.addText(b, {
+        x: cx - w / 2 + 0.18, y: y + tierH * 0.40, w: w - 0.36, h: tierH * 0.58,
+        fontFace: FONT_BODY, fontSize: fs, bold: true, color: d.onAccent,
+        align: "center", valign: "middle", lineSpacingMultiple: 0.98,
+      });
+    } else {
+      slide.addShape("trapezoid", {
+        x: cx - w / 2, y, w, h: tierH, fill: { color }, line: { color: d.bg, width: 2 },
+      });
+      slide.addText(b, {
+        x: cx - w / 2 + 0.25, y, w: w - 0.5, h: tierH,
+        fontFace: FONT_BODY, fontSize: fs, bold: true, color: d.onAccent,
+        align: "center", valign: "middle", lineSpacingMultiple: 0.98,
+      });
+    }
   });
   footer(slide, d, brand, num);
 }
