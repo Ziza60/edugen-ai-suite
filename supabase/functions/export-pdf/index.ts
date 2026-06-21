@@ -8,10 +8,16 @@ import { cleanModuleContent } from "../_shared/markdown.ts";
 // `false` para reativar a monetização.
 const TESTING_MODE = true;
 
+// Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
+// can confirm in F12 → Network which code is actually live after a deploy.
+const EXPORT_PDF_BUILD = "2026-06-21c";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Expose-Headers": "x-export-pdf-build",
+  "x-export-pdf-build": EXPORT_PDF_BUILD,
 };
 
 // ── Emoji & encoding helpers ──────────────────────────────────────────
@@ -911,7 +917,7 @@ Deno.serve(async (req: Request) => {
 
   // Build marker — appears in the function logs on every invocation, so you can
   // confirm WHICH code is actually live after a deploy (the 403 fix included).
-  console.log(`[export-pdf] BUILD=2026-06-21b TESTING_MODE=${TESTING_MODE}`);
+  console.log(`[export-pdf] BUILD=${EXPORT_PDF_BUILD} TESTING_MODE=${TESTING_MODE}`);
 
   try {
     const authHeader = req.headers.get("Authorization");
