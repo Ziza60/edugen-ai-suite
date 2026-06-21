@@ -42,7 +42,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21d";
+const EXPORT_PDF_BUILD = "2026-06-21e";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,8 +115,14 @@ interface ParsedTable {
 function parseMarkdownTable(lines: string[], startIndex: number): { table: ParsedTable | null; endIndex: number } {
   if (!lines[startIndex]?.includes("|")) return { table: null, endIndex: startIndex };
 
-  const parsePipeRow = (line: string): string[] =>
-    line.split("|").map((c) => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length);
+  const parsePipeRow = (line: string): string[] => {
+    const parts = line.split("|").map((c) => c.trim());
+    // Drop the empty cells produced by the leading/trailing pipes only
+    // (a middle cell may legitimately be empty and must be preserved).
+    if (parts.length && parts[0] === "") parts.shift();
+    if (parts.length && parts[parts.length - 1] === "") parts.pop();
+    return parts;
+  };
 
   const headers = parsePipeRow(lines[startIndex]);
   if (headers.length < 2) return { table: null, endIndex: startIndex };
