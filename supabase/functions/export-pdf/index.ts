@@ -52,8 +52,10 @@ function sanitizeText(text: string): string {
 function stripMarkdown(text: string): string {
   return text
     .replace(/#{1,6}\s*/g, "")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
+    // Bold/italic: the asterisks must HUG non-space content, so Python operators
+    // ("5 ** 2", "a * b") are preserved while real **bold**/*italic* is stripped.
+    .replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, "$1")
+    .replace(/\*(?=\S)([^*]+?)(?<=\S)\*/g, "$1")
     .replace(/`{1,3}[^`]*`{1,3}/g, (m) => m.replace(/`/g, ""))
     .replace(/>\s*/g, "")
     .replace(/---/g, "")
@@ -179,9 +181,9 @@ const COLOR = {
   TABLE_FIRST_COL: [232, 232, 245] as const,
   BORDER_LIGHT: [210, 210, 220] as const,
   BORDER_TABLE: [185, 185, 200] as const,
-  BG_CODE: [244, 244, 249] as const,
-  CODE_TEXT: [38, 40, 58] as const,
-  CODE_BORDER: [205, 205, 220] as const,
+  BG_CODE: [26, 32, 64] as const,        // Dark navy (matches the deck/code style)
+  CODE_TEXT: [226, 232, 244] as const,    // Light text on dark
+  CODE_BORDER: [40, 48, 92] as const,
 };
 
 // ── PDF renderer ──────────────────────────────────────────────────────
