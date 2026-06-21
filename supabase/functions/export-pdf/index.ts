@@ -42,7 +42,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21g";
+const EXPORT_PDF_BUILD = "2026-06-21h";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -162,7 +162,7 @@ function detectPedagogicalBlock(text: string): PedagogicalBlockType {
 const PAGE_W = 210;
 const MARGIN_LEFT = 24;
 const MARGIN_RIGHT = 24;
-const MARGIN_TOP = 28;
+const MARGIN_TOP = 22;
 const MARGIN_BOTTOM = 28;
 const CONTENT_W = PAGE_W - MARGIN_LEFT - MARGIN_RIGHT;
 const MAX_Y = 297 - MARGIN_BOTTOM;
@@ -490,7 +490,10 @@ class PdfRenderer {
     const headingH = beforeSpace + textLines.length * (fontSize * 0.38) + afterSpace;
 
     this.checkPage(headingH + extraNeeded);
-    this.y += beforeSpace;
+    // Don't add the heading's leading space when it lands at the very top of a
+    // page (the top margin already provides the gap) — otherwise a heading pushed
+    // to a new page sits too far from the top.
+    if (this.y > MARGIN_TOP + 0.5) this.y += beforeSpace;
 
     // Re-assert size/weight AFTER checkPage: a page break here runs drawFooter,
     // which would otherwise leave the font size changed for the draw below.
@@ -533,15 +536,29 @@ class PdfRenderer {
   }
 
   // Draw wrapped lines with full justification (last line left-aligned).
+  // Manual full justification: distribute the slack evenly between words so the
+  // line spans the full width. Done by hand (not jsPDF's align:"justify") because
+  // that only reliably justified the first line of a paragraph in the runtime.
+  // The last line of a paragraph, single-word lines, and lines that would stretch
+  // too much are left at their natural width.
   drawJustified(lines: string[], x: number, y: number, width: number, lineH: number) {
+    const naturalSpace = this.doc.getTextWidth(" ");
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+      const lineY = y + i * lineH;
       const isLast = i === lines.length - 1;
-      const oneWord = line.trim().indexOf(" ") === -1;
-      if (isLast || oneWord) {
-        this.doc.text(line, x, y + i * lineH);
-      } else {
-        this.doc.text(line, x, y + i * lineH, { align: "justify", maxWidth: width });
+      const words = line.split(/\s+/).filter(Boolean);
+      if (isLast || words.length < 2) { this.doc.text(line, x, lineY); continue; }
+
+      const wordsW = words.reduce((s, w) => s + this.doc.getTextWidth(w), 0);
+      const gap = (width - wordsW) / (words.length - 1);
+      // Skip if it would over-stretch (a short line) or overflow.
+      if (gap < 0 || gap > naturalSpace * 3) { this.doc.text(line, x, lineY); continue; }
+
+      let cx = x;
+      for (let k = 0; k < words.length; k++) {
+        this.doc.text(words[k], cx, lineY);
+        cx += this.doc.getTextWidth(words[k]) + gap;
       }
     }
   }
