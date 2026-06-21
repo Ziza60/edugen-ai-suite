@@ -204,24 +204,32 @@ function header(slide: AnySlide, d: Palette, s: SlideSpec, moduleLabel: string) 
     fill: { color: d.accent2 },
     line: { type: "none" },
   });
-  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
-    x: ML + 0.18,
-    y: 0.5,
-    w: CW - 0.4,
-    h: 0.28,
-    fontFace: FONT_BODY,
-    fontSize: 10,
-    bold: true,
-    color: d.accent2,
-    charSpacing: 2,
-    align: "left",
-    valign: "middle",
-  });
+  // Kicker (super-title). Drop it when it merely echoes the slide title — a
+  // repeated super-title reads as a templating glitch, not a designed deck. The
+  // module-context kicker (the moduleLabel fallback) is intentional and stays.
+  const normLabel = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
+  const kicker = (s.eyebrow || moduleLabel || "").trim();
+  const showKicker = kicker.length > 0 && normLabel(kicker) !== normLabel(s.title);
+  if (showKicker) {
+    slide.addText(eyebrow(kicker), {
+      x: ML + 0.18,
+      y: 0.5,
+      w: CW - 0.4,
+      h: 0.28,
+      fontFace: FONT_BODY,
+      fontSize: 10,
+      bold: true,
+      color: d.accent2,
+      charSpacing: 2,
+      align: "left",
+      valign: "middle",
+    });
+  }
   slide.addText(s.title, {
     x: ML + 0.18,
-    y: 0.78,
+    y: showKicker ? 0.78 : 0.5,
     w: CW - 0.4,
-    h: 0.62,
+    h: showKicker ? 0.62 : 0.9,
     fontFace: FONT_TITLE,
     fontSize: s.title.length > 56 ? 22 : 26,
     bold: true,
@@ -733,7 +741,7 @@ function renderBento(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     slide.addText(b, {
       x: x + 0.28, y: y + 0.28 + chip + 0.14, w: cardW - 0.56,
       h: cardH - (0.28 + chip + 0.14) - 0.24,
-      fontFace: FONT_BODY, fontSize: n <= 2 ? 17 : 15, color: d.text,
+      fontFace: FONT_BODY, fontSize: n <= 2 ? 17 : 15, color: d.subtext,
       align: "left", valign: "top", lineSpacingMultiple: 1.06,
     });
   });
@@ -1291,21 +1299,43 @@ function renderDarkSplitH(slide: AnySlide, s: SlideSpec, d: Palette, brand: stri
 }
 
 function renderCompare(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string, variant = 0) {
+  // Defensive: a compare slide MUST have two populated sides. Production
+  // normalization guarantees this, but if a malformed slide ever reaches here
+  // (e.g. the contrast arrived as "cards" or bullets) we rebuild the sides so we
+  // never half-render an empty panel with no text.
+  let left = s.left, right = s.right;
+  const hasSides = (left?.items?.length ?? 0) > 0 && (right?.items?.length ?? 0) > 0;
+  if (!hasSides) {
+    const splitBody = (v?: string) =>
+      (v ? v.split(/[;\n•]+/).map((x) => x.trim()).filter(Boolean) : []);
+    const cards = (s.cards ?? []).filter((c) => c.heading || c.body);
+    if (cards.length >= 2) {
+      left = { heading: cards[0].heading ?? "", items: splitBody(cards[0].body).length ? splitBody(cards[0].body) : [cards[0].heading ?? ""] };
+      right = { heading: cards[1].heading ?? "", items: splitBody(cards[1].body).length ? splitBody(cards[1].body) : [cards[1].heading ?? ""] };
+    } else if ((s.bullets?.length ?? 0) >= 2) {
+      const mid = Math.ceil(s.bullets!.length / 2);
+      left = { heading: "", items: s.bullets!.slice(0, mid) };
+      right = { heading: "", items: s.bullets!.slice(mid) };
+    } else {
+      return renderBullets(slide, s, d, brand, num, moduleLabel);
+    }
+  }
+  const sx: SlideSpec = { ...s, left, right };
   // Round-robin so repeated contrasts don't all look identical: alternate the
   // dramatic VERTICAL split with a HORIZONTAL (top/bottom) one. Only short
   // one-statement sides qualify for either; list-y compares keep the two cards.
-  if (darkSplitEligible(s)) {
+  if (darkSplitEligible(sx)) {
     return variant % 2 === 0
-      ? renderDarkSplit(slide, s, d, brand, num)
-      : renderDarkSplitH(slide, s, d, brand, num);
+      ? renderDarkSplit(slide, sx, d, brand, num)
+      : renderDarkSplitH(slide, sx, d, brand, num);
   }
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
   const gap = 0.5;
   const colW = (CW - gap) / 2;
   const cols = [
-    { col: s.left!, x: ML, accent: d.accent },
-    { col: s.right!, x: ML + colW + gap, accent: d.accent2 },
+    { col: sx.left!, x: ML, accent: d.accent },
+    { col: sx.right!, x: ML + colW + gap, accent: d.accent2 },
   ];
   for (const { col, x, accent } of cols) {
     slide.addShape("roundRect", {
@@ -1397,20 +1427,19 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       x: 0, y: 0, w: W, h: H,
       fill: { color: "000000", transparency: 42 }, line: { type: "none" },
     });
-    // Marks placed SYMMETRICALLY about the text block's vertical centre
-    // (textCenter ∓ offset) with a tight box + middle valign, so both sit truly
-    // equidistant from the text. Edge-anchored boxes drifted because the 200pt
-    // glyph hangs from the top of its line regardless of valign.
+    // Opening mark sits above the text; the closing mark drops further below it
+    // (qOffClose > qOffOpen) so it clears the bottom of the quote instead of
+    // hugging it. Tight box + middle valign keeps each glyph centred on its mark.
     {
       const textCenter = 1.9 + 3.2 / 2; // text box: y=1.9, h=3.2
-      const qOff = 1.7, qH = 1.95;
+      const qOffOpen = 1.7, qOffClose = 2.35, qH = 1.95;
       slide.addText("“", {
-        x: 0.6, y: textCenter - qOff - qH / 2, w: 3, h: qH,
+        x: 0.6, y: textCenter - qOffOpen - qH / 2, w: 3, h: qH,
         fontFace: "Georgia", fontSize: 200, bold: true,
         color: "FFFFFF", transparency: 82, align: "left", valign: "middle",
       });
       slide.addText("”", {
-        x: W - 3.6, y: textCenter + qOff - qH / 2, w: 3, h: qH,
+        x: W - 3.6, y: textCenter + qOffClose - qH / 2, w: 3, h: qH,
         fontFace: "Georgia", fontSize: 200, bold: true,
         color: "FFFFFF", transparency: 82, align: "right", valign: "middle",
       });
@@ -1469,17 +1498,17 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   // Decorative quotation marks as a subtle adornment in the corners (not behind
   // the text), in an elegant serif and the accent colour at 20% opacity — the
   // "respiro" premium look. pptxgenjs renders text transparency as <a:alpha>.
-  // Symmetric about the text block's vertical centre (see cinematic branch above).
+  // Opening above the text; closing drops further below (see cinematic branch).
   {
     const textCenter = 2.15 + 3.0 / 2; // text box: y=2.15, h=3.0
-    const qOff = 1.7, qH = 1.95;
+    const qOffOpen = 1.7, qOffClose = 2.3, qH = 1.95;
     slide.addText("“", {
-      x: ML - 0.1, y: textCenter - qOff - qH / 2, w: 3, h: qH,
+      x: ML - 0.1, y: textCenter - qOffOpen - qH / 2, w: 3, h: qH,
       fontFace: "Georgia", fontSize: 200, bold: true,
       color: d.accent2, transparency: 80, align: "left", valign: "middle",
     });
     slide.addText("”", {
-      x: W - 3 - (ML - 0.1), y: textCenter + qOff - qH / 2, w: 3, h: qH,
+      x: W - 3 - (ML - 0.1), y: textCenter + qOffClose - qH / 2, w: 3, h: qH,
       fontFace: "Georgia", fontSize: 200, bold: true,
       color: d.accent2, transparency: 80, align: "right", valign: "middle",
     });
@@ -1878,6 +1907,454 @@ function renderStairs(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
   footer(slide, d, brand, num);
 }
 
+// ── infographic layouts (rotate into the BULLETS family to break the "every
+//    slide is a card grid" monotony). Each consumes s.bullets (short items),
+//    uses palette tokens only, and degrades gracefully on any theme. ──────────
+
+/** Blend two RRGGBB hex colours (t: 0 → a, 1 → b). Drives segment/ramp colours. */
+function hexLerp(a: string, b: string, t: number): string {
+  const ca = [0, 2, 4].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const cb = [0, 2, 4].map((i) => parseInt(b.slice(i, i + 2), 16));
+  return ca
+    .map((v, i) => Math.round(v + (cb[i] - v) * t).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
+/** Trimmed, non-empty bullets, capped. */
+function bulletItems(s: SlideSpec, max: number): string[] {
+  return (s.bullets ?? []).map((b) => (b || "").trim()).filter(Boolean).slice(0, max);
+}
+
+/** Horizontal chevron flow — an ordered process / sequence. */
+function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const n = Math.max(items.length, 1);
+  const gap = 0.1;
+  const chW = (CW - gap * (n - 1)) / n;
+  const chH = 2.3;
+  const y = CONTENT_Y + (CONTENT_H - chH) / 2;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  items.forEach((b, i) => {
+    const x = ML + i * (chW + gap);
+    const accent = i % 2 === 0;
+    slide.addShape("chevron", {
+      x, y, w: chW, h: chH,
+      fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 },
+    });
+    // A chevron has a notch on the LEFT and a point on the RIGHT; both eat into
+    // the box. Inset the text generously on both sides so it never gets clipped.
+    const inL = 0.5, inR = 0.55;
+    slide.addText(String(i + 1), {
+      x: x + inL, y: y + 0.24, w: chW - inL - inR, h: 0.6,
+      fontFace: FONT_TITLE, fontSize: 26, bold: true,
+      color: d.accent2, align: "center", valign: "middle",
+    });
+    slide.addText(b, {
+      x: x + inL, y: y + 0.9, w: chW - inL - inR, h: chH - 1.15,
+      fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.subtext,
+      align: "center", valign: "top", lineSpacingMultiple: 1.0,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Segmented ring (donut split into wedges) + legend — a cycle / categories. */
+function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const D = Math.min(4.6, CONTENT_H - 0.2);
+  const ringX = ML + 0.2;
+  const ringY = CONTENT_Y + (CONTENT_H - D) / 2;
+  const cxr = ringX + D / 2, cyr = ringY + D / 2;
+  const seg = 360 / n;
+  for (let i = 0; i < n; i++) {
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("pie", {
+      x: ringX, y: ringY, w: D, h: D,
+      fill: { color }, line: { color: d.bg, width: 2.5 },
+      angleRange: [i * seg, (i + 1) * seg],
+    });
+  }
+  const hole = D * 0.5;
+  slide.addShape("ellipse", {
+    x: cxr - hole / 2, y: cyr - hole / 2, w: hole, h: hole,
+    fill: { color: d.bg }, line: { type: "none" },
+  });
+  slide.addText(String(n), {
+    x: cxr - hole / 2, y: cyr - hole / 2, w: hole, h: hole,
+    fontFace: FONT_TITLE, fontSize: 40, bold: true, color: d.accent2,
+    align: "center", valign: "middle",
+  });
+  // Bright studs on the segment divisions (premium donut detail).
+  const Rmid = (D / 2 + hole / 2) / 2;
+  for (let i = 0; i < n; i++) {
+    const th = (i * seg * Math.PI) / 180;
+    const px = cxr + Rmid * Math.sin(th), py = cyr - Rmid * Math.cos(th);
+    slide.addShape("ellipse", { x: px - 0.09, y: py - 0.09, w: 0.18, h: 0.18, fill: { color: d.bg }, line: { type: "none" } });
+    slide.addShape("ellipse", { x: px - 0.05, y: py - 0.05, w: 0.1, h: 0.1, fill: { color: d.accent2 }, line: { type: "none" } });
+  }
+  const legX = ringX + D + 0.55;
+  const legW = ML + CW - legX;
+  const rowH = Math.min(1.1, CONTENT_H / n);
+  const startY = CONTENT_Y + (CONTENT_H - rowH * n) / 2;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  items.forEach((b, i) => {
+    const ry = startY + i * rowH;
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("ellipse", {
+      x: legX, y: ry + rowH / 2 - 0.16, w: 0.32, h: 0.32,
+      fill: { color }, line: { type: "none" },
+    });
+    slide.addText(b, {
+      x: legX + 0.5, y: ry, w: legW - 0.5, h: rowH,
+      fontFace: FONT_BODY, fontSize: fs, color: d.subtext,
+      valign: "middle", lineSpacingMultiple: 1.02,
+    });
+  });
+  footer(slide, d, brand, num);
+}
+
+/**
+ * Stacked pyramid — pointed triangular apex over trapezoid tiers, LEFT-aligned,
+ * with the short title INSIDE each tier and a longer description pulled out to
+ * the right, joined by a connector line in that tier's colour (foundation →
+ * peak). Form adapted from a user-supplied light-theme reference; here it reads
+ * heading/body pairs and uses the active dark palette so it matches the deck.
+ * Falls back gracefully: tiers whose item has no body just show the title.
+ *
+ * Geometry: every tier's top/bottom width is derived from a SINGLE pyramid
+ * slope (half-width grows linearly with distance below the apex). Because the
+ * tiers are separated by a small gap, each tier's floor is strictly NARROWER
+ * than the ceiling of the tier below it — a true, continuous pyramid silhouette
+ * with no overhang. The PowerPoint "trapezoid" preset can't express an arbitrary
+ * top/bottom ratio (its top edge is locked at ~50% of the base), so the trapezoid
+ * tiers are drawn as custom geometry with exact corner points.
+ */
+function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const pairs = slideItemPairs(s).slice(0, 5);
+  const n = Math.max(pairs.length, 1);
+
+  // ── geometry (16:9, left-aligned pyramid; descriptions fill the right) ──
+  // The apex tier gets extra height so its (necessarily narrow) triangle has
+  // room for its label without the text spilling past the sloped sides.
+  const gap = 0.16;
+  const apexFactor = 1.6;                    // apex is 1.6× a normal tier's height
+  const baseTierH = (CONTENT_H - gap * (n - 1)) / ((n - 1) + apexFactor);
+  const totalH = CONTENT_H;                  // apex tip → base
+  const baseW = Math.min(5.0, CW * 0.42);    // widest (base) tier
+  const slope = baseW / 2 / totalH;          // half-width gained per unit height
+  const cx = ML + baseW / 2;                  // pyramid centre x
+  const descX = ML + baseW + 0.9;             // description column start
+  const descW = (W - MR) - descX;
+  const titleFs = n <= 3 ? 15 : 13;
+  const descFs = n <= 3 ? 13 : 12;
+
+  let y = CONTENT_Y;   // top of the current tier
+  let relTop = 0;      // current tier's top, measured down from the apex tip
+  pairs.forEach((p, i) => {
+    const isTop = i === 0;
+    const h = isTop ? baseTierH * apexFactor : baseTierH;
+    const wTop = 2 * slope * relTop;          // ceiling width (0 for the apex)
+    const wBot = 2 * slope * (relTop + h);    // floor width
+    const color = n > 1 ? hexLerp(d.accent2, d.accent, i / (n - 1)) : d.accent;
+
+    // 1 · the tier shape. Apex = pointed triangle; the rest = custom trapezoids
+    //     whose exact top/bottom widths follow the single pyramid slope.
+    if (isTop) {
+      slide.addShape("triangle", {
+        x: cx - wBot / 2, y, w: wBot, h,
+        fill: { color }, line: { color: d.bg, width: 2 },
+      });
+    } else {
+      slide.addShape("custGeom", {
+        x: cx - wBot / 2, y, w: wBot, h,
+        fill: { color }, line: { color: d.bg, width: 2 },
+        points: [
+          { x: (wBot - wTop) / 2, y: 0 },
+          { x: (wBot + wTop) / 2, y: 0 },
+          { x: wBot, y: h },
+          { x: 0, y: h },
+          { close: true },
+        ],
+      });
+    }
+
+    // 2 · short title INSIDE the tier. The apex is a narrow funnel, so it gets a
+    //     smaller font and the label is pushed DOWN to the wide base of the
+    //     triangle (valign bottom) and sized to that base width — fixing the
+    //     overflow at the tip. Trapezoid tiers hug their narrower TOP width so
+    //     wrapped lines never spill past the sloped sides.
+    const innerW = isTop
+      ? Math.max(wBot - 0.3, 0.6)
+      : Math.max(wTop, wBot * 0.55) - 0.24;
+    slide.addText(p.heading, {
+      x: cx - innerW / 2,
+      y: isTop ? y + h * 0.30 : y,
+      w: innerW, h: isTop ? h * 0.66 : h,
+      fontFace: FONT_BODY, fontSize: isTop ? Math.max(9, titleFs - 4) : titleFs,
+      bold: true, color: d.onAccent,
+      align: "center", valign: isTop ? "bottom" : "middle", lineSpacingMultiple: 0.96,
+    });
+
+    // 3 · connector line + 4 · description, only when a body exists. The line
+    //     meets the sloped right edge at the tier's vertical midpoint.
+    if (p.body && p.body.trim()) {
+      const midW = (wTop + wBot) / 2;
+      const rightEdge = cx + midW / 2;
+      slide.addShape("line", {
+        x: rightEdge - 0.05, y: y + h / 2,
+        w: descX - 0.2 - (rightEdge - 0.05), h: 0,
+        line: { color, width: 2 },
+      });
+      slide.addText(p.body, {
+        x: descX, y, w: descW, h,
+        fontFace: FONT_BODY, fontSize: descFs, color: d.text,
+        align: "left", valign: "middle", lineSpacingMultiple: 1.05,
+      });
+    }
+
+    y += h + gap;
+    relTop += h + gap;
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Geometric-marker list — a lighter alternative to plain bullets, and the safe
+ *  fallback for longer / denser bullet sets. */
+function renderMarkers(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const rowH = CONTENT_H / n;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  const mk = 0.34;
+  items.forEach((b, i) => {
+    const y = CONTENT_Y + i * rowH;
+    slide.addShape("triangle", {
+      x: ML + 0.05, y: y + rowH / 2 - mk / 2, w: mk, h: mk, rotate: 90,
+      fill: { color: i % 2 === 0 ? d.accent2 : d.accent }, line: { type: "none" },
+    });
+    slide.addText(b, {
+      x: ML + 0.6, y, w: CW - 0.7, h: rowH,
+      fontFace: FONT_BODY, fontSize: fs, color: d.subtext,
+      valign: "middle", lineSpacingMultiple: 1.03,
+    });
+    if (i < n - 1) {
+      slide.addShape("line", {
+        x: ML + 0.6, y: y + rowH, w: CW - 0.7, h: 0,
+        line: { color: d.border, width: 0.5 },
+      });
+    }
+  });
+  footer(slide, d, brand, num);
+}
+
+// ── infographic layouts · batch 2 ───────────────────────────────────────────
+
+/** Spiral of numbered nodes (left) + numbered legend (right) — an evolving cycle. */
+function renderSpiral(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const cx = ML + 2.5, cy = CONTENT_Y + CONTENT_H / 2;
+  const rMin = 0.35, rMax = 2.05, turns = 1.6;
+  const pos = items.map((_, i) => {
+    const t = n > 1 ? i / (n - 1) : 0;
+    const ang = -Math.PI / 2 + t * turns * 2 * Math.PI;
+    const r = rMin + t * (rMax - rMin);
+    return { x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang) };
+  });
+  for (let i = 0; i < n - 1; i++) {
+    const a = pos[i], b = pos[i + 1];
+    slide.addShape("line", {
+      x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+      w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
+      flipH: b.x < a.x, flipV: b.y < a.y, line: { color: d.border, width: 1.5 },
+    });
+  }
+  const r = 0.3;
+  pos.forEach((p, i) => {
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("ellipse", { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2, fill: { color }, line: { color: d.bg, width: 2 } });
+    slide.addText(String(i + 1), { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2, fontFace: FONT_TITLE, fontSize: 14, bold: true, color: d.onAccent, align: "center", valign: "middle" });
+  });
+  const legX = ML + 5.1, legW = ML + CW - legX;
+  const rowH = Math.min(1.1, CONTENT_H / n);
+  const startY = CONTENT_Y + (CONTENT_H - rowH * n) / 2;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  items.forEach((b, i) => {
+    const ry = startY + i * rowH;
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("ellipse", { x: legX, y: ry + rowH / 2 - 0.16, w: 0.34, h: 0.34, fill: { color }, line: { type: "none" } });
+    slide.addText(String(i + 1), { x: legX, y: ry + rowH / 2 - 0.16, w: 0.34, h: 0.34, fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent, align: "center", valign: "middle" });
+    slide.addText(b, { x: legX + 0.5, y: ry, w: legW - 0.5, h: rowH, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, valign: "middle", lineSpacingMultiple: 1.02 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Network: a central concept with satellites joined by hub + peer links. */
+function renderNetwork(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const N = Math.max(items.length, 1);
+  const cx = ML + CW / 2, cy = CONTENT_Y + CONTENT_H / 2;
+  const ringRx = CW / 2 - 1.7, ringRy = CONTENT_H / 2 - 0.7;
+  const pos = items.map((_, i) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / N;
+    return { x: cx + ringRx * Math.cos(a), y: cy + ringRy * Math.sin(a) };
+  });
+  pos.forEach((p) => slide.addShape("line", {
+    x: Math.min(cx, p.x), y: Math.min(cy, p.y), w: Math.abs(p.x - cx), h: Math.abs(p.y - cy),
+    flipH: p.x < cx, flipV: p.y < cy, line: { color: d.border, width: 1 },
+  }));
+  if (N >= 3) {
+    for (let i = 0; i < N; i++) {
+      const a = pos[i], b = pos[(i + 1) % N];
+      slide.addShape("line", {
+        x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
+        flipH: b.x < a.x, flipV: b.y < a.y, line: { color: d.border, width: 0.75, dashType: "dash" },
+      });
+    }
+  }
+  const hubR = 0.7;
+  slide.addShape("ellipse", { x: cx - hubR, y: cy - hubR, w: hubR * 2, h: hubR * 2, fill: { color: d.accent }, line: { type: "none" } });
+  const stop = new Set(["a", "o", "as", "os", "da", "de", "do", "das", "dos", "e", "em", "na", "no", "para", "com", "the", "of", "to", "and", "in", "on"]);
+  const words = s.title.split(/\s+/).filter((w) => w && !stop.has(w.toLowerCase()));
+  const hub = (words.slice(0, 2).join(" ") || s.title).slice(0, 18);
+  slide.addText(hub, { x: cx - hubR + 0.04, y: cy - hubR, w: hubR * 2 - 0.08, h: hubR * 2, fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent, align: "center", valign: "middle", lineSpacingMultiple: 0.95 });
+  const sw = 2.5, sh = 0.9;
+  const fs = autoBodyFontSize(N, items.join("").length);
+  items.forEach((b, i) => {
+    const p = pos[i];
+    slide.addShape("roundRect", { x: p.x - sw / 2, y: p.y - sh / 2, w: sw, h: sh, rectRadius: 0.08, fill: { color: d.surface }, line: { color: d.border, width: 1 } });
+    slide.addText(b, { x: p.x - sw / 2 + 0.14, y: p.y - sh / 2, w: sw - 0.28, h: sh, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, align: "center", valign: "middle", lineSpacingMultiple: 0.98 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Asymmetric modular panels: a bold feature panel + a stack of smaller ones. */
+function renderAsymPanels(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const n = Math.max(items.length, 1);
+  const gap = 0.18;
+  const featW = CW * 0.44;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  slide.addShape("roundRect", { x: ML, y: CONTENT_Y, w: featW, h: CONTENT_H, rectRadius: 0.06, fill: { color: d.accent }, line: { type: "none" } });
+  slide.addText("01", { x: ML + 0.3, y: CONTENT_Y + 0.3, w: featW - 0.6, h: 0.8, fontFace: FONT_TITLE, fontSize: 34, bold: true, color: d.accent2, align: "left", valign: "top" });
+  slide.addText(items[0] ?? "", { x: ML + 0.3, y: CONTENT_Y + 1.1, w: featW - 0.6, h: CONTENT_H - 1.4, fontFace: FONT_BODY, fontSize: fs + 2, bold: true, color: d.onAccent, align: "left", valign: "middle", lineSpacingMultiple: 1.03 });
+  const rest = items.slice(1);
+  const rx = ML + featW + gap, rw = CW - featW - gap;
+  const m = Math.max(rest.length, 1);
+  const rh = (CONTENT_H - gap * (m - 1)) / m;
+  rest.forEach((b, i) => {
+    const y = CONTENT_Y + i * (rh + gap);
+    slide.addShape("roundRect", { x: rx, y, w: rw, h: rh, rectRadius: 0.06, fill: { color: d.surface }, line: { color: d.border, width: 1 } });
+    slide.addText(String(i + 2).padStart(2, "0"), { x: rx + 0.22, y, w: 0.7, h: rh, fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.accent2, align: "left", valign: "middle" });
+    slide.addText(b, { x: rx + 1.0, y, w: rw - 1.2, h: rh, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, align: "left", valign: "middle", lineSpacingMultiple: 1.0 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Numbered circular icons in a grid — a clean, scannable enumerated list. */
+function renderNumberedIcons(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const cols = n <= 3 ? 1 : 2;
+  const rows = Math.ceil(n / cols);
+  const gapX = 0.5, gapY = 0.22;
+  const cellW = (CW - gapX * (cols - 1)) / cols;
+  const cellH = (CONTENT_H - gapY * (rows - 1)) / rows;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  const cr = 0.34;
+  items.forEach((b, i) => {
+    const c = i % cols, r = Math.floor(i / cols);
+    const x = ML + c * (cellW + gapX), y = CONTENT_Y + r * (cellH + gapY);
+    const cyc = y + cellH / 2;
+    slide.addShape("ellipse", { x, y: cyc - cr, w: cr * 2, h: cr * 2, fill: { color: n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent }, line: { type: "none" } });
+    slide.addText(String(i + 1), { x, y: cyc - cr, w: cr * 2, h: cr * 2, fontFace: FONT_TITLE, fontSize: 16, bold: true, color: d.onAccent, align: "center", valign: "middle" });
+    slide.addText(b, { x: x + cr * 2 + 0.25, y, w: cellW - cr * 2 - 0.35, h: cellH, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, align: "left", valign: "middle", lineSpacingMultiple: 1.02 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Staggered cards joined by diagonal arrows — a flowing, ordered progression. */
+function renderDiagonalArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 5);
+  const n = Math.max(items.length, 1);
+  const padX = 0.3;
+  const usableW = CW - 2 * padX;
+  const slot = usableW / n;
+  const cardW = Math.min(2.6, slot - 0.1);
+  const cardH = 1.5;
+  const yTop = CONTENT_Y + 0.4, yBot = FOOTER_Y - 0.15 - cardH;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  const pos = items.map((_, i) => ({ x: ML + padX + slot * i + (slot - cardW) / 2, y: i % 2 === 0 ? yTop : yBot }));
+  for (let i = 0; i < n - 1; i++) {
+    const a = { x: pos[i].x + cardW, y: pos[i].y + cardH / 2 };
+    const b = { x: pos[i + 1].x, y: pos[i + 1].y + cardH / 2 };
+    slide.addShape("line", {
+      x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
+      flipH: b.x < a.x, flipV: b.y < a.y, line: { color: d.subtext, width: 1.25, endArrowType: "triangle" },
+    });
+  }
+  items.forEach((b, i) => {
+    const p = pos[i], accent = i % 2 === 0;
+    slide.addShape("roundRect", { x: p.x, y: p.y, w: cardW, h: cardH, rectRadius: 0.08, fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 } });
+    slide.addText(String(i + 1), { x: p.x + 0.14, y: p.y + 0.1, w: cardW - 0.28, h: 0.5, fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.accent2, align: "left", valign: "top" });
+    slide.addText(b, { x: p.x + 0.16, y: p.y + 0.6, w: cardW - 0.32, h: cardH - 0.7, fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.subtext, align: "left", valign: "top", lineSpacingMultiple: 1.0 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Connection lines: a hub fanning out to labelled nodes (a mind-map spread). */
+function renderConnectionLines(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  bgFill(slide, d.bg);
+  header(slide, d, s, moduleLabel);
+  const items = bulletItems(s, 6);
+  const n = Math.max(items.length, 1);
+  const ox = ML + 0.5, oy = CONTENT_Y + CONTENT_H / 2;
+  const nodeX = ML + 3.4;
+  const rowH = Math.min(1.1, CONTENT_H / n);
+  const startY = CONTENT_Y + (CONTENT_H - rowH * n) / 2;
+  const fs = autoBodyFontSize(n, items.join("").length);
+  slide.addShape("ellipse", { x: ox - 0.28, y: oy - 0.28, w: 0.56, h: 0.56, fill: { color: d.accent }, line: { type: "none" } });
+  items.forEach((b, i) => {
+    const ny = startY + i * rowH + rowH / 2;
+    slide.addShape("line", {
+      x: Math.min(ox, nodeX), y: Math.min(oy, ny), w: Math.abs(nodeX - ox), h: Math.abs(ny - oy),
+      flipH: nodeX < ox, flipV: ny < oy, line: { color: d.border, width: 1.25 },
+    });
+    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    slide.addShape("ellipse", { x: nodeX - 0.16, y: ny - 0.16, w: 0.32, h: 0.32, fill: { color }, line: { color: d.bg, width: 1.5 } });
+    slide.addText(b, { x: nodeX + 0.32, y: ny - rowH / 2, w: ML + CW - (nodeX + 0.32) - 0.1, h: rowH, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, align: "left", valign: "middle", lineSpacingMultiple: 1.02 });
+  });
+  footer(slide, d, brand, num);
+}
+
+/** Bullet-fed horizontal timeline — a clean, continuous sequence. Curated
+ *  replacement for the noisier zig-zag / mountain layouts: feeds short bullets
+ *  into the polished step timeline as heading-only nodes. */
+function renderBulletTimeline(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
+  const items = bulletItems(s, 6);
+  renderTimeline(slide, { ...s, steps: items.map((t) => ({ heading: t })) } as SlideSpec, d, brand, num, moduleLabel);
+}
+
 // ── orchestrator ────────────────────────────────────────────────────────────
 
 /**
@@ -1956,8 +2433,15 @@ export function renderDeck(
             break;
           case "cards": {
             const nc = (s.cards ?? []).length;
-            if (nc >= 3 && nc <= 5 && cardsVar++ % 2 === 1) {
-              renderRadial(slide, s, d, brand, num, m.title);
+            if (nc >= 3 && nc <= 5) {
+              // Rotate cards across cards / radial / pyramid so a module with
+              // several card slides doesn't repeat the same grid. The pyramid
+              // (title inside + description on the right) needs heading+body —
+              // which cards always carry.
+              const v = cardsVar++ % 3;
+              if (v === 1) renderRadial(slide, s, d, brand, num, m.title);
+              else if (v === 2) renderPyramid(slide, s, d, brand, num, m.title);
+              else renderCards(slide, s, d, brand, num, m.title);
             } else {
               renderCards(slide, s, d, brand, num, m.title);
             }
@@ -1996,7 +2480,34 @@ export function renderDeck(
             if (s.imageData) {
               renderBullets(slide, s, d, brand, num, m.title);
             } else {
-              const variants = [renderBullets, renderBands, renderNumberedList];
+              // SINGLE source of bullet-slide variety (consolidated from the old
+              // normalize-level breakLayoutRuns). Every short, image-less bullets
+              // slide rotates across one rich pool so no two look the same — a
+              // plain vertical list is the "auto-converted" look we avoid here.
+              const its = (s.bullets ?? []).map((b) => (b || "").trim()).filter(Boolean);
+              const k = its.length;
+              // Shape-based diagrams place text INSIDE shapes, so they need short
+              // items; tiles/bento need scannable short phrases. Long / 6+ item
+              // lists stay list-style (bullets / markers) to avoid overflow.
+              const short = its.every((b) => b.length <= 58);
+              const wordShort = its.every((b) => b.trim().split(/\s+/).length <= 10);
+              const variants: Array<typeof renderBullets> = [];
+              if (k >= 3 && k <= 5 && short) {
+                // Curated pool (v7.28): tiles dropped (bento owns the grid role),
+                // zig-zag + mountain demoted in favour of the clean bullet timeline.
+                variants.push(renderProcessArrows);
+                variants.push(renderSegmentedRing, renderNetwork);
+                if (wordShort && k <= 4) variants.push(renderBento);
+                variants.push(
+                  renderSpiral, renderBulletTimeline, renderNumberedIcons,
+                  renderDiagonalArrows, renderAsymPanels, renderConnectionLines, renderMarkers,
+                );
+              } else if (k === 2 && wordShort) {
+                variants.push(renderBullets, renderBento, renderMarkers);
+              } else {
+                variants.push(renderBullets, renderMarkers);
+                if (k <= 6) variants.push(renderNumberedIcons, renderConnectionLines);
+              }
               variants[bulletsVar++ % variants.length](slide, s, d, brand, num, m.title);
             }
             break;

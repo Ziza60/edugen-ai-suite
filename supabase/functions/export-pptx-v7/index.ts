@@ -4,7 +4,7 @@
 // Topic-agnostic PPTX exporter. Pipeline:
 //   course MD ─▶ buildDeck (structured LLM per module, deterministic fallback)
 //             ─▶ normalizeDeck (universal structural fixes, graceful degrade)
-//             ─▶ resolveImages (optional Pexels)
+//             ─▶ resolveImages (optional Pexels + Pixabay fallback)
 //             ─▶ renderDeck (clean design system)
 //             ─▶ write ▸ upload ▸ signed URL
 //
@@ -22,7 +22,7 @@ import { normalizeDeck } from "./validate.ts";
 import { renderDeck } from "./render.ts";
 import { resolveImages } from "./images.ts";
 
-const ENGINE_VERSION = "7.24.0";
+const ENGINE_VERSION = "7.33.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -86,6 +86,7 @@ Deno.serve(async (req: Request) => {
 
     const geminiKey = Deno.env.get("GEMINI_API_KEY") ?? null;
     const pexelsKey = Deno.env.get("PEXELS_API_KEY") ?? undefined;
+    const pixabayKey = Deno.env.get("PIXABAY_API_KEY") ?? undefined;
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -140,7 +141,7 @@ Deno.serve(async (req: Request) => {
 
     const t0 = Date.now();
     console.log(
-      `[V7] ENGINE=${ENGINE_VERSION} "${courseTitle}" modules=${modules.length} llm=${!!geminiKey} images=${includeImages && !!pexelsKey} density=${density} template=${template} palette=${palette}`,
+      `[V7] ENGINE=${ENGINE_VERSION} "${courseTitle}" modules=${modules.length} llm=${!!geminiKey} images=${includeImages && !!(pexelsKey || pixabayKey)} density=${density} template=${template} palette=${palette}`,
     );
 
     // 1. Build deck (structured planner + deterministic fallback)
@@ -160,13 +161,13 @@ Deno.serve(async (req: Request) => {
     );
 
     // 3. Optional images (best-effort)
-    if (includeImages && pexelsKey) {
+    if (includeImages && (pexelsKey || pixabayKey)) {
       // One query per module (planner hint, else module title) + the cover, so
       // every module divider gets a photo.
       const queries: string[] = [courseTitle];
       for (const m of deck.modules) queries.push(moduleImageQuery(m));
       try {
-        const images = await resolveImages(queries, pexelsKey, queries.length);
+        const images = await resolveImages(queries, pexelsKey, queries.length, pixabayKey);
         attachImages(deck, images);
         console.log(`[V7-IMAGES] resolved=${Object.keys(images).length}`);
       } catch (e) {
