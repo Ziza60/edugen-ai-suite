@@ -28,7 +28,11 @@ function headingKey(s: string): string {
  */
 export function cleanModuleContent(content: string, title?: string): string {
   let c = (content || "").trim();
-  c = c.replace(/^```[a-zA-Z]*[ \t]*\n?/, "").replace(/\n?```[ \t]*$/, "").trim();
+  // Strip a whole-module wrapper fence ONLY when the content starts with one,
+  // so we never remove the closing fence of a real trailing code block.
+  if (/^```/.test(c)) {
+    c = c.replace(/^```[a-zA-Z]*[ \t]*\n?/, "").replace(/\n?```[ \t]*$/, "").trim();
+  }
   if (title) {
     const lines = c.split("\n");
     let k = 0;

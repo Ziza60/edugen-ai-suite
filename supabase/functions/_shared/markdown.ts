@@ -24,8 +24,12 @@ function headingKey(s: string): string {
  */
 export function cleanModuleContent(content: string, title?: string): string {
   let c = (content || "").trim();
-  // Strip an opening fence (```markdown / ```lang / ```) and a closing fence.
-  c = c.replace(/^```[a-zA-Z]*[ \t]*\n?/, "").replace(/\n?```[ \t]*$/, "").trim();
+  // Strip a whole-module wrapper fence ONLY when the content starts with one
+  // (```markdown … ```). Guarding on the leading fence avoids removing the
+  // CLOSING fence of a legitimate code block that ends the module.
+  if (/^```/.test(c)) {
+    c = c.replace(/^```[a-zA-Z]*[ \t]*\n?/, "").replace(/\n?```[ \t]*$/, "").trim();
+  }
 
   if (title) {
     const lines = c.split("\n");
