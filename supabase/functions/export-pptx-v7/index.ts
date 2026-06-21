@@ -22,7 +22,7 @@ import { normalizeDeck } from "./validate.ts";
 import { renderDeck } from "./render.ts";
 import { resolveImages } from "./images.ts";
 
-const ENGINE_VERSION = "7.33.0";
+const ENGINE_VERSION = "7.34.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -180,6 +180,7 @@ Deno.serve(async (req: Request) => {
       palette,
       template,
       footerBrand,
+      language,
     });
 
     // 5. Write
