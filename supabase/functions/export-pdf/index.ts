@@ -1,7 +1,39 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
-import { cleanModuleContent } from "../_shared/markdown.ts";
+
+// Self-contained (no ../_shared import) so this function can be deployed by
+// pasting THIS single file into the Supabase Dashboard editor.
+function _headingKey(s: string): string {
+  return (s || "")
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/^m[óo]dul[oe]\s*\d+\s*[:.\-–—]\s*/i, "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim().toLowerCase();
+}
+/** Strip a stray ```markdown wrapper fence + a leading heading that just repeats
+ *  the module title (every consumer already renders the title). */
+function cleanModuleContent(content: string, title?: string): string {
+  let c = (content || "").trim();
+  if (/^```/.test(c)) {
+    c = c.replace(/^```[a-zA-Z]*[ \t]*\n?/, "").replace(/\n?```[ \t]*$/, "").trim();
+  }
+  if (title) {
+    const lines = c.split("\n");
+    let k = 0;
+    while (k < lines.length && !lines[k].trim()) k++;
+    if (
+      k < lines.length && /^#{1,3}\s+/.test(lines[k]) &&
+      _headingKey(title).length > 0 && _headingKey(lines[k]) === _headingKey(title)
+    ) {
+      lines.splice(0, k + 1);
+      while (lines.length && !lines[0].trim()) lines.shift();
+      c = lines.join("\n").trim();
+    }
+  }
+  return c;
+}
 
 // TESTING_MODE: fase de testes sem usuários reais — libera o gate de plano Pro
 // do export de PDF (espelha generate-course / upload-course-source). Voltar para
@@ -10,7 +42,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21c";
+const EXPORT_PDF_BUILD = "2026-06-21d";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
