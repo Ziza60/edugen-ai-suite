@@ -2042,57 +2042,65 @@ function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   const n = Math.max(pairs.length, 1);
 
   // ── geometry (16:9, left-aligned pyramid; descriptions fill the right) ──
+  // The apex tier gets extra height so its (necessarily narrow) triangle has
+  // room for its label without the text spilling past the sloped sides.
   const gap = 0.16;
-  const tierH = (CONTENT_H - gap * (n - 1)) / n;
-  const totalH = n * tierH + (n - 1) * gap; // apex tip → base
-  const baseW = Math.min(5.0, CW * 0.42);   // widest (base) tier
-  const slope = baseW / 2 / totalH;         // half-width gained per unit height
-  const cx = ML + baseW / 2;                 // pyramid centre x
-  const descX = ML + baseW + 0.9;            // description column start
+  const apexFactor = 1.6;                    // apex is 1.6× a normal tier's height
+  const baseTierH = (CONTENT_H - gap * (n - 1)) / ((n - 1) + apexFactor);
+  const totalH = CONTENT_H;                  // apex tip → base
+  const baseW = Math.min(5.0, CW * 0.42);    // widest (base) tier
+  const slope = baseW / 2 / totalH;          // half-width gained per unit height
+  const cx = ML + baseW / 2;                  // pyramid centre x
+  const descX = ML + baseW + 0.9;             // description column start
   const descW = (W - MR) - descX;
   const titleFs = n <= 3 ? 15 : 13;
   const descFs = n <= 3 ? 13 : 12;
-  const halfAt = (relY: number) => slope * relY; // half-width at relY below apex
 
+  let y = CONTENT_Y;   // top of the current tier
+  let relTop = 0;      // current tier's top, measured down from the apex tip
   pairs.forEach((p, i) => {
     const isTop = i === 0;
-    const y = CONTENT_Y + i * (tierH + gap);
-    const relTop = i * (tierH + gap);     // this tier's top, measured from apex
-    const wTop = 2 * halfAt(relTop);      // ceiling width (0 for the apex)
-    const wBot = 2 * halfAt(relTop + tierH); // floor width
+    const h = isTop ? baseTierH * apexFactor : baseTierH;
+    const wTop = 2 * slope * relTop;          // ceiling width (0 for the apex)
+    const wBot = 2 * slope * (relTop + h);    // floor width
     const color = n > 1 ? hexLerp(d.accent2, d.accent, i / (n - 1)) : d.accent;
 
     // 1 · the tier shape. Apex = pointed triangle; the rest = custom trapezoids
     //     whose exact top/bottom widths follow the single pyramid slope.
     if (isTop) {
       slide.addShape("triangle", {
-        x: cx - wBot / 2, y, w: wBot, h: tierH,
+        x: cx - wBot / 2, y, w: wBot, h,
         fill: { color }, line: { color: d.bg, width: 2 },
       });
     } else {
       slide.addShape("custGeom", {
-        x: cx - wBot / 2, y, w: wBot, h: tierH,
+        x: cx - wBot / 2, y, w: wBot, h,
         fill: { color }, line: { color: d.bg, width: 2 },
         points: [
           { x: (wBot - wTop) / 2, y: 0 },
           { x: (wBot + wTop) / 2, y: 0 },
-          { x: wBot, y: tierH },
-          { x: 0, y: tierH },
+          { x: wBot, y: h },
+          { x: 0, y: h },
           { close: true },
         ],
       });
     }
 
-    // 2 · short title INSIDE the tier. For the apex, sit it in the lower, wider
-    //     half of the triangle so the point doesn't clip it. The box hugs the
-    //     tier's narrower TOP width so text never spills past the sloped sides.
-    const innerW = Math.max(wTop, wBot * 0.55) - 0.24;
+    // 2 · short title INSIDE the tier. The apex is a narrow funnel, so it gets a
+    //     smaller font and the label is pushed DOWN to the wide base of the
+    //     triangle (valign bottom) and sized to that base width — fixing the
+    //     overflow at the tip. Trapezoid tiers hug their narrower TOP width so
+    //     wrapped lines never spill past the sloped sides.
+    const innerW = isTop
+      ? Math.max(wBot - 0.3, 0.6)
+      : Math.max(wTop, wBot * 0.55) - 0.24;
     slide.addText(p.heading, {
       x: cx - innerW / 2,
-      y: isTop ? y + tierH * 0.34 : y,
-      w: innerW, h: isTop ? tierH * 0.64 : tierH,
-      fontFace: FONT_BODY, fontSize: isTop ? titleFs - 1 : titleFs, bold: true,
-      color: d.onAccent, align: "center", valign: "middle", lineSpacingMultiple: 0.96,
+      y: isTop ? y + h * 0.30 : y,
+      w: innerW, h: isTop ? h * 0.66 : h,
+      fontFace: FONT_BODY, fontSize: isTop ? Math.max(9, titleFs - 4) : titleFs,
+      bold: true, color: d.onAccent,
+      align: "center", valign: isTop ? "bottom" : "middle", lineSpacingMultiple: 0.96,
     });
 
     // 3 · connector line + 4 · description, only when a body exists. The line
@@ -2101,16 +2109,19 @@ function renderPyramid(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
       const midW = (wTop + wBot) / 2;
       const rightEdge = cx + midW / 2;
       slide.addShape("line", {
-        x: rightEdge - 0.05, y: y + tierH / 2,
+        x: rightEdge - 0.05, y: y + h / 2,
         w: descX - 0.2 - (rightEdge - 0.05), h: 0,
         line: { color, width: 2 },
       });
       slide.addText(p.body, {
-        x: descX, y, w: descW, h: tierH,
+        x: descX, y, w: descW, h,
         fontFace: FONT_BODY, fontSize: descFs, color: d.text,
         align: "left", valign: "middle", lineSpacingMultiple: 1.05,
       });
     }
+
+    y += h + gap;
+    relTop += h + gap;
   });
   footer(slide, d, brand, num);
 }
