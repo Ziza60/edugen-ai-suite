@@ -379,13 +379,22 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - For cards, tiles, steps and table cells, enforce a MAXIMUM of ~12 words per text
   block. Be ruthless in your summarization — these layouts must stay minimalist.
 - Stay strictly faithful to the module content. Do NOT invent facts.
-- PRESERVE THE PRACTICAL CONTENT — it is what makes the course actionable, so it
-  must reach the deck (never silently drop it):
-  • Worked example ("Exemplo prático", usually with Contexto/Desafio/Solução/
-    Resultado): give it its OWN slide — a "compare" (Desafio vs Solução) or a
-    "steps" slide (Contexto → Desafio → Solução → Resultado).
-  • Hands-on activity ("Atividade Prática" / "Mão na massa"): render it as a
-    "steps" slide titled after the activity, each step as one short heading.
+- NEVER collapse a list of N DISTINCT items into one point. If the source lists
+  3 trends / 4 types / 5 risks, the slide keeps ALL of them (split across two
+  slides if needed). A content slide must have at least 2 items — never ship a
+  slide with a single bullet/card/step.
+- MANDATORY COVERAGE — these practical sections are the MOST valuable part of the
+  course; each MUST get its OWN slide whenever the source contains it (this is
+  REQUIRED, even if it means going one slide over the band above — never drop it):
+  • Worked example ("Exemplo prático" / "Estudo de caso", usually with Contexto/
+    Desafio/Solução/Resultado): a "steps" slide (Contexto → Desafio → Solução →
+    Resultado) or a "compare" (Desafio vs Solução).
+  • Hands-on activity ("Atividade Prática" / "Mão na massa"): a "steps" slide
+    titled after the activity, each numbered task as one short step heading.
+  • Comparison table under "Modelos / Tipos" (3+ options across several
+    criteria, with concrete tool/example names): a "table" slide — KEEP the
+    real names (e.g. Khan Academy, Geekie, MagicSchool.ai). Do NOT flatten it
+    into vague bullets that lose the examples.
 
 MODULE CONTENT (markdown):
 """
@@ -1190,6 +1199,151 @@ export function enforceModuleFloors(
   return { backfilled, closingsAdded };
 }
 
+// ── Pedagogical coverage (deterministic guarantee) ───────────────────────────
+// The planner is TOLD to keep the practical content (worked example, hands-on
+// activity, comparison tables), but under the slide-count cap + cross-module
+// dedup it routinely drops them — exactly the sections that make a course
+// actionable. Rather than trust the LLM, we enforce coverage on the assembled
+// deck: for every module, if its SOURCE has a worked-example / activity / table
+// section that NO planned slide represents, we backfill a render-ready slide
+// built from that section. Topic-agnostic, idempotent, and skipped when already
+// covered (so we never duplicate what the planner kept).
+const ACTIVITY_RE =
+  /atividade\s*pr[aá]tica|m[ãa]o\s*na\s*massa|hands[\s-]?on|pr[aá]tica\s+guiada/i;
+const EXAMPLE_RE = /exemplo\s*pr[aá]tico|estudo\s+de\s+caso|case\s+study/i;
+const CASE_LABEL_RE =
+  /^(contexto|desafio|solu[çc][aã]o|resultado|problema|cen[aá]rio|tarefa|proposta|enunciado)\b/i;
+
+function coverageTitles(
+  language: string,
+): { activity: string; example: string } {
+  const l = (language || "").toLowerCase();
+  if (/portug/.test(l)) return { activity: "Atividade Prática", example: "Estudo de Caso" };
+  if (/espa|spanish/.test(l)) return { activity: "Actividad Práctica", example: "Estudio de Caso" };
+  if (/fran|french/.test(l)) return { activity: "Activité Pratique", example: "Étude de Cas" };
+  return { activity: "Hands-on Activity", example: "Case Study" };
+}
+
+/** Split "Lead: rest" / "Lead — rest" into a step heading + short body. */
+function leadSplit(s: string): DeckStep {
+  const m = s.match(/^([^:–—]{3,60})[:–—]\s+(.+)$/);
+  if (m) return { heading: m[1].trim(), body: toShortPoint(m[2], 16) };
+  return { heading: toShortPoint(s, 12) };
+}
+
+/** A hands-on activity block → a numbered "steps" slide. */
+function buildActivitySlide(b: MdBlock, moduleTitle: string, title: string): SlideSpec | null {
+  const raw = b.bullets.length ? b.bullets : b.paras.flatMap(splitSentences);
+  const steps = raw.map(leadSplit).filter((s) => s.heading).slice(0, 5);
+  if (steps.length < 2) return null;
+  return { kind: "steps", title, eyebrow: moduleTitle, steps };
+}
+
+/** A worked-example block (Contexto/Desafio/Solução/Resultado) → "steps" slide. */
+function buildExampleSlide(b: MdBlock, moduleTitle: string, title: string): SlideSpec | null {
+  const labeled: DeckStep[] = [];
+  for (const p of b.paras) {
+    const m = p.match(/^([^:→]{3,28})[:→]\s*(.+)$/);
+    if (m && CASE_LABEL_RE.test(m[1].trim())) {
+      labeled.push({ heading: m[1].trim(), body: toShortPoint(m[2], 18) });
+    }
+  }
+  if (labeled.length >= 2) {
+    return { kind: "steps", title, eyebrow: moduleTitle, steps: labeled.slice(0, 4) };
+  }
+  // Fallback: first sentences as plain steps.
+  const pts = b.paras.flatMap(splitSentences).map((s) => toShortPoint(s)).filter(Boolean).slice(0, 4);
+  if (pts.length >= 2) {
+    return { kind: "steps", title, eyebrow: moduleTitle, steps: pts.map((h) => ({ heading: h })) };
+  }
+  return null;
+}
+
+/** A 3+ column markdown table → a real "table" slide (never a cramped bullet list). */
+function buildTableSlide(b: MdBlock, moduleTitle: string): SlideSpec | null {
+  const rows = b.tableRows;
+  if (rows.length < 2) return null;
+  const cols = Math.max(...rows.map((r) => r.length));
+  if (cols < 3) return null; // 2-col comparisons render fine elsewhere
+  const header = rows[0];
+  const data = rows.slice(1).filter((r) => r.some((c) => c));
+  if (!data.length) return null;
+  const columns = header.slice(1).map((h) => toShortPoint(h, 6)).filter(Boolean);
+  if (columns.length < 2) return null;
+  const trows: DeckTableRow[] = data.slice(0, 6).map((r) => ({
+    label: toShortPoint(r[0], 6),
+    cells: columns.map((_, ci) => toShortPoint(r[ci + 1] ?? "", 10)),
+  }));
+  return {
+    kind: "table",
+    title: stripLeadingEmoji(b.heading) || "Comparação",
+    eyebrow: moduleTitle,
+    rowHeader: toShortPoint(header[0] || "", 6),
+    columns,
+    rows: trows,
+  };
+}
+
+export function ensurePedagogicalCoverage(
+  out: DeckModule[],
+  inputs: ModuleInput[],
+  language: string,
+): { examplesAdded: number; activitiesAdded: number; tablesAdded: number } {
+  const t = coverageTitles(language);
+  let examplesAdded = 0, activitiesAdded = 0, tablesAdded = 0;
+  for (let i = 0; i < out.length; i++) {
+    const m = out[i];
+    const src = inputs[i]?.content ?? "";
+    if (!src) continue;
+    const blocks = segmentMarkdown(src);
+    const existing = m.slides.map(contentTokens);
+    // A candidate is already represented when an existing slide really IS this
+    // section — i.e. it shares MANY tokens with the candidate (≥5 in absolute
+    // terms AND ≥50% of the smaller set). The absolute floor is essential: a
+    // couple of incidental shared words ("aluno", "tema") between the candidate
+    // and an unrelated slide must NOT count as coverage, or we'd skip backfilling
+    // a section the planner actually dropped.
+    const represented = (cand: SlideSpec): boolean => {
+      const tk = contentTokens(cand);
+      if (tk.size < 4) return true; // too thin to be worth a slide
+      return existing.some((p) => {
+        if (!p.size) return false;
+        let common = 0;
+        const [small, large] = p.size <= tk.size ? [p, tk] : [tk, p];
+        for (const t of small) if (large.has(t)) common++;
+        return common >= 5 && common / small.size >= 0.5;
+      });
+    };
+    const toAdd: SlideSpec[] = [];
+
+    const exBlock = blocks.find((b) => EXAMPLE_RE.test(b.heading));
+    if (exBlock) {
+      const c = buildExampleSlide(exBlock, m.title, t.example);
+      if (c && !represented(c)) { toAdd.push(c); examplesAdded++; }
+    }
+    const actBlock = blocks.find((b) => ACTIVITY_RE.test(b.heading));
+    if (actBlock) {
+      const c = buildActivitySlide(actBlock, m.title, t.activity);
+      if (c && !represented(c)) { toAdd.push(c); activitiesAdded++; }
+    }
+    const tblBlock = blocks.find(
+      (b) => b.tableRows.length >= 2 && Math.max(...b.tableRows.map((r) => r.length)) >= 3,
+    );
+    if (tblBlock) {
+      const c = buildTableSlide(tblBlock, m.title);
+      if (c && !represented(c)) { toAdd.push(c); tablesAdded++; }
+    }
+
+    if (toAdd.length) {
+      // Insert just before the closing so takeaways stay last.
+      const ci = m.slides.findIndex((s) => s.kind === "closing");
+      if (ci >= 0) m.slides.splice(ci, 0, ...toAdd);
+      else m.slides.push(...toAdd);
+    }
+  }
+  return { examplesAdded, activitiesAdded, tablesAdded };
+}
+
 
 /**
  * Builds the full deck. Tries the structured planner per module (sequentially,
@@ -1291,6 +1445,16 @@ export async function buildDeck(
   // titles). Runs after all modules are planned so it sees the full deck.
   const deduped = dedupeModules(out);
   if (deduped) console.log(`[V7-DEDUP] dropped=${deduped} near-duplicate slides`);
+
+  // Pedagogical coverage: guarantee the practical sections (worked example,
+  // hands-on activity, comparison table) survive even when the planner dropped
+  // them under the slide cap. Runs AFTER dedup so its backfills aren't removed.
+  const cov = ensurePedagogicalCoverage(out, modules, language);
+  if (cov.examplesAdded || cov.activitiesAdded || cov.tablesAdded) {
+    console.log(
+      `[V7-COVERAGE] examples=${cov.examplesAdded} activities=${cov.activitiesAdded} tables=${cov.tablesAdded}`,
+    );
+  }
 
   // Invariant: never ship a hollow module. Backfill from source / guarantee a
   // closing AFTER dedup so cross-module cleanup can't leave a module starved.

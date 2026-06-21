@@ -161,6 +161,8 @@ export interface RenderOptions {
   palette?: string;
   template?: string;
   footerBrand?: string;
+  /** Output language — drives the localized course-closing slide. */
+  language?: string;
 }
 
 type AnySlide = any;
@@ -2355,6 +2357,96 @@ function renderBulletTimeline(slide: AnySlide, s: SlideSpec, d: Palette, brand: 
   renderTimeline(slide, { ...s, steps: items.map((t) => ({ heading: t })) } as SlideSpec, d, brand, num, moduleLabel);
 }
 
+/** Localized copy for the course-closing slide. */
+function outroStrings(language: string): { eyebrow: string; title: string; lines: string[]; thanks: string } {
+  const l = (language || "").toLowerCase();
+  if (/portug/.test(l)) {
+    return {
+      eyebrow: "Conclusão do Curso",
+      title: "Parabéns, você concluiu o curso!",
+      lines: [
+        "Revise os conceitos com os quizzes e flashcards do curso.",
+        "Conclua a avaliação final para validar seu aprendizado.",
+        "Receba seu certificado de conclusão.",
+      ],
+      thanks: "Obrigado por participar.",
+    };
+  }
+  if (/espa|spanish/.test(l)) {
+    return {
+      eyebrow: "Conclusión del Curso",
+      title: "¡Felicidades, has completado el curso!",
+      lines: [
+        "Repasa los conceptos con los cuestionarios y flashcards del curso.",
+        "Completa la evaluación final para validar tu aprendizaje.",
+        "Recibe tu certificado de finalización.",
+      ],
+      thanks: "Gracias por participar.",
+    };
+  }
+  if (/fran|french/.test(l)) {
+    return {
+      eyebrow: "Conclusion du Cours",
+      title: "Félicitations, vous avez terminé le cours !",
+      lines: [
+        "Révisez les concepts avec les quiz et les flashcards du cours.",
+        "Terminez l'évaluation finale pour valider vos acquis.",
+        "Recevez votre certificat de réussite.",
+      ],
+      thanks: "Merci de votre participation.",
+    };
+  }
+  return {
+    eyebrow: "Course Conclusion",
+    title: "Congratulations, you've completed the course!",
+    lines: [
+      "Review the concepts with the course quizzes and flashcards.",
+      "Complete the final assessment to validate your learning.",
+      "Receive your certificate of completion.",
+    ],
+    thanks: "Thank you for participating.",
+  };
+}
+
+/** Final course-level closing: a cover-style "well done + next steps" slide that
+ *  mentions the assessment / certificate. Distinct from per-module closings. */
+function renderCourseOutro(slide: AnySlide, d: Palette, brand: string, num: number, language: string) {
+  const t = outroStrings(language);
+  bgFill(slide, d.coverBg);
+  slide.addText(eyebrow(t.eyebrow), {
+    x: ML, y: 1.35, w: CW, h: 0.4,
+    fontFace: FONT_BODY, fontSize: 13, bold: true, color: d.accent2,
+    charSpacing: 3, align: "center",
+  });
+  slide.addText(t.title, {
+    x: 1.2, y: 1.9, w: W - 2.4, h: 1.0,
+    fontFace: FONT_TITLE, fontSize: t.title.length > 48 ? 26 : 30, bold: true,
+    color: "FFFFFF", align: "center", valign: "middle",
+  });
+  t.lines.forEach((ln, i) => {
+    const y = 3.35 + i * 0.62;
+    slide.addText("✓", {
+      x: 2.3, y, w: 0.4, h: 0.5,
+      fontFace: FONT_BODY, fontSize: 16, bold: true, color: d.accent2,
+      align: "center", valign: "middle",
+    });
+    slide.addText(ln, {
+      x: 2.8, y, w: W - 2.8 - 2.3, h: 0.5,
+      fontFace: FONT_BODY, fontSize: 16, color: "E8EEF5",
+      align: "left", valign: "middle",
+    });
+  });
+  slide.addShape("rect", {
+    x: W / 2 - 0.5, y: 5.7, w: 1.0, h: 0.05,
+    fill: { color: d.accent2 }, line: { type: "none" },
+  });
+  slide.addText(t.thanks, {
+    x: 1.2, y: 5.9, w: W - 2.4, h: 0.5,
+    fontFace: FONT_BODY, fontSize: 14, italic: true, color: d.subtext, align: "center",
+  });
+  footer(slide, { ...d, subtext: "8595A6" }, brand, num);
+}
+
 // ── orchestrator ────────────────────────────────────────────────────────────
 
 /**
@@ -2518,6 +2610,16 @@ export function renderDeck(
       }
     }
   });
+
+  // Course-level closing (well done + assessment/certificate). Only for a real
+  // multi-module deck — skip the degenerate empty/junk case.
+  if (deck.modules.length > 0) {
+    try {
+      renderCourseOutro(add(), d, brand, num, opts.language ?? "");
+    } catch (err) {
+      console.warn("[V7-RENDER] course outro failed — skipped:", err);
+    }
+  }
 
   return { pptx, slideCount: num };
 }
