@@ -909,6 +909,10 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Build marker — appears in the function logs on every invocation, so you can
+  // confirm WHICH code is actually live after a deploy (the 403 fix included).
+  console.log(`[export-pdf] BUILD=2026-06-21b TESTING_MODE=${TESTING_MODE}`);
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
