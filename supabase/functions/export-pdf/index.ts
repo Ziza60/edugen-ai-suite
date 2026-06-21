@@ -41,7 +41,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21d";
+const EXPORT_PDF_BUILD = "2026-06-21f";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -195,32 +195,36 @@ const SP = {
 
 // Colors (RGB tuples)
 const COLOR = {
-  PRIMARY: [35, 40, 85] as const,       // Deep navy
-  PRIMARY_LIGHT: [60, 65, 130] as const,
-  TEXT_DARK: [30, 30, 35] as const,
-  TEXT_BODY: [45, 45, 50] as const,
-  TEXT_MUTED: [100, 100, 110] as const,
+  PRIMARY: [18, 24, 68] as const,          // Deep navy (richer)
+  PRIMARY_LIGHT: [45, 55, 120] as const,
+  ACCENT: [196, 152, 40] as const,         // Gold accent
+  ACCENT_LIGHT: [220, 185, 90] as const,
+  MODULE_BG: [22, 28, 75] as const,        // Slightly lighter navy for module banners
+  TEXT_DARK: [20, 20, 28] as const,
+  TEXT_BODY: [40, 42, 52] as const,
+  TEXT_MUTED: [105, 108, 125] as const,
   TEXT_WHITE: [255, 255, 255] as const,
-  BG_EXAMPLE: [235, 245, 238] as const,    // Soft green
-  BG_REFLECTION: [240, 238, 250] as const, // Soft purple
-  BG_SUMMARY: [235, 242, 252] as const,    // Soft blue
-  BG_TAKEAWAY: [252, 245, 230] as const,   // Soft amber
-  BG_TIP: [255, 243, 230] as const,        // Soft orange
-  BG_NOTE: [242, 242, 248] as const,       // Neutral
-  BAR_EXAMPLE: [40, 140, 70] as const,
-  BAR_REFLECTION: [110, 70, 180] as const,
-  BAR_SUMMARY: [40, 100, 180] as const,
-  BAR_TAKEAWAY: [200, 150, 30] as const,
-  BAR_TIP: [220, 120, 30] as const,
-  BAR_NOTE: [100, 100, 130] as const,
-  TABLE_HEADER: [35, 40, 85] as const,
-  TABLE_ZEBRA: [245, 245, 252] as const,
-  TABLE_FIRST_COL: [232, 232, 245] as const,
-  BORDER_LIGHT: [210, 210, 220] as const,
-  BORDER_TABLE: [185, 185, 200] as const,
-  BG_CODE: [26, 32, 64] as const,        // Dark navy (matches the deck/code style)
-  CODE_TEXT: [226, 232, 244] as const,    // Light text on dark
-  CODE_BORDER: [40, 48, 92] as const,
+  TEXT_LIGHT: [200, 210, 235] as const,    // Light text on dark backgrounds
+  BG_EXAMPLE: [232, 246, 236] as const,
+  BG_REFLECTION: [238, 234, 252] as const,
+  BG_SUMMARY: [232, 242, 254] as const,
+  BG_TAKEAWAY: [252, 244, 225] as const,
+  BG_TIP: [255, 241, 225] as const,
+  BG_NOTE: [240, 240, 248] as const,
+  BAR_EXAMPLE: [35, 130, 65] as const,
+  BAR_REFLECTION: [105, 65, 175] as const,
+  BAR_SUMMARY: [35, 95, 175] as const,
+  BAR_TAKEAWAY: [195, 145, 25] as const,
+  BAR_TIP: [215, 115, 25] as const,
+  BAR_NOTE: [95, 95, 125] as const,
+  TABLE_HEADER: [18, 24, 68] as const,
+  TABLE_ZEBRA: [244, 244, 252] as const,
+  TABLE_FIRST_COL: [230, 230, 246] as const,
+  BORDER_LIGHT: [208, 208, 222] as const,
+  BORDER_TABLE: [180, 180, 200] as const,
+  BG_CODE: [20, 26, 60] as const,
+  CODE_TEXT: [220, 230, 248] as const,
+  CODE_BORDER: [38, 46, 90] as const,
 };
 
 // ── PDF renderer ──────────────────────────────────────────────────────
@@ -229,6 +233,8 @@ class PdfRenderer {
   doc: any;
   y: number;
   pageNum: number;
+  courseTitle: string = "";
+  moduleIndex: number = 0;
 
   constructor() {
     this.doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -240,20 +246,46 @@ class PdfRenderer {
 
   addPage() {
     this.doc.addPage();
-    this.y = MARGIN_TOP;
     this.pageNum++;
+    this.drawPageHeader();
     this.drawFooter();
+    this.y = MARGIN_TOP;
   }
 
   checkPage(needed: number) {
     if (this.y + needed > MAX_Y) this.addPage();
   }
 
+  drawPageHeader() {
+    // Thin navy bar at top with course title
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.rect(0, 0, PAGE_W, 7, "F");
+    // Gold accent stripe
+    this.doc.setFillColor(...COLOR.ACCENT);
+    this.doc.rect(0, 7, PAGE_W, 0.8, "F");
+    if (this.courseTitle) {
+      this.doc.setFontSize(6.5);
+      this.doc.setFont("helvetica", "normal");
+      this.doc.setTextColor(...COLOR.TEXT_WHITE);
+      const shortTitle = this.courseTitle.length > 70
+        ? this.courseTitle.substring(0, 67) + "..."
+        : this.courseTitle;
+      this.doc.text(sanitizeText(shortTitle), PAGE_W / 2, 4.8, { align: "center" });
+    }
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
+  }
+
   drawFooter() {
-    this.doc.setFontSize(8);
-    this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(160, 160, 165);
-    this.doc.text(`${this.pageNum}`, PAGE_W / 2, 290, { align: "center" });
+    // Bottom navy bar
+    this.doc.setFillColor(...COLOR.PRIMARY);
+    this.doc.rect(0, 290, PAGE_W, 7, "F");
+    this.doc.setFillColor(...COLOR.ACCENT);
+    this.doc.rect(0, 290, PAGE_W, 0.8, "F");
+    // Page number
+    this.doc.setFontSize(7.5);
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...COLOR.TEXT_WHITE);
+    this.doc.text(`${this.pageNum}`, PAGE_W / 2, 294.5, { align: "center" });
     this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
@@ -357,75 +389,112 @@ class PdfRenderer {
   // ── Title page ────────────────────────────────────────────────────
 
   renderTitlePage(title: string, description: string | null, language: string) {
-    // Top decorative bar
+    // Full-height navy background (top 2/3)
     this.doc.setFillColor(...COLOR.PRIMARY);
-    this.doc.rect(0, 0, PAGE_W, 8, "F");
-    // Accent stripe
-    this.doc.setFillColor(...COLOR.PRIMARY_LIGHT);
-    this.doc.rect(0, 8, PAGE_W, 2, "F");
+    this.doc.rect(0, 0, PAGE_W, 185, "F");
 
-    // Title
-    this.doc.setFontSize(FONT.TITLE);
-    this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(...COLOR.PRIMARY);
-    const titleLines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 20);
-    const titleY = 80;
-    this.doc.text(titleLines, PAGE_W / 2, titleY, { align: "center" });
+    // Gold accent left bar
+    this.doc.setFillColor(...COLOR.ACCENT);
+    this.doc.rect(MARGIN_LEFT, 55, 3, 90, "F");
 
-    // Decorative line under title
-    const underY = titleY + titleLines.length * 11 + 6;
-    this.doc.setDrawColor(...COLOR.PRIMARY);
-    this.doc.setLineWidth(1);
-    this.doc.line(PAGE_W / 2 - 35, underY, PAGE_W / 2 + 35, underY);
-    this.doc.setLineWidth(0.3);
-    this.doc.line(PAGE_W / 2 - 25, underY + 3, PAGE_W / 2 + 25, underY + 3);
+    // Gold horizontal divider
+    this.doc.setFillColor(...COLOR.ACCENT);
+    this.doc.rect(0, 185, PAGE_W, 1.5, "F");
 
-    // Description
-    if (description) {
-      this.doc.setFontSize(11.5);
-      this.doc.setFont("helvetica", "normal");
-      this.doc.setTextColor(...COLOR.TEXT_MUTED);
-      const descLines = this.doc.splitTextToSize(sanitizeText(description), CONTENT_W - 40);
-      this.doc.text(descLines, PAGE_W / 2, underY + 18, { align: "center" });
+    // Subtle geometric accent: small dots pattern (top-right)
+    this.doc.setFillColor(30, 38, 95);
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col < 5; col++) {
+        this.doc.circle(PAGE_W - 18 + col * 6, 20 + row * 6, 1, "F");
+      }
     }
 
-    // Metadata
+    // Course title — white, large, left-aligned
+    this.doc.setFontSize(28);
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...COLOR.TEXT_WHITE);
+    const titleLines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 20);
+    const titleY = 82;
+    this.doc.text(titleLines, MARGIN_LEFT + 10, titleY);
+
+    // Gold line under title
+    const underY = titleY + titleLines.length * 11 + 5;
+    this.doc.setFillColor(...COLOR.ACCENT);
+    this.doc.rect(MARGIN_LEFT + 10, underY, 45, 1, "F");
+
+    // Description — light text, left-aligned
+    if (description) {
+      this.doc.setFontSize(10.5);
+      this.doc.setFont("helvetica", "normal");
+      this.doc.setTextColor(...COLOR.TEXT_LIGHT);
+      const descLines = this.doc.splitTextToSize(sanitizeText(description), CONTENT_W - 14);
+      this.doc.text(descLines, MARGIN_LEFT + 10, underY + 14);
+    }
+
+    // White section — metadata
     this.doc.setFontSize(9);
-    this.doc.setTextColor(130, 130, 140);
-    this.doc.text(`Idioma: ${language}`, PAGE_W / 2, 248, { align: "center" });
-    this.doc.text(new Date().toLocaleDateString("pt-BR"), PAGE_W / 2, 254, { align: "center" });
+    this.doc.setFont("helvetica", "normal");
+    this.doc.setTextColor(...COLOR.TEXT_MUTED);
+    this.doc.text(`Idioma: ${language}`, MARGIN_LEFT, 202);
+    this.doc.text(new Date().toLocaleDateString("pt-BR"), MARGIN_LEFT, 210);
 
-    // Bottom decorative bars
-    this.doc.setFillColor(...COLOR.PRIMARY_LIGHT);
-    this.doc.rect(0, 289, PAGE_W, 2, "F");
+    // Premium footer bar
     this.doc.setFillColor(...COLOR.PRIMARY);
-    this.doc.rect(0, 291, PAGE_W, 6, "F");
+    this.doc.rect(0, 287, PAGE_W, 10, "F");
+    this.doc.setFillColor(...COLOR.ACCENT);
+    this.doc.rect(0, 287, PAGE_W, 1.5, "F");
 
-    this.drawFooter();
+    // Page number on cover
+    this.doc.setFontSize(7.5);
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...COLOR.TEXT_WHITE);
+    this.doc.text("1", PAGE_W / 2, 293, { align: "center" });
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
   // ── Module title ──────────────────────────────────────────────────
 
   renderModuleTitle(title: string) {
     this.addPage();
-    this.y = MARGIN_TOP + 8;
 
-    // Accent bar
-    this.doc.setFillColor(...COLOR.PRIMARY);
-    this.doc.rect(MARGIN_LEFT, this.y - 3, 5, 14, "F");
+    // Full navy banner across top (covers page header from addPage)
+    this.doc.setFillColor(...COLOR.MODULE_BG);
+    this.doc.rect(0, 0, PAGE_W, 52, "F");
 
+    // Gold accent left bar
+    this.doc.setFillColor(...COLOR.ACCENT);
+    this.doc.rect(0, 0, 4, 52, "F");
+
+    // Gold bottom edge of banner
+    this.doc.setFillColor(...COLOR.ACCENT);
+    this.doc.rect(0, 52, PAGE_W, 1, "F");
+
+    // Module number badge (large, semi-transparent)
+    if (this.moduleIndex > 0) {
+      this.doc.setFontSize(48);
+      this.doc.setFont("helvetica", "bold");
+      this.doc.setTextColor(30, 38, 95); // dark overlay on navy
+      const numStr = String(this.moduleIndex).padStart(2, "0");
+      this.doc.text(numStr, PAGE_W - MARGIN_RIGHT, 46, { align: "right" });
+    }
+
+    // "MÓDULO N" label
+    this.doc.setFontSize(7.5);
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...COLOR.ACCENT);
+    if (this.moduleIndex > 0) {
+      this.doc.text(`MÓDULO ${this.moduleIndex}`, MARGIN_LEFT + 8, 16);
+    }
+
+    // Module title — white, bold
     this.doc.setFontSize(FONT.MODULE_TITLE);
     this.doc.setFont("helvetica", "bold");
-    this.doc.setTextColor(...COLOR.PRIMARY);
-    const lines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 14);
-    this.doc.text(lines, MARGIN_LEFT + 10, this.y + 7);
-    this.y += lines.length * 9 + SP.AFTER_TITLE;
+    this.doc.setTextColor(...COLOR.TEXT_WHITE);
+    const lines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 22);
+    this.doc.text(lines, MARGIN_LEFT + 8, this.moduleIndex > 0 ? 28 : 22);
 
-    // Separator line
-    this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
-    this.doc.setLineWidth(0.4);
-    this.doc.line(MARGIN_LEFT, this.y, PAGE_W - MARGIN_RIGHT, this.y);
-    this.y += 8;
+    // Reset y below banner for content
+    this.y = 62;
     this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
@@ -475,8 +544,26 @@ class PdfRenderer {
 
     const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
     this.checkPage(lines.length * SP.LINE_HEIGHT + 3);
-    this.doc.text(lines, MARGIN_LEFT, this.y);
-    this.y += lines.length * SP.LINE_HEIGHT + SP.AFTER_PARAGRAPH;
+
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
+      const isLastLine = idx === lines.length - 1;
+      // Justify all lines except the last (avoids stretching short last lines)
+      if (!isLastLine && line.trim().split(/\s+/).length > 2) {
+        const words = line.trim().split(/\s+/);
+        const totalWordW = words.reduce((s, w) => s + this.doc.getTextWidth(w), 0);
+        const gap = (CONTENT_W - totalWordW) / (words.length - 1);
+        let x = MARGIN_LEFT;
+        for (let w = 0; w < words.length; w++) {
+          this.doc.text(words[w], x, this.y);
+          x += this.doc.getTextWidth(words[w]) + gap;
+        }
+      } else {
+        this.doc.text(line, MARGIN_LEFT, this.y);
+      }
+      this.y += SP.LINE_HEIGHT;
+    }
+    this.y += SP.AFTER_PARAGRAPH;
   }
 
   renderBullet(text: string, indent = 0) {
@@ -1036,13 +1123,19 @@ Deno.serve(async (req: Request) => {
 
     // ── Generate PDF ──
     const pdf = new PdfRenderer();
+    pdf.courseTitle = sanitizeText(course.title || "");
     pdf.renderTitlePage(course.title, course.description, course.language);
 
+    let moduleNum = 0;
     for (const mod of modules) {
-      pdf.renderModuleTitle(mod.title);
       // Defensive: older courses stored a stray ```fence and a leading
       // "## <title>" that duplicates the title we just rendered.
       const content = cleanModuleContent(mod.content || "", mod.title);
+      // Skip modules with no renderable content to avoid blank pages
+      if (!content && !mod.title) continue;
+      moduleNum++;
+      pdf.moduleIndex = moduleNum;
+      pdf.renderModuleTitle(mod.title);
       if (content) {
         pdf.renderModuleContent(content);
       }
