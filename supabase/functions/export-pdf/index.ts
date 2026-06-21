@@ -41,7 +41,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21f";
+const EXPORT_PDF_BUILD = "2026-06-21g";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -286,6 +286,10 @@ class PdfRenderer {
     this.doc.setFont("helvetica", "bold");
     this.doc.setTextColor(...COLOR.TEXT_WHITE);
     this.doc.text(`${this.pageNum}`, PAGE_W / 2, 294.5, { align: "center" });
+    // CRITICAL: reset font to normal so estimation helpers after addPage()
+    // use the correct font metrics (bold width ≠ normal width → wrong line counts → orphaning)
+    this.doc.setFont("helvetica", "normal");
+    this.doc.setFontSize(FONT.BODY);
     this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
@@ -478,8 +482,8 @@ class PdfRenderer {
       this.doc.text(numStr, PAGE_W - MARGIN_RIGHT, 46, { align: "right" });
     }
 
-    // "MÓDULO N" label
-    this.doc.setFontSize(7.5);
+    // "MÓDULO N" label — 9.5pt so it reads cleanly alongside 10.5pt body
+    this.doc.setFontSize(9.5);
     this.doc.setFont("helvetica", "bold");
     this.doc.setTextColor(...COLOR.ACCENT);
     if (this.moduleIndex > 0) {
@@ -545,22 +549,31 @@ class PdfRenderer {
     const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
     this.checkPage(lines.length * SP.LINE_HEIGHT + 3);
 
+    // Helper: reliable word width using getStringUnitWidth (more stable in Deno than getTextWidth)
+    const wordWidthMm = (w: string): number =>
+      this.doc.getStringUnitWidth(w) * FONT.BODY / this.doc.internal.scaleFactor;
+
     for (let idx = 0; idx < lines.length; idx++) {
       const line = lines[idx];
       const isLastLine = idx === lines.length - 1;
-      // Justify all lines except the last (avoids stretching short last lines)
-      if (!isLastLine && line.trim().split(/\s+/).length > 2) {
-        const words = line.trim().split(/\s+/);
-        const totalWordW = words.reduce((s, w) => s + this.doc.getTextWidth(w), 0);
+      const trimmedLine = line.trim();
+      const words = trimmedLine.split(/\s+/);
+      // Justify: all lines except the last, and only if >= 3 words
+      if (!isLastLine && words.length >= 3) {
+        const totalWordW = words.reduce((s, w) => s + wordWidthMm(w), 0);
         const gap = (CONTENT_W - totalWordW) / (words.length - 1);
-        let x = MARGIN_LEFT;
-        for (let w = 0; w < words.length; w++) {
-          this.doc.text(words[w], x, this.y);
-          x += this.doc.getTextWidth(words[w]) + gap;
+        // Guard: if gap is unreasonable (measurement issue), fall back to left-aligned
+        if (gap > 0 && gap < 15) {
+          let x = MARGIN_LEFT;
+          for (let w = 0; w < words.length; w++) {
+            this.doc.text(words[w], x, this.y);
+            x += wordWidthMm(words[w]) + gap;
+          }
+          this.y += SP.LINE_HEIGHT;
+          continue;
         }
-      } else {
-        this.doc.text(line, MARGIN_LEFT, this.y);
       }
+      this.doc.text(trimmedLine, MARGIN_LEFT, this.y);
       this.y += SP.LINE_HEIGHT;
     }
     this.y += SP.AFTER_PARAGRAPH;
