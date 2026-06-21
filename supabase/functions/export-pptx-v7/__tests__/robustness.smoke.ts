@@ -204,7 +204,9 @@ check("floor: reported it added a closing", res.closingsAdded >= 1 && res.backfi
 check("floor: healthy module left intact", hollow[1].slides.length === before);
 check("floor: every module has a closing", hollow.every((m) => m.slides.some((s) => s.kind === "closing")));
 
-// ── anti-monotony: runs of bullet slides rotate across tiles/bento variants ──
+// ── consolidation (v7.26): normalize no longer reclassifies bullet runs into
+//    tiles/bento; it keeps them "bullets" and the RENDERER owns all visual
+//    variety (one rich rotation: tiles/bento/chevron/ring/pyramid/zigzag/…) ──
 const sb = (title: string, items: string[]): SlideSpec =>
   ({ kind: "bullets", title, bullets: items } as SlideSpec);
 const shortList = ["Cruciais para o sucesso", "Otimizam a interação", "Garantem entendimento", "Agilizam a resolução"];
@@ -221,19 +223,16 @@ const runDeck: PlannedDeck = {
   }],
 };
 const rk = normalizeDeck(runDeck).deck.modules[0].slides.map((s) => s.kind);
-check("run of bullets rotates bullets/tiles/bento/tiles", rk.join(",") === "bullets,tiles,bento,tiles");
-let noPair = true;
-for (let k = 1; k < rk.length; k++) if (rk[k] === "bullets" && rk[k - 1] === "bullets") noPair = false;
-check("no two bullet slides remain back-to-back", noPair);
+check("normalize keeps bullet runs as bullets (variety applied at render)", rk.join(",") === "bullets,bullets,bullets,bullets");
 
-// a 5-item short list is still tile-eligible (badge grid supports up to 6)
+// 5-item short lists are also left as bullets by normalize (render picks layout)
 const five = ["um curto", "dois curto", "três curto", "quatro curto", "cinco curto"];
 const fiveDeck: PlannedDeck = {
   courseTitle: "X",
   modules: [{ title: "M", slides: [sb("A", five), sb("B", five)] }],
 };
 const fk = normalizeDeck(fiveDeck).deck.modules[0].slides.map((s) => s.kind);
-check("second of two 5-item lists becomes tiles", fk[1] === "tiles");
+check("5-item lists stay bullets after normalize", fk.every((k) => k === "bullets"));
 
 // a long-phrase list is NOT promoted (tiles are for scannable short points)
 const longItems = [

@@ -343,62 +343,13 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
   return [base];
 }
 
-/**
- * A bullets slide qualifies for the "tiles" treatment when it is a short,
- * scannable list: 3–6 items, each a brief phrase. Such lists read far better as
- * an icon/badge grid than as yet another vertical bullet list.
- */
-function tilesEligible(s: SlideSpec): boolean {
-  if (s.kind !== "bullets") return false;
-  const b = s.bullets ?? [];
-  return b.length >= 3 && b.length <= 6 &&
-    b.every((x) => x.trim().length > 0 && x.trim().split(/\s+/).length <= 10);
-}
-
-/** 2–4 short points → eligible for the roomy "bento" surface-card grid. */
-function bentoEligible(s: SlideSpec): boolean {
-  if (s.kind !== "bullets") return false;
-  const b = s.bullets ?? [];
-  return b.length >= 2 && b.length <= 4 &&
-    b.every((x) => x.trim().length > 0 && x.trim().split(/\s+/).length <= 12);
-}
-
-/**
- * Anti-monotony: never render two same-looking content slides back to back. The
- * planner overwhelmingly emits "bullets", producing tiring runs of identical
- * vertical lists. Whenever a plain (image-less) bullets slide would follow
- * another "listy" slide, we recast it — rotating across the eligible variants
- * ("tiles" badge grid, "bento" surface cards) — so a run of N bullet slides
- * renders as bullets / tiles / bento / tiles… Hero bullets slides (which carry a
- * module image and render as a split / image-top) are left untouched. Purely
- * visual; content is identical.
- */
-function breakLayoutRuns(slides: SlideSpec[]): SlideSpec[] {
-  let prev = "";
-  let variant = 0;
-  const listy = (k: string) => k === "bullets" || k === "tiles" || k === "bento";
-  return slides.map((s) => {
-    let out = s;
-    if (s.kind === "bullets" && !s.imageData && listy(prev)) {
-      const options: string[] = [];
-      if (tilesEligible(s)) options.push("tiles");
-      if (bentoEligible(s)) options.push("bento");
-      if (options.length) {
-        const kind = options[variant % options.length];
-        variant++;
-        out = {
-          kind,
-          title: s.title,
-          eyebrow: s.eyebrow,
-          bullets: s.bullets,
-          imageQuery: s.imageQuery,
-        } as SlideSpec;
-      }
-    }
-    prev = out.kind;
-    return out;
-  });
-}
+// NOTE (v7.26): anti-monotony for bullet runs was CONSOLIDATED into the renderer
+// (render.ts dispatch), which rotates every short, image-less bullets slide
+// across a single rich pool — tiles / bento / chevron / segmented-ring / pyramid
+// / zig-zag / mountain / markers. Keeping a second, kind-level rotation here
+// (the old breakLayoutRuns → tiles/bento) competed with that pool and starved
+// the infographics, so normalization now leaves bullets as "bullets" and lets
+// the renderer own all visual variety.
 
 export interface NormalizeStats {
   modulesIn: number;
@@ -438,7 +389,6 @@ export function normalizeDeck(deck: PlannedDeck): {
         imageQuery: cleanTitle,
       });
     }
-    normalized = breakLayoutRuns(normalized);
     slidesOut += normalized.length;
     return { title: cleanTitle, slides: normalized };
   });
