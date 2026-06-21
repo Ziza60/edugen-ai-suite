@@ -1,6 +1,6 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
+import { cleanModuleContent } from "../_shared/markdown.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -883,8 +883,11 @@ Deno.serve(async (req: Request) => {
 
     for (const mod of modules) {
       pdf.renderModuleTitle(mod.title);
-      if (mod.content) {
-        pdf.renderModuleContent(mod.content);
+      // Defensive: older courses stored a stray ```fence and a leading
+      // "## <title>" that duplicates the title we just rendered.
+      const content = cleanModuleContent(mod.content || "", mod.title);
+      if (content) {
+        pdf.renderModuleContent(content);
       }
     }
 

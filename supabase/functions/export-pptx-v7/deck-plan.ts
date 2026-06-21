@@ -1275,6 +1275,71 @@ function buildExampleSlide(b: MdBlock, moduleTitle: string, title: string): Slid
   return null;
 }
 
+/** Raw lines of the first section whose heading matches `headingRe`, up to the
+ *  next heading or horizontal rule. Used to recover label→body structure that
+ *  segmentMarkdown flattens away (e.g. "Resultado:" followed by bullets). */
+function sliceSection(src: string, headingRe: RegExp): string[] {
+  const lines = (src || "").replace(/\r\n/g, "\n").split("\n");
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^#{2,4}\s/.test(lines[i]) && headingRe.test(lines[i])) { start = i + 1; break; }
+  }
+  if (start < 0) return [];
+  const out: string[] = [];
+  for (let i = start; i < lines.length; i++) {
+    if (/^#{2,4}\s/.test(lines[i]) || /^\s*---\s*$/.test(lines[i])) break;
+    out.push(lines[i]);
+  }
+  return out;
+}
+
+const CASE_LABEL_LINE_RE =
+  /^(contexto|desafio|solu[çc][aã]o|resultado|problema|cen[aá]rio)\b\s*[:→-]?\s*(.*)$/i;
+
+/** Parse a worked-example section into Contexto/Desafio/Solução/Resultado steps,
+ *  pairing each label with the prose AND/OR bullets that follow it (so a label
+ *  whose content is a bullet list still gets a body). */
+function buildExampleFromRaw(lines: string[], moduleTitle: string, title: string): SlideSpec | null {
+  const steps: DeckStep[] = [];
+  let label: string | null = null;
+  let buf: string[] = [];
+  let inCode = false;
+  const flush = () => {
+    if (label) {
+      const text = buf.join(" ").trim();
+      steps.push(text ? { heading: label, body: toShortPoint(text, 24) } : { heading: label });
+    }
+    buf = [];
+  };
+  for (const raw of lines) {
+    if (/^\s*```/.test(raw)) { inCode = !inCode; continue; }
+    if (inCode) continue;
+    const line = stripLeadingEmoji(cleanLine(raw));
+    if (!line) continue;
+    const m = line.match(CASE_LABEL_LINE_RE);
+    if (m) {
+      flush();
+      label = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+      if (m[2]?.trim()) buf.push(m[2].trim());
+      continue;
+    }
+    if (label) buf.push(line);
+  }
+  flush();
+  const withBody = steps.filter((s) => s.body && s.body.trim());
+  if (withBody.length >= 2) {
+    return { kind: "steps", title, eyebrow: moduleTitle, steps: withBody.slice(0, 4) };
+  }
+  return null;
+}
+
+/** True for a steps slide that is a worked example (most headings are case labels). */
+function isCaseStudySlide(s: SlideSpec): boolean {
+  if (s.kind !== "steps" || !s.steps || s.steps.length < 2) return false;
+  const labels = s.steps.filter((st) => CASE_LABEL_RE.test(st.heading || "")).length;
+  return labels >= Math.ceil(s.steps.length / 2);
+}
+
 /** A 3+ column markdown table → a real "table" slide (never a cramped bullet list). */
 function buildTableSlide(b: MdBlock, moduleTitle: string): SlideSpec | null {
   const rows = b.tableRows;
@@ -1334,8 +1399,27 @@ export function ensurePedagogicalCoverage(
 
     const exBlock = blocks.find((b) => EXAMPLE_RE.test(b.heading));
     if (exBlock) {
-      const c = buildExampleSlide(exBlock, m.title, t.example);
-      if (c && !represented(c)) { toAdd.push(c); examplesAdded++; }
+      // Prefer the raw-section parser (captures a Resultado expressed as bullets);
+      // fall back to the flattened-block builder.
+      const exLines = sliceSection(src, EXAMPLE_RE);
+      const c = (exLines.length && buildExampleFromRaw(exLines, m.title, t.example)) ||
+        buildExampleSlide(exBlock, m.title, t.example);
+      if (c) {
+        const bodied = (s: SlideSpec) => (s.steps ?? []).filter((st) => st.body && st.body.trim()).length;
+        const existingIdx = m.slides.findIndex(isCaseStudySlide);
+        if (existingIdx >= 0) {
+          // The planner already made an example slide — replace it only if ours
+          // is MORE complete (more steps carry a body), e.g. its Resultado was empty.
+          if (bodied(c) > bodied(m.slides[existingIdx])) {
+            c.eyebrow = m.slides[existingIdx].eyebrow ?? c.eyebrow;
+            m.slides[existingIdx] = c;
+            examplesAdded++;
+          }
+        } else if (!represented(c)) {
+          toAdd.push(c);
+          examplesAdded++;
+        }
+      }
     }
     const actBlock = blocks.find((b) => ACTIVITY_RE.test(b.heading));
     if (actBlock) {
