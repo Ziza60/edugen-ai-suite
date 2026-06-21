@@ -1227,7 +1227,7 @@ function coverageTitles(
 /** Split "Lead: rest" / "Lead — rest" into a step heading + short body. */
 function leadSplit(s: string): DeckStep {
   const m = s.match(/^([^:–—]{3,60})[:–—]\s+(.+)$/);
-  if (m) return { heading: m[1].trim(), body: toShortPoint(m[2], 16) };
+  if (m) return { heading: m[1].trim(), body: toShortPoint(m[2], 22) };
   return { heading: toShortPoint(s, 12) };
 }
 
@@ -1242,17 +1242,33 @@ function buildActivitySlide(b: MdBlock, moduleTitle: string, title: string): Sli
 /** A worked-example block (Contexto/Desafio/Solução/Resultado) → "steps" slide. */
 function buildExampleSlide(b: MdBlock, moduleTitle: string, title: string): SlideSpec | null {
   const labeled: DeckStep[] = [];
-  for (const p of b.paras) {
-    const m = p.match(/^([^:→]{3,28})[:→]\s*(.+)$/);
-    if (m && CASE_LABEL_RE.test(m[1].trim())) {
-      labeled.push({ heading: m[1].trim(), body: toShortPoint(m[2], 18) });
+  const paras = b.paras;
+  const labelOnly = /^([^:→]{3,28})[:→]\s*$/;
+  for (let i = 0; i < paras.length; i++) {
+    const p = paras[i].trim();
+    // Inline form: "Contexto: <text>".
+    const inline = p.match(/^([^:→]{3,28})[:→]\s+(.+)$/);
+    if (inline && CASE_LABEL_RE.test(inline[1].trim())) {
+      labeled.push({ heading: inline[1].trim(), body: toShortPoint(inline[2], 24) });
+      continue;
+    }
+    // Label-on-its-own-line form: "Contexto:" with the text in the NEXT paragraph.
+    const lone = p.match(labelOnly);
+    if (lone && CASE_LABEL_RE.test(lone[1].trim())) {
+      const next = (paras[i + 1] ?? "").trim();
+      if (next && !labelOnly.test(next)) {
+        labeled.push({ heading: lone[1].trim(), body: toShortPoint(next, 24) });
+        i++; // consume the body paragraph
+      } else {
+        labeled.push({ heading: lone[1].trim() });
+      }
     }
   }
   if (labeled.length >= 2) {
     return { kind: "steps", title, eyebrow: moduleTitle, steps: labeled.slice(0, 4) };
   }
   // Fallback: first sentences as plain steps.
-  const pts = b.paras.flatMap(splitSentences).map((s) => toShortPoint(s)).filter(Boolean).slice(0, 4);
+  const pts = b.paras.flatMap(splitSentences).map((s) => toShortPoint(s, 22)).filter(Boolean).slice(0, 4);
   if (pts.length >= 2) {
     return { kind: "steps", title, eyebrow: moduleTitle, steps: pts.map((h) => ({ heading: h })) };
   }

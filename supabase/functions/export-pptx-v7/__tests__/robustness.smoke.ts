@@ -243,6 +243,28 @@ check("coverage: backfilled slides sit before the closing", ck.lastIndexOf("clos
 const cov2 = ensurePedagogicalCoverage(covDeck, covInputs, "Português (Brasil)");
 check("coverage: idempotent (2nd pass adds nothing)", cov2.examplesAdded === 0 && cov2.activitiesAdded === 0 && cov2.tablesAdded === 0);
 
+// ── step bodies (case studies) must not be cut mid-thought ──────────────────
+// Regression: normSteps used a 12-word cap that chopped sentences like
+// "...reduzido em 50%, caindo para 6 horas semanais." into "...para 6".
+const csStepDeck: PlannedDeck = {
+  courseTitle: "C",
+  modules: [{
+    title: "M",
+    slides: [{
+      kind: "steps",
+      title: "Estudo de Caso",
+      steps: [
+        { heading: "Resultado", body: "O tempo total de correção foi reduzido em 50%, caindo para 6 horas semanais." },
+        { heading: "Solução", body: "A rede implementou, em um projeto piloto de 3 meses, uma plataforma de correção de redações baseada em inteligência artificial generativa de última geração." },
+      ],
+    }] as SlideSpec[],
+  }],
+};
+const ns = normalizeDeck(csStepDeck).deck.modules[0].slides[0].steps!;
+const endsClean = (b: string) => !/\b(para|de|em|no|na|um|uma)$/i.test(b.trim()) && !/\d$/.test(b.trim());
+check("steps: short full sentence is kept whole", ns[0].body === "O tempo total de correção foi reduzido em 50%, caindo para 6 horas semanais.");
+check("steps: long body ends on a clean clause (not mid-thought)", !!ns[1].body && endsClean(ns[1].body!) && ns[1].body!.split(/\s+/).length >= 8);
+
 // ── consolidation (v7.26): normalize no longer reclassifies bullet runs into
 //    tiles/bento; it keeps them "bullets" and the RENDERER owns all visual
 //    variety (one rich rotation: tiles/bento/chevron/ring/pyramid/zigzag/…) ──
