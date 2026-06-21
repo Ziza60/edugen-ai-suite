@@ -61,15 +61,29 @@ function cleanFragment(raw: string): string {
   return t;
 }
 
-/** Hard cap by words then chars, never cutting mid-word. */
+/** Hard cap by words then chars, never cutting mid-word — and, when a cut was
+ *  needed, ending on a clause/sentence boundary so the fragment never reads
+ *  mid-thought ("...caindo para 6"). */
 function capText(raw: string, maxWords: number, maxChars: number): string {
   let t = cleanFragment(raw);
+  let truncated = false;
   const words = t.split(/\s+/);
-  if (words.length > maxWords) t = words.slice(0, maxWords).join(" ");
+  if (words.length > maxWords) { t = words.slice(0, maxWords).join(" "); truncated = true; }
   if (t.length > maxChars) {
     const sliced = t.slice(0, maxChars);
     const lastSpace = sliced.lastIndexOf(" ");
     t = (lastSpace > 20 ? sliced.slice(0, lastSpace) : sliced).trim();
+    truncated = true;
+  }
+  // We had to cut: prefer to stop at the last clause boundary (.,;:) so the
+  // result reads as a complete clause. Only when that boundary keeps most of the
+  // text (≥50%), otherwise the dangling-word cleanup in cleanFragment handles it.
+  if (truncated) {
+    const b = Math.max(
+      t.lastIndexOf(","), t.lastIndexOf(";"),
+      t.lastIndexOf("."), t.lastIndexOf(":"),
+    );
+    if (b >= Math.floor(t.length * 0.5)) t = t.slice(0, b);
   }
   return cleanFragment(t);
 }
@@ -104,7 +118,11 @@ function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
   return steps
     .map((s) => ({
       heading: capText(stripLeadingOrdinal(String(s?.heading ?? "")), 8, 48),
-      body: s?.body ? capText(String(s.body), 12, 90) : undefined,
+      // Steps carry the worked-example / activity prose (Contexto/Desafio/…), so
+      // a 12-word cap chopped real sentences mid-thought. Allow a full short
+      // sentence; capText still ends it on a clean clause. The vertical step
+      // layout has room for ~2 lines per step (3–5 steps).
+      body: s?.body ? capText(String(s.body), 24, 170) : undefined,
     }))
     .filter((s) => s.heading.length > 0)
     .slice(0, LIMITS.MAX_STEPS);
