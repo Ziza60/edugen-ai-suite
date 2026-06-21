@@ -41,7 +41,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21h";
+const EXPORT_PDF_BUILD = "2026-06-21i";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -563,9 +563,10 @@ class PdfRenderer {
       if (!isLastLine && words.length >= 3) {
         const totalWordW = words.reduce((s, w) => s + wordWidthMm(w), 0);
         const gap = (CONTENT_W - totalWordW) / (words.length - 1);
-        // Accept gap 0.3–7 mm: below 0.3 means words overlap; above 7 means
-        // the line is too short to justify (looks stretched)
-        if (gap >= 0.3 && gap <= 7) {
+        // Accept gap 0.3–12 mm: below 0.3 means words overlap; above 12 means
+        // the line is too short (3–4 short words) and justification looks stretched.
+        // 12 mm headroom handles lines with wider Portuguese words (transformação, etc.).
+        if (gap >= 0.3 && gap <= 12) {
           let x = MARGIN_LEFT;
           for (let w = 0; w < words.length; w++) {
             this.doc.text(words[w], x, this.y);
@@ -903,17 +904,33 @@ class PdfRenderer {
         }
       }
 
-      // ── Headings with look-ahead ──
+      // ── Headings with cascade look-ahead ──
       const heading = getHeadingLevel(trimmed);
       if (heading > 0) {
-        const nextIdx = this.nextNonEmpty(lines, i + 1);
-        // Keep the heading with a meaningful chunk of its following content.
-        // MIN_KEEP = 20mm orphan guard: even when the next element is another heading
-        // (which stops estimateKeepHeight at 0), we still require 20mm of space after
-        // the current heading — preventing it from sitting alone at the page bottom.
+        // CASCADE anti-orphan: walk forward through ALL consecutive following headings,
+        // summing their heights, then add MIN_KEEP for the first prose block.
+        // This ensures: if H2 is followed by H3 which is followed by prose, checkPage
+        // for H2 accounts for H2+H3+MIN_KEEP total — so H2 never lands alone at the
+        // bottom when H3 (which needs its own keepH) would immediately page-break.
         const MIN_KEEP = 20;
-        const keepH = Math.max(this.estimateKeepHeight(lines, nextIdx), MIN_KEEP);
-        this.renderHeading(trimmed, heading === 1 ? 2 : heading, keepH);
+        let cascadeH = 0;
+        let k = this.nextNonEmpty(lines, i + 1);
+        while (k < lines.length) {
+          const t2 = lines[k].trim();
+          const lv2 = getHeadingLevel(t2);
+          if (lv2 > 0) {
+            const hFont2 = lv2 === 2 ? FONT.H2 : lv2 === 3 ? FONT.H3 : lv2 === 4 ? FONT.H4 : FONT.BODY;
+            const hBefore2 = lv2 === 2 ? SP.BEFORE_H2 : lv2 === 3 ? SP.BEFORE_H3 : 6;
+            const hAfter2 = lv2 === 2 ? SP.AFTER_H2 : lv2 === 3 ? SP.AFTER_H3 : 4;
+            cascadeH += hBefore2 + hFont2 * 0.38 + hAfter2;
+            k = this.nextNonEmpty(lines, k + 1);
+          } else {
+            cascadeH += MIN_KEEP; // first prose: add minimum body height
+            break;
+          }
+        }
+        if (cascadeH === 0) cascadeH = MIN_KEEP; // heading is last item in module
+        this.renderHeading(trimmed, heading === 1 ? 2 : heading, cascadeH);
         i++;
         continue;
       }
