@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { cleanModuleContent } from "../_shared/markdown.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -359,8 +360,11 @@ Deno.serve(async (req: Request) => {
     for (const mod of modules) {
       try {
         console.log(`[Restructure] Processing module: ${mod.title}`);
-        const restructured = await callLLM(TEMPLATE_PROMPT, mod.content || "");
-        
+        const restructuredRaw = await callLLM(TEMPLATE_PROMPT, mod.content || "");
+        // Drop the redundant leading "## <title>" heading (every consumer renders
+        // the title itself) and any stray fence, so we don't persist a duplicate.
+        const restructured = cleanModuleContent(restructuredRaw, mod.title);
+
         if (!restructured || restructured.length < 100) {
           results.push({ module_id: mod.id, title: mod.title, status: "skipped", error: "LLM returned empty/short content" });
           continue;

@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
+import { cleanModuleContent } from "@/lib/utils";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
@@ -459,7 +460,7 @@ export default function StudentPortal() {
 
               {/* Content */}
               <div className="prose-portal">
-                <MarkdownContent text={module.content || "Conteúdo em breve."} />
+                <MarkdownContent text={cleanModuleContent(module.content || "", module.title) || "Conteúdo em breve."} />
               </div>
 
               {/* Flashcards */}
