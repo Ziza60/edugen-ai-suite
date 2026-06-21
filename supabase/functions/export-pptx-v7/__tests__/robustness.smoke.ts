@@ -10,6 +10,7 @@ import {
   dedupeModules,
   echoesTitle,
   enforceModuleFloors,
+  ensurePedagogicalCoverage,
   fallbackModuleSlides,
   salvageSlidesFromTruncatedJson,
 } from "../deck-plan.ts";
@@ -203,6 +204,44 @@ check("floor: closing is the last slide", m4.slides[m4.slides.length - 1].kind =
 check("floor: reported it added a closing", res.closingsAdded >= 1 && res.backfilled >= 1);
 check("floor: healthy module left intact", hollow[1].slides.length === before);
 check("floor: every module has a closing", hollow.every((m) => m.slides.some((s) => s.kind === "closing")));
+
+// ── pedagogical coverage: practical sections are backfilled when the planner
+//    dropped them, and the pass is idempotent (no duplicates on a 2nd run) ──
+const covSource = `
+### 🧩 Modelos / Tipos
+| Aspecto | Opção A | Opção B | Opção C |
+| :-- | :-- | :-- | :-- |
+| Foco | Plataforma completa | Criação de conteúdo | Chatbot de apoio |
+| Exemplos | Khan Academy, Geekie | MagicSchool, Curipod | Moodle, Classroom |
+
+### 💡 Exemplo prático
+**Contexto:** A professora Ana tem 30 alunos heterogêneos.
+**Desafio:** Diferenciar atividades consome tempo de planejamento.
+**Solução:** Adota uma plataforma adaptativa que cria trilhas.
+**Resultado:** Reduz 40% do tempo e mantém o engajamento.
+
+### 🎓 Atividade Prática
+**Passos:**
+1. Identifique um desafio: descreva um problema concreto da sua turma.
+2. Defina métricas: escolha 2 KPIs para medir o sucesso.
+3. Selecione uma ferramenta alinhada ao desafio.
+`;
+const covDeck: DeckModule[] = [{
+  title: "Ferramentas de IA",
+  slides: [
+    { kind: "bullets", title: "Objetivos", eyebrow: "M", bullets: ["um", "dois", "três"] },
+    { kind: "bullets", title: "Fundamentos", eyebrow: "M", bullets: ["a", "b", "c"] },
+    { kind: "closing", title: "Principais Aprendizados", eyebrow: "M", bullets: ["x", "y"] },
+  ] as SlideSpec[],
+}];
+const covInputs: ModuleInput[] = [{ title: "Ferramentas de IA", content: covSource }];
+const cov1 = ensurePedagogicalCoverage(covDeck, covInputs, "Português (Brasil)");
+const ck = covDeck[0].slides.map((s) => s.kind);
+check("coverage: backfills worked example + activity (steps) + table", cov1.examplesAdded === 1 && cov1.activitiesAdded === 1 && cov1.tablesAdded === 1);
+check("coverage: table slide carries concrete names", covDeck[0].slides.some((s) => s.kind === "table" && JSON.stringify(s.rows).includes("Khan")));
+check("coverage: backfilled slides sit before the closing", ck.lastIndexOf("closing") === ck.length - 1 && ck.includes("table") && ck.includes("steps"));
+const cov2 = ensurePedagogicalCoverage(covDeck, covInputs, "Português (Brasil)");
+check("coverage: idempotent (2nd pass adds nothing)", cov2.examplesAdded === 0 && cov2.activitiesAdded === 0 && cov2.tablesAdded === 0);
 
 // ── consolidation (v7.26): normalize no longer reclassifies bullet runs into
 //    tiles/bento; it keeps them "bullets" and the RENDERER owns all visual
