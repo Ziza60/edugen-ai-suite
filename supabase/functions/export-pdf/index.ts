@@ -42,7 +42,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21e";
+const EXPORT_PDF_BUILD = "2026-06-21f";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -319,46 +319,74 @@ class PdfRenderer {
     return j;
   }
 
-  // "Keep-with-next" height for a heading: accumulate the following blocks
-  // (intro paragraph + its table/list/etc.) up to a target, so a heading is never
-  // stranded at the page bottom with only a one-line intro while the real content
-  // (a table) starts on the next page. Capped so a tall table doesn't force a
-  // needless break — we only need to guarantee a meaningful chunk stays together.
-  estimateKeepHeight(lines: string[], fromIdx: number): number {
-    const TARGET = 30; // mm of content to keep under a heading
-    let total = 0, j = fromIdx, guard = 0;
-    while (j < lines.length && total < TARGET && guard < 5) {
-      while (j < lines.length && !lines[j].trim()) j++;
-      if (j >= lines.length) break;
-      const t = lines[j].trim();
-      if (getHeadingLevel(t) > 0) break; // next heading — stop accumulating
-      if (t === "---" || t === "***" || t === "___") { j++; continue; }
+  // "Keep-with-next" height for a heading: measure the REAL height of the first
+  // block that follows it (its intro/table/list/box), so the heading is never
+  // stranded at the bottom of a page while its content starts overleaf.
+  //
+  // Why the real height (not a small cap): a table renders as one atomic unit
+  // (renderTable keeps the whole table together on a page). If we under-reserve,
+  // the heading fits at the page bottom but the entire table jumps to the next
+  // page, orphaning the heading. We also recurse through an immediately-following
+  // sub-heading so a "Section -> Subsection -> content" run stays together.
+  measureFirstBlock(lines: string[], fromIdx: number, depth = 0): number {
+    if (depth > 3) return 0;
+    let j = fromIdx;
+    while (j < lines.length && !lines[j].trim()) j++;
+    if (j >= lines.length) return 0;
+    const t = lines[j].trim();
 
-      // table
-      if (t.includes("|") && lines[j + 1]?.includes("|")) {
-        const { table, endIndex } = parseMarkdownTable(lines, j);
-        if (table) { total += Math.min(80, 10 + table.rows.length * 12); j = endIndex + 1; guard++; continue; }
-      }
-      // bullet / numbered run
-      if (t.startsWith("- ") || t.startsWith("* ") || /^\d+\.\s/.test(t)) {
-        while (j < lines.length) {
-          const tt = lines[j].trim();
-          if (!tt || getHeadingLevel(tt) > 0) break;
-          if (tt.startsWith("- ") || tt.startsWith("* ") || /^\d+\.\s/.test(tt)) { total += this.estimateBulletHeight(tt); j++; }
-          else break;
-        }
-        guard++; continue;
-      }
-      // blockquote
-      if (t.startsWith("> ")) {
-        let txt = t.replace(/^>\s*/, ""); j++;
-        while (j < lines.length && lines[j].trim().startsWith("> ")) { txt += " " + lines[j].trim().replace(/^>\s*/, ""); j++; }
-        total += this.estimateTextHeight(txt, FONT.SMALL, CONTENT_W - 16, 4.5) + 12; guard++; continue;
-      }
-      // paragraph
-      total += this.estimateTextHeight(t, FONT.BODY, CONTENT_W, SP.LINE_HEIGHT); j++; guard++;
+    // skip horizontal rules
+    if (t === "---" || t === "***" || t === "___") return this.measureFirstBlock(lines, j + 1, depth);
+
+    // heading -> keep it together with its own first block (recurse)
+    const hl = getHeadingLevel(t);
+    if (hl > 0) {
+      const lvl = hl === 1 ? 2 : hl;
+      const size = lvl === 2 ? FONT.H2 : lvl === 3 ? FONT.H3 : FONT.H4;
+      this.doc.setFontSize(size);
+      const tl = this.doc.splitTextToSize(sanitizeText(stripMarkdown(t)), CONTENT_W);
+      const hH = 8 + tl.length * (size * 0.38) + 5;
+      return hH + this.measureFirstBlock(lines, j + 1, depth + 1);
     }
-    return Math.min(total, TARGET);
+
+    // pedagogical box (Exemplo prático, Dica, etc.) — label + a few body lines
+    if (detectPedagogicalBlock(t)) {
+      let h = 14, k = j + 1, c = 0;
+      while (k < lines.length && c < 6) {
+        const tt = lines[k].trim();
+        if (!tt || getHeadingLevel(tt) > 0 || detectPedagogicalBlock(tt)) break;
+        h += this.estimateBulletHeight(tt); k++; c++;
+      }
+      return h;
+    }
+
+    // table — measure the whole table (it renders as one keep-together unit)
+    if (t.includes("|") && lines[j + 1]?.includes("|")) {
+      const { table } = parseMarkdownTable(lines, j);
+      if (table) return 12 + table.rows.length * 14;
+    }
+
+    // bullet / numbered run
+    if (t.startsWith("- ") || t.startsWith("* ") || /^\d+\.\s/.test(t)) {
+      let h = 0, k = j, c = 0;
+      while (k < lines.length && c < 8) {
+        const tt = lines[k].trim();
+        if (!tt || getHeadingLevel(tt) > 0) break;
+        if (tt.startsWith("- ") || tt.startsWith("* ") || /^\d+\.\s/.test(tt)) { h += this.estimateBulletHeight(tt); k++; c++; }
+        else break;
+      }
+      return h;
+    }
+
+    // blockquote
+    if (t.startsWith("> ")) {
+      let txt = t.replace(/^>\s*/, ""); let k = j + 1;
+      while (k < lines.length && lines[k].trim().startsWith("> ")) { txt += " " + lines[k].trim().replace(/^>\s*/, ""); k++; }
+      return this.estimateTextHeight(txt, FONT.SMALL, CONTENT_W - 16, 4.5) + 12;
+    }
+
+    // paragraph
+    return this.estimateTextHeight(t, FONT.BODY, CONTENT_W, SP.LINE_HEIGHT);
   }
 
   // ── Title page ────────────────────────────────────────────────────
@@ -815,7 +843,10 @@ class PdfRenderer {
         // Keep the heading with a meaningful chunk of its following content
         // (intro + table/list), not just the first short line — otherwise the
         // heading is orphaned at the page bottom and the table starts overleaf.
-        const keepH = this.estimateKeepHeight(lines, nextIdx);
+        // Reserve the real height of the heading's first block, capped so a
+        // heading never demands more than fits on an otherwise-empty page
+        // (oversized blocks break internally and won't orphan the heading).
+        const keepH = Math.min(this.measureFirstBlock(lines, nextIdx), (MAX_Y - MARGIN_TOP) - 45);
         this.renderHeading(trimmed, heading === 1 ? 2 : heading, keepH);
         i++;
         continue;
