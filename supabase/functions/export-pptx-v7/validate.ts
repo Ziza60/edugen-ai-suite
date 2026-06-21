@@ -61,6 +61,28 @@ function cleanFragment(raw: string): string {
   return t;
 }
 
+/** Drop a dangling, unclosed parenthetical / quote left by truncation, so a
+ *  capped fragment never ends with "(ex: a, b" or an open quote. */
+function balanceDelimiters(t: string): string {
+  let s = t;
+  let guard = 0;
+  while (
+    (s.match(/\(/g)?.length ?? 0) > (s.match(/\)/g)?.length ?? 0) && guard++ < 3
+  ) {
+    const i = s.lastIndexOf("(");
+    if (i < 0) break;
+    s = s.slice(0, i).trim();
+  }
+  // Odd number of straight or smart double-quotes → drop from the last one.
+  for (const q of ['"', "“", "”"]) {
+    if (((s.match(new RegExp(q, "g"))?.length ?? 0) % 2) === 1) {
+      const i = s.lastIndexOf(q);
+      if (i >= 0) s = s.slice(0, i).trim();
+    }
+  }
+  return s;
+}
+
 /** Hard cap by words then chars, never cutting mid-word — and, when a cut was
  *  needed, ending on a clause/sentence boundary so the fragment never reads
  *  mid-thought ("...caindo para 6"). */
@@ -85,7 +107,9 @@ function capText(raw: string, maxWords: number, maxChars: number): string {
     );
     if (b >= Math.floor(t.length * 0.5)) t = t.slice(0, b);
   }
-  return cleanFragment(t);
+  // Always balance delimiters: a truncated "(ex: …" or an open quote can survive
+  // the clause trim (the source sentence itself was cut by the planner).
+  return cleanFragment(balanceDelimiters(cleanFragment(t)));
 }
 
 function normItems(items: string[] | undefined, max: number): string[] {
