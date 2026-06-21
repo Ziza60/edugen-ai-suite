@@ -265,6 +265,51 @@ const endsClean = (b: string) => !/\b(para|de|em|no|na|um|uma)$/i.test(b.trim())
 check("steps: short full sentence is kept whole", ns[0].body === "O tempo total de correção foi reduzido em 50%, caindo para 6 horas semanais.");
 check("steps: long body ends on a clean clause (not mid-thought)", !!ns[1].body && endsClean(ns[1].body!) && ns[1].body!.split(/\s+/).length >= 8);
 
+// ── truncation never leaves an unclosed "(ex: …" or open quote ───────────────
+const balDeck: PlannedDeck = {
+  courseTitle: "C",
+  modules: [{ title: "M", slides: [{
+    kind: "steps", title: "Atividade",
+    steps: [
+      { heading: "Antecipe", body: "Liste 2 obstáculos para a implementação (ex: resistência dos alunos, curva de aprendizado da ferramenta, necessidade de infraestrutura) e proponha mitigação." },
+      { heading: "Crie", body: 'Abra o ChatGPT e use o prompt: "Atue como um professor experiente e crie uma rubrica detalhada.' },
+    ],
+  }] as SlideSpec[] }],
+};
+const bs = normalizeDeck(balDeck).deck.modules[0].slides[0].steps!;
+const balanced = (s: string) => (s.match(/\(/g)?.length ?? 0) <= (s.match(/\)/g)?.length ?? 0) && (s.match(/"/g)?.length ?? 0) % 2 === 0;
+check("steps: no unclosed parenthesis after truncation", !!bs[0].body && balanced(bs[0].body!));
+check("steps: no dangling open quote after truncation", !!bs[1].body && balanced(bs[1].body!));
+
+// ── case study: a "Resultado:" expressed as bullets still gets a body, and an
+//    incomplete planner example (empty Resultado) is replaced by a fuller one ──
+const caseSrc = `## M
+### 💡 Exemplo prático
+**Contexto:** Uma escola de Ensino Fundamental com turmas de 4º ano e 30 alunos.
+**Desafio:** Ana percebe grande heterogeneidade na turma de matemática.
+**Solução:** A escola implementa a plataforma adaptativa Geekie One para trilhas.
+**Resultado:**
+-   Redução de 40% no tempo para alunos atingirem a proficiência básica.
+-   Alunos avançados puderam explorar tópicos correlatos mantendo o engajamento.
+`;
+const caseDeck: DeckModule[] = [{
+  title: "M",
+  slides: [
+    { kind: "bullets", title: "Objetivos", eyebrow: "M", bullets: ["a", "b"] },
+    { kind: "steps", title: "Estudo de Caso", eyebrow: "M", steps: [
+      { heading: "Contexto", body: "Uma escola com turmas de 4º ano." },
+      { heading: "Desafio", body: "Ana percebe heterogeneidade na turma." },
+      { heading: "Solução", body: "A escola implementa Geekie One." },
+      { heading: "Resultado" }, // empty → should be replaced
+    ] },
+    { kind: "closing", title: "Aprendizados", eyebrow: "M", bullets: ["x"] },
+  ] as SlideSpec[],
+}];
+ensurePedagogicalCoverage(caseDeck, [{ title: "M", content: caseSrc }], "Português (Brasil)");
+const cs = caseDeck[0].slides.find((s) => s.kind === "steps" && s.steps?.some((st) => /resultado/i.test(st.heading || "")));
+const resultado = cs?.steps?.find((st) => /resultado/i.test(st.heading || ""));
+check("case study: empty Resultado is filled from bullets", !!resultado?.body && /40%/.test(resultado.body!));
+
 // ── consolidation (v7.26): normalize no longer reclassifies bullet runs into
 //    tiles/bento; it keeps them "bullets" and the RENDERER owns all visual
 //    variety (one rich rotation: tiles/bento/chevron/ring/pyramid/zigzag/…) ──

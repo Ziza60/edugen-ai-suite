@@ -13,6 +13,7 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   AlignmentType, BorderStyle, ShadingType,
 } from "docx";
+import { cleanModuleContent } from "@/lib/utils";
 
 interface ExportButtonsProps {
   courseId: string;
@@ -71,7 +72,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
           })
         );
 
-        const rawContent = mod.content || "";
+        const rawContent = cleanModuleContent(mod.content || "", mod.title);
         const lines = rawContent.split("\n");
 
         for (const line of lines) {
@@ -179,7 +180,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
 
   const handleExportMarkdown = () => {
     const branding = isPro ? "" : "\n\n---\n\n*Gerado com CourseAI — plataforma de cursos com IA*\n";
-    const md = modules.map((m) => `# ${m.title}\n\n${m.content || ""}`).join("\n\n---\n\n") + branding;
+    const md = modules.map((m) => `# ${m.title}\n\n${cleanModuleContent(m.content || "", m.title)}`).join("\n\n---\n\n") + branding;
     const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

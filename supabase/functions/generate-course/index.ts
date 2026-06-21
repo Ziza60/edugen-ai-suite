@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { cleanModuleContent, repairTruncation } from "../_shared/markdown.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,8 +18,22 @@ const PLAN_LIMITS = {
 // módulos). Para reativar a monetização, basta voltar para `false`.
 const TESTING_MODE = true;
 
-// Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key)
+// Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
+// Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
+// truncation ("length") and react (retry with a larger cap, then sanitize).
+async function callAIMeta(
+  model: string, prompt: string, maxTokens = 2000, isJson = false, timeoutMs = 90000,
+): Promise<{ content: string; finishReason: string }> {
+  const { content, finishReason } = await callAIInner(model, prompt, maxTokens, isJson, timeoutMs);
+  return { content, finishReason };
+}
+
+// Backwards-compatible wrapper (most callers only need the text).
 async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = false, timeoutMs = 90000) {
+  return (await callAIInner(model, prompt, maxTokens, isJson, timeoutMs)).content;
+}
+
+async function callAIInner(model: string, prompt: string, maxTokens = 2000, isJson = false, timeoutMs = 90000): Promise<{ content: string; finishReason: string }> {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
@@ -73,7 +88,11 @@ async function callAI(model: string, prompt: string, maxTokens = 2000, isJson = 
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  const choice = data.choices?.[0];
+  return {
+    content: choice?.message?.content || "",
+    finishReason: choice?.finish_reason || "",
+  };
 }
 
 
@@ -721,7 +740,25 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
           // 8000 tokens: the full template (now incl. Atividade Prática) for a PT
           // module is long; smaller caps were truncating modules mid-content/table.
-          const refinedContent = await callAI("gemini-2.5-flash", refinementPrompt, 8000);
+          let refined = await callAIMeta("gemini-2.5-flash", refinementPrompt, 8000);
+          // Truncation guard: a MAX_TOKENS cut leaves the module ending mid-sentence
+          // and silently drops whole sections (the "...proteger dados e oferecer" bug).
+          // Retry ONCE with a larger cap; keep whichever output is complete/longer.
+          if (refined.finishReason === "length") {
+            console.warn(`[generate-course] Refinement truncated for module ${i + 1} → retry (12000 tokens)`);
+            try {
+              const retry = await callAIMeta("gemini-2.5-flash", refinementPrompt, 12000);
+              if (retry.content && (retry.finishReason !== "length" || retry.content.length > refined.content.length)) {
+                refined = retry;
+              }
+            } catch (e: any) {
+              console.warn(`[generate-course] Refinement retry failed (non-blocking): ${e?.message || e}`);
+            }
+          }
+          // Strip stray ```fences and the redundant leading "## <title>" heading (the
+          // duplicate-title bug), then trim any leftover mid-sentence tail.
+          let refinedContent = cleanModuleContent(refined.content, mod.title);
+          if (refined.finishReason === "length") refinedContent = repairTruncation(refinedContent);
 
           // Step D (EARLY SAVE): persist the refined module IMMEDIATELY so its
           // content is never lost if a later optional step times out or is skipped.
@@ -750,15 +787,19 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
                 target_audience || "profissionais da área", language || "pt-BR",
                 theme || "",
               );
-              const qualityResult = await callAI("gemini-2.5-pro", qualityPrompt, 8000);
-              const strippedFences = qualityResult
+              const quality = await callAIMeta("gemini-2.5-pro", qualityPrompt, 8000);
+              const strippedFences = quality.content
                 .replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
               const firstHeading = strippedFences.indexOf("\n## ");
               const cleanedQuality = firstHeading > 0
                 ? strippedFences.slice(firstHeading).trim()
                 : strippedFences;
               const hIdx = cleanedQuality.search(/^## /m);
-              const finalQuality = hIdx > 0 ? cleanedQuality.slice(hIdx).trim() : cleanedQuality;
+              const trimmedQuality = hIdx > 0 ? cleanedQuality.slice(hIdx).trim() : cleanedQuality;
+              // Same sanitation as the refined path: drop the duplicate leading
+              // "## <title>" heading, stray fences, and any truncated tail.
+              let finalQuality = cleanModuleContent(trimmedQuality, mod.title);
+              if (quality.finishReason === "length") finalQuality = repairTruncation(finalQuality);
               if (finalQuality.length >= refinedContent.length * 0.5) {
                 await serviceClient.from("course_modules")
                   .update({ content: finalQuality }).eq("id", moduleData.id);
