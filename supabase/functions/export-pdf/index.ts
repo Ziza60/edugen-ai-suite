@@ -41,7 +41,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21g";
+const EXPORT_PDF_BUILD = "2026-06-21h";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -257,21 +257,12 @@ class PdfRenderer {
   }
 
   drawPageHeader() {
-    // Thin navy bar at top with course title
+    // Thin navy bar at top — decorative only, no text (tiny text is distracting in viewers)
     this.doc.setFillColor(...COLOR.PRIMARY);
     this.doc.rect(0, 0, PAGE_W, 7, "F");
     // Gold accent stripe
     this.doc.setFillColor(...COLOR.ACCENT);
     this.doc.rect(0, 7, PAGE_W, 0.8, "F");
-    if (this.courseTitle) {
-      this.doc.setFontSize(6.5);
-      this.doc.setFont("helvetica", "normal");
-      this.doc.setTextColor(...COLOR.TEXT_WHITE);
-      const shortTitle = this.courseTitle.length > 70
-        ? this.courseTitle.substring(0, 67) + "..."
-        : this.courseTitle;
-      this.doc.text(sanitizeText(shortTitle), PAGE_W / 2, 4.8, { align: "center" });
-    }
     this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
@@ -549,21 +540,32 @@ class PdfRenderer {
     const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
     this.checkPage(lines.length * SP.LINE_HEIGHT + 3);
 
-    // Helper: reliable word width using getStringUnitWidth (more stable in Deno than getTextWidth)
-    const wordWidthMm = (w: string): number =>
-      this.doc.getStringUnitWidth(w) * FONT.BODY / this.doc.internal.scaleFactor;
+    // Word-width measurement for justification.
+    // Primary: doc.getTextWidth (returns mm in jsPDF 2.x).
+    // Fallback: character-count estimate using Helvetica average glyph width (0.48em).
+    // This avoids relying on getStringUnitWidth which can return 0 in Deno/esm.sh contexts.
+    const SF = 72 / 25.4; // mm per point (jsPDF scale factor for mm units)
+    const wordWidthMm = (w: string): number => {
+      try {
+        const tw: number = this.doc.getTextWidth(w);
+        if (tw > 0 && tw < 40) return tw;
+      } catch (_) {}
+      // Fallback: 0.48em avg char width for Helvetica mixed-case Latin text
+      return w.length * FONT.BODY * 0.48 / SF;
+    };
 
     for (let idx = 0; idx < lines.length; idx++) {
       const line = lines[idx];
       const isLastLine = idx === lines.length - 1;
       const trimmedLine = line.trim();
       const words = trimmedLine.split(/\s+/);
-      // Justify: all lines except the last, and only if >= 3 words
+      // Justify all lines except the last, and only when >= 3 words
       if (!isLastLine && words.length >= 3) {
         const totalWordW = words.reduce((s, w) => s + wordWidthMm(w), 0);
         const gap = (CONTENT_W - totalWordW) / (words.length - 1);
-        // Guard: if gap is unreasonable (measurement issue), fall back to left-aligned
-        if (gap > 0 && gap < 15) {
+        // Accept gap 0.3–7 mm: below 0.3 means words overlap; above 7 means
+        // the line is too short to justify (looks stretched)
+        if (gap >= 0.3 && gap <= 7) {
           let x = MARGIN_LEFT;
           for (let w = 0; w < words.length; w++) {
             this.doc.text(words[w], x, this.y);
@@ -905,10 +907,12 @@ class PdfRenderer {
       const heading = getHeadingLevel(trimmed);
       if (heading > 0) {
         const nextIdx = this.nextNonEmpty(lines, i + 1);
-        // Keep the heading with a meaningful chunk of its following content
-        // (intro + table/list), not just the first short line — otherwise the
-        // heading is orphaned at the page bottom and the table starts overleaf.
-        const keepH = this.estimateKeepHeight(lines, nextIdx);
+        // Keep the heading with a meaningful chunk of its following content.
+        // MIN_KEEP = 20mm orphan guard: even when the next element is another heading
+        // (which stops estimateKeepHeight at 0), we still require 20mm of space after
+        // the current heading — preventing it from sitting alone at the page bottom.
+        const MIN_KEEP = 20;
+        const keepH = Math.max(this.estimateKeepHeight(lines, nextIdx), MIN_KEEP);
         this.renderHeading(trimmed, heading === 1 ? 2 : heading, keepH);
         i++;
         continue;
