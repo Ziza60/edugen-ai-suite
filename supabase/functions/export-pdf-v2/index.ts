@@ -19,23 +19,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   PDFDocument, StandardFonts, rgb, PDFPage, PDFFont,
 } from "https://esm.sh/pdf-lib@1.17.1";
-import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
 const BUILD        = "2026-06-22d";
 const TESTING_MODE = true;
-
-// jsDelivr serves npm package files — stable, versioned, high-availability CDN
-const FONT_REG  = "https://cdn.jsdelivr.net/npm/@fontsource/roboto@4.5.8/files/roboto-latin-400-normal.woff2";
-const FONT_BOLD = "https://cdn.jsdelivr.net/npm/@fontsource/roboto@4.5.8/files/roboto-latin-700-normal.woff2";
-const FONT_MONO = "https://cdn.jsdelivr.net/npm/@fontsource/source-code-pro@4.5.14/files/source-code-pro-latin-400-normal.woff2";
-
-async function tryFetch(url: string): Promise<ArrayBuffer | null> {
-  try {
-    const r = await fetch(url);
-    return r.ok ? r.arrayBuffer() : null;
-  } catch { return null; }
-}
 
 // ─── Geometry (A4 mm / pts) ───────────────────────────────────────────────────
 const PT     = 2.8346;
@@ -173,47 +160,15 @@ class R {
   doc: PDFDocument;
   pg!: PDFPage;
   reg!: PDFFont; bld!: PDFFont; obl!: PDFFont; cou!: PDFFont;
-  usingCustomFonts = false;
   y = MT; pn = 0;
 
   constructor(doc: PDFDocument) { this.doc = doc; }
 
   async fonts() {
-    // Try to load Roboto via fontkit; fall back silently to Helvetica
-    const [regBuf, boldBuf, monoBuf] = await Promise.all([
-      tryFetch(FONT_REG), tryFetch(FONT_BOLD), tryFetch(FONT_MONO),
-    ]);
-
-    if (regBuf && boldBuf) {
-      try {
-        this.doc.registerFontkit(fontkit);
-        this.reg = await this.doc.embedFont(regBuf);
-        this.bld = await this.doc.embedFont(boldBuf);
-        // Use bold as oblique fallback if no italic font loaded
-        this.obl = this.bld;
-        this.usingCustomFonts = true;
-        console.log("[PDF-V2] Roboto loaded via fontkit");
-      } catch (e) {
-        console.warn("[PDF-V2] fontkit failed, falling back to Helvetica:", e);
-      }
-    }
-
-    if (!this.usingCustomFonts) {
-      this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
-      this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
-      this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
-      console.log("[PDF-V2] Using Helvetica (fontkit fallback)");
-    }
-
-    if (monoBuf && this.usingCustomFonts) {
-      try {
-        this.cou = await this.doc.embedFont(monoBuf);
-      } catch {
-        this.cou = await this.doc.embedFont(StandardFonts.Courier);
-      }
-    } else {
-      this.cou = await this.doc.embedFont(StandardFonts.Courier);
-    }
+    this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
+    this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
+    this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
+    this.cou = await this.doc.embedFont(StandardFonts.Courier);
   }
 
   Y(yMm: number): number { return PH - yMm * PT; }
@@ -719,16 +674,11 @@ serve(async (req: Request) => {
 
     await serviceClient.from("usage_events").insert({
       user_id: user.id, event_type: "COURSE_EXPORTED_PDF_V2",
-      metadata: { course_id: courseId, build: BUILD, custom_fonts: r.usingCustomFonts },
+      metadata: { course_id: courseId, build: BUILD },
     }).then(() => {});
 
     return new Response(
-      JSON.stringify({
-        url: signed.signedUrl,
-        engine: "pdf-lib-v2",
-        build: BUILD,
-        custom_fonts: r.usingCustomFonts,
-      }),
+      JSON.stringify({ url: signed.signedUrl, engine: "pdf-lib-v2", build: BUILD }),
       { headers: { ...corsHeaders, "Content-Type": "application/json", "x-export-pdf-v2-build": BUILD } },
     );
   } catch (err: any) {
