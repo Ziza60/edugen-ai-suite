@@ -21,7 +21,7 @@ import {
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-06-22d";
+const BUILD        = "2026-06-22e";
 const TESTING_MODE = true;
 
 // ─── Geometry (A4 mm / pts) ───────────────────────────────────────────────────
@@ -132,10 +132,13 @@ function isTableSep(line: string): boolean {
   return /^[\s|:\-]+$/.test(line);
 }
 
-// A source line that ends with sentence-terminating punctuation is complete.
-// The NEXT line starts a new semantic unit (new para() call).
-function endsWithSentence(rawLine: string): boolean {
-  return /[.!?]\s*$/.test(rawLine.trimEnd());
+// A "labeled item" line starts with a single capitalized word followed immediately
+// by a colon — e.g. "Contexto:", "Desafio:", "Resultado:", "Solução:".
+// These must each become their own para() call even without a blank line separator.
+// The regex intentionally excludes commas/parens so "Em sua essência, ..." is NOT matched.
+function isLabeledItem(rawLine: string): boolean {
+  const c = cleanLine(rawLine);
+  return /^[A-ZÁÉÍÓÚÀÃÕÂÊÔ][a-záéíóúàãõâêôç]+:/.test(c);
 }
 
 // ─── Word wrap — exact pdf-lib font metrics ───────────────────────────────────
@@ -578,21 +581,25 @@ class R {
       }
 
       // ── Plain paragraph ──────────────────────────────────────────────────────
-      // Collect consecutive non-special source lines and flush them as one para()
-      // call — BUT stop collecting as soon as any line ends with sentence punct
-      // (.!?). This keeps "Contexto/Desafio/Solução/Resultado" as separate blocks
-      // while still joining hard-wrapped continuation lines for justification.
+      // Merge consecutive non-special source lines into ONE para() call so that
+      // the resulting block wraps to many display lines → full justification.
+      // Break only when:
+      //   • a blank / special line is encountered (standard paragraph boundary)
+      //   • the NEXT line is a labeled item ("Contexto:", "Desafio:", "Resultado:"…)
+      //     so those sections each get their own visually distinct block.
+      // If the CURRENT line is itself labeled, don't collect continuations (labeled
+      // items are typically self-contained single sentences in the source).
       listN = 0;
       const paraLines: string[] = [t];
+      const curIsLabeled = isLabeledItem(t);
       i++;
-      // Only continue collecting if the very first line is NOT sentence-complete
-      if (!endsWithSentence(t)) {
+      if (!curIsLabeled) {
         while (i < lines.length) {
           const next = lines[i].trim();
           if (isSpecialLine(next)) break;   // heading/bullet/table/blank → stop
+          if (isLabeledItem(next)) break;   // next line is a new labeled item → stop
           paraLines.push(next);
           i++;
-          if (endsWithSentence(next)) break; // sentence complete → flush now
         }
       }
       this.para(paraLines.join(" "));
