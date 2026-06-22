@@ -31,6 +31,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const [exportingNotion, setExportingNotion] = useState(false);
   const [exportingMoodle, setExportingMoodle] = useState(false);
   const [exportingDocx, setExportingDocx] = useState(false);
+  const [exportingPdfV2, setExportingPdfV2] = useState(false);
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
 
@@ -266,6 +267,20 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
         >
           {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
           PDF {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+        </Button>
+
+        {/* PDF v2 (Test) - pdf-lib accurate justification */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleExportWithFunction("export-pdf-v2", "pdf", setExportingPdfV2, "PDF-v2")}
+          disabled={exportingPdfV2}
+          title="Testar PDF v2 (pdf-lib — justificação precisa)"
+          className="border-amber-400/60 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+          data-testid="button-export-pdf-v2"
+        >
+          {exportingPdfV2 ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
+          PDF v2
         </Button>
 
         {/* PowerPoint - Pro (with customization dialog) */}
