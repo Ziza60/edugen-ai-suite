@@ -26,6 +26,7 @@ import LandingPageEditor from "@/pages/LandingPageEditor";
 import ReviewPublic from "@/pages/ReviewPublic";
 import PptxDebug from "@/pages/PptxDebug";
 import StudentPortal from "@/pages/StudentPortal";
+import OAuthConsent from "@/pages/OAuthConsent";
 
 const queryClient = new QueryClient();
 
@@ -65,6 +66,7 @@ const App = () => (
               <Route path="/learn/:slug" element={<StudentPortal />} />
               <Route path="/review/:token" element={<ReviewPublic />} />
               <Route path="/pptx-debug" element={<PptxDebug />} />
+              <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
