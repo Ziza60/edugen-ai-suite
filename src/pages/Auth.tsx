@@ -17,6 +17,9 @@ export default function Auth() {
   const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const rawNext = searchParams.get("next");
+  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : null;
 
   if (loading) {
     return (
@@ -27,7 +30,7 @@ export default function Auth() {
   }
 
   if (user) {
-    return <Navigate to="/app/dashboard" replace />;
+    return <Navigate to={next ?? "/app/dashboard"} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,7 +43,7 @@ export default function Auth() {
         if (error) {
           toast({ title: "Erro ao entrar", description: error.message, variant: "destructive" });
         } else {
-          navigate("/app/dashboard");
+          navigate(next ?? "/app/dashboard");
         }
       } else {
         if (!fullName.trim()) {
