@@ -21,7 +21,7 @@ import {
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-06-22g";
+const BUILD        = "2026-06-22h";
 const TESTING_MODE = true;
 
 // ─── Geometry (A4 mm / pts) ───────────────────────────────────────────────────
@@ -94,12 +94,15 @@ function safeText(t: string): string {
 }
 
 function stripMd(t: string): string {
+  // NOTE: do NOT strip a leading ">" here. Real blockquotes are handled in
+  // content() (which removes the ">" itself), so any ">" that reaches stripMd is
+  // literal content — e.g. the ">"/">=" comparison operators in a list item or
+  // paragraph. Stripping it wiped those operators.
   return t
     .replace(/^#{1,6}\s*/, "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/`{1,3}([^`]*)`{1,3}/g, "$1")
-    .replace(/^\s*>\s*/, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 }
 
