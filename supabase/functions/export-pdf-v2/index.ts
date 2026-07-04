@@ -21,7 +21,7 @@ import {
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-06-22f";
+const BUILD        = "2026-06-22g";
 const TESTING_MODE = true;
 
 // ─── Geometry (A4 mm / pts) ───────────────────────────────────────────────────
@@ -485,12 +485,17 @@ class R {
         this.pg.drawRectangle({ x: ML_PT, y: bgY, width: CW, height: row.rowH * PT, color: C.TBL_EVEN });
       }
 
+      const capMm = (SIZE * 0.70) / PT;   // approx cap height in mm
       for (let c = 0; c < numCols; c++) {
         const cx    = ML_PT + c * colW + PAD * PT;
         const font  = row.isHeader ? this.bld : this.reg;
         const color = row.isHeader ? C.WHITE : C.BODY;
-        let cy = this.y + PAD;
-        for (const line of row.cells[c]) {
+        const cellLines = row.cells[c];
+        // Vertically center the cell's text block within the row so text isn't
+        // glued to the top border (rows are as tall as the tallest cell).
+        const blockH = (cellLines.length - 1) * SP.TABLE_LINE + capMm;
+        let cy = this.y + Math.max(PAD, (row.rowH - blockH) / 2) + capMm;
+        for (const line of cellLines) {
           this.pg.drawText(line, { x: cx, y: this.Y(cy), size: SIZE, font, color });
           cy += SP.TABLE_LINE;
         }
