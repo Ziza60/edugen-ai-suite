@@ -212,9 +212,11 @@ interface Props {
   disabled: boolean;
   isPro: boolean;
   moduleCount?: number;
+  /** Renders the trigger as a full-width menu row (for use inside a DropdownMenuContent) instead of a standalone button. */
+  asMenuItem?: boolean;
 }
 
-export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleCount = 5 }: Props) {
+export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleCount = 5, asMenuItem = false }: Props) {
   const [open, setOpen]                               = useState(false);
   const [palette, setPalette]                         = useState<PptxExportOptions["palette"]>("default");
   const [density, setDensity]                         = useState<PptxExportOptions["density"]>("standard");
@@ -250,12 +252,29 @@ export function PptxExportDialog({ onExport, exporting, disabled, isPro, moduleC
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={disabled || exporting} data-testid="button-export-pptx">
-          {exporting
-            ? <Loader2 className="h-4 w-4 animate-spin mr-1" />
-            : <Presentation className="h-4 w-4 mr-1" />}
-          PPTX {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-        </Button>
+        {asMenuItem ? (
+          <button
+            type="button"
+            disabled={disabled || exporting}
+            data-testid="button-export-pptx"
+            className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 text-left"
+          >
+            {exporting
+              ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+              : <Presentation className="h-4 w-4 shrink-0 text-muted-foreground" />}
+            <span className="flex items-center gap-1.5 font-medium">
+              PowerPoint (PPTX)
+              {!isPro && <Badge variant="outline" className="text-[10px] px-1 py-0">PRO</Badge>}
+            </span>
+          </button>
+        ) : (
+          <Button variant="outline" size="sm" disabled={disabled || exporting} data-testid="button-export-pptx">
+            {exporting
+              ? <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              : <Presentation className="h-4 w-4 mr-1" />}
+            PPTX {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
+          </Button>
+        )}
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">

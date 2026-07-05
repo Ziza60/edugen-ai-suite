@@ -443,7 +443,7 @@ export default function CourseView() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0 max-w-full">
               {/* Primary actions */}
               <Button
                 variant={isPublished ? "outline" : "default"}
@@ -481,7 +481,7 @@ export default function CourseView() {
                 data-testid="btn-landing-page"
               >
                 <Globe className="h-4 w-4 mr-1.5" />
-                Landing Page
+                Página de Destino
               </Button>
 
               {/* Tools dropdown */}

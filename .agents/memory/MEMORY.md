@@ -1,2 +1,3 @@
 - [Supabase deploy from Replit](supabase-deploy-replit.md) — use `--use-api` flag; Docker bundler has no network access from Replit containers.
 - [V7 Gemini model/batch](v7-gemini-config.md) — gemini-2.5-flash + batchSize=1; gemini-2.0-flash returns HTTP 404 on v1beta endpoint (unusable).
+- [Dev server verification](dev-server-verification.md) — check timestamps/re-read file before trusting an HMR console error; it may be stale from a mid-edit save.
