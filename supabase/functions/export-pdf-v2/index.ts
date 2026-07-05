@@ -1,4 +1,30 @@
-// export-pdf-v2/index.ts  — BUILD 2026-07-04d
+// export-pdf-v2/index.ts  — BUILD 2026-07-05a
+// ─── BUILD 05a: blockquote definitivo (unico item restante do PDF 07-05) ────
+// [fix-bq-nospace] isBlockquote aceita ">Maiuscula" sem espaco (markdown valido;
+//                  caso real: ">Pare um momento..." no conteudo do curso).
+// [fix-bq-bold]    blockquote com prefixo bold ("**> Pare...") detectado.
+// [fix-bq-merge]   continuacao do blockquote (linha seguinte sem ">") e unida
+//                  ao mesmo bloco, em vez de virar paragrafo separado.
+// ─── BUILD 04e: 4 fixes de causa raiz (diagnostico forense do PDF v5) ───────
+// [fix-gt-preserve]        stripMd() NAO remove mais "^>" — era ele quem deletava
+//                          o ">" de "> (maior que)" no fluxo de paragrafo, nao o
+//                          isBlockquote(). O ">" de blockquote e removido apenas
+//                          dentro de blockquote().
+// [fix-unicode-spaces]     CAUSA RAIZ do texto fundido: safeText deletava espacos
+//                          Unicode (U+2000-U+200A etc., comuns em saida de LLM)
+//                          via filtro [^\x00-\xFF], fundindo as palavras. Agora
+//                          \p{Zs} -> " " ANTES de qualquer filtro.
+// [fix-punct-spacing]      ",palavra" -> ", palavra" e ".Maiuscula" -> ". Maiuscula"
+//                          (heuristicas 100% seguras; nao afetam codigo — code()
+//                          nao passa por restoreWordSpacing).
+// [fix-head-list-conflict] CAUSA RAIZ do Key Takeaways orfao: fix-orphan-bullets
+//                          fazia addPage() para mover a lista, abandonando o
+//                          heading (que tinha 50mm livres). Agora: (a) cascade do
+//                          heading mede a LISTA INTEIRA — heading+lista quebram
+//                          juntos; (b) flag lastWasHead impede o lookahead da
+//                          lista de quebrar quando ha heading logo acima;
+//                          (c) removido o pos-check do heading() que podia
+//                          DUPLICAR o heading (redesenhava sem apagar o anterior).
 // ─── Histórico de fixes (acumulado desde 2026-06-22g) ────────────────────────
 // [fix-blockquote-operator]   isBlockquote() distingue ">" operador de blockquote
 //                             real. v3: adicionada. v4d: regex ampliada para cobrir
@@ -15,9 +41,8 @@
 // [fix-special-chars]         SPECIAL_CHAR_MAP: ~50 chars Unicode → Latin1.
 // [fix-toc]                   Sumário automático inserido como p.2.
 // [fix-toc-spacing]           TOC_TITLE_Y = MT+10 (era MT+4); título não cola na barra.
-// [fix-heading-orphan]        cascade lookahead mede altura real do conteúdo seguinte.
-//                             v4d: adicionado check pós-desenho — se após o heading não
-//                             há espaço para MIN_AFTER_HEAD mm, refaz na nova página.
+// [fix-heading-orphan]        cascade lookahead mede altura real do conteúdo seguinte
+//                             (build 04e: mede lista inteira; sem pós-check duplicador).
 // [fix-word-spacing-cell]     cleanCell() agora chama restoreWordSpacing() — resolve
 //                             "Listassãocoleções" que vinha da célula de tabela (FS.TABLE).
 // [fix-blockquote-giant]      isBlockquote() agora também rejeita linhas que começam
@@ -32,7 +57,7 @@ import {
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent, repairTruncation } from "../_shared/markdown.ts";
 
-const BUILD = "2026-07-04d";
+const BUILD = "2026-07-05a";
 
 // ─── Geometry (A4 mm / pts) ──────────────────────────────────────────────────
 const PT     = 2.8346;
@@ -46,11 +71,6 @@ const MAX_Y  = 297 - MB;              // 271 mm
 
 const MOD_BAN_H  = 44;
 const MOD_CONT_Y = 52;
-
-// Espaço mínimo após um heading antes de quebrar página (mm).
-// Se após desenhar o heading restar menos que isso, o heading é
-// refeito na página nova junto com seu conteúdo.
-const MIN_AFTER_HEAD = 18;
 
 // ─── Font sizes (pt) ─────────────────────────────────────────────────────────
 const FS = {
@@ -100,12 +120,22 @@ const C = {
 // que têm espaço em outros trechos mas tokens fundidos no meio.
 // Ex: "Listassãocoleçõesordenadas" → "Listas são coleções ordenadas"
 function restoreWordSpacing(t: string): string {
-  if (!t || t.length < 15) return t;
-  return t.split(/(\s+)/).map((token, idx) => {
-    if (idx % 2 === 1) return token;          // preserva separadores
-    if (token.length < 15) return token;       // token curto, ok
-    return token.replace(/([a-záéíóúàãõâêôç,])([A-ZÁÉÍÓÚÀÃÕÂÊÔ])/g, "$1 $2");
-  }).join("");
+  if (!t) return t;
+  let s = t;
+  // [fix-punct-spacing] Recupera fusoes em pontuacao — 100% seguras em prosa:
+  // ",palavra" -> ", palavra" e ".Maiuscula+minuscula" -> ". Maiuscula..."
+  // (nao afeta decimais "75.5" nem siglas "U.S.A" — exige minuscula apos a maiuscula)
+  s = s.replace(/,(?=[A-Za-z\u00c0-\u00ff])/g, ", ");
+  s = s.replace(/\.(?=[A-Z\u00c1\u00c9\u00cd\u00d3\u00da\u00c0\u00c3\u00d5][a-z\u00e0-\u00ff])/g, ". ");
+  // Heuristica de caixa para tokens longos fundidos (minuscula->Maiuscula)
+  if (s.length >= 15) {
+    s = s.split(/(\s+)/).map((token, idx) => {
+      if (idx % 2 === 1) return token;
+      if (token.length < 15) return token;
+      return token.replace(/([a-z\u00e1\u00e9\u00ed\u00f3\u00fa\u00e0\u00e3\u00f5\u00e2\u00ea\u00f4\u00e7,])([A-Z\u00c1\u00c9\u00cd\u00d3\u00da\u00c0\u00c3\u00d5\u00c2\u00ca\u00d4])/g, "$1 $2");
+    }).join("");
+  }
+  return s;
 }
 
 // [fix-special-chars] ~50 chars Unicode → substitutos Latin1.
@@ -132,6 +162,17 @@ const SPECIAL_CHAR_MAP: [RegExp, string][] = [
 
 function safeText(t: string): string {
   let s = (t || "");
+  // [fix-unicode-spaces] Converte TODOS os separadores de espaco Unicode
+  // (categoria Zs: U+2000-U+200A, U+00A0, U+3000, etc.) para espaco normal
+  // ANTES de qualquer filtro. Sem isso, o filtro [^\x00-\xFF] os deletava,
+  // FUNDINDO palavras: "Listas\u2002sao" virava "Listassao". Essa era a causa
+  // raiz do texto fundido — o markdown do banco usa espacos Unicode (comum em
+  // saida de LLM) e nos os apagavamos.
+  s = s.replace(/\p{Zs}/gu, " ");
+  // Separadores de linha/paragrafo Unicode -> espaco
+  s = s.replace(/[\u2028\u2029]/g, " ");
+  // Zero-width chars -> removidos (nao separam visualmente)
+  s = s.replace(/[\u200B\u200C\u200D\uFEFF]/g, "");
   for (const [re, sub] of SPECIAL_CHAR_MAP) s = s.replace(re, sub);
   return s
     .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
@@ -148,12 +189,14 @@ function safeText(t: string): string {
 }
 
 function stripMd(t: string): string {
+  // [fix-gt-preserve] NAO remove "^>" aqui. O ">" de blockquote ja e removido
+  // dentro de blockquote() antes de chamar cleanLine. Remover aqui deletava o
+  // ">" de linhas de operador como "> (maior que)" que caem no fluxo de paragrafo.
   return t
     .replace(/^#{1,6}\s*/, "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/`{1,3}([^`]*)`{1,3}/g, "$1")
-    .replace(/^\s*>\s*/, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 }
 
@@ -210,18 +253,22 @@ function isBlockquote(line: string): boolean {
   if (/^>\s*\d/.test(line)) return false;
   // "> símbolo" — operador matemático/lógico
   if (/^>\s*[-+*/!<>=]/.test(line)) return false;
-  // [fix-blockquote-giant] ">minúscula" — colapso de markdown gerado por IA
+  // [fix-blockquote-giant] ">minúscula" sem espaço — colapso de markdown de IA
   // Ex: ">listas são coleções" não é blockquote, é texto colapsado
   if (/^>[a-záéíóúàãõâêôç]/.test(line)) return false;
-  // Blockquote real: "> " + letra (maiúscula ou acentuada)
-  return /^>\s+[A-ZÀ-ÿa-z]/.test(line);
+  // [fix-bq-nospace] Blockquote real: "> letra" (com espaço) OU ">Maiúscula"
+  // (markdown válido SEM espaço, ex: ">Pare um momento..." — caso real do curso)
+  return /^>\s+[A-ZÀ-ÿa-z]/.test(line) || /^>[A-ZÁÉÍÓÚÀÃÕÂÊÔÇ]/.test(line);
 }
 
 function isSpecialLine(t: string): boolean {
+  // [fix-bq-bold] testa blockquote tambem com prefixo bold/italico removido
+  // (markdown como "**> Pare...**" deve ser tratado como blockquote)
+  const tBq = t.replace(/^\*{1,2}\s*/, "");
   return !t
     || t.startsWith("#")
     || t.startsWith("|")
-    || isBlockquote(t)
+    || isBlockquote(t) || isBlockquote(tBq)
     || t.startsWith("```")
     || isBullet(t)
     || isHRule(t);
@@ -324,7 +371,7 @@ class R {
     tocPg.drawRectangle({ x: 0, y: 7 * PT,         width: PW, height: 0.8 * PT, color: C.ACC });
 
     // [fix-toc-spacing] TOC_TITLE_Y = MT+10 dá 25mm de distância da barra dourada.
-    const TOC_TITLE_Y = MT + 10;
+    const TOC_TITLE_Y = MT + 14;
     tocPg.drawText("Sumario", {
       x: ML_PT, y: PH - TOC_TITLE_Y * PT,
       size: FS.H2, font: this.bld, color: C.HEAD,
@@ -477,11 +524,10 @@ class R {
   }
 
   // ── Heading ───────────────────────────────────────────────────────────────
-  // [fix-heading-orphan] Estratégia em duas camadas:
-  //   1. check() pré-desenho com cascade = altura real do conteúdo seguinte.
-  //   2. check pós-desenho: se após o heading restar < MIN_AFTER_HEAD mm,
-  //      o heading é refeito na nova página (previne casos em que o check()
-  //      passa por margem mínima mas o conteúdo cai na página seguinte).
+  // [fix-heading-orphan] check() pré-desenho com cascade = altura real do
+  // conteúdo seguinte (calculada no content(), incluindo lista inteira quando
+  // o próximo bloco é lista). Decisão de quebra é 100% antecipada — nunca
+  // redesenha heading (redesenhar duplicaria, pois pdf-lib não apaga).
   heading(text: string, level: number, keepH = 0) {
     const clean = cleanLine(text.replace(/^#{1,6}\s*/, ""));
     if (!clean) return;
@@ -510,27 +556,6 @@ class R {
     }
     this.y += aft;
 
-    // [fix-heading-orphan] Check pós-desenho: se sobrou menos que MIN_AFTER_HEAD
-    // na página, força nova página e redesenha o heading — agora com espaço garantido.
-    if (MAX_Y - this.y < MIN_AFTER_HEAD) {
-      this.addPage();
-      this.y += bef;
-      for (const line of hLines) {
-        this.pg.drawText(line, { x: ML_PT, y: this.Y(this.y), size, font: this.bld, color: C.HEAD });
-        this.y += adv;
-      }
-      if (level === 2) {
-        this.pg.drawLine({
-          start: { x: ML_PT, y: this.Y(this.y) }, end: { x: ML_PT + CW, y: this.Y(this.y) },
-          thickness: 0.7, color: C.ACC,
-        });
-        this.y += 2;
-        // Atualiza o número de página da entrada do TOC já registrada
-        const last = this.tocEntries[this.tocEntries.length - 1];
-        if (last && last.label === clean) last.page = this.pn;
-      }
-      this.y += aft;
-    }
   }
 
   // ── Bullet ───────────────────────────────────────────────────────────────
@@ -735,11 +760,36 @@ class R {
     const lines = markdown.split("\n");
     let i     = 0;
     let listN = 0;
+    // [fix-head-list-conflict] true logo apos renderizar um heading. Enquanto
+    // true, o lookahead de lista NAO pode fazer addPage() — a decisao de quebra
+    // ja foi tomada pelo heading (que mediu a lista inteira no cascade). Sem
+    // essa flag, o fix-orphan-bullets movia a lista para a pagina nova e
+    // abandonava o heading orfao no fim da pagina anterior.
+    let lastWasHead = false;
+
+    // Mede a altura total de uma lista (bullets ou numerada) a partir de idx.
+    const measureList = (startIdx: number): number => {
+      let h = 0, k = startIdx;
+      while (k < lines.length) {
+        const lt = lines[k].trim();
+        if (!lt) { k++; continue; }
+        if (!isBullet(lt)) break;
+        const ll = wrapText(
+          cleanLine(lt.replace(/^[-*+]\s+/, "").replace(/^\d+[.)]\s+/, "")),
+          this.reg, FS.BODY, CW - 5 * PT,
+        );
+        h += ll.length * SP.LINE + 2;
+        k++;
+      }
+      return h;
+    };
 
     while (i < lines.length) {
       const raw = lines[i];
       const t   = raw.trim();
 
+      // Linha em branco NAO reseta lastWasHead (e comum haver linha em branco
+      // entre o heading e sua lista).
       if (!t) { this.y += 2; listN = 0; i++; continue; }
 
       // Fenced code block
@@ -749,18 +799,18 @@ class R {
         while (j < lines.length && !lines[j].trim().startsWith("```")) codeLines.push(lines[j++]);
         this.code(codeLines);
         i = j < lines.length ? j + 1 : j;
-        listN = 0;
+        listN = 0; lastWasHead = false;
         continue;
       }
 
-      if (isHRule(t)) { this.rule(); i++; listN = 0; continue; }
+      if (isHRule(t)) { this.rule(); i++; listN = 0; lastWasHead = false; continue; }
 
       // Table
       if (t.startsWith("|")) {
         const tblLines: string[] = [];
         while (i < lines.length && lines[i].trim().startsWith("|")) tblLines.push(lines[i++]);
         this.table(tblLines);
-        listN = 0;
+        listN = 0; lastWasHead = false;
         continue;
       }
 
@@ -768,8 +818,9 @@ class R {
       const lv = headingLevel(t);
       if (lv > 0) {
         listN = 0;
-        // [fix-heading-orphan] Cascade = altura real das primeiras MIN_LINES
-        // de conteúdo após o heading. Muito mais preciso que MIN_KEEP fixo.
+        // [fix-heading-orphan] Cascade = altura REAL do conteudo seguinte.
+        // Se o proximo bloco e uma LISTA, mede a lista INTEIRA — assim o
+        // check() do heading decide a quebra por heading+lista como unidade.
         const MIN_KEEP  = 28;
         const MIN_LINES = 3;
         let cascade = 0, k = i + 1;
@@ -784,7 +835,16 @@ class R {
                      + lhMm(s2, 1.25)
                      + (lv2 === 2 ? SP.A_H2 : lv2 === 3 ? SP.A_H3 : SP.A_H4);
             k++;
+          } else if (isBullet(t2)) {
+            // [fix-head-list-conflict] lista inteira como unidade com o heading,
+            // desde que heading+lista caibam numa pagina fresca (senao MIN_KEEP
+            // e a lista quebra naturalmente depois).
+            const listH = measureList(k);
+            const headAprox = 20; // bef + linhas + aft aproximados
+            cascade += (listH + headAprox <= (MAX_Y - MT)) ? Math.max(listH, MIN_KEEP) : MIN_KEEP;
+            break;
           } else {
+            // Paragrafo/tabela/codigo: mede as primeiras MIN_LINES linhas
             let measured = 0, lineCount = 0, kk = k;
             while (kk < lines.length && lineCount < MIN_LINES) {
               const lt = lines[kk].trim();
@@ -793,13 +853,8 @@ class R {
               if (lt.startsWith("|") || lt.startsWith("```")) {
                 measured += 12; lineCount++; kk++; continue;
               }
-              if (isBullet(lt)) {
-                const bl = wrapText(cleanLine(lt.replace(/^[-*+\d.)]\s+/, "")), this.reg, FS.BODY, CW - 5 * PT);
-                measured += bl.length * SP.LINE + 2;
-              } else {
-                const pl = wrapText(cleanLine(lt), this.reg, FS.BODY);
-                measured += pl.length * SP.LINE + SP.A_PARA;
-              }
+              const pl = wrapText(cleanLine(lt), this.reg, FS.BODY);
+              measured += pl.length * SP.LINE + SP.A_PARA;
               lineCount++; kk++;
             }
             cascade += Math.max(measured, MIN_KEEP);
@@ -808,52 +863,59 @@ class R {
         }
         if (cascade === 0) cascade = MIN_KEEP;
         this.heading(t, lv === 1 ? 2 : lv, cascade);
+        lastWasHead = true;
         i++;
         continue;
       }
 
       // Numbered list
       if (/^\d+[.)]\s/.test(t)) {
-        // [fix-orphan-bullets] lookahead: se lista não cabe na página atual
-        // mas cabe numa nova, força addPage() antes do primeiro item.
-        if (listN === 0) {
-          let k = i; let count = 0; let listH = 0;
-          while (k < lines.length) {
-            const lt = lines[k].trim();
-            if (!lt) { k++; continue; }
-            if (!/^\d+[.)]\s/.test(lt)) break;
-            const ll = wrapText(cleanLine(lt.replace(/^\d+[.)]\s+/, "")),
-              this.reg, FS.BODY, CW - this.bld.widthOfTextAtSize("99.", FS.BODY) - 3 * PT);
-            listH += ll.length * SP.LINE + 2;
-            count++; k++;
-          }
-          if (count >= 3 && listH > (MAX_Y - this.y) && listH <= (MAX_Y - MT)) this.addPage();
+        // [fix-orphan-bullets] + [fix-head-list-conflict]: so decide quebra se
+        // NAO ha heading imediatamente acima (senao a decisao ja foi do heading).
+        if (listN === 0 && !lastWasHead) {
+          const listH = measureList(i);
+          if (listH > (MAX_Y - this.y) && listH <= (MAX_Y - MT)) this.addPage();
         }
+        lastWasHead = false;
         listN++; this.numbered(t, listN); i++; continue;
       }
 
       // Bullet
       if (isBullet(t)) {
-        if (listN === 0) {
-          let k = i; let count = 0; let listH = 0;
-          while (k < lines.length) {
-            const lt = lines[k].trim();
-            if (!lt) { k++; continue; }
-            if (!isBullet(lt)) break;
-            const ll = wrapText(cleanLine(lt.replace(/^[-*+]\s+/, "")), this.reg, FS.BODY, CW - 5 * PT);
-            listH += ll.length * SP.LINE + 2;
-            count++; k++;
-          }
-          if (count >= 3 && listH > (MAX_Y - this.y) && listH <= (MAX_Y - MT)) this.addPage();
+        if (listN === 0 && !lastWasHead) {
+          const listH = measureList(i);
+          if (listH > (MAX_Y - this.y) && listH <= (MAX_Y - MT)) this.addPage();
         }
+        lastWasHead = false;
         listN = 0; this.bullet(t); i++; continue;
       }
 
-      // Blockquote
-      if (isBlockquote(t)) { listN = 0; this.blockquote(t); i++; continue; }
+      // Blockquote — [fix-bq-bold] aceita prefixo bold; [fix-bq-merge] junta
+      // linhas de continuacao (lazy continuation do markdown: a 2a linha do
+      // blockquote pode vir sem ">"). Sem o merge, a continuacao virava um
+      // paragrafo separado com formatacao diferente.
+      {
+        const tBq = t.replace(/^\*{1,2}\s*/, "");
+        if (isBlockquote(tBq)) {
+          listN = 0; lastWasHead = false;
+          const parts: string[] = [tBq.replace(/^>\s*/, "")];
+          i++;
+          while (i < lines.length) {
+            const next = lines[i].trim();
+            if (!next) break;
+            const nBq = next.replace(/^\*{1,2}\s*/, "");
+            if (isBlockquote(nBq)) { parts.push(nBq.replace(/^>\s*/, "")); i++; continue; }
+            if (isSpecialLine(next)) break;
+            parts.push(next);
+            i++;
+          }
+          this.blockquote(parts.join(" "));
+          continue;
+        }
+      }
 
       // Paragraph — merge consecutive non-special lines
-      listN = 0;
+      listN = 0; lastWasHead = false;
       const paraLines: string[] = [t];
       const curIsLabeled = isLabeledItem(t);
       i++;
