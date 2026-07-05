@@ -39,6 +39,7 @@ import { TranslateDialog } from "@/components/course/TranslateDialog";
 import { ReviewPanel } from "@/components/course/ReviewPanel";
 import { ModuleSidebar } from "@/components/course/ModuleSidebar";
 import { RestructureDiffDialog } from "@/components/course/RestructureDiffDialog";
+import { StudentPortalView, type PortalData } from "@/components/course/StudentPortalView";
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
@@ -63,6 +64,7 @@ export default function CourseView() {
   const [qualityReport, setQualityReport] = useState<any>(null);
   const [flashcardView, setFlashcardView] = useState<"list" | "flip">("flip");
   const [flipEntitled, setFlipEntitled] = useState<boolean | null>(null);
+  const [previewMode, setPreviewMode] = useState(false);
   const [showFlashcardsModal, setShowFlashcardsModal] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizRevealed, setQuizRevealed] = useState<Record<string, boolean>>({});
@@ -376,6 +378,36 @@ export default function CourseView() {
     ? "Salvando..."
     : "Alterações não salvas";
 
+  // Builds the exact same shape the public /learn/:slug portal consumes,
+  // from data already loaded in the editor — so "Visualizar como Aluno"
+  // renders the real StudentPortalView in place, no new tab, no duplication.
+  const portalData: PortalData = {
+    courseId: course.id,
+    courseTitle: course.title,
+    description: course.description ?? "",
+    instructorName: landing?.instructor_name ?? null,
+    primaryColor: landing?.custom_colors?.primary ?? "#7c3aed",
+    logoUrl: landing?.logo_url ?? null,
+    modules: modules.map((m) => ({
+      id: m.id,
+      title: m.title,
+      content: m.content ?? "",
+      order_index: m.order_index,
+      quizQuestions: quizzes.filter((q) => q.module_id === m.id),
+      flashcards: flashcards.filter((f) => f.module_id === m.id),
+    })),
+  };
+
+  if (previewMode) {
+    return (
+      <StudentPortalView
+        data={portalData}
+        onExit={() => setPreviewMode(false)}
+        previewMode
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
       {/* ═══════════ COURSE HEADER ═══════════ */}
@@ -430,6 +462,17 @@ export default function CourseView() {
                 isPro={isPro}
                 modules={modules}
               />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                disabled={modules.length === 0}
+                onClick={() => setPreviewMode(true)}
+                data-testid="btn-view-as-learner"
+              >
+                <GraduationCap className="h-4 w-4 mr-1.5" />
+                Visualizar como Aluno
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

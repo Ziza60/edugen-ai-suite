@@ -56,6 +56,10 @@ Public URL where students access a course without registration. Shares the same 
   - Certificate modal (student enters name → edge function → redirect to /certificate/:token)
 - **Landing page**: Added "Acessar curso" + "Começar agora" buttons to `/c/:slug` pointing to `/learn/:slug`
 - **Route**: `/learn/:slug` added to `src/App.tsx`
+- **Shared component**: The full portal UI lives in `src/components/course/StudentPortalView.tsx` (`{ data: PortalData, exitHref?, onExit?, previewMode? }`). `StudentPortal.tsx` is a thin route wrapper that fetches by slug and renders it. The course editor (`CourseView.tsx`) reuses the same component for "Visualizar como Aluno" — see below.
+
+## Visualizar como Aluno (in-editor learner preview)
+Header button in `CourseView.tsx` toggles `previewMode`, which replaces the whole editor screen in-place (no new tab) with `<StudentPortalView data={portalData} previewMode onExit={...} />`. `portalData` is built in-memory from data already loaded by the editor (course, modules, quizzes, flashcards, `course_landings` colors/logo/instructor) — same shape the `get-course-portal` edge function returns, so the preview is pixel-identical to what real students see. `previewMode` shows a sticky "Modo Visualização" banner + "Voltar para o editor" button, disables real certificate generation, and stores progress under a separate localStorage key so it never collides with actual student progress.
 
 ## YouTube → Curso (Feature)
 - **Edge function**: `supabase/functions/analyze-youtube/index.ts` — extrai transcrição, salva como course_source, analisa com Gemini (título/tema/público/módulos/idioma)
