@@ -404,7 +404,11 @@ export function StudentPortalView({ data, exitHref, onExit, previewMode = false 
   );
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-white flex flex-col">
+    <div
+      className={`bg-[#0d1117] text-white flex flex-col ${
+        previewMode ? "fixed inset-0 z-[100] overflow-y-auto" : "min-h-screen"
+      }`}
+    >
       {/* Preview mode banner — mirrors the "learner view" toggle from reference LMS products */}
       {previewMode && (
         <div className="sticky top-0 z-50 flex items-center justify-center gap-2 h-9 bg-primary text-primary-foreground text-xs font-semibold px-4">
