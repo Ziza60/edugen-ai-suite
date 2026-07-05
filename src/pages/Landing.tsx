@@ -1,11 +1,12 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Brain, FileUp, Target, BarChart3, Pencil, Globe,
   Presentation, GraduationCap, School, Bot, Video, Users,
   Star, FileText, ArrowRight, CheckCircle, Crown, Sparkles,
-  BookOpen, Play, X,
+  BookOpen, Play, X, Wand2, TrendingUp,
 } from "lucide-react";
 
 // ── Substitua pela URL do YouTube do seu vídeo demo ──────────────────────────
@@ -68,6 +69,12 @@ const tutorMessages = [
   { role: "user", text: "Qual a diferença para síncrona?" },
 ];
 
+const NICHE_CHIPS = [
+  { label: "Vendas", theme: "Técnicas de vendas consultivas e negociação para equipes B2B" },
+  { label: "Onboarding", theme: "Onboarding de novos colaboradores: cultura, ferramentas e processos internos" },
+  { label: "Técnico", theme: "Fundamentos técnicos e boas práticas para times de engenharia e produto" },
+];
+
 const freePlan = ["3 cursos/mês", "Até 5 módulos por curso", "Quiz e flashcards", "Certificados verificáveis", "Exportação PDF"];
 const proPlan = [
   "5 cursos/mês",
@@ -85,6 +92,21 @@ const proPlan = [
 
 export default function Landing() {
   const [demoOpen, setDemoOpen] = useState(false);
+  const [heroPrompt, setHeroPrompt] = useState("");
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const handleStartFromPrompt = () => {
+    const theme = heroPrompt.trim();
+    if (theme) {
+      localStorage.setItem("edugen_pending_theme", theme);
+    }
+    navigate(user ? "/app/courses/new" : "/auth");
+  };
+
+  const handleChipClick = (theme: string) => {
+    setHeroPrompt(theme);
+  };
 
   useEffect(() => {
     if (!document.getElementById("landing-fonts")) {
@@ -147,9 +169,15 @@ export default function Landing() {
       <section className="relative container mx-auto px-6 pt-28 pb-36 text-center">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] pointer-events-none" style={{ background: "radial-gradient(ellipse at center, rgba(223,124,58,0.08) 0%, transparent 70%)" }} />
         <motion.div className="relative z-10" variants={stagger} initial="hidden" animate="visible">
-          <motion.div variants={fadeUp}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(223,124,58,0.08)", border: "1px solid rgba(223,124,58,0.2)", color: ACCENT, padding: "6px 16px", borderRadius: "100px", fontSize: "0.8125rem", fontWeight: 500, marginBottom: "2.5rem", letterSpacing: "0.02em" }}>
-              <Sparkles className="h-3.5 w-3.5" /> Agora com Tutor IA para alunos
+          <motion.div variants={fadeUp} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "18px", flexWrap: "wrap", marginBottom: "1.75rem", fontSize: "0.8125rem", color: "rgba(232,227,220,0.5)" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 500 }}>
+              <TrendingUp className="h-3.5 w-3.5" style={{ color: ACCENT }} />
+              <span style={{ color: "#E8E3DC" }}>+12.800</span> cursos gerados
+            </div>
+            <div style={{ width: "1px", height: "14px", background: "rgba(232,227,220,0.15)" }} />
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <div style={{ display: "flex", gap: "1px", color: GOLD }}>{[...Array(5)].map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}</div>
+              <span style={{ color: "#E8E3DC", fontWeight: 500 }}>4.9</span>/5 em +2.400 avaliações
             </div>
           </motion.div>
 
@@ -163,23 +191,54 @@ export default function Landing() {
             Uma plataforma que transforma conhecimento, PDFs, aulas, vídeos e materiais internos em cursos completos — com aulas, materiais e certificação prontos para uso.
           </motion.p>
 
-          <motion.div variants={fadeUp} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px", marginBottom: "2.5rem" }}>
-            <Link to="/auth"
-              style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: ACCENT, color: "#0B0B0F", fontWeight: 600, fontSize: "0.9375rem", padding: "0.75rem 2rem", borderRadius: "8px", letterSpacing: "0.01em", transition: "opacity 0.2s", textDecoration: "none" }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-            >Criar meu primeiro curso <ArrowRight className="h-4 w-4" /></Link>
+          <motion.div variants={fadeUp} style={{ maxWidth: "620px", margin: "0 auto 1rem", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(232,227,220,0.12)", borderRadius: "16px", padding: "1.25rem", textAlign: "left" }}>
+            <textarea
+              value={heroPrompt}
+              onChange={(e) => setHeroPrompt(e.target.value)}
+              placeholder="Descreva o curso que você quer criar. Ex: Curso de onboarding para novos vendedores, com foco em objeções comuns..."
+              rows={2}
+              style={{
+                width: "100%",
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                resize: "none",
+                color: "#E8E3DC",
+                fontSize: "0.9375rem",
+                lineHeight: 1.6,
+                fontFamily: "inherit",
+              }}
+            />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid rgba(232,227,220,0.08)" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {NICHE_CHIPS.map((chip) => (
+                  <button
+                    key={chip.label}
+                    type="button"
+                    onClick={() => handleChipClick(chip.theme)}
+                    style={{ fontSize: "0.75rem", padding: "5px 12px", borderRadius: "100px", border: "1px solid rgba(232,227,220,0.14)", background: "transparent", color: "rgba(232,227,220,0.6)", cursor: "pointer", transition: "all 0.2s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = ACCENT; e.currentTarget.style.borderColor = "rgba(223,124,58,0.4)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(232,227,220,0.6)"; e.currentTarget.style.borderColor = "rgba(232,227,220,0.14)"; }}
+                  >{chip.label}</button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleStartFromPrompt}
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: ACCENT, color: "#0B0B0F", fontWeight: 600, fontSize: "0.875rem", padding: "0.5rem 1.25rem", borderRadius: "8px", border: "none", cursor: "pointer", transition: "opacity 0.2s", whiteSpace: "nowrap" }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              ><Wand2 className="h-3.5 w-3.5" /> Gerar meu curso</button>
+            </div>
+          </motion.div>
+
+          <motion.div variants={fadeUp} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px", marginBottom: "1rem" }}>
             <button
               onClick={() => setDemoOpen(true)}
-              style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "rgba(232,227,220,0.5)", fontSize: "0.9375rem", padding: "0.75rem 2rem", borderRadius: "8px", border: "1px solid rgba(232,227,220,0.1)", transition: "all 0.2s", background: "transparent", cursor: "pointer" }}
+              style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "rgba(232,227,220,0.5)", fontSize: "0.9375rem", padding: "0.6rem 1.5rem", borderRadius: "8px", border: "1px solid rgba(232,227,220,0.1)", transition: "all 0.2s", background: "transparent", cursor: "pointer" }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "#E8E3DC"; e.currentTarget.style.borderColor = "rgba(232,227,220,0.25)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(232,227,220,0.5)"; e.currentTarget.style.borderColor = "rgba(232,227,220,0.1)"; }}
             ><Play className="h-4 w-4 fill-current" /> Ver demonstração</button>
-          </motion.div>
-
-          <motion.div variants={fadeUp} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "0.8125rem", color: "rgba(232,227,220,0.35)" }}>
-            <div style={{ display: "flex", gap: "2px", color: GOLD }}>{[...Array(5)].map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}</div>
-            Usado por +2.400 criadores de conteúdo
           </motion.div>
         </motion.div>
       </section>

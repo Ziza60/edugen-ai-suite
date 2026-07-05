@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
@@ -85,6 +85,18 @@ export default function CourseWizard() {
     includeImages: false,
     density: "standard" as "compact" | "standard" | "detailed",
   });
+
+  // ── Prefill from landing-page hero prompt (localStorage handoff) ──
+  useEffect(() => {
+    const pending = localStorage.getItem("edugen_pending_theme");
+    if (pending && pending.trim()) {
+      const theme = pending.trim();
+      const title = theme.length > 60 ? `${theme.slice(0, 57).trim()}...` : theme;
+      setForm((prev) => ({ ...prev, title, theme }));
+      setShowTemplates(false);
+      localStorage.removeItem("edugen_pending_theme");
+    }
+  }, []);
 
   // ── Prompt quality score ──
   const calcPromptScore = () => {
