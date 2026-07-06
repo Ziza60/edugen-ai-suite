@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
@@ -73,6 +73,24 @@ export default function CourseWizard() {
     (derivedTitle ? derivedTitle.charAt(0).toUpperCase() + derivedTitle.slice(1) : "");
 
   const [showTemplates, setShowTemplates] = useState(!prefillTheme);
+  // Quick create (Coursebox-style): arriving with a theme, the user answers 4
+  // guided questions and we generate straight away — no Título/Tema form. The
+  // full form stays available via "Modo avançado".
+  const [quickMode, setQuickMode] = useState(!!prefillTheme);
+  const [quickStep, setQuickStep] = useState(0);
+  const [quickCustom, setQuickCustom] = useState("");
+  const [pendingQuickGenerate, setPendingQuickGenerate] = useState(false);
+  // handleGenerate is defined further down (after the early-return screens); the
+  // effect below must be an unconditional hook, so it calls through a ref that is
+  // (re)assigned every full render.
+  const handleGenerateRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (pendingQuickGenerate) {
+      setPendingQuickGenerate(false);
+      setQuickMode(false);
+      handleGenerateRef.current();
+    }
+  }, [pendingQuickGenerate]);
   const [showYouTube, setShowYouTube] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null);
@@ -463,9 +481,136 @@ export default function CourseWizard() {
     }
   };
 
+  handleGenerateRef.current = handleGenerate;
+
   const resolvedTitle = form.title.trim() || selectedTemplate?.suggestedTitle || "";
   const resolvedTheme = form.theme.trim() || selectedTemplate?.suggestedTheme || "";
   const resolvedAudience = form.targetAudience.trim() || selectedTemplate?.targetAudience || "";
+
+  // ── Quick create (Coursebox-style): 4 guided questions, then generate ──
+  const QUICK_QUESTIONS: {
+    key: "targetAudience" | "knowledgeLevel" | "outcome" | "tone";
+    question: string;
+    options: { label: string; value: string }[];
+    allowCustom?: boolean;
+  }[] = [
+    {
+      key: "targetAudience",
+      question: "Para quem é o curso que você quer criar?",
+      allowCustom: true,
+      options: [
+        { label: "Iniciantes", value: "iniciantes" },
+        { label: "Profissionais", value: "profissionais da área" },
+        { label: "Equipe interna", value: "equipe interna da empresa" },
+        { label: "Estudantes", value: "estudantes" },
+      ],
+    },
+    {
+      key: "knowledgeLevel",
+      question: "Qual é o nível de conhecimento atual desse público?",
+      options: [
+        { label: "Nenhum", value: "nenhum" },
+        { label: "Básico", value: "basico" },
+        { label: "Intermediário", value: "intermediario" },
+        { label: "Avançado", value: "avancado" },
+      ],
+    },
+    {
+      key: "outcome",
+      question: "Qual resultado esse curso precisa entregar?",
+      options: [
+        { label: "Introdução ao tema", value: "introducao" },
+        { label: "Aplicação prática", value: "aplicacao" },
+        { label: "Treinamento completo", value: "treinamento" },
+        { label: "Preparação para avaliação", value: "avaliacao" },
+      ],
+    },
+    {
+      key: "tone",
+      question: "Que tom você prefere no material?",
+      options: [
+        { label: "Prático", value: "didatico" },
+        { label: "Profissional", value: "profissional" },
+        { label: "Conversacional", value: "direto" },
+        { label: "Acadêmico", value: "academico" },
+      ],
+    },
+  ];
+
+  const answerQuick = (value: string | null) => {
+    const q = QUICK_QUESTIONS[quickStep];
+    if (value !== null && value.trim()) {
+      setForm((prev) => ({ ...prev, [q.key]: value.trim() }));
+    }
+    setQuickCustom("");
+    if (quickStep < QUICK_QUESTIONS.length - 1) setQuickStep(quickStep + 1);
+    else setPendingQuickGenerate(true);
+  };
+
+  if (quickMode && !generating && !pendingQuickGenerate) {
+    const q = QUICK_QUESTIONS[quickStep];
+    return (
+      <div className="min-h-screen bg-muted/30 flex items-center justify-center px-4">
+        <Card className="rounded-2xl border-border shadow-sm w-full max-w-xl">
+          <CardContent className="p-8">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+              Novo curso
+            </p>
+            <h1 className="font-semibold text-lg mb-6 leading-snug">{resolvedTitle || resolvedTheme}</h1>
+
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-medium text-base">{q.question}</p>
+              <span className="text-xs text-muted-foreground shrink-0 ml-3">
+                {quickStep + 1} de {QUICK_QUESTIONS.length}
+              </span>
+            </div>
+
+            <div className="space-y-2 mb-4">
+              {q.options.map((opt, oi) => (
+                <button
+                  key={opt.value}
+                  onClick={() => answerQuick(opt.value)}
+                  className="w-full flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left text-sm font-medium hover:border-primary hover:bg-primary/5 transition-colors"
+                >
+                  <span className="h-6 w-6 rounded-md bg-muted text-muted-foreground text-xs font-bold flex items-center justify-center shrink-0">
+                    {oi + 1}
+                  </span>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {q.allowCustom ? (
+                <>
+                  <Input
+                    value={quickCustom}
+                    onChange={(e) => setQuickCustom(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && quickCustom.trim()) answerQuick(quickCustom); }}
+                    placeholder="Outra coisa..."
+                    className="h-10"
+                  />
+                  {quickCustom.trim() && (
+                    <Button size="sm" onClick={() => answerQuick(quickCustom)}>OK</Button>
+                  )}
+                </>
+              ) : <div className="flex-1" />}
+              <Button variant="ghost" size="sm" className="text-muted-foreground shrink-0" onClick={() => answerQuick(null)}>
+                Pular
+              </Button>
+            </div>
+
+            <button
+              onClick={() => setQuickMode(false)}
+              className="mt-6 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Prefiro preencher o formulário completo (modo avançado)
+            </button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const canNext = () => {
     switch (step) {
