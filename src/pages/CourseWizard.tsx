@@ -48,11 +48,29 @@ export default function CourseWizard() {
   // Prefill support: a quick-create box (homepage/dashboard suggestion) can hand
   // the theme via URL (?theme=...&title=...) or router state ({ theme, title }).
   // With a theme present we skip the template screen and land on the form filled.
+  // The box receives conversational input ("crie um curso com o tema \"X\""), so
+  // we strip the instruction wrapper/quotes and derive the title from the theme.
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const navState = (location.state ?? {}) as { theme?: string; title?: string };
-  const prefillTheme = (searchParams.get("theme") || navState.theme || "").trim();
-  const prefillTitle = (searchParams.get("title") || navState.title || "").trim();
+  const rawPrefillTheme = (searchParams.get("theme") || navState.theme || "").trim();
+  const rawPrefillTitle = (searchParams.get("title") || navState.title || "").trim();
+  const cleanPrompt = (raw: string): string => {
+    let t = raw.trim();
+    // "crie/gere/quero um curso/treinamento (com o tema|sobre|de) ..." → keep only the theme
+    t = t.replace(/^(crie|criar|gere|gerar|fa[çc]a|fazer|quero|preciso(\s+de)?|me\s+ajude\s+a\s+criar)\s+(um\s+|uma\s+)?(curso|treinamento|capacita[çc][ãa]o)\s*(completo\s*)?(com\s+o\s+tema|sobre(\s+o\s+tema)?|a\s+respeito\s+de|de|do|da|em|para|:)?\s*/i, "");
+    // bare "curso de/sobre X" → X
+    t = t.replace(/^(um\s+|uma\s+)?(curso|treinamento)\s+(de|sobre|do|da|em)\s+/i, "");
+    // strip surrounding/unbalanced quotes and leftover punctuation
+    t = t.replace(/^["'“”‘’\s]+|["'“”‘’.\s]+$/g, "").trim();
+    return t;
+  };
+  const prefillTheme = rawPrefillTheme ? (cleanPrompt(rawPrefillTheme) || rawPrefillTheme) : "";
+  const derivedTitle = prefillTheme.length > 90
+    ? prefillTheme.slice(0, 90).replace(/\s+\S*$/, "")
+    : prefillTheme;
+  const prefillTitle = rawPrefillTitle ||
+    (derivedTitle ? derivedTitle.charAt(0).toUpperCase() + derivedTitle.slice(1) : "");
 
   const [showTemplates, setShowTemplates] = useState(!prefillTheme);
   const [showYouTube, setShowYouTube] = useState(false);
