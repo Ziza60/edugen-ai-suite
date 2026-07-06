@@ -78,6 +78,8 @@ export default function CourseWizard() {
     theme: "",
     targetAudience: "",
     tone: "profissional",
+    knowledgeLevel: "basico",
+    outcome: "aplicacao",
     language: "pt-BR",
     numModules: 3,
     includeQuiz: true,
@@ -311,6 +313,8 @@ export default function CourseWizard() {
             theme: form.theme.trim() || selectedTemplate?.suggestedTheme || "",
             target_audience: form.targetAudience.trim() || selectedTemplate?.targetAudience || "",
             tone: form.tone,
+            knowledge_level: form.knowledgeLevel,
+            outcome: form.outcome,
             language: form.language,
             num_modules: form.numModules,
             include_quiz: form.includeQuiz,
@@ -601,6 +605,35 @@ export default function CourseWizard() {
                               </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">O conteúdo e as avaliações serão gerados neste idioma.</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label className="font-medium">Nível atual do público</Label>
+                            <Select value={form.knowledgeLevel} onValueChange={(v) => updateForm("knowledgeLevel", v)}>
+                              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="nenhum">Nenhum conhecimento</SelectItem>
+                                <SelectItem value="basico">Básico</SelectItem>
+                                <SelectItem value="intermediario">Intermediário</SelectItem>
+                                <SelectItem value="avancado">Avançado</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">Define onde o curso começa e o que pode assumir como sabido.</p>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="font-medium">Resultado esperado</Label>
+                            <Select value={form.outcome} onValueChange={(v) => updateForm("outcome", v)}>
+                              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="introducao">Introdução ao tema</SelectItem>
+                                <SelectItem value="aplicacao">Aplicação prática</SelectItem>
+                                <SelectItem value="treinamento">Treinamento completo</SelectItem>
+                                <SelectItem value="avaliacao">Preparação para avaliação</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">Molda a progressão e o fechamento do curso (caso, projeto ou simulado).</p>
                           </div>
                         </div>
                       </div>
