@@ -1,4 +1,13 @@
-// export-pdf-v2/index.ts  — BUILD 2026-07-05a
+// export-pdf-v2/index.ts  — BUILD 2026-07-06a
+// ─── BUILD 06a: hardening contra crash silencioso ("non-2xx status code") ───
+// [fix-non-string-fields] course.title/description e mod.title/content agora
+//                          passam por String(x ?? "") antes de qualquer uso —
+//                          valor null/numero/objeto derrubava a exportacao
+//                          inteira sem detalhe (TypeError em .split/.normalize).
+// [fix-numcols-guard]      tabela com linhas de contagem de coluna irregular
+//                          podia gerar numCols=0 -> colW=Infinity -> NaN nas
+//                          coordenadas do drawText -> pdf-lib RangeError.
+//                          Agora usa a MAIOR contagem de colunas entre linhas.
 // ─── BUILD 05a: blockquote definitivo (unico item restante do PDF 07-05) ────
 // [fix-bq-nospace] isBlockquote aceita ">Maiuscula" sem espaco (markdown valido;
 //                  caso real: ">Pare um momento..." no conteudo do curso).
@@ -57,7 +66,7 @@ import {
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent, repairTruncation } from "../_shared/markdown.ts";
 
-const BUILD = "2026-07-05a";
+const BUILD = "2026-07-06a";
 
 // ─── Geometry (A4 mm / pts) ──────────────────────────────────────────────────
 const PT     = 2.8346;
@@ -646,7 +655,11 @@ class R {
 
     const SIZE    = FS.TABLE;
     const PAD     = SP.TABLE_PAD;
-    const numCols = rows[0].length;
+    // [fix-numcols-guard] Linhas com contagem de colunas irregular (markdown mal
+    // formado vindo do LLM) podiam deixar numCols=0 -> colW=Infinity -> NaN nas
+    // coordenadas do drawText -> pdf-lib lança RangeError e derruba a exportação
+    // inteira. Usamos a MAIOR contagem de colunas entre todas as linhas.
+    const numCols = Math.max(1, ...rows.map(r => r.length));
     const colW    = CW / numCols;
     const inner   = colW - PAD * 2 * PT;
 
@@ -978,15 +991,23 @@ serve(async (req: Request) => {
     const r   = new R(doc);
     await r.fonts();
 
-    r.cover(course.title, course.description ?? undefined);
+    // [fix-non-string-fields] Colunas do banco podem chegar como null/number/objeto
+    // em cursos legados ou gerados por fluxos alternativos. String(x ?? "") evita
+    // TypeError em .split()/.normalize() mais abaixo, que derrubava a exportacao
+    // inteira com "Edge Function returned a non-2xx status code" sem detalhe algum.
+    const courseTitle = String(course.title ?? "Curso");
+    const courseDesc  = course.description != null ? String(course.description) : undefined;
+    r.cover(courseTitle, courseDesc);
 
     let modNum = 0;
     for (const mod of modules) {
+      const modTitle = mod?.title != null ? String(mod.title) : "";
+      const modContentRaw = mod?.content != null ? String(mod.content) : "";
       // [fix-repairTruncation] repair → clean → render
-      const mdContent = cleanModuleContent(repairTruncation(mod.content ?? ""), mod.title);
-      if (!mdContent && !mod.title) continue;
+      const mdContent = cleanModuleContent(repairTruncation(modContentRaw), modTitle);
+      if (!mdContent && !modTitle) continue;
       modNum++;
-      r.modulePage(mod.title, modNum);
+      r.modulePage(modTitle, modNum);
       if (mdContent) r.content(mdContent);
     }
 

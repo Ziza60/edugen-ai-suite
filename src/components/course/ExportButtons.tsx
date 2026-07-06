@@ -237,7 +237,18 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
       const { data, error } = await supabase.functions.invoke(functionName, {
         body: { course_id: courseId },
       });
-      if (error) throw error;
+      if (error) {
+        const ctx = (error as any)?.context;
+        if (ctx && typeof ctx.json === "function") {
+          try {
+            const body = await ctx.clone().json();
+            if (body?.error) throw new Error(body.error);
+          } catch (parseErr: any) {
+            if (parseErr?.message && parseErr.message !== error.message) throw parseErr;
+          }
+        }
+        throw error;
+      }
       console.log(`[ExportButtons] Response from ${functionName}:`, { engine_version: data?.engine_version, quality_report: data?.quality_report });
       if (data?.url) {
         const response = await fetch(data.url);
