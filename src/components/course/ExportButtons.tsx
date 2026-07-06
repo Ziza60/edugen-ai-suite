@@ -239,15 +239,26 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
       });
       if (error) {
         const ctx = (error as any)?.context;
-        if (ctx && typeof ctx.json === "function") {
+        let serverMessage: string | null = null;
+        let rawBodyText: string | null = null;
+        if (ctx && typeof ctx.clone === "function") {
           try {
-            const body = await ctx.clone().json();
-            if (body?.error) throw new Error(body.error);
-          } catch (parseErr: any) {
-            if (parseErr?.message && parseErr.message !== error.message) throw parseErr;
+            rawBodyText = await ctx.clone().text();
+            const parsed = rawBodyText ? JSON.parse(rawBodyText) : null;
+            if (parsed?.error) serverMessage = String(parsed.error);
+          } catch {
+            // body wasn't JSON (e.g. boot crash / gateway HTML) — rawBodyText still useful below
           }
         }
-        throw error;
+        console.error(`[ExportButtons] ${functionName} failed`, {
+          status: ctx?.status,
+          statusText: ctx?.statusText,
+          serverMessage,
+          rawBodyText,
+          errorName: error.name,
+          errorMessage: error.message,
+        });
+        throw new Error(serverMessage || (rawBodyText ? `Falha (${ctx?.status}): ${rawBodyText.slice(0, 300)}` : error.message));
       }
       console.log(`[ExportButtons] Response from ${functionName}:`, { engine_version: data?.engine_version, quality_report: data?.quality_report });
       if (data?.url) {
