@@ -1,0 +1,53 @@
+CONTEXTO
+No EduGenAI existe uma caixa de texto na homepage/dashboard para criar curso a
+partir de um tema digitado. Hoje ela navega para /app/courses/new SEM levar o
+texto, e o CourseWizard não aceita tema vindo de fora — o usuário cai na tela
+de seleção e precisa digitar o tema de novo. Preciso que você corrija o fluxo
+de ponta a ponta, em 3 partes.
+
+PARTE 1 — src/pages/CourseWizard.tsx (lado receptor)
+1. No import do react-router-dom, adicione useLocation e useSearchParams:
+   import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
+2. Dentro do componente CourseWizard, ANTES dos useState existentes, adicione:
+   const location = useLocation();
+   const [searchParams] = useSearchParams();
+   const navState = (location.state ?? {}) as { theme?: string; title?: string };
+   const prefillTheme = (searchParams.get("theme") || navState.theme || "").trim();
+   const prefillTitle = (searchParams.get("title") || navState.title || "").trim();
+3. Troque a inicialização da tela de templates para pular quando houver tema:
+   const [showTemplates, setShowTemplates] = useState(!prefillTheme);
+4. No useState do form, inicialize com o prefill:
+   title: prefillTitle,
+   theme: prefillTheme,
+   (mantendo os demais campos como estão)
+
+PARTE 2 — caixa de texto da homepage (lado emissor)
+Localize o componente da caixa de texto de criação de curso (homepage e/ou
+dashboard). Onde hoje há algo como navigate("/app/courses/new"), troque para
+levar o texto digitado:
+   navigate("/app/courses/new", { state: { theme: textoDigitado } });
+ou, se preferir URL:
+   navigate(`/app/courses/new?theme=${encodeURIComponent(textoDigitado)}`);
+Se a caixa estiver na landing pública (usuário deslogado), preserve o texto
+através do login: envie para /auth com redirect que termine em
+/app/courses/new?theme=... após autenticar.
+
+PARTE 3 — src/pages/Dashboard.tsx (cards de sugestão)
+Nos SUGGESTIONS do empty state ("Sugestões para começar"), o onClick de cada
+SuggestionCard deve passar a sugestão:
+   onClick={() => navigate("/app/courses/new", { state: { title: s.title, theme: `${s.title} — ${s.desc}` } })}
+
+NÃO ALTERAR
+- Nenhuma outra parte do CourseWizard (payload de geração, steps, uploads).
+- Nada nas edge functions.
+
+CRITÉRIOS DE ACEITE (teste antes de concluir)
+1. Digitar um tema na caixa da homepage → abre o wizard DIRETO no formulário
+   (sem a tela de templates), com o campo "tema" já preenchido com o texto.
+2. Acessar /app/courses/new?theme=Teste → mesmo comportamento.
+3. Acessar /app/courses/new sem parâmetros → comportamento atual preservado
+   (tela de templates aparece normalmente).
+4. Clicar num card de sugestão do dashboard → formulário aberto com título e
+   tema preenchidos.
+Reporte: qual arquivo contém a caixa de texto, o trecho alterado nela, e o
+resultado dos 4 testes.

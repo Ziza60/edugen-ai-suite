@@ -54,9 +54,12 @@ function initialsOf(t: string) {
 }
 
 const SUGGESTIONS = [
-  { Icon: BarChart3,    title: "Estratégias de Social Media",    desc: "Marketing digital para iniciantes" },
-  { Icon: Bot,          title: "Introdução à IA",                desc: "Conceitos fundamentais de IA e ML" },
-  { Icon: GraduationCap,title: "Metodologias de Ensino Online",  desc: "Técnicas para EAD" },
+  { Icon: BarChart3,    title: "Estratégias de Social Media",    desc: "Marketing digital para iniciantes",
+    theme: "Estratégias de social media e marketing digital para iniciantes" },
+  { Icon: Bot,          title: "Introdução à IA",                desc: "Conceitos fundamentais de IA e ML",
+    theme: "Introdução à Inteligência Artificial: conceitos fundamentais de IA e Machine Learning" },
+  { Icon: GraduationCap,title: "Metodologias de Ensino Online",  desc: "Técnicas para EAD",
+    theme: "Metodologias de ensino online e técnicas para Educação a Distância (EAD)" },
 ];
 
 const serif: React.CSSProperties = { fontFamily: "'Cormorant Garamond', 'Georgia', serif" };
@@ -611,7 +614,7 @@ function EmptyState({ navigate }: { navigate: (path: string) => void }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           {SUGGESTIONS.map(s => (
             <SuggestionCard key={s.title} Icon={s.Icon} title={s.title} desc={s.desc}
-              onClick={() => navigate("/app/courses/new")} />
+              onClick={() => navigate(`/app/courses/new?title=${encodeURIComponent(s.title)}&theme=${encodeURIComponent(s.theme)}`)} />
           ))}
         </div>
       </div>

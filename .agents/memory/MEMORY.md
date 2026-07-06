@@ -2,3 +2,4 @@
 - [V7 Gemini model/batch](v7-gemini-config.md) — gemini-2.5-flash + batchSize=1; gemini-2.0-flash returns HTTP 404 on v1beta endpoint (unusable).
 - [Dev server verification](dev-server-verification.md) — check timestamps/re-read file before trusting an HMR console error; it may be stale from a mid-edit save.
 - [Supabase edge debugging limits](supabase-edge-debugging.md) — no log/DB query access from this env; parse `error.context` in supabase-js to get the real function error instead.
+- [CRLF file edits](crlf-file-edits.md) — edit tool exact-match fails silently on CRLF files; check line endings before assuming a diff bug.

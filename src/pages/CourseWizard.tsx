@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
 import { useDevMode } from "@/hooks/useDevMode";
@@ -45,7 +45,12 @@ interface UploadedSource {
 }
 
 export default function CourseWizard() {
-  const [showTemplates, setShowTemplates] = useState(true);
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const navState = (location.state ?? {}) as { theme?: string; title?: string };
+  const prefillTheme = (searchParams.get("theme") || navState.theme || "").trim();
+  const prefillTitle = (searchParams.get("title") || navState.title || "").trim();
+  const [showTemplates, setShowTemplates] = useState(!prefillTheme);
   const [showYouTube, setShowYouTube] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null);
@@ -74,8 +79,8 @@ export default function CourseWizard() {
   const [uploadedSources, setUploadedSources] = useState<UploadedSource[]>([]);
 
   const [form, setForm] = useState({
-    title: "",
-    theme: "",
+    title: prefillTitle,
+    theme: prefillTheme,
     targetAudience: "",
     tone: "profissional",
     knowledgeLevel: "basico",

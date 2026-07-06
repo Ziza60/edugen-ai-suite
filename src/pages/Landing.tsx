@@ -101,7 +101,11 @@ export default function Landing() {
     if (theme) {
       localStorage.setItem("edugen_pending_theme", theme);
     }
-    navigate(user ? "/app/courses/new" : "/auth");
+    if (user) {
+      navigate(theme ? `/app/courses/new?theme=${encodeURIComponent(theme)}` : "/app/courses/new");
+    } else {
+      navigate("/auth");
+    }
   };
 
   const handleChipClick = (theme: string) => {
