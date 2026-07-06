@@ -20,7 +20,7 @@ const TESTING_MODE = true;
 
 // Build marker — logged on every invocation so a deploy can be verified in the
 // function logs (see the export-pdf deploy saga: always confirm WHICH code runs).
-const GENERATE_COURSE_BUILD = "2026-07-06a-arch-v3";
+const GENERATE_COURSE_BUILD = "2026-07-06b-arch-v3";
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
 // Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
@@ -805,6 +805,26 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           // duplicate-title bug), then trim any leftover mid-sentence tail.
           let refinedContent = cleanModuleContent(refined.content, mod.title);
           if (refined.finishReason === "length") refinedContent = repairTruncation(refinedContent);
+
+          // EMPTY-MODULE GUARD: a rare empty/blocked refinement response used to be
+          // persisted as-is, shipping a module with a title and no body (the PPTX
+          // planner then improvises slides from the title alone). Fall back to the
+          // raw draft; as a last resort regenerate the draft once. Never save "".
+          if (refinedContent.trim().length < 200) {
+            console.warn(`[generate-course] Refined content too short for module ${i + 1} (${refinedContent.trim().length} chars) — falling back to raw draft`);
+            const rawFallback = cleanModuleContent(rawContent, mod.title);
+            if (rawFallback.trim().length >= 200) {
+              refinedContent = rawFallback;
+            } else {
+              try {
+                const redo = await callAI("gemini-2.5-flash", contentPrompt, 4000);
+                const redoClean = cleanModuleContent(redo, mod.title);
+                if (redoClean.trim().length > refinedContent.trim().length) refinedContent = redoClean;
+              } catch (redoErr: any) {
+                console.warn(`[generate-course] Draft regeneration failed for module ${i + 1}: ${redoErr?.message || redoErr}`);
+              }
+            }
+          }
 
           // Step D (EARLY SAVE): persist the refined module IMMEDIATELY so its
           // content is never lost if a later optional step times out or is skipped.
