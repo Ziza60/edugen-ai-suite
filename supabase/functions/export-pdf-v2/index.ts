@@ -19,9 +19,33 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   PDFDocument, StandardFonts, rgb, PDFPage, PDFFont,
 } from "https://esm.sh/pdf-lib@1.17.1";
+import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-06-22h";
+const BUILD        = "2026-07-07c-editorial";
+
+// Embedded fonts (real glyph metrics + identity across viewers). Fetched once per
+// cold start; on ANY failure we fall back to Helvetica so exports never fail.
+const FONT_URLS = {
+  reg:  "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Regular.woff",
+  bold: "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Bold.woff",
+  ital: "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-RegularItalic.woff",
+};
+let FONT_CACHE: { reg: Uint8Array; bold: Uint8Array; ital: Uint8Array } | null = null;
+
+async function loadFontBytes(): Promise<typeof FONT_CACHE> {
+  if (FONT_CACHE) return FONT_CACHE;
+  const get = async (url: string) => {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`font fetch ${res.status}`);
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  const [reg, bold, ital] = await Promise.all([
+    get(FONT_URLS.reg), get(FONT_URLS.bold), get(FONT_URLS.ital),
+  ]);
+  FONT_CACHE = { reg, bold, ital };
+  return FONT_CACHE;
+}
 const TESTING_MODE = true;
 
 // ─── Geometry (A4 mm / pts) ───────────────────────────────────────────────────
@@ -74,6 +98,7 @@ const C = {
   RULE:      rgb(0.82, 0.82, 0.85),
   TBL_EVEN:  rgb(0.95, 0.95, 0.97),
   COVER_DIM: rgb(0.72, 0.74, 0.82),
+  CALL_BG:   rgb(0.968, 0.952, 0.915),   // warm paper for callout boxes
 };
 
 // ─── Text helpers ─────────────────────────────────────────────────────────────
@@ -197,14 +222,72 @@ class R {
   pg!: PDFPage;
   reg!: PDFFont; bld!: PDFFont; obl!: PDFFont; cou!: PDFFont;
   y = MT; pn = 0;
+  tocPage: PDFPage | null = null;
+  tocEntries: { num: number; title: string; page: number }[] = [];
 
   constructor(doc: PDFDocument) { this.doc = doc; }
 
+  /** Reserve the TOC page right after the cover; its entries are drawn at the
+   *  end (after every module landed on its real page number). */
+  reserveToc() {
+    this.addPage();
+    this.tocPage = this.pg;
+  }
+
+  renderToc() {
+    if (!this.tocPage) return;
+    const pg = this.tocPage;
+    pg.drawText("Sumário", {
+      x: ML_PT, y: this.Y(30), size: FS.H2 + 4, font: this.bld, color: C.PRI,
+    });
+    pg.drawRectangle({ x: ML_PT, y: this.Y(34), width: 22 * PT, height: 1 * PT, color: C.ACC });
+
+    let ty = 48;
+    const SIZE = 10.5;
+    const lineAdv = 9;
+    for (const e of this.tocEntries) {
+      if (ty > MAX_Y - 10) break;
+      const numStr = `Módulo ${String(e.num).padStart(2, "0")}`;
+      const pageStr = String(e.page);
+      const title = e.title.length > 58 ? e.title.slice(0, 58).replace(/\s+\S*$/, "") + "…" : e.title;
+
+      pg.drawText(numStr, { x: ML_PT, y: this.Y(ty), size: 8.5, font: this.bld, color: C.ACC });
+      pg.drawText(title, { x: ML_PT, y: this.Y(ty + 5.5), size: SIZE, font: this.reg, color: C.BODY });
+
+      // dot leader between title and right-aligned page number
+      const titleW = this.reg.widthOfTextAtSize(title, SIZE);
+      const pageW = this.bld.widthOfTextAtSize(pageStr, SIZE);
+      const dotStart = ML_PT + titleW + 6;
+      const dotEnd = ML_PT + CW - pageW - 6;
+      if (dotEnd > dotStart + 10) {
+        const dotW = this.reg.widthOfTextAtSize(".", SIZE) + 2.2;
+        const n = Math.floor((dotEnd - dotStart) / dotW);
+        pg.drawText(". ".repeat(Math.max(0, Math.floor(n / 1))).trim(), {
+          x: dotStart, y: this.Y(ty + 5.5), size: SIZE, font: this.reg, color: C.RULE,
+        });
+      }
+      pg.drawText(pageStr, {
+        x: ML_PT + CW - pageW, y: this.Y(ty + 5.5), size: SIZE, font: this.bld, color: C.PRI,
+      });
+      ty += lineAdv + 5.5;
+    }
+  }
+
   async fonts() {
-    this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
-    this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
-    this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
     this.cou = await this.doc.embedFont(StandardFonts.Courier);
+    try {
+      this.doc.registerFontkit(fontkit);
+      const bytes = await loadFontBytes();
+      this.reg = await this.doc.embedFont(bytes!.reg,  { subset: true });
+      this.bld = await this.doc.embedFont(bytes!.bold, { subset: true });
+      this.obl = await this.doc.embedFont(bytes!.ital, { subset: true });
+      console.log("[export-pdf-v2] Embedded Roboto (subset)");
+    } catch (e) {
+      console.warn(`[export-pdf-v2] Font embed failed (${(e as Error)?.message}) — falling back to Helvetica`);
+      this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
+      this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
+      this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
+    }
   }
 
   Y(yMm: number): number { return PH - yMm * PT; }
@@ -233,7 +316,11 @@ class R {
   }
 
   // ── Cover ──────────────────────────────────────────────────────────────────
-  cover(title: string, description?: string) {
+  cover(
+    title: string,
+    description?: string,
+    info?: { audience?: string; language?: string; modules?: number; hours?: string },
+  ) {
     const pg = this.doc.addPage([PW, PH]);
     this.pn++;
     pg.drawRectangle({ x: 0, y: 0, width: PW, height: PH, color: C.PRI });
@@ -266,6 +353,29 @@ class R {
       }
     }
 
+    // Course fact strip (audience / workload / modules / language / date)
+    if (info) {
+      const facts: [string, string][] = [];
+      if (info.modules) facts.push(["MÓDULOS", String(info.modules)]);
+      if (info.hours) facts.push(["CARGA ESTIMADA", info.hours]);
+      if (info.audience) facts.push(["PÚBLICO", info.audience.length > 34 ? info.audience.slice(0, 34).replace(/\s+\S*$/, "") + "…" : info.audience]);
+      if (info.language) facts.push(["IDIOMA", info.language]);
+      facts.push(["GERADO EM", new Date().toLocaleDateString("pt-BR")]);
+
+      let fy = 252;
+      pg.drawRectangle({ x: ML_PT, y: this.Y(fy - 8), width: CW, height: 0.6 * PT, color: rgb(0.28, 0.32, 0.55) });
+      let fx = ML_PT;
+      for (const [label, value] of facts) {
+        const wLabel = this.bld.widthOfTextAtSize(label, 7);
+        const wValue = this.reg.widthOfTextAtSize(safeText(value), 9.5);
+        const cellW = Math.max(wLabel, wValue) + 22;
+        if (fx + cellW > ML_PT + CW) break;
+        pg.drawText(label, { x: fx, y: this.Y(fy), size: 7, font: this.bld, color: C.ACC });
+        pg.drawText(safeText(value), { x: fx, y: this.Y(fy + 6), size: 9.5, font: this.reg, color: C.WHITE });
+        fx += cellW;
+      }
+    }
+
     // Bottom gold bar
     pg.drawRectangle({ x: 0, y: 0, width: PW, height: 8 * PT, color: C.ACC });
     const yr = new Date().getFullYear().toString();
@@ -279,6 +389,7 @@ class R {
   modulePage(title: string, num: number) {
     this.pg = this.doc.addPage([PW, PH]);
     this.pn++;
+    this.tocEntries.push({ num, title: safeText(title), page: this.pn });
 
     this.pg.drawRectangle({
       x: 0, y: this.Y(MOD_BAN_H), width: PW, height: MOD_BAN_H * PT, color: C.PRI,
@@ -478,13 +589,11 @@ class R {
     const segStart = this.y;
     let multiPage  = false;
 
-    for (const row of rowData) {
-      if (this.y + row.rowH > MAX_Y) { multiPage = true; this.addPage(); }
-
+    const drawRow = (row: RowInfo, zebraIdx: number) => {
       const bgY = this.Y(this.y + row.rowH);
       if (row.isHeader) {
         this.pg.drawRectangle({ x: ML_PT, y: bgY, width: CW, height: row.rowH * PT, color: C.PRI });
-      } else if (rowData.indexOf(row) % 2 === 0) {
+      } else if (zebraIdx % 2 === 0) {
         this.pg.drawRectangle({ x: ML_PT, y: bgY, width: CW, height: row.rowH * PT, color: C.TBL_EVEN });
       }
 
@@ -510,6 +619,17 @@ class R {
         thickness: 0.3, color: C.RULE,
       });
       this.y += row.rowH;
+    };
+
+    for (let ri = 0; ri < rowData.length; ri++) {
+      const row = rowData[ri];
+      if (this.y + row.rowH > MAX_Y) {
+        multiPage = true;
+        this.addPage();
+        // Repeat the header on the new page so the continued table stays readable.
+        if (!row.isHeader && rowData[0]?.isHeader) drawRow(rowData[0], 0);
+      }
+      drawRow(row, ri);
     }
 
     // Vertical dividers for single-page tables
@@ -525,6 +645,40 @@ class R {
     }
 
     this.y += 5;
+  }
+
+  // ── Callout box (blockquotes / reflection checkpoints) ─────────────────────
+  callout(rawText: string) {
+    const text = cleanLine(rawText);
+    if (!text) return;
+    // "Pare um momento e reflita: pergunta" → title + body split
+    const m = text.match(/^(pare\s+um\s+momento\s+e\s+reflita|reflita|para\s+refletir|dica|importante|aten[çc][ãa]o|nota)\s*[:—-]?\s*/i);
+    const title = m ? (
+      /reflita|refletir/i.test(m[1]) ? "Pare e reflita" :
+      m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase()
+    ) : "Nota";
+    const body = m ? text.slice(m[0].length).trim() || text : text;
+
+    const PAD = 4.5;
+    const bodyLines = wrapText(body, this.obl, FS.BODY, CW - (PAD * 2 + 3) * PT);
+    const titleH = 6;
+    const boxH = PAD + titleH + bodyLines.length * SP.LINE + PAD - 1;
+
+    // keep the whole box together on one page
+    this.check(boxH + 4);
+    const rectY = this.Y(this.y + boxH);
+    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: CW, height: boxH * PT, color: C.CALL_BG });
+    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: 2.5 * PT, height: boxH * PT, color: C.ACC });
+
+    const tx = ML_PT + (PAD + 3) * PT;
+    this.y += PAD + 1.5;
+    this.pg.drawText(title, { x: tx, y: this.Y(this.y + 2.2), size: 9, font: this.bld, color: C.PRI });
+    this.y += titleH;
+    for (const line of bodyLines) {
+      this.pg.drawText(line, { x: tx, y: this.Y(this.y), size: FS.BODY, font: this.obl, color: C.BODY });
+      this.y += SP.LINE;
+    }
+    this.y += PAD + 3;
   }
 
   // ── Horizontal rule ─────────────────────────────────────────────────────────
@@ -607,22 +761,15 @@ class R {
       // Bullet
       if (isBullet(t)) { listN = 0; this.bullet(t); i++; continue; }
 
-      // Blockquote
+      // Blockquote → visual callout (gold bar + warm box; never a literal ">")
       if (t.startsWith(">")) {
         listN = 0;
-        const bqText = cleanLine(t.replace(/^>\s*/, ""));
-        if (bqText) {
-          const bqLines = wrapText(bqText, this.obl, FS.BODY);
-          this.check(bqLines.length * SP.LINE + SP.A_PARA);
-          for (const line of bqLines) {
-            this.pg.drawText(line, {
-              x: ML_PT + 5 * PT, y: this.Y(this.y), size: FS.BODY, font: this.obl, color: C.DIM,
-            });
-            this.y += SP.LINE;
-          }
-          this.y += SP.A_PARA;
+        const bqParts: string[] = [];
+        while (i < lines.length && lines[i].trim().startsWith(">")) {
+          bqParts.push(lines[i].trim().replace(/^>\s*/, ""));
+          i++;
         }
-        i++;
+        this.callout(bqParts.join(" "));
         continue;
       }
 
@@ -698,7 +845,29 @@ serve(async (req: Request) => {
     const r   = new R(doc);
     await r.fonts();
 
-    r.cover(course.title, course.description ?? undefined);
+    // Document metadata (viewer title bar, search, accessibility basics)
+    doc.setTitle(course.title || "Curso");
+    doc.setAuthor("EduGenAI");
+    doc.setSubject(course.description || course.theme || "");
+    doc.setCreator(`EduGenAI export-pdf-v2 ${BUILD}`);
+    doc.setProducer("EduGenAI");
+    doc.setLanguage(course.language || "pt-BR");
+    doc.setCreationDate(new Date());
+
+    // Estimated workload from total content length (~180 words/min reading pace)
+    const totalWords = modules.reduce(
+      (s: number, m: any) => s + String(m.content || "").split(/\s+/).length, 0,
+    );
+    const mins = Math.max(10, Math.round(totalWords / 180));
+    const hours = mins >= 60 ? `≈ ${(Math.round((mins / 60) * 2) / 2).toString().replace(".", ",")}h` : `≈ ${mins} min`;
+
+    r.cover(course.title, course.description ?? undefined, {
+      audience: course.target_audience || undefined,
+      language: course.language || "pt-BR",
+      modules: modules.length,
+      hours,
+    });
+    r.reserveToc();
 
     let modNum = 0;
     for (const mod of modules) {
@@ -708,6 +877,8 @@ serve(async (req: Request) => {
       r.modulePage(mod.title, modNum);
       if (mdContent) r.content(mdContent);
     }
+
+    r.renderToc();
 
     const pdfBytes = await doc.save();
 
