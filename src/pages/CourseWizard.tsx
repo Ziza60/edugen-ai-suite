@@ -126,7 +126,7 @@ export default function CourseWizard() {
     knowledgeLevel: "basico",
     outcome: "aplicacao",
     language: "pt-BR",
-    numModules: 3,
+    numModules: 5,
     includeQuiz: true,
     includeFlashcards: true,
     includeImages: false,
@@ -158,12 +158,14 @@ export default function CourseWizard() {
   // ── Reading time estimate ──
   const calcReadingTime = () => {
     const wordsPerModule = { compact: 600, standard: 1000, detailed: 1550 };
-    const wpm = 200;
-    const totalMinutes = Math.round((form.numModules * wordsPerModule[form.density]) / wpm);
-    if (totalMinutes < 60) return `~${totalMinutes} min de conteúdo`;
+    const wpm = 180;
+    const readingMin = Math.round((form.numModules * wordsPerModule[form.density]) / wpm);
+    const activityMin = form.numModules * 20 + 30;
+    const totalMinutes = readingMin + activityMin;
+    if (totalMinutes < 60) return `~${totalMinutes} min (leitura + atividades)`;
     const h = Math.floor(totalMinutes / 60);
     const m = totalMinutes % 60;
-    return m > 0 ? `~${h}h ${m}min de conteúdo` : `~${h}h de conteúdo`;
+    return m > 0 ? `~${h}h ${m}min (leitura + atividades)` : `~${h}h (leitura + atividades)`;
   };
 
   const canCreate = true;

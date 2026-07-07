@@ -92,6 +92,16 @@ const C = {
 
 function safeText(t: string): string {
   return (t || "")
+    // Substitute math/arrow symbols BEFORE the Latin-1 strip so they survive
+    .replace(/≈/g, "aprox.")
+    .replace(/≤/g, "<=")
+    .replace(/≥/g, ">=")
+    .replace(/≠/g, "!=")
+    .replace(/→/g, "->")
+    .replace(/←/g, "<-")
+    .replace(/∑/g, "soma")
+    .replace(/√/g, "raiz")
+    .replace(/∞/g, "inf")
     .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
     .replace(/[\u{2600}-\u{27BF}]/gu, "")
     .replace(/[\u{2B00}-\u{2BFF}]/gu, "")
@@ -216,6 +226,8 @@ class R {
   y = MT; pn = 0;
   tocPage: PDFPage | null = null;
   tocEntries: { num: number; title: string; page: number }[] = [];
+  courseTitle = "";
+  currentModule = "";
 
   constructor(doc: PDFDocument) { this.doc = doc; }
 
@@ -241,7 +253,7 @@ class R {
       if (ty > MAX_Y - 10) break;
       const numStr = `Módulo ${String(e.num).padStart(2, "0")}`;
       const pageStr = String(e.page);
-      const title = e.title.length > 58 ? e.title.slice(0, 58).replace(/\s+\S*$/, "") + "…" : e.title;
+      const title = e.title.length > 70 ? e.title.slice(0, 70).replace(/\s+\S*$/, "") + "…" : e.title;
 
       pg.drawText(numStr, { x: ML_PT, y: this.Y(ty), size: 8.5, font: this.bld, color: C.ACC });
       pg.drawText(title, { x: ML_PT, y: this.Y(ty + 5.5), size: SIZE, font: this.reg, color: C.BODY });
@@ -277,11 +289,29 @@ class R {
   _footer() {
     this.pg.drawRectangle({ x: 0, y: 0, width: PW, height: 7 * PT, color: C.PRI });
     this.pg.drawRectangle({ x: 0, y: 7 * PT, width: PW, height: 0.8 * PT, color: C.ACC });
+    // Page number (centered)
     const s = `${this.pn}`;
     this.pg.drawText(s, {
       x: (PW - this.reg.widthOfTextAtSize(s, FS.FOOTER)) / 2,
       y: 2.5 * PT, size: FS.FOOTER, font: this.reg, color: C.WHITE,
     });
+    // Course title left-aligned (truncated)
+    if (this.courseTitle) {
+      const maxW = CW * 0.40;
+      let ct = safeText(this.courseTitle);
+      while (ct && this.reg.widthOfTextAtSize(ct, 7.5) > maxW) ct = ct.slice(0, -1).trimEnd();
+      if (ct.length < this.courseTitle.length && ct) ct += "...";
+      this.pg.drawText(ct, { x: ML_PT, y: 2.5 * PT, size: 7.5, font: this.reg, color: C.COVER_DIM });
+    }
+    // Current module right-aligned (truncated)
+    if (this.currentModule) {
+      const maxW = CW * 0.42;
+      let cm = safeText(this.currentModule);
+      while (cm && this.reg.widthOfTextAtSize(cm, 7.5) > maxW) cm = cm.slice(0, -1).trimEnd();
+      if (cm.length < this.currentModule.length && cm) cm += "...";
+      const cmW = this.reg.widthOfTextAtSize(cm, 7.5);
+      this.pg.drawText(cm, { x: ML_PT + CW - cmW, y: 2.5 * PT, size: 7.5, font: this.reg, color: C.COVER_DIM });
+    }
   }
 
   addPage() {
@@ -402,6 +432,7 @@ class R {
       ty += titleAdv;
     }
 
+    this.currentModule = safeText(title);
     this._footer();
     this.y = MOD_CONT_Y;
   }
@@ -637,9 +668,16 @@ class R {
     const text = cleanLine(rawText);
     if (!text) return;
     // "Pare um momento e reflita: pergunta" → title + body split
-    const m = text.match(/^(pare\s+um\s+momento\s+e\s+reflita|reflita|para\s+refletir|dica|importante|aten[çc][ãa]o|nota)\s*[:—-]?\s*/i);
+    const m = text.match(/^(pare\s+um\s+momento\s+e\s+reflita|reflita|para\s+refletir|dica|importante|aten[çc][ãa]o|nota|exemplo|atividade|entreg[áa]vel|f[óo]rmula|exerc[íi]cio)\s*[:—-]?\s*/i);
     const title = m ? (
       /reflita|refletir/i.test(m[1]) ? "Pare e reflita" :
+      /exemplo/i.test(m[1]) ? "Exemplo" :
+      /atividade/i.test(m[1]) ? "Atividade" :
+      /exerc/i.test(m[1]) ? "Exercicio" :
+      /entreg/i.test(m[1]) ? "Entregavel" :
+      /f.rmula/i.test(m[1]) ? "Formula" :
+      /aten/i.test(m[1]) ? "Atencao" :
+      /dica/i.test(m[1]) ? "Dica" :
       m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase()
     ) : "Nota";
     const body = m ? text.slice(m[0].length).trim() || text : text;
@@ -676,6 +714,31 @@ class R {
       thickness: 0.4, color: C.RULE,
     });
     this.y += 1 + SP.A_RULE;
+  }
+
+  // ── Formula box — highlighted callout for mathematical formulas ────────────
+  formulaBox(text: string) {
+    const clean = cleanLine(text);
+    if (!clean) return;
+    const PAD = 4;
+    const bodyLines = wrapText(clean, this.bld, FS.BODY + 0.5, CW - (PAD * 2 + 4) * PT);
+    const boxH = PAD * 2 + bodyLines.length * SP.LINE + 1;
+    this.check(boxH + 6);
+    const rectY = this.Y(this.y + boxH);
+    // Light blue-gray background to distinguish formulas from warm callouts
+    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: CW, height: boxH * PT, color: rgb(0.92, 0.94, 0.98) });
+    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: 3 * PT, height: boxH * PT, color: C.PRI });
+    const label = "Formula";
+    const lw = this.bld.widthOfTextAtSize(label, 7.5);
+    this.pg.drawText(label, { x: ML_PT + 6 * PT, y: this.Y(this.y + PAD * 0.5 + 0.5), size: 7.5, font: this.bld, color: C.PRI });
+    this.pg.drawRectangle({ x: ML_PT + 6 * PT + lw + 3, y: this.Y(this.y + PAD * 0.5 + 1.5), width: CW - (6 * PT + lw + 6 + 3 * PT), height: 0.4 * PT, color: C.RULE });
+    const textX = ML_PT + 6 * PT;
+    let ty = this.y + PAD + 3.5;
+    for (const line of bodyLines) {
+      this.pg.drawText(line, { x: textX, y: this.Y(ty), size: FS.BODY + 0.5, font: this.bld, color: C.PRI });
+      ty += SP.LINE;
+    }
+    this.y += boxH + 4;
   }
 
   // ── Module content: markdown → PDF elements ─────────────────────────────────
@@ -756,6 +819,27 @@ class R {
         }
         this.callout(bqParts.join(" "));
         continue;
+      }
+
+      // ── Formula line detection ────────────────────────────────────────────────
+      // Lines that look like standalone mathematical formulas get a formula box.
+      // Pattern: short line (< 120 chars) containing = with no other paragraph following
+      // and having typical formula markers (numbers, %, R$, operators, ×, ÷, /).
+      if (
+        t.length < 150 &&
+        /=/.test(t) &&
+        /[0-9%R$×÷\/\*]/.test(t) &&
+        !/^.*[:]{1}$/.test(t) &&          // not a labeled item ending with colon
+        /Preço|Custo|Margem|Markup|MC|ROI|Lucro|Total|Formula|Equil[íi]brio|Break|Taxa|Valor|Receita|Despesa|Resultado|[Pp]onto/.test(t)
+      ) {
+        // Check if the NEXT line is blank or special (isolated formula)
+        const nextLine = lines[i + 1]?.trim() ?? "";
+        if (!nextLine || isSpecialLine(nextLine)) {
+          this.formulaBox(t);
+          i++;
+          listN = 0;
+          continue;
+        }
       }
 
       // ── Plain paragraph ──────────────────────────────────────────────────────
@@ -877,6 +961,7 @@ serve(async (req: Request) => {
 
     const doc = await PDFDocument.create();
     const r   = new R(doc);
+    r.courseTitle = safeText(String(course.title || ""));
     await r.fonts();
 
     // Document metadata (viewer title bar, search, accessibility basics)
@@ -888,11 +973,15 @@ serve(async (req: Request) => {
     doc.setLanguage(course.language || "pt-BR");
     doc.setCreationDate(new Date());
 
-    // Estimated workload from total content length (~180 words/min reading pace)
+    // Estimated workload: reading pace (~150 wpm for study/note-taking) +
+    // ~20 min/module for exercises/activities + 30 min for capstone project.
+    // This gives a realistic total aligned with what a student actually spends.
     const totalWords = modules.reduce(
       (s: number, m: any) => s + String(m.content || "").split(/\s+/).length, 0,
     );
-    const mins = Math.max(10, Math.round(totalWords / 180));
+    const readingMins  = Math.round(totalWords / 150);
+    const activityMins = modules.length * 20 + 30;
+    const mins = Math.max(30, readingMins + activityMins);
     const hours = mins >= 60 ? `≈ ${(Math.round((mins / 60) * 2) / 2).toString().replace(".", ",")}h` : `≈ ${mins} min`;
 
     // Defensive title guard: strip markdown artifacts, normalize unicode spaces,

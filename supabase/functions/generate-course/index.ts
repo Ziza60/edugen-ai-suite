@@ -113,12 +113,15 @@ async function callAIInner(model: string, prompt: string, maxTokens = 2000, isJs
 type ModuleRole = "conceito" | "aplicacao" | "consolidacao" | "capstone";
 
 const ROLE_BLOCKS: Record<ModuleRole, string> = {
-  conceito: `BLOCOS RECOMENDADOS para um módulo CONCEITUAL (escolha 3-5, na ordem que fizer sentido):
+  conceito: `BLOCOS RECOMENDADOS para um módulo CONCEITUAL (escolha 4-6, na ordem que fizer sentido):
 - Conceito central explicado com UMA analogia concreta do universo do público.
-- Comparativo real (tabela Markdown SÓ se houver 2+ itens genuinamente distintos; senão, prosa).
-- Mini-exemplo ilustrativo curto (3-6 linhas) mostrando o conceito em ação.
+- Panorama completo dos sub-conceitos do tema (TABELA Markdown com 3+ itens: nome, definição curta, exemplo concreto).
+- Distinção entre termos frequentemente confundidos (ex: custo vs despesa, markup vs margem, dado vs informação). Use tabela comparativa se houver 2+ pares distintos.
+- Cálculo ou fórmula fundamental: apresente a equação/fórmula central do módulo em linha separada e resolva com números reais do estudo de caso. Formato: "Fórmula: X = Y / Z" + demonstração passo-a-passo.
+- Mini-exemplo ilustrativo (3-8 linhas) mostrando o conceito em ação com dados concretos.
 - "Erro comum": o mal-entendido típico de iniciantes sobre este conceito e como evitá-lo.
-- Pergunta-guia respondida ao longo do texto (abre com a pergunta, fecha respondendo).`,
+- Pergunta-guia respondida ao longo do texto (abre com a pergunta, fecha respondendo).
+REGRA EXTRA para módulo 1 (se moduleIndex===0): o primeiro módulo DEVE incluir um panorama de TODOS os conceitos que serão tratados no curso, uma tabela-mapa com os termos essenciais, e pelo menos um cálculo demonstrativo que será retomado nos módulos seguintes.`,
   aplicacao: `BLOCOS RECOMENDADOS para um módulo de APLICAÇÃO (escolha 3-5, na ordem que fizer sentido):
 - Passo a passo numerado do procedimento/técnica (3-7 passos acionáveis).
 - Exemplo trabalhado OBRIGATÓRIO nesta ordem exata:
@@ -303,6 +306,11 @@ Aprovado (acionável): "Antes de cada reunião com o Economic Buyer, prepare 3 m
 ### Critério 5 — DENSIDADE DE CONTEÚDO
 Reprovado: bullets curtos que apenas nomeiam conceitos sem explicar.
 Aprovado: bullets que nomeiam E explicam o porquê ou como aplicar.
+
+### Critério 5B — PRECISÃO TÉCNICA (negócios/finanças)
+Se o módulo menciona MARKUP e MARGEM: verificar se a diferença está EXPLICITADA (markup é sobre custo; margem é sobre preço de venda). Se não estiver, adicionar uma nota ou tabela comparativa.
+Se o módulo menciona preços mas NÃO apresenta ponto de equilíbrio (break-even): verificar se o contexto pede e, se sim, adicionar o cálculo (Ponto de equilíbrio = Custos Fixos / Margem de Contribuição unitária).
+Se o módulo faz projeções financeiras com volume constante após mudança de preço: adicionar ao menos uma nota indicando que o volume pode variar ("cenário base").
 
 ## Critério 6 — PROGRESSÃO (arquitetura v3)
 Reprovado: módulo-ilha que não menciona nada construído nos módulos anteriores.
@@ -618,7 +626,8 @@ ${use_sources ? "- Base the course structure EXCLUSIVELY on the content in <SOUR
 Return ONLY valid JSON with this structure (quizzes/flashcards are generated
 separately per module to keep this JSON small and valid):
 {
-  "description": "course description",
+  "description": "course description — 2-3 sentences covering WHAT the learner will do, not abstract topics",
+  "audience_label": "SPECIFIC target audience for the PDF cover, e.g. \"microempreendedores e MEIs\", \"desenvolvedores Python júnior\", \"gestores de equipes remotas\" — NOT generic \"profissionais da área\"",
   "final_competency": "what the learner will be able to DO",
   "case_thread": "one-sentence running scenario",
   "case_facts": ["fact 1 (with exact numbers)", "fact 2", "..."],
@@ -707,7 +716,7 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
         .insert({
           user_id: userId, title,
           description: structure.description || "",
-          theme, target_audience: target_audience || null,
+          theme, target_audience: structure.audience_label || target_audience || null,
           tone: tone || null, language: language || "pt-BR",
           include_quiz: !!include_quiz, include_flashcards: !!include_flashcards,
           include_images: !!include_images, use_sources: !!use_sources,
@@ -872,7 +881,7 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
               console.log(`[generate-course] Quality Elevation: module ${i + 1} "${mod.title}"`);
               const qualityPrompt = buildQualityElevationPrompt(
                 mod.title, refinedContent, title,
-                target_audience || "profissionais da área", language || "pt-BR",
+                target_audience || "profissionais deste campo", language || "pt-BR",
                 theme || "", caseDossier,
               );
               const quality = await callAIMeta("gemini-2.5-pro", qualityPrompt, 8000);
