@@ -99,6 +99,11 @@ function safeText(t: string): string {
     .replace(/[–—]/g, "-")
     .replace(/…/g, "...")
     .replace(/­/g, "")
+    // Normalize ALL unicode space variants to ASCII space BEFORE stripping
+    // non-Latin1 chars. A U+2009 thin space between words gets dropped by
+    // the [^\x00-\xFF] strip, fusing two words into one unbreakable token
+    // — wrapText then char-splits it, producing fragments on the cover title.
+    .replace(/[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]/g, " ")
     .replace(/[^\x00-\xFF]/g, "")
     .replace(/  +/g, " ")
     .trim();
@@ -310,8 +315,11 @@ class R {
     });
     pg.drawRectangle({ x: ML_PT, y: this.Y(25), width: CW, height: 1.5 * PT, color: C.ACC });
 
-    // Title — starts at 38 mm
-    const tLines = wrapText(safeText(title), this.bld, FS.COVER_TITLE, PW - 60 * PT);
+    // Title — starts at 38 mm.
+    // cleanLine() strips markdown (**, #, `, etc.) then applies safeText so a
+    // title stored as "**Finanças Pessoais**" or "# Gestão de Finanças" renders
+    // correctly instead of exposing the raw markdown tokens.
+    const tLines = wrapText(cleanLine(title || "Curso"), this.bld, FS.COVER_TITLE, PW - 60 * PT);
     let ty = 38;
     for (const line of tLines) {
       pg.drawText(line, { x: ML_PT, y: this.Y(ty), size: FS.COVER_TITLE, font: this.bld, color: C.WHITE });
@@ -837,7 +845,14 @@ serve(async (req: Request) => {
     const mins = Math.max(10, Math.round(totalWords / 180));
     const hours = mins >= 60 ? `≈ ${(Math.round((mins / 60) * 2) / 2).toString().replace(".", ",")}h` : `≈ ${mins} min`;
 
-    r.cover(course.title, course.description ?? undefined, {
+    // Defensive title guard: strip markdown artifacts, normalize unicode spaces,
+    // and ensure a non-empty fallback so the cover never renders a blank title.
+    // This fixes courses already stored with titles like "**X**" or with thin/
+    // non-breaking spaces that confuse wrapText's word-split.
+    const coverTitle = cleanLine(String(course.title || "")).trim() || "Curso sem título";
+    const coverDesc  = course.description ? cleanLine(String(course.description)).trim() : undefined;
+
+    r.cover(coverTitle, coverDesc, {
       audience: course.target_audience || undefined,
       language: course.language || "pt-BR",
       modules: modules.length,
