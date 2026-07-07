@@ -98,6 +98,7 @@ export default function Dashboard() {
   const [deleting,     setDeleting]     = useState<{ id: string; title: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all"|"draft"|"published">("all");
   const [sortBy,       setSortBy]       = useState<"recent"|"oldest"|"title">("recent");
+  const [quickTheme,   setQuickTheme]   = useState("");
 
   // Inject fonts
   useEffect(() => {
@@ -215,6 +216,51 @@ export default function Dashboard() {
             </div>
             <NewCourseBtn disabled={!canCreate} onClick={() => canCreate && navigate("/app/courses/new")} />
           </div>
+
+          {/* Quick theme input */}
+          {canCreate && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const t = quickTheme.trim();
+                navigate(t ? `/app/courses/new?theme=${encodeURIComponent(t)}` : "/app/courses/new");
+              }}
+              style={{ marginTop: 28, display: "flex", alignItems: "center", gap: 10, maxWidth: 620 }}
+            >
+              <div style={{ flex: 1, position: "relative" }}>
+                <Sparkles size={14} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: C.accent, pointerEvents: "none" }} />
+                <input
+                  value={quickTheme}
+                  onChange={(e) => setQuickTheme(e.target.value)}
+                  placeholder="Descreva o tema do curso que quer criar…"
+                  style={{
+                    width: "100%", boxSizing: "border-box",
+                    background: C.surfaceUp, border: `1px solid ${C.border}`,
+                    borderRadius: 9, padding: "11px 14px 11px 38px",
+                    fontSize: 14, color: C.text, outline: "none",
+                    fontFamily: "'DM Sans', 'Inter', sans-serif",
+                    transition: "border-color 0.18s",
+                  }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = C.accentBorder; }}
+                  onBlur={(e)  => { e.currentTarget.style.borderColor = C.border; }}
+                />
+              </div>
+              <button
+                type="submit"
+                style={{
+                  background: C.accent, color: "#fff", border: "none",
+                  borderRadius: 9, padding: "11px 22px", fontSize: 14, fontWeight: 600,
+                  cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+                  fontFamily: "'DM Sans', 'Inter', sans-serif",
+                  boxShadow: "0 4px 16px rgba(223,124,58,0.28)", transition: "opacity 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.88"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
+              >
+                Gerar curso
+              </button>
+            </form>
+          )}
 
           {/* Stats row */}
           <div style={{
