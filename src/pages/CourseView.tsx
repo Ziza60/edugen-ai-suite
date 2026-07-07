@@ -1112,6 +1112,7 @@ export default function CourseView() {
                         <PexelsPicker
                           moduleTitle={activeModule.title}
                           moduleId={activeModule.id}
+                          courseTitle={course.title}
                           currentImageUrl={moduleImage.url}
                           onSelect={({ url, alt }) =>
                             saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
@@ -1126,6 +1127,7 @@ export default function CourseView() {
                       <PexelsPicker
                         moduleTitle={activeModule.title}
                         moduleId={activeModule.id}
+                        courseTitle={course.title}
                         onSelect={({ url, alt }) =>
                           saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
                         }
