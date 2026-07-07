@@ -1,4 +1,4 @@
-// export-pdf-v2/index.ts  — BUILD 2026-07-06a
+// export-pdf-v2/index.ts  — BUILD 2026-07-07d-callout
 // ─── BUILD 06a: hardening contra crash silencioso ("non-2xx status code") ───
 // [fix-non-string-fields] course.title/description e mod.title/content agora
 //                          passam por String(x ?? "") antes de qualquer uso —
@@ -64,9 +64,32 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   PDFDocument, StandardFonts, rgb, PDFPage, PDFFont,
 } from "https://esm.sh/pdf-lib@1.17.1";
+import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
 import { cleanModuleContent, repairTruncation } from "../_shared/markdown.ts";
 
-const BUILD = "2026-07-06a";
+const BUILD = "2026-07-07d-callout";
+
+// ─── Roboto font loader (subset, com fallback Helvetica) ─────────────────────
+const FONT_URLS = {
+  reg:  "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Regular.woff",
+  bold: "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Bold.woff",
+  ital: "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-RegularItalic.woff",
+};
+let FONT_CACHE: { reg: Uint8Array; bold: Uint8Array; ital: Uint8Array } | null = null;
+
+async function loadFontBytes(): Promise<typeof FONT_CACHE> {
+  if (FONT_CACHE) return FONT_CACHE;
+  const get = async (url: string) => {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`font fetch ${res.status} for ${url}`);
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  const [reg, bold, ital] = await Promise.all([
+    get(FONT_URLS.reg), get(FONT_URLS.bold), get(FONT_URLS.ital),
+  ]);
+  FONT_CACHE = { reg, bold, ital };
+  return FONT_CACHE;
+}
 
 // ─── Geometry (A4 mm / pts) ──────────────────────────────────────────────────
 const PT     = 2.8346;
@@ -120,6 +143,7 @@ const C = {
   TBL_EVEN:  rgb(0.95, 0.95, 0.97),
   COVER_DIM: rgb(0.72, 0.74, 0.82),
   BQ_BG:     rgb(0.97, 0.96, 0.93),
+  CALL_BG:   rgb(0.968, 0.952, 0.915),
 };
 
 // ─── Text helpers ─────────────────────────────────────────────────────────────
@@ -337,10 +361,20 @@ class R {
   constructor(doc: PDFDocument) { this.doc = doc; }
 
   async fonts() {
-    this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
-    this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
-    this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
     this.cou = await this.doc.embedFont(StandardFonts.Courier);
+    try {
+      this.doc.registerFontkit(fontkit);
+      const bytes = await loadFontBytes();
+      this.reg = await this.doc.embedFont(bytes!.reg,  { subset: true });
+      this.bld = await this.doc.embedFont(bytes!.bold, { subset: true });
+      this.obl = await this.doc.embedFont(bytes!.ital, { subset: true });
+      console.log("[export-pdf-v2] Embedded Roboto Regular/Bold/Italic (subset)");
+    } catch (e) {
+      console.warn(`[export-pdf-v2] Roboto embed failed (${(e as Error)?.message}) — usando Helvetica`);
+      this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
+      this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
+      this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
+    }
   }
 
   Y(yMm: number): number { return PH - yMm * PT; }
@@ -619,23 +653,51 @@ class R {
     this.y += pad + SP.A_CODE;
   }
 
-  // ── Blockquote ───────────────────────────────────────────────────────────
-  blockquote(text: string) {
-    const bqText  = cleanLine(text.replace(/^>\s*/, ""));
-    if (!bqText) return;
-    const bqLines = wrapText(bqText, this.obl, FS.BODY, CW - 8 * PT);
-    const pad     = SP.BQ_PAD;
-    const blockH  = bqLines.length * SP.LINE + pad * 2;
-    this.check(blockH + SP.A_BQ);
-    const rectY = this.Y(this.y + blockH);
-    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: CW,       height: blockH * PT, color: C.BQ_BG });
-    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: 2.5 * PT, height: blockH * PT, color: C.ACC });
-    this.y += pad;
-    for (const line of bqLines) {
-      this.pg.drawText(line, { x: ML_PT + 6 * PT, y: this.Y(this.y), size: FS.BODY, font: this.obl, color: C.DIM });
+  // ── Callout box (blockquotes / checkpoints de reflexão) ──────────────────
+  // Extrai um título (Nota / Dica / Importante / Pare e reflita etc.) da
+  // primeira palavra do texto e renderiza um box editorial com fundo âmbar,
+  // barra dourada lateral e corpo em itálico.
+  callout(rawText: string) {
+    const text = cleanLine(rawText);
+    if (!text) return;
+
+    const TITLE_RE = /^(pare\s+um\s+momento\s+e\s+reflita|pare\s+e\s+reflita|reflita|para\s+refletir|dica|importante|aten[çc][ãa]o|nota|aviso|lembre-se|exemplo)\s*[:—\-]?\s*/i;
+    const m = text.match(TITLE_RE);
+    let title: string;
+    let body: string;
+    if (m) {
+      const raw = m[1].trim();
+      title = /reflita|refletir/i.test(raw)
+        ? "Pare e reflita"
+        : raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+      body = text.slice(m[0].length).trim() || text;
+    } else {
+      title = "Nota";
+      body  = text;
+    }
+
+    const PAD      = 4.5;
+    const TEXT_X   = ML_PT + (PAD + 3) * PT;
+    const TEXT_W   = CW - (PAD + 3 + PAD) * PT;
+    const bodyLines = wrapText(body, this.obl, FS.BODY, TEXT_W);
+    const TITLE_H   = 6;
+    const boxH      = PAD + TITLE_H + bodyLines.length * SP.LINE + PAD - 1;
+
+    this.check(boxH + 5);
+    const rectY = this.Y(this.y + boxH);
+    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: CW,       height: boxH * PT, color: C.CALL_BG });
+    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: 2.5 * PT, height: boxH * PT, color: C.ACC });
+
+    this.y += PAD + 1.5;
+    this.pg.drawText(title, {
+      x: TEXT_X, y: this.Y(this.y + 2.2), size: 9, font: this.bld, color: C.PRI,
+    });
+    this.y += TITLE_H;
+    for (const line of bodyLines) {
+      this.pg.drawText(line, { x: TEXT_X, y: this.Y(this.y), size: FS.BODY, font: this.obl, color: C.BODY });
       this.y += SP.LINE;
     }
-    this.y += pad + SP.A_BQ;
+    this.y += PAD + 3;
   }
 
   // ── Table ─────────────────────────────────────────────────────────────────
@@ -922,7 +984,7 @@ class R {
             parts.push(next);
             i++;
           }
-          this.blockquote(parts.join(" "));
+          this.callout(parts.join(" "));
           continue;
         }
       }
