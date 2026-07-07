@@ -1,4 +1,4 @@
-// export-pdf-v2/index.ts  — BUILD 2026-07-07d-callout
+// export-pdf-v2/index.ts  — BUILD 2026-07-07e-callout-helvetica
 // ─── BUILD 06a: hardening contra crash silencioso ("non-2xx status code") ───
 // [fix-non-string-fields] course.title/description e mod.title/content agora
 //                          passam por String(x ?? "") antes de qualquer uso —
@@ -64,32 +64,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   PDFDocument, StandardFonts, rgb, PDFPage, PDFFont,
 } from "https://esm.sh/pdf-lib@1.17.1";
-import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
 import { cleanModuleContent, repairTruncation } from "../_shared/markdown.ts";
 
-const BUILD = "2026-07-07d-callout";
-
-// ─── Roboto font loader (subset, com fallback Helvetica) ─────────────────────
-const FONT_URLS = {
-  reg:  "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Regular.woff",
-  bold: "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Bold.woff",
-  ital: "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-RegularItalic.woff",
-};
-let FONT_CACHE: { reg: Uint8Array; bold: Uint8Array; ital: Uint8Array } | null = null;
-
-async function loadFontBytes(): Promise<typeof FONT_CACHE> {
-  if (FONT_CACHE) return FONT_CACHE;
-  const get = async (url: string) => {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`font fetch ${res.status} for ${url}`);
-    return new Uint8Array(await res.arrayBuffer());
-  };
-  const [reg, bold, ital] = await Promise.all([
-    get(FONT_URLS.reg), get(FONT_URLS.bold), get(FONT_URLS.ital),
-  ]);
-  FONT_CACHE = { reg, bold, ital };
-  return FONT_CACHE;
-}
+const BUILD = "2026-07-07e-callout-helvetica";
 
 // ─── Geometry (A4 mm / pts) ──────────────────────────────────────────────────
 const PT     = 2.8346;
@@ -361,20 +338,10 @@ class R {
   constructor(doc: PDFDocument) { this.doc = doc; }
 
   async fonts() {
+    this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
+    this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
+    this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
     this.cou = await this.doc.embedFont(StandardFonts.Courier);
-    try {
-      this.doc.registerFontkit(fontkit);
-      const bytes = await loadFontBytes();
-      this.reg = await this.doc.embedFont(bytes!.reg,  { subset: true });
-      this.bld = await this.doc.embedFont(bytes!.bold, { subset: true });
-      this.obl = await this.doc.embedFont(bytes!.ital, { subset: true });
-      console.log("[export-pdf-v2] Embedded Roboto Regular/Bold/Italic (subset)");
-    } catch (e) {
-      console.warn(`[export-pdf-v2] Roboto embed failed (${(e as Error)?.message}) — usando Helvetica`);
-      this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
-      this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
-      this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
-    }
   }
 
   Y(yMm: number): number { return PH - yMm * PT; }
