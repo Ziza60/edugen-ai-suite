@@ -20,7 +20,7 @@ const TESTING_MODE = true;
 
 // Build marker — logged on every invocation so a deploy can be verified in the
 // function logs (see the export-pdf deploy saga: always confirm WHICH code runs).
-const GENERATE_COURSE_BUILD = "2026-07-06b-arch-v3";
+const GENERATE_COURSE_BUILD = "2026-07-07a-arch-v3";
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
 // Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
@@ -155,6 +155,8 @@ function buildRefinementPrompt(
   return `Você é um designer instrucional sênior especializado em e-learning premium.
 
 Reescreva o conteúdo bruto abaixo como a ${moduleIndex + 1}ª lição de um curso com ${totalModules} módulos. O papel pedagógico DESTE módulo é: ${role.toUpperCase()}.
+
+REGRA DE BASTIDORES: os rótulos internos de papel ("conceito", "aplicação", "consolidação", "capstone") orientam VOCÊ, mas são PROIBIDOS no texto final — o aluno nunca deve ler "este é um módulo de APLICAÇÃO" ou "este é o seu capstone". Escreva a função do módulo em linguagem natural ("agora vamos colocar em prática...", "neste módulo final, você vai integrar...").
 
 ## PRINCÍPIOS (substituem qualquer template fixo)
 
