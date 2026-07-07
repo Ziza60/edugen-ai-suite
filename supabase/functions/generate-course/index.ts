@@ -20,7 +20,7 @@ const TESTING_MODE = true;
 
 // Build marker — logged on every invocation so a deploy can be verified in the
 // function logs (see the export-pdf deploy saga: always confirm WHICH code runs).
-const GENERATE_COURSE_BUILD = "2026-07-07b-case-dossier";
+const GENERATE_COURSE_BUILD = "2026-07-07g-llm-title";
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
 // Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
@@ -606,8 +606,10 @@ CRITICAL DOMAIN INTEGRITY (HARD RULE):
 - Each module MUST be coherent with the course title — if you cannot write the module without leaving the domain, rewrite the module title.
 ${sourcesInstruction}
 
-Course details:
-- Title: ${title}
+Course details (the title below is a RAW USER REQUEST and may be messy — a
+command phrase, wrong casing, leftover fragments like "S de ..."; DERIVE a clean
+title, do not copy it verbatim):
+- Raw request / title: ${title}
 - Theme: ${theme}
 - Target audience: ${target_audience || "general"}
 - Tone: ${tone || "professional"}
@@ -618,6 +620,7 @@ ${use_sources ? "- Base the course structure EXCLUSIVELY on the content in <SOUR
 Return ONLY valid JSON with this structure (quizzes/flashcards are generated
 separately per module to keep this JSON small and valid):
 {
+  "course_title": "a clean, well-formed, correctly capitalized course title in ${language || "pt-BR"} derived from the request/theme — NO command words ('crie', 'curso de'), NO dangling fragments, NO surrounding quotes; Title Case, 3–9 words",
   "description": "course description",
   "final_competency": "what the learner will be able to DO",
   "case_thread": "one-sentence running scenario",
@@ -690,6 +693,20 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
         builds_on: typeof m.builds_on === "string" ? m.builds_on : "",
       }));
       const caseThread: string = typeof structure.case_thread === "string" ? structure.case_thread : "";
+
+      // Title is LLM-owned: use the clean course_title the Architect produced,
+      // ignoring the raw (possibly messy) user request. Defensive strip of any
+      // residual command/quote/leading-fragment just in case the model echoes it.
+      const sanitizeTitle = (s: string): string =>
+        (s || "")
+          .replace(/^\s*["'“”‘’]+|["'“”‘’]+\s*$/g, "")
+          .replace(/^\s*(crie|criar|gere|gerar|quero|fa[çc]a)\b[^A-Za-zÀ-ÿ]*/i, "")
+          .replace(/^\s*(um|uma|uns|umas)\s+(cursos?|treinamentos?)\s+(de|sobre|do|da|em)\s+/i, "")
+          .replace(/^\s*[A-Za-zÀ-ÿ]{1,3}\s+de\s+(?=[A-ZÀ-Ý])/, "") // orphan "S de "
+          .replace(/\s{2,}/g, " ")
+          .trim();
+      const llmTitle = sanitizeTitle(typeof structure.course_title === "string" ? structure.course_title : "");
+      const courseTitle = llmTitle.length >= 3 ? llmTitle : (sanitizeTitle(title) || title);
       const caseFacts: string[] = Array.isArray(structure.case_facts)
         ? structure.case_facts.filter((f: unknown) => typeof f === "string" && (f as string).trim()).slice(0, 20)
         : [];
@@ -705,7 +722,7 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
       const { data: course, error: courseError } = await serviceClient
         .from("courses")
         .insert({
-          user_id: userId, title,
+          user_id: userId, title: courseTitle,
           description: structure.description || "",
           theme, target_audience: target_audience || null,
           tone: tone || null, language: language || "pt-BR",

@@ -21,7 +21,7 @@ import {
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-07-07f-editorial";
+const BUILD        = "2026-07-07g-title-guard";
 
 // NOTE ON FONTS: runtime font embedding was removed. Build 07c/07d embedded
 // Roboto by fetching WOFFs and subsetting with fontkit, which blew the Supabase
@@ -101,6 +101,19 @@ function safeText(t: string): string {
     .replace(/­/g, "")
     .replace(/[^\x00-\xFF]/g, "")
     .replace(/  +/g, " ")
+    .trim();
+}
+
+// Defensive title cleanup for courses created BEFORE the LLM-owned title fix,
+// whose stored course.title may carry a conversational residue ("S de Finanças
+// pessoais...", "crie um curso de..."). New courses already store a clean title.
+function cleanTitle(t: string): string {
+  return safeText(t || "")
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+    .replace(/^\s*(crie|criar|gere|gerar|quero|fa[çc]a)\b[^A-Za-zÀ-ÿ]*/i, "")
+    .replace(/^\s*(um|uma|uns|umas)\s+(cursos?|treinamentos?)\s+(de|sobre|do|da|em)\s+/i, "")
+    .replace(/^[A-Za-zÀ-ÿ]{1,3}\s+de\s+(?=[A-Za-zÀ-ÿ])/, "")   // orphan "S de "
+    .replace(/\s{2,}/g, " ")
     .trim();
 }
 
@@ -821,8 +834,10 @@ serve(async (req: Request) => {
     const r   = new R(doc);
     await r.fonts();
 
+    const courseTitle = cleanTitle(course.title) || "Curso";
+
     // Document metadata (viewer title bar, search, accessibility basics)
-    doc.setTitle(course.title || "Curso");
+    doc.setTitle(courseTitle);
     doc.setAuthor("EduGenAI");
     doc.setSubject(course.description || course.theme || "");
     doc.setCreator(`EduGenAI export-pdf-v2 ${BUILD}`);
@@ -837,7 +852,7 @@ serve(async (req: Request) => {
     const mins = Math.max(10, Math.round(totalWords / 180));
     const hours = mins >= 60 ? `≈ ${(Math.round((mins / 60) * 2) / 2).toString().replace(".", ",")}h` : `≈ ${mins} min`;
 
-    r.cover(course.title, course.description ?? undefined, {
+    r.cover(courseTitle, course.description ?? undefined, {
       audience: course.target_audience || undefined,
       language: course.language || "pt-BR",
       modules: modules.length,
