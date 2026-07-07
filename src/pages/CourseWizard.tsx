@@ -58,9 +58,9 @@ export default function CourseWizard() {
   const cleanPrompt = (raw: string): string => {
     let t = raw.trim();
     // "crie/gere/quero um curso/treinamento (com o tema|sobre|de) ..." → keep only the theme
-    t = t.replace(/^(crie|criar|gere|gerar|fa[çc]a|fazer|quero|preciso(\s+de)?|me\s+ajude\s+a\s+criar)\s+(um\s+|uma\s+)?(curso|treinamento|capacita[çc][ãa]o)\s*(completo\s*)?(com\s+o\s+tema|sobre(\s+o\s+tema)?|a\s+respeito\s+de|de|do|da|em|para|:)?\s*/i, "");
+    t = t.replace(/^(crie|criar|gere|gerar|fa[çc]a|fazer|quero|preciso(\s+de)?|me\s+ajude\s+a\s+criar)\s+(um\s+|uma\s+|uns\s+|umas\s+)?(cursos?|treinamentos?|capacita[çc][õã]o?es?)\s*(completos?\s*)?(com\s+o\s+tema|sobre(\s+o\s+tema)?|a\s+respeito\s+de|de|do|da|em|para|:)?\s*/i, "");
     // bare "curso de/sobre X" → X
-    t = t.replace(/^(um\s+|uma\s+)?(curso|treinamento)\s+(de|sobre|do|da|em)\s+/i, "");
+    t = t.replace(/^(um\s+|uma\s+)?(cursos?|treinamentos?)\s+(de|sobre|do|da|em)\s+/i, "");
     // strip surrounding/unbalanced quotes and leftover punctuation
     t = t.replace(/^["'“”‘’\s]+|["'“”‘’.\s]+$/g, "").trim();
     return t;

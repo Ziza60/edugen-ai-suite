@@ -22,16 +22,21 @@ import {
 import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-07-07c-editorial";
+const BUILD        = "2026-07-07e-editorial-lite";
 
-// Embedded fonts (real glyph metrics + identity across viewers). Fetched once per
-// cold start; on ANY failure we fall back to Helvetica so exports never fail.
+// Embedded fonts, MEMORY-SAFE for the Supabase Edge worker. Build 07c hit
+// WORKER_RESOURCE_LIMIT (546): 3 WOFFs fetched in PARALLEL and embedded with
+// subset:true — fontkit's subsetting is the memory-heavy step. This build:
+//   - embeds only TWO faces (regular + bold); italic uses standard Helvetica
+//     Oblique (zero cost) — an acceptable trade for callout/quote text;
+//   - fetches SEQUENTIALLY (one buffer alive at a time);
+//   - embeds with subset:false (larger file, ~300KB, but no subsetting pass);
+//   - caches bytes per cold start and falls back to Helvetica on any failure.
 const FONT_URLS = {
   reg:  "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Regular.woff",
   bold: "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Bold.woff",
-  ital: "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-RegularItalic.woff",
 };
-let FONT_CACHE: { reg: Uint8Array; bold: Uint8Array; ital: Uint8Array } | null = null;
+let FONT_CACHE: { reg: Uint8Array; bold: Uint8Array } | null = null;
 
 async function loadFontBytes(): Promise<typeof FONT_CACHE> {
   if (FONT_CACHE) return FONT_CACHE;
@@ -40,10 +45,9 @@ async function loadFontBytes(): Promise<typeof FONT_CACHE> {
     if (!res.ok) throw new Error(`font fetch ${res.status}`);
     return new Uint8Array(await res.arrayBuffer());
   };
-  const [reg, bold, ital] = await Promise.all([
-    get(FONT_URLS.reg), get(FONT_URLS.bold), get(FONT_URLS.ital),
-  ]);
-  FONT_CACHE = { reg, bold, ital };
+  const reg = await get(FONT_URLS.reg);   // sequential on purpose (memory)
+  const bold = await get(FONT_URLS.bold);
+  FONT_CACHE = { reg, bold };
   return FONT_CACHE;
 }
 const TESTING_MODE = true;
@@ -275,18 +279,18 @@ class R {
 
   async fonts() {
     this.cou = await this.doc.embedFont(StandardFonts.Courier);
+    // Italic stays a standard font on purpose (memory budget — see FONT_URLS note).
+    this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
     try {
       this.doc.registerFontkit(fontkit);
       const bytes = await loadFontBytes();
-      this.reg = await this.doc.embedFont(bytes!.reg,  { subset: true });
-      this.bld = await this.doc.embedFont(bytes!.bold, { subset: true });
-      this.obl = await this.doc.embedFont(bytes!.ital, { subset: true });
-      console.log("[export-pdf-v2] Embedded Roboto (subset)");
+      this.reg = await this.doc.embedFont(bytes!.reg,  { subset: false });
+      this.bld = await this.doc.embedFont(bytes!.bold, { subset: false });
+      console.log("[export-pdf-v2] Embedded Roboto reg+bold (no subset)");
     } catch (e) {
       console.warn(`[export-pdf-v2] Font embed failed (${(e as Error)?.message}) — falling back to Helvetica`);
       this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
       this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
-      this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
     }
   }
 
