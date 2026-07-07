@@ -18,10 +18,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   PDFDocument, StandardFonts, rgb, PDFPage, PDFFont,
+  PDFName, PDFString, PDFNumber, PDFArray,
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-07-07f-editorial";
+const BUILD        = "2026-07-07g-bookmarks";
 
 // NOTE ON FONTS: runtime font embedding was removed. Build 07c/07d embedded
 // Roboto by fetching WOFFs and subsetting with fontkit, which blew the Supabase
@@ -786,6 +787,55 @@ class R {
 
 // ─── HTTP handler ──────────────────────────────────────────────────────────────
 
+// ─── PDF Bookmarks / Outlines ──────────────────────────────────────────────────
+// Adds a navigable outline (bookmark panel) to the PDF so every module appears
+// as a clickable entry in Acrobat, Preview, Chrome and most PDF readers.
+// Uses pdf-lib's low-level context API since the high-level API doesn't expose
+// document outlines directly. Safe: wrapped in try/catch so a bookmark failure
+// never blocks the export.
+function addBookmarks(
+  doc: PDFDocument,
+  entries: { num: number; title: string; page: number }[],
+): void {
+  if (!entries.length) return;
+  const pages   = doc.getPages();
+  const ctx     = doc.context;
+
+  const rootRef  = ctx.nextRef();
+  const itemRefs = entries.map(() => ctx.nextRef());
+
+  entries.forEach((e, i) => {
+    const pageIdx = Math.max(0, Math.min(e.page - 1, pages.length - 1));
+    const pageRef = pages[pageIdx].ref;
+    const label   = `Módulo ${String(e.num).padStart(2, "0")} — ${e.title}`;
+
+    // /Fit destination — fits the full page in the viewer window
+    const dest = ctx.obj([pageRef, PDFName.of("Fit")]);
+
+    const item: Record<string, unknown> = {
+      Title:  PDFString.of(label),
+      Parent: rootRef,
+      Dest:   dest,
+    };
+    if (i > 0)                  item.Prev = itemRefs[i - 1];
+    if (i < entries.length - 1) item.Next = itemRefs[i + 1];
+    ctx.assign(itemRefs[i], ctx.obj(item));
+  });
+
+  ctx.assign(rootRef, ctx.obj({
+    Type:  PDFName.of("Outlines"),
+    First: itemRefs[0],
+    Last:  itemRefs[itemRefs.length - 1],
+    Count: PDFNumber.of(entries.length),
+  }));
+
+  doc.catalog.set(PDFName.of("Outlines"), rootRef);
+  // UseOutlines → reader opens the bookmark panel automatically
+  doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
+}
+
+// ─── HTTP handler ──────────────────────────────────────────────────────────────
+
 const corsHeaders = {
   "Access-Control-Allow-Origin":  "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -870,6 +920,10 @@ serve(async (req: Request) => {
     }
 
     r.renderToc();
+
+    // Add navigable PDF bookmarks (outline panel). Wrapped in try/catch so a
+    // bookmark serialization error never blocks the export.
+    try { addBookmarks(doc, r.tocEntries); } catch { /* non-fatal */ }
 
     const pdfBytes = await doc.save();
 
