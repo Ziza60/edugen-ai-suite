@@ -20,7 +20,7 @@ const TESTING_MODE = true;
 
 // Build marker — logged on every invocation so a deploy can be verified in the
 // function logs (see the export-pdf deploy saga: always confirm WHICH code runs).
-const GENERATE_COURSE_BUILD = "2026-07-06a-arch-v3";
+const GENERATE_COURSE_BUILD = "2026-07-07b-case-dossier";
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
 // Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
@@ -151,10 +151,13 @@ function buildRefinementPrompt(
   caseThread: string,
   moduleIndex: number,
   totalModules: number,
+  caseDossier = "",
 ): string {
   return `Você é um designer instrucional sênior especializado em e-learning premium.
 
 Reescreva o conteúdo bruto abaixo como a ${moduleIndex + 1}ª lição de um curso com ${totalModules} módulos. O papel pedagógico DESTE módulo é: ${role.toUpperCase()}.
+
+REGRA DE BASTIDORES: os rótulos internos de papel ("conceito", "aplicação", "consolidação", "capstone") orientam VOCÊ, mas são PROIBIDOS no texto final — o aluno nunca deve ler "este é um módulo de APLICAÇÃO" ou "este é o seu capstone". Escreva a função do módulo em linguagem natural ("agora vamos colocar em prática...", "neste módulo final, você vai integrar...").
 
 ## PRINCÍPIOS (substituem qualquer template fixo)
 
@@ -173,7 +176,7 @@ ${moduleIndex === 0
 
 ${caseThread ? `4. FIO CONDUTOR DO CURSO: "${caseThread}"
 - Quando este módulo usar exemplo ou caso, prefira AVANÇAR este fio condutor (a mesma organização/personagem evoluindo módulo a módulo) em vez de inventar um cenário desconexo.
-` : ""}
+${caseDossier}` : ""}
 ## CHECKPOINT DE REFLEXÃO (1 por módulo, em ponto estratégico)
 > 💭 **Pare um momento e reflita:** [pergunta que conecte o conteúdo à experiência do aluno]
 
@@ -257,6 +260,7 @@ function buildQualityElevationPrompt(
   targetAudience: string,
   language: string,
   theme: string,
+  caseDossier = "",
 ): string {
   return `Você é um supervisor sênior de qualidade de cursos online com 15 anos de experiência avaliando e elevando material didático para plataformas de e-learning B2B e corporativas.
 
@@ -304,7 +308,13 @@ Aprovado: bullets que nomeiam E explicam o porquê ou como aplicar.
 Reprovado: módulo-ilha que não menciona nada construído nos módulos anteriores.
 Aprovado: abertura que conecta ao módulo anterior e corpo que USA competências já construídas, citando-as pelo nome.
 
-## INVARIANTES DE ESTRUTURA (verificar e garantir — SEM impor fôrma)
+${caseDossier ? `## Critério 7 — CONTINUIDADE DO CASO (auditoria numérica)
+${caseDossier}
+Reprovado: qualquer valor, item ou referência do fio condutor que contradiga o dossiê acima (renda diferente, item de despesa que não existe, parcela/meta alterada, "como visto no módulo X" citando fato inexistente).
+Aprovado: valores idênticos aos do dossiê; evoluções derivadas com a conta demonstrada.
+AO REVISAR: confira cada número do módulo contra o dossiê e CORRIJA o texto para os valores canônicos quando divergirem.
+
+` : ""}## INVARIANTES DE ESTRUTURA (verificar e garantir — SEM impor fôrma)
 - A estrutura de seções foi desenhada para ESTE módulo: PRESERVE os títulos temáticos existentes. NÃO os renomeie para rótulos genéricos ("Fundamentos", "Como funciona", "Aplicações reais") e NÃO adicione seções de fôrma.
 - O módulo DEVE terminar com \`### 📌 Pontos-chave\` (3-6 bullets iniciando com verbo). Se faltar, crie a partir do conteúdo.
 - Deve existir 1 checkpoint \`> 💭 **Pare um momento e reflita:**\`. Se faltar, insira em ponto estratégico.
@@ -575,7 +585,8 @@ PEDAGOGICAL ARCHITECTURE RULES (HARD):
 2. Each module gets a "role": "conceito" (builds understanding), "aplicacao" (applies technique), "consolidacao" (integrates prior modules), or "capstone" (final deliverable, LAST module only). A good arc mixes them (e.g. conceito → conceito → aplicacao → aplicacao → consolidacao → capstone). NEVER give all modules the same role.
 3. Module titles must be theme-specific and outcome-oriented — NEVER generic labels like "Fundamentos", "Introdução" alone, "Conceitos básicos".
 4. "case_thread": invent ONE realistic running scenario (a named organization/person with a concrete problem in this domain) that examples across modules can advance. One sentence.
-5. "final_competency": one sentence — what the learner DOES at the end (observable, not "understands").
+5. "case_facts": the CANONICAL FACT SHEET of that scenario — 8 to 15 short bullet strings covering EVERY concrete fact modules will reuse: who/where/context, and ALL NUMBERS (amounts, rates, deadlines, quantities, targets) fully itemized so that totals are consistent. Numbers must be arithmetically coherent WITHIN the sheet (itemized values must sum to stated totals; installments must match amount/term, accounting for interest when you state any). Modules are FORBIDDEN from inventing values outside this sheet, so make it complete. For non-quantitative themes, list qualitative facts (org size, roles, constraints, tools).
+6. "final_competency": one sentence — what the learner DOES at the end (observable, not "understands").
 
 CRITICAL QUALITY RULES:
 - All text must have PERFECT spelling and grammar in ${language || "pt-BR"}.
@@ -610,6 +621,7 @@ separately per module to keep this JSON small and valid):
   "description": "course description",
   "final_competency": "what the learner will be able to DO",
   "case_thread": "one-sentence running scenario",
+  "case_facts": ["fact 1 (with exact numbers)", "fact 2", "..."],
   "modules": [
     {
       "title": "Theme-specific module title",
@@ -678,6 +690,14 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
         builds_on: typeof m.builds_on === "string" ? m.builds_on : "",
       }));
       const caseThread: string = typeof structure.case_thread === "string" ? structure.case_thread : "";
+      const caseFacts: string[] = Array.isArray(structure.case_facts)
+        ? structure.case_facts.filter((f: unknown) => typeof f === "string" && (f as string).trim()).slice(0, 20)
+        : [];
+      // The canonical fact sheet is injected VERBATIM into every module prompt so
+      // parallel module generation cannot drift the running case's numbers.
+      const caseDossier = caseFacts.length
+        ? `\nDOSSIÊ DO CASO (fatos canônicos e IMUTÁVEIS do fio condutor — regra dura):\n${caseFacts.map((f) => `- ${f}`).join("\n")}\n- PROIBIDO alterar, contradizer ou inventar valores fora deste dossiê.\n- Toda evolução numérica (otimização, corte, novo saldo) deve ser DERIVADA aritmeticamente destes valores, mostrando a conta.\n- Ao referenciar módulos anteriores, cite APENAS fatos deste dossiê ou derivações declaradas.\n`
+        : "";
 
       sendSSE({ type: "structure_done", modules: actualModules });
 
@@ -759,6 +779,7 @@ Module ${i + 1} of ${actualModules}: ${mod.title}
 Pedagogical role of THIS module: ${mod.role}
 ${mod.builds_on ? `This module builds on: ${mod.builds_on} — open by connecting to it and USE it in the content.` : "This is the opening module — situate the problem the course solves."}
 ${caseThread ? `Running scenario of the course (advance it in examples instead of inventing disconnected ones): ${caseThread}` : ""}
+${caseDossier}
 Learner level: ${knowledgeLevel} — calibrate depth accordingly (do not re-explain what this level already knows).
 Summary: ${mod.summary || mod.title}
 Target audience: ${target_audience || "general"}
@@ -783,6 +804,7 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           const refinementPrompt = buildRefinementPrompt(
             mod.title, rawContent, language || "pt-BR",
             mod.role as ModuleRole, mod.builds_on || "", caseThread, i, actualModules,
+            caseDossier,
           );
           // 8000 tokens: the full template (now incl. Atividade Prática) for a PT
           // module is long; smaller caps were truncating modules mid-content/table.
@@ -805,6 +827,26 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           // duplicate-title bug), then trim any leftover mid-sentence tail.
           let refinedContent = cleanModuleContent(refined.content, mod.title);
           if (refined.finishReason === "length") refinedContent = repairTruncation(refinedContent);
+
+          // EMPTY-MODULE GUARD: a rare empty/blocked refinement response used to be
+          // persisted as-is, shipping a module with a title and no body (the PPTX
+          // planner then improvises slides from the title alone). Fall back to the
+          // raw draft; as a last resort regenerate the draft once. Never save "".
+          if (refinedContent.trim().length < 200) {
+            console.warn(`[generate-course] Refined content too short for module ${i + 1} (${refinedContent.trim().length} chars) — falling back to raw draft`);
+            const rawFallback = cleanModuleContent(rawContent, mod.title);
+            if (rawFallback.trim().length >= 200) {
+              refinedContent = rawFallback;
+            } else {
+              try {
+                const redo = await callAI("gemini-2.5-flash", contentPrompt, 4000);
+                const redoClean = cleanModuleContent(redo, mod.title);
+                if (redoClean.trim().length > refinedContent.trim().length) refinedContent = redoClean;
+              } catch (redoErr: any) {
+                console.warn(`[generate-course] Draft regeneration failed for module ${i + 1}: ${redoErr?.message || redoErr}`);
+              }
+            }
+          }
 
           // Step D (EARLY SAVE): persist the refined module IMMEDIATELY so its
           // content is never lost if a later optional step times out or is skipped.
@@ -831,7 +873,7 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
               const qualityPrompt = buildQualityElevationPrompt(
                 mod.title, refinedContent, title,
                 target_audience || "profissionais da área", language || "pt-BR",
-                theme || "",
+                theme || "", caseDossier,
               );
               const quality = await callAIMeta("gemini-2.5-pro", qualityPrompt, 8000);
               const strippedFences = quality.content
