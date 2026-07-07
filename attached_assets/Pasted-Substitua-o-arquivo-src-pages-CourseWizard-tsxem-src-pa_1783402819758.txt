@@ -1,0 +1,73 @@
+Substitua o arquivo src/pages/CourseWizard.tsxem src/pages/ pelo arquivo anexo e redeploye o frontend.
+
+23 hours ago
+
+3 messages & 18 actions
+
+Checkpoint made
+23 hours ago
+
+Worked for 1 minute
+posso testar sen o deploy?
+
+23 hours ago
+Sim, sem problema. As mudanças já estão ativas no ambiente de desenvolvimento (preview do Replit) — não precisa de deploy para testar. Pode acessar o app normalmente e testar o fluxo do wizard e a geração de curso; qualquer mudança que eu fizer aparece automaticamente aí. O deploy só é necessário quando quiser colocar essa versão no ar em produção (URL .replit.app pública).
+
+Pode testar à vontade e me avisar se encontrar algo estranho.
+
+deu erro na edge function ao exportar pdf v2 (beta) do curso
+
+14 hours ago
+
+2 messages & 26 actions
+
+Worked for 1 minute
+deu erro na edge function returned a non 2xx status code. o curso é Dominando o Planejamento de Auditorias Operacionais
+
+13 hours ago
+
+3 messages & 50 actions
+
+Checkpoint made
+13 hours ago
+
+Worked for 3 minutes
+deu o mesmo erro. Corrija de forma eficaz sem adivinhação. Quero solução real.
+
+12 hours ago
+
+1 message & 21 actions
+
+Checkpoint made
+12 hours ago
+
+Worked for 2 minutes
+
+Pasted-CONTEXTO-No-EduGenAI-existe-uma-caixa-de-texto-na-homep_1783359925068.txt
+12 hours ago
+
+5 messages & 53 actions
+
+Checkpoint made
+12 hours ago
+
+Worked for 4 minutes
+vc não esta conversando em portugues como eu já havia pedido
+
+12 hours ago
+Peço desculpas — vou continuar em português a partir de agora.
+
+Resumo do que foi feito na tarefa de pré-preenchimento de tema/curso:
+
+1. CourseWizard.tsx — agora lê theme/title da URL (query params) ou do state da navegação, pula a tela de templates quando há um tema e pré-preenche o formulário.
+
+2. Landing.tsx — a caixa de texto do herói agora navega para /app/courses/new?theme=... para usuários logados.
+
+3. Dashboard.tsx — os cards de sugestão agora navegam com ?title=...&theme=....
+
+Validação: TypeScript compila sem erros, o comportamento sem parâmetros continua igual, e a lógica do caminho com query params foi verificada por leitura de código (não consegui testar visualmente o fluxo autenticado porque /app/courses/new fica atrás de login).
+
+Uma observação separada: o replit.md está bem grande (~9.5k tokens, principalmente o changelog do exportador PPTX). Quer que eu mova esse changelog para um arquivo separado (ex: docs/pptx-changelog.md) e deixe o replit.md mais enxuto, só com a visão geral da arquitetura?
+
+
+Scroll to latest
