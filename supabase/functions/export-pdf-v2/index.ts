@@ -19,37 +19,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   PDFDocument, StandardFonts, rgb, PDFPage, PDFFont,
 } from "https://esm.sh/pdf-lib@1.17.1";
-import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-07-07e-editorial-lite";
+const BUILD        = "2026-07-07f-editorial";
 
-// Embedded fonts, MEMORY-SAFE for the Supabase Edge worker. Build 07c hit
-// WORKER_RESOURCE_LIMIT (546): 3 WOFFs fetched in PARALLEL and embedded with
-// subset:true — fontkit's subsetting is the memory-heavy step. This build:
-//   - embeds only TWO faces (regular + bold); italic uses standard Helvetica
-//     Oblique (zero cost) — an acceptable trade for callout/quote text;
-//   - fetches SEQUENTIALLY (one buffer alive at a time);
-//   - embeds with subset:false (larger file, ~300KB, but no subsetting pass);
-//   - caches bytes per cold start and falls back to Helvetica on any failure.
-const FONT_URLS = {
-  reg:  "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Regular.woff",
-  bold: "https://cdn.jsdelivr.net/npm/roboto-fontface@0.10.0/fonts/roboto/Roboto-Bold.woff",
-};
-let FONT_CACHE: { reg: Uint8Array; bold: Uint8Array } | null = null;
-
-async function loadFontBytes(): Promise<typeof FONT_CACHE> {
-  if (FONT_CACHE) return FONT_CACHE;
-  const get = async (url: string) => {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`font fetch ${res.status}`);
-    return new Uint8Array(await res.arrayBuffer());
-  };
-  const reg = await get(FONT_URLS.reg);   // sequential on purpose (memory)
-  const bold = await get(FONT_URLS.bold);
-  FONT_CACHE = { reg, bold };
-  return FONT_CACHE;
-}
+// NOTE ON FONTS: runtime font embedding was removed. Build 07c/07d embedded
+// Roboto by fetching WOFFs and subsetting with fontkit, which blew the Supabase
+// Edge worker memory limit (WORKER_RESOURCE_LIMIT / 546) — and an OOM kills the
+// isolate, so the try/catch fallback can't save it. subset:false on a WOFF
+// produces an INVALID embedded font ("Embedded font file may be invalid").
+// The only edge-safe embed (raw TTF as a base64 constant) means a ~450KB source
+// blob that's fragile to paste-deploy. Real embedded typography belongs to the
+// planned HTML+CSS+Playwright engine (@font-face is trivial there). Standard
+// Helvetica is used here — reliable, and what already runs in production.
 const TESTING_MODE = true;
 
 // ─── Geometry (A4 mm / pts) ───────────────────────────────────────────────────
@@ -278,20 +260,10 @@ class R {
   }
 
   async fonts() {
-    this.cou = await this.doc.embedFont(StandardFonts.Courier);
-    // Italic stays a standard font on purpose (memory budget — see FONT_URLS note).
+    this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
+    this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
     this.obl = await this.doc.embedFont(StandardFonts.HelveticaOblique);
-    try {
-      this.doc.registerFontkit(fontkit);
-      const bytes = await loadFontBytes();
-      this.reg = await this.doc.embedFont(bytes!.reg,  { subset: false });
-      this.bld = await this.doc.embedFont(bytes!.bold, { subset: false });
-      console.log("[export-pdf-v2] Embedded Roboto reg+bold (no subset)");
-    } catch (e) {
-      console.warn(`[export-pdf-v2] Font embed failed (${(e as Error)?.message}) — falling back to Helvetica`);
-      this.reg = await this.doc.embedFont(StandardFonts.Helvetica);
-      this.bld = await this.doc.embedFont(StandardFonts.HelveticaBold);
-    }
+    this.cou = await this.doc.embedFont(StandardFonts.Courier);
   }
 
   Y(yMm: number): number { return PH - yMm * PT; }
