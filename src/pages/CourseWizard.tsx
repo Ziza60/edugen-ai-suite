@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription, useMonthlyUsage } from "@/hooks/useSubscription";
 import { useDevMode } from "@/hooks/useDevMode";
@@ -45,52 +45,7 @@ interface UploadedSource {
 }
 
 export default function CourseWizard() {
-  // Prefill support: a quick-create box (homepage/dashboard suggestion) can hand
-  // the theme via URL (?theme=...&title=...) or router state ({ theme, title }).
-  // With a theme present we skip the template screen and land on the form filled.
-  // The box receives conversational input ("crie um curso com o tema \"X\""), so
-  // we strip the instruction wrapper/quotes and derive the title from the theme.
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const navState = (location.state ?? {}) as { theme?: string; title?: string };
-  const rawPrefillTheme = (searchParams.get("theme") || navState.theme || "").trim();
-  const rawPrefillTitle = (searchParams.get("title") || navState.title || "").trim();
-  const cleanPrompt = (raw: string): string => {
-    let t = raw.trim();
-    // "crie/gere/quero um curso/treinamento (com o tema|sobre|de) ..." → keep only the theme
-    t = t.replace(/^(crie|criar|gere|gerar|fa[çc]a|fazer|quero|preciso(\s+de)?|me\s+ajude\s+a\s+criar)\s+(um\s+|uma\s+|uns\s+|umas\s+)?(cursos?|treinamentos?|capacita[çc][õã]o?es?)\s*(completos?\s*)?(com\s+o\s+tema|sobre(\s+o\s+tema)?|a\s+respeito\s+de|de|do|da|em|para|:)?\s*/i, "");
-    // bare "curso de/sobre X" → X
-    t = t.replace(/^(um\s+|uma\s+)?(cursos?|treinamentos?)\s+(de|sobre|do|da|em)\s+/i, "");
-    // strip surrounding/unbalanced quotes and leftover punctuation
-    t = t.replace(/^["'“”‘’\s]+|["'“”‘’.\s]+$/g, "").trim();
-    return t;
-  };
-  const prefillTheme = rawPrefillTheme ? (cleanPrompt(rawPrefillTheme) || rawPrefillTheme) : "";
-  const derivedTitle = prefillTheme.length > 90
-    ? prefillTheme.slice(0, 90).replace(/\s+\S*$/, "")
-    : prefillTheme;
-  const prefillTitle = rawPrefillTitle ||
-    (derivedTitle ? derivedTitle.charAt(0).toUpperCase() + derivedTitle.slice(1) : "");
-
-  const [showTemplates, setShowTemplates] = useState(!prefillTheme);
-  // Quick create (Coursebox-style): arriving with a theme, the user answers 4
-  // guided questions and we generate straight away — no Título/Tema form. The
-  // full form stays available via "Modo avançado".
-  const [quickMode, setQuickMode] = useState(!!prefillTheme);
-  const [quickStep, setQuickStep] = useState(0);
-  const [quickCustom, setQuickCustom] = useState("");
-  const [pendingQuickGenerate, setPendingQuickGenerate] = useState(false);
-  // handleGenerate is defined further down (after the early-return screens); the
-  // effect below must be an unconditional hook, so it calls through a ref that is
-  // (re)assigned every full render.
-  const handleGenerateRef = useRef<() => void>(() => {});
-  useEffect(() => {
-    if (pendingQuickGenerate) {
-      setPendingQuickGenerate(false);
-      setQuickMode(false);
-      handleGenerateRef.current();
-    }
-  }, [pendingQuickGenerate]);
+  const [showTemplates, setShowTemplates] = useState(true);
   const [showYouTube, setShowYouTube] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null);
@@ -119,12 +74,10 @@ export default function CourseWizard() {
   const [uploadedSources, setUploadedSources] = useState<UploadedSource[]>([]);
 
   const [form, setForm] = useState({
-    title: prefillTitle,
-    theme: prefillTheme,
+    title: "",
+    theme: "",
     targetAudience: "",
     tone: "profissional",
-    knowledgeLevel: "basico",
-    outcome: "aplicacao",
     language: "pt-BR",
     numModules: 3,
     includeQuiz: true,
@@ -358,8 +311,6 @@ export default function CourseWizard() {
             theme: form.theme.trim() || selectedTemplate?.suggestedTheme || "",
             target_audience: form.targetAudience.trim() || selectedTemplate?.targetAudience || "",
             tone: form.tone,
-            knowledge_level: form.knowledgeLevel,
-            outcome: form.outcome,
             language: form.language,
             num_modules: form.numModules,
             include_quiz: form.includeQuiz,
@@ -481,136 +432,9 @@ export default function CourseWizard() {
     }
   };
 
-  handleGenerateRef.current = handleGenerate;
-
   const resolvedTitle = form.title.trim() || selectedTemplate?.suggestedTitle || "";
   const resolvedTheme = form.theme.trim() || selectedTemplate?.suggestedTheme || "";
   const resolvedAudience = form.targetAudience.trim() || selectedTemplate?.targetAudience || "";
-
-  // ── Quick create (Coursebox-style): 4 guided questions, then generate ──
-  const QUICK_QUESTIONS: {
-    key: "targetAudience" | "knowledgeLevel" | "outcome" | "tone";
-    question: string;
-    options: { label: string; value: string }[];
-    allowCustom?: boolean;
-  }[] = [
-    {
-      key: "targetAudience",
-      question: "Para quem é o curso que você quer criar?",
-      allowCustom: true,
-      options: [
-        { label: "Iniciantes", value: "iniciantes" },
-        { label: "Profissionais", value: "profissionais da área" },
-        { label: "Equipe interna", value: "equipe interna da empresa" },
-        { label: "Estudantes", value: "estudantes" },
-      ],
-    },
-    {
-      key: "knowledgeLevel",
-      question: "Qual é o nível de conhecimento atual desse público?",
-      options: [
-        { label: "Nenhum", value: "nenhum" },
-        { label: "Básico", value: "basico" },
-        { label: "Intermediário", value: "intermediario" },
-        { label: "Avançado", value: "avancado" },
-      ],
-    },
-    {
-      key: "outcome",
-      question: "Qual resultado esse curso precisa entregar?",
-      options: [
-        { label: "Introdução ao tema", value: "introducao" },
-        { label: "Aplicação prática", value: "aplicacao" },
-        { label: "Treinamento completo", value: "treinamento" },
-        { label: "Preparação para avaliação", value: "avaliacao" },
-      ],
-    },
-    {
-      key: "tone",
-      question: "Que tom você prefere no material?",
-      options: [
-        { label: "Prático", value: "didatico" },
-        { label: "Profissional", value: "profissional" },
-        { label: "Conversacional", value: "direto" },
-        { label: "Acadêmico", value: "academico" },
-      ],
-    },
-  ];
-
-  const answerQuick = (value: string | null) => {
-    const q = QUICK_QUESTIONS[quickStep];
-    if (value !== null && value.trim()) {
-      setForm((prev) => ({ ...prev, [q.key]: value.trim() }));
-    }
-    setQuickCustom("");
-    if (quickStep < QUICK_QUESTIONS.length - 1) setQuickStep(quickStep + 1);
-    else setPendingQuickGenerate(true);
-  };
-
-  if (quickMode && !generating && !pendingQuickGenerate) {
-    const q = QUICK_QUESTIONS[quickStep];
-    return (
-      <div className="min-h-screen bg-muted/30 flex items-center justify-center px-4">
-        <Card className="rounded-2xl border-border shadow-sm w-full max-w-xl">
-          <CardContent className="p-8">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              Novo curso
-            </p>
-            <h1 className="font-semibold text-lg mb-6 leading-snug">{resolvedTitle || resolvedTheme}</h1>
-
-            <div className="flex items-center justify-between mb-4">
-              <p className="font-medium text-base">{q.question}</p>
-              <span className="text-xs text-muted-foreground shrink-0 ml-3">
-                {quickStep + 1} de {QUICK_QUESTIONS.length}
-              </span>
-            </div>
-
-            <div className="space-y-2 mb-4">
-              {q.options.map((opt, oi) => (
-                <button
-                  key={opt.value}
-                  onClick={() => answerQuick(opt.value)}
-                  className="w-full flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left text-sm font-medium hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <span className="h-6 w-6 rounded-md bg-muted text-muted-foreground text-xs font-bold flex items-center justify-center shrink-0">
-                    {oi + 1}
-                  </span>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {q.allowCustom ? (
-                <>
-                  <Input
-                    value={quickCustom}
-                    onChange={(e) => setQuickCustom(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && quickCustom.trim()) answerQuick(quickCustom); }}
-                    placeholder="Outra coisa..."
-                    className="h-10"
-                  />
-                  {quickCustom.trim() && (
-                    <Button size="sm" onClick={() => answerQuick(quickCustom)}>OK</Button>
-                  )}
-                </>
-              ) : <div className="flex-1" />}
-              <Button variant="ghost" size="sm" className="text-muted-foreground shrink-0" onClick={() => answerQuick(null)}>
-                Pular
-              </Button>
-            </div>
-
-            <button
-              onClick={() => setQuickMode(false)}
-              className="mt-6 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-            >
-              Prefiro preencher o formulário completo (modo avançado)
-            </button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   const canNext = () => {
     switch (step) {
@@ -777,35 +601,6 @@ export default function CourseWizard() {
                               </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">O conteúdo e as avaliações serão gerados neste idioma.</p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <Label className="font-medium">Nível atual do público</Label>
-                            <Select value={form.knowledgeLevel} onValueChange={(v) => updateForm("knowledgeLevel", v)}>
-                              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="nenhum">Nenhum conhecimento</SelectItem>
-                                <SelectItem value="basico">Básico</SelectItem>
-                                <SelectItem value="intermediario">Intermediário</SelectItem>
-                                <SelectItem value="avancado">Avançado</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">Define onde o curso começa e o que pode assumir como sabido.</p>
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="font-medium">Resultado esperado</Label>
-                            <Select value={form.outcome} onValueChange={(v) => updateForm("outcome", v)}>
-                              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="introducao">Introdução ao tema</SelectItem>
-                                <SelectItem value="aplicacao">Aplicação prática</SelectItem>
-                                <SelectItem value="treinamento">Treinamento completo</SelectItem>
-                                <SelectItem value="avaliacao">Preparação para avaliação</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">Molda a progressão e o fechamento do curso (caso, projeto ou simulado).</p>
                           </div>
                         </div>
                       </div>

@@ -18,10 +18,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   PDFDocument, StandardFonts, rgb, PDFPage, PDFFont,
+  PDFName, PDFString, PDFNumber, PDFArray,
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-07-07g-title-guard";
+const BUILD        = "2026-07-07g-bookmarks";
 
 // NOTE ON FONTS: runtime font embedding was removed. Build 07c/07d embedded
 // Roboto by fetching WOFFs and subsetting with fontkit, which blew the Supabase
@@ -91,6 +92,16 @@ const C = {
 
 function safeText(t: string): string {
   return (t || "")
+    // Substitute math/arrow symbols BEFORE the Latin-1 strip so they survive
+    .replace(/≈/g, "aprox.")
+    .replace(/≤/g, "<=")
+    .replace(/≥/g, ">=")
+    .replace(/≠/g, "!=")
+    .replace(/→/g, "->")
+    .replace(/←/g, "<-")
+    .replace(/∑/g, "soma")
+    .replace(/√/g, "raiz")
+    .replace(/∞/g, "inf")
     .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
     .replace(/[\u{2600}-\u{27BF}]/gu, "")
     .replace(/[\u{2B00}-\u{2BFF}]/gu, "")
@@ -99,21 +110,13 @@ function safeText(t: string): string {
     .replace(/[–—]/g, "-")
     .replace(/…/g, "...")
     .replace(/­/g, "")
+    // Normalize ALL unicode space variants to ASCII space BEFORE stripping
+    // non-Latin1 chars. A U+2009 thin space between words gets dropped by
+    // the [^\x00-\xFF] strip, fusing two words into one unbreakable token
+    // — wrapText then char-splits it, producing fragments on the cover title.
+    .replace(/[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]/g, " ")
     .replace(/[^\x00-\xFF]/g, "")
     .replace(/  +/g, " ")
-    .trim();
-}
-
-// Defensive title cleanup for courses created BEFORE the LLM-owned title fix,
-// whose stored course.title may carry a conversational residue ("S de Finanças
-// pessoais...", "crie um curso de..."). New courses already store a clean title.
-function cleanTitle(t: string): string {
-  return safeText(t || "")
-    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
-    .replace(/^\s*(crie|criar|gere|gerar|quero|fa[çc]a)\b[^A-Za-zÀ-ÿ]*/i, "")
-    .replace(/^\s*(um|uma|uns|umas)\s+(cursos?|treinamentos?)\s+(de|sobre|do|da|em)\s+/i, "")
-    .replace(/^[A-Za-zÀ-ÿ]{1,3}\s+de\s+(?=[A-Za-zÀ-ÿ])/, "")   // orphan "S de "
-    .replace(/\s{2,}/g, " ")
     .trim();
 }
 
@@ -223,6 +226,8 @@ class R {
   y = MT; pn = 0;
   tocPage: PDFPage | null = null;
   tocEntries: { num: number; title: string; page: number }[] = [];
+  courseTitle = "";
+  currentModule = "";
 
   constructor(doc: PDFDocument) { this.doc = doc; }
 
@@ -248,7 +253,7 @@ class R {
       if (ty > MAX_Y - 10) break;
       const numStr = `Módulo ${String(e.num).padStart(2, "0")}`;
       const pageStr = String(e.page);
-      const title = e.title.length > 58 ? e.title.slice(0, 58).replace(/\s+\S*$/, "") + "…" : e.title;
+      const title = e.title.length > 70 ? e.title.slice(0, 70).replace(/\s+\S*$/, "") + "…" : e.title;
 
       pg.drawText(numStr, { x: ML_PT, y: this.Y(ty), size: 8.5, font: this.bld, color: C.ACC });
       pg.drawText(title, { x: ML_PT, y: this.Y(ty + 5.5), size: SIZE, font: this.reg, color: C.BODY });
@@ -284,11 +289,29 @@ class R {
   _footer() {
     this.pg.drawRectangle({ x: 0, y: 0, width: PW, height: 7 * PT, color: C.PRI });
     this.pg.drawRectangle({ x: 0, y: 7 * PT, width: PW, height: 0.8 * PT, color: C.ACC });
+    // Page number (centered)
     const s = `${this.pn}`;
     this.pg.drawText(s, {
       x: (PW - this.reg.widthOfTextAtSize(s, FS.FOOTER)) / 2,
       y: 2.5 * PT, size: FS.FOOTER, font: this.reg, color: C.WHITE,
     });
+    // Course title left-aligned (truncated)
+    if (this.courseTitle) {
+      const maxW = CW * 0.40;
+      let ct = safeText(this.courseTitle);
+      while (ct && this.reg.widthOfTextAtSize(ct, 7.5) > maxW) ct = ct.slice(0, -1).trimEnd();
+      if (ct.length < this.courseTitle.length && ct) ct += "...";
+      this.pg.drawText(ct, { x: ML_PT, y: 2.5 * PT, size: 7.5, font: this.reg, color: C.COVER_DIM });
+    }
+    // Current module right-aligned (truncated)
+    if (this.currentModule) {
+      const maxW = CW * 0.42;
+      let cm = safeText(this.currentModule);
+      while (cm && this.reg.widthOfTextAtSize(cm, 7.5) > maxW) cm = cm.slice(0, -1).trimEnd();
+      if (cm.length < this.currentModule.length && cm) cm += "...";
+      const cmW = this.reg.widthOfTextAtSize(cm, 7.5);
+      this.pg.drawText(cm, { x: ML_PT + CW - cmW, y: 2.5 * PT, size: 7.5, font: this.reg, color: C.COVER_DIM });
+    }
   }
 
   addPage() {
@@ -323,8 +346,11 @@ class R {
     });
     pg.drawRectangle({ x: ML_PT, y: this.Y(25), width: CW, height: 1.5 * PT, color: C.ACC });
 
-    // Title — starts at 38 mm
-    const tLines = wrapText(safeText(title), this.bld, FS.COVER_TITLE, PW - 60 * PT);
+    // Title — starts at 38 mm.
+    // cleanLine() strips markdown (**, #, `, etc.) then applies safeText so a
+    // title stored as "**Finanças Pessoais**" or "# Gestão de Finanças" renders
+    // correctly instead of exposing the raw markdown tokens.
+    const tLines = wrapText(cleanLine(title || "Curso"), this.bld, FS.COVER_TITLE, PW - 60 * PT);
     let ty = 38;
     for (const line of tLines) {
       pg.drawText(line, { x: ML_PT, y: this.Y(ty), size: FS.COVER_TITLE, font: this.bld, color: C.WHITE });
@@ -406,6 +432,7 @@ class R {
       ty += titleAdv;
     }
 
+    this.currentModule = safeText(title);
     this._footer();
     this.y = MOD_CONT_Y;
   }
@@ -641,9 +668,16 @@ class R {
     const text = cleanLine(rawText);
     if (!text) return;
     // "Pare um momento e reflita: pergunta" → title + body split
-    const m = text.match(/^(pare\s+um\s+momento\s+e\s+reflita|reflita|para\s+refletir|dica|importante|aten[çc][ãa]o|nota)\s*[:—-]?\s*/i);
+    const m = text.match(/^(pare\s+um\s+momento\s+e\s+reflita|reflita|para\s+refletir|dica|importante|aten[çc][ãa]o|nota|exemplo|atividade|entreg[áa]vel|f[óo]rmula|exerc[íi]cio)\s*[:—-]?\s*/i);
     const title = m ? (
       /reflita|refletir/i.test(m[1]) ? "Pare e reflita" :
+      /exemplo/i.test(m[1]) ? "Exemplo" :
+      /atividade/i.test(m[1]) ? "Atividade" :
+      /exerc/i.test(m[1]) ? "Exercicio" :
+      /entreg/i.test(m[1]) ? "Entregavel" :
+      /f.rmula/i.test(m[1]) ? "Formula" :
+      /aten/i.test(m[1]) ? "Atencao" :
+      /dica/i.test(m[1]) ? "Dica" :
       m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase()
     ) : "Nota";
     const body = m ? text.slice(m[0].length).trim() || text : text;
@@ -680,6 +714,31 @@ class R {
       thickness: 0.4, color: C.RULE,
     });
     this.y += 1 + SP.A_RULE;
+  }
+
+  // ── Formula box — highlighted callout for mathematical formulas ────────────
+  formulaBox(text: string) {
+    const clean = cleanLine(text);
+    if (!clean) return;
+    const PAD = 4;
+    const bodyLines = wrapText(clean, this.bld, FS.BODY + 0.5, CW - (PAD * 2 + 4) * PT);
+    const boxH = PAD * 2 + bodyLines.length * SP.LINE + 1;
+    this.check(boxH + 6);
+    const rectY = this.Y(this.y + boxH);
+    // Light blue-gray background to distinguish formulas from warm callouts
+    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: CW, height: boxH * PT, color: rgb(0.92, 0.94, 0.98) });
+    this.pg.drawRectangle({ x: ML_PT, y: rectY, width: 3 * PT, height: boxH * PT, color: C.PRI });
+    const label = "Formula";
+    const lw = this.bld.widthOfTextAtSize(label, 7.5);
+    this.pg.drawText(label, { x: ML_PT + 6 * PT, y: this.Y(this.y + PAD * 0.5 + 0.5), size: 7.5, font: this.bld, color: C.PRI });
+    this.pg.drawRectangle({ x: ML_PT + 6 * PT + lw + 3, y: this.Y(this.y + PAD * 0.5 + 1.5), width: CW - (6 * PT + lw + 6 + 3 * PT), height: 0.4 * PT, color: C.RULE });
+    const textX = ML_PT + 6 * PT;
+    let ty = this.y + PAD + 3.5;
+    for (const line of bodyLines) {
+      this.pg.drawText(line, { x: textX, y: this.Y(ty), size: FS.BODY + 0.5, font: this.bld, color: C.PRI });
+      ty += SP.LINE;
+    }
+    this.y += boxH + 4;
   }
 
   // ── Module content: markdown → PDF elements ─────────────────────────────────
@@ -762,6 +821,27 @@ class R {
         continue;
       }
 
+      // ── Formula line detection ────────────────────────────────────────────────
+      // Lines that look like standalone mathematical formulas get a formula box.
+      // Pattern: short line (< 120 chars) containing = with no other paragraph following
+      // and having typical formula markers (numbers, %, R$, operators, ×, ÷, /).
+      if (
+        t.length < 150 &&
+        /=/.test(t) &&
+        /[0-9%R$×÷\/\*]/.test(t) &&
+        !/^.*[:]{1}$/.test(t) &&          // not a labeled item ending with colon
+        /Preço|Custo|Margem|Markup|MC|ROI|Lucro|Total|Formula|Equil[íi]brio|Break|Taxa|Valor|Receita|Despesa|Resultado|[Pp]onto/.test(t)
+      ) {
+        // Check if the NEXT line is blank or special (isolated formula)
+        const nextLine = lines[i + 1]?.trim() ?? "";
+        if (!nextLine || isSpecialLine(nextLine)) {
+          this.formulaBox(t);
+          i++;
+          listN = 0;
+          continue;
+        }
+      }
+
       // ── Plain paragraph ──────────────────────────────────────────────────────
       // Merge consecutive non-special source lines into ONE para() call so that
       // the resulting block wraps to many display lines → full justification.
@@ -787,6 +867,55 @@ class R {
       this.para(paraLines.join(" "));
     }
   }
+}
+
+// ─── HTTP handler ──────────────────────────────────────────────────────────────
+
+// ─── PDF Bookmarks / Outlines ──────────────────────────────────────────────────
+// Adds a navigable outline (bookmark panel) to the PDF so every module appears
+// as a clickable entry in Acrobat, Preview, Chrome and most PDF readers.
+// Uses pdf-lib's low-level context API since the high-level API doesn't expose
+// document outlines directly. Safe: wrapped in try/catch so a bookmark failure
+// never blocks the export.
+function addBookmarks(
+  doc: PDFDocument,
+  entries: { num: number; title: string; page: number }[],
+): void {
+  if (!entries.length) return;
+  const pages   = doc.getPages();
+  const ctx     = doc.context;
+
+  const rootRef  = ctx.nextRef();
+  const itemRefs = entries.map(() => ctx.nextRef());
+
+  entries.forEach((e, i) => {
+    const pageIdx = Math.max(0, Math.min(e.page - 1, pages.length - 1));
+    const pageRef = pages[pageIdx].ref;
+    const label   = `Módulo ${String(e.num).padStart(2, "0")} — ${e.title}`;
+
+    // /Fit destination — fits the full page in the viewer window
+    const dest = ctx.obj([pageRef, PDFName.of("Fit")]);
+
+    const item: Record<string, unknown> = {
+      Title:  PDFString.of(label),
+      Parent: rootRef,
+      Dest:   dest,
+    };
+    if (i > 0)                  item.Prev = itemRefs[i - 1];
+    if (i < entries.length - 1) item.Next = itemRefs[i + 1];
+    ctx.assign(itemRefs[i], ctx.obj(item));
+  });
+
+  ctx.assign(rootRef, ctx.obj({
+    Type:  PDFName.of("Outlines"),
+    First: itemRefs[0],
+    Last:  itemRefs[itemRefs.length - 1],
+    Count: PDFNumber.of(entries.length),
+  }));
+
+  doc.catalog.set(PDFName.of("Outlines"), rootRef);
+  // UseOutlines → reader opens the bookmark panel automatically
+  doc.catalog.set(PDFName.of("PageMode"), PDFName.of("UseOutlines"));
 }
 
 // ─── HTTP handler ──────────────────────────────────────────────────────────────
@@ -832,12 +961,11 @@ serve(async (req: Request) => {
 
     const doc = await PDFDocument.create();
     const r   = new R(doc);
+    r.courseTitle = safeText(String(course.title || ""));
     await r.fonts();
 
-    const courseTitle = cleanTitle(course.title) || "Curso";
-
     // Document metadata (viewer title bar, search, accessibility basics)
-    doc.setTitle(courseTitle);
+    doc.setTitle(course.title || "Curso");
     doc.setAuthor("EduGenAI");
     doc.setSubject(course.description || course.theme || "");
     doc.setCreator(`EduGenAI export-pdf-v2 ${BUILD}`);
@@ -845,14 +973,25 @@ serve(async (req: Request) => {
     doc.setLanguage(course.language || "pt-BR");
     doc.setCreationDate(new Date());
 
-    // Estimated workload from total content length (~180 words/min reading pace)
+    // Estimated workload: reading pace (~150 wpm for study/note-taking) +
+    // ~20 min/module for exercises/activities + 30 min for capstone project.
+    // This gives a realistic total aligned with what a student actually spends.
     const totalWords = modules.reduce(
       (s: number, m: any) => s + String(m.content || "").split(/\s+/).length, 0,
     );
-    const mins = Math.max(10, Math.round(totalWords / 180));
+    const readingMins  = Math.round(totalWords / 150);
+    const activityMins = modules.length * 20 + 30;
+    const mins = Math.max(30, readingMins + activityMins);
     const hours = mins >= 60 ? `≈ ${(Math.round((mins / 60) * 2) / 2).toString().replace(".", ",")}h` : `≈ ${mins} min`;
 
-    r.cover(courseTitle, course.description ?? undefined, {
+    // Defensive title guard: strip markdown artifacts, normalize unicode spaces,
+    // and ensure a non-empty fallback so the cover never renders a blank title.
+    // This fixes courses already stored with titles like "**X**" or with thin/
+    // non-breaking spaces that confuse wrapText's word-split.
+    const coverTitle = cleanLine(String(course.title || "")).trim() || "Curso sem título";
+    const coverDesc  = course.description ? cleanLine(String(course.description)).trim() : undefined;
+
+    r.cover(coverTitle, coverDesc, {
       audience: course.target_audience || undefined,
       language: course.language || "pt-BR",
       modules: modules.length,
@@ -870,6 +1009,10 @@ serve(async (req: Request) => {
     }
 
     r.renderToc();
+
+    // Add navigable PDF bookmarks (outline panel). Wrapped in try/catch so a
+    // bookmark serialization error never blocks the export.
+    try { addBookmarks(doc, r.tocEntries); } catch { /* non-fatal */ }
 
     const pdfBytes = await doc.save();
 

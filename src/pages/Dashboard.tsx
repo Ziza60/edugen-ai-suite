@@ -611,7 +611,7 @@ function EmptyState({ navigate }: { navigate: (path: string) => void }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           {SUGGESTIONS.map(s => (
             <SuggestionCard key={s.title} Icon={s.Icon} title={s.title} desc={s.desc}
-              onClick={() => navigate("/app/courses/new", { state: { title: s.title, theme: `${s.title} — ${s.desc}` } })} />
+              onClick={() => navigate("/app/courses/new")} />
           ))}
         </div>
       </div>
