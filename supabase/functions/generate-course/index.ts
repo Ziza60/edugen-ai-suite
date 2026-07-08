@@ -18,6 +18,10 @@ const PLAN_LIMITS = {
 // módulos). Para reativar a monetização, basta voltar para `false`.
 const TESTING_MODE = true;
 
+// Build marker — logged on every invocation so a deploy can be verified in the
+// function logs (see the export-pdf deploy saga: always confirm WHICH code runs).
+const GENERATE_COURSE_BUILD = "2026-07-07g-llm-title";
+
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
 // Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
 // truncation ("length") and react (retry with a larger cap, then sanitize).
@@ -96,95 +100,93 @@ async function callAIInner(model: string, prompt: string, maxTokens = 2000, isJs
 }
 
 
-// PROMPT MESTRE v2: Official Pedagogical Template.
-// KEEP IN SYNC with restructure-modules/index.ts (TEMPLATE_PROMPT, REQUIRED_SECTIONS
-// and validateModuleMarkdown). Invariants that must match across both files:
-//   - section order: Exemplo prático -> Atividade Prática -> Aplicações reais
-//   - example phases: Contexto -> Desafio -> Solução -> Resultado
-//   - 🎓 Atividade Prática is mandatory in every module
-//   - Key Takeaways: 5-6 bullets
-function buildRefinementPrompt(moduleTitle: string, rawContent: string, language: string): string {
+// ── Arquitetura pedagógica v3: papéis por módulo, não fórmula fixa ─────────────
+// Cada módulo recebe do Arquiteto (Stage 1) um PAPEL pedagógico; o Redator abaixo
+// usa um cardápio de blocos POR PAPEL em vez do template canônico de 12 seções.
+// Invariantes preservados para o pipeline de export (PPTX v7/PDF v2):
+//   - todo módulo fecha com "### 📌 Pontos-chave" (slide de takeaways no PPTX);
+//   - exemplos trabalhados mantêm a microestrutura Contexto→Desafio→Solução→Resultado;
+//   - tabelas só com 2+ linhas reais de dados; código em cercas ```.
+// NOTA: restructure-modules ("Reformatar conteúdo") ainda valida o template antigo —
+// não rodar rewrite naquele fluxo sobre cursos v3 (validate_only continua ok).
+
+type ModuleRole = "conceito" | "aplicacao" | "consolidacao" | "capstone";
+
+const ROLE_BLOCKS: Record<ModuleRole, string> = {
+  conceito: `BLOCOS RECOMENDADOS para um módulo CONCEITUAL (escolha 3-5, na ordem que fizer sentido):
+- Conceito central explicado com UMA analogia concreta do universo do público.
+- Comparativo real (tabela Markdown SÓ se houver 2+ itens genuinamente distintos; senão, prosa).
+- Mini-exemplo ilustrativo curto (3-6 linhas) mostrando o conceito em ação.
+- "Erro comum": o mal-entendido típico de iniciantes sobre este conceito e como evitá-lo.
+- Pergunta-guia respondida ao longo do texto (abre com a pergunta, fecha respondendo).`,
+  aplicacao: `BLOCOS RECOMENDADOS para um módulo de APLICAÇÃO (escolha 3-5, na ordem que fizer sentido):
+- Passo a passo numerado do procedimento/técnica (3-7 passos acionáveis).
+- Exemplo trabalhado OBRIGATÓRIO nesta ordem exata:
+  **Contexto:** [quem, onde, qual problema] **Desafio:** [obstáculo específico]
+  **Solução:** [o que foi feito] **Resultado:** [o que mudou, com indicador concreto]
+  Ancorado num setor/perfil específico (não "uma empresa").
+- Atividade prática: UMA tarefa hands-on com enunciado + 3-6 passos e entregável claro.
+- Checklist de verificação ("antes de seguir, confira...").
+- Variações/limites: quando a técnica NÃO se aplica.`,
+  consolidacao: `BLOCOS RECOMENDADOS para um módulo de CONSOLIDAÇÃO (escolha 3-4):
+- Síntese integradora: como os conceitos dos módulos anteriores se conectam (cite-os pelo nome).
+- Caso integrador que exige usar 2+ competências já construídas no curso.
+- Exercício integrador com entregável.
+- Mapa de decisão: "quando usar o quê" (tabela ou lista de critérios).`,
+  capstone: `Este é o módulo FINAL (capstone). Estruture-o como o entregável indicado no plano do curso:
+- estudo_de_caso → caso guiado do início ao fim usando o fio condutor do curso, com perguntas orientadoras em cada etapa.
+- projeto → projeto final com briefing, requisitos, etapas numeradas, critérios de avaliação e entregável definido.
+- plano_de_acao → plano de ação aplicável ao contexto do aluno: template preenchível + instruções por seção.
+- simulado → 8-12 questões no estilo da avaliação-alvo com gabarito comentado ao final.
+- sintese → revisão integradora dos pontos essenciais do curso + próximos passos de estudo.
+O capstone deve OBRIGAR o aluno a usar competências de PELO MENOS 3 módulos anteriores (cite-os).`,
+};
+
+function buildRefinementPrompt(
+  moduleTitle: string,
+  rawContent: string,
+  language: string,
+  role: ModuleRole,
+  buildsOn: string,
+  caseThread: string,
+  moduleIndex: number,
+  totalModules: number,
+  caseDossier = "",
+): string {
   return `Você é um designer instrucional sênior especializado em e-learning premium.
 
-Reescreva o conteúdo bruto abaixo aplicando TODAS as regras do Template Pedagógico Oficial. O resultado deve ser visualmente leve, escaneável e profissional.
+Reescreva o conteúdo bruto abaixo como a ${moduleIndex + 1}ª lição de um curso com ${totalModules} módulos. O papel pedagógico DESTE módulo é: ${role.toUpperCase()}.
 
-## TEMPLATE PEDAGÓGICO OFICIAL
+REGRA DE BASTIDORES: os rótulos internos de papel ("conceito", "aplicação", "consolidação", "capstone") orientam VOCÊ, mas são PROIBIDOS no texto final — o aluno nunca deve ler "este é um módulo de APLICAÇÃO" ou "este é o seu capstone". Escreva a função do módulo em linguagem natural ("agora vamos colocar em prática...", "neste módulo final, você vai integrar...").
 
-### 1. ABERTURA OBRIGATÓRIA
-Comece o módulo SEMPRE com:
+## PRINCÍPIOS (substituem qualquer template fixo)
 
-## ${moduleTitle}
+1. PROGRESSÃO É OBRIGATÓRIA: este módulo NÃO é autônomo.
+${moduleIndex === 0
+  ? "- Como primeiro módulo, abra situando o problema que o curso resolve e o que o aluno será capaz de fazer ao final DO CURSO (1 parágrafo)."
+  : `- Abra com 1-2 frases conectando explicitamente ao que o aluno construiu antes: ${buildsOn || "o módulo anterior"}. Sem essa ponte o módulo está ERRADO.`}
+- Referencie conceitos de módulos anteriores pelo nome quando usá-los (ex.: "como você viu ao mapear os riscos...").
 
-Seguido IMEDIATAMENTE por:
+2. TÍTULOS DE SEÇÃO ESPECÍFICOS DO TEMA:
+- Use ### para seções com nomes que descrevem O CONTEÚDO (ex.: "### Ameaças no ambiente escolar", "### Delimitando o escopo da missão").
+- PROIBIDO usar rótulos genéricos de fôrma como "Fundamentos", "Como funciona", "Modelos / Tipos", "Aplicações reais" — o nome da seção deve ser incompreensível fora deste tema.
+- Emojis: no máximo 1-2 em todo o módulo, apenas onde agregam (ou nenhum).
 
-### 🎯 Objetivo do Módulo
-- [bullet 1: o que o aluno vai aprender]
-- [bullet 2: habilidade ou competência]
-- [bullet 3: aplicação prática esperada]
-(máximo 3 bullets, diretos e claros)
+3. ${ROLE_BLOCKS[role]}
 
----
+${caseThread ? `4. FIO CONDUTOR DO CURSO: "${caseThread}"
+- Quando este módulo usar exemplo ou caso, prefira AVANÇAR este fio condutor (a mesma organização/personagem evoluindo módulo a módulo) em vez de inventar um cenário desconexo.
+${caseDossier}` : ""}
+## CHECKPOINT DE REFLEXÃO (1 por módulo, em ponto estratégico)
+> 💭 **Pare um momento e reflita:** [pergunta que conecte o conteúdo à experiência do aluno]
 
-### 2. ORGANIZAÇÃO EM BLOCOS TEMÁTICOS
-Organize o conteúdo do módulo usando os seguintes blocos, NA ORDEM em que fizerem sentido pedagógico. Use apenas os blocos relevantes para o conteúdo (nem todo módulo precisa de todos):
-
-#### 🧠 Fundamentos
-- Conceitos base, definições essenciais
-
-#### ⚙️ Como funciona
-- Mecanismos, processos, etapas
-
-#### 🧩 Modelos / Tipos
-- REGRA CRÍTICA: Só inclua esta seção se houver PELO MENOS 2 modelos, tipos ou categorias DISTINTOS para comparar.
-- Se não houver comparação real, OMITA completamente esta seção — não crie título sem conteúdo.
-- Quando existir: use tabela Markdown com 2-4 colunas e 2-5 linhas de dados reais e distintos.
-- PROIBIDO: criar esta seção com texto genérico, repetindo o que já foi dito em Fundamentos.
-
-#### 💡 Exemplo prático
-- REGRA CRÍTICA DE ORDEM — sempre nesta sequência exata, sem exceção:
-  **Contexto:** [situação inicial — quem, onde, qual problema]
-  **Desafio:** [obstáculo específico que precisava ser superado]
-  **Solução:** [o que foi feito, qual abordagem ou técnica aplicada]
-  **Resultado:** [o que mudou, com número ou indicador concreto quando possível]
-- O exemplo deve ser ancorado num setor ou perfil de empresa específico (não "uma empresa").
-- PROIBIDO inverter ou embaralhar essa ordem.
-
-#### 🎓 Atividade Prática (OBRIGATÓRIA)
-- Proponha UMA atividade hands-on para o aluno aplicar o conteúdo do módulo.
-- Deve ser concreta e acionável: o que fazer, com qual ferramenta/insumo, e qual o resultado/entregável esperado.
-- Formato: um enunciado de tarefa claro seguido de 3 a 6 passos numerados (ou um checklist).
-- Ancore no domínio do curso e, quando fizer sentido, no contexto do público-alvo. NÃO é teoria — é "mão na massa".
-
-#### 🛠️ Aplicações reais
-- REGRA CRÍTICA: Mínimo 4 aplicações distintas, cada uma com 1 frase objetiva.
-- Se o conteúdo original tiver menos de 4, sintetize e complemente com base no tema.
-- PROIBIDO criar esta seção com 1 ou 2 itens apenas.
-
-#### ⚠️ Desafios e cuidados
-- Limitações, erros comuns, armadilhas, considerações éticas
-
-### 3. CHECKPOINT DE REFLEXÃO (OBRIGATÓRIO — mínimo 1 por módulo)
-Insira em um ponto estratégico do módulo:
-
-> 💭 **Pare um momento e reflita:** [pergunta provocativa relacionada ao conteúdo, que estimule o aluno a conectar o que aprendeu com sua experiência]
-
-### 4. FECHAMENTO OBRIGATÓRIO
-Todo módulo DEVE terminar com:
+## FECHAMENTO OBRIGATÓRIO (invariante de exportação — NÃO OMITIR)
+Termine SEMPRE com:
 
 ---
 
-### 🧾 Resumo do Módulo
-[1 parágrafo curto — máximo 3 frases — sintetizando o essencial]
-
-### 📌 Key Takeaways
-- [takeaway 1 — começa com verbo, contém ação específica]
-- [takeaway 2 — começa com verbo, contém ação específica]
-- [takeaway 3 — começa com verbo, contém ação específica]
-- [takeaway 4 — começa com verbo, contém ação específica]
-- [takeaway 5 — começa com verbo, contém ação específica]
-(mínimo 5, máximo 6 bullets — cada um UMA única ideia, NUNCA duas frases colapsadas com ponto e vírgula ou " e ")
-
----
+### 📌 Pontos-chave
+- [3 a 6 bullets; cada um começa com verbo e traz UMA ação/ideia específica deste módulo]
 
 ### 5. REGRAS DE FORMATAÇÃO E ESTILO
 
@@ -258,6 +260,7 @@ function buildQualityElevationPrompt(
   targetAudience: string,
   language: string,
   theme: string,
+  caseDossier = "",
 ): string {
   return `Você é um supervisor sênior de qualidade de cursos online com 15 anos de experiência avaliando e elevando material didático para plataformas de e-learning B2B e corporativas.
 
@@ -278,7 +281,7 @@ Você recebeu o módulo abaixo, que já passou por uma formatação inicial. Est
 - Mesma regra para shell/Bash, HTML/CSS ou outras linguagens — não traga exemplos de fora do domínio.
 - Ao "elevar a qualidade", NÃO substitua exemplos da linguagem-alvo por exemplos de outra tecnologia, mesmo que pareçam mais ricos.
 ${language.toLowerCase().startsWith("pt") ? "\n## LOCALIZAÇÃO (BRASIL)\n- Quando agregar valor e sem forçar, ancore exemplos no contexto brasileiro: LGPD (dados pessoais), referenciais nacionais quando pertinente (ex.: BNCC na educação) e ferramentas/plataformas/empresas usadas no Brasil, além das internacionais. NÃO invente fatos.\n" : ""}
-## OS 5 CRITÉRIOS DE QUALIDADE DE CONTEÚDO
+## OS 6 CRITÉRIOS DE QUALIDADE DE CONTEÚDO
 
 ### Critério 1 — ESPECIFICIDADE
 Reprovado: conteúdo genérico que poderia estar em qualquer curso de qualquer área.
@@ -301,31 +304,32 @@ Aprovado (acionável): "Antes de cada reunião com o Economic Buyer, prepare 3 m
 Reprovado: bullets curtos que apenas nomeiam conceitos sem explicar.
 Aprovado: bullets que nomeiam E explicam o porquê ou como aplicar.
 
-## ESTRUTURA OBRIGATÓRIA (garantir que TODAS estejam presentes, nesta ordem, com estes títulos/emojis exatos)
-1. \`## ${moduleTitle}\`
-2. \`### 🎯 Objetivo do Módulo\` (3 bullets)
-3. \`### 🧠 Fundamentos\`
-4. \`### ⚙️ Como funciona\`
-5. \`### 🧩 Modelos / Tipos\` — OPCIONAL: inclua SÓ se houver 2+ itens reais para comparar numa tabela com linhas de dados. Se não houver, OMITA a seção inteira. PROIBIDO deixar tabela vazia ou só com cabeçalho (ex.: "| Aspecto |" sem linhas).
-6. \`### 💡 Exemplo prático\` — fases na ordem **Contexto → Desafio → Solução → Resultado**.
-7. \`### 🎓 Atividade Prática\` — uma tarefa hands-on acionável (enunciado + 3-6 passos).
-8. \`### 🛠️ Aplicações reais\` — mínimo 4 itens.
-9. \`### ⚠️ Desafios e cuidados\`
-10. \`> 💭 **Pare um momento e reflita:**\` (após Desafios, antes do Resumo)
-11. \`### 🧾 Resumo do Módulo\` (1 parágrafo)
-12. \`### 📌 Key Takeaways\` (5-6 bullets, cada um uma ideia acionável iniciando com verbo)
-Separe as grandes seções com \`---\`.
+## Critério 6 — PROGRESSÃO (arquitetura v3)
+Reprovado: módulo-ilha que não menciona nada construído nos módulos anteriores.
+Aprovado: abertura que conecta ao módulo anterior e corpo que USA competências já construídas, citando-as pelo nome.
+
+${caseDossier ? `## Critério 7 — CONTINUIDADE DO CASO (auditoria numérica)
+${caseDossier}
+Reprovado: qualquer valor, item ou referência do fio condutor que contradiga o dossiê acima (renda diferente, item de despesa que não existe, parcela/meta alterada, "como visto no módulo X" citando fato inexistente).
+Aprovado: valores idênticos aos do dossiê; evoluções derivadas com a conta demonstrada.
+AO REVISAR: confira cada número do módulo contra o dossiê e CORRIJA o texto para os valores canônicos quando divergirem.
+
+` : ""}## INVARIANTES DE ESTRUTURA (verificar e garantir — SEM impor fôrma)
+- A estrutura de seções foi desenhada para ESTE módulo: PRESERVE os títulos temáticos existentes. NÃO os renomeie para rótulos genéricos ("Fundamentos", "Como funciona", "Aplicações reais") e NÃO adicione seções de fôrma.
+- O módulo DEVE terminar com \`### 📌 Pontos-chave\` (3-6 bullets iniciando com verbo). Se faltar, crie a partir do conteúdo.
+- Deve existir 1 checkpoint \`> 💭 **Pare um momento e reflita:**\`. Se faltar, insira em ponto estratégico.
+- Se houver exemplo trabalhado, as fases seguem a ordem **Contexto → Desafio → Solução → Resultado**.
+- Tabelas: só com 2+ linhas reais de dados; conserte ou remova tabelas vazias/quebradas.
 
 ## COMO PROCEDER
 1. Leia o módulo completo abaixo.
-2. **Complete a estrutura:** se qualquer seção obrigatória acima estiver faltando, CRIE-A com base no conteúdo/tema (sem inventar fatos). Corrija títulos fora do padrão para os títulos canônicos. Conserte ou remova tabelas quebradas/vazias.
-3. **Eleve a qualidade:** reescreva os trechos que reprovam em pelo menos 1 dos 5 Critérios, com mais profundidade e especificidade.
+2. **Garanta os invariantes acima** (fechamento, checkpoint, exemplo, tabelas) sem uniformizar os títulos.
+3. **Eleve a qualidade:** reescreva os trechos que reprovam em pelo menos 1 dos 6 Critérios, com mais profundidade e especificidade.
 4. Mantenha o que já está bom.
 5. Retorne o módulo COMPLETO.
 
 ## RESTRIÇÕES ABSOLUTAS
-- Use EXATAMENTE os títulos/emojis canônicos da estrutura acima (não invente nomes como "Conceitos-Chave" ou "Chatbots").
-- NÃO deixe nenhuma seção obrigatória faltando. NÃO deixe tabela com só cabeçalho.
+- NÃO deixe tabela com só cabeçalho.
 - Preserve 100% da correção técnica; NÃO invente fatos novos só para preencher.
 - Comece DIRETAMENTE com \`## ${moduleTitle}\` — ZERO preâmbulo, saudação ou explicação antes do conteúdo.
 - Mantenha o idioma: ${language}.
@@ -436,6 +440,7 @@ Deno.serve(async (req: Request) => {
 
       const userId = claimsData.claims.sub as string;
       const body = await req.json();
+      console.log(`[generate-course] BUILD=${GENERATE_COURSE_BUILD} outcome=${body.outcome ?? "-"} level=${body.knowledge_level ?? "-"}`);
       const {
         title: rawTitle, theme, target_audience, tone, language,
         num_modules, include_quiz, include_flashcards, include_images,
@@ -548,16 +553,40 @@ ${sourcesBlock}
 </SOURCES>`
         : "";
 
-      const structurePrompt = `You are an educational course designer. Create a detailed course structure in JSON format.
-      
+      // Outcome → capstone type (backward design: the course is architected from
+      // the final deliverable backwards). Defaults keep old clients working.
+      const OUTCOME_CAPSTONE: Record<string, { capstone: string; label: string }> = {
+        introducao:  { capstone: "sintese",        label: "introdução ao tema" },
+        aplicacao:   { capstone: "estudo_de_caso", label: "aplicação prática" },
+        treinamento: { capstone: "projeto",        label: "treinamento completo" },
+        avaliacao:   { capstone: "simulado",       label: "preparação para avaliação" },
+      };
+      const outcomeKey = (body.outcome as string) in OUTCOME_CAPSTONE ? body.outcome as string : "aplicacao";
+      const outcomeInfo = OUTCOME_CAPSTONE[outcomeKey];
+      const knowledgeLevel = (body.knowledge_level as string) || "básico";
+
+      const structurePrompt = `You are a senior instructional designer. Architect a course using BACKWARD DESIGN: first decide the final competency and the capstone deliverable, then design the module sequence that builds up to it. Return JSON only.
+
       STRICT JSON RULE:
-      - Return ONLY the JSON object. 
+      - Return ONLY the JSON object.
       - Do NOT include any markdown formatting like \`\`\`json.
       - Ensure the JSON is valid and NOT truncated.
-      
+
       CRITICAL HARD CONSTRAINT — MODULE COUNT:
       - You MUST generate EXACTLY ${actualModules} modules. Not fewer, not more.
       - The "modules" array MUST contain exactly ${actualModules} items.
+
+DESIGN BRIEF:
+- Desired outcome: ${outcomeInfo.label} → the LAST module MUST be a capstone of type "${outcomeInfo.capstone}".
+- Learner's current level: ${knowledgeLevel}. Calibrate where the course STARTS (advanced learners skip basics; absolute beginners need the ground floor).
+
+PEDAGOGICAL ARCHITECTURE RULES (HARD):
+1. PROGRESSION, not juxtaposition: each module must USE what previous modules built. Fill "builds_on" with a concrete phrase (e.g. "usa o mapa de riscos do módulo 2"). Module 1 has builds_on = "".
+2. Each module gets a "role": "conceito" (builds understanding), "aplicacao" (applies technique), "consolidacao" (integrates prior modules), or "capstone" (final deliverable, LAST module only). A good arc mixes them (e.g. conceito → conceito → aplicacao → aplicacao → consolidacao → capstone). NEVER give all modules the same role.
+3. Module titles must be theme-specific and outcome-oriented — NEVER generic labels like "Fundamentos", "Introdução" alone, "Conceitos básicos".
+4. "case_thread": invent ONE realistic running scenario (a named organization/person with a concrete problem in this domain) that examples across modules can advance. One sentence.
+5. "case_facts": the CANONICAL FACT SHEET of that scenario — 8 to 15 short bullet strings covering EVERY concrete fact modules will reuse: who/where/context, and ALL NUMBERS (amounts, rates, deadlines, quantities, targets) fully itemized so that totals are consistent. Numbers must be arithmetically coherent WITHIN the sheet (itemized values must sum to stated totals; installments must match amount/term, accounting for interest when you state any). Modules are FORBIDDEN from inventing values outside this sheet, so make it complete. For non-quantitative themes, list qualitative facts (org size, roles, constraints, tools).
+6. "final_competency": one sentence — what the learner DOES at the end (observable, not "understands").
 
 CRITICAL QUALITY RULES:
 - All text must have PERFECT spelling and grammar in ${language || "pt-BR"}.
@@ -577,8 +606,10 @@ CRITICAL DOMAIN INTEGRITY (HARD RULE):
 - Each module MUST be coherent with the course title — if you cannot write the module without leaving the domain, rewrite the module title.
 ${sourcesInstruction}
 
-Course details:
-- Title: ${title}
+Course details (the title below is a RAW USER REQUEST and may be messy — a
+command phrase, wrong casing, leftover fragments like "S de ..."; DERIVE a clean
+title, do not copy it verbatim):
+- Raw request / title: ${title}
 - Theme: ${theme}
 - Target audience: ${target_audience || "general"}
 - Tone: ${tone || "professional"}
@@ -586,14 +617,20 @@ Course details:
 - EXACTLY ${actualModules} modules
 ${use_sources ? "- Base the course structure EXCLUSIVELY on the content in <SOURCES>" : ""}
 
-Return ONLY valid JSON with this structure (titles + summaries ONLY — quizzes and
-flashcards are generated separately per module to keep this JSON small and valid):
+Return ONLY valid JSON with this structure (quizzes/flashcards are generated
+separately per module to keep this JSON small and valid):
 {
+  "course_title": "a clean, well-formed, correctly capitalized course title in ${language || "pt-BR"} derived from the request/theme — NO command words ('crie', 'curso de'), NO dangling fragments, NO surrounding quotes; Title Case, 3–9 words",
   "description": "course description",
+  "final_competency": "what the learner will be able to DO",
+  "case_thread": "one-sentence running scenario",
+  "case_facts": ["fact 1 (with exact numbers)", "fact 2", "..."],
   "modules": [
     {
-      "title": "Module title",
-      "summary": "brief summary for content generation"
+      "title": "Theme-specific module title",
+      "summary": "brief summary for content generation",
+      "role": "conceito | aplicacao | consolidacao | capstone",
+      "builds_on": "what this module uses from previous ones (\\"\\" for module 1)"
     }
   ]
 }`;
@@ -640,13 +677,52 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
         }
       }
 
+      // Normalize the pedagogical fields: the retry prompt (and any older client)
+      // returns only title/summary, so roles/threads get sane inferred defaults.
+      const VALID_ROLES: ModuleRole[] = ["conceito", "aplicacao", "consolidacao", "capstone"];
+      const inferRole = (i: number, total: number): ModuleRole => {
+        if (total === 1) return "aplicacao";
+        if (i === total - 1) return "capstone";
+        if (i === 0) return "conceito";
+        if (total >= 5 && i === total - 2) return "consolidacao";
+        return "aplicacao";
+      };
+      structure.modules = structure.modules.map((m: any, i: number) => ({
+        ...m,
+        role: VALID_ROLES.includes(m.role) ? m.role as ModuleRole : inferRole(i, structure.modules.length),
+        builds_on: typeof m.builds_on === "string" ? m.builds_on : "",
+      }));
+      const caseThread: string = typeof structure.case_thread === "string" ? structure.case_thread : "";
+
+      // Title is LLM-owned: use the clean course_title the Architect produced,
+      // ignoring the raw (possibly messy) user request. Defensive strip of any
+      // residual command/quote/leading-fragment just in case the model echoes it.
+      const sanitizeTitle = (s: string): string =>
+        (s || "")
+          .replace(/^\s*["'“”‘’]+|["'“”‘’]+\s*$/g, "")
+          .replace(/^\s*(crie|criar|gere|gerar|quero|fa[çc]a)\b[^A-Za-zÀ-ÿ]*/i, "")
+          .replace(/^\s*(um|uma|uns|umas)\s+(cursos?|treinamentos?)\s+(de|sobre|do|da|em)\s+/i, "")
+          .replace(/^\s*[A-Za-zÀ-ÿ]{1,3}\s+de\s+(?=[A-ZÀ-Ý])/, "") // orphan "S de "
+          .replace(/\s{2,}/g, " ")
+          .trim();
+      const llmTitle = sanitizeTitle(typeof structure.course_title === "string" ? structure.course_title : "");
+      const courseTitle = llmTitle.length >= 3 ? llmTitle : (sanitizeTitle(title) || title);
+      const caseFacts: string[] = Array.isArray(structure.case_facts)
+        ? structure.case_facts.filter((f: unknown) => typeof f === "string" && (f as string).trim()).slice(0, 20)
+        : [];
+      // The canonical fact sheet is injected VERBATIM into every module prompt so
+      // parallel module generation cannot drift the running case's numbers.
+      const caseDossier = caseFacts.length
+        ? `\nDOSSIÊ DO CASO (fatos canônicos e IMUTÁVEIS do fio condutor — regra dura):\n${caseFacts.map((f) => `- ${f}`).join("\n")}\n- PROIBIDO alterar, contradizer ou inventar valores fora deste dossiê.\n- Toda evolução numérica (otimização, corte, novo saldo) deve ser DERIVADA aritmeticamente destes valores, mostrando a conta.\n- Ao referenciar módulos anteriores, cite APENAS fatos deste dossiê ou derivações declaradas.\n`
+        : "";
+
       sendSSE({ type: "structure_done", modules: actualModules });
 
       // ── STAGE 2: Create course in DB ──
       const { data: course, error: courseError } = await serviceClient
         .from("courses")
         .insert({
-          user_id: userId, title,
+          user_id: userId, title: courseTitle,
           description: structure.description || "",
           theme, target_audience: target_audience || null,
           tone: tone || null, language: language || "pt-BR",
@@ -716,7 +792,12 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
 
 Course: ${title}
 Theme: ${theme}
-Module ${i + 1}: ${mod.title}
+Module ${i + 1} of ${actualModules}: ${mod.title}
+Pedagogical role of THIS module: ${mod.role}
+${mod.builds_on ? `This module builds on: ${mod.builds_on} — open by connecting to it and USE it in the content.` : "This is the opening module — situate the problem the course solves."}
+${caseThread ? `Running scenario of the course (advance it in examples instead of inventing disconnected ones): ${caseThread}` : ""}
+${caseDossier}
+Learner level: ${knowledgeLevel} — calibrate depth accordingly (do not re-explain what this level already knows).
 Summary: ${mod.summary || mod.title}
 Target audience: ${target_audience || "general"}
 Tone: ${tone || "professional"}
@@ -736,8 +817,12 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
 
           const rawContent = await callAI("gemini-2.5-flash", contentPrompt, 4000);
 
-          // Step B: Pedagogical refinement
-          const refinementPrompt = buildRefinementPrompt(mod.title, rawContent, language || "pt-BR");
+          // Step B: Pedagogical refinement (role-aware writer)
+          const refinementPrompt = buildRefinementPrompt(
+            mod.title, rawContent, language || "pt-BR",
+            mod.role as ModuleRole, mod.builds_on || "", caseThread, i, actualModules,
+            caseDossier,
+          );
           // 8000 tokens: the full template (now incl. Atividade Prática) for a PT
           // module is long; smaller caps were truncating modules mid-content/table.
           let refined = await callAIMeta("gemini-2.5-flash", refinementPrompt, 8000);
@@ -759,6 +844,26 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           // duplicate-title bug), then trim any leftover mid-sentence tail.
           let refinedContent = cleanModuleContent(refined.content, mod.title);
           if (refined.finishReason === "length") refinedContent = repairTruncation(refinedContent);
+
+          // EMPTY-MODULE GUARD: a rare empty/blocked refinement response used to be
+          // persisted as-is, shipping a module with a title and no body (the PPTX
+          // planner then improvises slides from the title alone). Fall back to the
+          // raw draft; as a last resort regenerate the draft once. Never save "".
+          if (refinedContent.trim().length < 200) {
+            console.warn(`[generate-course] Refined content too short for module ${i + 1} (${refinedContent.trim().length} chars) — falling back to raw draft`);
+            const rawFallback = cleanModuleContent(rawContent, mod.title);
+            if (rawFallback.trim().length >= 200) {
+              refinedContent = rawFallback;
+            } else {
+              try {
+                const redo = await callAI("gemini-2.5-flash", contentPrompt, 4000);
+                const redoClean = cleanModuleContent(redo, mod.title);
+                if (redoClean.trim().length > refinedContent.trim().length) refinedContent = redoClean;
+              } catch (redoErr: any) {
+                console.warn(`[generate-course] Draft regeneration failed for module ${i + 1}: ${redoErr?.message || redoErr}`);
+              }
+            }
+          }
 
           // Step D (EARLY SAVE): persist the refined module IMMEDIATELY so its
           // content is never lost if a later optional step times out or is skipped.
@@ -785,7 +890,7 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
               const qualityPrompt = buildQualityElevationPrompt(
                 mod.title, refinedContent, title,
                 target_audience || "profissionais da área", language || "pt-BR",
-                theme || "",
+                theme || "", caseDossier,
               );
               const quality = await callAIMeta("gemini-2.5-pro", qualityPrompt, 8000);
               const strippedFences = quality.content

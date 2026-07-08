@@ -42,7 +42,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21d";
+const EXPORT_PDF_BUILD = "2026-06-21h";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,8 +115,14 @@ interface ParsedTable {
 function parseMarkdownTable(lines: string[], startIndex: number): { table: ParsedTable | null; endIndex: number } {
   if (!lines[startIndex]?.includes("|")) return { table: null, endIndex: startIndex };
 
-  const parsePipeRow = (line: string): string[] =>
-    line.split("|").map((c) => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length);
+  const parsePipeRow = (line: string): string[] => {
+    const parts = line.split("|").map((c) => c.trim());
+    // Drop the empty cells produced by the leading/trailing pipes only
+    // (a middle cell may legitimately be empty and must be preserved).
+    if (parts.length && parts[0] === "") parts.shift();
+    if (parts.length && parts[parts.length - 1] === "") parts.pop();
+    return parts;
+  };
 
   const headers = parsePipeRow(lines[startIndex]);
   if (headers.length < 2) return { table: null, endIndex: startIndex };
@@ -156,7 +162,7 @@ function detectPedagogicalBlock(text: string): PedagogicalBlockType {
 const PAGE_W = 210;
 const MARGIN_LEFT = 24;
 const MARGIN_RIGHT = 24;
-const MARGIN_TOP = 28;
+const MARGIN_TOP = 22;
 const MARGIN_BOTTOM = 28;
 const CONTENT_W = PAGE_W - MARGIN_LEFT - MARGIN_RIGHT;
 const MAX_Y = 297 - MARGIN_BOTTOM;
@@ -251,11 +257,17 @@ class PdfRenderer {
   }
 
   drawFooter() {
+    // Save/restore the font state. drawFooter runs inside addPage(), which can be
+    // triggered mid-render by checkPage(); if we leave the size at 8pt, the next
+    // element drawn after the page break inherits it (e.g. a heading rendered at
+    // 8pt at the top of a page). Restoring keeps each renderer's size intact.
+    const prevSize = this.doc.getFontSize();
     this.doc.setFontSize(8);
     this.doc.setFont("helvetica", "normal");
     this.doc.setTextColor(160, 160, 165);
     this.doc.text(`${this.pageNum}`, PAGE_W / 2, 290, { align: "center" });
     this.doc.setTextColor(...COLOR.TEXT_BODY);
+    this.doc.setFontSize(prevSize);
   }
 
   // ── Estimation helpers (no side-effects on Y) ────────────────────
@@ -313,26 +325,56 @@ class PdfRenderer {
     return j;
   }
 
-  // "Keep-with-next" height for a heading: accumulate the following blocks
-  // (intro paragraph + its table/list/etc.) up to a target, so a heading is never
-  // stranded at the page bottom with only a one-line intro while the real content
-  // (a table) starts on the next page. Capped so a tall table doesn't force a
-  // needless break — we only need to guarantee a meaningful chunk stays together.
-  estimateKeepHeight(lines: string[], fromIdx: number): number {
-    const TARGET = 30; // mm of content to keep under a heading
+  // "Keep-with-next" height for a heading: measure the REAL height of the first
+  // block that follows it (its intro/table/list/box), so the heading is never
+  // stranded at the bottom of a page while its content starts overleaf.
+  //
+  // Why the real height (not a small cap): a table renders as one atomic unit
+  // (renderTable keeps the whole table together on a page). If we under-reserve,
+  // the heading fits at the page bottom but the entire table jumps to the next
+  // page, orphaning the heading. We also recurse through an immediately-following
+  // sub-heading so a "Section -> Subsection -> content" run stays together.
+  measureFirstBlock(lines: string[], fromIdx: number): number {
+    const SOFT_CAP = 90; // mm — keep heading with its section up to ~40% of a page
     let total = 0, j = fromIdx, guard = 0;
-    while (j < lines.length && total < TARGET && guard < 5) {
+    while (j < lines.length && guard < 14 && total < SOFT_CAP) {
       while (j < lines.length && !lines[j].trim()) j++;
       if (j >= lines.length) break;
       const t = lines[j].trim();
-      if (getHeadingLevel(t) > 0) break; // next heading — stop accumulating
-      if (t === "---" || t === "***" || t === "___") { j++; continue; }
 
-      // table
+      // horizontal rule — skip
+      if (t === "---" || t === "***" || t === "___") { j++; guard++; continue; }
+
+      // heading: a sibling heading ends the section (stop). A leading sub-heading
+      // right under our heading is kept with it (measure + keep going).
+      const hl = getHeadingLevel(t);
+      if (hl > 0) {
+        if (total > 0) break;
+        const lvl = hl === 1 ? 2 : hl;
+        const size = lvl === 2 ? FONT.H2 : lvl === 3 ? FONT.H3 : FONT.H4;
+        this.doc.setFontSize(size);
+        const tl = this.doc.splitTextToSize(sanitizeText(stripMarkdown(t)), CONTENT_W);
+        total += 8 + tl.length * (size * 0.38) + 5;
+        j++; guard++; continue;
+      }
+
+      // pedagogical box (Exemplo prático, Dica, etc.) — label + body lines
+      if (detectPedagogicalBlock(t)) {
+        let h = 14, k = j + 1, c = 0;
+        while (k < lines.length && c < 8) {
+          const tt = lines[k].trim();
+          if (!tt || getHeadingLevel(tt) > 0 || detectPedagogicalBlock(tt)) break;
+          h += this.estimateBulletHeight(tt); k++; c++;
+        }
+        total += h; j = k; guard++; continue;
+      }
+
+      // table — measure the whole table (it renders as one keep-together unit)
       if (t.includes("|") && lines[j + 1]?.includes("|")) {
         const { table, endIndex } = parseMarkdownTable(lines, j);
-        if (table) { total += Math.min(80, 10 + table.rows.length * 12); j = endIndex + 1; guard++; continue; }
+        if (table) { total += 12 + table.rows.length * 14; j = endIndex + 1; guard++; continue; }
       }
+
       // bullet / numbered run
       if (t.startsWith("- ") || t.startsWith("* ") || /^\d+\.\s/.test(t)) {
         while (j < lines.length) {
@@ -343,16 +385,18 @@ class PdfRenderer {
         }
         guard++; continue;
       }
+
       // blockquote
       if (t.startsWith("> ")) {
         let txt = t.replace(/^>\s*/, ""); j++;
         while (j < lines.length && lines[j].trim().startsWith("> ")) { txt += " " + lines[j].trim().replace(/^>\s*/, ""); j++; }
         total += this.estimateTextHeight(txt, FONT.SMALL, CONTENT_W - 16, 4.5) + 12; guard++; continue;
       }
+
       // paragraph
       total += this.estimateTextHeight(t, FONT.BODY, CONTENT_W, SP.LINE_HEIGHT); j++; guard++;
     }
-    return Math.min(total, TARGET);
+    return total;
   }
 
   // ── Title page ────────────────────────────────────────────────────
@@ -446,8 +490,14 @@ class PdfRenderer {
     const headingH = beforeSpace + textLines.length * (fontSize * 0.38) + afterSpace;
 
     this.checkPage(headingH + extraNeeded);
-    this.y += beforeSpace;
+    // Don't add the heading's leading space when it lands at the very top of a
+    // page (the top margin already provides the gap) — otherwise a heading pushed
+    // to a new page sits too far from the top.
+    if (this.y > MARGIN_TOP + 0.5) this.y += beforeSpace;
 
+    // Re-assert size/weight AFTER checkPage: a page break here runs drawFooter,
+    // which would otherwise leave the font size changed for the draw below.
+    this.doc.setFontSize(fontSize);
     this.doc.setFont("helvetica", "bold");
     this.doc.setTextColor(...COLOR.PRIMARY);
     this.doc.text(textLines, MARGIN_LEFT, this.y);
@@ -476,8 +526,41 @@ class PdfRenderer {
 
     const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
     this.checkPage(lines.length * SP.LINE_HEIGHT + 3);
-    this.doc.text(lines, MARGIN_LEFT, this.y);
+    // Re-assert size after a possible page break (drawFooter), then justify each
+    // line to the full width — except the last line of the paragraph, which stays
+    // left-aligned so it isn't stretched.
+    this.doc.setFontSize(FONT.BODY);
+    this.doc.setFont("helvetica", "normal");
+    this.drawJustified(lines, MARGIN_LEFT, this.y, CONTENT_W, SP.LINE_HEIGHT);
     this.y += lines.length * SP.LINE_HEIGHT + SP.AFTER_PARAGRAPH;
+  }
+
+  // Draw wrapped lines with full justification (last line left-aligned).
+  // Manual full justification: distribute the slack evenly between words so the
+  // line spans the full width. Done by hand (not jsPDF's align:"justify") because
+  // that only reliably justified the first line of a paragraph in the runtime.
+  // The last line of a paragraph, single-word lines, and lines that would stretch
+  // too much are left at their natural width.
+  drawJustified(lines: string[], x: number, y: number, width: number, lineH: number) {
+    const naturalSpace = this.doc.getTextWidth(" ");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineY = y + i * lineH;
+      const isLast = i === lines.length - 1;
+      const words = line.split(/\s+/).filter(Boolean);
+      if (isLast || words.length < 2) { this.doc.text(line, x, lineY); continue; }
+
+      const wordsW = words.reduce((s, w) => s + this.doc.getTextWidth(w), 0);
+      const gap = (width - wordsW) / (words.length - 1);
+      // Skip if it would over-stretch (a short line) or overflow.
+      if (gap < 0 || gap > naturalSpace * 3) { this.doc.text(line, x, lineY); continue; }
+
+      let cx = x;
+      for (let k = 0; k < words.length; k++) {
+        this.doc.text(words[k], cx, lineY);
+        cx += this.doc.getTextWidth(words[k]) + gap;
+      }
+    }
   }
 
   renderBullet(text: string, indent = 0) {
@@ -609,7 +692,7 @@ class PdfRenderer {
         curY += ls.length * SP.LINE_HEIGHT + SP.BULLET_GAP;
       } else {
         const ls = this.doc.splitTextToSize(clean, CONTENT_W - 18);
-        this.doc.text(ls, innerX, curY);
+        this.drawJustified(ls, innerX, curY, CONTENT_W - 18, SP.LINE_HEIGHT);
         curY += ls.length * SP.LINE_HEIGHT + 2;
       }
     }
@@ -809,7 +892,10 @@ class PdfRenderer {
         // Keep the heading with a meaningful chunk of its following content
         // (intro + table/list), not just the first short line — otherwise the
         // heading is orphaned at the page bottom and the table starts overleaf.
-        const keepH = this.estimateKeepHeight(lines, nextIdx);
+        // Reserve the real height of the heading's first block, capped so a
+        // heading never demands more than fits on an otherwise-empty page
+        // (oversized blocks break internally and won't orphan the heading).
+        const keepH = Math.min(this.measureFirstBlock(lines, nextIdx), (MAX_Y - MARGIN_TOP) - 45);
         this.renderHeading(trimmed, heading === 1 ? 2 : heading, keepH);
         i++;
         continue;
