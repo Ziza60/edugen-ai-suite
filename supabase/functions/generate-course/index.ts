@@ -20,7 +20,7 @@ const TESTING_MODE = true;
 
 // Build marker — logged on every invocation so a deploy can be verified in the
 // function logs (see the export-pdf deploy saga: always confirm WHICH code runs).
-const GENERATE_COURSE_BUILD = "2026-07-07b-case-dossier";
+const GENERATE_COURSE_BUILD = "2026-07-08a-quality-fixes";
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
 // Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
@@ -128,7 +128,26 @@ REGRA EXTRA para módulo 1 (se moduleIndex===0): o primeiro módulo DEVE incluir
   **Contexto:** [quem, onde, qual problema] **Desafio:** [obstáculo específico]
   **Solução:** [o que foi feito] **Resultado:** [o que mudou, com indicador concreto]
   Ancorado num setor/perfil específico (não "uma empresa").
-- Atividade prática: UMA tarefa hands-on com enunciado + 3-6 passos e entregável claro.
+- Atividade prática OBRIGATÓRIA: use SEMPRE este formato de template preenchível:
+
+  **📝 Atividade Prática — [nome curto da tarefa]**
+
+  > Objetivo: [uma frase com o que o aluno vai produzir]
+
+  **Template para preencher:**
+  | Campo | Seu caso |
+  |---|---|
+  | [campo 1 do tema] | ________________ |
+  | [campo 2 do tema] | ________________ |
+  | [campo 3 do tema] | ________________ |
+
+  **Passos:**
+  1. [passo 1 acionável]
+  2. [passo 2]
+  3. [passo 3]
+
+  **Entregável:** [o que o aluno deve ter ao final — documento, cálculo, lista, etc.]
+
 - Checklist de verificação ("antes de seguir, confira...").
 - Variações/limites: quando a técnica NÃO se aplica.`,
   consolidacao: `BLOCOS RECOMENDADOS para um módulo de CONSOLIDAÇÃO (escolha 3-4):
@@ -170,6 +189,9 @@ ${moduleIndex === 0
   : `- Abra com 1-2 frases conectando explicitamente ao que o aluno construiu antes: ${buildsOn || "o módulo anterior"}. Sem essa ponte o módulo está ERRADO.`}
 - Referencie conceitos de módulos anteriores pelo nome quando usá-los (ex.: "como você viu ao mapear os riscos...").
 
+- NÃO reexplicar conceitos já definidos nos módulos anteriores — cite-os pelo nome mas NÃO os redefina. Se o módulo anterior definiu "custo fixo", este módulo ASSUME que o aluno já sabe e apenas APLICA o conceito.
+- Se este módulo tem um conceito idêntico a um módulo anterior (ex.: ambos definem "custos fixos e variáveis"), REFORMULE para mostrar UMA DIMENSÃO NOVA (ex.: cálculo, variações, limites) ou retire a sobreposição.
+
 2. TÍTULOS DE SEÇÃO ESPECÍFICOS DO TEMA:
 - Use ### para seções com nomes que descrevem O CONTEÚDO (ex.: "### Ameaças no ambiente escolar", "### Delimitando o escopo da missão").
 - PROIBIDO usar rótulos genéricos de fôrma como "Fundamentos", "Como funciona", "Modelos / Tipos", "Aplicações reais" — o nome da seção deve ser incompreensível fora deste tema.
@@ -178,7 +200,7 @@ ${moduleIndex === 0
 3. ${ROLE_BLOCKS[role]}
 
 ${caseThread ? `4. FIO CONDUTOR DO CURSO: "${caseThread}"
-- Quando este módulo usar exemplo ou caso, prefira AVANÇAR este fio condutor (a mesma organização/personagem evoluindo módulo a módulo) em vez de inventar um cenário desconexo.
+- REGRA DURA: quando este módulo usar exemplo ou caso, DEVE AVANÇAR este fio condutor (a mesma organização/personagem evoluindo módulo a módulo) em vez de inventar um cenário desconexo. Inventar um cenário novo quando o fio condutor já existe é um ERRO.
 ${caseDossier}` : ""}
 ## CHECKPOINT DE REFLEXÃO (1 por módulo, em ponto estratégico)
 > 💭 **Pare um momento e reflita:** [pergunta que conecte o conteúdo à experiência do aluno]
@@ -322,7 +344,13 @@ Reprovado: qualquer valor, item ou referência do fio condutor que contradiga o 
 Aprovado: valores idênticos aos do dossiê; evoluções derivadas com a conta demonstrada.
 AO REVISAR: confira cada número do módulo contra o dossiê e CORRIJA o texto para os valores canônicos quando divergirem.
 
-` : ""}## INVARIANTES DE ESTRUTURA (verificar e garantir — SEM impor fôrma)
+` : ""}## Critério 8 — ALINHAMENTO TÍTULO × CONTEÚDO
+O título do módulo é: "${moduleTitle}".
+Reprovado: o título menciona um conceito ou técnica que NÃO aparece no conteúdo (ex.: título diz "Ponto de Equilíbrio" mas o módulo não calcula break-even).
+Aprovado: todo conceito mencionado no título do módulo tem pelo menos um parágrafo dedicado no conteúdo.
+AO REVISAR: se um conceito do título estiver ausente, ADICIONE uma seção curta com a explicação e, se for quantitativo, com o cálculo demonstrado.
+
+## INVARIANTES DE ESTRUTURA (verificar e garantir — SEM impor fôrma)
 - A estrutura de seções foi desenhada para ESTE módulo: PRESERVE os títulos temáticos existentes. NÃO os renomeie para rótulos genéricos ("Fundamentos", "Como funciona", "Aplicações reais") e NÃO adicione seções de fôrma.
 - O módulo DEVE terminar com \`### 📌 Pontos-chave\` (3-6 bullets iniciando com verbo). Se faltar, crie a partir do conteúdo.
 - Deve existir 1 checkpoint \`> 💭 **Pare um momento e reflita:**\`. Se faltar, insira em ponto estratégico.

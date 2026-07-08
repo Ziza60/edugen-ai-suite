@@ -22,7 +22,7 @@ import {
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-07-07g-bookmarks";
+const BUILD        = "2026-07-08a-latex-symbols";
 
 // NOTE ON FONTS: runtime font embedding was removed. Build 07c/07d embedded
 // Roboto by fetching WOFFs and subsetting with fontkit, which blew the Supabase
@@ -92,34 +92,76 @@ const C = {
 
 function safeText(t: string): string {
   return (t || "")
-    // Substitute math/arrow symbols BEFORE the Latin-1 strip so they survive
-    .replace(/≈/g, "aprox.")
-    .replace(/≤/g, "<=")
-    .replace(/≥/g, ">=")
-    .replace(/≠/g, "!=")
-    .replace(/→/g, "->")
-    .replace(/←/g, "<-")
-    .replace(/∑/g, "soma")
-    .replace(/√/g, "raiz")
-    .replace(/∞/g, "inf")
+    // Strip LaTeX math delimiters $$...$$ and $...$ — keep inner text readable.
+    // $$...$$ blocks (display math) → call convertLatexInline()
+    .replace(/\$\$[\s\S]*?\$\$/g, (m: string) => convertLatexInline(m.replace(/^\$\$|\$\$$/g, "")))
+    // $...$ inline math — only treat as LaTeX when it contains a backslash or ^_{}
+    .replace(/\$([^$\n]{1,80}?)\$/g, (_: string, inner: string) =>
+      /[\\^_{}]/.test(inner) ? convertLatexInline(inner) : `$${inner}$`)
+    // Substitute math/arrow symbols BEFORE the Latin-1 strip so they survive.
+    // Belt-and-suspenders: both \uXXXX escape AND the literal glyph, because
+    // pdf-lib StandardFonts take the low byte of unmapped chars (e.g. U+2248
+    // = 0x...48 = 'H'), silently corrupting the output.
+    .replace(/\u2248|\u2243|\u2245/g, "aprox.")  // ≈ ≃ ≅
+    .replace(/\u2264/g, "<=")   // ≤
+    .replace(/\u2265/g, ">=")   // ≥
+    .replace(/\u2260/g, "!=")   // ≠
+    .replace(/\u2192/g, "->")   // →
+    .replace(/\u2190/g, "<-")   // ←
+    .replace(/\u2211/g, "soma") // ∑
+    .replace(/\u221a/g, "raiz") // √
+    .replace(/\u221e/g, "inf")  // ∞
+    .replace(/\u0394/g, "delta")// Δ
+    .replace(/\u03c0/g, "PI")   // π
     .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
     .replace(/[\u{2600}-\u{27BF}]/gu, "")
     .replace(/[\u{2B00}-\u{2BFF}]/gu, "")
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
+    .replace(/['']/g, "'")
+    .replace(/[""]/g, '"')
     .replace(/[–—]/g, "-")
     .replace(/…/g, "...")
-    .replace(/­/g, "")
+    .replace(/\u00ad/g, "")
     // Normalize ALL unicode space variants to ASCII space BEFORE stripping
     // non-Latin1 chars. A U+2009 thin space between words gets dropped by
     // the [^\x00-\xFF] strip, fusing two words into one unbreakable token
     // — wrapText then char-splits it, producing fragments on the cover title.
     .replace(/[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]/g, " ")
+    // Final safety: any remaining non-Latin1 code point that slipped all the
+    // substitutions above gets dropped so pdf-lib never sees it.
     .replace(/[^\x00-\xFF]/g, "")
     .replace(/  +/g, " ")
     .trim();
 }
 
+// Converts a LaTeX math expression to readable plain text.
+// Called for $$...$$ display blocks and $...$ inline spans.
+function convertLatexInline(latex: string): string {
+  return latex
+    .replace(/\\text\{([^}]+)\}/g, "$1")
+    .replace(/\\operatorname\{([^}]+)\}/g, "$1")
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1)/($2)")
+    .replace(/\\dfrac\{([^}]+)\}\{([^}]+)\}/g, "($1)/($2)")
+    .replace(/\\left\(|\\right\)/g, (m: string) => m.includes("(") ? "(" : ")")
+    .replace(/\\left\[|\\right\]/g, (m: string) => m.includes("[") ? "[" : "]")
+    .replace(/\\times/g, " x ")
+    .replace(/\\div/g, " / ")
+    .replace(/\\approx/g, "aprox.")
+    .replace(/\\leq/g, "<=")
+    .replace(/\\geq/g, ">=")
+    .replace(/\\neq/g, "!=")
+    .replace(/\\sum/g, "soma")
+    .replace(/\\sqrt\{([^}]+)\}/g, "raiz($1)")
+    .replace(/\\sqrt/g, "raiz")
+    .replace(/\\infty/g, "inf")
+    .replace(/\\cdot/g, ".")
+    .replace(/\\%/g, "%")
+    .replace(/\\\\/g, " ")
+    .replace(/\^{([^}]+)}/g, "^$1")
+    .replace(/_{([^}]+)}/g, "_$1")
+    .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 function stripMd(t: string): string {
   // NOTE: do NOT strip a leading ">" here. Real blockquotes are handled in
   // content() (which removes the ">" itself), so any ">" that reaches stripMd is
@@ -765,6 +807,36 @@ class R {
         continue;
       }
 
+      // LaTeX display-math block: $$...$$
+      // The AI sometimes emits LaTeX for formulas. We render the converted text
+      // as a formulaBox instead of showing raw LaTeX markup.
+      if (t.startsWith("$$")) {
+        const latexLines: string[] = [];
+        let firstLine = t.replace(/^\$\$\s*/, "").replace(/\$\$\s*$/, "").trim();
+        let j = i + 1;
+        if (firstLine === "") {
+          // Opening $$ on its own line — collect until closing $$
+          while (j < lines.length) {
+            const lt = lines[j].trim();
+            j++;
+            if (lt === "$$" || lt.endsWith("$$")) {
+              const lc = lt.replace(/\$\$\s*$/, "").trim();
+              if (lc) latexLines.push(lc);
+              break;
+            }
+            latexLines.push(lt);
+          }
+        } else {
+          // Inline block: $$ content $$ on one line
+          latexLines.push(firstLine);
+        }
+        i = j;
+        listN = 0;
+        const latexText = latexLines.join(" ").trim();
+        if (latexText) this.formulaBox(convertLatexInline(latexText));
+        continue;
+      }
+
       // Horizontal rule
       if (isHRule(t)) { this.rule(); i++; listN = 0; continue; }
 
@@ -823,11 +895,11 @@ class R {
 
       // ── Formula line detection ────────────────────────────────────────────────
       // Lines that look like standalone mathematical formulas get a formula box.
-      // Pattern: short line (< 120 chars) containing = with no other paragraph following
-      // and having typical formula markers (numbers, %, R$, operators, ×, ÷, /).
+      // Matches: (a) lines with literal = sign, or (b) lines with ≈ operator,
+      // combined with numeric/currency content and a business keyword.
       if (
         t.length < 150 &&
-        /=/.test(t) &&
+        (/=/.test(t) || /≈/.test(t) || /aprox/i.test(t)) &&
         /[0-9%R$×÷\/\*]/.test(t) &&
         !/^.*[:]{1}$/.test(t) &&          // not a labeled item ending with colon
         /Preço|Custo|Margem|Markup|MC|ROI|Lucro|Total|Formula|Equil[íi]brio|Break|Taxa|Valor|Receita|Despesa|Resultado|[Pp]onto/.test(t)
