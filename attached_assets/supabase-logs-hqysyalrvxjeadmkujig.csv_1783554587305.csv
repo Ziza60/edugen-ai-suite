@@ -1,0 +1,61 @@
+event_message,event_type,execution_id,function_id,id,level,timestamp
+shutdown,Shutdown,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,972d7872-599f-418f-8660-3095fc552f25,log,1783554292850000
+"[generate-course] Invoking restructure-modules (validate_only)...
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,5de237be-b2b7-435a-8852-69a538cd9208,info,1783554292845000
+"[generate-course] Elevation SKIPPED (low budget) for module 4
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,353d9373-241d-4b81-964d-d9a47e9ebf24,warning,1783554292800000
+"[generate-course] Elevation SKIPPED (low budget) for module 2
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,6c233715-10e0-45ca-a6bd-349d9c7e136e,warning,1783554290401000
+"[generate-course] Elevation SKIPPED (low budget) for module 1
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,0b2692cc-44dd-4610-a809-93812cfc814e,warning,1783554290180000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,17054dc6-fb47-44ba-b748-ec3467670641,info,1783554271022000
+"[generate-course] Elevation SKIPPED (low budget) for module 5
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,8b8bef76-b29d-4d4d-b045-00248f7674b4,warning,1783554271022000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,bb14ba53-47cf-4353-b54c-1f166be576a1,info,1783554241942000
+"[generate-course] Refinement truncated for module 2 → retry (12000 tokens)
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,aa76c4d0-54f4-45b4-ae16-1b19e3f218f6,warning,1783554241942000
+shutdown,Shutdown,820c5feb-a2fa-4fde-9f5e-633038110460,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,d45a18d4-0d94-4c62-9783-9f5edefe0e04,log,1783554240751000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,653b960d-dacc-4cd8-91d6-7f3fb0755f25,info,1783554239587000
+"[generate-course] Refinement truncated for module 4 → retry (12000 tokens)
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,2499b57a-8ab3-4ba3-a3ce-831b20dc0aea,warning,1783554239586000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,03b8ed18-fee7-4942-908c-219b89f8f2fc,info,1783554238357000
+"[generate-course] Elevation SKIPPED (low budget) for module 3
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,b9096b23-d1a6-486c-940b-929f6c2ada47,warning,1783554238357000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,30275582-7c93-4d57-8808-8020b7b00983,info,1783554237360000
+"[generate-course] Refinement truncated for module 1 → retry (12000 tokens)
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,2627af6d-3d2a-4d10-8f38-5c195057c413,warning,1783554237360000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,d07241c6-e6bf-4f4a-aa36-8bb66bf88f5e,info,1783554234907000
+"[generate-course] Refinement truncated for module 5 → retry (12000 tokens)
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,78ef6d65-98dc-4157-a0b8-33d005a42a0e,warning,1783554234907000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,cfa24008-24fb-4e03-8cd9-a2dc379f17a1,info,1783554202653000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,635ea07a-9a5c-4d4e-b413-699f8669fd2e,info,1783554202413000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,e26f356b-aeb1-4381-bd03-22290d459c99,info,1783554202311000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,67e77ca5-e5e2-4702-8fd7-6af35597764a,info,1783554202264000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,b07d60e2-51c3-42cf-a6d9-9cb2cef41b60,info,1783554201914000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,505cced1-fa76-4c08-846f-58370e6a4ce0,info,1783554182632000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,0e6a5db5-c90b-429a-ab08-f501c1af27ee,info,1783554182631000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,4fe8210c-d43d-4db9-b0b0-f7114ad048c6,info,1783554182631000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,eda9ad9e-3381-41ce-b725-404544a96ae9,info,1783554182631000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,144afa93-5849-4a16-8554-b310e812bd2d,info,1783554182630000
+"Calling Gemini API directly with model: gemini-2.5-flash
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,da44e44f-b693-4d77-8e2d-9ca5a5eaf513,info,1783554166891000
+"[generate-course] BUILD=2026-07-08a-quality-fixes outcome=treinamento level=basico
+",Log,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,0b9675c7-36f1-4eec-a78b-85f5010fea0c,info,1783554166793000
+booted (time: 32ms),Boot,acc9377b-2ca0-4d1f-99a0-f08a660cf8d3,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,10988162-36e5-4dde-a6ba-89bc1510fcb6,log,1783554166594000
+booted (time: 30ms),Boot,820c5feb-a2fa-4fde-9f5e-633038110460,0d6debb0-4d5c-44bc-bf16-4edbf7b03e21,7555e912-bb35-4e6b-af79-8abe9ef00f85,log,1783554165735000
