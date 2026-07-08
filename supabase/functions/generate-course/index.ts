@@ -20,7 +20,7 @@ const TESTING_MODE = true;
 
 // Build marker — logged on every invocation so a deploy can be verified in the
 // function logs (see the export-pdf deploy saga: always confirm WHICH code runs).
-const GENERATE_COURSE_BUILD = "2026-07-08a-quality-fixes";
+const GENERATE_COURSE_BUILD = "2026-07-08b-token-timing";
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
 // Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
@@ -778,7 +778,7 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
       // (which froze the UI at e.g. 78%). Module CONTENT is saved early (right after
       // the template) so nothing is ever lost; images run in the BACKGROUND.
       const GEN_START = Date.now();
-      const SOFT_DEADLINE_MS = 110000;
+      const SOFT_DEADLINE_MS = 120000;
       const msLeft = () => SOFT_DEADLINE_MS - (Date.now() - GEN_START);
       const imageTasks: Promise<unknown>[] = [];
       const BATCH_SIZE = structure.modules.length;
@@ -845,14 +845,14 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           );
           // 8000 tokens: the full template (now incl. Atividade Prática) for a PT
           // module is long; smaller caps were truncating modules mid-content/table.
-          let refined = await callAIMeta("gemini-2.5-flash", refinementPrompt, 8000);
-          // Truncation guard: a MAX_TOKENS cut leaves the module ending mid-sentence
-          // and silently drops whole sections (the "...proteger dados e oferecer" bug).
-          // Retry ONCE with a larger cap; keep whichever output is complete/longer.
+          let refined = await callAIMeta("gemini-2.5-flash", refinementPrompt, 12000);
+          // Truncation guard: start at 12000 tokens to avoid retries (activity template
+          // makes output long; 8000 was always truncating and eating the elevation budget).
+          // Retry ONCE if still truncated (very long modules).
           if (refined.finishReason === "length") {
-            console.warn(`[generate-course] Refinement truncated for module ${i + 1} → retry (12000 tokens)`);
+            console.warn(`[generate-course] Refinement truncated for module ${i + 1} → retry (14000 tokens)`);
             try {
-              const retry = await callAIMeta("gemini-2.5-flash", refinementPrompt, 12000);
+              const retry = await callAIMeta("gemini-2.5-flash", refinementPrompt, 14000);
               if (retry.content && (retry.finishReason !== "length" || retry.content.length > refined.content.length)) {
                 refined = retry;
               }
@@ -901,7 +901,7 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           // it when enough budget remains; otherwise we keep the saved refined text.
           // On success it UPDATEs the already-saved module.
           const elevationDone = (async () => {
-            if (msLeft() < 65000) {
+            if (msLeft() < 55000) {
               console.warn(`[generate-course] Elevation SKIPPED (low budget) for module ${i + 1}`);
               return;
             }
