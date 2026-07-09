@@ -49,9 +49,9 @@ const REQUIRED_SECTION_CHECKS: Array<{ name: string; test: (c: string) => boolea
   { name: "Atividade Prática",
     test: (c) => /atividade pr[aá]tica|desafio|exerc[ií]cio|tente voc[eê]|pratique|coloque em pr[aá]tica|sua vez|tente agora/i.test(c) },
 
-  // 5. Motivation — "Por Que", "Por que é importante"
+  // 5. Motivation — "Por Que", "Por que é importante", "A Importância de", intro sections
   { name: "Por Que / Motivação",
-    test: (c) => /por que[\s?]|por qu[eê]|por que [eé] importante|importância de/i.test(c) },
+    test: (c) => /por que[\s?]|por qu[eê]|por que [eé] importante|import[âa]ncia de|por isso [eé]|entender (por que|o motivo)|a raz[ãa]o/i.test(c) },
 
   // 6. Table — markdown table OR structured comparison
   { name: "Tabela Comparativa",
@@ -65,13 +65,18 @@ const REQUIRED_SECTION_CHECKS: Array<{ name: string; test: (c: string) => boolea
   { name: "Contexto / Cenário",
     test: (c) => /contexto|cen[áa]rio|estudo de caso|o caso d[aeo] |caso da empresa|exemplo de empresa/i.test(c) },
 
-  // 9. Structured sections — at least 2 ## or ### headings
+  // 9. Structured sections — at least 2 ## or ### headings, OR multiple bold headings
+  //    Some modules use **Bold Title** instead of ## markdown headings
   { name: "Seções Estruturadas",
-    test: (c) => (c.match(/^#{2,3} /gm) || []).length >= 2 },
+    test: (c) => (c.match(/^#{2,3} /gm) || []).length >= 2
+             || (c.match(/^\*\*[A-ZÁÉÍÓÚÀÃÕÂÊÔÇ][^*]{5,}\*\*$/gm) || []).length >= 3 },
 
-  // 10. Summary / Conclusion — explicit wrap-up (also catches "Neste módulo vimos", "O que aprendemos")
+  // 10. Summary / Conclusion — explicit wrap-up, OR "Pontos-chave" (📌) which the
+  //     generate-course template always emits as the closing section and serves the
+  //     same pedagogical role as a summary. A module that ends with ✅ 📌 is complete.
   { name: "Resumo / Conclusão",
-    test: (c) => /conclus[ãa]o|resumo|pr[óo]ximos passos|neste m[oó]dulo (vimos|aprendemos|voc[eê])|o que aprendemos|passamos por/i.test(c) },
+    test: (c) => /conclus[ãa]o|resumo|pr[óo]ximos passos|neste m[oó]dulo (vimos|aprendemos|voc[eê])|o que aprendemos|passamos por/i.test(c)
+             || c.includes("📌") },
 ];
 
 // Keep backward-compat array for display

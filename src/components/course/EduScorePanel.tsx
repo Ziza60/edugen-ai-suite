@@ -220,9 +220,11 @@ export function EduScorePanel({
                     <p className="text-muted-foreground">
                       {m.sectionsFound}/{m.totalSections} seções
                     </p>
-                    {m.missingSections.length > 0 && m.missingSections.length <= 3 && (
-                      <p className="text-red-400 mt-1 truncate">
-                        Falta: {m.missingSections.map((s) => s.split(" ")[0]).join(" ")}
+                    {m.missingSections.length > 0 && m.missingSections.length <= 4 && (
+                      <p className="text-red-400 mt-1 text-xs leading-snug">
+                        Falta: {m.missingSections.map((s) =>
+                          s.replace(/📌 |💭 /, "").split(" / ")[0].split(" ").slice(0, 2).join(" ")
+                        ).join(", ")}
                       </p>
                     )}
                   </div>
