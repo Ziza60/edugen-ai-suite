@@ -30,53 +30,54 @@ function countSyllablesPT(word: string): number {
 // The old emoji markers (🎯 Objetivo, 🧠 Fundamentos, etc.) were replaced by the
 // new template format. This version detects what the AI actually generates today.
 const REQUIRED_SECTION_CHECKS: Array<{ name: string; test: (c: string) => boolean }> = [
-  // 1. Key takeaways — template always emits 📌
+  // 1. Key takeaways — template always emits 📌 as closing bullets
   { name: "📌 Pontos-chave",
     test: (c) => c.includes("📌") || /pontos-chave|pontos finais|takeaway/i.test(c) },
 
   // 2. Reflection checkpoint — "Pare e reflita", 💭, checkpoint
-  { name: "💭 Reflexão/Checkpoint",
+  { name: "💭 Reflexão",
     test: (c) => c.includes("💭") || /pare e reflita|checkpoint|reflita sobre|momento de reflex/i.test(c) },
 
-  // 3. Worked example — any practical demonstration (template may use contextual titles)
-  //    Catches: "Exemplo Prático", "Vamos à prática", "Calculando o …", "O Caso de …",
-  //    "Na prática", "vejamos um exemplo", "exemplo:", "Aplicando"
+  // 3. Worked example — any practical demonstration; template uses contextual titles
+  //    "Exemplo Prático", "Vamos à prática", "Calculando o X", "O Caso de X",
+  //    "Na prática", "vejamos", "Exemplo:", "Aplicando", caso prático
   { name: "Exemplo Prático",
-    test: (c) => /exemplo pr[áa]tico|vamos [aà] pr[aá]tica|na pr[aá]tica|calculando o |o caso d[aeo] |vejamos|exemplo:|aplicando na|caso pr[aá]tico/i.test(c) },
+    test: (c) => /exemplo pr[áa]tico|vamos [aà] pr[aá]tica|na pr[aá]tica|calculando o |o caso d[aeo] |vejamos|exemplo:|aplicando na|caso pr[aá]tico|veja como/i.test(c) },
 
   // 4. Learner activity — explicit exercise, challenge or "try this"
-  //    Catches: "Atividade Prática", "Desafio", "Exercício", "Tente", "Pratique", "Coloque em prática"
   { name: "Atividade Prática",
-    test: (c) => /atividade pr[aá]tica|desafio|exerc[ií]cio|tente voc[eê]|pratique|coloque em pr[aá]tica|sua vez|tente agora/i.test(c) },
+    test: (c) => /atividade pr[aá]tica|desafio|exerc[ií]cio|tente voc[eê]|pratique|coloque em pr[aá]tica|sua vez|tente agora|fa[çc]a voc[eê]/i.test(c) },
 
-  // 5. Motivation — "Por Que", "Por que é importante", "A Importância de", intro sections
+  // 5. Motivation — "Por Que", intro sections, importance framing
+  //    Also catches: "A importância de", "Entender X é fundamental", "Por isso"
   { name: "Por Que / Motivação",
-    test: (c) => /por que[\s?]|por qu[eê]|por que [eé] importante|import[âa]ncia de|por isso [eé]|entender (por que|o motivo)|a raz[ãa]o/i.test(c) },
+    test: (c) => /por que[\s?]|por qu[eê]|import[âa]ncia de|por isso [eé]|entender (por que|o motivo)|a raz[ãa]o|[eé] fundamental (entender|compreender|conhecer)|sem (isso|esse conhecimento)/i.test(c) },
 
-  // 6. Table — markdown table OR structured comparison
+  // 6. Table — markdown table (| col | col |---|)
   { name: "Tabela Comparativa",
     test: (c) => c.includes("|---|") || c.includes("| ---") || /\|.+\|.+\|/.test(c) },
 
-  // 7. Formula / Calculation — explicit formula box, "Cálculo de", "= R$", financial expressions
+  // 7. Formula / Calculation — explicit formula, calculation, or key financial expression
   { name: "Fórmula / Cálculo",
-    test: (c) => /f[oó]rmula|c[aá]lculo de|= r\$|cvu =|ponto de equil[ií]brio|margem de contribui/i.test(c) },
+    test: (c) => /f[oó]rmula|c[aá]lculo de|= r\$|cvu =|ponto de equil[ií]brio|margem de contribui|markup|lucro l[ií]quido =|receita -/i.test(c) },
 
-  // 8. Context / Scenario / Case study — "O Caso da", "Estudo de Caso", "cenário", "contexto"
+  // 8. Context / Scenario / Case study
+  //    "O Caso da X", "Estudo de Caso", "cenário", "contexto", intro framing
   { name: "Contexto / Cenário",
-    test: (c) => /contexto|cen[áa]rio|estudo de caso|o caso d[aeo] |caso da empresa|exemplo de empresa/i.test(c) },
+    test: (c) => /contexto|cen[áa]rio|estudo de caso|o caso d[aeo] |caso da empresa|neste m[oó]dulo|ao longo deste|nesta aula/i.test(c) },
 
-  // 9. Structured sections — at least 2 ## or ### headings, OR multiple bold headings
-  //    Some modules use **Bold Title** instead of ## markdown headings
+  // 9. Structured sections — at least 2 ## or ### headings, OR 3+ bold title lines
   { name: "Seções Estruturadas",
     test: (c) => (c.match(/^#{2,3} /gm) || []).length >= 2
              || (c.match(/^\*\*[A-ZÁÉÍÓÚÀÃÕÂÊÔÇ][^*]{5,}\*\*$/gm) || []).length >= 3 },
 
-  // 10. Summary / Conclusion — explicit wrap-up, OR "Pontos-chave" (📌) which the
-  //     generate-course template always emits as the closing section and serves the
-  //     same pedagogical role as a summary. A module that ends with ✅ 📌 is complete.
+  // 10. Summary / Conclusion — explicit closing paragraph DISTINCT from 📌 bullets.
+  //     Catches: "Resumo", "Conclusão", "Próximos Passos", "Neste módulo vimos/aprendemos",
+  //     "Em síntese", "Para encerrar", "Encerrando", "Em resumo"
+  //     NOTE: intentionally does NOT alias 📌 — that is Section 1. A well-formed module
+  //     should have a closing narrative (Resumo) AND key-takeaway bullets (📌).
   { name: "Resumo / Conclusão",
-    test: (c) => /conclus[ãa]o|resumo|pr[óo]ximos passos|neste m[oó]dulo (vimos|aprendemos|voc[eê])|o que aprendemos|passamos por/i.test(c)
-             || c.includes("📌") },
+    test: (c) => /conclus[ãa]o|\bresumо\b|resumo:|em resumo|resumindo|pr[óo]ximos passos|neste m[oó]dulo (vimos|aprendemos|voc[eê])|o que aprendemos|passamos por|para encerrar|encerrando|em s[ií]ntese|em suma/i.test(c) },
 ];
 
 // Keep backward-compat array for display
