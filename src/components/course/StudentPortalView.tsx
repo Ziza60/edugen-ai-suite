@@ -27,6 +27,7 @@ export interface Flashcard { id: string; module_id: string; front: string; back:
 export interface PortalModule {
   id: string; title: string; content: string; order_index: number;
   quizQuestions: QuizQuestion[]; flashcards: Flashcard[];
+  image_url?: string | null; image_alt?: string | null;
 }
 export interface PortalData {
   courseId: string; courseTitle: string; description: string;
@@ -496,6 +497,18 @@ export function StudentPortalView({ data, exitHref, onExit, previewMode = false 
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight">{module.title}</h1>
               </div>
+
+              {/* Module image — shown when instructor added one */}
+              {module.image_url && (
+                <div className="mb-8 rounded-xl overflow-hidden border border-white/10">
+                  <img
+                    src={module.image_url}
+                    alt={module.image_alt || `Ilustração: ${module.title}`}
+                    className="w-full h-auto object-cover max-h-[360px]"
+                    loading="lazy"
+                  />
+                </div>
+              )}
 
               {/* Content */}
               <div className="prose-portal">

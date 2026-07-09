@@ -388,14 +388,19 @@ export default function CourseView() {
     instructorName: landing?.instructor_name ?? null,
     primaryColor: landing?.custom_colors?.primary ?? "#7c3aed",
     logoUrl: landing?.logo_url ?? null,
-    modules: modules.map((m) => ({
-      id: m.id,
-      title: m.title,
-      content: m.content ?? "",
-      order_index: m.order_index,
-      quizQuestions: quizzes.filter((q) => q.module_id === m.id),
-      flashcards: flashcards.filter((f) => f.module_id === m.id),
-    })),
+    modules: modules.map((m) => {
+      const img = courseImages.find((i) => i.module_id === m.id);
+      return {
+        id: m.id,
+        title: m.title,
+        content: m.content ?? "",
+        order_index: m.order_index,
+        quizQuestions: quizzes.filter((q) => q.module_id === m.id),
+        flashcards: flashcards.filter((f) => f.module_id === m.id),
+        image_url: img?.url ?? null,
+        image_alt: img?.alt_text ?? null,
+      };
+    }),
   };
 
   if (previewMode) {

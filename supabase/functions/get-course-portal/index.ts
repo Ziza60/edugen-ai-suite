@@ -81,7 +81,7 @@ serve(async (req: Request) => {
 
   const moduleIds = (modules as any[]).map((m) => m.id);
 
-  const [quizRes, flashRes] = await Promise.all([
+  const [quizRes, flashRes, imgRes] = await Promise.all([
     moduleIds.length
       ? supabase
           .from("course_quiz_questions")
@@ -94,10 +94,17 @@ serve(async (req: Request) => {
           .select("id, module_id, front, back")
           .in("module_id", moduleIds)
       : Promise.resolve({ data: [] }),
+    moduleIds.length
+      ? supabase
+          .from("course_images")
+          .select("module_id, url, alt_text")
+          .in("module_id", moduleIds)
+      : Promise.resolve({ data: [] }),
   ]);
 
   const quizMap: Record<string, any[]> = {};
   const flashMap: Record<string, any[]> = {};
+  const imgMap: Record<string, { url: string; alt_text: string | null }> = {};
 
   for (const q of quizRes.data || []) {
     (quizMap[q.module_id] ??= []).push(q);
@@ -105,11 +112,16 @@ serve(async (req: Request) => {
   for (const f of flashRes.data || []) {
     (flashMap[f.module_id] ??= []).push(f);
   }
+  for (const img of imgRes.data || []) {
+    imgMap[img.module_id] = img;
+  }
 
   const enriched = (modules as any[]).map((m) => ({
     ...m,
     quizQuestions: quizMap[m.id] || [],
     flashcards: flashMap[m.id] || [],
+    image_url: imgMap[m.id]?.url ?? null,
+    image_alt: imgMap[m.id]?.alt_text ?? null,
   }));
 
   const colors = (landing.custom_colors as any) || {};
