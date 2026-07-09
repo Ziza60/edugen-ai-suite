@@ -35,13 +35,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  const getNextRedirect = () => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get("next");
+      // Only allow same-origin relative paths.
+      if (next && next.startsWith("/") && !next.startsWith("//")) return next;
+    } catch {}
+    return null;
+  };
+
   const signUp = async (email: string, password: string, fullName: string) => {
+    const next = getNextRedirect();
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: `${window.location.origin}${next ?? "/app/dashboard"}`,
       },
     });
     return { error };
@@ -53,9 +64,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
+    const next = getNextRedirect();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/app/dashboard` },
+      options: { redirectTo: `${window.location.origin}${next ?? "/app/dashboard"}` },
     });
     return { error };
   };

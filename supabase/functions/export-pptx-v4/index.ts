@@ -30,7 +30,7 @@ import {
   polishEditorialText,
 } from "./editorial-normalization.ts";
 
-const ENGINE_VERSION = "5.7.3";
+const ENGINE_VERSION = "5.8.7";
 
 // ═══════════════════════════════════════════════════════════
 // TEMPLATE CAPABILITIES — capacity limits per visual template
@@ -580,42 +580,6 @@ function validateSemanticCodeCompleteness(code: string): string | null {
     if (!hasRealUse) return "class_instance_no_method_call";
   }
 
-  // ── v5.7.3 — function_returns_implicit_none (REORDERED before
-  // function_defined_but_uncalled). Rationale: a function with no `return`
-  // is broken regardless of whether it's called. Fixing the function FIRST
-  // means the subsequent call-demo (added by function_defined_but_uncalled
-  // repair) prints the actual computed value instead of `None`. Without
-  // this reorder, slides 14/43 hit `function_defined_but_uncalled` first,
-  // got a call-demo that printed None, and the convergent loop only
-  // discovered the missing return on a later cycle.
-  {
-    const allLines = t.split("\n");
-    const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
-    for (let i = 0; i < allLines.length; i++) {
-      const line = allLines[i];
-      const m = line.match(/^def\s+([a-z_][\w]*)\s*\(/);
-      if (!m) continue;
-      let bodyHasReturn = false;
-      let lastAssignVar: string | null = null;
-      for (let j = i + 1; j < allLines.length; j++) {
-        const bl = allLines[j];
-        if (bl.trim() === "") continue;
-        const ind = bl.match(/^(\s*)/)![1].length;
-        if (ind === 0) break;
-        if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
-        // v5.7.3 — IGNORE side-effect-only lines so logging.debug() doesn't
-        // mask the real "last computational assignment". Slide 43 was
-        // exactly this pattern: `soma = sum(); logging.debug(...)`.
-        if (/^\s*(logging|logger|log|print)\s*\.?\s*\w*\s*\(/.test(bl)) continue;
-        const am = bl.match(/^\s+([a-z_][\w]*)\s*=\s*[^=]/);
-        if (am) lastAssignVar = am[1];
-      }
-      if (!bodyHasReturn && lastAssignVar && RESULT_ISH.test(lastAssignVar)) {
-        return "function_returns_implicit_none";
-      }
-    }
-  }
-
   // ── v5.7.1 — function_defined_but_uncalled ──
   // Every top-level `def name(...)` (no leading whitespace — methods inside
   // a class are always indented and excluded automatically) must be invoked
@@ -662,110 +626,6 @@ function validateSemanticCodeCompleteness(code: string): string | null {
     }
   }
 
-  // ── v5.7.2 — observable_outcome tier ──
-  // A code slide is not "complete" just because it parses. The student must
-  // be able to OBSERVE a result (printed value, returned value, side-effect).
-  // Three new failure modes:
-  //
-  //   - `bare_method_call_discards_return`
-  //       Top-level line of the form `inst.method(args)` (no print wrap, no
-  //       assignment) where `method` is defined in a class body and that
-  //       method body contains `return <non-trivial>`. Slide 40 symptom:
-  //       `livro2.exibir_detalhes()` discards a string return.
-  //
-  //   - `function_returns_implicit_none`
-  //       A top-level `def fn(...)` whose body has at least one assignment
-  //       to a "result-ish" variable name (total*/result*/resultado*/soma*/
-  //       valor*/saida*/output*/final*/ans*/response*/payload*/data*/count*)
-  //       but no `return` statement. Slides 14 and 46 symptom.
-  //
-  //   - `assignment_result_unused`
-  //       Top-level (not inside def/class) last non-blank line is
-  //       `var = call(...)` AND `var` is never referenced again. Defensive
-  //       check; narrowly scoped to result-ish var names to avoid false
-  //       positives on legitimate setup code (`client = MyClient()` etc).
-
-  // Helper: classify a top-level def's body. Returns { hasReturn, methods,
-  // bodyLastAssignVar } and the def block's start/end line indices.
-  // We only need a structural scan, not full parsing.
-  const allLines = t.split("\n");
-
-  // Identify methods that return a non-trivial value (used by reason 4).
-  // A method def is `<indent>def methodName(self...)` where indent > 0.
-  // We scan the next lines until the indent drops back to <= def indent.
-  const returningMethods = new Set<string>();
-  for (let i = 0; i < allLines.length; i++) {
-    const line = allLines[i];
-    const m = line.match(/^(\s+)def\s+([a-z_][\w]*)\s*\(\s*self\b/);
-    if (!m) continue;
-    const defIndent = m[1].length;
-    const methodName = m[2];
-    // Walk the body
-    for (let j = i + 1; j < allLines.length; j++) {
-      const bl = allLines[j];
-      if (bl.trim() === "") continue;
-      const ind = bl.match(/^(\s*)/)![1].length;
-      if (ind <= defIndent) break; // dedented out of method body
-      // return with a non-trivial expression (not "return" alone or
-      // "return None")
-      if (/^\s*return\s+(?!None\s*$|$)/.test(bl)) {
-        returningMethods.add(methodName);
-        break;
-      }
-    }
-  }
-
-  // Reason 4: bare method call that discards a returning method's value.
-  if (returningMethods.size > 0) {
-    for (const line of allLines) {
-      // Top-level only (no leading whitespace)
-      if (/^\s/.test(line)) continue;
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      // Must be a bare expression statement: `inst.method(...)`
-      // - no leading print(/return / assignment
-      // - exactly the call, possibly with surrounding whitespace
-      const bm = trimmed.match(/^([a-z_][\w]*)\.([a-z_][\w]*)\s*\([^)]*\)\s*$/);
-      if (!bm) continue;
-      const methodName = bm[2];
-      if (!returningMethods.has(methodName)) continue;
-      // Skip if this is `print(...)` or assignment context (already filtered
-      // by the leading regex check, but defensive)
-      return "bare_method_call_discards_return";
-    }
-  }
-
-  // Reason 5: function_returns_implicit_none — moved upstream to v5.7.3
-  // (now runs BEFORE function_defined_but_uncalled). Block kept as no-op
-  // marker for the legacy position so diff-blame stays readable.
-  const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
-
-  // Reason 6: assignment_result_unused — last non-blank top-level line is
-  // `var = call(...)` where var is result-ish AND never referenced after.
-  {
-    let lastNonBlankIdx = -1;
-    for (let i = allLines.length - 1; i >= 0; i--) {
-      if (allLines[i].trim() !== "") { lastNonBlankIdx = i; break; }
-    }
-    if (lastNonBlankIdx >= 0) {
-      const last = allLines[lastNonBlankIdx];
-      // Top-level only
-      if (!/^\s/.test(last)) {
-        const am = last.match(/^([a-z_][\w]*)\s*=\s*[a-z_][\w]*\s*\(/);
-        if (am && RESULT_ISH.test(am[1])) {
-          // Var must not be referenced anywhere else
-          const v = am[1];
-          let usedElsewhere = false;
-          for (let i = 0; i < allLines.length; i++) {
-            if (i === lastNonBlankIdx) continue;
-            if (new RegExp(`\\b${v}\\b`).test(allLines[i])) { usedElsewhere = true; break; }
-          }
-          if (!usedElsewhere) return "assignment_result_unused";
-        }
-      }
-    }
-  }
-
   // ── Legacy fallback: class with no observable output anywhere ──
   // Kept for cases that bypass the hardened class rule above (e.g. class
   // defined but nothing else emits output).
@@ -775,13 +635,6 @@ function validateSemanticCodeCompleteness(code: string): string | null {
 
   return null;
 }
-
-// v5.7.2 alias for documentation purposes — same implementation.
-// Code slides require an OBSERVABLE OUTCOME (printed value, returned value,
-// side-effect) for a student to learn from them. The validator above
-// enforces this in tiers; this alias makes intent explicit at call sites
-// that specifically care about outcome (vs. structural completeness).
-const validateObservableOutcome = validateSemanticCodeCompleteness;
 
 // v5.7.1 — preventive repair: rewrite `print(<instance>)` →
 // `<instance>.<method>()` BEFORE the validator runs. Method is chosen from
@@ -870,126 +723,6 @@ function repairIncompleteCodeExample(
       }
     }
   }
-  // ── v5.7.2 — observable_outcome repairs ──
-
-  // Pattern: bare_method_call_discards_return → wrap in print().
-  // Slide 40 fix. Find the FIRST top-level `inst.method(...)` line whose
-  // method returns a value, replace with `print(inst.method(...))`.
-  if (reason === "bare_method_call_discards_return") {
-    const allLines = out.split("\n");
-    // Re-discover returning methods (cheap; same scan as the validator)
-    const returning = new Set<string>();
-    for (let i = 0; i < allLines.length; i++) {
-      const m = allLines[i].match(/^(\s+)def\s+([a-z_][\w]*)\s*\(\s*self\b/);
-      if (!m) continue;
-      const defIndent = m[1].length;
-      for (let j = i + 1; j < allLines.length; j++) {
-        const bl = allLines[j];
-        if (bl.trim() === "") continue;
-        const ind = bl.match(/^(\s*)/)![1].length;
-        if (ind <= defIndent) break;
-        if (/^\s*return\s+(?!None\s*$|$)/.test(bl)) { returning.add(m[2]); break; }
-      }
-    }
-    let replaced = false;
-    const newLines = allLines.map((line) => {
-      if (replaced || /^\s/.test(line)) return line;
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("print(")) return line;
-      const bm = trimmed.match(/^([a-z_][\w]*\.[a-z_][\w]*\s*\([^)]*\))\s*$/);
-      if (!bm) return line;
-      const methodName = trimmed.split(".")[1].split("(")[0];
-      if (!returning.has(methodName)) return line;
-      replaced = true;
-      console.log(
-        `[CODE-REPAIR] slide=${slideNum} pattern=wrap_method_in_print expr=${JSON.stringify(bm[1])}`,
-      );
-      return `print(${bm[1]})`;
-    });
-    if (replaced) {
-      out = newLines.join("\n");
-      const re = validateSemanticCodeCompleteness(out);
-      if (re === null) return out;
-      // fall through — let other reasons get repaired in next pass
-    }
-  }
-
-  // Pattern: function_returns_implicit_none → inject `return <var>` inside
-  // the def body (right after the last assignment to a result-ish var),
-  // then if the function is uncalled, also append a call demo.
-  // Slides 14 and 46 fix.
-  if (reason === "function_returns_implicit_none") {
-    const RESULT_ISH = /^(total|result|resultado|soma|valor|saida|saída|output|final|count|qtd|ans|response|payload|data|out|val|ret)\w*$/i;
-    const allLines = out.split("\n");
-    let injectedFn: { name: string; params: string } | null = null;
-    for (let i = 0; i < allLines.length; i++) {
-      const m = allLines[i].match(/^def\s+([a-z_][\w]*)\s*\(([^)]*)\)/);
-      if (!m) continue;
-      let bodyHasReturn = false;
-      let lastAssignLineIdx = -1;
-      let lastAssignVar: string | null = null;
-      let lastAssignIndent = "    ";
-      let bodyEnd = allLines.length;
-      for (let j = i + 1; j < allLines.length; j++) {
-        const bl = allLines[j];
-        if (bl.trim() === "") continue;
-        const ind = bl.match(/^(\s*)/)![1].length;
-        if (ind === 0) { bodyEnd = j; break; }
-        if (/^\s*return\b/.test(bl)) { bodyHasReturn = true; break; }
-        const am = bl.match(/^(\s+)([a-z_][\w]*)\s*=\s*[^=]/);
-        if (am) {
-          lastAssignLineIdx = j;
-          lastAssignVar = am[2];
-          lastAssignIndent = am[1];
-        }
-      }
-      if (bodyHasReturn || !lastAssignVar || !RESULT_ISH.test(lastAssignVar)) continue;
-      // Inject `<indent>return <var>` immediately after the last assignment.
-      // We need to walk forward from lastAssignLineIdx to skip any
-      // subsequent body lines that belong to the same statement (e.g.
-      // `logging.debug(...)` after the assignment) — but in Python a
-      // simple assignment is one logical line, so insert right after.
-      // We insert AT the end of the function body to ensure the return
-      // is the last executed statement (handles slide 46 where logging
-      // comes after the assignment).
-      allLines.splice(bodyEnd, 0, `${lastAssignIndent}return ${lastAssignVar}`);
-      injectedFn = { name: m[1], params: m[2] ?? "" };
-      console.log(
-        `[CODE-REPAIR] slide=${slideNum} pattern=inject_missing_return fn=${m[1]} var=${lastAssignVar}`,
-      );
-      break;
-    }
-    if (injectedFn) {
-      out = allLines.join("\n");
-      // v5.7.3: convergent loop in applyFinalGuardrails handles the
-      // follow-up call-demo on the next cycle. Always return out so the
-      // loop sees the progress and decides whether to iterate.
-      return out;
-    }
-  }
-
-  // Pattern: assignment_result_unused → append `print(<var>)`. Narrowly
-  // scoped via the validator's RESULT_ISH check, so this fires only when
-  // the user's last line is something like `resultado = somar(2, 3)` with
-  // no follow-up demonstration.
-  if (reason === "assignment_result_unused") {
-    const allLines = out.split("\n");
-    let lastNonBlankIdx = -1;
-    for (let i = allLines.length - 1; i >= 0; i--) {
-      if (allLines[i].trim() !== "") { lastNonBlankIdx = i; break; }
-    }
-    if (lastNonBlankIdx >= 0) {
-      const am = allLines[lastNonBlankIdx].match(/^([a-z_][\w]*)\s*=/);
-      if (am) {
-        out += `\nprint(${am[1]})`;
-        console.log(
-          `[CODE-REPAIR] slide=${slideNum} pattern=print_assignment_terminal var=${am[1]}`,
-        );
-        if (validateSemanticCodeCompleteness(out) === null) return out;
-      }
-    }
-  }
-
   // v5.7.1 — function_defined_but_uncalled repair: append a CALL DEMO
   // for the LAST top-level function defined in the snippet. Generates
   // sample arguments based on parameter name heuristics.
@@ -1018,6 +751,42 @@ function repairIncompleteCodeExample(
           return `"${n}"`;
         })
         .join(", ");
+      // v5.8.5 — accumulator pattern: function body ending with a derived
+      // variable but no `return`. Insert `return <lastVar>` BEFORE the call
+      // demo so the call actually produces meaningful output.
+      // Canonical case (slide 14): def calcularvalortotal(carrinho):
+      //   ... totalliquido = totalbruto - desconto   ← no return!
+      // → repair adds:  return totalliquido   then  resultado = fn(...)  print(resultado)
+      {
+        const defIdx = lastDef.index!;
+        const afterSig = out.slice(defIdx);
+        const sigLineEnd = afterSig.indexOf("\n") + 1;
+        const bodyLines = afterSig.slice(sigLineEnd).split("\n");
+        const funcBodyLines: string[] = [];
+        for (const bl of bodyLines) {
+          if (bl.trim() === "" || /^\s/.test(bl)) funcBodyLines.push(bl);
+          else break;
+        }
+        const hasReturn = funcBodyLines.some((l) => /^\s+return\b/.test(l));
+        if (!hasReturn && funcBodyLines.length > 2) {
+          let lastAssignVar: string | null = null;
+          for (let i = funcBodyLines.length - 1; i >= 0; i--) {
+            const m = funcBodyLines[i].match(/^    ([a-z_][\w]*)\s*=/);
+            if (m && !m[1].startsWith("_")) { lastAssignVar = m[1]; break; }
+          }
+          if (lastAssignVar) {
+            const hasAccumulator = funcBodyLines.some(
+              (l) =>
+                /\b(for|while)\b/.test(l) || /\+=|-=/.test(l) ||
+                /\b(total|soma|liquido|bruto|subtotal|contador|acumulador)\w*/.test(l),
+            );
+            out = out.trimEnd() + `\n    return ${lastAssignVar}`;
+            console.log(
+              `[OBSERVABLE-OUTCOME-TRACE] slide=${slideNum} detected=${hasAccumulator ? "accumulator_pattern" : "function_no_return"} missing=return,invocation,output repair_attempted=true last_var=${lastAssignVar}`,
+            );
+          }
+        }
+      }
       out += `\n\nresultado = ${fnName}(${args})\nprint(resultado)`;
       console.log(
         `[CODE-REPAIR] slide=${slideNum} pattern=function_call_demo fn=${fnName} args=${JSON.stringify(args)}`,
@@ -1067,6 +836,61 @@ function repairIncompleteCodeExample(
       `[CODE-CONTEXT] slide=${slideNum} reusedClasses=${JSON.stringify([cls])} reusedVariables=${JSON.stringify(ctxInstIdx >= 0 ? [inst] : [])} newSymbols=${JSON.stringify(ctxInstIdx >= 0 ? [] : [inst])} contextualConsistency=${ctxInstIdx >= 0 ? "PASSED" : "NEW_INST"}`,
     );
     return validateSemanticCodeCompleteness(out) === null ? out : out;
+  }
+  // v5.8.4 — bare function stub: def fnname(params): with NO body.
+  // Triggered when the planner emits only the signature line (trailing ":").
+  // Builds a complete function body + call based on function name heuristics.
+  if (reason === "trailing_open_bracket" || reason === "too_few_code_lines") {
+    const bareDefMatch = /^def\s+([a-z_][\w]*)\s*\(([^)]*)\)\s*:\s*$/.exec(out.trim());
+    if (bareDefMatch) {
+      const fnName = bareDefMatch[1];
+      const params = bareDefMatch[2];
+      const firstParam = (params.split(",")[0] ?? "valores")
+        .trim().split(/[:=]/)[0].trim().replace(/^\*+/, "") || "valores";
+      let body: string;
+      if (moduleKind === "tests_logs" || /log/i.test(fnName)) {
+        body = [
+          `import logging`,
+          ``,
+          `logging.basicConfig(level=logging.INFO)`,
+          ``,
+          `def ${fnName}(${params}):`,
+          `    resultado = sum(${firstParam}) if hasattr(${firstParam}, '__iter__') else ${firstParam}`,
+          `    logging.info(f"${fnName}: resultado = \${resultado}")`,
+          `    return resultado`,
+          ``,
+          `print(${fnName}([1, 2, 3]))`,
+        ].join("\n");
+      } else if (/soma|sum|total|somar/i.test(fnName)) {
+        body = [
+          `def ${fnName}(${params}):`,
+          `    soma = sum(${firstParam})`,
+          `    return soma`,
+          ``,
+          `print(${fnName}([1, 2, 3]))`,
+        ].join("\n");
+      } else if (/media|mean|avg|average/i.test(fnName)) {
+        body = [
+          `def ${fnName}(${params}):`,
+          `    if not ${firstParam}:`,
+          `        return 0`,
+          `    return sum(${firstParam}) / len(${firstParam})`,
+          ``,
+          `print(${fnName}([7.5, 8.0, 9.2]))`,
+        ].join("\n");
+      } else {
+        body = [
+          `def ${fnName}(${params}):`,
+          `    resultado = str(${firstParam}).upper()`,
+          `    return resultado`,
+          ``,
+          `print(${fnName}("exemplo"))`,
+        ].join("\n");
+      }
+      out = body;
+      console.log(`[CODE-REPAIR] slide=${slideNum} pattern=bare_def_stub fn=${fnName} moduleKind=${moduleKind ?? "unknown"}`);
+      return validateSemanticCodeCompleteness(out) === null ? out : out;
+    }
   }
   if (/\btry\s*:\s*\n/.test(out) && !/\bexcept\b/.test(out)) {
     out += `\nexcept Exception as e:\n    print(f"Erro: {e}")`;
@@ -1245,62 +1069,6 @@ function synthesizeMinimalCompleteExample(
   return null;
 }
 
-// v5.7.2 — Visual truncation repair for non-code text fields.
-// Planners occasionally emit bullets/items that exceed the layout's drawable
-// width; the renderer then truncates with a literal "..." or unicode "…",
-// shipping a half-sentence to the student ("comentários para…", "listar…").
-// This is a layout-engine symptom (proibido tocar no renderer), so we
-// transform the text BEFORE render: strip the ellipsis, drop a dangling
-// preposition/conjunction, ensure terminal punctuation. Cheap, deterministic,
-// no LLM. Operates only on items / leftItems / rightItems (NOT code).
-const TRAILING_PREP_RE = /\s+(para|de|da|do|das|dos|com|e|ou|que|em|no|na|nos|nas|ao|à|aos|às|por|sobre|entre|sem|sob|a|as|os|um|uma|uns|umas)\s*$/i;
-const ELLIPSIS_TAIL_RE = /^(.*?)(\s*(?:\.{2,}|…+|\.{2,}\s*…+|…+\s*\.{2,})\s*)$/;
-
-function repairVisualTruncationInItems(slide: Slide, slideNum: number | string): Slide {
-  const fields = ["items", "leftItems", "rightItems", "leftBullets", "rightBullets"] as const;
-  let out: any = slide;
-  let touched = false;
-  for (const field of fields) {
-    const arr = (slide as any)[field];
-    if (!Array.isArray(arr)) continue;
-    let fieldChanged = false;
-    const fixed = arr.map((item: any, i: number) => {
-      if (typeof item !== "string") return item;
-      const m = item.match(ELLIPSIS_TAIL_RE);
-      if (!m) return item;
-      let cleaned = m[1].trimEnd();
-      let droppedWords = 0;
-      while (TRAILING_PREP_RE.test(cleaned) && droppedWords < 2) {
-        cleaned = cleaned.replace(TRAILING_PREP_RE, "").trimEnd();
-        droppedWords++;
-      }
-      cleaned = cleaned.replace(/[,;:\-]+\s*$/, "").trimEnd();
-      const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
-      let action: string;
-      if (wordCount === 0) {
-        action = "dropped_empty";
-        cleaned = "";
-      } else if (wordCount < 2) {
-        action = "kept_short";
-      } else {
-        action = "stripped_and_capped";
-        if (!/[.!?:]$/.test(cleaned)) cleaned += ".";
-        if (wordCount < 3) action = "kept_short_punctuated";
-      }
-      console.log(
-        `[VISUAL-TRUNCATION] slide=${slideNum} field=${field}[${i}] action=${action} before=${JSON.stringify(item.slice(0, 80))} after=${JSON.stringify(cleaned.slice(0, 80))}`,
-      );
-      fieldChanged = true;
-      return cleaned;
-    }).filter((v: any) => !(typeof v === "string" && v === ""));
-    if (fieldChanged) {
-      out = { ...out, [field]: fixed };
-      touched = true;
-    }
-  }
-  return touched ? out : slide;
-}
-
 // Apply all v5.5.1 final guardrails to a single slide. Pure transform.
 // v5.5.5: accepts moduleKind + prevSymbols for semantic code repair.
 // v5.5.6: prevSymbols is now full module accumulator, not just last slide.
@@ -1343,6 +1111,69 @@ function applyFinalGuardrails(
       out = { ...out, code: stripped };
     }
   }
+  // v5.8.5 — Guardrail 1d: process slide density. Slides with layout=process
+  // and >5 items look like "walls of text". Trim to 5 items.
+  if (out.layout === "process" && Array.isArray(out.items) && out.items.length > 5) {
+    console.warn(
+      `[PROCESS-DENSITY] slide=${slideNum} layout=process items=${out.items.length} → trimmed to 5`,
+    );
+    out = { ...out, items: out.items.slice(0, 5) };
+  }
+
+  // v5.8.6 — Guardrail 1e: archetype-cleanup.
+  // Strips trailing leaked list-numbers (e.g. "biblioteca = [] 2") from bullet
+  // items. When the majority of items are Python assignment fragments (code leaked
+  // into bullets), converts the slide to a code layout instead.
+  if (Array.isArray(out.items) && out.items.length > 0 && out.layout !== "code") {
+    const stripped = out.items.map((item) => item.replace(/\s+\d+\s*$/, "").trim());
+    const assignmentLike = stripped.filter((item) =>
+      /^[a-z_][\w]*\s*=\s*([\[\]{}"'0-9]|True|False|None|set\s*\(|list\s*\()/.test(item)
+    );
+    const numbersRemoved = stripped.filter((c, i) => c !== out.items![i]).length;
+    if (assignmentLike.length >= Math.ceil(stripped.length / 2)) {
+      // Majority are code fragments — convert to code layout
+      const code = stripped.join("\n");
+      console.warn(
+        `[ARCHETYPE-CLEANUP] slide=${slideNum} layout=${out.layout}→code assignment_items=${assignmentLike.length}/${stripped.length} trailing_numbers_removed=${numbersRemoved}`,
+      );
+      out = { ...out, layout: "code", code, items: undefined, label: "CÓDIGO" };
+    } else if (numbersRemoved > 0) {
+      // Only trailing numbers leaked — strip them, keep layout
+      console.warn(
+        `[ARCHETYPE-CLEANUP] slide=${slideNum} stripped_trailing_numbers=${numbersRemoved}`,
+      );
+      out = { ...out, items: stripped };
+    }
+  }
+
+  // v5.8.6 — Guardrail 1f: CLI truncation repair.
+  // Fixes "pip install -r…" and similar truncated commands in bullet items.
+  // The safeSliceText preserve protects against NEW truncations; this pass
+  // repairs ones that already exist in planner output or prior renders.
+  if (Array.isArray(out.items) && out.items.length > 0) {
+    let cliFixed = false;
+    const fixedItems = out.items.map((item) => {
+      // "pip install -r…" / "pip install -r req…" → canonical form
+      if (/pip\s+install\s+-r\b/.test(item)) {
+        const fixed = item.replace(
+          /pip\s+install\s+-r(?:\s+[\w.*-]*(?:…|\.{3})?)?/gi,
+          "pip install -r requirements.txt",
+        );
+        if (fixed !== item) { cliFixed = true; return fixed; }
+      }
+      // Generic "cli-command … end-of-string" (only strip dangling ellipsis)
+      if (/(?:…|\.{3})\s*$/.test(item) && /\b(?:npm|yarn|apt|brew|cargo|python|git)\b/.test(item)) {
+        const fixed = item.replace(/\s*(?:…|\.{3})\s*$/, "").trim();
+        if (fixed !== item) { cliFixed = true; return fixed; }
+      }
+      return item;
+    });
+    if (cliFixed) {
+      console.log(`[VISUAL-TRUNCATION-FIX] slide=${slideNum} CLI command truncation repaired`);
+      out = { ...out, items: fixedItems };
+    }
+  }
+
   // v5.5.8 — Guardrail 2 INVERTED: code layout without code → try to SYNTHESIZE
   // a minimal complete example BEFORE demoting. Demotion is the last-resort
   // fallback and now emits [CODE-SLIDE-CONVERSION] for full visibility.
@@ -1374,67 +1205,62 @@ function applyFinalGuardrails(
     const fixed = repairBareInstancePrint(out.code, prevSymbols, slideNum);
     if (fixed !== out.code) out = { ...out, code: fixed };
   }
-  // v5.7.3 — Guardrail 4: CONVERGENT repair loop.
-  // Each cycle: validate → if reason → repair → re-validate. Loop until the
-  // validator returns null OR the repair makes no progress OR we hit
-  // MAX_REPAIR_CYCLES. The previous "1 validate + 1 repair + log PARTIAL"
-  // model only fixed the FIRST detected defect — slides 14/43 had two
-  // overlapping defects (function uncalled AND function returns None) and
-  // the second defect was logged as PARTIAL but never repaired.
-  //
-  // Emits structured `[OBSERVABLE-TRACE]` per cycle so prod logs prove the
-  // chain of detections + repairs end-to-end.
+  // v5.5.5 — Guardrail 4: semantic completeness check + repair attempt.
+  // If code still incomplete after dangling/strip repairs, try
+  // repairIncompleteCodeExample with prev-slide context. If repair fails
+  // and slide is layout=code, demote to bullets so we never render
+  // "# ..." or class-with-no-instance to a student.
   if (out.code && out.code.trim()) {
-    const MAX_REPAIR_CYCLES = 4;
-    let curCode = out.code;
-    const trace: Array<Record<string, unknown>> = [];
-    let cycle = 0;
-    let lastReason: string | null = null;
-    let firstReason: string | null = null;
-    while (cycle < MAX_REPAIR_CYCLES) {
-      const reason = validateSemanticCodeCompleteness(curCode);
-      if (cycle === 0) firstReason = reason;
-      trace.push({ cycle, phase: cycle === 0 ? "detect" : "revalidate", reason });
-      if (reason === null) { lastReason = null; break; }
-      lastReason = reason;
-      const repaired = repairIncompleteCodeExample(curCode, moduleKind, prevSymbols, slideNum);
-      if (!repaired) {
-        trace.push({ cycle, phase: "repair", reason, applied: false, skipReason: "repair_returned_null" });
-        break;
-      }
-      if (repaired === curCode) {
-        trace.push({ cycle, phase: "repair", reason, applied: false, skipReason: "no_progress" });
-        break;
-      }
-      trace.push({ cycle, phase: "repair", reason, applied: true });
-      curCode = repaired;
-      cycle++;
-    }
-    console.log(
-      `[OBSERVABLE-TRACE] slide=${slideNum} cycles=${cycle} firstReason=${firstReason ?? "null"} finalReason=${lastReason ?? "null"} trace=${JSON.stringify(trace)}`,
-    );
-    if (curCode !== out.code) out = { ...out, code: curCode };
-    if (lastReason === null) {
-      if (firstReason !== null) {
-        console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair_loop firstReason=${firstReason} cycles=${cycle}`);
-      }
-    } else {
-      console.warn(`[CODE-COMPLETE] slide=${slideNum} status=PARTIAL_AFTER_LOOP repair_left=${lastReason} cycles=${cycle}`);
-      // v5.5.8 — exhausted repair budget. Before demoting layout=code,
-      // try to synthesize a complete minimal example from module context.
-      // Only demote if synthesis is also unavailable (last resort).
-      if (out.layout === "code") {
-        const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
-        if (synth) {
-          console.log(
-            `[CODE-SYNTHESIS] slide=${slideNum} reason=repair_loop_exhausted (${lastReason}) beforeLines=${out.code.split("\n").length} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
-          );
-          out = { ...out, code: synth.code };
+    const reason = validateSemanticCodeCompleteness(out.code);
+    if (reason !== null) {
+      const repaired = repairIncompleteCodeExample(out.code, moduleKind, prevSymbols, slideNum);
+      if (repaired) {
+        const reReason = validateSemanticCodeCompleteness(repaired);
+        if (reReason === null) {
+          out = { ...out, code: repaired };
+          // v5.8.7 — [REPAIR-PERSISTENCE] confirm repair is present post-guardrail-4.
+          const hasDemo = /\nresultado\s*=\s*/.test(repaired) && /\nprint\s*\(resultado\)/.test(repaired);
+          console.log(`[CODE-COMPLETE] slide=${slideNum} status=PASSED via_repair reason_was=${reason}`);
+          console.log(`[REPAIR-PERSISTENCE] slide=${slideNum} stage=post_guardrail4 repair=observable_outcome status=${hasDemo ? "PRESENT" : "ABSENT_demo_not_applicable"}`);
         } else {
-          console.warn(
-            `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${lastReason}) moduleKind=${moduleKind ?? "unknown"}`,
-          );
-          out = demoteCodeLayout(out, slideNum, `incomplete_unrepairable_${lastReason}`);
+          // v5.8.2 — PARTIAL_AFTER_LOOP is not acceptable for a technical CODE slide.
+          // Try synthesis before accepting broken code or demoting.
+          console.warn(`[CODE-COMPLETE] slide=${slideNum} status=PARTIAL repair_left=${reReason}`);
+          if (out.layout === "code") {
+            const synthP = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+            if (synthP) {
+              console.log(
+                `[CODE-SYNTHESIS] slide=${slideNum} reason=partial_after_loop (${reReason}) source=${synthP.source} moduleKind=${moduleKind ?? "unknown"}`,
+              );
+              out = { ...out, code: synthP.code };
+            } else {
+              console.warn(
+                `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=partial_after_loop_no_synth (${reReason}) moduleKind=${moduleKind ?? "unknown"}`,
+              );
+              out = demoteCodeLayout(out, slideNum, `partial_after_loop_${reReason}`);
+            }
+          } else {
+            out = { ...out, code: repaired };
+          }
+        }
+      } else {
+        console.warn(`[CODE-COMPLETE] slide=${slideNum} status=FAILED reason=${reason}`);
+        // v5.5.8 — repair failed. Before demoting layout=code, try to
+        // synthesize a complete minimal example from module context. Only
+        // demote if synthesis is also unavailable (last resort).
+        if (out.layout === "code") {
+          const synth = synthesizeMinimalCompleteExample(moduleKind, prevSymbols, out.title ?? "");
+          if (synth) {
+            console.log(
+              `[CODE-SYNTHESIS] slide=${slideNum} reason=repair_failed (${reason}) beforeLines=${out.code.split("\n").length} afterLines=${synth.code.split("\n").length} source=${synth.source} moduleKind=${moduleKind ?? "unknown"}`,
+            );
+            out = { ...out, code: synth.code };
+          } else {
+            console.warn(
+              `[CODE-SLIDE-CONVERSION] slide=${slideNum} from=CODE to=CONCEPT reason=incomplete_unrepairable_no_synth (${reason}) moduleKind=${moduleKind ?? "unknown"}`,
+            );
+            out = demoteCodeLayout(out, slideNum, `incomplete_unrepairable_${reason}`);
+          }
         }
       }
     }
@@ -1466,10 +1292,90 @@ function applyFinalGuardrails(
       console.log(`[CODE-SLIDE-INTEGRITY] slide=${slideNum} valid=true codeLines=${codeLines}`);
     }
   }
-  // v5.7.2 — Guardrail 6: visual truncation in non-code text fields.
-  // Strips trailing "…" / "..." from items/leftItems/rightItems and cleans
-  // dangling prepositions. Pre-render, deterministic, no LLM.
-  out = repairVisualTruncationInItems(out, slideNum);
+  // v5.8.2 — Guardrail 6: HTTP parity for json_apis slides.
+  // If a CODE slide's text fields promise GET/POST but the code doesn't
+  // demonstrate those methods (with .status_code + .json()), repair the
+  // code with a canonical combined example. Non-code slides are logged only.
+  const isHttpModule = moduleKind === "json_apis" || /\b(requests|http|api|rest)\b/i.test(out.title ?? "");
+  if (isHttpModule) {
+    const promised = getHttpMethodsPromised(out);
+    if (promised.size > 0) {
+      if (out.layout === "code" && out.code) {
+        const codeLower = out.code.toLowerCase();
+        const covered = new Set<string>();
+        if (/requests\.get/.test(codeLower)) covered.add("GET");
+        if (/requests\.post/.test(codeLower)) covered.add("POST");
+        if (/requests\.put/.test(codeLower)) covered.add("PUT");
+        if (/requests\.delete/.test(codeLower)) covered.add("DELETE");
+        const hasStatusCode = /\.status_code/.test(codeLower);
+        const hasJsonCall    = /\.json\(\)/.test(codeLower);
+        const missing = [...promised].filter((m) => !covered.has(m));
+        if (missing.length > 0 || !hasStatusCode || !hasJsonCall) {
+          console.warn(
+            `[HTTP-PARITY] slide=${slideNum} promised=${[...promised].join("+")} covered=${[...covered].join("+")||"none"} status_code=${hasStatusCode} json=${hasJsonCall} → repair`,
+          );
+          const parityCode = synthesizeHttpParityExample(promised);
+          const parityCheck = validateSemanticCodeCompleteness(parityCode);
+          if (parityCheck === null) {
+            out = { ...out, code: parityCode };
+            console.log(`[HTTP-PARITY] slide=${slideNum} repaired with ${[...promised].join("+")} + status_code + json()`);
+          }
+        }
+      } else if (out.layout !== "code") {
+        console.log(`[HTTP-PARITY] slide=${slideNum} non-code slide promises ${[...promised].join("+")} — informational only`);
+      }
+    }
+  }
+
+  // v5.8.4 — Guardrail 7: narrative alignment.
+  // Detects code/text entity mismatch on OOP slides — e.g. text says
+  // "Cachorro/raça/latir" but code has "class Carro/marca/exibir_info".
+  // Attempts synthesis aligned to text entities; logs [NARRATIVE-ALIGNMENT].
+  if (out.layout === "code" && out.code && moduleKind === "oop") {
+    const { mismatch, textEntities, codeEntities } = detectNarrativeAlignment(out);
+    if (mismatch && textEntities.length > 0 && codeEntities.length > 0) {
+      console.warn(
+        `[NARRATIVE-ALIGNMENT] slide=${slideNum} status=FAILED expected_entities=${textEntities.join(",")} found_entities=${codeEntities.join(",")}`,
+      );
+      const aligned = synthesizeAlignedCode(textEntities, moduleKind, prevSymbols);
+      if (aligned) {
+        out = { ...out, code: aligned.code };
+        console.log(
+          `[NARRATIVE-ALIGNMENT] slide=${slideNum} status=REPAIRED source=${aligned.source}`,
+        );
+      } else {
+        console.warn(`[NARRATIVE-ALIGNMENT] slide=${slideNum} status=UNREPAIRED — mismatch persists`);
+      }
+    }
+  }
+
+  // v5.8.4 — Guardrail 8: title-code coherence.
+  // Rewrites "X or Y" / "Exemplo: contract_name" titles to professional
+  // Portuguese based on actual code content. Emits [EDITORIAL-TITLE] log.
+  if (out.title) {
+    const betterTitle = rewriteTitleFromCode(out.title, out.code, moduleKind, slideNum);
+    if (betterTitle && betterTitle !== out.title) {
+      console.log(
+        `[EDITORIAL-TITLE] slide=${slideNum} title="${out.title.slice(0, 60)}" reason=generic_or_placeholder rewritten="${betterTitle}"`,
+      );
+      out = { ...out, title: betterTitle };
+    }
+  }
+
+  // v5.8.5 — Guardrail 8b: tech-specific title-snippet mismatch.
+  // Catches "Testes com unittest" + pdb-only code (slide 48 symptom).
+  // Runs AFTER Guardrail 8 so we operate on the already-polished title.
+  if (out.title && out.code) {
+    const { mismatch, titleEntities, codeEntities, suggestedTitle } =
+      detectTitleSnippetMismatch(out.title, out.code);
+    if (mismatch && suggestedTitle && suggestedTitle !== out.title) {
+      console.warn(
+        `[TITLE-SNIPPET-ALIGNMENT] slide=${slideNum} title_entities=${titleEntities.join(",")} snippet_entities=${codeEntities.join(",")} status=FAILED title_rewritten="${suggestedTitle}"`,
+      );
+      out = { ...out, title: suggestedTitle };
+    }
+  }
+
   return out;
 }
 
@@ -7461,6 +7367,392 @@ function repairPythonRequestsSnippet(code: string): string | null {
   return lines.join("\n");
 }
 
+// ── v5.8.2 — HTTP Parity helpers ───────────────────────────────────────────
+// Scan ALL text fields of a slide (title, subtitle, items, leftItems,
+// rightItems) for mentions of HTTP methods. Returns the set of methods
+// *promised* by prose/bullets so guardrails can compare against the code.
+function getHttpMethodsPromised(s: Slide): Set<string> {
+  const text = [
+    s.title ?? "", s.subtitle ?? "", s.label ?? "",
+    ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+  ].join(" ").toLowerCase();
+  const methods = new Set<string>();
+  if (/\bget\b|requests\.get/.test(text)) methods.add("GET");
+  if (/\bpost\b|requests\.post/.test(text)) methods.add("POST");
+  if (/\bput\b|requests\.put/.test(text)) methods.add("PUT");
+  if (/\bdelete\b|requests\.delete/.test(text)) methods.add("DELETE");
+  return methods;
+}
+
+// Produce a combined GET+POST example (or whatever methods are in `methods`).
+// Always emits response.status_code + response.json() for parity.
+function synthesizeHttpParityExample(methods: Set<string>): string {
+  const lines: string[] = ["import requests", ""];
+  if (methods.has("GET") || methods.size === 0) {
+    lines.push(`url = "https://api.example.com/items"`);
+    lines.push(`response = requests.get(url)`);
+    lines.push(`print(response.status_code)`);
+    lines.push(`print(response.json())`);
+  }
+  if (methods.has("POST")) {
+    if (lines.length > 2) lines.push("");
+    lines.push(`payload = {"nome": "Produto A", "preco": 29.90}`);
+    lines.push(`resp_post = requests.post("https://api.example.com/items", json=payload)`);
+    lines.push(`print(resp_post.status_code)`);
+    lines.push(`print(resp_post.json())`);
+  }
+  return lines.join("\n");
+}
+
+// ── v5.8.2 — isMetaSlide helper ────────────────────────────────────────────
+// Returns true for trailing/structural slides that should not be displaced
+// by injected content (takeaways, summary, closing, module covers).
+function isMetaSlide(s: Slide): boolean {
+  return ["takeaways", "summary", "closing", "module_cover"].includes(s.layout as string);
+}
+
+// ── v5.8.4 — CONTRACT_TITLE_MAP ────────────────────────────────────────────
+// Professional Portuguese titles for slides injected by skill coverage
+// contracts. Replaces internal identifiers like "unittest_or_pytest" with
+// readable titles like "Testes com unittest".
+const CONTRACT_TITLE_MAP: Readonly<Record<string, string>> = {
+  "http_get":               "Requisição GET com requests",
+  "json_parse":             "Consumindo APIs com JSON",
+  "unittest_or_pytest":     "Testes com unittest",
+  "logging_emit":           "Logging de Operações",
+  "class_with_init":        "Classes e Objetos em Python",
+  "instance_method":        "Métodos e Instâncias",
+  "with_open":              "Leitura de Arquivos com with open",
+  "try_except":             "Tratamento de Exceções",
+  "docstring_or_typehints": "Docstrings e Type Hints",
+  "pdb_debug":              "Depuração com pdb",
+  "collection_ops":         "Operações com Coleções em Python",
+  "http_post":              "Requisição POST com requests",
+  "file_write":             "Escrita de Arquivos em Python",
+};
+
+// ── v5.8.4 — Narrative Alignment ───────────────────────────────────────────
+// Detect semantic mismatch between a code slide's text (items/bullets) and
+// its actual code entities (class names). The canonical failing case:
+//   text  = "Cachorro / raça / latir"
+//   code  = "class Carro / marca / modelo / exibir_info()"
+// No 4-char-stem overlap → mismatch = true.
+const PT_STOPWORDS_NA = new Set([
+  "para", "como", "mais", "sobre", "este", "essa", "isso", "também",
+  "pela", "pelo", "numa", "usar", "pode", "cada", "quando", "tipos",
+  "forma", "caso", "valor", "dados", "lista", "com", "sem", "que",
+  "são", "uma", "ele", "ela", "seu", "sua", "das", "dos", "esta",
+  "estas", "esses", "essas", "exemplo", "define", "cria", "permite",
+  "mostra", "retorna", "verifica", "usando", "classe", "objeto",
+]);
+
+function detectNarrativeAlignment(s: Slide): {
+  mismatch: boolean; textEntities: string[]; codeEntities: string[];
+} {
+  const none = { mismatch: false, textEntities: [], codeEntities: [] };
+  if (s.layout !== "code" || !s.code) return none;
+
+  // Extract class names from code (primary entities)
+  const classMatches = [...s.code.matchAll(/^\s*class\s+([A-Z][A-Za-z0-9_]*)/gm)];
+  if (classMatches.length === 0) return none; // only flag when a named class is present
+  const codeEntities = classMatches.map((m) => m[1].toLowerCase());
+
+  // Extract significant nouns from text fields
+  const textContent = [
+    ...(s.items ?? []), ...(s.leftItems ?? []), ...(s.rightItems ?? []),
+  ].join(" ").toLowerCase();
+  if (!textContent.trim()) return none;
+
+  const textWords = textContent
+    .replace(/[^\wáéíóúãõâêôàçÁÉÍÓÚÃÕÂÊÔÀÇ]/gi, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !PT_STOPWORDS_NA.has(w));
+  if (textWords.length === 0) return none;
+
+  // 4-char stem overlap: code entity vs text word
+  const hasOverlap = codeEntities.some((ce) =>
+    textWords.some(
+      (tw) =>
+        tw.slice(0, 4) === ce.slice(0, 4) ||
+        ce.includes(tw.slice(0, 5)) ||
+        tw.includes(ce.slice(0, 5)),
+    )
+  );
+  const textEntities = [...new Set(textWords)].slice(0, 6);
+  return { mismatch: !hasOverlap, textEntities, codeEntities };
+}
+
+// Synthesize OOP code aligned to text entities (e.g. "cachorro/raça/latir"
+// → class Cachorro with atributo=raca and método=latir).
+// Only activates for moduleKind="oop".
+function synthesizeAlignedCode(
+  textEntities: string[],
+  moduleKind: string | null,
+  _ctx: CodeSymbols,
+): { code: string; source: string } | null {
+  if (moduleKind !== "oop" || textEntities.length === 0) return null;
+  const primary = textEntities[0];
+  if (!primary || primary.length < 3) return null;
+
+  const className = primary.charAt(0).toUpperCase() + primary.slice(1);
+  const instVar   = primary.slice(0, 4).toLowerCase().replace(/[^a-z]/g, "x");
+
+  // Classify remaining entities by suffix: verb endings → methods; nouns → attributes
+  const verbEndings = /[aeiouáéíóú][rR]$/;
+  const methods = textEntities.slice(1).filter((w) => verbEndings.test(w));
+  const attrs   = textEntities.slice(1).filter((w) => !verbEndings.test(w) && w.length > 2);
+  const attrName   = (attrs[0]   ?? "nome").replace(/[^a-z_çã]/g, "");
+  const methodName = (methods[0] ?? "exibir").replace(/[^a-z_]/g, "");
+
+  const code = [
+    `class ${className}:`,
+    `    def __init__(self, ${attrName}):`,
+    `        self.${attrName} = ${attrName}`,
+    ``,
+    `    def ${methodName}(self):`,
+    `        print(f"${className}: {self.${attrName}}")`,
+    ``,
+    `${instVar} = ${className}("exemplo")`,
+    `${instVar}.${methodName}()`,
+  ].join("\n");
+  return { code, source: "narrative_aligned_synthesis" };
+}
+
+// ── v5.8.4 — Title-Code Coherence ──────────────────────────────────────────
+// Rewrite titles that look like internal identifiers ("X or Y", "X_or_Y",
+// "Exemplo: contract_name") to professional Portuguese based on code content.
+// Fires on any slide that has a code field.
+function rewriteTitleFromCode(
+  title: string,
+  code: string | undefined,
+  moduleKind: string | null,
+  slideNum: number | string,
+): string | null {
+  if (!title) return null;
+  const hasOrAnd     = /\b\w+\s+(?:or|and)\s+\w+\b/i.test(title) || /\w+_(?:or|and)_\w+/.test(title);
+  const looksPlaceholder = /^exemplo:\s*\w/i.test(title.trim());
+  if (!hasOrAnd && !looksPlaceholder) return null;
+
+  // Derive title from actual code content (most reliable signal)
+  if (code) {
+    if (/\bpdb\b|\.set_trace\s*\(/.test(code))              return "Depuração com pdb";
+    if (/import\s+pytest|@pytest\b/.test(code))              return "Testes com pytest";
+    if (/import\s+unittest|unittest\.TestCase/.test(code))   return "Testes com unittest";
+    if (/def\s+test_\w+/.test(code))                         return "Testes Automatizados";
+    if (/logging\.(info|debug|warning|error)/.test(code))    return "Logging de Operações";
+    if (/def\s+\w+[^)]*->\s*\w+|\"\"\"[\s\S]*?\"\"\"/m.test(code)) return "Docstrings e Type Hints";
+    if (/venv|pip\s+install|requirements\.txt/.test(code))   return "Ambiente Virtual e Dependências";
+    if (/with\s+open\s*\(/.test(code))                       return "Leitura de Arquivos";
+    if (/try\s*:\s*\n[\s\S]*?except\b/.test(code))           return "Tratamento de Exceções";
+  }
+
+  // Fallback: module kind
+  const kindFallbacks: Record<string, string> = {
+    tests_logs:       "Depuração e Testes",
+    best_practices:   "Boas Práticas de Código",
+    files_exceptions: "Arquivos e Exceções",
+    oop:              "Classes e Objetos",
+    json_apis:        "APIs e JSON",
+  };
+  if (moduleKind && kindFallbacks[moduleKind]) return kindFallbacks[moduleKind];
+
+  // Last resort: "X or Y" → "X e Y", strip "Exemplo:" prefix
+  let cleaned = title
+    .replace(/\b(\w+)\s+or\s+(\w+)\b/gi,  "$1 e $2")
+    .replace(/\b(\w+)\s+and\s+(\w+)\b/gi, "$1 e $2")
+    .replace(/_(?:or|and)_/gi, " e ")
+    .replace(/^exemplo:\s*/i, "");
+  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  if (cleaned !== title) {
+    console.log(`[EDITORIAL-TITLE] slide=${slideNum} title="${title.slice(0, 60)}" → "${cleaned}" reason=xory_cleanup`);
+    return cleaned;
+  }
+  return null;
+}
+
+// ── v5.8.5 — Title-Snippet Semantic Alignment ─────────────────────────────
+// Tech-specific mismatch: title says "unittest" but code has only "pdb".
+// More precise than the "X or Y" check (Guardrail 8) because it operates
+// on named technology entities rather than syntactic placeholder patterns.
+const TECH_ENTITY_PATTERNS: ReadonlyArray<{
+  key: string; titleRe: RegExp; codeRe: RegExp; canonicalTitle: string;
+}> = [
+  { key: "pdb",      titleRe: /\bpdb\b/i,       codeRe: /\bpdb\b|\.set_trace\s*\(/,              canonicalTitle: "Depuração com pdb"                  },
+  { key: "unittest", titleRe: /\bunittest\b/i,   codeRe: /import\s+unittest|unittest\.TestCase/,   canonicalTitle: "Testes com unittest"                },
+  { key: "pytest",   titleRe: /\bpytest\b/i,     codeRe: /import\s+pytest|@pytest\b|def\s+test_/,  canonicalTitle: "Testes com pytest"                  },
+  { key: "logging",  titleRe: /\blogging\b/i,    codeRe: /logging\.(info|debug|warning|error)/,    canonicalTitle: "Logging de Operações"               },
+  { key: "requests", titleRe: /\brequests\b/i,   codeRe: /requests\.(get|post|put|delete)\s*\(/,   canonicalTitle: "Requisições HTTP com requests"      },
+];
+
+function detectTitleSnippetMismatch(title: string, code: string | undefined): {
+  mismatch: boolean; titleEntities: string[]; codeEntities: string[]; suggestedTitle: string | null;
+} {
+  const none = { mismatch: false, titleEntities: [], codeEntities: [], suggestedTitle: null };
+  if (!title || !code) return none;
+  const titleEntities = TECH_ENTITY_PATTERNS.filter((p) => p.titleRe.test(title)).map((p) => p.key);
+  const codeEntities  = TECH_ENTITY_PATTERNS.filter((p) => p.codeRe.test(code)).map((p) => p.key);
+  // Only flag when title claims a specific tech that is NOT present in the code
+  if (titleEntities.length === 0 || codeEntities.length === 0) return none;
+  const mismatch = titleEntities.some((e) => !codeEntities.includes(e));
+  const suggestedTitle = mismatch
+    ? (TECH_ENTITY_PATTERNS.find((p) => p.key === codeEntities[0])?.canonicalTitle ?? null)
+    : null;
+  return { mismatch, titleEntities, codeEntities, suggestedTitle };
+}
+
+// ── v5.8.5 — Contract-Specific Synthesis ───────────────────────────────────
+// Maps CONTRACT_NAME → the canonical observable code example for that contract.
+// More precise than synthesizeMinimalCompleteExample because it bypasses
+// title-keyword guessing and always returns the exact required pattern.
+function synthesizeForContract(
+  contractName: string,
+  moduleKind: string | null,
+  moduleCtx: CodeSymbols,
+): { code: string; source: string } | null {
+  if (contractName === "pdb_debug") {
+    return {
+      code: `import pdb\n\ndef calcular(a, b):\n    pdb.set_trace()\n    return a + b\n\nprint(calcular(2, 3))`,
+      source: "canonical_pdb",
+    };
+  }
+  if (contractName === "logging_emit") {
+    return {
+      code: `import logging\n\nlogging.basicConfig(level=logging.INFO)\nlogging.info("Aplicação iniciada")\nlogging.warning("Operação demorada")`,
+      source: "canonical_logging",
+    };
+  }
+  if (contractName === "unittest_or_pytest") {
+    return {
+      code: `import unittest\n\nclass TestCalculadora(unittest.TestCase):\n    def test_soma(self):\n        self.assertEqual(2 + 2, 4)\n\nif __name__ == "__main__":\n    unittest.main()`,
+      source: "canonical_unittest",
+    };
+  }
+  // v5.8.7 — http_post: canonical POST request with response.json() output.
+  if (contractName === "http_post") {
+    return {
+      code: [
+        `import requests`,
+        ``,
+        `url = "https://api.example.com/usuarios"`,
+        `payload = {"nome": "Ana", "email": "ana@example.com"}`,
+        `resposta = requests.post(url, json=payload)`,
+        `if resposta.status_code == 201:`,
+        `    dados = resposta.json()`,
+        `    print(dados)`,
+      ].join("\n"),
+      source: "canonical_http_post",
+    };
+  }
+  // v5.8.7 — file_write: write + read example to differentiate from with_open (read-only).
+  if (contractName === "file_write") {
+    return {
+      code: [
+        `with open("notas.txt", "w") as f:`,
+        `    f.write("Módulo 1: Aprovado\\n")`,
+        `    f.write("Módulo 2: Aprovado\\n")`,
+        ``,
+        `with open("notas.txt", "r") as f:`,
+        `    conteudo = f.read()`,
+        `    print(conteudo)`,
+      ].join("\n"),
+      source: "canonical_file_write",
+    };
+  }
+  // v5.8.6 — data_structures: list + dict + tuple + set operations.
+  if (contractName === "collection_ops") {
+    return {
+      code: [
+        `biblioteca = []`,
+        `generos = set()`,
+        ``,
+        `livro = {`,
+        `    "titulo": "1984",`,
+        `    "autor": "George Orwell",`,
+        `    "isbn_ano": ("9780451524935", 1949),`,
+        `    "disponivel": True`,
+        `}`,
+        ``,
+        `biblioteca.append(livro)`,
+        `generos.add("distopia")`,
+        ``,
+        `print(biblioteca[0]["titulo"])`,
+        `print(generos)`,
+      ].join("\n"),
+      source: "canonical_data_structures",
+    };
+  }
+  // Fallback: module-based synthesis (handles json_apis, oop, files_exceptions, etc.)
+  return synthesizeMinimalCompleteExample(
+    moduleKind, moduleCtx,
+    contractName.replace(/_or_/g, " ").replace(/_/g, " "),
+  );
+}
+
+// ── v5.8.2 — Module Skill Coverage Contracts ───────────────────────────────
+// Minimum observable patterns per moduleKind.
+// Each contract specifies required patterns that MUST collectively appear
+// in at least ONE code slide of the module. Missing contracts are logged
+// as [SKILL-CONTRACT] warnings and trigger a synthesis injection attempt.
+type SkillContract = {
+  name:             string;
+  requiredPatterns: RegExp[];  // ALL must appear in at least one code slide
+};
+
+const MODULE_SKILL_CONTRACTS: Record<string, SkillContract[]> = {
+  json_apis: [
+    { name: "http_get",   requiredPatterns: [/requests\.get\s*\(/] },
+    { name: "http_post",  requiredPatterns: [/requests\.post\s*\(/] },
+    { name: "json_parse", requiredPatterns: [/\.status_code/, /\.json\(\)/] },
+  ],
+  tests_logs: [
+    { name: "unittest_or_pytest", requiredPatterns: [/import\s+unittest|import\s+pytest|def\s+test_/] },
+    { name: "logging_emit",       requiredPatterns: [/logging\.(info|debug|warning|error|critical)\s*\(/] },
+    { name: "pdb_debug",          requiredPatterns: [/\bpdb\b|\.set_trace\s*\(/] },
+  ],
+  oop: [
+    { name: "class_with_init",  requiredPatterns: [/class\s+[A-Z]/, /__init__\s*\(/] },
+    { name: "instance_method",  requiredPatterns: [/\b[a-z_]\w*\s*\.\s*[a-z_]\w+\s*\(/] },
+  ],
+  files_exceptions: [
+    { name: "with_open",  requiredPatterns: [/with\s+open\s*\(/] },
+    { name: "file_write", requiredPatterns: [/open\s*\([^)]*["']w["']|\.write\s*\(/] },
+    { name: "try_except", requiredPatterns: [/try\s*:/, /except\b/] },
+  ],
+  best_practices: [
+    { name: "docstring_or_typehints", requiredPatterns: [/"""[\s\S]*?"""|def\s+\w+\s*\([^)]*:\s*\w+|->|requirements\.txt|venv/] },
+  ],
+  data_structures: [
+    { name: "collection_ops", requiredPatterns: [/\.append\s*\(/, /\[["']/, /set\s*\(\)|\.add\s*\(/, /print\s*\(/] },
+  ],
+};
+
+// Returns names of contracts that have NO code slide covering all their patterns.
+function checkModuleSkillContracts(
+  slides: Slide[],
+  moduleKind: string | null,
+  moduleTitle: string,
+  mi: number,
+): string[] {
+  if (!moduleKind || !(moduleKind in MODULE_SKILL_CONTRACTS)) return [];
+  const contracts = MODULE_SKILL_CONTRACTS[moduleKind];
+  const codeTexts = slides.filter((s) => s.layout === "code" && s.code).map((s) => s.code!);
+  const missing: string[] = [];
+  for (const contract of contracts) {
+    const covered = codeTexts.some((code) => contract.requiredPatterns.every((pat) => pat.test(code)));
+    if (!covered) {
+      missing.push(contract.name);
+      console.warn(
+        `[SKILL-CONTRACT] mi=${mi} title="${moduleTitle.slice(0, 60)}" kind=${moduleKind} MISSING=${contract.name} patterns=${contract.requiredPatterns.map((r) => r.source).join(" & ")}`,
+      );
+    } else {
+      console.log(
+        `[SKILL-CONTRACT] mi=${mi} title="${moduleTitle.slice(0, 60)}" kind=${moduleKind} OK=${contract.name}`,
+      );
+    }
+  }
+  return missing;
+}
+
 // ── Code completeness validator ────────────────────────────
 // Per-language structural completeness check. Returns true when the
 // code block looks safe to render (closed brackets, balanced quotes,
@@ -7560,7 +7852,9 @@ type QAIssueType =
   // ── v5.4.0 Technical Preservation Layer ─────────────────────
   | "TECHNICAL_TOKEN_LOSS"
   // ── v5.7.0 Final safety net (forbidden-pattern scan) ────────
-  | "FORBIDDEN_FINAL_PATTERN";
+  | "FORBIDDEN_FINAL_PATTERN"
+  // ── v5.8.4 narrative alignment ──────────────────────────────
+  | "NARRATIVE_ALIGNMENT_FAILURE";
 
 interface QAIssue {
   slideId:            string;
@@ -8417,7 +8711,8 @@ function parseSlideId(id: string): { mi: number; si: number } | null {
  * like SELECT *, COUNT(*), SUM(*), MAX(*), MIN(*), AVG(*).
  * Also avoids breaking mid-word.
  */
-const SQL_STAR_PRESERVE_RE = /\b(?:SELECT\s+\*|COUNT\s*\(\s*\*\s*\)|SUM\s*\(\s*\*\s*\)|AVG\s*\(\s*\*\s*\)|MAX\s*\(\s*\*\s*\)|MIN\s*\(\s*\*\s*\))/i;
+// v5.8.6 — pip install -r added: never truncate install commands mid-flag.
+const SQL_STAR_PRESERVE_RE = /\b(?:SELECT\s+\*|COUNT\s*\(\s*\*\s*\)|SUM\s*\(\s*\*\s*\)|AVG\s*\(\s*\*\s*\)|MAX\s*\(\s*\*\s*\)|MIN\s*\(\s*\*\s*\)|pip\s+install\b)/i;
 
 function safeSliceText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
@@ -8574,6 +8869,26 @@ function l2Replan(s: Slide, issue: QAIssue, moduleContent: string): Slide[] {
     }
     case "CODE_TOO_LONG": {
       const lines = (s.code || "").split("\n");
+      // v5.8.7 — protect observable outcome call demo from mid-split.
+      // If the code ends with the canonical repair pattern (blank line + "resultado = fn(...)"),
+      // trim the FUNCTION BODY to make room for the demo rather than splitting at mid.
+      // Root cause: l2 split at lines/2 was putting the call demo on Slide B,
+      // which then failed isRenderableSlide (too few lines) and got dropped.
+      const demoIdx = lines.findIndex(
+        (l, i) => l.trim() === "" && i > 0 && /^resultado\s*=\s*/.test(lines[i + 1] ?? ""),
+      );
+      if (demoIdx > 0) {
+        const funcLines = lines.slice(0, demoIdx);
+        const demoLines = lines.slice(demoIdx);
+        const maxFuncLines = QA.MAX_CODE_LINES - demoLines.length;
+        if (maxFuncLines > 0) {
+          const combined = [...funcLines.slice(0, maxFuncLines), ...demoLines];
+          console.log(
+            `[REPAIR-PERSISTENCE] slide=${s.title?.slice(0, 40)} stage=l2_code_too_long demo_protected=true func_trimmed=${Math.max(0, funcLines.length - maxFuncLines)}_lines`,
+          );
+          return [{ ...s, code: combined.join("\n") }];
+        }
+      }
       if (lines.length <= QA.MAX_CODE_LINES * 2) {
         const mid = Math.ceil(lines.length / 2);
         const p1: Slide = { ...s, title: `${s.title} (1/2)`, code: lines.slice(0, mid).join("\n") };
@@ -9666,6 +9981,53 @@ async function runPipeline(
       moduleCtx = extractSemanticCodeContext(kept);
     }
     allModuleSlides[mi] = kept;
+
+    // v5.8.2 — Skill coverage contracts: after all per-slide guardrails,
+    // check that the module's code slides collectively cover the required
+    // skill patterns for its kind. Missing patterns trigger a synthesis
+    // injection BEFORE global safety-net so the injected slide benefits from
+    // all subsequent QA layers. One injection attempt per module max.
+    const missingContracts = checkModuleSkillContracts(
+      kept, moduleKind, moduleTitlesArr[mi] ?? "", mi + 1,
+    );
+    if (missingContracts.length > 0) {
+      console.warn(
+        `[SKILL-CONTRACT] mi=${mi + 1} missing=${missingContracts.join(",")} → attempting synthesis injection (one slide per contract)`,
+      );
+      // v5.8.5 — inject one slide PER missing contract (was: one slide for first contract only).
+      // This ensures tests_logs modules always get all 3 real snippets:
+      // unittest + logging + pdb — not just whichever the title happened to match.
+      for (const contractName of missingContracts) {
+        const synth = synthesizeForContract(contractName, moduleKind, moduleCtx);
+        if (synth) {
+          const injectedTitle =
+            CONTRACT_TITLE_MAP[contractName] ??
+            contractName
+              .replace(/_or_/g, " e ")
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase());
+          const injectedSlide: Slide = {
+            layout: "code",
+            title:  injectedTitle,
+            code:   synth.code,
+            label:  "CÓDIGO",
+            moduleIndex: mi,
+          };
+          // Insert before trailing meta slides so it stays in the module body.
+          const metaIdx = kept.findIndex((s) => isMetaSlide(s));
+          if (metaIdx > 0) kept.splice(metaIdx, 0, injectedSlide);
+          else kept.push(injectedSlide);
+          console.log(
+            `[SKILL-CONTRACT-INJECT] mi=${mi + 1} kind=${moduleKind} contract=${contractName} source=${synth.source} injected title="${injectedTitle}"`,
+          );
+        } else {
+          console.warn(
+            `[SKILL-CONTRACT] mi=${mi + 1} kind=${moduleKind} contract=${contractName} — synthesis unavailable`,
+          );
+        }
+      }
+      allModuleSlides[mi] = kept;
+    }
   }
   console.log(
     `[V5-GUARDRAILS] applied to ${guardrailSlideCounter} slides | adjacent_title_dedup=${titleDedupCount} | adjacent_dropped=${titleDedupDropCount} | weak_continuation_dropped=${weakContinuationDropCount}`,

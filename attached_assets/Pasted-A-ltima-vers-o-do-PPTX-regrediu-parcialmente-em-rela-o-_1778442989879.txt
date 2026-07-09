@@ -1,0 +1,315 @@
+A última versão do PPTX regrediu parcialmente em relação à anterior.Os ganhos preservados:- POO continua boa;- módulo 7 continua com unittest/logging/pdb;- módulo 8 continua forte;- estabilidade visual continua alta.Mas houve regressão clara em dois pontos críticos:- observable outcome do módulo 2;- HTTP parity do módulo API.==================================================PROBLEMAS REAIS DO PPTX====================================================================================================1. SLIDE 13 — REGRESSÃO DO OBSERVABLE OUTCOME==================================================A versão anterior já havia corrigido esse caso.Agora o snippet voltou a terminar em:```pythontotalliquido = totalbruto - desconto
+sem:
+
+
+return;
+
+
+chamada;
+
+
+print(resultado).
+
+
+Ou seja:
+alguma fase do pipeline:
+
+
+removeu;
+
+
+truncou;
+
+
+sobrescreveu;
+
+
+ou invalidou o repair convergente anterior.
+
+
+Isso NÃO é mais um bug de validator.
+É regressão do pipeline.
+Investigar especificamente:
+
+
+qual fase remove o repair;
+
+
+se synthesis sobrescreve;
+
+
+se layout clipping remove linhas finais;
+
+
+se final guardrails truncam;
+
+
+ou se planner gera versão mais curta.
+
+
+==================================================
+2. MÓDULO API — REGRESSÃO DE HTTP PARITY
+O slide 32 voltou a mostrar apenas:
+
+
+requests.get()
+
+
+e perdeu:
+
+
+POST;
+
+
+response.json();
+
+
+parity completa.
+
+
+A versão anterior já estava correta.
+Isso indica regressão clara:
+
+
+repair não persistiu;
+
+
+synthesis foi substituído;
+
+
+ou planner gerou archetype mais curto.
+
+
+==================================================
+3. MÓDULO 3 — AINDA FALTA OUTPUT OBSERVÁVEL
+O slide CODE:
+biblioteca.append(livro)generos.add("distopia")
+continua sem:
+
+
+print(biblioteca[0]["titulo"]);
+
+
+print(generos).
+
+
+O exemplo parece incompleto.
+==================================================
+4. DUPLICAÇÃO NO MÓDULO 4
+Slides 24 e 25 estão quase duplicados.
+Isso reduz densidade pedagógica.
+Quero:
+
+
+consolidar;
+OU
+
+
+transformar um deles em exemplo mais avançado.
+
+
+==================================================
+OBJETIVO DA PRÓXIMA RODADA
+Agora o foco NÃO é:
+
+
+nova arquitetura;
+
+
+novos sistemas grandes;
+
+
+novos validators gigantes.
+
+
+O foco é:
+
+
+impedir regressão;
+
+
+estabilizar repairs;
+
+
+preservar ganhos anteriores.
+
+
+==================================================
+CORREÇÕES SOLICITADAS
+==================================================
+
+
+CRIAR REGRESSION LOCKS
+==================================================
+
+
+Casos já corrigidos não podem voltar a quebrar.
+Criar regression fixtures reais para:
+
+
+slide 13 (observable outcome);
+
+
+slide API GET+POST;
+
+
+unittest/logging/pdb coverage;
+
+
+POO semantic alignment.
+
+
+O integration check final deve verificar:
+
+
+se versões já convergidas continuam convergidas.
+
+
+==================================================
+2. INVESTIGAR ONDE O REPAIR ESTÁ SENDO PERDIDO
+Quero rastreamento completo:
+planner
+→ synthesis
+→ repair
+→ normalization
+→ guardrails
+→ final layout fitting
+→ renderer input
+Adicionar logs de persistência:
+[REPAIR-PERSISTENCE]
+slide=13
+repair=observable_outcome
+stage=post_synthesis
+status=PRESENT
+[REPAIR-PERSISTENCE]
+slide=13
+stage=post_layout_fit
+status=REMOVED
+Quero descobrir ONDE o conteúdo desaparece.
+==================================================
+3. HTTP PARITY — NÃO PERMITIR REGRESSÃO
+Se módulo API já convergiu para:
+
+
+GET;
+
+
+POST;
+
+
+response.json();
+
+
+o pipeline não pode voltar para GET-only.
+Adicionar check final:
+[HTTP-PARITY-FINAL]
+required=get,post,response.json
+found=get
+status=FAILED
+==================================================
+4. MODULE 3 — OUTPUT OBSERVÁVEL
+Adicionar output final ao exemplo:
+print(biblioteca[0]["titulo"])print(generos)
+==================================================
+5. MODULE 4 — ELIMINAR QUASE-DUPLICAÇÃO
+Slides 24 e 25 precisam:
+
+
+fundir;
+OU
+
+
+ter progressão pedagógica clara.
+
+
+Exemplo:
+24 → leitura simples;
+25 → leitura + escrita + tratamento avançado.
+==================================================
+6. NÃO REGREDIR
+Preservar obrigatoriamente:
+
+
+módulo 7 com unittest/logging/pdb;
+
+
+módulo 8;
+
+
+POO;
+
+
+estabilidade visual;
+
+
+anti-demotion;
+
+
+module-aware synthesis.
+
+
+==================================================
+7. CRITÉRIO DE ACEITE
+Slide 13:
+
+
+return;
+
+
+chamada;
+
+
+print(resultado).
+
+
+Slide 32:
+
+
+GET;
+
+
+POST;
+
+
+response.json();
+
+
+output.
+
+
+Slide 17:
+
+
+print(biblioteca[0]["titulo"]);
+
+
+print(generos).
+
+
+Módulo 4:
+
+
+sem duplicação quase idêntica.
+
+
+Sem regressão:
+
+
+visual;
+
+
+semantic alignment;
+
+
+code coverage;
+
+
+anti-demotion;
+
+
+layout stability.
+
+
+ENGINE_VERSION:
+5.8.x
+Os problemas descritos são típicos de regressão de pipeline em agentes de código complexos, especialmente quando múltiplos passes (planner → synthesis → repair → fitting) interagem sem “regression locks”. :contentReference[oaicite:0]{index=0}::contentReference[oaicite:1]{index=1}

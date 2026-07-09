@@ -1,0 +1,245 @@
+A v5.8.x atingiu um nível muito mais maduro.
+A arquitetura anti-demotion e o module-aware synthesis claramente melhoraram o curso.
+
+Os avanços mais importantes:
+- HTTP parity finalmente funcionando;
+- títulos editoriais melhores;
+- menos destruição pedagógica;
+- melhor alternância conceito/processo/código;
+- módulo 8 muito sólido;
+- estabilidade visual alta.
+
+Agora o gargalo restante é MUITO específico.
+
+==================================================
+PROBLEMAS REAIS REMANESCENTES
+==================================================
+
+==================================================
+1. SLIDE 14 — observable outcome ainda falha
+==================================================
+
+O exemplo:
+
+```python id="b8h7xe"
+def calcularvalortotal(carrinhodecompras):
+
+continua terminando em:
+
+totalliquido = totalbruto - desconto
+
+sem:
+
+return totalliquido;
+chamada da função;
+print(resultado).
+
+Esse é exatamente o caso mais importante:
+
+loop;
+accumulator variable;
+condicional;
+cálculo incremental.
+
+O repair convergente ainda NÃO está cobrindo esse path.
+
+==================================================
+2. SLIDE 48 — mismatch narrativo ainda existe
+
+Título:
+“Testes com unittest”
+
+Código:
+
+apenas pdb.
+
+Isso ainda é semanticamente incorreto.
+
+Ou:
+
+o título deve virar “Depuração com pdb”;
+OU
+o código deve realmente usar unittest.
+==================================================
+3. MÓDULO 7 ainda desequilibrado
+
+Agora:
+
+unittest aparece apenas conceitualmente;
+logging aparece apenas conceitualmente;
+apenas pdb possui snippet real.
+
+Falta:
+
+snippet unittest real;
+snippet logging real.
+==================================================
+4. Slides PROCESSO ainda muito densos
+
+Slides como:
+
+40;
+41;
+
+continuam parecendo:
+
+blocos textuais;
+pouca demonstração prática/processual.
+==================================================
+OBJETIVO DA PRÓXIMA RODADA
+
+Agora NÃO quero:
+
+nova arquitetura;
+novos hardening layers;
+mais sistemas gigantes.
+
+Quero:
+
+refinamento fino;
+completude pedagógica;
+melhor balanceamento entre conceito e prática.
+==================================================
+CORREÇÕES SOLICITADAS
+
+==================================================
+
+TRANSFORMAR O CASO DO SLIDE 14 EM TESTE DE REGRESSÃO REAL
+==================================================
+
+Esse caso precisa virar:
+
+teste obrigatório;
+fixture permanente;
+integration test real.
+
+O validator de observable outcome deve cobrir explicitamente:
+
+accumulator variable;
+variável final derivada;
+cálculo incremental;
+loop + if/elif;
+total/soma/contador/subtotal.
+
+O snippet final deve convergir para algo como:
+
+totalliquido = totalbruto - desconto
+return totalliquido
+
+resultado = calcularvalortotal(carrinhodecompras)
+print(resultado)
+
+Investigar especificamente:
+por que esse path ainda escapa.
+
+==================================================
+2. ALIGNMENT ENTRE TÍTULO E SNIPPET
+
+Se o snippet contém:
+
+pdb
+
+o título NÃO pode ser:
+
+unittest.
+
+Criar regra final:
+
+titleSemanticEntities
+vs
+snippetSemanticEntities
+
+Mismatch forte:
+
+rewrite title;
+OU
+synthesize novo snippet.
+==================================================
+3. MÓDULO 7 — CONTRATO DE COBERTURA REAL
+
+O módulo de testes/logging/debug precisa terminar com:
+
+1 snippet unittest real;
+1 snippet logging real;
+1 snippet pdb real.
+
+Não apenas conceitos.
+
+==================================================
+4. REDUZIR DENSIDADE DOS SLIDES PROCESSO
+
+Slides PROCESSO longos demais devem:
+
+quebrar em passos mais curtos;
+bullets menores;
+alternar com mini snippets/processos visuais.
+
+Não quero paredes de texto.
+
+==================================================
+5. NÃO REGREDIR
+
+Preservar:
+
+HTTP parity;
+anti-demotion;
+module-aware synthesis;
+layout stability;
+coverage modular;
+editorial improvements.
+==================================================
+6. NOVOS LOGS
+
+Adicionar:
+
+[OBSERVABLE-OUTCOME-TRACE]
+slide=14
+detected=accumulator_pattern
+missing=return, invocation, output
+repair_attempted=true
+repair_converged=false
+
+[TITLE-SNIPPET-ALIGNMENT]
+slide=48
+title_entities=unittest
+snippet_entities=pdb
+status=FAILED
+title_rewritten="Depuração com pdb"
+
+==================================================
+7. CRITÉRIO DE ACEITE
+
+Novo export deve ter:
+
+Slide 14:
+
+return;
+chamada;
+print(resultado).
+
+Módulo 7:
+
+snippet unittest real;
+snippet logging real;
+snippet pdb real.
+
+Slide 48:
+
+título coerente com o código.
+
+Slides PROCESSO:
+
+menos densos;
+mais claros;
+mais didáticos.
+
+Sem regressão:
+
+visual;
+anti-demotion;
+HTTP parity;
+semantic alignment;
+code coverage.
+
+ENGINE_VERSION:
+5.8.x

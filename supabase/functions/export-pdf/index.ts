@@ -2,54 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 
-// Self-contained (no ../_shared import) so this function can be deployed by
-// pasting THIS single file into the Supabase Dashboard editor.
-function _headingKey(s: string): string {
-  return (s || "")
-    .replace(/^#{1,6}\s*/, "")
-    .replace(/^m[óo]dul[oe]\s*\d+\s*[:.\-–—]\s*/i, "")
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim().toLowerCase();
-}
-/** Strip a stray ```markdown wrapper fence + a leading heading that just repeats
- *  the module title (every consumer already renders the title). */
-function cleanModuleContent(content: string, title?: string): string {
-  let c = (content || "").trim();
-  if (/^```/.test(c)) {
-    c = c.replace(/^```[a-zA-Z]*[ \t]*\n?/, "").replace(/\n?```[ \t]*$/, "").trim();
-  }
-  if (title) {
-    const lines = c.split("\n");
-    let k = 0;
-    while (k < lines.length && !lines[k].trim()) k++;
-    if (
-      k < lines.length && /^#{1,3}\s+/.test(lines[k]) &&
-      _headingKey(title).length > 0 && _headingKey(lines[k]) === _headingKey(title)
-    ) {
-      lines.splice(0, k + 1);
-      while (lines.length && !lines[0].trim()) lines.shift();
-      c = lines.join("\n").trim();
-    }
-  }
-  return c;
-}
-
-// TESTING_MODE: fase de testes sem usuários reais — libera o gate de plano Pro
-// do export de PDF (espelha generate-course / upload-course-source). Voltar para
-// `false` para reativar a monetização.
-const TESTING_MODE = true;
-
-// Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
-// can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21d";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-  "Access-Control-Expose-Headers": "x-export-pdf-build",
-  "x-export-pdf-build": EXPORT_PDF_BUILD,
 };
 
 // ── Emoji & encoding helpers ──────────────────────────────────────────
@@ -90,10 +46,8 @@ function sanitizeText(text: string): string {
 function stripMarkdown(text: string): string {
   return text
     .replace(/#{1,6}\s*/g, "")
-    // Bold/italic: the asterisks must HUG non-space content, so Python operators
-    // ("5 ** 2", "a * b") are preserved while real **bold**/*italic* is stripped.
-    .replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, "$1")
-    .replace(/\*(?=\S)([^*]+?)(?<=\S)\*/g, "$1")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
     .replace(/`{1,3}[^`]*`{1,3}/g, (m) => m.replace(/`/g, ""))
     .replace(/>\s*/g, "")
     .replace(/---/g, "")
@@ -219,9 +173,6 @@ const COLOR = {
   TABLE_FIRST_COL: [232, 232, 245] as const,
   BORDER_LIGHT: [210, 210, 220] as const,
   BORDER_TABLE: [185, 185, 200] as const,
-  BG_CODE: [26, 32, 64] as const,        // Dark navy (matches the deck/code style)
-  CODE_TEXT: [226, 232, 244] as const,    // Light text on dark
-  CODE_BORDER: [40, 48, 92] as const,
 };
 
 // ── PDF renderer ──────────────────────────────────────────────────────
@@ -311,48 +262,6 @@ class PdfRenderer {
     let j = from;
     while (j < lines.length && !lines[j].trim()) j++;
     return j;
-  }
-
-  // "Keep-with-next" height for a heading: accumulate the following blocks
-  // (intro paragraph + its table/list/etc.) up to a target, so a heading is never
-  // stranded at the page bottom with only a one-line intro while the real content
-  // (a table) starts on the next page. Capped so a tall table doesn't force a
-  // needless break — we only need to guarantee a meaningful chunk stays together.
-  estimateKeepHeight(lines: string[], fromIdx: number): number {
-    const TARGET = 30; // mm of content to keep under a heading
-    let total = 0, j = fromIdx, guard = 0;
-    while (j < lines.length && total < TARGET && guard < 5) {
-      while (j < lines.length && !lines[j].trim()) j++;
-      if (j >= lines.length) break;
-      const t = lines[j].trim();
-      if (getHeadingLevel(t) > 0) break; // next heading — stop accumulating
-      if (t === "---" || t === "***" || t === "___") { j++; continue; }
-
-      // table
-      if (t.includes("|") && lines[j + 1]?.includes("|")) {
-        const { table, endIndex } = parseMarkdownTable(lines, j);
-        if (table) { total += Math.min(80, 10 + table.rows.length * 12); j = endIndex + 1; guard++; continue; }
-      }
-      // bullet / numbered run
-      if (t.startsWith("- ") || t.startsWith("* ") || /^\d+\.\s/.test(t)) {
-        while (j < lines.length) {
-          const tt = lines[j].trim();
-          if (!tt || getHeadingLevel(tt) > 0) break;
-          if (tt.startsWith("- ") || tt.startsWith("* ") || /^\d+\.\s/.test(tt)) { total += this.estimateBulletHeight(tt); j++; }
-          else break;
-        }
-        guard++; continue;
-      }
-      // blockquote
-      if (t.startsWith("> ")) {
-        let txt = t.replace(/^>\s*/, ""); j++;
-        while (j < lines.length && lines[j].trim().startsWith("> ")) { txt += " " + lines[j].trim().replace(/^>\s*/, ""); j++; }
-        total += this.estimateTextHeight(txt, FONT.SMALL, CONTENT_W - 16, 4.5) + 12; guard++; continue;
-      }
-      // paragraph
-      total += this.estimateTextHeight(t, FONT.BODY, CONTENT_W, SP.LINE_HEIGHT); j++; guard++;
-    }
-    return Math.min(total, TARGET);
   }
 
   // ── Title page ────────────────────────────────────────────────────
@@ -779,19 +688,6 @@ class PdfRenderer {
         continue;
       }
 
-      // ── Fenced code block ── (preserve indentation; render monospace)
-      if (trimmed.startsWith("```")) {
-        const codeLines: string[] = [];
-        let j = i + 1;
-        while (j < lines.length && !lines[j].trim().startsWith("```")) {
-          codeLines.push(lines[j]);
-          j++;
-        }
-        this.renderCodeBlock(codeLines);
-        i = j < lines.length ? j + 1 : j; // skip closing fence
-        continue;
-      }
-
       // ── Table detection ──
       if (trimmed.includes("|") && i + 1 < lines.length && lines[i + 1]?.includes("|")) {
         const { table, endIndex } = parseMarkdownTable(lines, i);
@@ -806,11 +702,8 @@ class PdfRenderer {
       const heading = getHeadingLevel(trimmed);
       if (heading > 0) {
         const nextIdx = this.nextNonEmpty(lines, i + 1);
-        // Keep the heading with a meaningful chunk of its following content
-        // (intro + table/list), not just the first short line — otherwise the
-        // heading is orphaned at the page bottom and the table starts overleaf.
-        const keepH = this.estimateKeepHeight(lines, nextIdx);
-        this.renderHeading(trimmed, heading === 1 ? 2 : heading, keepH);
+        const nextBlockH = this.estimateNextBlockHeight(lines, nextIdx);
+        this.renderHeading(trimmed, heading === 1 ? 2 : heading, nextBlockH);
         i++;
         continue;
       }
@@ -891,50 +784,6 @@ class PdfRenderer {
     }
   }
 
-  // ── Code block ────────────────────────────────────────────────────
-  // Monospace, light box, indentation preserved. Page-break aware (re-draws the
-  // box on each page). Code is NOT markdown-stripped — only emoji/encoding safe.
-  renderCodeBlock(codeLines: string[]) {
-    const fs = 9, lineH = 4.6, padV = 4, padH = 5;
-    this.doc.setFont("courier", "normal");
-    this.doc.setFontSize(fs);
-    const innerW = CONTENT_W - padH * 2;
-    const wrapped: string[] = [];
-    for (const raw of codeLines) {
-      const safe = sanitizeText(raw.replace(/\t/g, "    "));
-      const ws = this.doc.splitTextToSize(safe.length ? safe : " ", innerW);
-      for (const ln of ws) wrapped.push(ln);
-    }
-    if (!wrapped.length) return;
-
-    let idx = 0;
-    while (idx < wrapped.length) {
-      this.checkPage(lineH + padV * 2);
-      const avail = MAX_Y - this.y;
-      const canFit = Math.max(1, Math.floor((avail - padV * 2) / lineH));
-      const chunk = wrapped.slice(idx, idx + canFit);
-      const boxH = chunk.length * lineH + padV * 2;
-
-      this.doc.setFillColor(...COLOR.BG_CODE);
-      this.doc.setDrawColor(...COLOR.CODE_BORDER);
-      this.doc.setLineWidth(0.2);
-      this.doc.roundedRect(MARGIN_LEFT, this.y, CONTENT_W, boxH, 1.5, 1.5, "FD");
-
-      this.doc.setFont("courier", "normal");
-      this.doc.setFontSize(fs);
-      this.doc.setTextColor(...COLOR.CODE_TEXT);
-      let ty = this.y + padV + 3;
-      for (const ln of chunk) { this.doc.text(ln, MARGIN_LEFT + padH, ty); ty += lineH; }
-
-      this.y += boxH;
-      idx += chunk.length;
-      if (idx < wrapped.length) this.addPage();
-    }
-    this.y += SP.AFTER_PARAGRAPH;
-    this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(...COLOR.TEXT_BODY);
-  }
-
   output(): ArrayBuffer {
     return this.doc.output("arraybuffer");
   }
@@ -946,10 +795,6 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-
-  // Build marker — appears in the function logs on every invocation, so you can
-  // confirm WHICH code is actually live after a deploy (the 403 fix included).
-  console.log(`[export-pdf] BUILD=${EXPORT_PDF_BUILD} TESTING_MODE=${TESTING_MODE}`);
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -996,10 +841,7 @@ Deno.serve(async (req: Request) => {
       .single();
     const plan = sub?.plan || "free";
 
-    // TESTING_MODE bypass — keep in sync with generate-course / upload-course-source.
-    // Without it the Pro gate below silently 403s PDF export during the test phase
-    // (no real subscriptions), so "o PDF não é gerado" while PPTX/DOCX (ungated) work.
-    if (!TESTING_MODE && plan !== "pro") {
+    if (plan !== "pro") {
       const { data: profile } = await serviceClient
         .from("profiles")
         .select("is_dev")
@@ -1041,11 +883,8 @@ Deno.serve(async (req: Request) => {
 
     for (const mod of modules) {
       pdf.renderModuleTitle(mod.title);
-      // Defensive: older courses stored a stray ```fence and a leading
-      // "## <title>" that duplicates the title we just rendered.
-      const content = cleanModuleContent(mod.content || "", mod.title);
-      if (content) {
-        pdf.renderModuleContent(content);
+      if (mod.content) {
+        pdf.renderModuleContent(mod.content);
       }
     }
 

@@ -1,4 +1,5 @@
 {
+  "nodeModulesDir": "auto",
   "imports": {
     "pptxgenjs": "npm:pptxgenjs@3.12.0"
   }
