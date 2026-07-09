@@ -20,7 +20,7 @@ const TESTING_MODE = true;
 
 // Build marker — logged on every invocation so a deploy can be verified in the
 // function logs (see the export-pdf deploy saga: always confirm WHICH code runs).
-const GENERATE_COURSE_BUILD = "2026-07-08b-token-timing";
+const GENERATE_COURSE_BUILD = "2026-07-08c-token-14k";
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
 // Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
@@ -845,14 +845,15 @@ Write ${depth.words} words — nível ${depth.label}. Be thorough and educationa
           );
           // 8000 tokens: the full template (now incl. Atividade Prática) for a PT
           // module is long; smaller caps were truncating modules mid-content/table.
-          let refined = await callAIMeta("gemini-2.5-flash", refinementPrompt, 12000);
-          // Truncation guard: start at 12000 tokens to avoid retries (activity template
-          // makes output long; 8000 was always truncating and eating the elevation budget).
-          // Retry ONCE if still truncated (very long modules).
+          let refined = await callAIMeta("gemini-2.5-flash", refinementPrompt, 14000);
+          // Truncation guard: start at 14000 tokens (activity template + detailed content
+          // can exceed 12k; matching the retry limit avoids a second round-trip which eats
+          // the quality-elevation budget for that module).
+          // Retry ONCE at 16000 only for very long/detailed modules.
           if (refined.finishReason === "length") {
-            console.warn(`[generate-course] Refinement truncated for module ${i + 1} → retry (14000 tokens)`);
+            console.warn(`[generate-course] Refinement truncated for module ${i + 1} → retry (16000 tokens)`);
             try {
-              const retry = await callAIMeta("gemini-2.5-flash", refinementPrompt, 14000);
+              const retry = await callAIMeta("gemini-2.5-flash", refinementPrompt, 16000);
               if (retry.content && (retry.finishReason !== "length" || retry.content.length > refined.content.length)) {
                 refined = retry;
               }
