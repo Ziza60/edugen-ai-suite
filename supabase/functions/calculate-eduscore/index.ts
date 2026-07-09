@@ -30,16 +30,48 @@ function countSyllablesPT(word: string): number {
 // The old emoji markers (🎯 Objetivo, 🧠 Fundamentos, etc.) were replaced by the
 // new template format. This version detects what the AI actually generates today.
 const REQUIRED_SECTION_CHECKS: Array<{ name: string; test: (c: string) => boolean }> = [
-  { name: "📌 Pontos-chave",       test: (c) => c.includes("📌") },
-  { name: "💭 Reflexão/Checkpoint", test: (c) => c.includes("💭") || /pare e reflita/i.test(c) },
-  { name: "Exemplo Prático",        test: (c) => /exemplo pr[áa]tico/i.test(c) },
-  { name: "Atividade Prática",      test: (c) => /atividade pr[áa]tica/i.test(c) },
-  { name: "Por Que / Motivação",    test: (c) => /por que[\s?]|por qu[eê]/i.test(c) },
-  { name: "Tabela Comparativa",     test: (c) => c.includes("|---|") || c.includes("| ---") || /\|.+\|.+\|/.test(c) },
-  { name: "Fórmula / Cálculo",      test: (c) => /f[oó]rmula|c[aá]lculo de|= r\$/i.test(c) },
-  { name: "Contexto / Cenário",     test: (c) => /contexto|cen[áa]rio|estudo de caso/i.test(c) },
-  { name: "Seções Estruturadas",    test: (c) => (c.match(/^#{2,3} /gm) || []).length >= 2 },
-  { name: "Resumo / Conclusão",     test: (c) => /conclus[ãa]o|resumo|pr[óo]ximos passos/i.test(c) },
+  // 1. Key takeaways — template always emits 📌
+  { name: "📌 Pontos-chave",
+    test: (c) => c.includes("📌") || /pontos-chave|pontos finais|takeaway/i.test(c) },
+
+  // 2. Reflection checkpoint — "Pare e reflita", 💭, checkpoint
+  { name: "💭 Reflexão/Checkpoint",
+    test: (c) => c.includes("💭") || /pare e reflita|checkpoint|reflita sobre|momento de reflex/i.test(c) },
+
+  // 3. Worked example — any practical demonstration (template may use contextual titles)
+  //    Catches: "Exemplo Prático", "Vamos à prática", "Calculando o …", "O Caso de …",
+  //    "Na prática", "vejamos um exemplo", "exemplo:", "Aplicando"
+  { name: "Exemplo Prático",
+    test: (c) => /exemplo pr[áa]tico|vamos [aà] pr[aá]tica|na pr[aá]tica|calculando o |o caso d[aeo] |vejamos|exemplo:|aplicando na|caso pr[aá]tico/i.test(c) },
+
+  // 4. Learner activity — explicit exercise, challenge or "try this"
+  //    Catches: "Atividade Prática", "Desafio", "Exercício", "Tente", "Pratique", "Coloque em prática"
+  { name: "Atividade Prática",
+    test: (c) => /atividade pr[aá]tica|desafio|exerc[ií]cio|tente voc[eê]|pratique|coloque em pr[aá]tica|sua vez|tente agora/i.test(c) },
+
+  // 5. Motivation — "Por Que", "Por que é importante"
+  { name: "Por Que / Motivação",
+    test: (c) => /por que[\s?]|por qu[eê]|por que [eé] importante|importância de/i.test(c) },
+
+  // 6. Table — markdown table OR structured comparison
+  { name: "Tabela Comparativa",
+    test: (c) => c.includes("|---|") || c.includes("| ---") || /\|.+\|.+\|/.test(c) },
+
+  // 7. Formula / Calculation — explicit formula box, "Cálculo de", "= R$", financial expressions
+  { name: "Fórmula / Cálculo",
+    test: (c) => /f[oó]rmula|c[aá]lculo de|= r\$|cvu =|ponto de equil[ií]brio|margem de contribui/i.test(c) },
+
+  // 8. Context / Scenario / Case study — "O Caso da", "Estudo de Caso", "cenário", "contexto"
+  { name: "Contexto / Cenário",
+    test: (c) => /contexto|cen[áa]rio|estudo de caso|o caso d[aeo] |caso da empresa|exemplo de empresa/i.test(c) },
+
+  // 9. Structured sections — at least 2 ## or ### headings
+  { name: "Seções Estruturadas",
+    test: (c) => (c.match(/^#{2,3} /gm) || []).length >= 2 },
+
+  // 10. Summary / Conclusion — explicit wrap-up (also catches "Neste módulo vimos", "O que aprendemos")
+  { name: "Resumo / Conclusão",
+    test: (c) => /conclus[ãa]o|resumo|pr[óo]ximos passos|neste m[oó]dulo (vimos|aprendemos|voc[eê])|o que aprendemos|passamos por/i.test(c) },
 ];
 
 // Keep backward-compat array for display
@@ -52,7 +84,7 @@ function detectSections(content: string): string[] {
 // ── Engagement: theory vs practical ratio ──
 function engagementScore(content: string): { score: number; details: { examples: number; theory: number } } {
   const lines = content.split("\n").filter((l) => l.trim().length > 0);
-  const practicalKeywords = /exemplo|caso|cenário|prática|aplicação|resultado|solução|exercício|atividade/i;
+  const practicalKeywords = /exemplo|caso|cen[áa]rio|pr[áa]tica|aplica[çc][ãa]o|resultado|solu[çc][ãa]o|exerc[ií]cio|atividade|calculando|c[áa]lculo|f[oó]rmula|r\$|desafio|tente|na pr[áa]tica|vamos ver|vejamos/i;
   const examples = lines.filter((l) => practicalKeywords.test(l)).length;
   const theory = lines.length - examples;
   // Ideal ratio: 30-40% practical
