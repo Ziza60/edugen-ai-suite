@@ -1,0 +1,607 @@
+Avaliação executiva
+Eu não alterei nenhum arquivo, conforme solicitado. Fiz apenas leitura do código, consulta ao estado atual do repositório, execução de checks e uma comparação externa com o posicionamento/recursos atuais da Coursebox.
+
+Veredito geral: o Edugen tem uma base funcional promissora e já contém vários blocos importantes de um gerador de cursos moderno — geração por IA, fontes próprias, quiz, flashcards, tutor, PDF, PPTX, SCORM/Moodle/Notion e mecanismos de revisão. Porém, o fluxo principal de geração de curso ainda não está no nível de robustez pedagógica e de produto de uma referência como Coursebox. A arquitetura aparenta ter evoluído bastante em torno do PPTX, mas o gerador principal de cursos e o PDF ainda parecem mais “conteúdo estruturado em Markdown exportado” do que um sistema de autoria educacional completo, validado e interativo.
+
+A Coursebox se posiciona como uma solução que gera cursos a partir de prompt/documento com quizzes, vídeos, cenários reais, flashcards, tutor de IA e exportações/LMS, além de recursos interativos e de avaliação mais variados. Fonte: Coursebox AI Course Creator e Coursebox export/PDF overview. O Edugen possui algumas peças semelhantes — quiz, flashcards, tutor, exportações — mas ainda precisa de validação instrucional, rubricas, atividades práticas, cenários, avaliação adaptativa, garantia de fidelidade a fontes e qualidade editorial mensurável para competir em padrão Coursebox.
+
+1. Estrutura geral do aplicativo
+Pontos fortes
+A aplicação está organizada como um app React/Vite com Supabase Edge Functions para operações pesadas como geração de curso, exportações, tutor, análise de fontes, tradução, SCORM, Moodle, Notion e PPTX. O package.json mostra uma stack moderna com React, Supabase, TipTap, jszip, docx, pdfjs, Vitest e scripts claros de build/test/lint.
+
+O fluxo de criação no frontend envia para generate-course dados importantes como título, tema, público-alvo, tom, idioma, número de módulos, quiz, flashcards, imagens, uso de fontes e temp_course_id, o que indica uma interface de geração relativamente completa.
+
+Há um indicador de qualidade do prompt no wizard, o que é positivo para guiar usuários leigos antes da geração. Ele considera título, tema, público-alvo, quantidade de módulos e presença de fontes.
+
+A função generate-course faz verificação de autenticação, plano, limites mensais, permissões para imagens e fontes, o que demonstra preocupação com produto/SaaS e governança de uso.
+
+O app possui uma arquitetura de recursos além do curso textual: exportação PDF, exportações PPTX, SCORM, Moodle, Notion, tutor, scripts, tradução, revisão e análise de fontes. Isso é compatível com uma ambição de plataforma de autoria e distribuição, não apenas um gerador simples.
+
+Pontos frágeis
+O generate-course é uma função monolítica: autenticação, limites, fontes, prompt de estrutura, geração, refinamento, persistência, quiz, flashcards, imagem, eventos de uso e chamada assíncrona de reestruturação estão concentrados no mesmo arquivo/handler. Isso dificulta teste unitário, observabilidade, versionamento de prompt e evolução segura.
+
+O modelo de geração principal é sequencial em estágios, mas sem uma camada explícita de “contrato pedagógico” versionado, validação automática pós-geração ou rubric scoring antes de salvar o curso. Há validação do número de módulos, mas não há validação equivalente para objetivos mensuráveis, progressão cognitiva, atividades, avaliações, consistência com público-alvo ou cobertura de fontes.
+
+O score de prompt no frontend é superficial. Ele premia principalmente comprimento de campos e presença de fontes, mas não avalia clareza de resultado esperado, nível do aluno, restrições, pré-requisitos, duração, formato de avaliação, contexto de aplicação ou critérios de sucesso.
+
+O repositório contém muitos arquivos de debug, assets e versões históricas de exportação que entram no lint global, causando 1143 problemas no npm run lint. Isso sugere dívida técnica e falta de separação entre código-fonte ativo, experimentos e artefatos.
+
+2. Capacidade de gerar cursos de qualidade
+O que o Edugen já faz bem
+O fluxo de geração de cursos tem quatro ideias boas:
+
+Primeiro gera uma estrutura JSON com descrição e módulos. O prompt exige JSON válido e número exato de módulos.
+
+Depois gera conteúdo por módulo, usando curso, módulo, resumo, público-alvo, tom e idioma.
+
+Aplica um refinamento pedagógico com template oficial, incluindo objetivo do módulo, fundamentos, funcionamento, modelos/tipos, exemplo prático, aplicações reais, desafios, reflexão, resumo e key takeaways.
+
+Aplica uma etapa de elevação de qualidade, focada em especificidade, adequação ao público, exemplo ancorado, takeaways acionáveis e densidade de conteúdo.
+
+Esses elementos são bons sinais. A existência de uma etapa separada de “Quality Elevation” mostra maturidade acima de um gerador básico de texto.
+
+Onde ainda fica abaixo de um padrão Coursebox
+Apesar dos pontos positivos, a qualidade final ainda depende demais da obediência do LLM ao prompt. Para um padrão similar ao Coursebox, faltam mecanismos mais fortes de design instrucional, interatividade e avaliação.
+
+2.1. Estrutura pedagógica ainda é muito textual
+A Coursebox enfatiza conteúdos interativos como quizzes, vídeos, cenários reais, flashcards e tutor de IA. Fonte: Coursebox AI Course Creator. O Edugen já gera quiz e flashcards, mas o conteúdo central ainda parece ser um módulo textual em Markdown com seções fixas. O prompt principal pede “introduction, main concepts, examples, key takeaways” e 800–1200 palavras.
+
+Isso tende a produzir bons textos, mas não necessariamente bons cursos. Um curso de qualidade precisa transformar conteúdo em experiências de aprendizagem, por exemplo:
+
+objetivos mensuráveis;
+
+atividades práticas;
+
+checagens formativas;
+
+cenários de decisão;
+
+aplicação guiada;
+
+feedback;
+
+avaliação por competência;
+
+progressão de complexidade;
+
+recursos multimídia;
+
+revisão espaçada;
+
+critérios de conclusão.
+
+2.2. Quiz e flashcards nascem cedo demais
+Quiz e flashcards são solicitados já na etapa de estrutura do curso, antes da geração/refinamento do conteúdo final. O prompt de estrutura inclui opcionalmente 3 questões de quiz e 5 flashcards por módulo.
+
+Isso é frágil porque as avaliações podem não refletir o conteúdo refinado ou elevado depois. O ideal seria:
+
+gerar blueprint;
+
+gerar conteúdo;
+
+validar cobertura;
+
+gerar objetivos mensuráveis;
+
+gerar avaliações alinhadas aos objetivos e ao conteúdo final;
+
+revisar distratores, feedback e nível cognitivo.
+
+Hoje, a geração de quiz/flashcards parece acoplada ao outline, não a uma matriz objetivo-conteúdo-avaliação.
+
+2.3. Falta matriz de objetivos e alinhamento instrucional
+O prompt de refinamento exige “Objetivo do Módulo” com até 3 bullets. Porém, não há evidência de que esses objetivos sejam:
+
+mensuráveis;
+
+associados à taxonomia de Bloom;
+
+alinhados a atividades;
+
+alinhados a quizzes;
+
+avaliados por rubrica;
+
+distribuídos em progressão entre módulos.
+
+Sem esse alinhamento, a qualidade pode variar muito por tema.
+
+2.4. Falta controle forte de profundidade por público-alvo
+A etapa de qualidade avalia adequação ao público e alerta contra conteúdo condescendente. Isso é bom, mas ainda é prompt-only. Não há uma representação explícita de nível, pré-requisitos, senioridade, contexto profissional, carga horária ou resultado esperado.
+
+Exemplo: “gestores comerciais B2B enterprise” e “iniciantes em vendas” precisariam de estruturas, exemplos, avaliações e vocabulário muito diferentes. O Edugen coleta público-alvo, mas não parece transformar isso em um perfil instrucional estruturado.
+
+2.5. Falta validação de fidelidade às fontes
+Quando use_sources está ativo, há regra para usar apenas o conteúdo das fontes. O conteúdo por módulo também inclui regra crítica para usar somente fontes.
+
+Isso é necessário, mas insuficiente. Falta validação pós-geração para detectar:
+
+afirmações não suportadas;
+
+conceitos importantes omitidos;
+
+contradições com as fontes;
+
+citações/trechos rastreáveis;
+
+índice de cobertura por documento;
+
+referência de origem por seção/módulo.
+
+Para cursos corporativos e compliance, isso é central.
+
+3. Robustez do prompt do gerador de cursos
+Pontos fortes do prompt atual
+O prompt do Edugen não é ruim. Ele tem várias boas práticas:
+
+Exige JSON válido e sem Markdown na estrutura.
+
+Impõe número exato de módulos e faz retry se a contagem não bater.
+
+Se fontes forem usadas, instrui o modelo a não adicionar conhecimento externo.
+
+O refinamento pedagógico define seções claras, ordem, regras de densidade, hierarquia Markdown, tom, tabelas, exemplos, reflexão e fechamento.
+
+A elevação de qualidade explicita critérios avaliativos úteis: especificidade, adequação ao público, exemplo ancorado, takeaways acionáveis e densidade.
+
+Fragilidades do prompt
+3.1. Não há system prompt separado
+A função callAI envia tudo como uma única mensagem de usuário. Isso funciona, mas é menos robusto do que separar:
+
+system: papel, políticas, invariantes e estilo;
+
+developer: contrato de formato e validação;
+
+user: dados específicos do curso;
+
+tool/schema: saída estruturada.
+
+Separar papéis torna o comportamento mais estável, principalmente em prompts longos com fontes.
+
+3.2. O parâmetro model é ignorado
+callAI(model, prompt, ...) recebe model, mas internamente fixa aiModel = "gemini-2.5-flash". Assim, chamadas como callAI("google/gemini-3-flash-preview", ...) e callAI("google/gemini-3-flash-lite", ...) não mudam o modelo efetivamente.
+
+Isso é uma inconsistência importante. O código comunica uma estratégia multi-modelo, mas a execução usa sempre o mesmo modelo. Para qualidade, pode ser aceitável usar um modelo fixo, mas então o código deve ser explícito. Se a intenção é usar modelos diferentes por etapa, hoje isso não acontece.
+
+3.3. O prompt de conteúdo bruto é genérico
+A etapa de conteúdo bruto pede Markdown, introdução, conceitos, exemplos e takeaways, com 800–1200 palavras.
+
+Isso tende a gerar “apostilas”, não cursos diferenciados. Faltam instruções para:
+
+pré-requisitos;
+
+objetivos mensuráveis;
+
+progressão do simples ao complexo;
+
+exemplos por setor;
+
+erros comuns;
+
+prática guiada;
+
+avaliação formativa;
+
+misconceptions;
+
+caso aplicado;
+
+critérios de sucesso;
+
+adaptação a nível de conhecimento.
+
+3.4. Regras conflitantes sobre adicionar informação
+No refinamento, há uma restrição: “NÃO adicione informações novas que não estejam no original”. Porém, o próprio prompt também manda complementar aplicações reais se o conteúdo tiver menos de 4.
+
+Isso cria tensão: o modelo deve não adicionar conteúdo novo, mas também deve sintetizar/complementar. Em cursos sem fontes, complementar pode ser desejável. Em cursos com fontes, pode ser perigoso. O prompt deveria diferenciar claramente:
+
+modo source-grounded: não inventar, pedir “lacuna de fonte” quando necessário;
+
+modo open generation: pode complementar com conhecimento geral;
+
+modo expert expansion: pode enriquecer com exemplos e práticas.
+
+3.5. Falta saída estruturada para curso
+A saída final dos módulos é Markdown. Isso facilita edição e exportação, mas dificulta qualidade programática. Um padrão mais forte seria gerar também uma estrutura JSON canônica:
+
+{
+  "module_id": "...",
+  "learning_objectives": [],
+  "lessons": [],
+  "activities": [],
+  "examples": [],
+  "knowledge_checks": [],
+  "assessment_items": [],
+  "source_references": [],
+  "quality_scores": {}
+}
+Depois o Markdown/PDF/SCORM/PPTX seriam renderizações desse modelo, não o próprio “banco de verdade”.
+
+4. Comparação com Coursebox como referência
+Com base nas páginas atuais da Coursebox, a plataforma destaca:
+
+geração a partir de prompt ou documento;
+
+quizzes;
+
+vídeos;
+
+cenários reais;
+
+flashcards;
+
+tutor de IA;
+
+suporte multilíngue;
+
+exportação e compatibilidade LMS como SCORM/LTI;
+
+branding, certificados e LMS/white-label em planos superiores. Fontes: Coursebox AI Course Creator, Coursebox Pricing, Coursebox PDF export article.
+
+Onde o Edugen se aproxima
+Geração por prompt e fontes próprias.
+
+Quiz e flashcards por módulo.
+
+Tutor IA em função dedicada. O prompt do tutor usa o título do curso e o contexto dos módulos para responder perguntas.
+
+Exportação PDF.
+
+Indícios de exportações SCORM, Moodle, Notion e PPTX no repositório.
+
+Onde o Edugen fica atrás
+Não vi geração nativa de cenários ramificados/simulações conversacionais no curso principal, enquanto a Coursebox destaca cenários realistas como recurso central. Fonte: Coursebox AI Course Creator.
+
+Não vi geração integrada de vídeo educacional no curso principal; há geração de script e PPTX, mas não uma esteira completa de vídeo/avatar como a Coursebox divulga.
+
+As avaliações parecem limitadas a múltipla escolha gerada cedo no outline, enquanto Coursebox divulga quizzes, feedback e assessment mais integrados. Fonte: Coursebox AI Course Creator.
+
+Falta uma camada explícita de analytics pedagógico/qualidade do curso antes da publicação. Existe calculate-eduscore, mas o gerador principal não parece bloquear ou revisar o curso com base nesse score antes de concluir.
+
+Falta uma experiência clara de lesson blocks interativos: cards, accordion, checklist, roleplay, exercício, upload de resposta, rubrica, avaliação aberta e feedback por IA.
+
+5. Avaliação da geração de PDF
+Observação importante: não é pdf-lib
+O usuário mencionou “pdf lib”, mas o código atual de export-pdf usa jsPDF, não pdf-lib. A importação é import { jsPDF } from "https://esm.sh/jspdf@2.5.2";.
+
+Isso não é necessariamente ruim, mas é importante: a arquitetura, limitações e melhorias devem ser pensadas para jsPDF, não para pdf-lib.
+
+Pontos fortes do PDF
+O PDF tem um renderer dedicado (PdfRenderer) com estado de página, posição y, número de página e métodos separados para capa, título de módulo, headings, parágrafos, bullets, blockquotes, boxes pedagógicos, tabelas e conteúdo de módulo.
+
+Há sanitização de emojis e normalização de aspas, travessões e reticências, o que evita muitos problemas comuns de renderização com fontes padrão do jsPDF.
+
+Há parser simples de tabela Markdown e renderização com cabeçalho, zebra rows, coluna destacada, medição de altura e quebra de página.
+
+Há tentativa de evitar headings órfãos via estimateNextBlockHeight e look-ahead antes de renderizar títulos.
+
+Os blocos pedagógicos recebem tratamento visual próprio, com cores para exemplo, reflexão, resumo, takeaways, dica e nota.
+
+O fluxo de exportação valida usuário, plano, ownership do curso, busca módulos ordenados, gera PDF, sobe para storage e cria URL assinada.
+
+Problemas e riscos do PDF
+5.1. Perda de emojis e identidade visual
+O conteúdo gerado usa emojis no template pedagógico, mas o PDF remove emojis por limitação de fonte/renderização.
+
+Isso reduz a equivalência visual entre editor e PDF. O ideal seria usar uma fonte Unicode embutida ou mapear emojis para ícones vetoriais/labels.
+
+5.2. Markdown avançado é simplificado demais
+stripMarkdown remove formatação, links e código inline de forma simples. Isso significa que negritos, links, código, listas aninhadas, imagens e blocos complexos perdem riqueza.
+
+5.3. Não há renderização de blocos de código
+O prompt de refinamento permite blocos de código quando aplicável. Porém, o renderer do PDF não tem uma rota específica para fenced code blocks. O loop de renderModuleContent trata headings, tabelas, blocos pedagógicos, blockquotes, bullets, listas numeradas, horizontal rule e parágrafos.
+
+Consequência: cursos técnicos podem exportar código como texto normal ou perder formatação, o que prejudica muito qualidade.
+
+5.4. Tabelas truncam conteúdo
+Na renderização de tabela, as linhas por célula são limitadas com .slice(0, 4). Isso evita overflow, mas pode cortar informação sem indicar continuação. Para curso, truncamento silencioso é perigoso.
+
+5.5. Imagens do curso não entram no PDF
+A geração pode criar imagens de módulo e salvar em course_images. Mas o PDF busca apenas courses e course_modules, sem carregar imagens. Logo, o PDF não reflete totalmente o curso visual.
+
+5.6. Capa e branding são estáticos
+A capa usa cores fixas e metadados básicos. Não há branding por workspace, logo, sumário, direitos autorais, versão, autor, organização, nem estilo por template.
+
+5.7. Falta sumário e navegação
+O PDF não gera índice/sumário, bookmarks ou numeração por módulo. Para cursos longos, isso reduz usabilidade.
+
+6. Sugestões de correções prioritárias
+Prioridade 1 — Separar o gerador em pipeline testável
+Problema: generate-course está monolítico.
+Sugestão: dividir em serviços/módulos:
+
+authAndEntitlements;
+
+loadSources;
+
+buildCourseBlueprint;
+
+generateModuleContent;
+
+refineModulePedagogy;
+
+qualityReviewModule;
+
+generateAssessmentsFromFinalContent;
+
+validateCourseQuality;
+
+persistCourse;
+
+emitProgress.
+
+Benefício: testes, versionamento, rollback e melhoria iterativa.
+
+Prioridade 2 — Corrigir inconsistência de modelos
+Problema: callAI ignora o parâmetro model e fixa gemini-2.5-flash.
+Sugestão: ou remover o parâmetro e assumir explicitamente modelo único, ou respeitar o modelo por etapa.
+
+Impacto esperado: previsibilidade e possibilidade real de usar modelos melhores para planejamento/qualidade e modelos baratos para tarefas simples.
+
+Prioridade 3 — Gerar avaliações após o conteúdo final
+Problema: quiz/flashcards vêm do outline, não do conteúdo final.
+Sugestão: mover geração de quiz/flashcards para depois da elevação de qualidade, usando:
+
+conteúdo final do módulo;
+
+objetivos mensuráveis;
+
+nível cognitivo desejado;
+
+explicação de por que cada alternativa incorreta está errada;
+
+tags de competência.
+
+Prioridade 4 — Criar contrato pedagógico estruturado
+Sugestão: antes de gerar texto, criar um CourseBlueprint com:
+
+público;
+
+nível;
+
+pré-requisitos;
+
+promessa de aprendizagem;
+
+duração;
+
+competências;
+
+objetivos por módulo;
+
+critérios de sucesso;
+
+matriz objetivo → conteúdo → atividade → avaliação.
+
+Isso melhora consistência e permite validação automática.
+
+Prioridade 5 — Adicionar validador pós-geração
+Sugestão: criar um “Course QA Gate” que compute:
+
+módulos sem objetivo mensurável;
+
+objetivos genéricos;
+
+ausência de atividade prática;
+
+quiz desalinhado;
+
+flashcards vagos;
+
+exemplos sem contexto;
+
+conteúdo abaixo/acima da densidade esperada;
+
+repetição entre módulos;
+
+cobertura insuficiente de fontes;
+
+afirmações não suportadas em modo com fontes.
+
+O curso só deveria ser marcado como pronto após passar ou retornar warnings acionáveis.
+
+7. Sugestões para aproximar o Edugen do padrão Coursebox
+7.1. Adicionar “cenários reais” como bloco nativo
+A Coursebox destaca cenários realistas/simulações. Fonte: Coursebox AI Course Creator.
+No Edugen, eu adicionaria um novo tipo de conteúdo por módulo:
+
+{
+  "type": "scenario",
+  "title": "...",
+  "context": "...",
+  "decision_points": [
+    {
+      "question": "...",
+      "choices": [
+        { "text": "...", "feedback": "...", "score": 2 }
+      ]
+    }
+  ]
+}
+Isso agregaria valor imediato e diferenciaria o curso de uma apostila.
+
+7.2. Criar atividades práticas avaliáveis
+Além de quiz, incluir:
+
+exercício aplicado;
+
+checklist;
+
+tarefa de reflexão;
+
+mini-projeto;
+
+estudo de caso;
+
+rubrica de avaliação.
+
+7.3. Melhorar quizzes
+Trocar “3 questões por módulo” por uma estratégia:
+
+1 recall;
+
+1 aplicação;
+
+1 cenário;
+
+1 erro comum;
+
+1 questão aberta opcional.
+
+Cada questão deve ter:
+
+objetivo relacionado;
+
+dificuldade;
+
+justificativa da correta;
+
+feedback para cada distrator;
+
+referência ao trecho do módulo.
+
+7.4. Fortalecer tutor IA com RAG real
+O tutor atual usa módulos como contexto textual. Para qualidade Coursebox-like, sugiro:
+
+chunking por seção;
+
+embeddings;
+
+retrieval por pergunta;
+
+citações de módulo/seção;
+
+fallback quando não houver resposta no curso;
+
+modo “Socratic tutor”;
+
+tracking de dúvidas frequentes para melhorar curso.
+
+7.5. Criar “EduScore” no fluxo de geração
+Se já existe uma função calculate-eduscore, ela deveria ser parte do pipeline de geração/publicação, não apenas recurso lateral. O gerador poderia retornar:
+
+score geral;
+
+score por módulo;
+
+score de avaliação;
+
+score de interatividade;
+
+score de fonte;
+
+recomendações automáticas.
+
+8. Sugestões específicas para o PDF
+Correções de alto impacto
+Adicionar renderização de blocos de código.
+Cursos técnicos precisam de monoespaçado, fundo cinza, quebra preservada e paginação segura.
+
+Adicionar sumário.
+Para cursos com vários módulos, o PDF precisa de índice com páginas.
+
+Evitar truncamento silencioso em tabelas.
+Em vez de .slice(0, 4), quebrar célula/linha em múltiplas páginas ou reduzir fonte com indicação clara.
+
+Incluir imagens de módulo.
+O gerador salva imagens, mas o PDF não busca/renderiza course_images.
+
+Suportar fontes Unicode.
+Evitar remover emojis/símbolos ou mapear para ícones.
+
+Criar temas de PDF.
+Permitir logo, cor primária, capa, rodapé, marca do workspace e estilo corporativo.
+
+Gerar PDF a partir de AST/JSON, não Markdown cru.
+Markdown é bom como formato editável, mas PDF premium precisa de estrutura semântica.
+
+9. Dívida técnica e qualidade de engenharia
+Lint
+O npm run lint falhou com muitos erros, inclusive em arquivos ativos como generate-course, export-pptx, export-pptx-v4, export-pptx-v6, export-scorm, entre outros. Também há muitos erros em attached_assets, que provavelmente não deveriam entrar no lint global.
+
+Isso indica que antes de evoluir produto, eu recomendaria:
+
+excluir attached_assets, tmp, dumps e artefatos do ESLint;
+
+separar arquivos históricos de exportação;
+
+tipar os principais Edge Functions;
+
+reduzir any;
+
+padronizar scripts de CI;
+
+criar testes específicos para prompts/parsers/renderers.
+
+Testes
+Há apenas um teste Vitest passando. Isso é pouco para uma plataforma que gera conteúdo, exporta documentos e integra IA. O ideal é criar testes para:
+
+parse de JSON da IA;
+
+fallback de contagem de módulos;
+
+renderização PDF de headings, tabelas, bullets, blockquotes e código;
+
+validação de quizzes;
+
+qualidade de prompt;
+
+fonte-only mode;
+
+regressões de truncamento.
+
+10. Roadmap recomendado
+Fase 1 — Estabilização
+Corrigir/decidir uso real do parâmetro model.
+
+Excluir assets/debug do lint.
+
+Criar contratos TypeScript para CourseBlueprint, ModuleContent, AssessmentItem.
+
+Criar testes para generate-course helpers.
+
+Adicionar validação pós-geração mínima.
+
+Fase 2 — Qualidade pedagógica
+Gerar matriz objetivo-conteúdo-avaliação.
+
+Mover quiz/flashcards para depois do conteúdo final.
+
+Adicionar rubrica e atividades práticas.
+
+Criar Course QA Gate.
+
+Criar modo source-grounded com verificação de cobertura.
+
+Fase 3 — Interatividade Coursebox-like
+Cenários ramificados.
+
+Feedback por resposta.
+
+Tutor com RAG e citações.
+
+Flashcards com tags e repetição espaçada.
+
+Atividades abertas avaliadas por IA.
+
+Fase 4 — Exportações premium
+PDF com sumário, código, imagens, temas e branding.
+
+SCORM com tracking de conclusão/score.
+
+PPTX/PDF gerados a partir do mesmo modelo semântico.
+
+Pacotes multilíngues.
+
+Conclusão
+O Edugen tem potencial real, mas hoje eu classificaria assim:
+
+Arquitetura de produto: boa base, mas com função crítica monolítica e dívida técnica.
+
+Gerador de cursos: acima de um gerador simples, mas ainda insuficiente para padrão Coursebox por falta de interatividade, validação instrucional e alinhamento avaliação-conteúdo.
+
+Prompt: bem intencionado e relativamente detalhado, mas precisa de estruturação em contratos, system/developer prompts, validação pós-geração e eliminação de conflitos.
+
+PDF: funcional e razoavelmente organizado, mas não usa pdf-lib; usa jsPDF. Precisa suportar código, imagens, sumário, Unicode, branding e evitar truncamento silencioso.
+
+Eu não recomendo alterar código imediatamente sem antes aprovar um plano de intervenção, porque as mudanças mais relevantes envolvem arquitetura do pipeline, dados e qualidade pedagógica — não apenas pequenos ajustes de prompt.
