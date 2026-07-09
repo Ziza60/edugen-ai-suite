@@ -13,7 +13,12 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
     watch: {
-      ignored: ["**/.cache/**", "**/node_modules/**"],
+      ignored: [
+        "**/.cache/**",
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/supabase/functions/**",
+      ],
     },
   },
   plugins: [
