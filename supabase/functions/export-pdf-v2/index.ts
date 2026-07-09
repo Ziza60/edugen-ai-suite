@@ -295,17 +295,28 @@ class R {
       if (ty > MAX_Y - 10) break;
       const numStr = `Módulo ${String(e.num).padStart(2, "0")}`;
       const pageStr = String(e.page);
-      const title = e.title.length > 70 ? e.title.slice(0, 70).replace(/\s+\S*$/, "") + "…" : e.title;
+
+      // Word-wrap long titles across 2 lines instead of hard-truncating at 70 chars.
+      // The content column width at SIZE=10.5 fits ~78 chars comfortably.
+      let titleLine1 = e.title;
+      let titleLine2 = "";
+      const WRAP_AT = 68;
+      if (e.title.length > WRAP_AT) {
+        const breakAt = e.title.lastIndexOf(" ", WRAP_AT);
+        titleLine1 = breakAt > 40 ? e.title.slice(0, breakAt) : e.title.slice(0, WRAP_AT);
+        titleLine2 = e.title.slice(titleLine1.length).trim();
+        if (titleLine2.length > WRAP_AT) titleLine2 = titleLine2.slice(0, WRAP_AT - 1) + "…";
+      }
 
       pg.drawText(numStr, { x: ML_PT, y: this.Y(ty), size: 8.5, font: this.bld, color: C.ACC });
-      pg.drawText(title, { x: ML_PT, y: this.Y(ty + 5.5), size: SIZE, font: this.reg, color: C.BODY });
+      pg.drawText(titleLine1, { x: ML_PT, y: this.Y(ty + 5.5), size: SIZE, font: this.reg, color: C.BODY });
 
-      // dot leader between title and right-aligned page number
-      const titleW = this.reg.widthOfTextAtSize(title, SIZE);
+      // Dot leader and page number on the first title line only
+      const titleW = this.reg.widthOfTextAtSize(titleLine1, SIZE);
       const pageW = this.bld.widthOfTextAtSize(pageStr, SIZE);
       const dotStart = ML_PT + titleW + 6;
       const dotEnd = ML_PT + CW - pageW - 6;
-      if (dotEnd > dotStart + 10) {
+      if (!titleLine2 && dotEnd > dotStart + 10) {
         const dotW = this.reg.widthOfTextAtSize(".", SIZE) + 2.2;
         const n = Math.floor((dotEnd - dotStart) / dotW);
         pg.drawText(". ".repeat(Math.max(0, Math.floor(n / 1))).trim(), {
@@ -315,6 +326,13 @@ class R {
       pg.drawText(pageStr, {
         x: ML_PT + CW - pageW, y: this.Y(ty + 5.5), size: SIZE, font: this.bld, color: C.PRI,
       });
+
+      // Second line of title (when wrapped)
+      if (titleLine2) {
+        pg.drawText(titleLine2, { x: ML_PT, y: this.Y(ty + 5.5 + lineAdv - 1), size: SIZE - 0.5, font: this.reg, color: C.BODY });
+        ty += lineAdv - 1; // extra advance for the second line
+      }
+
       ty += lineAdv + 5.5;
     }
   }

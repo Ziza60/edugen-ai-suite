@@ -1065,6 +1065,51 @@ export default function CourseView() {
                 </div>
               </div>
 
+              {/* ── Module image — always visible, even while editing ── */}
+              {moduleImage ? (
+                <div className="mb-4 rounded-xl overflow-hidden border border-border relative group">
+                  <img
+                    src={moduleImage.url}
+                    alt={moduleImage.alt_text || `Ilustração do módulo ${activeModuleIndex + 1}`}
+                    className="w-full h-auto object-cover max-h-[360px]"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-6">
+                    <p className="text-xs font-semibold text-white/80 uppercase tracking-wider mb-1">
+                      Módulo {activeModuleIndex + 1}
+                    </p>
+                    <h3 className="text-xl lg:text-2xl font-bold text-white font-display leading-tight drop-shadow-md">
+                      {activeModule.title}
+                    </h3>
+                  </div>
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <PexelsPicker
+                      moduleTitle={activeModule.title}
+                      moduleId={activeModule.id}
+                      courseTitle={course.title}
+                      currentImageUrl={moduleImage.url}
+                      onSelect={({ url, alt }) =>
+                        saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
+                      }
+                      onRemove={() => removeModuleImage.mutate(activeModule.id)}
+                      disabled={saveModuleImage.isPending || removeModuleImage.isPending}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <PexelsPicker
+                    moduleTitle={activeModule.title}
+                    moduleId={activeModule.id}
+                    courseTitle={course.title}
+                    onSelect={({ url, alt }) =>
+                      saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
+                    }
+                    disabled={saveModuleImage.isPending}
+                  />
+                </div>
+              )}
+
               {/* Module content */}
               {editingModuleId === activeModule.id ? (
                 <div className="space-y-3">
@@ -1091,50 +1136,6 @@ export default function CourseView() {
                 </div>
               ) : (
                 <div>
-                  {/* ── Module image ── */}
-                  {moduleImage ? (
-                    <div className="mb-4 rounded-xl overflow-hidden border border-border relative group">
-                      <img
-                        src={moduleImage.url}
-                        alt={moduleImage.alt_text || `Ilustração do módulo ${activeModuleIndex + 1}`}
-                        className="w-full h-auto object-cover max-h-[360px]"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-6">
-                        <p className="text-xs font-semibold text-white/80 uppercase tracking-wider mb-1">
-                          Módulo {activeModuleIndex + 1}
-                        </p>
-                        <h3 className="text-xl lg:text-2xl font-bold text-white font-display leading-tight drop-shadow-md">
-                          {activeModule.title}
-                        </h3>
-                      </div>
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <PexelsPicker
-                          moduleTitle={activeModule.title}
-                          moduleId={activeModule.id}
-                          courseTitle={course.title}
-                          currentImageUrl={moduleImage.url}
-                          onSelect={({ url, alt }) =>
-                            saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
-                          }
-                          onRemove={() => removeModuleImage.mutate(activeModule.id)}
-                          disabled={saveModuleImage.isPending || removeModuleImage.isPending}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mb-4">
-                      <PexelsPicker
-                        moduleTitle={activeModule.title}
-                        moduleId={activeModule.id}
-                        courseTitle={course.title}
-                        onSelect={({ url, alt }) =>
-                          saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
-                        }
-                        disabled={saveModuleImage.isPending}
-                      />
-                    </div>
-                  )}
                   <div className="module-prose">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>
                       {activeModule.content || "*Sem conteúdo ainda*"}

@@ -26,26 +26,27 @@ function countSyllablesPT(word: string): number {
   return vowelGroups ? Math.max(1, vowelGroups.length) : 1;
 }
 
-// ── Pedagogical section detection ──
-const REQUIRED_SECTIONS = [
-  "🎯 Objetivo",
-  "🧠 Fundamentos",
-  "⚙️ Como funciona",
-  "🧩 Modelos",
-  "🛠️ Aplicações reais",
-  "💡 Exemplo prático",
-  "⚠️ Desafios",
-  "💭 Reflexão",
-  "🧾 Resumo",
-  "📌 Key Takeaways",
+// ── Pedagogical section detection (v2026 — matches current content format) ──
+// The old emoji markers (🎯 Objetivo, 🧠 Fundamentos, etc.) were replaced by the
+// new template format. This version detects what the AI actually generates today.
+const REQUIRED_SECTION_CHECKS: Array<{ name: string; test: (c: string) => boolean }> = [
+  { name: "📌 Pontos-chave",       test: (c) => c.includes("📌") },
+  { name: "💭 Reflexão/Checkpoint", test: (c) => c.includes("💭") || /pare e reflita/i.test(c) },
+  { name: "Exemplo Prático",        test: (c) => /exemplo pr[áa]tico/i.test(c) },
+  { name: "Atividade Prática",      test: (c) => /atividade pr[áa]tica/i.test(c) },
+  { name: "Por Que / Motivação",    test: (c) => /por que[\s?]|por qu[eê]/i.test(c) },
+  { name: "Tabela Comparativa",     test: (c) => c.includes("|---|") || c.includes("| ---") || /\|.+\|.+\|/.test(c) },
+  { name: "Fórmula / Cálculo",      test: (c) => /f[oó]rmula|c[aá]lculo de|= r\$/i.test(c) },
+  { name: "Contexto / Cenário",     test: (c) => /contexto|cen[áa]rio|estudo de caso/i.test(c) },
+  { name: "Seções Estruturadas",    test: (c) => (c.match(/^#{2,3} /gm) || []).length >= 2 },
+  { name: "Resumo / Conclusão",     test: (c) => /conclus[ãa]o|resumo|pr[óo]ximos passos/i.test(c) },
 ];
 
+// Keep backward-compat array for display
+const REQUIRED_SECTIONS = REQUIRED_SECTION_CHECKS.map((s) => s.name);
+
 function detectSections(content: string): string[] {
-  return REQUIRED_SECTIONS.filter((s) => {
-    const emoji = s.split(" ")[0];
-    const keyword = s.split(" ").slice(1).join(" ").toLowerCase();
-    return content.includes(emoji) || content.toLowerCase().includes(keyword);
-  });
+  return REQUIRED_SECTION_CHECKS.filter((s) => s.test(content)).map((s) => s.name);
 }
 
 // ── Engagement: theory vs practical ratio ──
@@ -131,8 +132,8 @@ Deno.serve(async (req) => {
         module: m.order_index + 1,
         title: m.title,
         sectionsFound: sections.length,
-        totalSections: REQUIRED_SECTIONS.length,
-        missingSections: REQUIRED_SECTIONS.filter((s) => !sections.includes(s)),
+        totalSections: REQUIRED_SECTION_CHECKS.length,
+        missingSections: REQUIRED_SECTION_CHECKS.filter((s) => !s.test(m.content || "")).map((s) => s.name),
       };
     });
     const avgCompletude = Math.round(
@@ -179,7 +180,7 @@ Deno.serve(async (req) => {
         completude: {
           score: avgCompletude,
           label: "Completude",
-          description: `${REQUIRED_SECTIONS.length} seções pedagógicas avaliadas`,
+          description: `${REQUIRED_SECTION_CHECKS.length} seções pedagógicas avaliadas`,
           icon: "✅",
         },
         engajamento: {

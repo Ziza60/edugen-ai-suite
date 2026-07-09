@@ -108,6 +108,9 @@ export default function CourseWizard() {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState("");
   const [generationMessage, setGenerationMessage] = useState("");
+  const [completedModules, setCompletedModules] = useState<Set<number>>(new Set());
+  const [totalModulesCount, setTotalModulesCount] = useState(0);
+  const [generationPhase, setGenerationPhase] = useState<"idle"|"structure"|"content"|"assessment"|"done">("idle");
   const [uploading, setUploading] = useState(false);
   const [importingUrl, setImportingUrl] = useState(false);
   const [urlInput, setUrlInput] = useState("");
@@ -343,6 +346,9 @@ export default function CourseWizard() {
     setGenerationProgress(5);
     setGenerationStep("Preparando geração…");
     setGenerationMessage("");
+    setCompletedModules(new Set());
+    setTotalModulesCount(form.numModules);
+    setGenerationPhase("structure");
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -426,18 +432,28 @@ export default function CourseWizard() {
             if (event.type === "structure_done") {
               setGenerationProgress(15);
               setGenerationStep("Estrutura criada!");
+              setGenerationPhase("content");
+              if (event.modules) setTotalModulesCount(event.modules);
             }
             if (event.type === "module_start") {
-              const pct = 15 + Math.round((event.module / event.total) * 70);
+              const pct = 15 + Math.round((event.module / event.total) * 65);
               setGenerationProgress(pct);
-              setGenerationMessage(`Gerando Módulo ${event.module} de ${event.total}: ${event.title}...`);
-              setGenerationStep(`Módulo ${event.module}/${event.total}`);
+              setGenerationMessage(`Gerando Módulo ${event.module}: ${event.title}`);
+              setGenerationStep(`Conteúdo — Módulo ${event.module}/${event.total}`);
+              setTotalModulesCount(event.total);
             }
             if (event.type === "module_done") {
-              const pct = 15 + Math.round((event.module / event.total) * 75);
+              const pct = 15 + Math.round((event.module / event.total) * 70);
               setGenerationProgress(pct);
+              setCompletedModules(prev => new Set([...prev, event.module]));
+              if (event.module === event.total) {
+                setGenerationPhase("assessment");
+                setGenerationStep("Gerando quizzes e flashcards…");
+                setGenerationMessage("");
+              }
             }
             if (event.type === "complete") {
+              setGenerationPhase("done");
               goToCourse(event.courseId);
             }
             if (event.type === "debug") {
@@ -678,22 +694,83 @@ export default function CourseWizard() {
         {/* ═══════════ GENERATING STATE ═══════════ */}
         {generating ? (
           <Card className="rounded-2xl border-border shadow-sm">
-            <CardContent className="py-20 text-center">
-              <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <CardContent className="py-10 px-8">
+              {/* Header */}
+              <div className="flex items-center gap-4 mb-8">
+                <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-display text-xl font-bold">Gerando seu curso com IA…</h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {useSources ? "Analisando suas fontes e criando o conteúdo." : "Isso leva cerca de 2 minutos. Não feche esta página."}
+                  </p>
+                </div>
               </div>
-              <h3 className="font-display text-2xl font-bold mb-2">Gerando seu curso…</h3>
-              <p className="text-muted-foreground mb-1">
-                {useSources
-                  ? "A IA está analisando suas fontes e criando o conteúdo."
-                  : "A IA está criando o conteúdo do seu curso."}
-              </p>
-              <p className="text-sm font-medium text-primary mb-2">{generationStep}</p>
-              {generationMessage && (
-                <p className="text-xs text-muted-foreground mb-4">{generationMessage}</p>
+
+              {/* Progress bar */}
+              <Progress value={generationProgress} className="h-2 mb-1.5" />
+              <p className="text-xs text-muted-foreground text-right mb-8">{generationProgress}% concluído</p>
+
+              {/* Phase checklist */}
+              <div className="space-y-3 mb-8">
+                {[
+                  { phase: "structure",   label: "Estrutura do curso",       done: generationPhase !== "structure" && generationPhase !== "idle" },
+                  { phase: "content",     label: "Conteúdo dos módulos",      done: generationPhase === "assessment" || generationPhase === "done" },
+                  { phase: "assessment",  label: "Quizzes e flashcards",      done: generationPhase === "done" },
+                ].map(({ phase, label, done }) => {
+                  const isActive = generationPhase === phase;
+                  return (
+                    <div key={phase} className="flex items-center gap-3">
+                      <div className={`h-5 w-5 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                        done ? "bg-primary text-primary-foreground" :
+                        isActive ? "bg-primary/15 border-2 border-primary" :
+                        "bg-muted border-2 border-border"
+                      }`}>
+                        {done ? (
+                          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        ) : isActive ? (
+                          <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                        ) : null}
+                      </div>
+                      <span className={`text-sm ${done ? "text-foreground font-medium" : isActive ? "text-foreground font-semibold" : "text-muted-foreground"}`}>
+                        {label}
+                      </span>
+                      {isActive && generationStep && (
+                        <span className="text-xs text-primary ml-auto">{generationStep}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Module pills — shown during content phase */}
+              {totalModulesCount > 0 && (generationPhase === "content" || generationPhase === "assessment" || generationPhase === "done") && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Módulos gerados</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Array.from({ length: totalModulesCount }, (_, i) => i + 1).map((n) => {
+                      const done = completedModules.has(n);
+                      return (
+                        <div key={n} className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                          done ? "bg-primary/10 text-primary border border-primary/20" : "bg-muted text-muted-foreground border border-border"
+                        }`}>
+                          {done ? (
+                            <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          ) : (
+                            <div className="h-2 w-2 rounded-full bg-current opacity-40" />
+                          )}
+                          Módulo {n}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
-              <Progress value={generationProgress} className="max-w-sm mx-auto h-2.5" />
-              <p className="text-xs text-muted-foreground mt-3">{generationProgress}% concluído</p>
+
+              {generationMessage && (
+                <p className="text-xs text-muted-foreground mt-4 italic">{generationMessage}</p>
+              )}
             </CardContent>
           </Card>
         ) : (
