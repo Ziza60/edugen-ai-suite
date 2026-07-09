@@ -1,0 +1,51 @@
+Não — esse não é o commit das alterações de course-quality / generate-course / tutor-chat
+Eu confirmei o link do GitHub que você enviou. O commit:
+
+6cb672ec253227f76b1437d04dc94945166a8c19
+tem a mensagem:
+
+fix(pptx-v7): close truncated parens/quotes + fill empty case-study Resultado (7.36.0)
+Esse commit é sobre correções no exportador PPTX v7, não sobre as melhorias do gerador de cursos, QA pedagógico e tutor-chat. No GitHub, ele aparece com 4 arquivos alterados, todos dentro de supabase/functions/export-pptx-v7. Fonte: commit 6cb672e no GitHub.
+
+O commit correto das alterações que eu implementei é outro
+No repositório local deste ambiente, o commit das alterações descritas no PR anterior é:
+
+0174bf8ac4f37ef22dea3060dcabbe4ed2ded41d
+Mensagem:
+
+Integrate course-quality helpers, assessment generation and QA into course pipeline; improve tutor-chat and misc fixes
+Arquivos alterados nesse commit local:
+
+eslint.config.js
+src/test/course-quality.test.ts
+supabase/functions/_shared/course-quality.ts
+supabase/functions/generate-course/index.ts
+supabase/functions/tutor-chat/index.ts
+Esses arquivos batem com a descrição das alterações:
+
+course-quality;
+
+testes de qualidade;
+
+integração no generate-course;
+
+melhorias no tutor-chat;
+
+ajustes no ESLint.
+
+Comparação direta
+Item	Commit 6cb672e...	Commit correto local 0174bf8...
+Tema	PPTX v7	Course quality / assessments / QA / tutor-chat
+Mensagem	fix(pptx-v7): close truncated parens/quotes...	Integrate course-quality helpers...
+Arquivos principais	supabase/functions/export-pptx-v7/*	supabase/functions/_shared/course-quality.ts, generate-course, tutor-chat
+É o commit das minhas alterações?	Não	Sim, no ambiente local
+Observação importante
+O commit 6cb672e... pode até estar na branch claude/sharp-gauss-df0766, mas ele não contém diretamente as alterações de course-quality, assessment generation, QA pipeline e tutor-chat.
+
+Pelo que verifiquei localmente, os dois commits também não estão em relação direta de ancestralidade neste checkout:
+
+0174_is_ancestor_of_6cb=1
+6cb_is_ancestor_of_0174=1
+No Git, código 1 nesse comando significa “não é ancestral”.
+
+Então, com base no estado local e no link do GitHub: não, o commit 6cb672ec... não é o commit correto dessas alterações.
