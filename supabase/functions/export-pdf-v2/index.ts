@@ -22,7 +22,7 @@ import {
 } from "https://esm.sh/pdf-lib@1.17.1";
 import { cleanModuleContent } from "../_shared/markdown.ts";
 
-const BUILD        = "2026-07-08a-latex-symbols";
+const BUILD        = "2026-07-08d-title-guard";
 
 // NOTE ON FONTS: runtime font embedding was removed. Build 07c/07d embedded
 // Roboto by fetching WOFFs and subsetting with fontkit, which blew the Supabase
@@ -188,6 +188,21 @@ function stripMdCell(t: string): string {
 
 function cleanLine(t: string): string { return safeText(stripMd(t)); }
 function cleanCell(t: string): string { return safeText(stripMdCell(t)); }
+
+// Defensive title cleanup for courses created BEFORE the LLM-owned title fix
+// (generate-course now returns a clean "course_title"), whose stored
+// course.title may still carry conversational residue — e.g. "S de Finanças
+// pessoais..." from a raw "crie um curso de Finanças..." request that leaked
+// through. cleanLine() alone only strips markdown, not this kind of fragment.
+function cleanTitle(t: string): string {
+  return cleanLine(t || "")
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+    .replace(/^\s*(crie|criar|gere|gerar|quero|fa[çc]a)\b[^A-Za-zÀ-ÿ]*/i, "")
+    .replace(/^\s*(um|uma|uns|umas)\s+(cursos?|treinamentos?)\s+(de|sobre|do|da|em)\s+/i, "")
+    .replace(/^[A-Za-zÀ-ÿ]{1,3}\s+de\s+(?=[A-Za-zÀ-ÿ])/, "")   // orphan "S de "
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 
 function headingLevel(line: string): number {
   const m = line.match(/^(#{1,6})\s/);
@@ -1051,11 +1066,12 @@ serve(async (req: Request) => {
 
     const doc = await PDFDocument.create();
     const r   = new R(doc);
-    r.courseTitle = safeText(String(course.title || ""));
+    const courseTitleClean = cleanTitle(String(course.title || "")) || "Curso";
+    r.courseTitle = courseTitleClean;
     await r.fonts();
 
     // Document metadata (viewer title bar, search, accessibility basics)
-    doc.setTitle(course.title || "Curso");
+    doc.setTitle(courseTitleClean);
     doc.setAuthor("EduGenAI");
     doc.setSubject(course.description || course.theme || "");
     doc.setCreator(`EduGenAI export-pdf-v2 ${BUILD}`);
@@ -1078,7 +1094,7 @@ serve(async (req: Request) => {
     // and ensure a non-empty fallback so the cover never renders a blank title.
     // This fixes courses already stored with titles like "**X**" or with thin/
     // non-breaking spaces that confuse wrapText's word-split.
-    const coverTitle = cleanLine(String(course.title || "")).trim() || "Curso sem título";
+    const coverTitle = courseTitleClean;
     const coverDesc  = course.description ? cleanLine(String(course.description)).trim() : undefined;
 
     r.cover(coverTitle, coverDesc, {
@@ -1107,7 +1123,7 @@ serve(async (req: Request) => {
     const pdfBytes = await doc.save();
 
     const dateStr  = new Date().toISOString().slice(0, 10);
-    const safeName = (course.title || "curso")
+    const safeName = (courseTitleClean || "curso")
       .normalize("NFD").replace(/[̀-ͯ]/g, "")
       .replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().slice(0, 80);
     const fileName = `${user.id}/${safeName} - PDF-v2 - ${dateStr}.pdf`;

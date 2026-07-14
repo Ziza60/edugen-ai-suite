@@ -20,7 +20,7 @@ const TESTING_MODE = true;
 
 // Build marker — logged on every invocation so a deploy can be verified in the
 // function logs (see the export-pdf deploy saga: always confirm WHICH code runs).
-const GENERATE_COURSE_BUILD = "2026-07-08c-token-14k";
+const GENERATE_COURSE_BUILD = "2026-07-08d-llm-title";
 
 // Centralized AI Call Logic (Bypasses Lovable credits using personal Gemini Key).
 // Returns the text plus the finish_reason so callers can detect a MAX_TOKENS
@@ -654,6 +654,7 @@ ${use_sources ? "- Base the course structure EXCLUSIVELY on the content in <SOUR
 Return ONLY valid JSON with this structure (quizzes/flashcards are generated
 separately per module to keep this JSON small and valid):
 {
+  "course_title": "a clean, well-formed, correctly capitalized course title in ${language || "pt-BR"} derived from the request/theme — NO command words ('crie', 'curso de'), NO dangling fragments, NO surrounding quotes; Title Case, 3–9 words",
   "description": "course description — 2-3 sentences covering WHAT the learner will do, not abstract topics",
   "audience_label": "SPECIFIC target audience for the PDF cover, e.g. \"microempreendedores e MEIs\", \"desenvolvedores Python júnior\", \"gestores de equipes remotas\" — NOT generic \"profissionais da área\"",
   "final_competency": "what the learner will be able to DO",
@@ -736,13 +737,28 @@ Return ONLY valid JSON: {"description": "...", "modules": [{"title": "...", "sum
         ? `\nDOSSIÊ DO CASO (fatos canônicos e IMUTÁVEIS do fio condutor — regra dura):\n${caseFacts.map((f) => `- ${f}`).join("\n")}\n- PROIBIDO alterar, contradizer ou inventar valores fora deste dossiê.\n- Toda evolução numérica (otimização, corte, novo saldo) deve ser DERIVADA aritmeticamente destes valores, mostrando a conta.\n- Ao referenciar módulos anteriores, cite APENAS fatos deste dossiê ou derivações declaradas.\n`
         : "";
 
+      // Title is LLM-owned: use the clean course_title the Architect produced,
+      // ignoring the raw (possibly messy conversational) user request. Defensive
+      // strip of any residual command/quote/leading-fragment just in case the
+      // model echoes it (e.g. the "S de Finanças pessoais..." bug).
+      const sanitizeTitle = (s: string): string =>
+        (s || "")
+          .replace(/^\s*["'“”‘’]+|["'“”‘’]+\s*$/g, "")
+          .replace(/^\s*(crie|criar|gere|gerar|quero|fa[çc]a)\b[^A-Za-zÀ-ÿ]*/i, "")
+          .replace(/^\s*(um|uma|uns|umas)\s+(cursos?|treinamentos?)\s+(de|sobre|do|da|em)\s+/i, "")
+          .replace(/^\s*[A-Za-zÀ-ÿ]{1,3}\s+de\s+(?=[A-ZÀ-Ý])/, "") // orphan "S de "
+          .replace(/\s{2,}/g, " ")
+          .trim();
+      const llmTitle = sanitizeTitle(typeof structure.course_title === "string" ? structure.course_title : "");
+      const courseTitle = llmTitle.length >= 3 ? llmTitle : (sanitizeTitle(title) || title);
+
       sendSSE({ type: "structure_done", modules: actualModules });
 
       // ── STAGE 2: Create course in DB ──
       const { data: course, error: courseError } = await serviceClient
         .from("courses")
         .insert({
-          user_id: userId, title,
+          user_id: userId, title: courseTitle,
           description: structure.description || "",
           theme, target_audience: structure.audience_label || target_audience || null,
           tone: tone || null, language: language || "pt-BR",
