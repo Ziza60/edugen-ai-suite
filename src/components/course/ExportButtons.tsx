@@ -2,10 +2,14 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Download, FileText, Loader2, Package, StickyNote, GraduationCap, FileType,
+  ChevronDown, BarChart3,
 } from "lucide-react";
 import { PptxExportDialog, type PptxExportOptions } from "./PptxExportDialog";
 import { PptxQualityReport, type QualityReport } from "./PptxQualityReport";
@@ -13,7 +17,62 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   AlignmentType, BorderStyle, ShadingType,
 } from "docx";
-import { cleanModuleContent } from "@/lib/utils";
+
+const _INTERNAL_HDR = [
+  /^#{1,4}\s+.*Matriz\s+Objetivo/i,
+  /^#{1,4}\s+.*Nota\s+de\s+Qualidade\s+EduGen/i,
+  /^#{1,4}\s+.*Atividade\s+Pr[áa]tica\s+Avali[áa]vel/i,
+  /^#{1,4}\s+.*Cen[áa]rio\s+Ramificado/i,
+];
+const _INTERNAL_LN = [
+  /^-\s+Score\s+do\s+m[óo]dulo\s*:/i,
+  /^-\s+(CRITICAL|WARNING|INFO|ERROR)\s*:\s+/i,
+  /^\d+\.\s+\*\*.*\*\*\s+[—-]\s+Feedback\s*:/i,
+];
+function stripInternalBlocksDocx(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let skip = false; let skipLvl = 0;
+  for (const line of lines) {
+    const t = line.trim();
+    if (_INTERNAL_HDR.some((re) => re.test(t))) {
+      skip = true; const m = t.match(/^(#{1,4})\s/); skipLvl = m ? m[1].length : 3; continue;
+    }
+    if (skip) {
+      const hm = t.match(/^(#{1,6})\s/);
+      if (hm && hm[1].length <= skipLvl) { skip = false; }
+      else if (t === "---" || t === "***" || t === "___") { skip = false; continue; }
+      else { continue; }
+    }
+    if (_INTERNAL_LN.some((re) => re.test(t))) continue;
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function ExportMenuRow({
+  icon, label, pro, isPro, onClick, disabled, loading, title, testId,
+}: {
+  icon: React.ReactNode; label: string; pro?: boolean; isPro?: boolean;
+  onClick: () => void; disabled?: boolean; loading?: boolean; title?: string; testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      data-testid={testId}
+      className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 text-left"
+    >
+      {loading ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : <span className="shrink-0 text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">{icon}</span>}
+      <span className="flex items-center gap-1.5 font-medium">
+        {label}
+        {pro && !isPro && <Badge variant="outline" className="text-[10px] px-1 py-0">PRO</Badge>}
+      </span>
+    </button>
+  );
+}
 
 interface ExportButtonsProps {
   courseId: string;
@@ -32,6 +91,8 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const [exportingNotion, setExportingNotion] = useState(false);
   const [exportingMoodle, setExportingMoodle] = useState(false);
   const [exportingDocx, setExportingDocx] = useState(false);
+  const [exportingPdfV2, setExportingPdfV2] = useState(false);
+  const [exportingPdfV3, setExportingPdfV3] = useState(false);
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
 
@@ -72,7 +133,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
           })
         );
 
-        const rawContent = cleanModuleContent(mod.content || "", mod.title);
+        const rawContent = stripInternalBlocksDocx(mod.content || "");
         const lines = rawContent.split("\n");
 
         for (const line of lines) {
@@ -180,7 +241,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
 
   const handleExportMarkdown = () => {
     const branding = isPro ? "" : "\n\n---\n\n*Gerado com CourseAI — plataforma de cursos com IA*\n";
-    const md = modules.map((m) => `# ${m.title}\n\n${cleanModuleContent(m.content || "", m.title)}`).join("\n\n---\n\n") + branding;
+    const md = modules.map((m) => `# ${m.title}\n\n${m.content || ""}`).join("\n\n---\n\n") + branding;
     const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -209,7 +270,29 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
       const { data, error } = await supabase.functions.invoke(functionName, {
         body: { course_id: courseId },
       });
-      if (error) throw error;
+      if (error) {
+        const ctx = (error as any)?.context;
+        let serverMessage: string | null = null;
+        let rawBodyText: string | null = null;
+        if (ctx && typeof ctx.clone === "function") {
+          try {
+            rawBodyText = await ctx.clone().text();
+            const parsed = rawBodyText ? JSON.parse(rawBodyText) : null;
+            if (parsed?.error) serverMessage = String(parsed.error);
+          } catch {
+            // body wasn't JSON (e.g. boot crash / gateway HTML) — rawBodyText still useful below
+          }
+        }
+        console.error(`[ExportButtons] ${functionName} failed`, {
+          status: ctx?.status,
+          statusText: ctx?.statusText,
+          serverMessage,
+          rawBodyText,
+          errorName: error.name,
+          errorMessage: error.message,
+        });
+        throw new Error(serverMessage || (rawBodyText ? `Falha (${ctx?.status}): ${rawBodyText.slice(0, 300)}` : error.message));
+      }
       console.log(`[ExportButtons] Response from ${functionName}:`, { engine_version: data?.engine_version, quality_report: data?.quality_report });
       if (data?.url) {
         const response = await fetch(data.url);
@@ -234,44 +317,118 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
     }
   };
 
+  const handleExportPdfPuppeteer = async () => {
+    setExportingPdfV3(true);
+    try {
+      const response = await fetch("/api/pdf/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          course: { title: courseTitle, language: "pt-BR" },
+          modules: modules.map((m) => ({ title: m.title, content: m.content })),
+        }),
+      });
+
+      if (!response.ok) {
+        let message = `Falha ao gerar PDF (${response.status})`;
+        try {
+          const parsed = await response.json();
+          if (parsed?.error) message = parsed.error;
+        } catch {
+          // resposta não era JSON
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = formatFileName(courseTitle, "PDF", "pdf");
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      toast({ title: "PDF gerado!" });
+    } catch (err: any) {
+      toast({ title: "Erro ao exportar PDF", description: err.message, variant: "destructive" });
+    } finally {
+      setExportingPdfV3(false);
+    }
+  };
+
   const isPublished = courseStatus === "published";
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
-        {/* Markdown - Free + Pro */}
-        <Button variant="outline" size="sm" onClick={handleExportMarkdown} data-testid="button-export-md">
-          <Download className="h-4 w-4 mr-1" /> MD
-        </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="h-9" data-testid="button-export-menu">
+            <Download className="h-4 w-4 mr-1.5" />
+            Exportar
+            <ChevronDown className="h-3.5 w-3.5 ml-1.5 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          {/* Markdown - Free + Pro */}
+          <ExportMenuRow
+            icon={<Download />}
+            label="Markdown (.md)"
+            onClick={handleExportMarkdown}
+            testId="button-export-md"
+          />
 
-        {/* DOCX - Free + Pro (client-side) */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExportDocx}
-          disabled={exportingDocx}
-          data-testid="button-export-docx"
-          title="Exportar como documento Word editável"
-        >
-          {exportingDocx ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileType className="h-4 w-4 mr-1" />}
-          DOCX
-        </Button>
+          {/* DOCX - Free + Pro (client-side) */}
+          <ExportMenuRow
+            icon={<FileType />}
+            label="Word (.docx)"
+            onClick={handleExportDocx}
+            disabled={exportingDocx}
+            loading={exportingDocx}
+            title="Exportar como documento Word editável"
+            testId="button-export-docx"
+          />
 
-        {/* PDF - Pro */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleExportWithFunction("export-pdf", "pdf", setExportingPdf, "PDF")}
-          disabled={exportingPdf}
-          title={!isPublished ? "Publique o curso primeiro" : undefined}
-        >
-          {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
-          PDF {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-        </Button>
+          {/* PDF - Pro */}
+          <ExportMenuRow
+            icon={<FileText />}
+            label="PDF"
+            pro isPro={isPro}
+            onClick={() => handleExportWithFunction("export-pdf", "pdf", setExportingPdf, "PDF")}
+            disabled={exportingPdf}
+            loading={exportingPdf}
+            title={!isPublished ? "Publique o curso primeiro" : undefined}
+          />
 
-        {/* PowerPoint - Pro (with customization dialog) */}
-        <PptxExportDialog
-          onExport={async (options: PptxExportOptions) => {
+          {/* PDF v3 - novo motor HTML/CSS + Puppeteer */}
+          <ExportMenuRow
+            icon={<FileText />}
+            label="PDF (novo motor)"
+            pro isPro={isPro}
+            onClick={handleExportPdfPuppeteer}
+            disabled={exportingPdfV3}
+            loading={exportingPdfV3}
+            testId="button-export-pdf-v3"
+          />
+
+          {/* PDF v2 (Test) - pdf-lib accurate justification */}
+          <ExportMenuRow
+            icon={<FileText />}
+            label="PDF v2 (beta)"
+            onClick={() => handleExportWithFunction("export-pdf-v2", "pdf", setExportingPdfV2, "PDF-v2")}
+            disabled={exportingPdfV2}
+            loading={exportingPdfV2}
+            title="Testar PDF v2 (pdf-lib — justificação precisa)"
+            testId="button-export-pdf-v2"
+          />
+
+          <DropdownMenuSeparator />
+
+          {/* PowerPoint - Pro (with customization dialog) */}
+          <PptxExportDialog
+            asMenuItem
+            onExport={async (options: PptxExportOptions) => {
             setExportingPptx(true);
             try {
               const session = (await supabase.auth.getSession()).data.session;
@@ -520,42 +677,54 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
           isPro={isPro}
         />
 
-        {/* Notion - Pro */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleExportWithFunction("export-notion", "md", setExportingNotion, "Notion")}
-          disabled={exportingNotion || !isPublished}
-          title={!isPublished ? "Publique o curso primeiro" : undefined}
-        >
-          {exportingNotion ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <StickyNote className="h-4 w-4 mr-1" />}
-          Notion {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-        </Button>
+          <DropdownMenuSeparator />
 
-        {/* Moodle - Pro */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleExportWithFunction("export-moodle", "zip", setExportingMoodle, "Moodle")}
-          disabled={exportingMoodle || !isPublished}
-          title={!isPublished ? "Publique o curso primeiro" : "Exportar para Moodle (XML Backup)"}
-        >
-          {exportingMoodle ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <GraduationCap className="h-4 w-4 mr-1" />}
-          Moodle {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-        </Button>
+          {/* Notion - Pro */}
+          <ExportMenuRow
+            icon={<StickyNote />}
+            label="Notion"
+            pro isPro={isPro}
+            onClick={() => handleExportWithFunction("export-notion", "md", setExportingNotion, "Notion")}
+            disabled={exportingNotion || !isPublished}
+            loading={exportingNotion}
+            title={!isPublished ? "Publique o curso primeiro" : undefined}
+          />
 
-        {/* SCORM - Pro */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleExportWithFunction("export-scorm", "zip", setExportingScorm, "SCORM")}
-          disabled={exportingScorm || !isPublished}
-          title={!isPublished ? "Publique o curso primeiro" : "Exportar pacote SCORM 1.2 para LMS (Moodle, Canvas, etc.)"}
-        >
-          {exportingScorm ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Package className="h-4 w-4 mr-1" />}
-          SCORM {!isPro && <Badge variant="outline" className="ml-1 text-[10px] px-1">PRO</Badge>}
-        </Button>
-      </div>
+          {/* Moodle - Pro */}
+          <ExportMenuRow
+            icon={<GraduationCap />}
+            label="Moodle"
+            pro isPro={isPro}
+            onClick={() => handleExportWithFunction("export-moodle", "zip", setExportingMoodle, "Moodle")}
+            disabled={exportingMoodle || !isPublished}
+            loading={exportingMoodle}
+            title={!isPublished ? "Publique o curso primeiro" : "Exportar para Moodle (XML Backup)"}
+          />
+
+          {/* SCORM - Pro */}
+          <ExportMenuRow
+            icon={<Package />}
+            label="SCORM"
+            pro isPro={isPro}
+            onClick={() => handleExportWithFunction("export-scorm", "zip", setExportingScorm, "SCORM")}
+            disabled={exportingScorm || !isPublished}
+            loading={exportingScorm}
+            title={!isPublished ? "Publique o curso primeiro" : "Exportar pacote SCORM 1.2 para LMS (Moodle, Canvas, etc.)"}
+          />
+
+          {qualityReport && (
+            <>
+              <DropdownMenuSeparator />
+              <ExportMenuRow
+                icon={<BarChart3 />}
+                label={`Pontuação (${qualityReport.quality_score}/100)`}
+                onClick={() => setReportOpen(true)}
+                testId="button-quality-report"
+              />
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Quality Report Dialog */}
       <PptxQualityReport

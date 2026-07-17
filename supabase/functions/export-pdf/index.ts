@@ -162,7 +162,14 @@ function stripMarkdown(text: string): string {
 function normalizeBoldLabels(text: string): string {
   return text
     .replace(/\*\*([\p{L}\p{N}\s]+):\*\*/gu, "$1:")
-    .replace(/\*\*([\p{L}\p{N}\s]+):(\s)/gu, "$1:$2");
+    .replace(/\*\*([\p{L}\p{N}\s]+):(\s)/gu, "$1:$2")
+    // Remove stray lone * immediately around a colon/period — artifact from AI
+    // generating "**Label:*** text" (three asterisks) or "**Label:** *text".
+    // After bold-stripping above, the residual lone * appears as "Label:* text"
+    // (asterisk BEFORE the space) or "Label: *text" (AFTER the space).
+    // The previous lookahead (?=[^\s*]) only handled the latter; this broader
+    // pattern handles both by consuming surrounding whitespace too:
+    .replace(/([:.])[ \t]*\*(?!\*)[ \t]*/g, "$1 ");
 }
 
 function getHeadingLevel(line: string): number {
@@ -294,6 +301,24 @@ function collapseWhitespace(text: string): string {
     .trim();
 }
 
+/** Replace characters outside printable Latin-1 / Latin Extended that jsPDF
+ *  Helvetica cannot render and produces garbled output like "%²%¼%¬".
+ *  Common trend/arrow emojis → readable ASCII; everything else is stripped. */
+function sanitizeNonLatin(text: string): string {
+  return text
+    .replace(/[↑▲⬆🔺🔝]/gu, "(+)")
+    .replace(/[↓▼⬇🔻🔽]/gu, "(-)")
+    .replace(/[→➔➡▶➤►]/gu, "->")
+    .replace(/[←◀◄⬅]/gu, "<-")
+    .replace(/[↔⟷]/gu, "<->")
+    .replace(/[✓✔☑]/gu, "OK")
+    .replace(/[✗✘☒]/gu, "X")
+    .replace(/[•·]/gu, "-")
+    // Strip any remaining non-printable or non-Latin characters
+    // (keeps printable ASCII 0x20-0x7E + Latin-1 supplement 0xA0-0xFF + Latin Extended 0x100-0x24F)
+    .replace(/[^\x20-\x7E\xA0-\xFF\u0100-\u024F]/gu, "");
+}
+
 /** Full sanitization pipeline shared by the three public functions below. */
 function sanitizePdfCore(raw: string): string {
   let t = raw || "";
@@ -303,6 +328,7 @@ function sanitizePdfCore(raw: string): string {
   t = stripMarkdown(t);
   t = stripFormulaAndStrayMarks(t);
   t = sanitizeText(t);
+  t = sanitizeNonLatin(t);     // strip/replace emojis and non-Latin chars Helvetica can't render
   t = collapseWhitespace(t);
   return t;
 }
@@ -750,33 +776,40 @@ class PdfRenderer {
       this.doc.setTextColor(...COLOR.ACCENT);
       this.doc.text(`${i + 1}.`, MARGIN_LEFT, this.y);
 
-      // Title text (may wrap — restricted to MAX_TITLE_W so dots area is always free)
+      // Title text — capped at 2 lines to prevent TOC overflow.
+      // Dots and page number anchor to the LAST line so they never bisect
+      // a wrapped title (e.g. line-1: "Fundamentos … Auditorias  ......  3"
+      //                       line-2: "Governamentais"  ← old broken layout).
       this.doc.setFontSize(FONT.BODY);
       this.doc.setFont("helvetica", "normal");
       this.doc.setTextColor(...COLOR.TEXT_DARK);
-      const titleLines: string[] = this.doc.splitTextToSize(label, MAX_TITLE_W);
+      const rawLines: string[] = this.doc.splitTextToSize(label, MAX_TITLE_W);
+      // Cap at 2 lines; truncate with ellipsis if needed
+      const titleLines: string[] = rawLines.length > 2
+        ? [rawLines[0], rawLines[1].length > 3 ? rawLines[1].slice(0, -3) + "…" : rawLines[1]]
+        : rawLines;
       this.doc.text(titleLines, MARGIN_LEFT + 8, this.y);
 
-      // Record Y of the first line for this entry (where the page number goes)
-      this.tocLineYs.push(this.y);
+      // Anchor dots + page number on the LAST line of the title
+      const lastLineY = this.y + (titleLines.length - 1) * SP.LINE_HEIGHT;
 
-      // Dotted leader — drawn at a FIXED position on the right so it always
-      // appears regardless of how long the title is. The gap between a short
-      // title and the dot zone provides visual breathing room; a long wrapped
-      // title is naturally separated from the right-side reference by the zone.
+      // Record last-line Y so finalizeTOC overwrites placeholder correctly
+      this.tocLineYs.push(lastLineY);
+
+      // Dotted leader on last line — fixed position so it never overlaps title text
       this.doc.setFontSize(7);
       this.doc.setFont("helvetica", "normal");
       this.doc.setTextColor(...COLOR.TEXT_MUTED);
       const dotStr = ". . . . . . . . . . . . . . . . . . . . .";
       const dotAvailW = DOT_END_X - DOT_FIXED_X;
       const dotLine: string = this.doc.splitTextToSize(dotStr, dotAvailW)[0] || "";
-      if (dotLine) this.doc.text(dotLine, DOT_FIXED_X, this.y);
+      if (dotLine) this.doc.text(dotLine, DOT_FIXED_X, lastLineY);
 
-      // Placeholder "..." for page number (will be replaced in finalizeTOC)
+      // Placeholder "..." for page number (replaced in finalizeTOC)
       this.doc.setFontSize(FONT.BODY);
       this.doc.setFont("helvetica", "bold");
       this.doc.setTextColor(...COLOR.TEXT_MUTED);
-      this.doc.text("...", PAGE_NUM_X, this.y, { align: "right" });
+      this.doc.text("...", PAGE_NUM_X, lastLineY, { align: "right" });
 
       this.y += titleLines.length * SP.LINE_HEIGHT + 4;
 
@@ -1258,10 +1291,10 @@ class PdfRenderer {
       for (let c = 0; c < numCols; c++) {
         const cellText = sanitizePdfTableCell(row[c] || "");
         const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 8);
-        // Allow taller cells (up to 8 lines) instead of silently truncating at 4 —
+        // Allow taller cells (up to 12 lines) instead of silently truncating —
         // the row simply grows; if content is still longer than that the render
         // step below adds a trailing "…" so no content vanishes without a trace.
-        if (lines.length > maxLines) maxLines = Math.min(lines.length, 8);
+        if (lines.length > maxLines) maxLines = Math.min(lines.length, 12);
       }
       rowHeights.push(Math.max(8, maxLines * SP.TABLE_CELL_LINE + SP.TABLE_ROW_PAD * 2));
     }
@@ -1343,7 +1376,7 @@ class PdfRenderer {
         const cellText = sanitizePdfTableCell(row[c] || "");
         this.doc.setFontSize(FONT.TABLE_BODY);
         const allLines = this.doc.splitTextToSize(cellText, colWidths[c] - 8);
-        const maxCellLines = 8;
+        const maxCellLines = 12;
         const lines = allLines.slice(0, maxCellLines);
         if (allLines.length > maxCellLines) {
           const last = lines[lines.length - 1];

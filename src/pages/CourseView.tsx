@@ -39,6 +39,39 @@ import { TranslateDialog } from "@/components/course/TranslateDialog";
 import { ReviewPanel } from "@/components/course/ReviewPanel";
 import { ModuleSidebar } from "@/components/course/ModuleSidebar";
 import { RestructureDiffDialog } from "@/components/course/RestructureDiffDialog";
+import { StudentPortalView, type PortalData } from "@/components/course/StudentPortalView";
+
+const _CV_INTERNAL_HDR = [
+  /^#{1,4}\s+.*Matriz\s+Objetivo/i,
+  /^#{1,4}\s+.*Nota\s+de\s+Qualidade\s+EduGen/i,
+  /^#{1,4}\s+.*Atividade\s+Pr[áa]tica\s+Avali[áa]vel/i,
+  /^#{1,4}\s+.*Cen[áa]rio\s+Ramificado/i,
+];
+const _CV_INTERNAL_LN = [
+  /^-\s+Score\s+do\s+m[óo]dulo\s*:/i,
+  /^-\s+(CRITICAL|WARNING|INFO|ERROR)\s*:\s+/i,
+  /^\d+\.\s+\*\*.*\*\*\s+[—-]\s+Feedback\s*:/i,
+];
+function stripInternalBlocksCV(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let skip = false; let skipLvl = 0;
+  for (const line of lines) {
+    const t = line.trim();
+    if (_CV_INTERNAL_HDR.some((re) => re.test(t))) {
+      skip = true; const m = t.match(/^(#{1,4})\s/); skipLvl = m ? m[1].length : 3; continue;
+    }
+    if (skip) {
+      const hm = t.match(/^(#{1,6})\s/);
+      if (hm && hm[1].length <= skipLvl) { skip = false; }
+      else if (t === "---" || t === "***" || t === "___") { skip = false; continue; }
+      else { continue; }
+    }
+    if (_CV_INTERNAL_LN.some((re) => re.test(t))) continue;
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
@@ -63,6 +96,7 @@ export default function CourseView() {
   const [qualityReport, setQualityReport] = useState<any>(null);
   const [flashcardView, setFlashcardView] = useState<"list" | "flip">("flip");
   const [flipEntitled, setFlipEntitled] = useState<boolean | null>(null);
+  const [previewMode, setPreviewMode] = useState(false);
   const [showFlashcardsModal, setShowFlashcardsModal] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizRevealed, setQuizRevealed] = useState<Record<string, boolean>>({});
@@ -376,6 +410,41 @@ export default function CourseView() {
     ? "Salvando..."
     : "Alterações não salvas";
 
+  // Builds the exact same shape the public /learn/:slug portal consumes,
+  // from data already loaded in the editor — so "Visualizar como Aluno"
+  // renders the real StudentPortalView in place, no new tab, no duplication.
+  const portalData: PortalData = {
+    courseId: course.id,
+    courseTitle: course.title,
+    description: course.description ?? "",
+    instructorName: landing?.instructor_name ?? null,
+    primaryColor: landing?.custom_colors?.primary ?? "#7c3aed",
+    logoUrl: landing?.logo_url ?? null,
+    modules: modules.map((m) => {
+      const img = courseImages.find((i) => i.module_id === m.id);
+      return {
+        id: m.id,
+        title: m.title,
+        content: m.content ?? "",
+        order_index: m.order_index,
+        quizQuestions: quizzes.filter((q) => q.module_id === m.id),
+        flashcards: flashcards.filter((f) => f.module_id === m.id),
+        image_url: img?.url ?? null,
+        image_alt: img?.alt_text ?? null,
+      };
+    }),
+  };
+
+  if (previewMode) {
+    return (
+      <StudentPortalView
+        data={portalData}
+        onExit={() => setPreviewMode(false)}
+        previewMode
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
       {/* ═══════════ COURSE HEADER ═══════════ */}
@@ -411,7 +480,7 @@ export default function CourseView() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0 max-w-full">
               {/* Primary actions */}
               <Button
                 variant={isPublished ? "outline" : "default"}
@@ -434,11 +503,22 @@ export default function CourseView() {
                 variant="outline"
                 size="sm"
                 className="h-9"
+                disabled={modules.length === 0}
+                onClick={() => setPreviewMode(true)}
+                data-testid="btn-view-as-learner"
+              >
+                <GraduationCap className="h-4 w-4 mr-1.5" />
+                Visualizar como Aluno
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
                 onClick={() => navigate(`/app/courses/${id}/landing-page`)}
                 data-testid="btn-landing-page"
               >
                 <Globe className="h-4 w-4 mr-1.5" />
-                Landing Page
+                Página de Destino
               </Button>
 
               {/* Tools dropdown */}
@@ -884,6 +964,25 @@ export default function CourseView() {
         </div>
       )}
 
+      {/* ── Mobile module selector (full-width strip, outside the flex-row) ── */}
+      <div className="lg:hidden w-full sticky top-0 z-10 bg-card border-b border-border px-4 py-2 overflow-x-auto">
+        <div className="flex gap-2">
+          {modules.map((mod, i) => (
+            <button
+              key={mod.id}
+              onClick={() => setActiveModuleIndex(i)}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                i === activeModuleIndex
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {i + 1}. {mod.title.length > 20 ? mod.title.slice(0, 20) + "…" : mod.title}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* ═══════════ TWO-PANEL LAYOUT ═══════════ */}
       <div className="flex-1 flex max-w-[1400px] mx-auto w-full">
         {/* ── Left: Module sidebar with DnD ── */}
@@ -902,25 +1001,6 @@ export default function CourseView() {
             </div>
           </ScrollArea>
         </aside>
-
-        {/* ── Mobile module selector ── */}
-        <div className="lg:hidden sticky top-0 z-10 bg-card border-b border-border px-4 py-2 overflow-x-auto">
-          <div className="flex gap-2">
-            {modules.map((mod, i) => (
-              <button
-                key={mod.id}
-                onClick={() => setActiveModuleIndex(i)}
-                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  i === activeModuleIndex
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {i + 1}. {mod.title.length > 20 ? mod.title.slice(0, 20) + "…" : mod.title}
-              </button>
-            ))}
-          </div>
-        </div>
 
         {/* ── Right: Content area ── */}
         <div ref={contentRef} className="flex-1 overflow-y-auto">
@@ -945,7 +1025,7 @@ export default function CourseView() {
                   )}
                   {/* Summary preview — first plain paragraph of content */}
                   {editingModuleId !== activeModule.id && (() => {
-                    const firstPara = (activeModule.content || "")
+                    const firstPara = stripInternalBlocksCV(activeModule.content || "")
                       .split("\n")
                       .find((l) => l.trim() && !l.startsWith("#") && !l.startsWith("-") && !l.startsWith("*") && !l.startsWith(">") && !l.startsWith("|"));
                     return firstPara ? (
@@ -1007,7 +1087,7 @@ export default function CourseView() {
                         updateModule.mutate({ moduleId: activeModule.id, content: editContent, title: editTitle });
                       } else {
                         setEditingModuleId(activeModule.id);
-                        setEditContent(activeModule.content || "");
+                        setEditContent(stripInternalBlocksCV(activeModule.content || ""));
                         setEditTitle(activeModule.title);
                         setSaveStatus("saved");
                       }
@@ -1021,6 +1101,51 @@ export default function CourseView() {
                   </Button>
                 </div>
               </div>
+
+              {/* ── Module image — always visible, even while editing ── */}
+              {moduleImage ? (
+                <div className="mb-4 rounded-xl overflow-hidden border border-border relative group">
+                  <img
+                    src={moduleImage.url}
+                    alt={moduleImage.alt_text || `Ilustração do módulo ${activeModuleIndex + 1}`}
+                    className="w-full h-auto object-cover max-h-[360px]"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-6">
+                    <p className="text-xs font-semibold text-white/80 uppercase tracking-wider mb-1">
+                      Módulo {activeModuleIndex + 1}
+                    </p>
+                    <h3 className="text-xl lg:text-2xl font-bold text-white font-display leading-tight drop-shadow-md">
+                      {activeModule.title}
+                    </h3>
+                  </div>
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <PexelsPicker
+                      moduleTitle={activeModule.title}
+                      moduleId={activeModule.id}
+                      courseTitle={course.title}
+                      currentImageUrl={moduleImage.url}
+                      onSelect={({ url, alt }) =>
+                        saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
+                      }
+                      onRemove={() => removeModuleImage.mutate(activeModule.id)}
+                      disabled={saveModuleImage.isPending || removeModuleImage.isPending}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <PexelsPicker
+                    moduleTitle={activeModule.title}
+                    moduleId={activeModule.id}
+                    courseTitle={course.title}
+                    onSelect={({ url, alt }) =>
+                      saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
+                    }
+                    disabled={saveModuleImage.isPending}
+                  />
+                </div>
+              )}
 
               {/* Module content */}
               {editingModuleId === activeModule.id ? (
@@ -1048,51 +1173,9 @@ export default function CourseView() {
                 </div>
               ) : (
                 <div>
-                  {/* ── Module image ── */}
-                  {moduleImage ? (
-                    <div className="mb-4 rounded-xl overflow-hidden border border-border relative group">
-                      <img
-                        src={moduleImage.url}
-                        alt={moduleImage.alt_text || `Ilustração do módulo ${activeModuleIndex + 1}`}
-                        className="w-full h-auto object-cover max-h-[360px]"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-6">
-                        <p className="text-xs font-semibold text-white/80 uppercase tracking-wider mb-1">
-                          Módulo {activeModuleIndex + 1}
-                        </p>
-                        <h3 className="text-xl lg:text-2xl font-bold text-white font-display leading-tight drop-shadow-md">
-                          {activeModule.title}
-                        </h3>
-                      </div>
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <PexelsPicker
-                          moduleTitle={activeModule.title}
-                          moduleId={activeModule.id}
-                          currentImageUrl={moduleImage.url}
-                          onSelect={({ url, alt }) =>
-                            saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
-                          }
-                          onRemove={() => removeModuleImage.mutate(activeModule.id)}
-                          disabled={saveModuleImage.isPending || removeModuleImage.isPending}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mb-4">
-                      <PexelsPicker
-                        moduleTitle={activeModule.title}
-                        moduleId={activeModule.id}
-                        onSelect={({ url, alt }) =>
-                          saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
-                        }
-                        disabled={saveModuleImage.isPending}
-                      />
-                    </div>
-                  )}
                   <div className="module-prose">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>
-                      {activeModule.content || "*Sem conteúdo ainda*"}
+                      {stripInternalBlocksCV(activeModule.content || "") || "*Sem conteúdo ainda*"}
                     </ReactMarkdown>
                   </div>
                 </div>
