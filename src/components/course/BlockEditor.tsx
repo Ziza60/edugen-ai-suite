@@ -48,6 +48,48 @@ function getSectionIcon(title: string): string {
   return "📝";
 }
 
+// ── Strip EduGen-internal QA blocks before rendering ──
+const INTERNAL_HEADING_RES_BE = [
+  /^#{1,4}\s+.*Matriz\s+Objetivo/i,
+  /^#{1,4}\s+.*Nota\s+de\s+Qualidade\s+EduGen/i,
+  /^#{1,4}\s+.*Atividade\s+Pr[áa]tica\s+Avali[áa]vel/i,
+  /^#{1,4}\s+.*Cen[áa]rio\s+Ramificado/i,
+];
+const INTERNAL_LINE_RES_BE = [
+  /^-\s+Score\s+do\s+m[óo]dulo\s*:/i,
+  /^-\s+(CRITICAL|WARNING|INFO|ERROR)\s*:\s+/i,
+  /^\d+\.\s+\*\*.*\*\*\s+[—-]\s+Feedback\s*:/i,
+];
+function stripInternalBlocksBE(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let skipping = false;
+  let skipLevel = 0;
+  for (const line of lines) {
+    const t = line.trim();
+    if (INTERNAL_HEADING_RES_BE.some((re) => re.test(t))) {
+      skipping = true;
+      const m = t.match(/^(#{1,4})\s/);
+      skipLevel = m ? m[1].length : 3;
+      continue;
+    }
+    if (skipping) {
+      const hm = t.match(/^(#{1,6})\s/);
+      if (hm && hm[1].length <= skipLevel) {
+        skipping = false;
+      } else if (t === "---" || t === "***" || t === "___") {
+        skipping = false;
+        continue;
+      } else {
+        continue;
+      }
+    }
+    if (INTERNAL_LINE_RES_BE.some((re) => re.test(t))) continue;
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 // ── Markdown ↔ HTML conversion helpers ──
 function markdownToHtml(md: string): string {
   let html = md;
@@ -265,7 +307,7 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
   const [enhancing, setEnhancing] = useState(false);
   const sections = useMemo(() => parseSections(content), [content]);
 
-  const initialHtml = useMemo(() => markdownToHtml(content), []);
+  const initialHtml = useMemo(() => markdownToHtml(stripInternalBlocksBE(content)), []);
 
   const editor = useEditor({
     extensions: [
