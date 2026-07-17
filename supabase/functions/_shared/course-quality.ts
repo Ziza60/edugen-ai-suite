@@ -334,20 +334,15 @@ export function appendInteractiveLearningBlocks(
         `${index + 1}. **${choice.text}** — Feedback: ${choice.feedback} (pontuação: ${choice.score}).`,
     )
     .join("\n");
-  const warnings =
-    qa.issues.length > 0
-      ? `\n\n### 🧪 Nota de Qualidade EduGen\n- Score do módulo: ${qa.score}/100.\n${qa.issues.map((issue) => `- ${issue.severity.toUpperCase()}: ${issue.message}`).join("\n")}`
-      : `\n\n### 🧪 Nota de Qualidade EduGen\n- Score do módulo: ${qa.score}/100. O módulo passou no gate mínimo de qualidade.`;
+  // Log QA score internally — never append to student-visible content.
+  const warnSummary = qa.issues.length > 0
+    ? `score=${qa.score}/100 issues=${qa.issues.map((i) => i.code).join(",")}`
+    : `score=${qa.score}/100 PASSED`;
+  console.log(`[course-quality] appendInteractiveLearningBlocks: ${warnSummary}`);
 
   return `${module.content.trim()}
 
 ---
-
-### 🧭 Matriz Objetivo-Conteúdo-Avaliação
-
-| Objetivo | Resultado esperado | Evidência no conteúdo | Atividade | Avaliação |
-|---|---|---|---|---|
-${matrixRows}
 
 ### 🛠️ Atividade Prática Avaliável
 
@@ -369,7 +364,7 @@ ${module.scenario.context}
 
 **Ponto de decisão:** ${module.scenario.decisionPoint}
 
-${choices}${warnings}`;
+${choices}`;
 }
 
 export function createFallbackAssessmentPack(
@@ -886,11 +881,15 @@ export function normalizeCourseMapTitles(
 const INTERNAL_BLOCK_HEADING_RES = [
   /^#{1,4}\s+.*Matriz\s+Objetivo[-–]Conte[úu]do[-–]Avalia[çc][aã]o/i,
   /^#{1,4}\s+.*Nota\s+de\s+Qualidade\s+EduGen/i,
+  /^#{1,4}\s+.*Atividade\s+Pr[áa]tica\s+Avali[áa]vel/i,
+  /^#{1,4}\s+.*Cen[áa]rio\s+Ramificado/i,
 ];
 
 const INTERNAL_LINE_RES = [
   /^-\s+Score\s+do\s+m[óo]dulo\s*:/i,
   /^-\s+(CRITICAL|WARNING|INFO|ERROR)\s*:\s+/,
+  /^-\s+Pontua[çc][aã]o\s+m[áa]xima\s*:/i,
+  /^\d+\.\s+\*\*.*\*\*\s+[—-]\s+Feedback\s*:/i,
 ];
 
 /**
