@@ -10,6 +10,20 @@ import remarkGfm from "remark-gfm";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
+const _RP_HDR = [/^#{1,4}\s+.*Matriz\s+Objetivo/i,/^#{1,4}\s+.*Nota\s+de\s+Qualidade\s+EduGen/i,/^#{1,4}\s+.*Atividade\s+Pr[áa]tica\s+Avali[áa]vel/i,/^#{1,4}\s+.*Cen[áa]rio\s+Ramificado/i];
+const _RP_LN = [/^-\s+Score\s+do\s+m[óo]dulo\s*:/i,/^-\s+(CRITICAL|WARNING|INFO|ERROR)\s*:\s+/i,/^\d+\.\s+\*\*.*\*\*\s+[—-]\s+Feedback\s*:/i];
+function stripRP(md: string): string {
+  const lines = md.split("\n"); const out: string[] = []; let skip = false; let skipLvl = 0;
+  for (const line of lines) {
+    const t = line.trim();
+    if (_RP_HDR.some((re) => re.test(t))) { skip = true; const m = t.match(/^(#{1,4})\s/); skipLvl = m ? m[1].length : 3; continue; }
+    if (skip) { const hm = t.match(/^(#{1,6})\s/); if (hm && hm[1].length <= skipLvl) { skip = false; } else if (t === "---" || t === "***" || t === "___") { skip = false; continue; } else { continue; } }
+    if (_RP_LN.some((re) => re.test(t))) continue;
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export default function ReviewPublic() {
   const { token } = useParams<{ token: string }>();
   const { toast } = useToast();
@@ -182,7 +196,7 @@ export default function ReviewPublic() {
                 <h2 className="font-display text-2xl font-bold text-foreground mb-6">{activeModule.title}</h2>
                 <div className="prose prose-sm max-w-none dark:prose-invert">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {activeModule.content || "*Sem conteúdo*"}
+                    {stripRP(activeModule.content || "") || "*Sem conteúdo*"}
                   </ReactMarkdown>
                 </div>
 
