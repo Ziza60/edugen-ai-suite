@@ -18,7 +18,7 @@ const PLAN_LIMITS = {
 // During product testing all Pro gates remain open. Set to false before monetization.
 const TESTING_MODE = true;
 
-const GENERATE_COURSE_BUILD = "2026-08-02b-thinking-budget-fix";
+const GENERATE_COURSE_BUILD = "2026-08-02c-no-cascade-failure";
 
 // Only these text models are confirmed to work with our JSON schema endpoint.
 // Any env override that is not in this set falls back to the safe default.
@@ -46,14 +46,17 @@ const SOFT_DEADLINE_MS = Math.max(
   Number(Deno.env.get("COURSE_SOFT_DEADLINE_MS") || "120000") || 120000,
 );
 
+// Um curso de 5 módulos x 3 lições são 15 chamadas de lição de ~25 s cada.
+// Com 2x2 = 4 simultâneas isso são quatro ondas, ~100 s, mais o envelope e o
+// blueprint — não cabe na janela da função. Com 3x3 = 9 são duas ondas.
 const MODULE_CONCURRENCY = Math.max(
   1,
-  Math.min(4, Number(Deno.env.get("COURSE_MODULE_CONCURRENCY") || "2") || 2),
+  Math.min(6, Number(Deno.env.get("COURSE_MODULE_CONCURRENCY") || "3") || 3),
 );
 
 const LESSON_CONCURRENCY = Math.max(
   1,
-  Math.min(4, Number(Deno.env.get("COURSE_LESSON_CONCURRENCY") || "2") || 2),
+  Math.min(6, Number(Deno.env.get("COURSE_LESSON_CONCURRENCY") || "3") || 3),
 );
 
 const MAX_SOURCE_TOTAL_CHARS = 1_200_000;
@@ -511,6 +514,30 @@ const PLACEHOLDER_PATTERNS: RegExp[] = [
   /conteudo aplicado do modulo/,
 ];
 
+// O Markdown final carrega rótulos fixos do PRÓPRIO renderizador. Um deles é
+// "**Objetivo da lição:**", emitido para TODA lição por renderModuleMarkdown.
+// Normalizado (minúsculas, sem acentos, sem pontuação) ele vira exatamente
+// "objetivo da licao" — que é um dos padrões da lista acima. Rodar a lista
+// inteira sobre o Markdown reprovava 100% dos módulos, inclusive os que
+// geraram todas as lições sem nenhum erro.
+//
+// A varredura do Markdown passa a usar só os padrões que descrevem enchimento
+// produzido pelo modelo. Os padrões que descrevem RÓTULOS continuam valendo
+// campo a campo, via isPlaceholderText — que é onde eles fazem sentido, já que
+// ali o texto é o valor e não a etiqueta.
+const RENDERER_LABEL_PATTERN =
+  /\*\*(?:objetivo da lição|objetivo|contexto|desafio|solução|resultado|papel|entregável|requisitos|rubrica de avaliação|passos|critérios de sucesso|checklist de decisão|resposta-modelo|frente|verso|critérios de correção)\b[^*]*\*\*/gi;
+
+const MARKDOWN_PLACEHOLDER_PATTERNS = PLACEHOLDER_PATTERNS.filter(
+  (pattern) => !/objetivo da licao|descricao do modulo/.test(pattern.source),
+);
+
+function markdownHasPlaceholder(markdown: string): boolean {
+  const withoutChrome = markdown.replace(RENDERER_LABEL_PATTERN, " ");
+  const normalized = normalizePlaceholderCheck(withoutChrome);
+  return MARKDOWN_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 function normalizePlaceholderCheck(value: string): string {
   return value
     .toLowerCase()
@@ -615,6 +642,7 @@ async function callAIInner(
 
   for (const candidate of models) {
     let retryWithoutEffort = false;
+    let rateLimitRetried = false;
     do {
       retryWithoutEffort = false;
       const baseBody: Record<string, unknown> = {
@@ -675,6 +703,18 @@ async function callAIInner(
                 "Causa determinística — retentar não resolve. Regras do schema: toda propriedade " +
                 'em "required", "additionalProperties": false em cada objeto, e NENHUM maxItems/minItems.',
             );
+          }
+          // 429 é limite de taxa, não erro de conteúdo: com a concorrência mais
+          // alta ele fica plausível. Espera curta e uma repetição no mesmo
+          // candidato — trocar de modelo não ajudaria em nada aqui.
+          if (response.status === 429 && !rateLimitRetried) {
+            rateLimitRetried = true;
+            console.warn(
+              `[generate-course] 429 em ${candidate} (${options.schemaName || "text"}); repetindo em 1,5s.`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            retryWithoutEffort = true;
+            continue;
           }
           // Endpoint sem suporte a reasoning_effort: desliga o campo e repete
           // esta mesma chamada uma vez, em vez de queimar o candidato.
@@ -2678,6 +2718,10 @@ function renderModuleMarkdown(params: {
   if (document.opening_bridge) sections.push(document.opening_bridge);
 
   for (const lesson of document.lessons) {
+    // Lição que não produziu nenhum bloco utilizável não vira seção vazia no
+    // material. Ela permanece no documento para não desalinhar os índices do
+    // blueprint durante o reparo, mas some do Markdown entregue.
+    if (!lesson.blocks.some(blockHasUsableContent)) continue;
     sections.push(
       `### ${lesson.lesson_number} ${stripLeadingOrdinal(lesson.title)}\n\n> **Objetivo da lição:** ${lesson.objective}`,
     );
@@ -3045,22 +3089,30 @@ function validateModuleDocument(params: {
       warnings.push(`Lição ${lesson.lesson_number}: ${lesson.blocks.length} blocos (planejado no máximo 6).`);
     }
 
-    // Blocking: lição vazia ou quase vazia
+    // Uma lição vazia é a perda de UMA lição, não do módulo. Antes, qualquer
+    // lição falha reprovava o módulo inteiro — e como cada lição é uma chamada
+    // de rede independente, bastava um timeout entre quinze para derrubar tudo.
+    // Agora a lição entra em reparo e, se não houver tempo, é descartada: o
+    // módulo é entregue com o que funcionou e o curso vai para needs_review.
     if (validBlocks.length === 0) {
-      blocking.push(`Lição ${lesson.lesson_number}: nenhum bloco válido.`);
+      repairable.push(`Lição ${lesson.lesson_number}: nenhum bloco válido.`);
       incompleteCount += 1;
     } else if (validBlocks.length < 2) {
-      blocking.push(`Lição ${lesson.lesson_number}: menos de 2 blocos válidos.`);
+      repairable.push(`Lição ${lesson.lesson_number}: menos de 2 blocos válidos.`);
       incompleteCount += 1;
     } else if (validBlocks.length < 3) {
       repairable.push(`Lição ${lesson.lesson_number}: apenas ${validBlocks.length} blocos válidos.`);
     }
   });
 
-  // >25% de lições incompletas é blocking
+  // Só é impossível entregar quando NENHUMA lição sobrou.
   const lessonCount = document.lessons.length;
-  if (lessonCount > 0 && incompleteCount / lessonCount > 0.25) {
-    blocking.push(`Mais de 25% das lições incompletas (${incompleteCount}/${lessonCount}).`);
+  if (lessonCount > 0 && incompleteCount >= lessonCount) {
+    blocking.push(`Nenhuma lição utilizável no módulo (${incompleteCount}/${lessonCount}).`);
+  } else if (lessonCount > 0 && incompleteCount / lessonCount > 0.25) {
+    warnings.push(
+      `${incompleteCount} de ${lessonCount} lições ficaram incompletas; módulo entregue parcial.`,
+    );
   }
 
   if (activeBlocks < Math.min(2, lessonCount)) {
@@ -3087,7 +3139,7 @@ function validateModuleDocument(params: {
   blocking.push(...detectDomainLeak(markdown, course.course_title, course.description));
 
   // Placeholder in final markdown is always blocking
-  if (PLACEHOLDER_PATTERNS.some((p) => p.test(normalizePlaceholderCheck(markdown)))) {
+  if (markdownHasPlaceholder(markdown)) {
     blocking.push("Placeholder detectado no Markdown final.");
   }
 
@@ -3438,7 +3490,7 @@ function validateCourseForPublication(params: {
     const modNum = result.document.lessons[0]?.lesson_number?.split(".")[0] || "?";
 
     // Placeholder in final content
-    if (PLACEHOLDER_PATTERNS.some((p) => p.test(normalizePlaceholderCheck(result.markdown)))) {
+    if (markdownHasPlaceholder(result.markdown)) {
       blocking.push(`Módulo ${modNum}: placeholder detectado no conteúdo final.`);
     }
 
@@ -3860,6 +3912,17 @@ No typography, letters, numerals, logos, signatures, watermarks, fake interface 
       `[generate-course] Image generation failed for module ${module.module_number}: ${error?.message || error}`,
     );
   }
+}
+
+// Tempo típico observado de uma chamada de lição, em produção: 17 a 39 s.
+// Abaixo disso o timeout é certo, e um timeout custa o orçamento inteiro sem
+// entregar nada — pior que não tentar.
+const LESSON_CALL_TYPICAL_MS = 32000;
+
+function lessonCallBudget(msLeft: number, reserveMs = 4000): number | null {
+  const budget = msLeft - reserveMs;
+  if (budget < LESSON_CALL_TYPICAL_MS) return null;
+  return Math.min(75000, budget);
 }
 
 async function mapWithConcurrency<T, R>(
@@ -4596,6 +4659,18 @@ Deno.serve(async (req: Request) => {
               module.lessons,
               LESSON_CONCURRENCY,
               async (lessonPlan) => {
+                // Um orçamento menor que o tempo típico da chamada só produz
+                // timeout: consome o que resta e não devolve nada. Nos logs
+                // anteriores as lições levavam de 17 a 39 s e recebiam o piso
+                // de 20 s, então morriam em série e ainda gastavam o tempo que
+                // faltava aos módulos seguintes. Melhor não começar.
+                const budget = lessonCallBudget(msLeft());
+                if (budget === null) {
+                  console.warn(
+                    `[generate-course] Lição ${lessonPlan.lesson_number} não iniciada: restam ${Math.round(msLeft() / 1000)}s, insuficiente.`,
+                  );
+                  return null;
+                }
                 const { value, meta } = await callAIJson<any>(
                   FAST_MODEL,
                   buildModulePrompt({
@@ -4605,9 +4680,12 @@ Deno.serve(async (req: Request) => {
                   }),
                   LESSON_DOCUMENT_SCHEMA,
                   `module_${module.module_number}_lesson_${lessonPlan.lesson_number}`,
-                  depth.label === "aprofundado" ? 12000 : 9000,
-                  "medium",
-                  Math.min(75000, Math.max(20000, msLeft() - 4000)),
+                  // "low" em vez de "medium": nos modelos 2.5 o raciocínio sai
+                  // do mesmo orçamento da resposta, e foi ele que truncou a
+                  // lição 1.3 em 9.000 tokens. Menos raciocínio, mais teto.
+                  depth.label === "aprofundado" ? 16000 : 12000,
+                  "low",
+                  budget,
                 );
                 if (meta.finishReason === "length") anyTruncated = true;
                 return value;
@@ -4894,32 +4972,38 @@ Deno.serve(async (req: Request) => {
         },
       );
 
-      if (results.length !== actualModules)
+      // mapWithConcurrency devolve um array do tamanho da entrada, com null nas
+      // posições que falharam — então results.length NUNCA diverge de
+      // actualModules, nem quando todos os módulos falham. A verificação antiga
+      // não pegava nada, e courseQualitySummary logo abaixo desreferenciava os
+      // nulls (result.document.lessons), estourando um TypeError que chegava ao
+      // usuário como erro genérico. Filtrar primeiro é o que faz a diferença
+      // entre "curso parcial entregue" e "nada".
+      const okResults = (results as Array<ModuleGenerationResult | null>).filter(
+        Boolean,
+      ) as ModuleGenerationResult[];
+      if (!okResults.length) {
         throw new Error(
-          `Curso incompleto: ${results.length}/${actualModules} módulos salvos.`,
+          `Nenhum dos ${actualModules} módulos pôde ser gerado. Veja os erros por módulo no log da função.`,
         );
+      }
+      if (okResults.length < actualModules) {
+        console.warn(
+          `[generate-course] Curso parcial: ${okResults.length}/${actualModules} módulos salvos.`,
+        );
+      }
       const qualitySummary = courseQualitySummary(
-        results,
+        okResults,
         blueprint,
         includeQuiz,
         includeFlashcards,
       );
+      // Cobertura de objetivos, quizzes e flashcards incompletos passam a
+      // rebaixar o curso para needs_review — que é o que o gate de publicação
+      // já faz — em vez de descartar todo o trabalho já salvo no banco.
       if (qualitySummary.objectives_without_module.length) {
-        throw new Error(
-          `Objetivos sem cobertura: ${qualitySummary.objectives_without_module.join(", ")}.`,
-        );
-      }
-      if (includeQuiz && qualitySummary.quizzes_generated !== actualModules) {
-        throw new Error(
-          `Curso incompleto: quizzes válidos em ${qualitySummary.quizzes_generated}/${actualModules} módulos.`,
-        );
-      }
-      if (
-        includeFlashcards &&
-        qualitySummary.flashcard_sets_generated !== actualModules
-      ) {
-        throw new Error(
-          `Curso incompleto: flashcards válidos em ${qualitySummary.flashcard_sets_generated}/${actualModules} módulos.`,
+        console.warn(
+          `[generate-course] Objetivos sem cobertura: ${qualitySummary.objectives_without_module.join(", ")}.`,
         );
       }
 
@@ -4953,7 +5037,6 @@ Deno.serve(async (req: Request) => {
         );
 
       // ── Publication gate (spec item 8) ──────────────────────────────────────
-      const okResults = (results as Array<ModuleGenerationResult | null>).filter(Boolean) as ModuleGenerationResult[];
       const pubGate = validateCourseForPublication({
         blueprint,
         okResults,
@@ -4979,7 +5062,7 @@ Deno.serve(async (req: Request) => {
           )
         : 0;
       const placeholdersDetected = okResults.filter((r) =>
-        PLACEHOLDER_PATTERNS.some((p) => p.test(normalizePlaceholderCheck(r.markdown)))
+        markdownHasPlaceholder(r.markdown)
       ).length;
       const totalRepairs = okResults.reduce((sum, r) => sum + r.repairsApplied, 0);
       console.log(
