@@ -3,6 +3,12 @@ project_id = "hhlzaryhsyqbqktxdgyb"
 [functions.generate-course]
 verify_jwt = false
 
+[functions.generate-course-module]
+verify_jwt = false
+
+[functions.generate-course-dispatch]
+verify_jwt = false
+
 [functions.export-pdf]
 verify_jwt = false
 
