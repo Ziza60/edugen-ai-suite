@@ -18,7 +18,7 @@ const PLAN_LIMITS = {
 // During product testing all Pro gates remain open. Set to false before monetization.
 const TESTING_MODE = true;
 
-const GENERATE_COURSE_BUILD = "2026-08-02a-schema-fsm-fix";
+const GENERATE_COURSE_BUILD = "2026-08-02b-thinking-budget-fix";
 
 // Only these text models are confirmed to work with our JSON schema endpoint.
 // Any env override that is not in this set falls back to the safe default.
@@ -605,89 +605,126 @@ async function callAIInner(
   const models = getModelFallbacks(model);
   let lastError = "Erro desconhecido";
 
+  // Nos modelos 2.5 os tokens de raciocínio saem do MESMO orçamento de
+  // max_tokens da resposta. Sem um teto explícito, o modelo pode gastar quase
+  // toda a cota pensando e ser cortado no meio do JSON (finish_reason
+  // "length") — foi exatamente isso que travou a geração no build anterior,
+  // em que o campo era aceito pela função mas nunca chegava a ser enviado.
+  // Se o endpoint rejeitar o campo, repetimos a mesma chamada sem ele.
+  let sendReasoningEffort = !!options.reasoningEffort;
+
   for (const candidate of models) {
-    const baseBody: Record<string, unknown> = {
-      model: candidate,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens,
-    };
-
-    // When a JSON schema is provided, use ONLY json_schema — never fall back to
-    // json_object which accepts any structure and hides contract violations.
-    const responseFormat: Record<string, unknown> | undefined = options.jsonSchema
-      ? {
-          type: "json_schema",
-          json_schema: {
-            name: options.schemaName || "structured_response",
-            strict: true,
-            schema: options.jsonSchema,
-          },
-        }
-      : undefined;
-
-    const body = responseFormat
-      ? { ...baseBody, response_format: responseFormat }
-      : baseBody;
-
-    try {
-      const callStart = Date.now();
-      console.log(
-        `[generate-course] AI call model=${candidate} schema=${options.schemaName || "text"} maxTokens=${maxTokens}`,
-      );
-      const response = await fetchWithTimeout(
-        endpoint,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${geminiKey}`,
-          },
-          body: JSON.stringify(body),
-        },
-        timeoutMs,
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        lastError = `${response.status}: ${text}`;
-        // "Too many states" is a property of the SCHEMA, not of the model or of
-        // the prompt. It is fully deterministic: retrying, switching models or
-        // shortening the request cannot change the outcome. Log it distinctly so
-        // a schema regression is never mistaken for a transient API failure.
-        if (response.status === 400 && /too many states/i.test(text)) {
-          console.error(
-            `[generate-course] SCHEMA REJEITADO pelo Gemini (schema=${options.schemaName || "text"}): ` +
-              "o autômato de decodificação restrita excedeu o limite de serving. " +
-              "Causa determinística — retentar não resolve. Regras do schema: toda propriedade " +
-              'em "required", "additionalProperties": false em cada objeto, e NENHUM maxItems/minItems.',
-          );
-        }
-        console.warn(
-          `[generate-course] Gemini failed model=${candidate} schema=${options.schemaName || "text"} status=${response.status}: ${lastError.slice(0, 400)}`,
-        );
-        // Schema rejection (400) or invalid model (404) → try next model.
-        // Any other 4xx/5xx → also try next candidate before giving up.
-        continue;
+    let retryWithoutEffort = false;
+    do {
+      retryWithoutEffort = false;
+      const baseBody: Record<string, unknown> = {
+        model: candidate,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxTokens,
+      };
+      if (sendReasoningEffort && options.reasoningEffort) {
+        baseBody.reasoning_effort = options.reasoningEffort;
       }
 
-      const data = await response.json();
-      const choice = data.choices?.[0];
-      const elapsed = Date.now() - callStart;
-      console.log(
-        `[generate-course] AI ok model=${candidate} schema=${options.schemaName || "text"} elapsed=${elapsed}ms finish=${choice?.finish_reason || "?"}`,
-      );
-      return {
-        content: choice?.message?.content || "",
-        finishReason: choice?.finish_reason || "",
-        model: candidate,
-      };
-    } catch (error: any) {
-      lastError = error?.message || String(error);
-      console.warn(
-        `[generate-course] Gemini exception model=${candidate}: ${lastError}`,
-      );
-      continue;
-    }
+      // When a JSON schema is provided, use ONLY json_schema — never fall back to
+      // json_object which accepts any structure and hides contract violations.
+      const responseFormat: Record<string, unknown> | undefined = options.jsonSchema
+        ? {
+            type: "json_schema",
+            json_schema: {
+              name: options.schemaName || "structured_response",
+              strict: true,
+              schema: options.jsonSchema,
+            },
+          }
+        : undefined;
+
+      const body = responseFormat
+        ? { ...baseBody, response_format: responseFormat }
+        : baseBody;
+
+      try {
+        const callStart = Date.now();
+        console.log(
+          `[generate-course] AI call model=${candidate} schema=${options.schemaName || "text"} maxTokens=${maxTokens} effort=${sendReasoningEffort ? options.reasoningEffort : "off"}`,
+        );
+        const response = await fetchWithTimeout(
+          endpoint,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${geminiKey}`,
+            },
+            body: JSON.stringify(body),
+          },
+          timeoutMs,
+        );
+
+        if (!response.ok) {
+          const text = await response.text();
+          lastError = `${response.status}: ${text}`;
+          // "Too many states" is a property of the SCHEMA, not of the model or of
+          // the prompt. It is fully deterministic: retrying, switching models or
+          // shortening the request cannot change the outcome. Log it distinctly so
+          // a schema regression is never mistaken for a transient API failure.
+          if (response.status === 400 && /too many states/i.test(text)) {
+            console.error(
+              `[generate-course] SCHEMA REJEITADO pelo Gemini (schema=${options.schemaName || "text"}): ` +
+                "o autômato de decodificação restrita excedeu o limite de serving. " +
+                "Causa determinística — retentar não resolve. Regras do schema: toda propriedade " +
+                'em "required", "additionalProperties": false em cada objeto, e NENHUM maxItems/minItems.',
+            );
+          }
+          // Endpoint sem suporte a reasoning_effort: desliga o campo e repete
+          // esta mesma chamada uma vez, em vez de queimar o candidato.
+          if (
+            response.status === 400 &&
+            sendReasoningEffort &&
+            /reasoning[_\s-]?effort/i.test(text)
+          ) {
+            console.warn(
+              "[generate-course] Endpoint rejeitou reasoning_effort; repetindo sem o campo.",
+            );
+            sendReasoningEffort = false;
+            retryWithoutEffort = true;
+            continue;
+          }
+          console.warn(
+            `[generate-course] Gemini failed model=${candidate} schema=${options.schemaName || "text"} status=${response.status}: ${lastError.slice(0, 400)}`,
+          );
+          // Schema rejection (400) or invalid model (404) → try next model.
+          // Any other 4xx/5xx → also try next candidate before giving up.
+          break;
+        }
+
+        const data = await response.json();
+        const choice = data.choices?.[0];
+        const elapsed = Date.now() - callStart;
+        const finishReason = choice?.finish_reason || "";
+        console.log(
+          `[generate-course] AI ok model=${candidate} schema=${options.schemaName || "text"} elapsed=${elapsed}ms finish=${finishReason || "?"}`,
+        );
+        if (finishReason === "length") {
+          console.warn(
+            `[generate-course] TRUNCADO por max_tokens (schema=${options.schemaName || "text"}, max=${maxTokens}). ` +
+              "Nos modelos 2.5 o raciocínio consome o mesmo orçamento da resposta: " +
+              "reduza o tamanho pedido ou aumente max_tokens — trocar de modelo não resolve.",
+          );
+        }
+        return {
+          content: choice?.message?.content || "",
+          finishReason,
+          model: candidate,
+        };
+      } catch (error: any) {
+        lastError = error?.message || String(error);
+        console.warn(
+          `[generate-course] Gemini exception model=${candidate}: ${lastError}`,
+        );
+        break;
+      }
+    } while (retryWithoutEffort);
   }
 
   throw new Error(`Erro na API do Gemini [${options.schemaName || "text"}]: ${lastError}`);
@@ -724,8 +761,19 @@ async function callAIJson<T>(
     schemaName,
   });
   const parsed = parseJsonLoose<T>(meta.content);
-  if (!parsed)
-    throw new Error(`A IA retornou JSON inválido para ${schemaName}.`);
+  if (!parsed) {
+    // Distinguir truncagem de JSON malformado importa para a política de
+    // retentativa: truncagem se resolve com mais orçamento, não com um modelo
+    // melhor. Sem esta marca o chamador só vê "JSON inválido" e escala para o
+    // modelo lento, que estoura igual — só que mais devagar.
+    const truncated = meta.finishReason === "length";
+    const error = new Error(
+      `A IA retornou JSON inválido para ${schemaName}${truncated ? " — resposta truncada pelo limite de tokens (finish_reason=length)" : ""}.`,
+    ) as Error & { truncated?: boolean; finishReason?: string };
+    error.truncated = truncated;
+    error.finishReason = meta.finishReason;
+    throw error;
+  }
   return { value: parsed, meta };
 }
 
@@ -2041,6 +2089,16 @@ SAÍDA
 - terminology_ledger: 5 a 12 termos.
 - additional_readings: 3 a 6 tópicos.
 - A soma das lições deve produzir uma trilha coerente, não uma coleção de textos autônomos.
+
+TAMANHO — RESTRIÇÃO RÍGIDA
+Este é um PLANO, não o conteúdo do curso. O conteúdo das lições será escrito
+depois, em outra etapa. Respostas longas demais são cortadas no meio e perdidas.
+- Por módulo, no máximo: 4 outcome_ids, 4 builds_on, 6 concepts_introduced,
+  6 concepts_reused, 4 misconceptions_addressed, 4 prior_artifacts.
+- applied_assignment: no máximo 8 requirements e de 3 a 6 critérios de rubrica.
+- summary e module_objective: no máximo 2 frases cada.
+- Itens de lista: frases curtas, não parágrafos.
+- Não repita em um campo o que já foi dito em outro.
 
 ${useSources ? `<SOURCES>\n${sourcePacket}\n</SOURCES>` : ""}`;
 }
@@ -4283,7 +4341,23 @@ Deno.serve(async (req: Request) => {
       let blueprint: CourseBlueprint | null = null;
       let blueprintErrors: string[] = [];
 
+      // Escalar para o modelo Pro só faz sentido quando o problema é de
+      // QUALIDADE do conteúdo. Truncagem por limite de tokens não é: o Pro
+      // produziria o mesmo estouro, mais devagar. Nesse caso repetimos no
+      // modelo rápido com o dobro do orçamento.
+      let lastFailureWasTruncation = false;
+
       for (let attempt = 0; attempt < 2 && !blueprint; attempt++) {
+        // Sem tempo para outra rodada: aborta com uma mensagem útil em vez de
+        // deixar a plataforma matar o worker no meio da geração dos módulos.
+        if (attempt > 0 && msLeft() < 45000) {
+          blueprintErrors.push(
+            `Tempo esgotado após a primeira tentativa (${Math.round((SOFT_DEADLINE_MS - msLeft()) / 1000)}s de ${Math.round(SOFT_DEADLINE_MS / 1000)}s consumidos).`,
+          );
+          break;
+        }
+        const useQualityModel = attempt > 0 && !lastFailureWasTruncation;
+        const attemptMaxTokens = lastFailureWasTruncation ? 32000 : 16000;
         const structurePrompt =
           buildStructurePrompt({
             title,
@@ -4304,15 +4378,25 @@ Deno.serve(async (req: Request) => {
             ? `\n\nCORRIJA ESTES PROBLEMAS DA TENTATIVA ANTERIOR:\n${blueprintErrors.map((error) => `- ${error}`).join("\n")}`
             : "");
         try {
-          const { value } = await callAIJson<any>(
-            attempt === 0 ? FAST_MODEL : QUALITY_MODEL,
+          const { value, meta } = await callAIJson<any>(
+            useQualityModel ? QUALITY_MODEL : FAST_MODEL,
             structurePrompt,
             COURSE_BLUEPRINT_SCHEMA,
             "course_blueprint",
-            16000,
-            attempt === 0 ? "medium" : "high",
+            attemptMaxTokens,
+            useQualityModel ? "medium" : "low",
             Math.min(90000, Math.max(20000, msLeft() - 5000)),
           );
+          // JSON pode ser parseável e ainda assim estar cortado (um objeto
+          // fechado antes do fim da lista de módulos). Tratamos como falha.
+          if (meta.finishReason === "length") {
+            lastFailureWasTruncation = true;
+            blueprintErrors = [
+              "A resposta foi cortada pelo limite de tokens. Encurte drasticamente todos os textos e respeite os limites de itens por lista.",
+            ];
+            continue;
+          }
+          lastFailureWasTruncation = false;
           const check = validateRawBlueprintCandidate(value, actualModules);
           if (check.fatal.length) {
             blueprintErrors = check.fatal;
@@ -4341,6 +4425,7 @@ Deno.serve(async (req: Request) => {
           }
           if (!blueprintErrors.length) blueprint = normalized;
         } catch (error: any) {
+          lastFailureWasTruncation = error?.truncated === true;
           blueprintErrors = [error?.message || String(error)];
         }
       }
@@ -4348,6 +4433,19 @@ Deno.serve(async (req: Request) => {
         throw new Error(
           `Falha ao produzir blueprint pedagógico válido: ${blueprintErrors.join(" | ")}`,
         );
+
+      // Se o blueprint consumiu o orçamento, parar aqui é melhor que começar os
+      // módulos e ser morto pela plataforma no meio — o usuário fica com um
+      // curso pela metade no banco e uma mensagem genérica de timeout.
+      const blueprintMs = SOFT_DEADLINE_MS - msLeft();
+      console.log(
+        `[generate-course] Blueprint pronto em ${Math.round(blueprintMs / 1000)}s; restam ${Math.round(msLeft() / 1000)}s para ${actualModules} módulos.`,
+      );
+      if (msLeft() < 30000) {
+        throw new Error(
+          `Tempo insuficiente para gerar os módulos: o blueprint consumiu ${Math.round(blueprintMs / 1000)}s dos ${Math.round(SOFT_DEADLINE_MS / 1000)}s disponíveis. Gere menos módulos ou aumente COURSE_SOFT_DEADLINE_MS.`,
+        );
+      }
 
       // ── Semantic blueprint gate (spec item 7) ────────────────────────────────
       const bpSemantics = validateBlueprintSemantics(blueprint);
