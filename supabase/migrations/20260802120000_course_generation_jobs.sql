@@ -150,6 +150,73 @@ $$;
 
 revoke all on function public.refresh_course_generation_progress(uuid) from public, anon, authenticated;
 
+-- ─── Conteúdo estruturado das lições ─────────────────────────────────────────
+-- bestEffortStructuredHierarchy já gravava nestas tabelas, mas nenhuma migration
+-- as criava: a escrita falhava em silêncio a cada módulo e o dado estruturado
+-- de cada bloco (tabs, flip cards, cenários, atividades) ficava só embutido no
+-- Markdown, como um comentário HTML que vazava na tela do aluno.
+--
+-- Com as tabelas existindo, o payload vai para uma coluna consultável e o
+-- Markdown volta a ser só texto para leitura.
+
+create table if not exists public.course_lessons (
+  id                uuid primary key default gen_random_uuid(),
+  module_id         uuid not null references public.course_modules (id) on delete cascade,
+  lesson_number     text not null,
+  title             text not null,
+  objective         text,
+  order_index       integer not null default 0,
+  estimated_minutes integer,
+  created_at        timestamptz not null default now(),
+  unique (module_id, order_index)
+);
+
+create index if not exists course_lessons_module_idx
+  on public.course_lessons (module_id, order_index);
+
+create table if not exists public.course_learning_blocks (
+  id           uuid primary key default gen_random_uuid(),
+  lesson_id    uuid not null references public.course_lessons (id) on delete cascade,
+  block_type   text not null,
+  heading      text,
+  -- O bloco inteiro, normalizado e validado: é a fonte para um renderizador de
+  -- widgets interativos, se ele vier a ser construído.
+  content_json jsonb not null,
+  order_index  integer not null default 0,
+  created_at   timestamptz not null default now(),
+  unique (lesson_id, order_index)
+);
+
+create index if not exists course_learning_blocks_lesson_idx
+  on public.course_learning_blocks (lesson_id, order_index);
+
+alter table public.course_lessons enable row level security;
+alter table public.course_learning_blocks enable row level security;
+
+-- Leitura segue a posse do curso; escrita é exclusiva da service role.
+drop policy if exists "lições: dono lê" on public.course_lessons;
+create policy "lições: dono lê"
+  on public.course_lessons for select
+  using (exists (
+    select 1
+      from public.course_modules m
+      join public.courses c on c.id = m.course_id
+     where m.id = course_lessons.module_id
+       and c.user_id = auth.uid()
+  ));
+
+drop policy if exists "blocos: dono lê" on public.course_learning_blocks;
+create policy "blocos: dono lê"
+  on public.course_learning_blocks for select
+  using (exists (
+    select 1
+      from public.course_lessons l
+      join public.course_modules m on m.id = l.module_id
+      join public.courses c on c.id = m.course_id
+     where l.id = course_learning_blocks.lesson_id
+       and c.user_id = auth.uid()
+  ));
+
 -- ─── Realtime ────────────────────────────────────────────────────────────────
 -- Permite ao front acompanhar sem polling. Disponível no plano gratuito.
 

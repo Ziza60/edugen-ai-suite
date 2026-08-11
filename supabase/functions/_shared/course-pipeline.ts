@@ -2478,14 +2478,36 @@ Retorne SOMENTE esta lição, com no mínimo 3 e no máximo 6 blocos, contendo o
 Todos os campos do esquema são obrigatórios; campos não usados pelo tipo do bloco devem ser string vazia ou [] — nunca omita uma chave.`;
 }
 
-function semanticMarker(type: string, payload: unknown): string {
-  return `<!-- COURSE_WIDGET:${type}:${encodeURIComponent(JSON.stringify(payload))} -->`;
+// O Markdown gerado aqui é consumido por react-markdown SEM rehype-raw (em
+// CourseView.tsx) e pelos exportadores de PDF, PPTX, DOCX, SCORM e Notion.
+// Nenhum deles interpreta HTML cru: o react-markdown escapa, e o resultado
+// aparece como texto literal para o aluno. Por isso este arquivo passa a emitir
+// Markdown puro.
+//
+// O marcador `<!-- COURSE_WIDGET:tipo:payload -->` existia para um renderizador
+// de widgets interativos que nunca foi construído: a string "COURSE_WIDGET" não
+// aparece em nenhum lugar de src/ nem em nenhuma função de exportação. O efeito
+// era o payload em percent-encoding vazando no meio da lição — às vezes com
+// mais de mil caracteres.
+//
+// A carga estruturada de cada bloco não se perde, e vai para um lugar melhor:
+// bestEffortStructuredHierarchy grava o bloco inteiro em
+// course_learning_blocks.content_json. Se o renderizador de widgets for
+// construído um dia, ele lê de uma coluna consultável em vez de um comentário
+// enterrado no texto.
+function semanticMarker(_type: string, _payload: unknown): string {
+  return "";
 }
 
 function escapeTableCell(value: string): string {
   return normalizeWhitespace(value)
     .replace(/\|/g, "\\|")
-    .replace(/\n/g, "<br>");
+    // Guarda defensiva. Hoje ela não dispara: normalizeWhitespace, na linha
+    // acima, já colapsou toda quebra de linha em espaço — o antigo
+    // .replace(/\n/g, "<br>") era código morto pelo mesmo motivo, e por isso
+    // nunca chegou a vazar "<br>" na tela. Fica como separador, e não como
+    // HTML, caso a normalização mude.
+    .replace(/\n+/g, " · ");
 }
 
 function renderTable(headers: string[], rows: string[][]): string {
@@ -2630,7 +2652,11 @@ function renderBlock(block: LearningBlock): string {
         })
         .join("\n");
       const debrief = renderBullets(scenario.debrief);
-      return `${marker}\n${heading}**Papel:** ${scenario.role}\n\n**Contexto:** ${scenario.context}\n\n${turns}\n\n<details>\n<summary><strong>Gabarito e feedback do cenário</strong></summary>\n\n${facilitator}\n\n</details>${debrief ? `\n\n**Checklist de decisão**\n\n${debrief}` : ""}`.trim();
+      // Antes isto vinha dentro de <details>/<summary>, que o react-markdown
+      // escapa: em vez de um bloco recolhível, o aluno via as tags cruas e o
+      // gabarito aberto do mesmo jeito. Em Markdown puro pelo menos fica
+      // legível e claramente rotulado.
+      return `${marker}\n${heading}**Papel:** ${scenario.role}\n\n**Contexto:** ${scenario.context}\n\n${turns}\n\n---\n\n**Gabarito e feedback do cenário**\n\n${facilitator}${debrief ? `\n\n**Checklist de decisão**\n\n${debrief}` : ""}`.trim();
     }
     case "activity": {
       const activity = block.activity;
@@ -3761,7 +3787,7 @@ function renderOpenEndedAssessment(openEnded: OpenEndedQuestion): string {
   if (!openEnded.question) return "";
   const marker = semanticMarker("open-ended-assessment", openEnded);
   const criteria = renderBullets(openEnded.criteria);
-  return `${marker}\n### Questão de aplicação\n\n${openEnded.question}${criteria ? `\n\n**Critérios de correção**\n\n${criteria}` : ""}\n\n<details>\n<summary><strong>Resposta-modelo</strong></summary>\n\n${openEnded.sample_answer}\n\n</details>`;
+  return `${marker}\n### Questão de aplicação\n\n${openEnded.question}${criteria ? `\n\n**Critérios de correção**\n\n${criteria}` : ""}\n\n---\n\n**Resposta-modelo**\n\n${openEnded.sample_answer}`.trim();
 }
 
 async function generateAssessment(params: {
