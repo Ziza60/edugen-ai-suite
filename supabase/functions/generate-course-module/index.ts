@@ -140,6 +140,7 @@ async function generateOneModule(params: {
     tone,
     knowledgeLevel,
     depthWords: depth.words,
+    lessonWords: depth.lessonWords,
     useSources,
     sourcePacket: moduleSourcePacket,
     allowedSourceIds,
@@ -229,7 +230,9 @@ async function generateOneModule(params: {
     sourcePacket: moduleSourcePacket,
     allowedSourceIds: allowedSourceIdSet,
     useSources,
-    targetMinWords: depth.minWords,
+    targetMinWords: depth.lessonMinWords * module.lessons.length,
+            lessonMinWords: depth.lessonMinWords,
+            lessonMaxWords: depth.lessonMaxWords,
   });
 
   // ── Per-lesson repair (spec item 6) ───────────────────────────────────
@@ -337,7 +340,9 @@ async function generateOneModule(params: {
       sourcePacket: moduleSourcePacket,
       allowedSourceIds: allowedSourceIdSet,
       useSources,
-      targetMinWords: depth.minWords,
+      targetMinWords: depth.lessonMinWords * module.lessons.length,
+            lessonMinWords: depth.lessonMinWords,
+            lessonMaxWords: depth.lessonMaxWords,
     });
   }
 

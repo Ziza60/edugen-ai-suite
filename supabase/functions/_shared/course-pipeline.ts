@@ -2343,6 +2343,7 @@ function buildModulePrompt(params: {
   tone: string;
   knowledgeLevel: string;
   depthWords: string;
+  lessonWords: string;
   useSources: boolean;
   sourcePacket: string;
   allowedSourceIds: string[];
@@ -2358,6 +2359,7 @@ function buildModulePrompt(params: {
     tone,
     knowledgeLevel,
     depthWords,
+    lessonWords,
     useSources,
     sourcePacket,
     allowedSourceIds,
@@ -2438,7 +2440,17 @@ DESIGN DE BLOCOS
 - Não force dois widgets por lição. Cumpra o plano e use interatividade apenas quando ela mede ou pratica a competência.
 
 QUALIDADE
-- Escreva aproximadamente ${depthWords} palavras no módulo completo.
+${
+  part === "lesson"
+    ? `- EXTENSÃO DESTA LIÇÃO: escreva de ${lessonWords} palavras, somando todos os blocos.
+  Esta é a extensão DA LIÇÃO que você está escrevendo agora, não a do módulo.
+  As outras lições deste módulo são geradas separadamente — não escreva por elas
+  nem tente cobrir o módulo inteiro aqui.
+  Abaixo do mínimo a lição fica superficial; acima do máximo, cansa e dilui o objetivo.`
+    : `- O módulo completo terá cerca de ${depthWords} palavras, distribuídas entre as lições,
+  que são geradas em outra etapa. Aqui você escreve apenas o envelope: ponte, checkpoint,
+  pontos-chave e briefing de imagem. Seja conciso.`
+}
 - Use linguagem profissional, direta, acessível e tecnicamente precisa.
 - Títulos de blocos devem ser específicos do tema; evite rótulos genéricos.
 - Explique o porquê e o como; não produza listas de nomes sem desenvolvimento.
@@ -3039,6 +3051,8 @@ function validateModuleDocument(params: {
   allowedSourceIds: Set<string>;
   useSources: boolean;
   targetMinWords: number;
+  lessonMinWords: number;
+  lessonMaxWords: number;
 }): ModuleValidationResult {
   const {
     course,
@@ -3049,6 +3063,8 @@ function validateModuleDocument(params: {
     allowedSourceIds,
     useSources,
     targetMinWords,
+    lessonMinWords,
+    lessonMaxWords,
   } = params;
   const blocking: string[] = [];
   const repairable: string[] = [];
@@ -3143,6 +3159,44 @@ function validateModuleDocument(params: {
       incompleteCount += 1;
     } else if (validBlocks.length < 3) {
       repairable.push(`Lição ${lesson.lesson_number}: apenas ${validBlocks.length} blocos válidos.`);
+    }
+
+    // Densidade POR LIÇÃO. Medir só o módulo inteiro escondia o desequilíbrio:
+    // num curso real, um módulo com 514 + 1.922 + 1.309 palavras passava folgado
+    // na soma, mas a primeira lição — justamente a que abre o curso — tinha
+    // metade do que deveria.
+    if (validBlocks.length > 0) {
+      const lessonWordCount = validBlocks.reduce(
+        (sum, block) =>
+          sum +
+          wordCount(
+            [
+              ...block.paragraphs,
+              ...block.bullets,
+              ...block.items.map((item) => `${item.title} ${item.content}`),
+              ...block.steps.map((step) => `${step.title} ${step.description}`),
+              ...block.cards.map((card) => `${card.front} ${card.back}`),
+              block.example.context,
+              block.example.challenge,
+              block.example.solution,
+              block.example.result,
+              block.scenario.context,
+              ...block.scenario.turns.map((turn) => turn.situation),
+              block.activity.objective,
+              ...block.activity.steps,
+            ].join(" "),
+          ),
+        0,
+      );
+      if (lessonWordCount < lessonMinWords) {
+        repairable.push(
+          `Lição ${lesson.lesson_number}: ${lessonWordCount} palavras; mínimo ${lessonMinWords}.`,
+        );
+      } else if (lessonWordCount > lessonMaxWords) {
+        warnings.push(
+          `Lição ${lesson.lesson_number}: ${lessonWordCount} palavras (acima de ${lessonMaxWords}); tende a diluir o objetivo.`,
+        );
+      }
     }
   });
 
@@ -4128,15 +4182,50 @@ async function bestEffortStructuredHierarchy(
   }
 }
 
+// A meta de densidade precisa ser POR LIÇÃO, não por módulo.
+//
+// Cada lição é gerada numa chamada isolada, que não sabe o que as outras
+// escreveram. Enquanto a meta era "800-1200 palavras no módulo completo", as
+// três lições miravam o orçamento inteiro do módulo cada uma, por conta
+// própria — daí a variação de 4,3× medida num curso real: 514 palavras na
+// lição 1.1 contra 2.219 na 2.3, com o módulo 1 somando 3.745 para uma meta
+// de 1.200.
+//
+// `words` (módulo) continua existindo para o texto de contexto do prompt, mas
+// quem guia a escrita é `lessonWords`, e quem verifica é `lessonMinWords`.
 function targetDepthProfile(value: unknown): {
   words: string;
   minWords: number;
+  lessonWords: string;
+  lessonMinWords: number;
+  lessonMaxWords: number;
   label: string;
 } {
   const profiles = {
-    compact: { words: "500-700", minWords: 380, label: "conciso" },
-    standard: { words: "800-1200", minWords: 600, label: "equilibrado" },
-    detailed: { words: "1300-1800", minWords: 900, label: "aprofundado" },
+    compact: {
+      words: "500-700",
+      minWords: 380,
+      lessonWords: "350 a 550",
+      lessonMinWords: 300,
+      lessonMaxWords: 750,
+      label: "conciso",
+    },
+    standard: {
+      words: "800-1200",
+      minWords: 600,
+      lessonWords: "600 a 900",
+      lessonMinWords: 450,
+      lessonMaxWords: 1200,
+      label: "equilibrado",
+    },
+    detailed: {
+      words: "1300-1800",
+      minWords: 900,
+      lessonWords: "900 a 1300",
+      lessonMinWords: 700,
+      lessonMaxWords: 1700,
+      label: "aprofundado",
+    },
   } as const;
   return profiles[value as keyof typeof profiles] || profiles.standard;
 }
