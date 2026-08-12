@@ -6,6 +6,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Versão dos critérios. Precisa mudar sempre que um critério for alterado:
+// é ela que impede comparar uma nota antiga com uma nova sem perceber que
+// quem mudou foi a régua, e não o curso.
+//
+// 2026-08-12: "Fórmula / Cálculo" virou "Procedimento Passo a Passo" (o
+// critério anterior cobrava vocabulário de finanças de todo curso e dava
+// ponto por acidente morfológico, casando dentro de "reformulação"); o
+// Equilíbrio deixou de contar a visão geral e as seções do capstone, que o
+// renderizador acrescenta e que faziam o curso ser punido pelo próprio
+// formato.
+const EDUSCORE_CRITERIA_VERSION = "2026-08-12";
+
 // ── Flesch Reading Ease adapted for Portuguese ──
 function fleschPT(text: string): number {
   const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
@@ -57,9 +69,27 @@ const REQUIRED_SECTION_CHECKS: Array<{ name: string; test: (c: string) => boolea
   { name: "Tabela Comparativa",
     test: (c) => c.includes("|---|") || c.includes("| ---") || /\|.+\|.+\|/.test(c) },
 
-  // 7. Formula / Calculation — explicit formula, calculation, or key financial expression
-  { name: "Fórmula / Cálculo",
-    test: (c) => /f[oó]rmula|c[aá]lculo de|= r\$|cvu =|ponto de equil[ií]brio|margem de contribui|markup|lucro l[ií]quido =|receita -/i.test(c) },
+  // 7. Procedimento passo a passo — uma sequência acionável que o aluno executa.
+  //
+  //    Antes este critério se chamava "Fórmula / Cálculo" e procurava por
+  //    "CVU =", "ponto de equilíbrio", "margem de contribuição", "markup" e
+  //    "R$": vocabulário de curso de FINANÇAS, cobrado de todo curso. Um curso
+  //    de gestão de conflitos não tem nada disso — e ainda assim passava, por
+  //    causa de /f[oó]rmula/ sem fronteira de palavra, que casa dentro de
+  //    "REFORMULAção" e no verbo "ele FORMULA sua mensagem". O critério dava
+  //    ponto por acidente morfológico do português, não por mérito do conteúdo.
+  //
+  //    A troca mede algo que todo curso aplicado deve ter: um procedimento
+  //    ordenado. A fórmula continua contando, mas só na acepção substantiva —
+  //    "fórmula" é sempre acentuada em português e o verbo "formula" não é, e é
+  //    esse acento que separa os dois casos.
+  { name: "Procedimento Passo a Passo",
+    test: (c) =>
+      // lista numerada com pelo menos 3 passos
+      (c.match(/^\s*\d+[.)]\s+\S/gm) || []).length >= 3
+      || /\bpasso a passo\b|\bprimeiro passo\b|\bcomo fazer\b|\bprocedimento\b|\betapa \d/i.test(c)
+      // fórmula ou cálculo de verdade, para domínios quantitativos
+      || /\bfórmulas?\b|\bc[aá]lculo de\b|=\s*r\$|\bponto de equil[ií]brio\b|\bmargem de contribui/i.test(c) },
 
   // 8. Context / Scenario / Case study
   //    "O Caso da X", "Estudo de Caso", "cenário", "contexto", intro framing
@@ -77,7 +107,12 @@ const REQUIRED_SECTION_CHECKS: Array<{ name: string; test: (c: string) => boolea
   //     NOTE: intentionally does NOT alias 📌 — that is Section 1. A well-formed module
   //     should have a closing narrative (Resumo) AND key-takeaway bullets (📌).
   { name: "Resumo / Conclusão",
-    test: (c) => /conclus[ãa]o|\bresumо\b|resumo:|em resumo|resumindo|pr[óo]ximos passos|neste m[oó]dulo (vimos|aprendemos|voc[eê])|o que aprendemos|passamos por|para encerrar|encerrando|em s[ií]ntese|em suma/i.test(c) },
+    // A alternativa original escrevia "resumo" com um "o" CIRÍLICO (U+043E) no
+    // lugar do latino (U+006F): homóglifo invisível em revisão, que nunca
+    // casava. Sem efeito prático — "resumo:" e "em resumo" cobriam o caso —
+    // mas era código morto que ninguém enxergaria. O arquivo agora não tem
+    // nenhum caractere cirílico, então um grep por eles volta vazio.
+    test: (c) => /conclus[ãa]o|\bresumos?\b|em resumo|resumindo|pr[óo]ximos passos|neste m[oó]dulo (vimos|aprendemos|voc[eê])|o que aprendemos|passamos por|para encerrar|encerrando|em s[ií]ntese|em suma/i.test(c) },
 ];
 
 // Keep backward-compat array for display
@@ -101,10 +136,35 @@ function engagementScore(content: string): { score: number; details: { examples:
   return { score, details: { examples, theory } };
 }
 
+// ── Corpo pedagógico de um módulo ──
+//
+// O Markdown de um módulo não contém só as lições. O renderizador acrescenta,
+// por desenho:
+//   - a visão geral do curso, SÓ no primeiro módulo;
+//   - a atividade aplicada, a rubrica e as leituras, SÓ no capstone;
+//   - referências e pontos-chave, no fim de todos.
+//
+// Medir o comprimento bruto fazia o critério de Equilíbrio punir o curso por
+// uma assimetria que o próprio renderizador cria: o módulo 1 e o último sempre
+// seriam "grandes demais", por mais equilibrado que o autor fosse.
+//
+// Este recorte fica com o intervalo que vai da primeira lição até o checkpoint,
+// que é o marcador estável logo após o conteúdo das lições.
+function lessonBody(content: string): string {
+  const c = content || "";
+  const start = c.search(/^### \d+\.\d+ /m);
+  if (start < 0) return c;
+  let body = c.slice(start);
+  const checkpoint = body.search(/^> 💭 \*\*Pare um momento e reflita:\*\*/m);
+  if (checkpoint > 0) return body.slice(0, checkpoint);
+  const rule = body.search(/^---$/m);
+  return rule > 0 ? body.slice(0, rule) : body;
+}
+
 // ── Balance: content distribution across modules ──
 function balanceScore(modules: { content: string }[]): { score: number; stdDev: number; avgLength: number } {
-  if (modules.length <= 1) return { score: 100, stdDev: 0, avgLength: modules[0]?.content?.length || 0 };
-  const lengths = modules.map((m) => (m.content || "").length);
+  if (modules.length <= 1) return { score: 100, stdDev: 0, avgLength: lessonBody(modules[0]?.content || "").length };
+  const lengths = modules.map((m) => lessonBody(m.content || "").length);
   const avg = lengths.reduce((a, b) => a + b, 0) / lengths.length;
   const variance = lengths.reduce((acc, l) => acc + Math.pow(l - avg, 2), 0) / lengths.length;
   const stdDev = Math.sqrt(variance);
@@ -131,15 +191,58 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
+
+    // ── Autorização ──────────────────────────────────────────────────────────
+    // Esta função roda com a service role key, que ignora RLS e enxerga o banco
+    // inteiro. Antes ela aceitava qualquer course_id e respondia: quem tivesse
+    // um UUID obtinha o título e as métricas de qualidade de curso alheio.
+    //
+    // Ligar verify_jwt no config.toml não bastaria: quando não há sessão, o
+    // supabase.functions.invoke manda a anon key como Bearer, e a anon key é um
+    // JWT válido — passaria no gateway. A checagem tem que ser aqui, resolvendo
+    // o usuário e comparando com o dono do curso. O `sub` só existe em token de
+    // usuário, então a anon key não passa neste ponto.
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Não autenticado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(
+      authHeader.replace(/^Bearer\s+/i, ""),
+    );
+    const userId = claimsData?.claims?.sub as string | undefined;
+    if (claimsErr || !userId) {
+      return new Response(JSON.stringify({ error: "Sessão inválida" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Fetch course + modules
     const { data: course, error: courseErr } = await supabase
       .from("courses")
-      .select("id, title, description")
+      .select("id, title, description, user_id")
       .eq("id", course_id)
       .single();
     if (courseErr || !course) {
+      return new Response(JSON.stringify({ error: "Curso não encontrado" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (course.user_id !== userId) {
+      // 404, e não 403: responder "existe, mas não é seu" já confirmaria a
+      // existência do curso para quem estivesse varrendo UUIDs.
+      console.warn(
+        `[calculate-eduscore] Acesso negado: usuário ${userId} pediu curso ${course_id}.`,
+      );
       return new Response(JSON.stringify({ error: "Curso não encontrado" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -194,9 +297,15 @@ Deno.serve(async (req) => {
     if (fleschScore < 50) suggestions.push("Simplifique frases longas e use vocabulário mais acessível para melhorar a legibilidade.");
     if (fleschScore > 80) suggestions.push("O texto está muito simplificado — considere adicionar termos técnicos relevantes.");
     if (avgCompletude < 70) {
-      const commonMissing = moduleAnalysis
-        .flatMap((m) => m.missingSections)
-        .reduce((acc: Record<string, number>, s) => { acc[s] = (acc[s] || 0) + 1; return acc; }, {});
+      // A anotação precisa estar NA VARIÁVEL, não só no valor inicial do reduce.
+      // `createClient` é chamado sem o genérico Database, então `modules` sai
+      // como `any`, e o `any` se propaga por map/flatMap/reduce — o `as` no
+      // acumulador é descartado junto. Com a cadeia em `any`, Object.entries
+      // cai na sobrecarga genérica e infere `unknown` nos valores, o que quebra
+      // a subtração do sort abaixo. Declarar o tipo aqui corta a propagação.
+      const commonMissing: Record<string, number> = moduleAnalysis
+        .flatMap((m: { missingSections: string[] }) => m.missingSections)
+        .reduce((acc, s) => { acc[s] = (acc[s] || 0) + 1; return acc; }, {} as Record<string, number>);
       const topMissing = Object.entries(commonMissing).sort((a, b) => b[1] - a[1]).slice(0, 3);
       suggestions.push(`Seções mais ausentes: ${topMissing.map(([s]) => s).join(", ")}. Adicione-as para completude.`);
     }
@@ -239,7 +348,64 @@ Deno.serve(async (req) => {
       modules_count: modules.length,
     };
 
-    return new Response(JSON.stringify(result), {
+    // ── Persistência ─────────────────────────────────────────────────────────
+    // Grava o resultado para que exista histórico: sem isto a nota some ao
+    // fechar a tela e não há como saber se uma revisão do curso melhorou algo.
+    // Best-effort de propósito — se a tabela ainda não existir ou a escrita
+    // falhar, o usuário continua recebendo a análise. Errar aqui não pode
+    // custar a resposta.
+    let computedAt: string | null = null;
+    try {
+      const { data: saved, error: saveError } = await supabase
+        .from("course_quality_scores")
+        .insert({
+          course_id,
+          overall_score: overallScore,
+          dimensions: result.dimensions,
+          suggestions,
+          modules_count: modules.length,
+          criteria_version: EDUSCORE_CRITERIA_VERSION,
+        })
+        .select("created_at")
+        .single();
+      if (saveError) {
+        console.log(
+          `[calculate-eduscore] Histórico indisponível: ${saveError.message}`,
+        );
+      } else {
+        computedAt = saved?.created_at ?? null;
+      }
+    } catch (saveErr: any) {
+      console.log(
+        `[calculate-eduscore] Falha ao gravar histórico: ${saveErr?.message || saveErr}`,
+      );
+    }
+
+    // Nota anterior, para o front conseguir mostrar a variação. Só compara
+    // dentro da MESMA versão de critérios — comparar entre versões diferentes
+    // mediria a mudança da régua, não a do curso.
+    let previousScore: number | null = null;
+    try {
+      // As duas mais recentes: a [0] é a que acabou de ser gravada acima, a [1]
+      // é a anterior. Buscar duas e indexar é mais portátil que range(1,1).
+      const { data: prev } = await supabase
+        .from("course_quality_scores")
+        .select("overall_score")
+        .eq("course_id", course_id)
+        .eq("criteria_version", EDUSCORE_CRITERIA_VERSION)
+        .order("created_at", { ascending: false })
+        .limit(2);
+      previousScore = prev?.[1]?.overall_score ?? null;
+    } catch {
+      // Histórico é conveniência; a análise atual não depende dele.
+    }
+
+    return new Response(JSON.stringify({
+      ...result,
+      criteria_version: EDUSCORE_CRITERIA_VERSION,
+      computed_at: computedAt,
+      previous_score: previousScore,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: any) {

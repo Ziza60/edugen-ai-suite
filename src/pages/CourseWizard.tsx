@@ -394,6 +394,70 @@ export default function CourseWizard() {
       // function died (edge wall-clock kill). The watchdog below then recovers.
       const STALL_MS = 45000;
 
+      // Progresso derivado de uma CONTAGEM de módulos concluídos, nunca do
+      // número do módulo. Os módulos são gerados em paralelo, então os eventos
+      // chegam fora de ordem: com 3 simultâneos, `start(3)` podia chegar antes
+      // de `done(1)`. Como a fórmula antiga era 15 + (event.module/total)*65,
+      // a barra saltava para 80% e depois VOLTAVA para 38% — era essa a
+      // aleatoriedade percebida. Os dois eventos também usavam multiplicadores
+      // diferentes (65 e 70), então nem entre si eram consistentes.
+      // Math.max garante monotonicidade mesmo com eventos duplicados.
+      const applyModuleProgress = (doneCount: number, total: number) => {
+        if (!total) return;
+        const pct = 15 + Math.round((doneCount / total) * 80);
+        setGenerationProgress((prev) => Math.max(prev, Math.min(95, pct)));
+      };
+
+      // Acompanhamento da geração assíncrona (fase 2). Depois que o curso é
+      // enfileirado, quem sabe o progresso é a tabela de jobs — os workers
+      // rodam em invocações separadas e não têm canal SSE.
+      const followModuleJobs = (id: string, total: number) =>
+        new Promise<{ done: number; failed: number }>((resolve) => {
+          let settled = false;
+          const finish = (r: { done: number; failed: number }) => {
+            if (settled) return;
+            settled = true;
+            clearInterval(poll);
+            supabase.removeChannel(channel);
+            resolve(r);
+          };
+
+          const check = async () => {
+            const { data } = await supabase
+              .from("course_generation_jobs")
+              .select("module_index, status")
+              .eq("course_id", id);
+            if (!data) return;
+            const done = data.filter((j: any) => j.status === "done");
+            const failed = data.filter((j: any) => j.status === "failed");
+            setCompletedModules(new Set(done.map((j: any) => j.module_index + 1)));
+            applyModuleProgress(done.length, total);
+            setGenerationStep(`Gerando módulos — ${done.length} de ${total}`);
+            setGenerationMessage(
+              failed.length ? `${failed.length} módulo(s) com falha; o curso será entregue parcial.` : "",
+            );
+            if (done.length + failed.length >= total) {
+              finish({ done: done.length, failed: failed.length });
+            }
+          };
+
+          // Realtime é o caminho normal; o polling cobre queda de socket e o
+          // caso de a publicação Realtime não estar habilitada no projeto.
+          const channel = supabase
+            .channel(`course-gen-${id}`)
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "course_generation_jobs", filter: `course_id=eq.${id}` },
+              () => { void check(); },
+            )
+            .subscribe();
+          const poll = setInterval(() => { void check(); }, 4000);
+
+          // Rede de segurança: nunca deixar o usuário preso na tela.
+          setTimeout(() => finish({ done: -1, failed: -1 }), 10 * 60 * 1000);
+          void check();
+        });
+
       const goToCourse = (id: string, partial = false) => {
         completed = true;
         setGenerationProgress(100);
@@ -436,25 +500,44 @@ export default function CourseWizard() {
               if (event.modules) setTotalModulesCount(event.modules);
             }
             if (event.type === "module_start") {
-              const pct = 15 + Math.round((event.module / event.total) * 65);
-              setGenerationProgress(pct);
+              // Iniciar não é progresso: só o que terminou conta. Antes, o
+              // start já empurrava a barra e o done seguinte podia puxá-la
+              // para trás.
               setGenerationMessage(`Gerando Módulo ${event.module}: ${event.title}`);
-              setGenerationStep(`Conteúdo — Módulo ${event.module}/${event.total}`);
               setTotalModulesCount(event.total);
             }
             if (event.type === "module_done") {
-              const pct = 15 + Math.round((event.module / event.total) * 70);
-              setGenerationProgress(pct);
-              setCompletedModules(prev => new Set([...prev, event.module]));
-              if (event.module === event.total) {
-                setGenerationPhase("assessment");
-                setGenerationStep("Gerando quizzes e flashcards…");
-                setGenerationMessage("");
-              }
+              setCompletedModules(prev => {
+                const next = new Set([...prev, event.module]);
+                applyModuleProgress(next.size, event.total);
+                setGenerationStep(`Conteúdo — ${next.size} de ${event.total} módulos`);
+                if (next.size >= event.total) {
+                  setGenerationPhase("assessment");
+                  setGenerationStep("Gerando quizzes e flashcards…");
+                  setGenerationMessage("");
+                }
+                return next;
+              });
+            }
+            if (event.type === "jobs_queued") {
+              setTotalModulesCount(event.modules);
+              setGenerationPhase("content");
+              setGenerationStep(`Gerando módulos — 0 de ${event.modules}`);
             }
             if (event.type === "complete") {
-              setGenerationPhase("done");
-              goToCourse(event.courseId);
+              // `complete` mudou de significado com a geração em duas fases:
+              // agora quer dizer "curso planejado e módulos enfileirados". Sem
+              // este ramo, o usuário veria "concluído" e cairia numa tela vazia.
+              if (event.async) {
+                const total = event.modules || totalModulesCount || form.numModules;
+                setGenerationPhase("content");
+                const outcome = await followModuleJobs(event.courseId, total);
+                setGenerationPhase("done");
+                goToCourse(event.courseId, outcome.failed !== 0);
+              } else {
+                setGenerationPhase("done");
+                goToCourse(event.courseId);
+              }
             }
             if (event.type === "debug") {
               console.warn("[CourseGen DEBUG]", event);
