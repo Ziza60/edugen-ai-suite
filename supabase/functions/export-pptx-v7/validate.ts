@@ -46,6 +46,52 @@ const ELLIPSIS_RE = /(\.{2,}|…)+\s*$/;
 const DANGLING_PREP_RE =
   /\s+(para|de|da|do|das|dos|com|e|ou|que|em|no|na|nos|nas|ao|à|aos|às|por|sobre|entre|sem|sob|a|as|os|um|uma|uns|umas)\s*$/i;
 
+// Words that CAN legitimately end an intact sentence ("a decisão é sua", "isso
+// depende de você") but never end an acceptable CUT one. They are stripped only
+// from text we know was truncated — applying them to prose the planner wrote in
+// full would mutilate it, which is why they are not in DANGLING_PREP_RE.
+const CUT_TAIL_RE =
+  /\s+(voc[êe]s?|ele|ela|eles|elas|n[óo]s|quem|qual|quais|onde|quando|cujos?|cujas?|algum|alguma|alguns|algumas|qualquer|quaisquer|seu|sua|seus|suas|este|esta|estes|estas|esse|essa|esses|essas|aquele|aquela|isso|isto|mesmo|mesma)\s*$/i;
+
+// An orphan subordinate clause: a connector followed by 1–2 words and nothing
+// else. "Revise sua proposta, garantindo que o controle" is not a short
+// sentence, it is a sentence cut in half — the clause promises a completion the
+// slide never delivers. Cutting at the connector restores a whole statement.
+const ORPHAN_CLAUSE_RE =
+  /[,;]?\s+\b(que|para|porque|quando|onde|se|caso|conforme|enquanto|embora|garantindo|assegurando|considerando|visando|buscando|permitindo)\b(\s+\S+){0,2}\s*$/i;
+
+/**
+ * Make a truncated fragment end on a whole thought.
+ *
+ * Runs only on text capText actually had to cut. Two shapes of debris:
+ * a trailing function word ("…problemas que você") and an orphan subordinate
+ * clause ("…garantindo que o controle"). Removing one often exposes the other,
+ * so it iterates; it stops before dissolving the fragment, since three words
+ * that end badly still beat one word that ends nowhere.
+ */
+function trimToWholeThought(raw: string): string {
+  let s = raw;
+  // Bounded loop rather than recursion: each rule can expose work for the
+  // others ("…garantindo que o controle" → "…proposta," → "…proposta"), and the
+  // string strictly shrinks, so a handful of passes always settles.
+  for (let i = 0; i < 6; i++) {
+    let next = s
+      .replace(CUT_TAIL_RE, "")
+      .replace(DANGLING_PREP_RE, "")
+      .replace(TRAILING_JUNK_RE, "")
+      .trim();
+    if (next === s) {
+      next = s.replace(ORPHAN_CLAUSE_RE, "").replace(TRAILING_JUNK_RE, "").trim();
+      if (next === s) break;
+    }
+    // Never strip past three words — below that we are deleting the point, not
+    // the debris, and the caller is better served by the longer ragged version.
+    if (next.split(/\s+/).filter(Boolean).length < 3) break;
+    s = next;
+  }
+  return s;
+}
+
 /** Clean a short text fragment: strip ellipsis, dangling words, trailing junk. */
 function cleanFragment(raw: string): string {
   let t = (raw ?? "").replace(/\s+/g, " ").trim();
@@ -142,20 +188,19 @@ function capText(raw: string, maxWords: number, maxChars: number): string {
     t = (lastSpace >= floor ? sliced.slice(0, lastSpace) : sliced).trim();
     truncated = true;
   }
-  // We had to cut: prefer to stop at the last clause boundary (.,;:) so the
-  // result reads as a complete clause rather than mid-thought.
+  // We had to cut, so the fragment probably ends mid-thought. Judge THAT
+  // directly instead of guessing from a percentage.
   //
-  // But this trim DISCARDS text that was already whole, so it must stay cheap.
-  // At the old ≥50% threshold it was licensed to throw away half the fragment,
-  // and did: a 136-char case-study line collapsed to "usa a comunicação
-  // assertiva: 'Marta" — a worse result than the plain cut it was "fixing".
-  // At ≥80% it only ever shaves a trailing stub.
+  // A percentage was the wrong instrument, and both settings proved it: at ≥50%
+  // the clause trim was licensed to throw away half a whole fragment, and did
+  // ("…usa a comunicação assertiva: 'Marta"); at ≥80% it stopped firing where it
+  // was needed and shipped "…garantindo que o controle". How much text a cut
+  // costs says nothing about whether what remains is a complete statement.
+  //
+  // trimToWholeThought asks the question that actually matters — does this end
+  // on a whole thought? — and removes only the debris that says no.
   if (truncated) {
-    const b = Math.max(
-      t.lastIndexOf(","), t.lastIndexOf(";"),
-      t.lastIndexOf("."), t.lastIndexOf(":"),
-    );
-    if (b >= Math.floor(t.length * 0.8)) t = t.slice(0, b);
+    t = trimToWholeThought(t);
   }
   // Always balance delimiters: a truncated "(ex: …" or an open quote can survive
   // the clause trim (the source sentence itself was cut by the planner).
