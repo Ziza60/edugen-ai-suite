@@ -31,6 +31,14 @@ export const LIMITS = {
   MAX_TABLE_ROWS: 6,
   MAX_TABLE_CELL_CHARS: 80,
   MAX_CHART_POINTS: 6,
+  // The kicker is a LABEL (usually the module title), not prose. Cutting it
+  // produces a broken phrase — "…EM SITUAÇÕES DE ALTA" instead of "…DE ALTA
+  // TENSÃO" — which reads as a bug, not as an abbreviation. The old 60-char cap
+  // silently amputated any module title longer than that (2 of 5 modules in a
+  // real course, on 17 of its 44 slides). The header band is ~11.5in wide and
+  // fits ~100 uppercase chars at 10pt, so 90 is safe here; the renderer shrinks
+  // the type for the narrower kicker boxes instead of truncating.
+  MAX_EYEBROW_CHARS: 90,
 } as const;
 
 const TRAILING_JUNK_RE = /[\s,;:\-–—]+$/;
@@ -61,24 +69,55 @@ function cleanFragment(raw: string): string {
   return t;
 }
 
+/** Count occurrences of a literal character. */
+function countChar(s: string, ch: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) if (s[i] === ch) n++;
+  return n;
+}
+
+/**
+ * Is the quote character at `i` an OPENING quote? True at the start of the
+ * string or after whitespace / an opening bracket. This is what lets us treat
+ * `'` as a quote in «usou: 'Marta» while leaving the apostrophe in «don't» and
+ * «l'entreprise» alone — an unconditional odd/even count would eat those.
+ */
+function isOpeningQuote(s: string, i: number): boolean {
+  if (i === 0) return true;
+  return /[\s([{–—-]/.test(s[i - 1]);
+}
+
 /** Drop a dangling, unclosed parenthetical / quote left by truncation, so a
  *  capped fragment never ends with "(ex: a, b" or an open quote. */
 function balanceDelimiters(t: string): string {
   let s = t;
   let guard = 0;
-  while (
-    (s.match(/\(/g)?.length ?? 0) > (s.match(/\)/g)?.length ?? 0) && guard++ < 3
-  ) {
+  while (countChar(s, "(") > countChar(s, ")") && guard++ < 3) {
     const i = s.lastIndexOf("(");
     if (i < 0) break;
     s = s.slice(0, i).trim();
   }
-  // Odd number of straight or smart double-quotes → drop from the last one.
-  for (const q of ['"', "“", "”"]) {
-    if (((s.match(new RegExp(q, "g"))?.length ?? 0) % 2) === 1) {
-      const i = s.lastIndexOf(q);
-      if (i >= 0) s = s.slice(0, i).trim();
+  // Double quotes come in pairs: “ closes with ”, and " closes with itself. The
+  // previous version tested “ and ” INDEPENDENTLY, so a perfectly balanced
+  // “texto” counted as one “ (odd) plus one ” (odd) and got cut twice.
+  for (const [open, close] of [['"', '"'], ["“", "”"], ["«", "»"]]) {
+    const unclosed = open === close
+      ? countChar(s, open) % 2 === 1
+      : countChar(s, open) > countChar(s, close);
+    if (!unclosed) continue;
+    const i = s.lastIndexOf(open);
+    if (i >= 0) s = s.slice(0, i).trim();
+  }
+  // Single quotes, position-aware (see isOpeningQuote). A truncated case study
+  // shipped as «usa a comunicação assertiva: 'Marta» — the opening quote of a
+  // line of dialogue that got cut before its closing partner.
+  for (const [open, close] of [["'", "'"], ["‘", "’"]]) {
+    let last = -1;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === open && isOpeningQuote(s, i)) last = i;
+      else if (s[i] === close && last >= 0 && i > last) last = -1;
     }
+    if (last >= 0) s = s.slice(0, last).trim();
   }
   return s;
 }
@@ -94,18 +133,29 @@ function capText(raw: string, maxWords: number, maxChars: number): string {
   if (t.length > maxChars) {
     const sliced = t.slice(0, maxChars);
     const lastSpace = sliced.lastIndexOf(" ");
-    t = (lastSpace > 20 ? sliced.slice(0, lastSpace) : sliced).trim();
+    // Cut at the word boundary unless that would leave almost nothing. The old
+    // guard was a flat `lastSpace > 20`, which fails on SHORT caps: a 28-char
+    // table header whose last space sits at index 20 missed the test by one and
+    // fell through to the hard slice, shipping "Impacto Potencial na Resoluç".
+    // Scale the floor to the cap so short fields keep their word boundary too.
+    const floor = Math.min(20, Math.floor(maxChars * 0.5));
+    t = (lastSpace >= floor ? sliced.slice(0, lastSpace) : sliced).trim();
     truncated = true;
   }
   // We had to cut: prefer to stop at the last clause boundary (.,;:) so the
-  // result reads as a complete clause. Only when that boundary keeps most of the
-  // text (≥50%), otherwise the dangling-word cleanup in cleanFragment handles it.
+  // result reads as a complete clause rather than mid-thought.
+  //
+  // But this trim DISCARDS text that was already whole, so it must stay cheap.
+  // At the old ≥50% threshold it was licensed to throw away half the fragment,
+  // and did: a 136-char case-study line collapsed to "usa a comunicação
+  // assertiva: 'Marta" — a worse result than the plain cut it was "fixing".
+  // At ≥80% it only ever shaves a trailing stub.
   if (truncated) {
     const b = Math.max(
       t.lastIndexOf(","), t.lastIndexOf(";"),
       t.lastIndexOf("."), t.lastIndexOf(":"),
     );
-    if (b >= Math.floor(t.length * 0.5)) t = t.slice(0, b);
+    if (b >= Math.floor(t.length * 0.8)) t = t.slice(0, b);
   }
   // Always balance delimiters: a truncated "(ex: …" or an open quote can survive
   // the clause trim (the source sentence itself was cut by the planner).
@@ -296,7 +346,9 @@ function hasMinimumContent(s: SlideSpec): boolean {
  * degrades into a continuation slide rather than truncating content.
  */
 function normalizeSlide(slide: SlideSpec): SlideSpec[] {
-  const eyebrow = slide.eyebrow ? capText(slide.eyebrow, 10, 60) : undefined;
+  const eyebrow = slide.eyebrow
+    ? capText(slide.eyebrow, 16, LIMITS.MAX_EYEBROW_CHARS)
+    : undefined;
   let title = capText(slide.title ?? "", 14, LIMITS.MAX_TITLE_CHARS);
 
   const table = slide.kind === "table" ? normTable(slide) : null;

@@ -195,6 +195,55 @@ function eyebrow(text: string): string {
   return text.toUpperCase();
 }
 
+/**
+ * Type scale for the kicker (the small-caps module label above the title).
+ *
+ * A kicker is a LABEL, so it must never be truncated: a cut label reads as a
+ * broken phrase ("…EM SITUAÇÕES DE ALTA"), not as an abbreviation. validate.ts
+ * therefore lets kickers run to MAX_EYEBROW_CHARS, and we absorb the length
+ * HERE by shrinking the type until it fits its box.
+ *
+ * Capacity model: uppercase Calibri advances ~0.62em per glyph, plus the
+ * tracking (charSpacing, in points). 72pt per inch.
+ */
+function kickerFit(
+  text: string,
+  boxW: number,
+  base = 10,
+  spc = 2,
+  lines = 1,
+): { fontSize: number; charSpacing: number } {
+  const capacityPt = boxW * 72 * lines;
+  let fontSize = base;
+  let charSpacing = spc;
+  // Floor at 8pt: below that the label stops being legible on a projector, and
+  // a slightly tight kicker still beats an amputated one.
+  while (
+    fontSize > 8 &&
+    text.length * (fontSize * 0.62 + charSpacing) > capacityPt
+  ) {
+    fontSize -= 1;
+    if (charSpacing > 1) charSpacing -= 0.5;
+  }
+  return { fontSize, charSpacing };
+}
+
+/**
+ * Attach speaker notes. The deck carries ~10% of the course's words; the notes
+ * are where the other 90% goes, so an instructor gets narration instead of 44
+ * screens of fragments. Optional-chained because not every PptxGenJS build
+ * exposes addNotes, and notes must never be able to fail an export.
+ */
+function speakerNotes(slide: AnySlide, s: SlideSpec) {
+  const n = (s.notes ?? "").trim();
+  if (!n) return;
+  try {
+    slide.addNotes?.(n);
+  } catch (_e) {
+    /* notes are additive — never fail the deck over them */
+  }
+}
+
 /** Header band shared by all content slides. */
 function header(slide: AnySlide, d: Palette, s: SlideSpec, moduleLabel: string) {
   // accent tick
@@ -219,10 +268,9 @@ function header(slide: AnySlide, d: Palette, s: SlideSpec, moduleLabel: string) 
       w: CW - 0.4,
       h: 0.28,
       fontFace: FONT_BODY,
-      fontSize: 10,
+      ...kickerFit(kicker, CW - 0.4, 10, 2),
       bold: true,
       color: d.accent2,
-      charSpacing: 2,
       align: "left",
       valign: "middle",
     });
@@ -489,10 +537,11 @@ function renderSplit(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     x: colX, y: 0.72, w: 0.07, h: 0.42,
     fill: { color: d.accent2 }, line: { type: "none" },
   });
-  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
+  const splitKicker = s.eyebrow || moduleLabel;
+  slide.addText(eyebrow(splitKicker), {
     x: colX + 0.18, y: 0.68, w: colW - 0.18, h: 0.3,
-    fontFace: FONT_BODY, fontSize: 10, bold: true, color: d.accent2,
-    charSpacing: 2, valign: "middle",
+    fontFace: FONT_BODY, bold: true, color: d.accent2, valign: "middle",
+    ...kickerFit(splitKicker, colW - 0.18, 10, 2),
   });
   slide.addText(s.title, {
     x: colX + 0.18, y: 1.02, w: colW - 0.18, h: 1.2,
@@ -547,10 +596,11 @@ function renderImageTop(slide: AnySlide, s: SlideSpec, d: Palette, brand: string
     x: ML, y: ty + 0.05, w: 0.07, h: 0.42,
     fill: { color: d.accent2 }, line: { type: "none" },
   });
-  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
+  const topKicker = s.eyebrow || moduleLabel;
+  slide.addText(eyebrow(topKicker), {
     x: ML + 0.18, y: ty, w: CW - 0.18, h: 0.3,
-    fontFace: FONT_BODY, fontSize: 10, bold: true, color: d.accent2,
-    charSpacing: 2, valign: "middle",
+    fontFace: FONT_BODY, bold: true, color: d.accent2, valign: "middle",
+    ...kickerFit(topKicker, CW - 0.18, 10, 2),
   });
   slide.addText(s.title, {
     x: ML + 0.18, y: ty + 0.32, w: CW - 0.18, h: 0.72,
@@ -871,10 +921,11 @@ function slideItemPairs(s: SlideSpec): { heading: string; body?: string }[] {
  */
 function renderHighlight(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
   bgFill(slide, d.coverBg);
-  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
+  const hiKicker = s.eyebrow || moduleLabel;
+  slide.addText(eyebrow(hiKicker), {
     x: ML, y: 1.5, w: CW, h: 0.4,
-    fontFace: FONT_BODY, fontSize: 12, bold: true, color: d.accent2,
-    charSpacing: 3, align: "center",
+    fontFace: FONT_BODY, bold: true, color: d.accent2, align: "center",
+    ...kickerFit(hiKicker, CW, 12, 3),
   });
   slide.addText(s.title, {
     x: 1.5, y: 2.05, w: W - 3, h: 0.95,
@@ -908,10 +959,12 @@ function renderSidebar(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   const sbW = W * 0.34;
   slide.addShape("rect", { x: 0, y: 0, w: sbW, h: H, fill: { color: d.accent }, line: { type: "none" } });
   slide.addShape("rect", { x: 0.55, y: 0.9, w: 0.5, h: 0.07, fill: { color: d.accent2 }, line: { type: "none" } });
-  slide.addText(eyebrow(s.eyebrow || moduleLabel), {
+  const sbKicker = s.eyebrow || moduleLabel;
+  slide.addText(eyebrow(sbKicker), {
     x: 0.55, y: 1.05, w: sbW - 0.95, h: 0.5,
-    fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent,
-    charSpacing: 2, valign: "top",
+    fontFace: FONT_BODY, bold: true, color: d.onAccent, valign: "top",
+    // The sidebar kicker box is narrow but 0.5in tall — it wraps to 2 lines.
+    ...kickerFit(sbKicker, sbW - 0.95, 11, 2, 2),
   });
   slide.addText(s.title, {
     x: 0.55, y: 1.55, w: sbW - 0.95, h: 4.4,
@@ -1549,10 +1602,9 @@ function renderStat(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, nu
       w: CW,
       h: 0.4,
       fontFace: FONT_BODY,
-      fontSize: 12,
+      ...kickerFit(s.eyebrow, CW, 12, 3),
       bold: true,
       color: d.accent2,
-      charSpacing: 3,
       align: "center",
     });
   }
@@ -2465,6 +2517,10 @@ export function renderDeck(
   pptx.layout = "EDU16x9";
   pptx.author = brand;
   pptx.title = deck.courseTitle;
+  // Left unset, PptxGenJS stamps dc:subject with its own name — the literal
+  // string "PptxGenJS Presentation" showed up in the file's properties.
+  pptx.subject = deck.subtitle?.trim() || deck.courseTitle;
+  pptx.company = brand;
 
   let num = 0;
   const add = () => {
@@ -2498,6 +2554,9 @@ export function renderDeck(
     for (const s of m.slides) {
       try {
         const slide = add();
+        // Notes are layout-independent, so attach them up front — the two
+        // early `continue` branches below would otherwise skip them.
+        speakerNotes(slide, s);
         const cardLike = cardLikeKind(s.kind);
         // (1) Single-point card/bullets/steps slide → high-impact statement
         // instead of one giant near-empty card.
