@@ -28,11 +28,20 @@ serve(async (req) => {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
-    const { module_id, module_title, course_title } = await req.json();
+    const { module_id, module_title, course_title, user_prompt } = await req.json();
     if (!module_id || !module_title) return new Response(
       JSON.stringify({ error: "module_id and module_title are required" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
+
+    // Descrição escrita pelo usuário. Sem ela, o único insumo era o título do
+    // módulo — e o botão "Regerar" repetia o MESMO prompt, então o resultado
+    // variava por acaso e não havia como corrigir o rumo. Limitada a 500
+    // caracteres: o que passa disso começa a competir com as diretrizes de
+    // estilo em vez de dirigir o assunto.
+    const brief = typeof user_prompt === "string"
+      ? user_prompt.replace(/\s+/g, " ").trim().slice(0, 500)
+      : "";
 
     // ── Plan check ──────────────────────────────────────────────────────────
     const { data: sub } = await serviceClient
@@ -67,8 +76,20 @@ serve(async (req) => {
     );
 
     // ── Generate image with Gemini 2.5 Flash Image ──────────────────────────
-    const imagePrompt = `Generate a premium, minimalist conceptual illustration for the educational module "${module_title}" (course: "${course_title ?? ""}").
-Style: flat vector / soft 3D, geometric shapes, smooth matte surfaces, soft gradient colors, modern and elegant, 16:9 aspect, generous negative space.
+    // Quando o usuário descreve a imagem, a descrição é o ASSUNTO e o título
+    // vira apenas contexto — inverter isso faria a descrição ser ignorada, que
+    // é justamente a queixa que motivou o campo.
+    const subject = brief
+      ? `The user has described the image they want. Follow this description as the subject — it takes priority over the module title, which is context only:
+
+USER'S DESCRIPTION: "${brief}"
+
+Context — educational module "${module_title}" (course: "${course_title ?? ""}").`
+      : `Generate a conceptual illustration for the educational module "${module_title}" (course: "${course_title ?? ""}").`;
+
+    const imagePrompt = `${subject}
+
+Style: premium and minimalist — flat vector / soft 3D, geometric shapes, smooth matte surfaces, soft gradient colors, modern and elegant, 16:9 aspect, generous negative space.
 Strict directive: purely visual — no text, no typography, no letters, no numbers, no logos, no watermarks. Any surface that would carry writing must be blank and smooth.`;
 
     const controller = new AbortController();
@@ -128,9 +149,19 @@ Strict directive: purely visual — no text, no typography, no letters, no numbe
       .createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 1 year
     if (!signed?.signedUrl) throw new Error("Falha ao gerar URL da imagem");
 
+    // O upload usa upsert no MESMO caminho, então "Regerar" devolvia uma URL
+    // idêntica à anterior e o navegador servia a imagem antiga do cache — o
+    // botão parecia não fazer nada. O carimbo força a releitura.
+    const imageUrl = `${signed.signedUrl}${signed.signedUrl.includes("?") ? "&" : "?"}v=${Date.now()}`;
+
+    // O alt_text é lido em voz alta por leitores de tela e vira a legenda no
+    // PDF, então quando o usuário descreve a imagem é a descrição dele que
+    // descreve o que está na tela — não o título do módulo.
+    const altText = brief ? `Imagem IA: ${brief}` : `Imagem IA: ${module_title}`;
+
     // ── Upsert course_images ─────────────────────────────────────────────────
     const { error: dbErr } = await serviceClient.from("course_images").upsert(
-      { module_id, url: signed.signedUrl, alt_text: `Imagem IA: ${module_title}` },
+      { module_id, url: imageUrl, alt_text: altText },
       { onConflict: "module_id" },
     );
     if (dbErr) throw dbErr;
@@ -139,13 +170,13 @@ Strict directive: purely visual — no text, no typography, no letters, no numbe
     await serviceClient.from("usage_events").insert({
       user_id: user.id,
       event_type: "AI_IMAGE_GENERATED",
-      metadata: { module_id, module_title },
+      metadata: { module_id, module_title, has_user_prompt: brief.length > 0 },
     }).then(() => {});
 
     return new Response(
       JSON.stringify({
-        url: signed.signedUrl,
-        alt_text: `Imagem IA: ${module_title}`,
+        url: imageUrl,
+        alt_text: altText,
         used: used + 1,
         limit: monthlyLimit,
         plan,

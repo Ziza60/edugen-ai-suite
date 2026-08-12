@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Search, Check, Image, X, Sparkles, Zap } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -33,29 +34,52 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageU
   const [tab, setTab]           = useState<Tab>("pexels");
 
   // Pexels state
-  const [query, setQuery]       = useState(moduleTitle);
+  const [query, setQuery]       = useState("");
   const [photos, setPhotos]     = useState<PexelsPhoto[]>([]);
   const [loading, setLoading]   = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError]       = useState<string | null>(null);
   const [page, setPage]         = useState(1);
   const [hasMore, setHasMore]   = useState(false);
+  // Consultas alternativas devolvidas pelo backend, como atalhos clicáveis.
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   // AI generation state
   const [aiLoading, setAiLoading]     = useState(false);
   const [aiError, setAiError]         = useState<string | null>(null);
   const [aiCredits, setAiCredits]     = useState<{ used: number; limit: number; plan: string } | null>(null);
   const [aiPreview, setAiPreview]     = useState<{ url: string; alt: string } | null>(null);
+  const [aiBrief, setAiBrief]         = useState("");
 
+  /**
+   * Busca no Pexels.
+   *
+   * `q` vazio significa "derive a consulta a partir do título do módulo" — o
+   * backend traduz o título para um assunto visual em inglês e tenta os
+   * candidatos em cascata. Mandar o título cru, como era feito antes, produz
+   * fotos aleatórias: o acervo é etiquetado em inglês e a relevância dilui a
+   * cada palavra da frase.
+   */
   const search = useCallback(async (q: string, pg = 1) => {
-    if (!q.trim()) return;
     setLoading(true);
     setError(null);
     try {
       const session = (await supabase.auth.getSession()).data.session;
       if (!session?.access_token) throw new Error("Sessão expirada");
-      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pexels-search?query=${encodeURIComponent(q)}&per_page=15&orientation=landscape&page=${pg}`;
-      const res = await fetch(fnUrl, {
+      const base = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pexels-search`;
+      const params = new URLSearchParams({
+        per_page: "15",
+        orientation: "landscape",
+        page: String(pg),
+      });
+      if (q.trim()) {
+        params.set("query", q.trim());
+      } else {
+        params.set("derive", "1");
+        params.set("title", moduleTitle);
+        if (courseTitle) params.set("course", courseTitle);
+      }
+      const res = await fetch(`${base}?${params}`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
@@ -67,16 +91,23 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageU
       setPhotos(pg === 1 ? newPhotos : (prev) => [...prev, ...newPhotos]);
       setHasMore(newPhotos.length === 15);
       setPage(pg);
+      // Mostra no campo a consulta que de fato trouxe as fotos — ela pode não
+      // ser a que o usuário digitou, e sem isso ele não tem como saber o que
+      // ajustar quando o resultado não agrada.
+      if (data?.query) setQuery(data.query);
+      if (Array.isArray(data?.suggestions) && data.suggestions.length) {
+        setSuggestions(data.suggestions);
+      }
     } catch (err: any) {
       setError(err.message || "Erro ao buscar imagens");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [moduleTitle, courseTitle]);
 
   const handleOpen = (isOpen: boolean) => {
     setOpen(isOpen);
-    if (isOpen && photos.length === 0) search(moduleTitle);
+    if (isOpen && photos.length === 0) search("");
   };
 
   const handleConfirmPexels = () => {
@@ -93,7 +124,12 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageU
     setAiPreview(null);
     try {
       const { data, error } = await supabase.functions.invoke("generate-module-image", {
-        body: { module_id: moduleId, module_title: moduleTitle, course_title: courseTitle ?? "" },
+        body: {
+          module_id: moduleId,
+          module_title: moduleTitle,
+          course_title: courseTitle ?? "",
+          user_prompt: aiBrief.trim(),
+        },
       });
       if (error) throw error;
       if (data?.error) {
@@ -190,7 +226,7 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageU
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") search(query); }}
-                placeholder="Ex: educação, negócios, tecnologia..."
+                placeholder="Ex: audit meeting, team reviewing documents..."
                 className="text-sm"
                 data-testid="input-pexels-search"
               />
@@ -198,6 +234,32 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageU
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </Button>
             </div>
+
+            {suggestions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0 px-0.5">
+                <span className="text-[10px] text-muted-foreground shrink-0">Sugestões:</span>
+                {suggestions.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => { setQuery(s); search(s); }}
+                    disabled={loading}
+                    data-testid={`chip-suggestion-${s.replace(/\s+/g, "-")}`}
+                    className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors disabled:opacity-50 ${
+                      query === s
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[10px] text-muted-foreground px-0.5 shrink-0">
+              O acervo do Pexels é indexado em inglês — termos curtos e concretos
+              ("audit meeting") trazem resultados muito melhores que o título do módulo.
+            </p>
 
             {error && <p className="text-xs text-destructive px-1 shrink-0">{error}</p>}
 
@@ -291,6 +353,33 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageU
               <p className="text-sm font-medium text-foreground leading-snug">{moduleTitle}</p>
             </div>
 
+            {/* Briefing do usuário: sem ele, o único insumo era o título do
+                módulo e "Regerar" repetia o mesmo prompt. */}
+            <div className="shrink-0 space-y-1.5">
+              <label htmlFor="ai-brief" className="text-xs font-medium text-foreground">
+                Descreva a imagem <span className="text-muted-foreground font-normal">(opcional)</span>
+              </label>
+              <Textarea
+                id="ai-brief"
+                value={aiBrief}
+                onChange={(e) => setAiBrief(e.target.value)}
+                maxLength={500}
+                rows={3}
+                data-testid="input-ai-brief"
+                placeholder="Ex: uma mesa de reunião vista de cima, com pastas de documentos e um tablet, tons azuis e sóbrios"
+                className="text-sm resize-none"
+              />
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  Diga o que deve aparecer na cena. Em branco, a IA decide sozinha a
+                  partir do título — que é o que produz resultados fora do tema.
+                </p>
+                <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
+                  {aiBrief.length}/500
+                </span>
+              </div>
+            </div>
+
             {/* Preview or placeholder */}
             <div className="flex-1 flex items-center justify-center min-h-0">
               {aiPreview ? (
@@ -309,7 +398,9 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageU
                     <>
                       <Sparkles className="h-8 w-8 text-muted-foreground/40" />
                       <p className="text-sm text-muted-foreground text-center px-4">
-                        A IA vai criar uma ilustração conceitual exclusiva para este módulo
+                        {aiBrief.trim()
+                          ? "A IA vai criar a ilustração a partir da sua descrição"
+                          : "A IA vai criar uma ilustração conceitual exclusiva para este módulo"}
                       </p>
                     </>
                   )}
