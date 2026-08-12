@@ -1913,6 +1913,39 @@ function normalizeBlueprint(
 
   modules[modules.length - 1].role = "capstone";
 
+  // Piso de aprendizagem ativa: garante ao menos uma lição com padrão
+  // `decision`, que é a única que produz cenário interativo (ver
+  // BLOCKS_BY_PATTERN). Sem isso o curso fica à mercê da variância do
+  // blueprint — em duas gerações do MESMO curso os cenários caíram de 4 para 1,
+  // e o cenário é justamente o formato que faz o aluno decidir em contexto, em
+  // vez de só ler.
+  const temDecisao = modules.some((module) =>
+    module.lessons.some((lesson) => lesson.pattern === "decision"),
+  );
+  if (!temDecisao) {
+    // Prefere módulo intermediário: no primeiro o aluno ainda não tem
+    // repertório para decidir, e o capstone já integra tudo.
+    const candidato =
+      modules.find(
+        (module) =>
+          module.role === "aplicacao" &&
+          module.lessons.some((lesson) => lesson.pattern === "procedural"),
+      ) || modules[Math.min(1, modules.length - 1)];
+    const alvo =
+      candidato.lessons.find((l) => l.pattern === "procedural") ||
+      candidato.lessons[candidato.lessons.length - 1];
+    if (alvo) {
+      alvo.pattern = "decision";
+      alvo.required_block_types = uniqueStrings(
+        deriveBlockTypes("decision", candidato.role),
+        5,
+      ) as BlockType[];
+      console.warn(
+        `[generate-course] Nenhuma lição de decisão no blueprint; ${alvo.lesson_number} promovida para garantir um cenário.`,
+      );
+    }
+  }
+
   const capstoneValues: CapstoneType[] = [
     "sintese",
     "estudo_de_caso",
@@ -2457,6 +2490,11 @@ ${
 - checkpoint: uma pergunta que conecte o conteúdo ao contexto do aprendiz.
 - key_takeaways: 3 a 6 ações ou ideias específicas, sem platitudes.
 - media_brief: descreva uma imagem instrucional, como diagrama de processo, mapa de decisão ou comparação visual. Não peça imagem decorativa.
+  ATENÇÃO ao idioma de cada campo: generation_prompt vai para um gerador de
+  imagens e deve ser escrito em INGLÊS. Mas alt_text é a LEGENDA que o aluno lê
+  no material e no PDF — escreva-a em ${language}, como uma frase curta que
+  descreve o que a imagem mostra. Um curso em português com legenda em inglês é
+  erro visível na página.
 
 INTEGRIDADE FACTUAL
 ${numbersRule}
@@ -3945,11 +3983,11 @@ No typography, letters, numerals, logos, signatures, watermarks, fake interface 
         },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
+          // `responseFormat` não é campo do generationConfig da API do Gemini:
+          // era ignorado no melhor caso e motivo de 400 no pior. A proporção
+          // 16:9 já é pedida no texto do prompt, que é onde ela funciona.
           generationConfig: {
             responseModalities: ["IMAGE"],
-            responseFormat: {
-              image: { aspectRatio: "16:9", imageSize: "1K" },
-            },
           },
         }),
       },
@@ -4213,9 +4251,15 @@ function targetDepthProfile(value: unknown): {
     standard: {
       words: "800-1200",
       minWords: 600,
-      lessonWords: "600 a 900",
+      // Calibrado com um curso real gerado sob a meta por lição: as 15 lições
+      // ficaram entre 601 e 2.020 palavras, com média 1.176 — só 3 caíram na
+      // faixa 600-900 e 6 passaram de 1.200. O piso de 450 se mostrou correto
+      // (nenhuma lição ficou abaixo), mas o alvo estava otimista demais para
+      // como o modelo realmente escreve. Alinhar a régua ao comportamento
+      // observado vale mais que manter uma meta que só gera aviso ignorado.
+      lessonWords: "800 a 1200",
       lessonMinWords: 450,
-      lessonMaxWords: 1200,
+      lessonMaxWords: 1500,
       label: "equilibrado",
     },
     detailed: {

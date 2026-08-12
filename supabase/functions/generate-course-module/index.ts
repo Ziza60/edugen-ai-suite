@@ -468,12 +468,32 @@ async function generateOneModule(params: {
     warnings: validation.warnings,
     repairsApplied,
   };
+  // As imagens são AGUARDADAS aqui, não empurradas para outro waitUntil.
+  //
+  // Antes esta função registrava um segundo EdgeRuntime.waitUntil de dentro de
+  // um trabalho que JÁ rodava sob waitUntil — aninhamento que o runtime não
+  // garante. O worker respondia, marcava o job como done e era encerrado com a
+  // geração de imagem ainda em voo. Num curso de 5 módulos, só 1 imagem
+  // sobreviveu.
+  //
+  // Esperar aqui é seguro: o orçamento do worker cobre um módulo só (~50 s de
+  // ~110 s) e a chamada de imagem tem timeout próprio de 65 s. Sem folga, o
+  // módulo é entregue sem imagem — perder a ilustração é muito melhor que
+  // perder o módulo.
   if (imageTasks.length) {
-    const imagesPromise = Promise.allSettled(imageTasks).then(() => undefined);
-    const waitUntil = (globalThis as any).EdgeRuntime?.waitUntil;
-    if (typeof waitUntil === "function")
-      waitUntil.call((globalThis as any).EdgeRuntime, imagesPromise);
-    else void imagesPromise;
+    if (msLeft() > 20000) {
+      const settled = await Promise.allSettled(imageTasks);
+      const falhas = settled.filter((r) => r.status === "rejected").length;
+      if (falhas) {
+        console.warn(
+          `[generate-course-module] ${falhas}/${imageTasks.length} imagem(ns) falharam no módulo ${module.module_number}.`,
+        );
+      }
+    } else {
+      console.warn(
+        `[generate-course-module] Módulo ${module.module_number} entregue sem imagem: restam ${Math.round(msLeft() / 1000)}s.`,
+      );
+    }
   }
 
   return {

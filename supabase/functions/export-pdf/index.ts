@@ -452,6 +452,17 @@ class PdfRenderer {
   renderModuleTitle(title: string) {
     this.addPage();
 
+    // Marcador de navegação do módulo. Num documento de 75 páginas o painel
+    // lateral do leitor ficava vazio, e a única navegação era o sumário da
+    // página 2 — para trocar de módulo o aluno tinha que rolar o documento.
+    try {
+      this.doc.outline?.add?.(null, `${this.moduleIndex}. ${title}`, {
+        pageNumber: this.pageNum,
+      });
+    } catch {
+      // Outline é conveniência de navegação; nunca pode custar o PDF.
+    }
+
     // Full navy banner across top (covers page header from addPage)
     this.doc.setFillColor(...COLOR.MODULE_BG);
     this.doc.rect(0, 0, PAGE_W, 52, "F");
@@ -1158,6 +1169,20 @@ Deno.serve(async (req: Request) => {
     // ── Generate PDF ──
     const pdf = new PdfRenderer();
     pdf.courseTitle = sanitizeText(course.title || "");
+
+    // Metadados do arquivo. O campo Title vinha vazio, então o PDF aparecia
+    // pelo nome do arquivo em gerenciadores, bibliotecas e na aba do navegador.
+    try {
+      pdf.doc.setProperties({
+        title: sanitizeText(course.title || "Curso"),
+        subject: sanitizeText(course.description || ""),
+        creator: "EduGen",
+        author: "EduGen",
+      });
+    } catch {
+      // Metadado é cosmético; não pode custar a exportação.
+    }
+
     pdf.renderTitlePage(course.title, course.description, course.language);
 
     let moduleNum = 0;
