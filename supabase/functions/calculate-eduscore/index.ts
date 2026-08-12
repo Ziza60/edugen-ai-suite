@@ -6,6 +6,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Versão dos critérios. Precisa mudar sempre que um critério for alterado:
+// é ela que impede comparar uma nota antiga com uma nova sem perceber que
+// quem mudou foi a régua, e não o curso.
+//
+// 2026-08-12: "Fórmula / Cálculo" virou "Procedimento Passo a Passo" (o
+// critério anterior cobrava vocabulário de finanças de todo curso e dava
+// ponto por acidente morfológico, casando dentro de "reformulação"); o
+// Equilíbrio deixou de contar a visão geral e as seções do capstone, que o
+// renderizador acrescenta e que faziam o curso ser punido pelo próprio
+// formato.
+const EDUSCORE_CRITERIA_VERSION = "2026-08-12";
+
 // ── Flesch Reading Ease adapted for Portuguese ──
 function fleschPT(text: string): number {
   const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
@@ -285,11 +297,14 @@ Deno.serve(async (req) => {
     if (fleschScore < 50) suggestions.push("Simplifique frases longas e use vocabulário mais acessível para melhorar a legibilidade.");
     if (fleschScore > 80) suggestions.push("O texto está muito simplificado — considere adicionar termos técnicos relevantes.");
     if (avgCompletude < 70) {
-      const commonMissing = moduleAnalysis
-        .flatMap((m) => m.missingSections)
-        // O tipo tem que estar no VALOR INICIAL, não só no parâmetro: com `{}`
-        // cru, o TS infere `{}` para o retorno do reduce e Object.entries devolve
-        // `unknown` nos valores, quebrando a subtração do sort abaixo.
+      // A anotação precisa estar NA VARIÁVEL, não só no valor inicial do reduce.
+      // `createClient` é chamado sem o genérico Database, então `modules` sai
+      // como `any`, e o `any` se propaga por map/flatMap/reduce — o `as` no
+      // acumulador é descartado junto. Com a cadeia em `any`, Object.entries
+      // cai na sobrecarga genérica e infere `unknown` nos valores, o que quebra
+      // a subtração do sort abaixo. Declarar o tipo aqui corta a propagação.
+      const commonMissing: Record<string, number> = moduleAnalysis
+        .flatMap((m: { missingSections: string[] }) => m.missingSections)
         .reduce((acc, s) => { acc[s] = (acc[s] || 0) + 1; return acc; }, {} as Record<string, number>);
       const topMissing = Object.entries(commonMissing).sort((a, b) => b[1] - a[1]).slice(0, 3);
       suggestions.push(`Seções mais ausentes: ${topMissing.map(([s]) => s).join(", ")}. Adicione-as para completude.`);
@@ -333,7 +348,64 @@ Deno.serve(async (req) => {
       modules_count: modules.length,
     };
 
-    return new Response(JSON.stringify(result), {
+    // ── Persistência ─────────────────────────────────────────────────────────
+    // Grava o resultado para que exista histórico: sem isto a nota some ao
+    // fechar a tela e não há como saber se uma revisão do curso melhorou algo.
+    // Best-effort de propósito — se a tabela ainda não existir ou a escrita
+    // falhar, o usuário continua recebendo a análise. Errar aqui não pode
+    // custar a resposta.
+    let computedAt: string | null = null;
+    try {
+      const { data: saved, error: saveError } = await supabase
+        .from("course_quality_scores")
+        .insert({
+          course_id,
+          overall_score: overallScore,
+          dimensions: result.dimensions,
+          suggestions,
+          modules_count: modules.length,
+          criteria_version: EDUSCORE_CRITERIA_VERSION,
+        })
+        .select("created_at")
+        .single();
+      if (saveError) {
+        console.log(
+          `[calculate-eduscore] Histórico indisponível: ${saveError.message}`,
+        );
+      } else {
+        computedAt = saved?.created_at ?? null;
+      }
+    } catch (saveErr: any) {
+      console.log(
+        `[calculate-eduscore] Falha ao gravar histórico: ${saveErr?.message || saveErr}`,
+      );
+    }
+
+    // Nota anterior, para o front conseguir mostrar a variação. Só compara
+    // dentro da MESMA versão de critérios — comparar entre versões diferentes
+    // mediria a mudança da régua, não a do curso.
+    let previousScore: number | null = null;
+    try {
+      // As duas mais recentes: a [0] é a que acabou de ser gravada acima, a [1]
+      // é a anterior. Buscar duas e indexar é mais portátil que range(1,1).
+      const { data: prev } = await supabase
+        .from("course_quality_scores")
+        .select("overall_score")
+        .eq("course_id", course_id)
+        .eq("criteria_version", EDUSCORE_CRITERIA_VERSION)
+        .order("created_at", { ascending: false })
+        .limit(2);
+      previousScore = prev?.[1]?.overall_score ?? null;
+    } catch {
+      // Histórico é conveniência; a análise atual não depende dele.
+    }
+
+    return new Response(JSON.stringify({
+      ...result,
+      criteria_version: EDUSCORE_CRITERIA_VERSION,
+      computed_at: computedAt,
+      previous_score: previousScore,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: any) {
