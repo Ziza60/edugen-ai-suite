@@ -21,6 +21,8 @@ interface Props {
   moduleTitle: string;
   moduleId: string;
   courseTitle?: string;
+  /** Idioma do curso — define em que língua vêm as descrições das fotos. */
+  courseLanguage?: string;
   currentImageUrl?: string;
   onSelect: (photo: { url: string; alt: string; credit: string; creditUrl: string }) => void;
   onRemove?: () => void;
@@ -29,7 +31,7 @@ interface Props {
 
 type Tab = "pexels" | "ai";
 
-export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageUrl, onSelect, onRemove, disabled }: Props) {
+export function PexelsPicker({ moduleTitle, moduleId, courseTitle, courseLanguage, currentImageUrl, onSelect, onRemove, disabled }: Props) {
   const [open, setOpen]         = useState(false);
   const [tab, setTab]           = useState<Tab>("pexels");
 
@@ -72,13 +74,14 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageU
         orientation: "landscape",
         page: String(pg),
       });
-      if (q.trim()) {
-        params.set("query", q.trim());
-      } else {
-        params.set("derive", "1");
-        params.set("title", moduleTitle);
-        if (courseTitle) params.set("course", courseTitle);
-      }
+      // O título e o idioma vão SEMPRE: o idioma decide em que língua voltam as
+      // descrições das fotos (que viram o alt_text do curso), e o título é o
+      // insumo da derivação. Só o `derive` distingue os dois modos de busca.
+      params.set("title", moduleTitle);
+      if (courseTitle) params.set("course", courseTitle);
+      if (courseLanguage) params.set("lang", courseLanguage);
+      if (q.trim()) params.set("query", q.trim());
+      else params.set("derive", "1");
       const res = await fetch(`${base}?${params}`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -103,7 +106,7 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, currentImageU
     } finally {
       setLoading(false);
     }
-  }, [moduleTitle, courseTitle]);
+  }, [moduleTitle, courseTitle, courseLanguage]);
 
   const handleOpen = (isOpen: boolean) => {
     setOpen(isOpen);
