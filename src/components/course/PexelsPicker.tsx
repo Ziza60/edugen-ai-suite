@@ -134,14 +134,29 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, courseLanguag
           user_prompt: aiBrief.trim(),
         },
       });
-      if (error) throw error;
+
+      // supabase-js puts non-2xx responses in `error` (FunctionsHttpError),
+      // not in `data`. Parse the real JSON body before giving up.
+      if (error) {
+        let body: any = null;
+        try { body = await (error as any).context?.json?.(); } catch { /* no body */ }
+        if (body?.error === "credits_exhausted") {
+          setAiCredits({ used: body.used, limit: body.limit, plan: body.plan });
+          setAiError(body.message ?? `Limite de ${body.limit} gerações atingido este mês.`);
+          return;
+        }
+        // Surface Gemini detail if present (e.g. model quota, bad request)
+        const detail = body?.detail || body?.error;
+        throw new Error(detail ? `${detail}` : (error.message || "Erro ao gerar imagem"));
+      }
+
       if (data?.error) {
         if (data.error === "credits_exhausted") {
           setAiCredits({ used: data.used, limit: data.limit, plan: data.plan });
           setAiError(data.message);
           return;
         }
-        throw new Error(data.error);
+        throw new Error(data.detail || data.error);
       }
       setAiCredits({ used: data.used, limit: data.limit, plan: data.plan });
       setAiPreview({ url: data.url, alt: data.alt_text });
