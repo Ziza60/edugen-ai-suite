@@ -1946,6 +1946,61 @@ function normalizeBlueprint(
     }
   }
 
+  // Piso de prática, por MÓDULO.
+  //
+  // O piso acima cobre só o cenário. A atividade — o template que o aluno
+  // preenche — nasce de outros padrões: `procedural`, `practice`, `integration`
+  // e `assessment` produzem bloco `activity`; `conceptual` e `decision` não
+  // produzem nenhum (ver BLOCKS_BY_PATTERN). Como o blueprint escolhe os
+  // padrões livremente, a quantidade de prática do curso era sorteio: em duas
+  // gerações do MESMO curso as atividades caíram de 7 para 2, e o segundo saiu
+  // MAIOR — 16 lições, das quais 14 só de leitura.
+  //
+  // O piso é por módulo, e não por curso, porque um curso com 5 atividades
+  // concentradas em dois módulos deixa os outros três sem nenhuma prática. Um
+  // módulo que só expõe conteúdo não fecha o ciclo de aprendizagem.
+  const PADROES_COM_ATIVIDADE: LessonPattern[] = [
+    "procedural",
+    "practice",
+    "integration",
+    "assessment",
+  ];
+  let promovidas = 0;
+  for (const module of modules) {
+    // O capstone já ganha `activity` de graça em deriveBlockTypes.
+    if (module.role === "capstone") continue;
+    if (
+      module.lessons.some((lesson) =>
+        PADROES_COM_ATIVIDADE.includes(lesson.pattern),
+      )
+    ) continue;
+
+    // Promove a ÚLTIMA lição elegível: a prática vem depois da exposição, não
+    // antes. Lições `decision` ficam de fora — são o cenário garantido pelo
+    // piso anterior, e convertê-las apenas trocaria um formato ativo por outro.
+    const elegiveis = module.lessons.filter((l) => l.pattern === "conceptual");
+    const alvo = elegiveis[elegiveis.length - 1];
+    if (!alvo) continue;
+
+    alvo.pattern = "practice";
+    // Os blocos são montados à mão em vez de sair de deriveBlockTypes("practice"),
+    // que devolve worked_example + activity + callout — sem `explanation`. A
+    // lição promovida continua sendo a que EXPLICA o conteúdo do módulo; tirar
+    // dela o bloco expositivo para acrescentar prática trocaria um buraco por
+    // outro. Aqui ela mantém a explicação e ganha o exemplo e a atividade.
+    alvo.required_block_types = uniqueStrings(
+      ["explanation", "worked_example", "activity"],
+      5,
+    ) as BlockType[];
+    promovidas++;
+    console.warn(
+      `[generate-course] Módulo ${module.module_number} sem lição prática; ${alvo.lesson_number} promovida para garantir uma atividade.`,
+    );
+  }
+  if (promovidas) {
+    console.log(`[generate-course] Piso de prática: ${promovidas} lição(ões) promovida(s).`);
+  }
+
   const capstoneValues: CapstoneType[] = [
     "sintese",
     "estudo_de_caso",
