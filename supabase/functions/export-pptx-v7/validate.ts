@@ -207,11 +207,18 @@ function capText(raw: string, maxWords: number, maxChars: number): string {
   return cleanFragment(balanceDelimiters(cleanFragment(t)));
 }
 
+/** Sobrou só numeração, pontuação ou espaço? Então não há título nenhum. */
+function isEmptyLabel(s: string): boolean {
+  return !s || /^[\s\d.)\-–—:;,]*$/.test(s);
+}
+
 function normItems(items: string[] | undefined, max: number): string[] {
   if (!Array.isArray(items)) return [];
   return items
     .map((s) => capText(String(s), LIMITS.MAX_ITEM_WORDS, LIMITS.MAX_ITEM_CHARS))
-    .filter((s) => s.length > 0)
+    // Mesmo motivo do normSteps: um marcador que sobrou como "1." ou "—"
+    // ocupa uma linha do slide sem dizer nada.
+    .filter((s) => !isEmptyLabel(s))
     .slice(0, max);
 }
 
@@ -227,22 +234,38 @@ function normCards(cards: DeckCard[] | undefined): DeckCard[] {
 }
 
 /** The steps renderer prepends its own index, so drop any leading "1." / "2)" /
- *  "3 -" the planner already baked into the heading (avoids "1. 1. ..."). */
+ *  "3 -" the planner already baked into the heading (avoids "1. 1. ...").
+ *  O `\s+` final era obrigatório, então um ordinal SOZINHO ("1.", sem nada
+ *  depois) não casava e sobrevivia como título do passo. */
 function stripLeadingOrdinal(s: string): string {
-  return s.replace(/^\s*\d{1,2}\s*[.)\-–]\s+/, "");
+  return s.replace(/^\s*\d{1,3}\s*[.)\-–]\s*/, "");
 }
 
 function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
   if (!Array.isArray(steps)) return [];
   return steps
-    .map((s) => ({
-      heading: capText(stripLeadingOrdinal(String(s?.heading ?? "")), 8, 48),
+    .map((s) => {
+      let heading = capText(stripLeadingOrdinal(String(s?.heading ?? "")), 8, 48);
       // Steps carry the worked-example / activity prose (Contexto/Desafio/…), so
       // a 12-word cap chopped real sentences mid-thought. Allow a full short
       // sentence; capText still ends it on a clean clause. The vertical step
       // layout has room for ~2 lines per step (3–5 steps).
-      body: s?.body ? capText(String(s.body), 24, 170) : undefined,
-    }))
+      let body = s?.body ? capText(String(s.body), 24, 170) : undefined;
+      // Rede de segurança: um passo cujo título é só o número não diz nada, e
+      // o renderizador já desenha a numeração por conta própria. Foi assim que
+      // um slide de atividade foi entregue com quatro barras contendo apenas
+      // "1.", "2.", "3." e "4.". Quando isso acontece, o corpo vira o título —
+      // e se não houver corpo, o passo não tem conteúdo para justificar a barra.
+      if (isEmptyLabel(heading)) {
+        if (body && !isEmptyLabel(body)) {
+          heading = capText(body, 8, 48);
+          body = undefined;
+        } else {
+          heading = "";
+        }
+      }
+      return { heading, body };
+    })
     .filter((s) => s.heading.length > 0)
     .slice(0, LIMITS.MAX_STEPS);
 }

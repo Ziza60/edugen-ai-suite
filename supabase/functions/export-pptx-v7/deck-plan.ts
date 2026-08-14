@@ -746,10 +746,52 @@ function stripLeadingEmoji(s: string): string {
   return s.replace(LEADING_EMOJI_RE, "").trim();
 }
 
-/** Split prose into complete sentences (so we never cut mid-sentence). */
+// Um ponto final nem sempre encerra uma frase. Estas são as formas que mais
+// aparecem no meio de uma: abreviações de tratamento e de referência.
+const ABBREV_RE =
+  /(?:^|[\s(])(?:sr|sra|srs|sras|dr|dra|drs|dras|prof|profa|profs|profas|exm[oa]|ilm[oa]|jr|av|r|pç|ltda|jr|min|máx|max|aprox|ex|etc|obs|fig|tab|art|arts|inc|p[áa]g|p|n[ºo]|cf|vs|s[ée]c|ed|org|coord|trad|ref|cap|vol|op|cit|i\.e|e\.g|p\.ex)\.$/i;
+
+/** "1." / "12)" sozinhos — o ordinal de um item de lista, não uma frase. */
+const BARE_ORDINAL_RE = /^\d{1,3}\s*[.)]$/;
+
+/** Uma inicial isolada ("J.") também não encerra frase. */
+const INITIAL_RE = /(?:^|\s)[A-ZÀ-Ý]\.$/;
+
+/**
+ * Divide prosa em frases completas (para nunca cortar no meio de uma).
+ *
+ * A divisão ingênua em `(?<=[.!?])\s+` trata QUALQUER ponto como fim de frase,
+ * e dois casos muito comuns quebravam o deck:
+ *
+ *   • O ordinal de uma lista. "1. Revise a Persona…" virava a frase "1.", e
+ *     como toShortPoint usa a primeira frase, o slide de atividade saía com
+ *     quatro barras numeradas contendo apenas "1.", "2.", "3.", "4.".
+ *   • A abreviação de tratamento. "Como o Sr. João pode…" virava "Como o Sr.",
+ *     e três estudos de caso foram entregues com o Desafio e a Solução
+ *     cortados na terceira palavra — um deles com a Solução vazia.
+ *
+ * A correção divide como antes e depois REMENDA: um pedaço cujo anterior
+ * termina em abreviação, inicial ou ordinal isolado pertence àquele anterior.
+ * O laço trata cadeias ("1. Sr. João decidiu.") porque cada remendo é avaliado
+ * contra o pedaço já acumulado.
+ */
 function splitSentences(s: string): string[] {
-  return s
-    .split(/(?<=[.!?])\s+/)
+  const partes = s.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const parte of partes) {
+    const anterior = out[out.length - 1];
+    if (
+      anterior !== undefined &&
+      (BARE_ORDINAL_RE.test(anterior) ||
+        ABBREV_RE.test(anterior) ||
+        INITIAL_RE.test(anterior))
+    ) {
+      out[out.length - 1] = `${anterior} ${parte}`;
+      continue;
+    }
+    out.push(parte);
+  }
+  return out
     .map((x) => x.trim())
     .filter(Boolean);
 }
@@ -1254,7 +1296,11 @@ function coverageTitles(
 }
 
 /** Split "Lead: rest" / "Lead — rest" into a step heading + short body. */
-function leadSplit(s: string): DeckStep {
+function leadSplit(raw: string): DeckStep {
+  // O renderizador desenha a própria numeração, então o ordinal que vem do
+  // markdown ("1. Revise a Persona…") é ruído duas vezes: aparece ao lado do
+  // número desenhado E consome parte do orçamento de palavras do título.
+  const s = raw.replace(/^\s*\d{1,3}\s*[.)\-–]\s*/, "").trim();
   const m = s.match(/^([^:–—]{3,60})[:–—]\s+(.+)$/);
   if (m) return { heading: m[1].trim(), body: toShortPoint(m[2], 22) };
   return { heading: toShortPoint(s, 12) };
