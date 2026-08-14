@@ -3426,7 +3426,175 @@ function deterministicModuleRepair(
       .filter(blockHasUsableContent);
   }
 
+  // Parte D — piso de prática, verificado no RESULTADO e não no plano.
+  //
+  // Existe um piso no blueprint que promove uma lição a `practice` quando o
+  // módulo não tem nenhuma lição de padrão prático. Ele parte de uma premissa
+  // que não se sustenta: o padrão apenas PEDE os blocos, via
+  // required_block_types. Quando o bloco pedido não vem, a falta é classificada
+  // como reparável — e o reparo só roda se sobrar tempo no worker.
+  //
+  // Na prática isso deixou passar módulos inteiros: uma lição `procedural`
+  // produziu o bloco `process` ("Passos") e não o `activity` (o template que o
+  // aluno preenche). O piso do blueprint olhou o padrão, concluiu "coberto" e
+  // seguiu adiante — dois de cinco módulos saíram sem prática nenhuma.
+  //
+  // Aqui a pergunta é outra: este módulo TEM um bloco activity? Se não tiver,
+  // construímos um a partir do que já existe. Os passos de um bloco `process`
+  // são a matéria-prima natural — já são um roteiro de execução, e viram as
+  // linhas do template. É determinístico: não gasta chamada de rede nem
+  // depende do tempo restante, que é justamente o que tornava o reparo
+  // pouco confiável.
+  if (!repaired.lessons.some((l) => l.blocks.some((b) => b.type === "activity"))) {
+    const alvo = buildActivityFromModule(repaired, blueprint);
+    if (alvo) {
+      const { lessonIndex, block } = alvo;
+      repaired.lessons[lessonIndex].blocks.push(block);
+      console.warn(
+        `[generate-course] Módulo ${blueprint.module_number} sem bloco de atividade; um foi derivado para a lição ${repaired.lessons[lessonIndex].lesson_number}.`,
+      );
+    }
+  }
+
   return repaired;
+}
+
+/**
+ * Deriva um bloco `activity` do conteúdo que o módulo já produziu.
+ *
+ * Ordem de preferência das fontes, da mais rica para a mais pobre:
+ *   1. bloco `process` — os passos já são um roteiro de execução
+ *   2. bloco `worked_example` — o exemplo resolvido vira o caso a replicar
+ *   3. os objetivos das lições — último recurso, sempre disponível
+ *
+ * Devolve null quando não há material suficiente para uma atividade honesta:
+ * um template de uma linha só seria pior que nenhum.
+ */
+function buildActivityFromModule(
+  document: ModuleDocument,
+  blueprint: ModuleBlueprint,
+): { lessonIndex: number; block: LearningBlock } | null {
+  const artefato = blueprint.produces_artifact ||
+    `o entregável de ${blueprint.title}`;
+
+  // 1. Passos de um bloco `process`.
+  for (let i = document.lessons.length - 1; i >= 0; i--) {
+    const proc = document.lessons[i].blocks.find(
+      (b) => b.type === "process" && b.steps.length >= 3,
+    );
+    if (!proc) continue;
+    const rows = proc.steps
+      .slice(0, 8)
+      .map((step) => ({
+        field: stripLeadingOrdinal(step.title || "").slice(0, 120),
+        instruction: (step.description || "").slice(0, 240),
+      }))
+      .filter((r) => r.field || r.instruction);
+    if (rows.length < 3) continue;
+    return {
+      lessonIndex: i,
+      block: normalizeLearningBlock(
+        {
+          id: `m${blueprint.module_number}-activity-derived`,
+          type: "activity",
+          heading: proc.heading || "Atividade Prática",
+          activity: {
+            // Sem minúsculas e com o título entre aspas: colocar o cabeçalho em
+            // caixa baixa no meio da frase gerava gagueira ("os passos de
+            // passos do mapeamento") quando ele já começava por "Passos".
+            objective: `Executar, no seu contexto, o roteiro apresentado em "${proc.heading || blueprint.title}".`,
+            template_rows: rows,
+            steps: proc.steps
+              .slice(0, 8)
+              .map((s) => `${stripLeadingOrdinal(s.title || "")}: ${s.description || ""}`.trim())
+              .filter(Boolean),
+            deliverable: artefato,
+            success_criteria: [
+              "Cada campo do template foi preenchido com dados do seu próprio contexto.",
+              "As escolhas estão justificadas pelos conceitos do módulo.",
+            ],
+          },
+        },
+        `m${blueprint.module_number}-activity-derived`,
+      ),
+    };
+  }
+
+  // 2. Exemplo trabalhado — o aluno refaz o mesmo raciocínio no caso dele.
+  for (let i = document.lessons.length - 1; i >= 0; i--) {
+    const ex = document.lessons[i].blocks.find(
+      (b) => b.type === "worked_example" && b.example.challenge && b.example.solution,
+    );
+    if (!ex) continue;
+    return {
+      lessonIndex: i,
+      block: normalizeLearningBlock(
+        {
+          id: `m${blueprint.module_number}-activity-derived`,
+          type: "activity",
+          heading: "Atividade Prática",
+          activity: {
+            objective: `Refazer, no seu próprio contexto, a análise apresentada em ${(ex.heading || "exemplo do módulo").toLowerCase()}.`,
+            template_rows: [
+              { field: "Seu contexto", instruction: "Descreva a situação equivalente na sua realidade." },
+              { field: "Desafio identificado", instruction: "Qual é o problema central a resolver?" },
+              { field: "Sua solução", instruction: "Que caminho você adotaria, e por quê?" },
+              { field: "Resultado esperado", instruction: "O que mudaria se a solução funcionasse?" },
+            ],
+            steps: [
+              "Releia o exemplo trabalhado do módulo.",
+              "Identifique a situação equivalente no seu contexto.",
+              "Preencha cada campo do template com os seus próprios dados.",
+              "Justifique as escolhas usando os conceitos do módulo.",
+            ],
+            deliverable: artefato,
+            success_criteria: [
+              "O caso descrito é real e específico, não genérico.",
+              "A solução se apoia nos conceitos trabalhados.",
+            ],
+          },
+        },
+        `m${blueprint.module_number}-activity-derived`,
+      ),
+    };
+  }
+
+  // 3. Objetivos das lições. Sempre existem, então este ramo nunca deixa um
+  //    módulo sem prática — mas produz o template mais genérico dos três.
+  const objetivos = document.lessons
+    .map((l) => (l.objective || "").trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (objetivos.length < 2) return null;
+  const ultima = document.lessons.length - 1;
+  return {
+    lessonIndex: ultima,
+    block: normalizeLearningBlock(
+      {
+        id: `m${blueprint.module_number}-activity-derived`,
+        type: "activity",
+        heading: "Atividade Prática",
+        activity: {
+          objective: `Consolidar ${blueprint.module_objective || blueprint.title} aplicando os objetivos do módulo ao seu contexto.`,
+          template_rows: objetivos.map((obj, idx) => ({
+            field: `Objetivo ${idx + 1}`,
+            instruction: `Como você aplicaria isto na sua realidade? ${obj}`.slice(0, 240),
+          })),
+          steps: [
+            "Releia os objetivos do módulo.",
+            "Para cada um, descreva uma aplicação concreta no seu contexto.",
+            "Aponte o que precisaria mudar para que ela funcione.",
+          ],
+          deliverable: artefato,
+          success_criteria: [
+            "Cada objetivo tem uma aplicação concreta e verificável.",
+            "As aplicações descrevem o seu contexto, não um caso genérico.",
+          ],
+        },
+      },
+      `m${blueprint.module_number}-activity-derived`,
+    ),
+  };
 }
 
 function buildModuleRepairPrompt(params: {
