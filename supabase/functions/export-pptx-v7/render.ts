@@ -1988,9 +1988,42 @@ function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
   const n = Math.max(items.length, 1);
   const gap = 0.1;
   const chW = (CW - gap * (n - 1)) / n;
-  const chH = 2.3;
-  const y = CONTENT_Y + (CONTENT_H - chH) / 2;
+
+  // GEOMETRIA DO CHEVRON — por que o texto vazava
+  //
+  // O preset `chevron` do OOXML tem entalhe à esquerda e bico à direita, ambos
+  // com profundidade x1 = min(w,h)/2 (ajuste padrão 50000). A consequência não é
+  // uma margem: é que a faixa preenchida tem largura CONSTANTE (w − x1) e
+  // DESLIZA na diagonal conforme se sobe ou desce. Com 4 chevrons de 2,91 × 2,30
+  // pol, a faixa ia de x=0,90 a x=2,66 na altura do topo do texto e de x=0,25 a
+  // x=2,01 na altura da base — 0,65 pol de deslocamento entre uma linha e outra.
+  //
+  // Por isso nenhum recuo resolvia, e ajustá-lo era enxugar gelo: o valor que
+  // continha a primeira linha deixava a última para fora, e vice-versa. Para um
+  // bloco de texto que cruza o meio, a largura de fato segura é
+  // w − x1·(1 + uMax), que naquela proporção dava 0,86 pol — menos que uma
+  // palavra.
+  //
+  // A correção tira o texto de dentro da forma. O chevron carrega só o número,
+  // centrado na vertical, onde a faixa é mais larga e praticamente não desliza;
+  // a legenda vai ABAIXO, na largura inteira da coluna, onde não há forma
+  // nenhuma para conter. A metáfora visual da seta continua, e o texto passa a
+  // ter espaço real.
+  const chH = 1.5;
+  const capH = 0.8;
+  const blocoH = chH + 0.16 + capH;
+  const y = CONTENT_Y + (CONTENT_H - blocoH) / 2;
   const fs = autoBodyFontSize(n, items.join("").length);
+
+  // Zona segura para o número: ele ocupa a faixa central da forma, então o
+  // limite à esquerda é o próprio x1 e à direita sobra o deslocamento do topo
+  // e da base da caixa do número.
+  const x1 = Math.min(chW, chH) / 2;
+  const numH = 0.62;
+  const uNum = numH / chH; // quanto a caixa do número se afasta do meio
+  const safeL = x1;
+  const safeW = Math.max(0.4, chW - x1 - x1 * uNum);
+
   items.forEach((b, i) => {
     const x = ML + i * (chW + gap);
     const accent = i % 2 === 0;
@@ -1998,17 +2031,14 @@ function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
       x, y, w: chW, h: chH,
       fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 },
     });
-    // A chevron has a notch on the LEFT and a point on the RIGHT; both eat into
-    // the box. Inset the text generously on both sides so it never gets clipped.
-    const inL = 0.5, inR = 0.55;
     slide.addText(String(i + 1), {
-      x: x + inL, y: y + 0.24, w: chW - inL - inR, h: 0.6,
+      x: x + safeL, y: y + (chH - numH) / 2, w: safeW, h: numH,
       fontFace: FONT_TITLE, fontSize: 26, bold: true,
-      color: d.accent2, align: "center", valign: "middle",
+      color: accent ? d.onAccent : d.accent2, align: "center", valign: "middle",
     });
     slide.addText(b, {
-      x: x + inL, y: y + 0.9, w: chW - inL - inR, h: chH - 1.15,
-      fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.subtext,
+      x, y: y + chH + 0.16, w: chW, h: capH,
+      fontFace: FONT_BODY, fontSize: fs, color: d.text,
       align: "center", valign: "top", lineSpacingMultiple: 1.0,
     });
   });
