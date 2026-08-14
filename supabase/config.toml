@@ -1,4 +1,9 @@
-project_id = "hhlzaryhsyqbqktxdgyb"
+# Projeto Supabase de destino. Este arquivo trazia `hhlzaryhsyqbqktxdgyb`, que é
+# o projeto ANTIGO — o mesmo que aparece nas URLs assinadas do data_dump.sql, de
+# março. O projeto em uso é este, confirmado pelos logs de produção. Enquanto o
+# valor errado ficou aqui, toda sincronização do config.toml a partir do
+# repositório era uma armadilha: apontaria os deploys para o projeto morto.
+project_id = "hqysyalrvxjeadmkujig"
 
 [functions.generate-course]
 verify_jwt = false
