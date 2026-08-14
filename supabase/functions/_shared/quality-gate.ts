@@ -132,6 +132,21 @@ function contentText(markdown: string): string {
   return contentLines(markdown).join("\n");
 }
 
+/**
+ * Remove trechos de código EM LINHA (`assim`).
+ *
+ * As buscas por vazamento procuram tags e entidades HTML. Num curso que ENSINA
+ * HTML, `<p>` e `&nbsp;` aparecem legitimamente no texto — como código em
+ * linha. Sem esta limpeza, o portão reprovaria o curso pelo próprio conteúdo
+ * que ele se propõe a ensinar. Os blocos cercados já saem em contentLines.
+ */
+function stripInlineCode(line: string): string {
+  return line.replace(/`[^`]*`/g, " ");
+}
+
+/** Régua horizontal do Markdown (`---`, `***`, `___`), não é item de lista. */
+const HR_RE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
+
 interface LessonSlice {
   number: string;
   title: string;
@@ -179,21 +194,39 @@ const LEAK_PATTERNS: Array<[string, RegExp]> = [
   ["entidade HTML", /&(?:nbsp|amp|lt|gt|quot|#\d+);/i],
 ];
 
-// Texto que o modelo deixou como lacuna a preencher. Se chegou ao curso, o
-// curso está incompleto.
-const PLACEHOLDER_RE =
-  /\[(?:inserir|inclua|preencher|adicionar|exemplo aqui|texto|descrição|TODO|TBD|placeholder)[^\]]{0,60}\]|\bLorem ipsum\b|\bTODO\b|\bXXXX+\b/i;
+// Lacuna que o modelo deixou por preencher. Se chegou ao curso, o curso está
+// incompleto.
+//
+// A busca é dividida em duas por um motivo concreto, encontrado na primeira
+// execução do portão em produção: a versão anterior era uma regex única com a
+// flag /i, e `\bTODO\b` insensível a maiúsculas casa com "todo" — uma das
+// palavras mais comuns do português. O portão reprovou um curso legítimo por
+// frases como "investir todo o orçamento" e "a culminação de todo o
+// aprendizado". Um marcador de pendência é escrito em CAIXA ALTA por
+// convenção; exigir isso separa o marcador da palavra.
+const PLACEHOLDER_BRACKET_RE =
+  /\[(?:inserir|inclua|preencher|adicionar|completar|exemplo aqui|texto aqui|descri[çc][ãa]o aqui|placeholder)[^\]]{0,60}\]/i;
+const PLACEHOLDER_MARKER_RE = /\b(?:TODO|TBD|FIXME|XXXX+)\b|\bLorem ipsum\b/;
+
+function isPlaceholder(line: string): boolean {
+  // `- [ ]` e `- [x]` são caixas de seleção de quiz, não lacunas: o aluno é que
+  // marca. Removê-las antes de testar evita confundir o formato com um vazio.
+  const semCheckbox = line.replace(/^\s*[-*+]\s*\[[ xX]?\]\s*/, "");
+  return PLACEHOLDER_BRACKET_RE.test(semCheckbox) ||
+    PLACEHOLDER_MARKER_RE.test(semCheckbox);
+}
 
 function checkLeaks(course: CourseInspectionInput): CheckResult[] {
   const achados: Record<string, string[]> = {};
   const placeholders: string[] = [];
   for (const mod of course.modules) {
-    for (const line of contentLines(mod.markdown)) {
+    for (const bruta of contentLines(mod.markdown)) {
+      const line = stripInlineCode(bruta);
       for (const [nome, re] of LEAK_PATTERNS) {
-        if (re.test(line)) (achados[nome] ??= []).push(`M${mod.module_number}: ${line}`);
+        if (re.test(line)) (achados[nome] ??= []).push(`M${mod.module_number}: ${bruta}`);
       }
-      if (PLACEHOLDER_RE.test(line)) {
-        placeholders.push(`M${mod.module_number}: ${line}`);
+      if (isPlaceholder(line)) {
+        placeholders.push(`M${mod.module_number}: ${bruta}`);
       }
     }
   }
@@ -223,6 +256,11 @@ function checkDegenerateItems(course: CourseInspectionInput): CheckResult {
   const achados: string[] = [];
   for (const mod of course.modules) {
     contentLines(mod.markdown).forEach((line, i) => {
+      // A régua horizontal `---` começa com um traço e só tem pontuação
+      // depois, então casava com a regra de item degenerado. Ela é um
+      // separador de seção, não uma lista vazia — foi o segundo falso
+      // positivo da primeira execução do portão em produção.
+      if (HR_RE.test(line)) return;
       if (DEGENERATE_ITEM_RE.test(line) && line.trim()) {
         achados.push(`M${mod.module_number} linha ${i + 1}: "${line.trim()}"`);
       }
