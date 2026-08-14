@@ -317,7 +317,10 @@ PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premi
   whenever 3+ things are compared on several attributes (e.g. data types across
   Order/Mutability/Syntax; file modes; HTTP methods). Keep every cell to a short
   phrase, never a sentence.
-- "quote"    → a memorable principle, definition, or reflection prompt.
+- "quote"    → a memorable principle or reflection prompt. NOT a glossary entry:
+  a term and its dictionary definition go in "cards" (heading = the term, body =
+  the definition), where several terms share one slide. A full-screen pull-quote
+  spent on "X is defined as…" wastes the module's strongest visual beat.
 - "stat"     → one striking number or metric worth a whole slide.
 - "chart"    → quantitative data worth visualizing. Provide "chart" with a "type"
   and 2–6 "points", each { "label", "value" } (value is a NUMBER, no units in it):
@@ -369,8 +372,14 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
   • Use "matrix" when 4 items classify along two axes (SWOT, effort×impact).
   • Use "table" when 3+ options are compared across several criteria (a
     comparison that would otherwise become a cramped bullet list).
-  • Add ONE "quote" OR "stat" per module when the source offers a striking
-    principle or number, to break the visual rhythm.
+  • Add AT MOST ONE "quote" OR "stat" per module, and only when the source
+    offers a genuinely striking principle or number, to break the visual rhythm.
+    Two quote slides in a row render as two near-identical screens — if you have
+    two candidates, keep the stronger one and make the other a "cards" slide.
+  • Every module must TEACH, not just frame: at least half of its slides should
+    be "cards" / "steps" / "compare" / "table" carrying the module's actual
+    substance. A module made only of an overview, a quote and a recap is a
+    failure even if each slide is individually well-formed.
   • Use "chart" (donut for proportions, bar for ranking magnitudes) when the
     source gives REAL numbers worth visualizing — never with invented data.
 - Do NOT prepend ordinals ("1.", "2)") inside a step's heading — the renderer
@@ -737,10 +746,52 @@ function stripLeadingEmoji(s: string): string {
   return s.replace(LEADING_EMOJI_RE, "").trim();
 }
 
-/** Split prose into complete sentences (so we never cut mid-sentence). */
+// Um ponto final nem sempre encerra uma frase. Estas são as formas que mais
+// aparecem no meio de uma: abreviações de tratamento e de referência.
+const ABBREV_RE =
+  /(?:^|[\s(])(?:sr|sra|srs|sras|dr|dra|drs|dras|prof|profa|profs|profas|exm[oa]|ilm[oa]|jr|av|r|pç|ltda|jr|min|máx|max|aprox|ex|etc|obs|fig|tab|art|arts|inc|p[áa]g|p|n[ºo]|cf|vs|s[ée]c|ed|org|coord|trad|ref|cap|vol|op|cit|i\.e|e\.g|p\.ex)\.$/i;
+
+/** "1." / "12)" sozinhos — o ordinal de um item de lista, não uma frase. */
+const BARE_ORDINAL_RE = /^\d{1,3}\s*[.)]$/;
+
+/** Uma inicial isolada ("J.") também não encerra frase. */
+const INITIAL_RE = /(?:^|\s)[A-ZÀ-Ý]\.$/;
+
+/**
+ * Divide prosa em frases completas (para nunca cortar no meio de uma).
+ *
+ * A divisão ingênua em `(?<=[.!?])\s+` trata QUALQUER ponto como fim de frase,
+ * e dois casos muito comuns quebravam o deck:
+ *
+ *   • O ordinal de uma lista. "1. Revise a Persona…" virava a frase "1.", e
+ *     como toShortPoint usa a primeira frase, o slide de atividade saía com
+ *     quatro barras numeradas contendo apenas "1.", "2.", "3.", "4.".
+ *   • A abreviação de tratamento. "Como o Sr. João pode…" virava "Como o Sr.",
+ *     e três estudos de caso foram entregues com o Desafio e a Solução
+ *     cortados na terceira palavra — um deles com a Solução vazia.
+ *
+ * A correção divide como antes e depois REMENDA: um pedaço cujo anterior
+ * termina em abreviação, inicial ou ordinal isolado pertence àquele anterior.
+ * O laço trata cadeias ("1. Sr. João decidiu.") porque cada remendo é avaliado
+ * contra o pedaço já acumulado.
+ */
 function splitSentences(s: string): string[] {
-  return s
-    .split(/(?<=[.!?])\s+/)
+  const partes = s.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const parte of partes) {
+    const anterior = out[out.length - 1];
+    if (
+      anterior !== undefined &&
+      (BARE_ORDINAL_RE.test(anterior) ||
+        ABBREV_RE.test(anterior) ||
+        INITIAL_RE.test(anterior))
+    ) {
+      out[out.length - 1] = `${anterior} ${parte}`;
+      continue;
+    }
+    out.push(parte);
+  }
+  return out
     .map((x) => x.trim())
     .filter(Boolean);
 }
@@ -1154,12 +1205,22 @@ export function dedupeModules(modules: DeckModule[]): number {
 // 2 = at least an objectives/overview slide PLUS one substantive content slide,
 // then a closing. We never force a higher floor by fabricating: a thin source
 // yields a thin (but complete and honest) module rather than padding.
-const FLOOR_MIN_CONTENT = 2;
+// A flat floor of 2 was far below what the density spec asks the planner for
+// (6–8 content slides at "standard"), so a module the planner under-served just
+// shipped thin: a 3-lesson module went out with 4 content slides, two of which
+// were glossary definitions. The floor now tracks the density the user chose,
+// one below its minimum — enough slack for a legitimately short module without
+// licensing a hollow one.
 const INTRA_DUP_THRESHOLD = 0.85;
+function floorMinContent(density: Density): number {
+  return Math.max(2, (DENSITY_SPECS[density] ?? DENSITY_SPECS.standard).min - 1);
+}
 export function enforceModuleFloors(
   out: DeckModule[],
   inputs: ModuleInput[],
+  density: Density = "standard",
 ): { backfilled: number; closingsAdded: number } {
+  const minContent = floorMinContent(density);
   let backfilled = 0;
   let closingsAdded = 0;
   for (let i = 0; i < out.length; i++) {
@@ -1168,17 +1229,27 @@ export function enforceModuleFloors(
     let closing = m.slides.find((s) => s.kind === "closing") ?? null;
     const hadClosing = closing !== null;
 
-    if (content.length < FLOOR_MIN_CONTENT) {
+    if (content.length < minContent) {
       const fb = fallbackModuleSlides(m.title, inputs[i]?.content ?? "");
+      // Titles already on screen. With the floor raised from 2 to ~5 the
+      // backfill runs far more often, and the token test alone (≥0.85 overlap)
+      // is too permissive to stop it: the planner's "cards" version of a
+      // section and the fallback's "bullets" version of the SAME section share
+      // a heading but little wording, so both shipped. A section is on the deck
+      // once, whatever shape it took.
+      const titles = new Set(content.map((c) => normKey(c.title ?? "")).filter(Boolean));
       for (const s of fb) {
-        if (content.length >= FLOOR_MIN_CONTENT) break;
+        if (content.length >= minContent) break;
         if (s.kind === "closing") continue;
+        const key = normKey(s.title ?? "");
+        if (key && titles.has(key)) continue;
         const tk = contentTokens(s);
         const dup = content.some(
           (c) => overlapMin(contentTokens(c), tk) >= INTRA_DUP_THRESHOLD,
         );
         if (!dup) {
           content.push(s);
+          if (key) titles.add(key);
           backfilled++;
         }
       }
@@ -1225,7 +1296,11 @@ function coverageTitles(
 }
 
 /** Split "Lead: rest" / "Lead — rest" into a step heading + short body. */
-function leadSplit(s: string): DeckStep {
+function leadSplit(raw: string): DeckStep {
+  // O renderizador desenha a própria numeração, então o ordinal que vem do
+  // markdown ("1. Revise a Persona…") é ruído duas vezes: aparece ao lado do
+  // número desenhado E consome parte do orçamento de palavras do título.
+  const s = raw.replace(/^\s*\d{1,3}\s*[.)\-–]\s*/, "").trim();
   const m = s.match(/^([^:–—]{3,60})[:–—]\s+(.+)$/);
   if (m) return { heading: m[1].trim(), body: toShortPoint(m[2], 22) };
   return { heading: toShortPoint(s, 12) };
@@ -1365,6 +1440,119 @@ function buildTableSlide(b: MdBlock, moduleTitle: string): SlideSpec | null {
   };
 }
 
+// ── Speaker notes (deterministic) ────────────────────────────────────────────
+// A slide carries ~45 words; the lesson it came from carries hundreds. Without
+// notes the deck is ~10% of the course and the other 90% is simply discarded —
+// an instructor gets 40+ screens of fragments and no narration. The `notes`
+// field existed on SlideSpec but was never written and never rendered.
+//
+// We rebuild it deterministically instead of asking the planner for it: the
+// planner call is already the pipeline's time bottleneck, and prose it invents
+// for the notes would not be the course's own words. Matching each slide back
+// to the source passage it was distilled from keeps the notes faithful, works
+// identically for the LLM plan and the heuristic fallback, and costs no tokens.
+
+const NOTES_MAX_CHARS = 900;
+const NOTES_MIN_MATCH = 0.18; // below this the passage is about something else
+
+/** Accent-folded content tokens of a raw string (same shape as contentTokens). */
+function textTokens(raw: string): Set<string> {
+  const text = (raw || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+  const toks = (text.match(/[a-z]{4,}/g) ?? [])
+    .filter((t) => !DUP_STOPWORDS.has(t) && t !== "edugenai");
+  return new Set(toks);
+}
+
+/** Jaccard-ish overlap, normalized by the SLIDE's vocabulary: we ask "how much
+ *  of this slide does the passage explain?", not "how similar are they?" — a
+ *  long passage should not be penalised for covering more than the slide. */
+function coverage(slideToks: Set<string>, passToks: Set<string>): number {
+  if (!slideToks.size || !passToks.size) return 0;
+  let common = 0;
+  for (const t of slideToks) if (passToks.has(t)) common++;
+  return common / slideToks.size;
+}
+
+/** Trim a passage to the notes budget, always ending on a sentence. */
+function fitNote(raw: string): string {
+  const t = raw.replace(/\s+/g, " ").trim();
+  if (t.length <= NOTES_MAX_CHARS) return t;
+  const sentences = splitSentences(t);
+  let out = "";
+  for (const s of sentences) {
+    if ((out + " " + s).trim().length > NOTES_MAX_CHARS) break;
+    out = (out + " " + s).trim();
+  }
+  // A single sentence longer than the budget: cut on a word boundary.
+  if (!out) {
+    const sliced = t.slice(0, NOTES_MAX_CHARS);
+    const sp = sliced.lastIndexOf(" ");
+    out = (sp > 40 ? sliced.slice(0, sp) : sliced).trim();
+  }
+  return out;
+}
+
+/** The prose passages of a module, in document order, largest units first. */
+function sourcePassages(content: string): { text: string; toks: Set<string> }[] {
+  const out: { text: string; toks: Set<string> }[] = [];
+  for (const b of segmentMarkdown(content)) {
+    const parts: string[] = [];
+    if (b.heading) parts.push(b.heading);
+    parts.push(...b.paras);
+    // Bullets are already slide-shaped; they only help as narration when the
+    // block has no prose of its own.
+    if (!b.paras.length) parts.push(...b.bullets);
+    const text = parts.join(" ").replace(/\s+/g, " ").trim();
+    // Skip stubs: a heading alone narrates nothing.
+    if (text.split(/\s+/).length < 25) continue;
+    out.push({ text, toks: textTokens(text) });
+  }
+  return out;
+}
+
+/**
+ * Attach speaker notes to every content slide by matching it back to the source
+ * passage it was distilled from. A passage is consumed once so two slides never
+ * get the same narration; when nothing matches well enough we leave the notes
+ * empty on purpose — wrong narration is worse for an instructor than none.
+ */
+export function attachSpeakerNotes(
+  out: DeckModule[],
+  inputs: ModuleInput[],
+): { withNotes: number; total: number } {
+  let withNotes = 0;
+  let total = 0;
+  for (let i = 0; i < out.length; i++) {
+    const passages = sourcePassages(inputs[i]?.content ?? "");
+    const used = new Set<number>();
+    for (const s of out[i].slides) {
+      // Dividers and the cover carry no teaching content of their own.
+      if (s.kind === "section" || s.kind === "cover" || s.kind === "toc") continue;
+      total++;
+      const toks = new Set<string>([
+        ...textTokens(s.title ?? ""),
+        ...contentTokens(s),
+      ]);
+      let bestIdx = -1;
+      let bestScore = 0;
+      for (let p = 0; p < passages.length; p++) {
+        if (used.has(p)) continue;
+        const score = coverage(toks, passages[p].toks);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = p;
+        }
+      }
+      if (bestIdx < 0 || bestScore < NOTES_MIN_MATCH) continue;
+      used.add(bestIdx);
+      s.notes = fitNote(passages[bestIdx].text);
+      withNotes++;
+    }
+  }
+  return { withNotes, total };
+}
+
 export function ensurePedagogicalCoverage(
   out: DeckModule[],
   inputs: ModuleInput[],
@@ -1442,6 +1630,108 @@ export function ensurePedagogicalCoverage(
     }
   }
   return { examplesAdded, activitiesAdded, tablesAdded };
+}
+
+// ── Assessment rubric (capstone modules) ─────────────────────────────────────
+// The final project's rubric is the single artefact a learner most needs on
+// screen — it is what they will be graded against — yet it was reaching the
+// deck only by accident, as a generic table, and usually not at all: the
+// planner spends its slide budget on the project's narrative instead.
+//
+// The pipeline renders it as a markdown table under "**Rubrica de avaliação**"
+// with columns Critério | Peso | Excelente | Adequado | Precisa melhorar. Five
+// columns of prose is unreadable projected, so we keep the two that define the
+// target — the weight and what "excellent" looks like.
+
+const RUBRIC_LABEL_RE = /rubrica\s+de\s+avalia|assessment\s+rubric|r[úu]brica\s+de\s+evaluaci|grille\s+d'?[ée]valuation/i;
+const RUBRIC_HEADER_RE = /^(crit[ée]rio|criterion|crit[èe]re)s?$/i;
+const WEIGHT_HEADER_RE = /^(peso|weight|poids|ponderaci[óo]n)$/i;
+
+function rubricStrings(
+  language: string,
+): { title: string; weight: string; excellent: string } {
+  const l = (language || "").toLowerCase();
+  if (/portug/.test(l)) {
+    return { title: "Como Você Será Avaliado", weight: "Peso", excellent: "Nível Excelente" };
+  }
+  if (/espa|spanish/.test(l)) {
+    return { title: "Cómo Serás Evaluado", weight: "Peso", excellent: "Nivel Excelente" };
+  }
+  if (/fran|french/.test(l)) {
+    return { title: "Comment Vous Serez Évalué", weight: "Poids", excellent: "Niveau Excellent" };
+  }
+  return { title: "How You Will Be Assessed", weight: "Weight", excellent: "Excellent Level" };
+}
+
+/** Find the rubric table in a module's source, whatever its column order. */
+function findRubricTable(blocks: MdBlock[]): string[][] | null {
+  for (const b of blocks) {
+    if (b.tableRows.length < 2) continue;
+    const header = b.tableRows[0].map((c) => c.trim());
+    const hasCriterion = header.some((c) => RUBRIC_HEADER_RE.test(c));
+    const hasWeight = header.some((c) => WEIGHT_HEADER_RE.test(c));
+    // Either the table declares itself, or the block it lives in does.
+    if ((hasCriterion && hasWeight) || RUBRIC_LABEL_RE.test(b.heading)) {
+      return b.tableRows;
+    }
+  }
+  return null;
+}
+
+/**
+ * Guarantee a rubric slide in every module whose source carries one. Idempotent:
+ * skipped when a slide already shows the rubric.
+ */
+export function ensureRubricSlide(
+  out: DeckModule[],
+  inputs: ModuleInput[],
+  language: string,
+): number {
+  const t = rubricStrings(language);
+  let added = 0;
+  for (let i = 0; i < out.length; i++) {
+    const m = out[i];
+    const src = inputs[i]?.content ?? "";
+    if (!src || !RUBRIC_LABEL_RE.test(src)) continue;
+    // Already on a slide?
+    if (m.slides.some((s) => RUBRIC_LABEL_RE.test(s.title ?? "") ||
+      (s.columns ?? []).some((c) => WEIGHT_HEADER_RE.test(c.trim())))) continue;
+
+    const rows = findRubricTable(segmentMarkdown(src));
+    if (!rows || rows.length < 2) continue;
+    const header = rows[0].map((c) => c.trim());
+    const iCrit = Math.max(0, header.findIndex((c) => RUBRIC_HEADER_RE.test(c)));
+    const iWeight = header.findIndex((c) => WEIGHT_HEADER_RE.test(c));
+    // "Excelente" is the first descriptor column after the weight; fall back to
+    // the column right after the criterion when the table has no weight column.
+    const iBest = iWeight >= 0 ? iWeight + 1 : iCrit + 1;
+
+    const trows: DeckTableRow[] = rows.slice(1)
+      .filter((r) => (r[iCrit] ?? "").trim())
+      .slice(0, 6)
+      .map((r) => ({
+        label: cleanLine(r[iCrit] ?? ""),
+        cells: [
+          iWeight >= 0 ? cleanLine(r[iWeight] ?? "") : "",
+          cleanLine(r[iBest] ?? ""),
+        ],
+      }));
+    if (trows.length < 2) continue;
+
+    const slide: SlideSpec = {
+      kind: "table",
+      title: t.title,
+      eyebrow: m.title,
+      columns: iWeight >= 0 ? [t.weight, t.excellent] : [t.excellent],
+      rows: iWeight >= 0 ? trows : trows.map((r) => ({ ...r, cells: [r.cells[1]] })),
+    };
+    // Just before the closing, so the takeaways still land last.
+    const ci = m.slides.findIndex((s) => s.kind === "closing");
+    if (ci >= 0) m.slides.splice(ci, 0, slide);
+    else m.slides.push(slide);
+    added++;
+  }
+  return added;
 }
 
 
@@ -1556,14 +1846,24 @@ export async function buildDeck(
     );
   }
 
+  // The capstone's rubric: added after coverage (so it isn't mistaken for the
+  // generic comparison table) and before the floor (so it counts as content).
+  const rubrics = ensureRubricSlide(out, modules, language);
+  if (rubrics) console.log(`[V7-RUBRIC] slides=${rubrics}`);
+
   // Invariant: never ship a hollow module. Backfill from source / guarantee a
   // closing AFTER dedup so cross-module cleanup can't leave a module starved.
-  const floor = enforceModuleFloors(out, modules);
+  const floor = enforceModuleFloors(out, modules, density);
   if (floor.backfilled || floor.closingsAdded) {
     console.log(
       `[V7-FLOOR] backfilled=${floor.backfilled} closingsAdded=${floor.closingsAdded}`,
     );
   }
+
+  // Speaker notes LAST: every slide the deck will ship now exists, including
+  // the backfills above, so each one gets matched to its source passage.
+  const notes = attachSpeakerNotes(out, modules);
+  console.log(`[V7-NOTES] ${notes.withNotes}/${notes.total} slides with notes`);
 
   return {
     deck: { courseTitle, subtitle, modules: out },

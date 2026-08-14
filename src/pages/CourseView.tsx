@@ -1092,6 +1092,7 @@ export default function CourseView() {
                       moduleTitle={activeModule.title}
                       moduleId={activeModule.id}
                       courseTitle={course.title}
+                      courseLanguage={course.language}
                       currentImageUrl={moduleImage.url}
                       onSelect={({ url, alt }) =>
                         saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
@@ -1107,6 +1108,7 @@ export default function CourseView() {
                     moduleTitle={activeModule.title}
                     moduleId={activeModule.id}
                     courseTitle={course.title}
+                    courseLanguage={course.language}
                     onSelect={({ url, alt }) =>
                       saveModuleImage.mutate({ moduleId: activeModule.id, url, altText: alt })
                     }

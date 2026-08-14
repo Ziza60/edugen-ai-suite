@@ -31,12 +31,66 @@ export const LIMITS = {
   MAX_TABLE_ROWS: 6,
   MAX_TABLE_CELL_CHARS: 80,
   MAX_CHART_POINTS: 6,
+  // The kicker is a LABEL (usually the module title), not prose. Cutting it
+  // produces a broken phrase — "…EM SITUAÇÕES DE ALTA" instead of "…DE ALTA
+  // TENSÃO" — which reads as a bug, not as an abbreviation. The old 60-char cap
+  // silently amputated any module title longer than that (2 of 5 modules in a
+  // real course, on 17 of its 44 slides). The header band is ~11.5in wide and
+  // fits ~100 uppercase chars at 10pt, so 90 is safe here; the renderer shrinks
+  // the type for the narrower kicker boxes instead of truncating.
+  MAX_EYEBROW_CHARS: 90,
 } as const;
 
 const TRAILING_JUNK_RE = /[\s,;:\-–—]+$/;
 const ELLIPSIS_RE = /(\.{2,}|…)+\s*$/;
 const DANGLING_PREP_RE =
   /\s+(para|de|da|do|das|dos|com|e|ou|que|em|no|na|nos|nas|ao|à|aos|às|por|sobre|entre|sem|sob|a|as|os|um|uma|uns|umas)\s*$/i;
+
+// Words that CAN legitimately end an intact sentence ("a decisão é sua", "isso
+// depende de você") but never end an acceptable CUT one. They are stripped only
+// from text we know was truncated — applying them to prose the planner wrote in
+// full would mutilate it, which is why they are not in DANGLING_PREP_RE.
+const CUT_TAIL_RE =
+  /\s+(voc[êe]s?|ele|ela|eles|elas|n[óo]s|quem|qual|quais|onde|quando|cujos?|cujas?|algum|alguma|alguns|algumas|qualquer|quaisquer|seu|sua|seus|suas|este|esta|estes|estas|esse|essa|esses|essas|aquele|aquela|isso|isto|mesmo|mesma)\s*$/i;
+
+// An orphan subordinate clause: a connector followed by 1–2 words and nothing
+// else. "Revise sua proposta, garantindo que o controle" is not a short
+// sentence, it is a sentence cut in half — the clause promises a completion the
+// slide never delivers. Cutting at the connector restores a whole statement.
+const ORPHAN_CLAUSE_RE =
+  /[,;]?\s+\b(que|para|porque|quando|onde|se|caso|conforme|enquanto|embora|garantindo|assegurando|considerando|visando|buscando|permitindo)\b(\s+\S+){0,2}\s*$/i;
+
+/**
+ * Make a truncated fragment end on a whole thought.
+ *
+ * Runs only on text capText actually had to cut. Two shapes of debris:
+ * a trailing function word ("…problemas que você") and an orphan subordinate
+ * clause ("…garantindo que o controle"). Removing one often exposes the other,
+ * so it iterates; it stops before dissolving the fragment, since three words
+ * that end badly still beat one word that ends nowhere.
+ */
+function trimToWholeThought(raw: string): string {
+  let s = raw;
+  // Bounded loop rather than recursion: each rule can expose work for the
+  // others ("…garantindo que o controle" → "…proposta," → "…proposta"), and the
+  // string strictly shrinks, so a handful of passes always settles.
+  for (let i = 0; i < 6; i++) {
+    let next = s
+      .replace(CUT_TAIL_RE, "")
+      .replace(DANGLING_PREP_RE, "")
+      .replace(TRAILING_JUNK_RE, "")
+      .trim();
+    if (next === s) {
+      next = s.replace(ORPHAN_CLAUSE_RE, "").replace(TRAILING_JUNK_RE, "").trim();
+      if (next === s) break;
+    }
+    // Never strip past three words — below that we are deleting the point, not
+    // the debris, and the caller is better served by the longer ragged version.
+    if (next.split(/\s+/).filter(Boolean).length < 3) break;
+    s = next;
+  }
+  return s;
+}
 
 /** Clean a short text fragment: strip ellipsis, dangling words, trailing junk. */
 function cleanFragment(raw: string): string {
@@ -61,24 +115,55 @@ function cleanFragment(raw: string): string {
   return t;
 }
 
+/** Count occurrences of a literal character. */
+function countChar(s: string, ch: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) if (s[i] === ch) n++;
+  return n;
+}
+
+/**
+ * Is the quote character at `i` an OPENING quote? True at the start of the
+ * string or after whitespace / an opening bracket. This is what lets us treat
+ * `'` as a quote in «usou: 'Marta» while leaving the apostrophe in «don't» and
+ * «l'entreprise» alone — an unconditional odd/even count would eat those.
+ */
+function isOpeningQuote(s: string, i: number): boolean {
+  if (i === 0) return true;
+  return /[\s([{–—-]/.test(s[i - 1]);
+}
+
 /** Drop a dangling, unclosed parenthetical / quote left by truncation, so a
  *  capped fragment never ends with "(ex: a, b" or an open quote. */
 function balanceDelimiters(t: string): string {
   let s = t;
   let guard = 0;
-  while (
-    (s.match(/\(/g)?.length ?? 0) > (s.match(/\)/g)?.length ?? 0) && guard++ < 3
-  ) {
+  while (countChar(s, "(") > countChar(s, ")") && guard++ < 3) {
     const i = s.lastIndexOf("(");
     if (i < 0) break;
     s = s.slice(0, i).trim();
   }
-  // Odd number of straight or smart double-quotes → drop from the last one.
-  for (const q of ['"', "“", "”"]) {
-    if (((s.match(new RegExp(q, "g"))?.length ?? 0) % 2) === 1) {
-      const i = s.lastIndexOf(q);
-      if (i >= 0) s = s.slice(0, i).trim();
+  // Double quotes come in pairs: “ closes with ”, and " closes with itself. The
+  // previous version tested “ and ” INDEPENDENTLY, so a perfectly balanced
+  // “texto” counted as one “ (odd) plus one ” (odd) and got cut twice.
+  for (const [open, close] of [['"', '"'], ["“", "”"], ["«", "»"]]) {
+    const unclosed = open === close
+      ? countChar(s, open) % 2 === 1
+      : countChar(s, open) > countChar(s, close);
+    if (!unclosed) continue;
+    const i = s.lastIndexOf(open);
+    if (i >= 0) s = s.slice(0, i).trim();
+  }
+  // Single quotes, position-aware (see isOpeningQuote). A truncated case study
+  // shipped as «usa a comunicação assertiva: 'Marta» — the opening quote of a
+  // line of dialogue that got cut before its closing partner.
+  for (const [open, close] of [["'", "'"], ["‘", "’"]]) {
+    let last = -1;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === open && isOpeningQuote(s, i)) last = i;
+      else if (s[i] === close && last >= 0 && i > last) last = -1;
     }
+    if (last >= 0) s = s.slice(0, last).trim();
   }
   return s;
 }
@@ -94,29 +179,46 @@ function capText(raw: string, maxWords: number, maxChars: number): string {
   if (t.length > maxChars) {
     const sliced = t.slice(0, maxChars);
     const lastSpace = sliced.lastIndexOf(" ");
-    t = (lastSpace > 20 ? sliced.slice(0, lastSpace) : sliced).trim();
+    // Cut at the word boundary unless that would leave almost nothing. The old
+    // guard was a flat `lastSpace > 20`, which fails on SHORT caps: a 28-char
+    // table header whose last space sits at index 20 missed the test by one and
+    // fell through to the hard slice, shipping "Impacto Potencial na Resoluç".
+    // Scale the floor to the cap so short fields keep their word boundary too.
+    const floor = Math.min(20, Math.floor(maxChars * 0.5));
+    t = (lastSpace >= floor ? sliced.slice(0, lastSpace) : sliced).trim();
     truncated = true;
   }
-  // We had to cut: prefer to stop at the last clause boundary (.,;:) so the
-  // result reads as a complete clause. Only when that boundary keeps most of the
-  // text (≥50%), otherwise the dangling-word cleanup in cleanFragment handles it.
+  // We had to cut, so the fragment probably ends mid-thought. Judge THAT
+  // directly instead of guessing from a percentage.
+  //
+  // A percentage was the wrong instrument, and both settings proved it: at ≥50%
+  // the clause trim was licensed to throw away half a whole fragment, and did
+  // ("…usa a comunicação assertiva: 'Marta"); at ≥80% it stopped firing where it
+  // was needed and shipped "…garantindo que o controle". How much text a cut
+  // costs says nothing about whether what remains is a complete statement.
+  //
+  // trimToWholeThought asks the question that actually matters — does this end
+  // on a whole thought? — and removes only the debris that says no.
   if (truncated) {
-    const b = Math.max(
-      t.lastIndexOf(","), t.lastIndexOf(";"),
-      t.lastIndexOf("."), t.lastIndexOf(":"),
-    );
-    if (b >= Math.floor(t.length * 0.5)) t = t.slice(0, b);
+    t = trimToWholeThought(t);
   }
   // Always balance delimiters: a truncated "(ex: …" or an open quote can survive
   // the clause trim (the source sentence itself was cut by the planner).
   return cleanFragment(balanceDelimiters(cleanFragment(t)));
 }
 
+/** Sobrou só numeração, pontuação ou espaço? Então não há título nenhum. */
+function isEmptyLabel(s: string): boolean {
+  return !s || /^[\s\d.)\-–—:;,]*$/.test(s);
+}
+
 function normItems(items: string[] | undefined, max: number): string[] {
   if (!Array.isArray(items)) return [];
   return items
     .map((s) => capText(String(s), LIMITS.MAX_ITEM_WORDS, LIMITS.MAX_ITEM_CHARS))
-    .filter((s) => s.length > 0)
+    // Mesmo motivo do normSteps: um marcador que sobrou como "1." ou "—"
+    // ocupa uma linha do slide sem dizer nada.
+    .filter((s) => !isEmptyLabel(s))
     .slice(0, max);
 }
 
@@ -132,22 +234,38 @@ function normCards(cards: DeckCard[] | undefined): DeckCard[] {
 }
 
 /** The steps renderer prepends its own index, so drop any leading "1." / "2)" /
- *  "3 -" the planner already baked into the heading (avoids "1. 1. ..."). */
+ *  "3 -" the planner already baked into the heading (avoids "1. 1. ...").
+ *  O `\s+` final era obrigatório, então um ordinal SOZINHO ("1.", sem nada
+ *  depois) não casava e sobrevivia como título do passo. */
 function stripLeadingOrdinal(s: string): string {
-  return s.replace(/^\s*\d{1,2}\s*[.)\-–]\s+/, "");
+  return s.replace(/^\s*\d{1,3}\s*[.)\-–]\s*/, "");
 }
 
 function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
   if (!Array.isArray(steps)) return [];
   return steps
-    .map((s) => ({
-      heading: capText(stripLeadingOrdinal(String(s?.heading ?? "")), 8, 48),
+    .map((s) => {
+      let heading = capText(stripLeadingOrdinal(String(s?.heading ?? "")), 8, 48);
       // Steps carry the worked-example / activity prose (Contexto/Desafio/…), so
       // a 12-word cap chopped real sentences mid-thought. Allow a full short
       // sentence; capText still ends it on a clean clause. The vertical step
       // layout has room for ~2 lines per step (3–5 steps).
-      body: s?.body ? capText(String(s.body), 24, 170) : undefined,
-    }))
+      let body = s?.body ? capText(String(s.body), 24, 170) : undefined;
+      // Rede de segurança: um passo cujo título é só o número não diz nada, e
+      // o renderizador já desenha a numeração por conta própria. Foi assim que
+      // um slide de atividade foi entregue com quatro barras contendo apenas
+      // "1.", "2.", "3." e "4.". Quando isso acontece, o corpo vira o título —
+      // e se não houver corpo, o passo não tem conteúdo para justificar a barra.
+      if (isEmptyLabel(heading)) {
+        if (body && !isEmptyLabel(body)) {
+          heading = capText(body, 8, 48);
+          body = undefined;
+        } else {
+          heading = "";
+        }
+      }
+      return { heading, body };
+    })
     .filter((s) => s.heading.length > 0)
     .slice(0, LIMITS.MAX_STEPS);
 }
@@ -296,7 +414,9 @@ function hasMinimumContent(s: SlideSpec): boolean {
  * degrades into a continuation slide rather than truncating content.
  */
 function normalizeSlide(slide: SlideSpec): SlideSpec[] {
-  const eyebrow = slide.eyebrow ? capText(slide.eyebrow, 10, 60) : undefined;
+  const eyebrow = slide.eyebrow
+    ? capText(slide.eyebrow, 16, LIMITS.MAX_EYEBROW_CHARS)
+    : undefined;
   let title = capText(slide.title ?? "", 14, LIMITS.MAX_TITLE_CHARS);
 
   const table = slide.kind === "table" ? normTable(slide) : null;

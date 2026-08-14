@@ -114,8 +114,22 @@ interface ParsedTable {
 function parseMarkdownTable(lines: string[], startIndex: number): { table: ParsedTable | null; endIndex: number } {
   if (!lines[startIndex]?.includes("|")) return { table: null, endIndex: startIndex };
 
-  const parsePipeRow = (line: string): string[] =>
-    line.split("|").map((c) => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length);
+  // "| a | b | c |" produz uma célula vazia em cada ponta; "a | b | c" não
+  // produz nenhuma. O filtro anterior era `i > 0 && i < arr.length`, e a segunda
+  // condição é sempre verdadeira — a célula vazia do FIM sobrevivia, e toda
+  // tabela ganhava uma coluna fantasma. Com 3 colunas reais a largura passava a
+  // ser dividida por 4 e a coluna de conteúdo perdia 29% do espaço; numa rubrica
+  // de 5 colunas sobravam 16 mm por descritor, o bastante para ~9 caracteres por
+  // linha. E como o índice 0 era descartado sem checar se estava vazio, uma
+  // tabela escrita sem as barras das pontas perdia a primeira coluna de verdade.
+  //
+  // Remover apenas o que está de fato vazio nas pontas cobre os dois formatos.
+  const parsePipeRow = (line: string): string[] => {
+    const cells = line.split("|").map((c) => c.trim());
+    if (cells.length && cells[0] === "") cells.shift();
+    if (cells.length && cells[cells.length - 1] === "") cells.pop();
+    return cells;
+  };
 
   const headers = parsePipeRow(lines[startIndex]);
   if (headers.length < 2) return { table: null, endIndex: startIndex };
@@ -452,6 +466,17 @@ class PdfRenderer {
   renderModuleTitle(title: string) {
     this.addPage();
 
+    // Marcador de navegação do módulo. Num documento de 75 páginas o painel
+    // lateral do leitor ficava vazio, e a única navegação era o sumário da
+    // página 2 — para trocar de módulo o aluno tinha que rolar o documento.
+    try {
+      this.doc.outline?.add?.(null, `${this.moduleIndex}. ${title}`, {
+        pageNumber: this.pageNum,
+      });
+    } catch {
+      // Outline é conveniência de navegação; nunca pode custar o PDF.
+    }
+
     // Full navy banner across top (covers page header from addPage)
     this.doc.setFillColor(...COLOR.MODULE_BG);
     this.doc.rect(0, 0, PAGE_W, 52, "F");
@@ -736,6 +761,14 @@ class PdfRenderer {
     const { headers, rows } = table;
     const numCols = headers.length;
 
+    // Uma grade de 5 colunas de prosa não cabe em retrato com fonte legível:
+    // sobram ~24 mm por coluna, e "O mapeamento do processo é claro" sai
+    // quebrado no meio das palavras. A rubrica do projeto final — justamente o
+    // texto contra o qual o aluno é avaliado — era a principal vítima. Acima do
+    // limite, cada linha vira um bloco empilhado, que é legível em qualquer
+    // largura.
+    if (numCols >= 5) return this.renderTableAsBlocks(table);
+
     // Column widths - first column wider for "Aspecto" pattern
     const colWidths: number[] = [];
     const firstRatio = numCols <= 2 ? 0.35 : numCols <= 3 ? 0.30 : 0.25;
@@ -743,16 +776,40 @@ class PdfRenderer {
     const remaining = CONTENT_W - colWidths[0];
     for (let i = 1; i < numCols; i++) colWidths.push(remaining / (numCols - 1));
 
+    // Com 4 colunas o corpo a 9 pt rende ~17 caracteres por linha. Reduzir um
+    // ponto devolve espaço sem prejudicar a leitura — a tabela é conteúdo de
+    // apoio, e o texto corrido em volta segue no tamanho normal.
+    const bodySize = numCols >= 4 ? FONT.TABLE_BODY - 1.5 : FONT.TABLE_BODY;
+    const cellPad = numCols >= 4 ? 5 : 8;
+
+    // Teto de linhas por célula. Antes era um `.slice(0, 4)` fixo, sem
+    // reticências e com a altura da linha calculada já com o corte: o texto
+    // sumia sem deixar rastro, e num glossário isso significava oito verbetes
+    // terminando no meio da frase. O teto agora é o que cabe numa página, de
+    // modo que só perde texto quem realmente não caberia de jeito nenhum.
+    const maxCellLines = Math.max(
+      4,
+      Math.floor((MAX_Y - MARGIN_TOP - 10 - SP.TABLE_ROW_PAD * 2) / SP.TABLE_CELL_LINE),
+    );
+
+    /** Quebra uma célula, marcando com reticências quando de fato cortou. */
+    const wrapCell = (text: string, width: number): string[] => {
+      this.doc.setFontSize(bodySize);
+      const all = this.doc.splitTextToSize(sanitizeText(stripMarkdown(text || "")), width);
+      if (all.length <= maxCellLines) return all;
+      const kept = all.slice(0, maxCellLines);
+      kept[kept.length - 1] = String(kept[kept.length - 1]).replace(/[\s,;:]+$/, "") + "…";
+      return kept;
+    };
+
     // Pre-measure all rows to get accurate heights
     const headerH = 10;
     const rowHeights: number[] = [];
     for (const row of rows) {
-      this.doc.setFontSize(FONT.TABLE_BODY);
       let maxLines = 1;
       for (let c = 0; c < numCols; c++) {
-        const cellText = sanitizeText(stripMarkdown(row[c] || ""));
-        const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 8);
-        if (lines.length > maxLines) maxLines = Math.min(lines.length, 4);
+        const lines = wrapCell(row[c] || "", colWidths[c] - cellPad);
+        if (lines.length > maxLines) maxLines = lines.length;
       }
       rowHeights.push(Math.max(8, maxLines * SP.TABLE_CELL_LINE + SP.TABLE_ROW_PAD * 2));
     }
@@ -777,15 +834,21 @@ class PdfRenderer {
       // Square off bottom corners by overlaying rect
       this.doc.rect(startX, atY + headerH - 2, CONTENT_W, 2, "F");
 
-      this.doc.setFontSize(FONT.TABLE_HEADER);
+      this.doc.setFontSize(numCols >= 4 ? FONT.TABLE_HEADER - 1.5 : FONT.TABLE_HEADER);
       this.doc.setFont("helvetica", "bold");
       this.doc.setTextColor(...COLOR.TEXT_WHITE);
 
       let hx = startX;
       for (let c = 0; c < numCols; c++) {
         const cellText = sanitizeText(stripMarkdown(headers[c] || ""));
-        const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 6);
-        this.doc.text(lines[0] || "", hx + 4, atY + 6.5);
+        // Só a primeira linha era desenhada: um título de coluna que quebrasse
+        // perdia o resto em silêncio. Desenhamos as duas linhas que a faixa
+        // comporta, subindo o texto para mantê-lo centrado.
+        const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 6).slice(0, 2);
+        const y0 = lines.length > 1 ? atY + 4.4 : atY + 6.5;
+        for (let l = 0; l < lines.length; l++) {
+          this.doc.text(lines[l], hx + 4, y0 + l * 3.6);
+        }
         hx += colWidths[c];
       }
       return atY + headerH;
@@ -822,9 +885,10 @@ class PdfRenderer {
       // Cell text
       let colX = startX;
       for (let c = 0; c < numCols; c++) {
-        const cellText = sanitizeText(stripMarkdown(row[c] || ""));
-        this.doc.setFontSize(FONT.TABLE_BODY);
-        const lines = this.doc.splitTextToSize(cellText, colWidths[c] - 8).slice(0, 4);
+        // Mesma quebra usada na pré-medição, para o texto desenhado nunca
+        // divergir da altura reservada para ele.
+        const lines = wrapCell(row[c] || "", colWidths[c] - cellPad);
+        this.doc.setFontSize(bodySize);
 
         if (c === 0) {
           this.doc.setFont("helvetica", "bold");
@@ -835,7 +899,7 @@ class PdfRenderer {
         }
 
         for (let l = 0; l < lines.length; l++) {
-          this.doc.text(lines[l], colX + 4, currentY + SP.TABLE_ROW_PAD + 3 + l * SP.TABLE_CELL_LINE);
+          this.doc.text(lines[l], colX + cellPad / 2, currentY + SP.TABLE_ROW_PAD + 3 + l * SP.TABLE_CELL_LINE);
         }
         colX += colWidths[c];
       }
@@ -864,6 +928,88 @@ class PdfRenderer {
     }
 
     this.y = currentY + SP.SECTION_GAP;
+  }
+
+  /**
+   * Tabelas largas (5+ colunas) renderizadas como blocos empilhados.
+   *
+   * Em retrato há 162 mm de largura. Cinco colunas de prosa deixam ~24 mm cada,
+   * onde uma palavra como "compreensível" não cabe inteira em uma linha — o
+   * jsPDF a parte no meio, e o resultado é ilegível. Era o que acontecia com a
+   * rubrica do projeto final, exatamente o texto que o aluno mais precisa ler.
+   *
+   * Empilhar resolve porque troca o eixo que está faltando: cada linha vira um
+   * bloco com a primeira coluna como título e as demais como pares
+   * "cabeçalho: valor", cada um com a largura inteira da página. Perde-se a
+   * comparação lado a lado; ganha-se poder ler.
+   */
+  renderTableAsBlocks(table: ParsedTable) {
+    const { headers, rows } = table;
+    const startX = MARGIN_LEFT;
+    const labelW = 34;
+
+    for (const row of rows) {
+      const titulo = sanitizeText(stripMarkdown(row[0] || ""));
+      // Pares a partir da 2ª coluna, ignorando células vazias.
+      const pares: Array<[string, string[]]> = [];
+      for (let c = 1; c < headers.length; c++) {
+        const valor = sanitizeText(stripMarkdown(row[c] || ""));
+        if (!valor) continue;
+        this.doc.setFontSize(FONT.SMALL);
+        pares.push([
+          sanitizeText(stripMarkdown(headers[c] || "")),
+          this.doc.splitTextToSize(valor, CONTENT_W - labelW - 10),
+        ]);
+      }
+      if (!titulo && !pares.length) continue;
+
+      const alturaBloco = 9 +
+        pares.reduce((a, [, ls]) => a + Math.max(5, ls.length * SP.LINE_HEIGHT) + 2, 0) + 5;
+      // Um bloco nunca deve ser partido: é uma unidade de leitura.
+      this.checkPage(Math.min(alturaBloco, MAX_Y - MARGIN_TOP));
+
+      const topo = this.y;
+      let y = topo + 6;
+
+      // Título do bloco (o critério, no caso da rubrica).
+      this.doc.setFont("helvetica", "bold");
+      this.doc.setFontSize(FONT.H4);
+      this.doc.setTextColor(...COLOR.PRIMARY);
+      for (const l of this.doc.splitTextToSize(titulo, CONTENT_W - 14)) {
+        this.doc.text(l, startX + 7, y);
+        y += SP.LINE_HEIGHT;
+      }
+      y += 1.5;
+
+      for (const [rotulo, linhas] of pares) {
+        this.doc.setFont("helvetica", "bold");
+        this.doc.setFontSize(FONT.SMALL);
+        this.doc.setTextColor(...COLOR.TEXT_MUTED);
+        this.doc.text(
+          this.doc.splitTextToSize(rotulo, labelW - 2)[0] || "",
+          startX + 7,
+          y,
+        );
+        this.doc.setFont("helvetica", "normal");
+        this.doc.setTextColor(...COLOR.TEXT_BODY);
+        for (const l of linhas) {
+          this.doc.text(l, startX + 7 + labelW, y);
+          y += SP.LINE_HEIGHT;
+        }
+        if (!linhas.length) y += SP.LINE_HEIGHT;
+        y += 2;
+      }
+
+      // Faixa de destaque à esquerda, no lugar da grade.
+      this.doc.setFillColor(...COLOR.ACCENT);
+      this.doc.rect(startX, topo, 2.2, y - topo - 1, "F");
+      this.doc.setDrawColor(...COLOR.BORDER_LIGHT);
+      this.doc.setLineWidth(0.2);
+      this.doc.line(startX, y - 1, startX + CONTENT_W, y - 1);
+
+      this.y = y + 3;
+    }
+    this.y += SP.SECTION_GAP - 3;
   }
 
   // ── Module content processor ──────────────────────────────────────
@@ -1158,6 +1304,20 @@ Deno.serve(async (req: Request) => {
     // ── Generate PDF ──
     const pdf = new PdfRenderer();
     pdf.courseTitle = sanitizeText(course.title || "");
+
+    // Metadados do arquivo. O campo Title vinha vazio, então o PDF aparecia
+    // pelo nome do arquivo em gerenciadores, bibliotecas e na aba do navegador.
+    try {
+      pdf.doc.setProperties({
+        title: sanitizeText(course.title || "Curso"),
+        subject: sanitizeText(course.description || ""),
+        creator: "EduGen",
+        author: "EduGen",
+      });
+    } catch {
+      // Metadado é cosmético; não pode custar a exportação.
+    }
+
     pdf.renderTitlePage(course.title, course.description, course.language);
 
     let moduleNum = 0;

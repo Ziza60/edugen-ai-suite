@@ -45,6 +45,61 @@ import type {
 import { repairTruncation } from "../_shared/markdown.ts";
 import { secretsMatch } from "../_shared/course-dispatch.ts";
 
+/**
+ * Dispara o portão de qualidade para um curso recém-concluído.
+ *
+ * Invocação HTTP em vez de chamada direta a inspectCourse: o portão precisa
+ * carregar TODOS os módulos do banco e gravar o laudo, e fazer isso aqui
+ * consumiria o orçamento de tempo do worker — que já é o recurso escasso da
+ * fase 2. Delegando, o worker só paga o custo da requisição.
+ *
+ * Nunca lança: o chamador está num `finally`, e uma exceção ali mascararia o
+ * erro original da geração do módulo.
+ */
+async function runQualityGate(courseId: string): Promise<void> {
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) {
+    console.warn("[generate-course-module] Portão de qualidade sem credenciais; pulado.");
+    return;
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    const res = await fetch(`${url}/functions/v1/course-quality-gate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+      },
+      body: JSON.stringify({ course_id: courseId }),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) {
+      console.warn(
+        `[generate-course-module] Portão de qualidade respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`,
+      );
+      return;
+    }
+    const laudo = await res.json();
+    console.log(
+      JSON.stringify({
+        event: "course-quality-gate-done",
+        course_id: courseId,
+        verdict: laudo?.verdict,
+        structural_score: laudo?.structural_score,
+        blockers: laudo?.blockers,
+        warnings: laudo?.warnings,
+      }),
+    );
+  } catch (err: any) {
+    console.warn(
+      `[generate-course-module] Portão de qualidade falhou: ${err?.message ?? err}`,
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Fase 2 — gera UM módulo por invocação.
 //
@@ -468,12 +523,32 @@ async function generateOneModule(params: {
     warnings: validation.warnings,
     repairsApplied,
   };
+  // As imagens são AGUARDADAS aqui, não empurradas para outro waitUntil.
+  //
+  // Antes esta função registrava um segundo EdgeRuntime.waitUntil de dentro de
+  // um trabalho que JÁ rodava sob waitUntil — aninhamento que o runtime não
+  // garante. O worker respondia, marcava o job como done e era encerrado com a
+  // geração de imagem ainda em voo. Num curso de 5 módulos, só 1 imagem
+  // sobreviveu.
+  //
+  // Esperar aqui é seguro: o orçamento do worker cobre um módulo só (~50 s de
+  // ~110 s) e a chamada de imagem tem timeout próprio de 65 s. Sem folga, o
+  // módulo é entregue sem imagem — perder a ilustração é muito melhor que
+  // perder o módulo.
   if (imageTasks.length) {
-    const imagesPromise = Promise.allSettled(imageTasks).then(() => undefined);
-    const waitUntil = (globalThis as any).EdgeRuntime?.waitUntil;
-    if (typeof waitUntil === "function")
-      waitUntil.call((globalThis as any).EdgeRuntime, imagesPromise);
-    else void imagesPromise;
+    if (msLeft() > 20000) {
+      const settled = await Promise.allSettled(imageTasks);
+      const falhas = settled.filter((r) => r.status === "rejected").length;
+      if (falhas) {
+        console.warn(
+          `[generate-course-module] ${falhas}/${imageTasks.length} imagem(ns) falharam no módulo ${module.module_number}.`,
+        );
+      }
+    } else {
+      console.warn(
+        `[generate-course-module] Módulo ${module.module_number} entregue sem imagem: restam ${Math.round(msLeft() / 1000)}s.`,
+      );
+    }
   }
 
   return {
@@ -635,6 +710,30 @@ Deno.serve(async (req: Request) => {
       await serviceClient.rpc("refresh_course_generation_progress", {
         p_course_id: payload.courseId,
       });
+      // Portão de qualidade: roda uma única vez, quando o último módulo fecha.
+      //
+      // A checagem de "sou o último?" é feita no banco, e não por contagem
+      // local, porque os módulos rodam em invocações concorrentes — cada worker
+      // só enxerga o próprio job. Quem vê a fila inteira é o banco.
+      //
+      // Best-effort de ponta a ponta: se o portão não puder rodar, o curso
+      // continua entregue com o status que a geração já definiu. Um controle de
+      // qualidade que bloqueia a entrega quando ele mesmo falha é pior que
+      // nenhum.
+      try {
+        const { count: restantes } = await serviceClient
+          .from("course_generation_jobs")
+          .select("id", { count: "exact", head: true })
+          .eq("course_id", payload.courseId)
+          .in("status", ["pending", "running"]);
+        if ((restantes ?? 0) === 0) {
+          await runQualityGate(payload.courseId);
+        }
+      } catch (err: any) {
+        console.warn(
+          `[generate-course-module] Portão de qualidade não executado: ${err?.message ?? err}`,
+        );
+      }
     }
   })();
 
