@@ -62,3 +62,10 @@ verify_jwt = false
 
 [functions.migrate-to-new-supabase]
 verify_jwt = false
+
+# Portão de qualidade. verify_jwt = false porque o gateway aceitaria a anon key
+# como JWT válido e isso não distinguiria nada; a autorização de verdade é feita
+# dentro da função — service role key para o pipeline, `sub` do token comparado
+# ao dono do curso para a interface.
+[functions.course-quality-gate]
+verify_jwt = false
