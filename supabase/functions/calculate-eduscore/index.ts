@@ -16,9 +16,19 @@ const corsHeaders = {
 // Equilíbrio deixou de contar a visão geral e as seções do capstone, que o
 // renderizador acrescenta e que faziam o curso ser punido pelo próprio
 // formato.
-const EDUSCORE_CRITERIA_VERSION = "2026-08-12";
+//
+// 2026-08-14: Clareza deixou de usar o índice Flesch cru como nota (ver
+// clarityScore — 45 é prosa jornalística nessa fórmula, e o critério media a
+// morfologia do português em vez da escrita); Engajamento passou a contar
+// BLOCOS pedagógicos em vez de linhas com palavras-chave, que subestimava
+// justamente os cursos mais práticos. Notas desta versão NÃO são comparáveis
+// com as anteriores — as duas mudanças elevam o resultado de um mesmo curso.
+const EDUSCORE_CRITERIA_VERSION = "2026-08-14";
 
 // ── Flesch Reading Ease adapted for Portuguese ──
+// Devolve o índice CRU, que pode ser negativo. Convertê-lo em nota é trabalho
+// de clarityScore() — ver a nota longa lá sobre por que os dois não podem ser
+// a mesma coisa.
 function fleschPT(text: string): number {
   const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
   const words = text.split(/\s+/).filter((w) => w.length > 0);
@@ -27,8 +37,60 @@ function fleschPT(text: string): number {
   const asl = words.length / sentences.length;
   const asw = syllables / words.length;
   // Flesch-Kincaid adapted for Portuguese (Martins et al.)
-  const score = 248.835 - 1.015 * asl - 84.6 * asw;
-  return Math.max(0, Math.min(100, Math.round(score)));
+  return Math.round(248.835 - 1.015 * asl - 84.6 * asw);
+}
+
+/**
+ * Converte o índice Flesch cru em nota de clareza.
+ *
+ * O índice era usado DIRETAMENTE como nota de 0 a 100, e isso media a
+ * morfologia do português, não a qualidade da escrita. O termo dominante da
+ * fórmula é 84,6 × sílabas-por-palavra, e o português tem 2,2 a 2,4 sílabas por
+ * palavra por natureza — só isso subtrai cerca de 190 pontos antes de qualquer
+ * consideração sobre como o texto foi escrito.
+ *
+ * Medido com a própria fórmula, em textos de dificuldade conhecida:
+ *
+ *     infantil, frases curtíssimas ...... 120
+ *     manual de instruções ..............  59
+ *     prosa jornalística comum ..........  45
+ *     acadêmico denso ................... −57
+ *
+ * Ou seja: 45 é jornal. Um curso que pontuava 48 era rotulado "Regular" e
+ * recebia a sugestão de "simplificar frases longas" — quando lia como uma
+ * notícia de economia, que é exatamente o alvo para material didático adulto.
+ * Com peso de 25% num critério que na prática não passa de ~55 em português,
+ * o EduScore tinha teto por construção em torno de 85.
+ *
+ * A faixa-alvo é 35–65: prosa instrucional adulta. Abaixo disso o texto fica
+ * denso demais; acima, raso demais para público profissional — os dois extremos
+ * são penalizados, porque simplificar em excesso também é defeito.
+ */
+const CLARITY_ANCHORS: Array<[number, number]> = [
+  [-40, 10],
+  [0, 28],
+  [20, 58],
+  [35, 78],
+  [48, 90],
+  [62, 92],
+  [72, 88],
+  [85, 72],
+  [110, 50],
+];
+
+function clarityScore(raw: number): number {
+  const a = CLARITY_ANCHORS;
+  if (raw <= a[0][0]) return a[0][1];
+  if (raw >= a[a.length - 1][0]) return a[a.length - 1][1];
+  for (let i = 0; i < a.length - 1; i++) {
+    const [x0, y0] = a[i];
+    const [x1, y1] = a[i + 1];
+    if (raw >= x0 && raw <= x1) {
+      const t = x1 === x0 ? 0 : (raw - x0) / (x1 - x0);
+      return Math.round(y0 + t * (y1 - y0));
+    }
+  }
+  return 50;
 }
 
 function countSyllablesPT(word: string): number {
@@ -122,18 +184,63 @@ function detectSections(content: string): string[] {
   return REQUIRED_SECTION_CHECKS.filter((s) => s.test(content)).map((s) => s.name);
 }
 
-// ── Engagement: theory vs practical ratio ──
-function engagementScore(content: string): { score: number; details: { examples: number; theory: number } } {
-  const lines = content.split("\n").filter((l) => l.trim().length > 0);
-  const practicalKeywords = /exemplo|caso|cen[áa]rio|pr[áa]tica|aplica[çc][ãa]o|resultado|solu[çc][ãa]o|exerc[ií]cio|atividade|calculando|c[áa]lculo|f[oó]rmula|r\$|desafio|tente|na pr[áa]tica|vamos ver|vejamos/i;
-  const examples = lines.filter((l) => practicalKeywords.test(l)).length;
-  const theory = lines.length - examples;
-  // Ideal ratio: 30-40% practical
-  const ratio = lines.length > 0 ? examples / lines.length : 0;
-  // Score peaks at 0.35 ratio
-  const distance = Math.abs(ratio - 0.35);
-  const score = Math.max(0, Math.round(100 - distance * 200));
-  return { score, details: { examples, theory } };
+// ── Engajamento: prática medida por BLOCO, não por linha ──
+//
+// A versão anterior contava LINHAS que contivessem palavras como "exemplo",
+// "caso" ou "atividade". Isso tinha um viés estrutural que subestimava
+// justamente os cursos mais práticos: prosa é densa em linhas e prática é
+// esparsa. Um template preenchível de oito linhas quase não contém aquelas
+// palavras, enquanto oito parágrafos expositivos contam oito linhas. Um curso
+// com dez templates preenchíveis pontuava 66 sobre "163 linhas práticas contra
+// 750 teóricas" — números que descrevem a forma do markdown, não a pedagogia.
+//
+// Agora contamos os ARTEFATOS que o pipeline realmente emite, pelos rótulos
+// exatos com que os renderiza. Duas metades:
+//
+//   densidade (60%) — artefatos por lição. O alvo é 1,5: mais de um por lição,
+//     com folga, porque uma lição pode carregar exemplo E atividade.
+//   variedade (40%) — quantos dos quatro formatos aparecem no curso. Dez
+//     atividades e nada mais não é um curso engajante, é um caderno de
+//     exercícios; o aluno precisa também ver o especialista resolver
+//     (exemplo trabalhado), decidir sob incerteza (cenário) e escrever com as
+//     próprias palavras (questão de aplicação).
+const PRACTICE_BLOCKS: Array<[string, RegExp]> = [
+  // Template preenchível: a tabela "Campo | Orientação | Seu caso".
+  ["atividade", /\|\s*Campo\s*\|\s*Orienta[çc][ãa]o\s*\|/gi],
+  // Exemplo trabalhado: sempre abre com "**Contexto:**".
+  ["exemplo", /\*\*Contexto:\*\*/g],
+  // Cenário interativo: fecha com o checklist de decisão.
+  ["cenario", /\*\*Checklist de decis[ãa]o\*\*/gi],
+  // Questão dissertativa com resposta-modelo.
+  ["questao", /###\s*Quest[ãa]o de aplica[çc][ãa]o/gi],
+];
+
+const LESSON_HEADING_RE = /^###\s+\d+\.\d+\s+\S/gm;
+
+function engagementScore(content: string): {
+  score: number;
+  details: { examples: number; theory: number; porTipo: Record<string, number>; licoes: number };
+} {
+  const porTipo: Record<string, number> = {};
+  let total = 0;
+  for (const [nome, re] of PRACTICE_BLOCKS) {
+    const n = (content.match(re) ?? []).length;
+    porTipo[nome] = n;
+    total += n;
+  }
+  const licoes = (content.match(LESSON_HEADING_RE) ?? []).length || 1;
+
+  const densidade = Math.min(100, (total / licoes / 1.5) * 100);
+  const tiposPresentes = Object.values(porTipo).filter((n) => n > 0).length;
+  const variedade = (tiposPresentes / PRACTICE_BLOCKS.length) * 100;
+  const score = Math.max(0, Math.min(100, Math.round(densidade * 0.6 + variedade * 0.4)));
+
+  // `examples` e `theory` seguem no retorno porque a interface os exibe. Agora
+  // significam o que o nome diz: blocos de prática, e lições sem nenhum.
+  return {
+    score,
+    details: { examples: total, theory: Math.max(0, licoes - total), porTipo, licoes },
+  };
 }
 
 // ── Corpo pedagógico de um módulo ──
@@ -264,7 +371,10 @@ Deno.serve(async (req) => {
 
     // ── 1. Clareza (Flesch) ──
     const allContent = modules.map((m) => m.content || "").join("\n\n");
-    const fleschScore = fleschPT(allContent);
+    // O índice cru e a NOTA são coisas diferentes: o primeiro mede a
+    // morfologia do texto, a segunda julga se ele está no ponto para o público.
+    const fleschRaw = fleschPT(allContent);
+    const fleschScore = clarityScore(fleschRaw);
 
     // ── 2. Completude (sections covered) ──
     const moduleAnalysis = modules.map((m) => {
@@ -294,8 +404,11 @@ Deno.serve(async (req) => {
 
     // ── AI Suggestions ──
     const suggestions: string[] = [];
-    if (fleschScore < 50) suggestions.push("Simplifique frases longas e use vocabulário mais acessível para melhorar a legibilidade.");
-    if (fleschScore > 80) suggestions.push("O texto está muito simplificado — considere adicionar termos técnicos relevantes.");
+    // Os gatilhos passam a olhar o índice CRU contra a faixa-alvo do português
+    // (35–65). O limiar antigo de 50 sobre a nota disparava em quase todo texto
+    // adulto — prosa jornalística pontua 45 nesta fórmula.
+    if (fleschRaw < 25) suggestions.push("Frases longas e vocabulário denso: quebre períodos e prefira termos do dia a dia do aluno.");
+    if (fleschRaw > 75) suggestions.push("O texto está simplificado demais para público profissional — vale incorporar a terminologia da área.");
     if (avgCompletude < 70) {
       // A anotação precisa estar NA VARIÁVEL, não só no valor inicial do reduce.
       // `createClient` é chamado sem o genérico Database, então `modules` sai
@@ -320,6 +433,7 @@ Deno.serve(async (req) => {
       dimensions: {
         clareza: {
           score: fleschScore,
+          raw: fleschRaw,
           label: "Clareza",
           description: "Legibilidade Flesch adaptada para PT-BR",
           icon: "📖",
