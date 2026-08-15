@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { text, action = "improve", language = "pt-BR" } = await req.json();
+    const { text, action = "improve", language = "pt-BR", instruction } = await req.json();
 
     if (!text || text.trim().length < 5) {
       return new Response(JSON.stringify({ error: "Text too short" }), {
@@ -58,8 +58,28 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Instrução escrita pelo autor, para a ação "custom". Normalizada e limitada
+    // a 400 caracteres: acima disso ela começa a competir com as travas de
+    // formato em vez de dizer o que fazer com o texto.
+    const customInstruction = typeof instruction === "string"
+      ? instruction.replace(/\s+/g, " ").trim().slice(0, 400)
+      : "";
+
+    if (action === "custom" && customInstruction.length < 3) {
+      return new Response(JSON.stringify({ error: "Instrução personalizada vazia" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ── CACHE CHECK ──
-    const cacheKey = await hashInput(`enhance:${action}:${language}:${text}`);
+    // A instrução entra na chave: sem isso, duas instruções diferentes sobre o
+    // mesmo texto devolveriam o mesmo resultado. Fica no fim para que as ações
+    // fixas continuem gerando exatamente a chave de antes — o cache delas não
+    // é invalidado por esta mudança.
+    const cacheKey = await hashInput(
+      `enhance:${action}:${language}:${text}${customInstruction ? `:${customInstruction}` : ""}`,
+    );
     const { data: cached } = await serviceClient
       .from("ai_cache")
       .select("response_text")
@@ -92,7 +112,16 @@ Deno.serve(async (req: Request) => {
       fix: `Você é um editor. Corrija erros gramaticais, ortográficos e de formatação no texto. Mantenha o formato markdown. Responda APENAS com o texto corrigido.`,
     };
 
-    const systemPrompt = systemPrompts[action] || systemPrompts.improve;
+    // As travas que valem para TODA edição, inclusive a personalizada: sem elas
+    // o modelo responde com explicação em volta do texto, ou devolve prosa onde
+    // havia markdown — e o resultado entra direto no editor do autor.
+    const TRAVAS =
+      "Mantenha o formato markdown do original, incluindo listas, tabelas e citações. " +
+      "Responda APENAS com o texto editado, sem preâmbulo, sem comentários e sem cercas de código.";
+
+    const systemPrompt = action === "custom"
+      ? `Você é um editor pedagógico especialista. Aplique ao texto fornecido a seguinte instrução do autor:\n\n"${customInstruction}"\n\n${TRAVAS}`
+      : (systemPrompts[action] || systemPrompts.improve);
 
     const response = await fetch(url, {
       method: "POST",
