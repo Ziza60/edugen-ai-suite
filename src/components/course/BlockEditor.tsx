@@ -21,6 +21,7 @@ import { AiDiffDialog } from "./AiDiffDialog";
 import {
   markdownToHtml,
   htmlToMarkdown,
+  stripInternalBlocks,
   restoreProtectedBlocks,
   reconcileProtectedTables,
   type ProtectedBlock,
@@ -182,7 +183,10 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
   const protegidosRef = useRef<ProtectedBlock[]>([]);
 
   const initialHtml = useMemo(() => {
-    const { html, protectedBlocks } = markdownToHtml(content);
+    // O filtro vem ANTES da proteção de tabelas: se um bloco interno de QA
+    // trouxer tabela, ela sai junto com o bloco em vez de virar um marcador
+    // órfão apontando para conteúdo que ninguém mais vai ver.
+    const { html, protectedBlocks } = markdownToHtml(stripInternalBlocks(content));
     protegidosRef.current = protectedBlocks;
     return html;
   }, []);

@@ -13,6 +13,7 @@ import {
   htmlToMarkdown,
   extractProtectedBlocks,
   restoreProtectedBlocks,
+  stripInternalBlocks,
 } from "@/lib/markdown-roundtrip";
 
 /** O ciclo completo, como o BlockEditor o executa. */
@@ -90,5 +91,105 @@ describe("round-trip markdown ↔ html do editor", () => {
     // uma escolha explícita e não uma perda nossa.
     const semMarcador = restoreProtectedBlocks("Texto sem o marcador.", blocks);
     expect(semMarcador).not.toContain("| Campo |");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Blocos internos de QA
+//
+// Este filtro existia só no workspace do Replit, dentro do BlockEditor. O
+// refactor do editor quase o apagou: o repositório nunca o teve, então trocar o
+// arquivo pela versão do repositório fazia a instrumentação de QA reaparecer
+// dentro do editor do autor. Estes testes existem para que isso não volte a
+// depender de qual cópia do arquivo sobrevive a um merge.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("stripInternalBlocks", () => {
+  it("remove o bloco de QA e para no próximo título de mesmo nível", () => {
+    const md = [
+      "## Conteúdo do módulo",
+      "",
+      "Texto que o aluno lê.",
+      "",
+      "## Nota de Qualidade EduGen",
+      "",
+      "- Score do módulo: 82",
+      "- CRITICAL: falta atividade prática",
+      "",
+      "## Resumo",
+      "",
+      "Fecho do módulo.",
+    ].join("\n");
+
+    const out = stripInternalBlocks(md);
+    expect(out).toContain("## Conteúdo do módulo");
+    expect(out).toContain("Texto que o aluno lê.");
+    expect(out).toContain("## Resumo");
+    expect(out).toContain("Fecho do módulo.");
+    expect(out).not.toContain("Nota de Qualidade");
+    expect(out).not.toContain("Score do módulo");
+    expect(out).not.toContain("CRITICAL");
+  });
+
+  it("a linha horizontal também fecha o bloco", () => {
+    const md = [
+      "### Matriz Objetivo x Conteúdo",
+      "",
+      "linha interna qualquer",
+      "",
+      "---",
+      "",
+      "Texto do aluno.",
+    ].join("\n");
+
+    const out = stripInternalBlocks(md);
+    expect(out).not.toContain("Matriz Objetivo");
+    expect(out).not.toContain("linha interna");
+    expect(out).toContain("Texto do aluno.");
+  });
+
+  it("linhas soltas de instrumentação somem mesmo fora de bloco", () => {
+    const md = [
+      "Parágrafo normal.",
+      "- WARNING: densidade baixa",
+      "1. **Módulo 2** — Feedback: revisar exemplos",
+      "- Item de verdade da lista.",
+    ].join("\n");
+
+    const out = stripInternalBlocks(md);
+    expect(out).toContain("Parágrafo normal.");
+    expect(out).toContain("- Item de verdade da lista.");
+    expect(out).not.toContain("WARNING");
+    expect(out).not.toContain("Feedback:");
+  });
+
+  it("não mexe em módulo sem bloco interno nenhum", () => {
+    const md = "## Objetivos\n\nAprender a mapear riscos.\n\n- Um\n- Dois";
+    expect(stripInternalBlocks(md)).toBe(md);
+  });
+
+  it("tabela dentro de bloco interno sai junto, sem virar marcador órfão", () => {
+    const md = [
+      "## Conteúdo",
+      "",
+      "Texto do aluno.",
+      "",
+      "## Nota de Qualidade EduGen",
+      "",
+      "| Critério | Nota |",
+      "|---|---|",
+      "| Clareza | 48 |",
+      "",
+      "## Resumo",
+      "",
+      "Fecho.",
+    ].join("\n");
+
+    const { html, protectedBlocks } = markdownToHtml(stripInternalBlocks(md));
+    expect(protectedBlocks).toHaveLength(0);
+    expect(html).not.toContain("⟦");
+    expect(html).not.toContain("Clareza");
+    expect(html).toContain("Texto do aluno.");
+    expect(html).toContain("Fecho.");
   });
 });

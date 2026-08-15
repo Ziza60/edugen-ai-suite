@@ -23,6 +23,68 @@
 // volta, verbatim.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ── Blocos internos de QA ───────────────────────────────────────────────────
+//
+// O gerador escreve, no meio do módulo, blocos que são instrumentação nossa e
+// não conteúdo do curso: a matriz de objetivos, a nota do portão de qualidade,
+// as linhas de CRITICAL/WARNING. O autor não deve vê-los no editor.
+//
+// Este filtro vivia dentro do BlockEditor como `stripInternalBlocksBE` e existia
+// só no workspace do Replit — o refactor do editor quase o apagou, porque no
+// repositório ele nunca esteve. Está aqui para poder ser testado e para não
+// depender de qual cópia do arquivo sobreviver ao próximo merge.
+
+const INTERNAL_HEADING_RES = [
+  /^#{1,4}\s+.*Matriz\s+Objetivo/i,
+  /^#{1,4}\s+.*Nota\s+de\s+Qualidade\s+EduGen/i,
+  /^#{1,4}\s+.*Atividade\s+Pr[áa]tica\s+Avali[áa]vel/i,
+  /^#{1,4}\s+.*Cen[áa]rio\s+Ramificado/i,
+];
+
+const INTERNAL_LINE_RES = [
+  /^-\s+Score\s+do\s+m[óo]dulo\s*:/i,
+  /^-\s+(CRITICAL|WARNING|INFO|ERROR)\s*:\s+/i,
+  /^\d+\.\s+\*\*.*\*\*\s+[—-]\s+Feedback\s*:/i,
+];
+
+/**
+ * Tira do markdown os blocos de QA internos.
+ *
+ * O bloco começa num título da lista acima e vai até o próximo título de nível
+ * igual ou superior, ou até uma linha horizontal — o que vier primeiro.
+ */
+export function stripInternalBlocks(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let skipping = false;
+  let skipLevel = 0;
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (INTERNAL_HEADING_RES.some((re) => re.test(t))) {
+      skipping = true;
+      const m = t.match(/^(#{1,4})\s/);
+      skipLevel = m ? m[1].length : 3;
+      continue;
+    }
+    if (skipping) {
+      const hm = t.match(/^(#{1,6})\s/);
+      if (hm && hm[1].length <= skipLevel) {
+        skipping = false;
+      } else if (t === "---" || t === "***" || t === "___") {
+        skipping = false;
+        continue;
+      } else {
+        continue;
+      }
+    }
+    if (INTERNAL_LINE_RES.some((re) => re.test(t))) continue;
+    out.push(line);
+  }
+
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /**
  * Marcador do bloco preservado.
  *
