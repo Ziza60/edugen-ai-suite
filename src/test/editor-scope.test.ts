@@ -422,3 +422,117 @@ describe("edição por IA em seção com tabela", () => {
     expect(salvo).not.toContain("⟦");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Módulos cujas lições são H3
+//
+// Encontrado em produção: um módulo de curso gerado usava "### 3.1", "### 3.2",
+// "### 3.3" para as lições e não tinha NENHUM H2. Como a busca só olhava H2, o
+// escopo caía para o módulo inteiro sem que o autor percebesse — ele pediu para
+// reescrever uma lição e reescreveu as três, junto com os enunciados das
+// atividades e o gabarito.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SO_H3 = [
+  "Texto de abertura do módulo, antes de qualquer título.",
+  "",
+  "### 3.1 Estratégias de implementação",
+  "",
+  "Transpor o desenho para a realidade exige cultura organizacional.",
+  "",
+  "#### Mapeando estratégias",
+  "",
+  "Cada cenário pede uma abordagem diferente.",
+  "",
+  "### 3.2 Fomentando uma cultura de integridade",
+  "",
+  "A cultura determina a adesão aos controles.",
+  "",
+  "### 3.3 Comunicação e treinamento",
+  "",
+  "Sem comunicação, o controle é ignorado.",
+].join("\n");
+
+describe("resolverEscopo — módulo com lições em H3", () => {
+  it("o cursor numa lição H3 pega só aquela lição", () => {
+    const { editor, protegidos } = montarEditor(SO_H3);
+    cursorEm(editor, "cultura organizacional");
+
+    const escopo = resolverEscopo(editor, false);
+    expect(escopo.tipo).toBe("secao");
+    if (escopo.tipo !== "secao") return;
+    expect(escopo.titulo).toBe("3.1 Estratégias de implementação");
+
+    const { texto } = markdownDoEscopo(editor, escopo, protegidos);
+    expect(texto).toContain("### 3.1 Estratégias de implementação");
+    // O H4 é subseção da 3.1: vai junto.
+    expect(texto).toContain("#### Mapeando estratégias");
+    expect(texto).toContain("Cada cenário pede uma abordagem diferente.");
+    // As outras lições, não.
+    expect(texto).not.toContain("3.2 Fomentando");
+    expect(texto).not.toContain("3.3 Comunicação");
+    expect(texto).not.toContain("Texto de abertura");
+  });
+
+  it("a lição do meio não invade as vizinhas", () => {
+    const { editor, protegidos } = montarEditor(SO_H3);
+    cursorEm(editor, "determina a adesão");
+    const escopo = resolverEscopo(editor, false);
+    if (escopo.tipo !== "secao") throw new Error("esperava seção");
+    expect(escopo.titulo).toBe("3.2 Fomentando uma cultura de integridade");
+
+    const { texto } = markdownDoEscopo(editor, escopo, protegidos);
+    expect(texto).toContain("### 3.2 Fomentando");
+    expect(texto).not.toContain("3.1 Estratégias");
+    expect(texto).not.toContain("3.3 Comunicação");
+  });
+
+  it("a última lição vai até o fim do documento", () => {
+    const { editor } = montarEditor(SO_H3);
+    cursorEm(editor, "o controle é ignorado");
+    const escopo = resolverEscopo(editor, false);
+    if (escopo.tipo !== "secao") throw new Error("esperava seção");
+    expect(escopo.titulo).toBe("3.3 Comunicação e treinamento");
+    expect(escopo.to).toBe(editor.state.doc.content.size);
+  });
+
+  it("um H2 continua levando junto os H3 que estão debaixo dele", () => {
+    const misto = [
+      "## Parte I — Fundamentos",
+      "",
+      "Abertura da parte um.",
+      "",
+      "### 1.1 Conceitos",
+      "",
+      "Texto da 1.1.",
+      "",
+      "### 1.2 Aplicações",
+      "",
+      "Texto da 1.2.",
+      "",
+      "## Parte II — Prática",
+      "",
+      "Abertura da parte dois.",
+    ].join("\n");
+    const { editor, protegidos } = montarEditor(misto);
+
+    cursorEm(editor, "Abertura da parte um");
+    const escopo = resolverEscopo(editor, false);
+    if (escopo.tipo !== "secao") throw new Error("esperava seção");
+    expect(escopo.titulo).toBe("Parte I — Fundamentos");
+
+    const { texto } = markdownDoEscopo(editor, escopo, protegidos);
+    expect(texto).toContain("### 1.1 Conceitos");
+    expect(texto).toContain("### 1.2 Aplicações");
+    expect(texto).not.toContain("Parte II");
+
+    // E o cursor dentro da 1.1 pega só a 1.1.
+    cursorEm(editor, "Texto da 1.1");
+    const e2 = resolverEscopo(editor, false);
+    if (e2.tipo !== "secao") throw new Error("esperava seção");
+    expect(e2.titulo).toBe("1.1 Conceitos");
+    const { texto: t2 } = markdownDoEscopo(editor, e2, protegidos);
+    expect(t2).not.toContain("1.2 Aplicações");
+    expect(t2).not.toContain("Parte I");
+  });
+});
