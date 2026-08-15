@@ -41,6 +41,11 @@ export interface ProtectedBlock {
   markdown: string;
 }
 
+/** O marcador de um bloco preservado, dado o número dele (1-based). */
+export function protectedToken(index: number): string {
+  return `${GUARD_OPEN}tabela preservada ${index}${GUARD_CLOSE}`;
+}
+
 export interface MarkdownToHtmlResult {
   html: string;
   /** Blocos retirados antes da conversão, para restaurar no caminho de volta. */
@@ -98,7 +103,7 @@ export function extractProtectedBlocks(
         bloco.push(linhas[j]);
         j++;
       }
-      const token = `${GUARD_OPEN}tabela preservada ${startIndex + blocks.length + 1}${GUARD_CLOSE}`;
+      const token = protectedToken(startIndex + blocks.length + 1);
       blocks.push({ token, kind: "tabela", markdown: bloco.join("\n") });
       saida.push(token);
       i = j - 1;
@@ -129,6 +134,58 @@ export function restoreProtectedBlocks(
   // Se o autor apagou o marcador, o bloco simplesmente não volta — foi uma
   // escolha explícita dele, e não uma perda silenciosa nossa.
   return out.replace(/\n{3,}/g, "\n\n");
+}
+
+export interface ReconcileResult {
+  /** Markdown com marcadores no lugar das tabelas. */
+  markdown: string;
+  /** Blocos referenciados por esses marcadores, na ordem em que aparecem. */
+  blocks: ProtectedBlock[];
+}
+
+/**
+ * Concilia o texto que a IA devolveu com as tabelas que existiam no trecho.
+ *
+ * O que a IA recebe é o markdown de verdade da tabela — nunca o marcador, que
+ * para ela seria texto solto sem sentido e que ela reescreveria ou apagaria.
+ * Mas o que a IA devolve NÃO é aceito como tabela: um modelo com limite de
+ * tokens trunca linhas, troca separadores e às vezes simplesmente omite a
+ * tabela inteira, e nada disso é visível numa leitura rápida do diff.
+ *
+ * A regra aqui é: a n-ésima tabela do texto novo volta a ser, byte a byte, a
+ * n-ésima tabela do texto original. Tabela original que a IA não devolveu volta
+ * no fim do trecho, para que a edição nunca apague conteúdo. Tabela a mais que a
+ * IA tenha criado é mantida como ela escreveu, porque aí é conteúdo novo e não
+ * há original com que compará-la.
+ */
+export function reconcileProtectedTables(
+  aiMarkdown: string,
+  originais: ProtectedBlock[],
+  startIndex = 0,
+): ReconcileResult {
+  // Se o modelo alucinou um marcador, ele não pode virar texto literal no
+  // documento do autor — nem apontar para um bloco que não é o dele.
+  GUARD_RE.lastIndex = 0;
+  const limpo = aiMarkdown.replace(GUARD_RE, "");
+
+  const { markdown, blocks } = extractProtectedBlocks(limpo, startIndex);
+
+  for (let i = 0; i < blocks.length && i < originais.length; i++) {
+    blocks[i] = { ...blocks[i], markdown: originais[i].markdown };
+  }
+
+  let saida = markdown;
+  for (let i = blocks.length; i < originais.length; i++) {
+    const bloco: ProtectedBlock = {
+      token: protectedToken(startIndex + blocks.length + 1),
+      kind: "tabela",
+      markdown: originais[i].markdown,
+    };
+    blocks.push(bloco);
+    saida = `${saida.replace(/\s+$/, "")}\n\n${bloco.token}`;
+  }
+
+  return { markdown: saida, blocks };
 }
 
 /** Ainda há marcador de bloco preservado neste texto? */

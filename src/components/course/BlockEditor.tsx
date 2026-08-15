@@ -1,9 +1,8 @@
 import { useEditor, EditorContent } from "@tiptap/react";
-import { DOMSerializer } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import { useCallback, useState, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Bold, Italic, List, ListOrdered, Heading2, Heading3,
@@ -22,8 +21,17 @@ import { AiDiffDialog } from "./AiDiffDialog";
 import {
   markdownToHtml,
   htmlToMarkdown,
+  restoreProtectedBlocks,
+  reconcileProtectedTables,
   type ProtectedBlock,
 } from "@/lib/markdown-roundtrip";
+import {
+  resolverEscopo,
+  markdownDoEscopo,
+  aplicarEdicaoAprovada,
+  ESCOPO_LABEL,
+  type EscopoIA,
+} from "@/lib/editor-scope";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -145,26 +153,18 @@ interface BlockEditorProps {
   isStarter?: boolean;
 }
 
-/** O que a IA vai reescrever, e como o resultado volta para o documento. */
-type EscopoIA =
-  | { tipo: "selecao"; from: number; to: number }
-  | { tipo: "secao"; from: number; to: number; titulo: string }
-  | { tipo: "modulo" };
-
 interface EdicaoPendente {
   escopo: EscopoIA;
   action: string;
+  /** Os dois lados do diff, já com as tabelas de verdade — é o que o autor lê. */
   antes: string;
   depois: string;
+  /** O mesmo "depois", mas com marcadores: é este que vai para o documento. */
+  depoisComTokens: string;
+  blocos: ProtectedBlock[];
   /** "append" só existe no escopo de módulo (gerar exemplo, atividade…). */
   mode: "append" | "replace";
 }
-
-const ESCOPO_LABEL: Record<EscopoIA["tipo"], string> = {
-  selecao: "trecho selecionado",
-  secao: "seção sob o cursor",
-  modulo: "módulo inteiro",
-};
 
 export function BlockEditor({ content, onChange, isPro = false, isStarter = false }: BlockEditorProps) {
   const hasAI = isPro || isStarter;
@@ -189,8 +189,14 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
 
   const editor = useEditor({
     extensions: [
+      // O StarterKit da v3 já traz a extensão Link. Registrar a nossa por cima
+      // deixava duas com o mesmo nome ("Duplicate extension names found:
+      // ['link']") e a configuração abaixo — openOnClick e a classe do link —
+      // dependia de qual das duas o schema resolvesse primeiro. Desligamos a do
+      // StarterKit para que valha a nossa.
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+        link: false,
       }),
       Link.configure({
         openOnClick: false,
@@ -243,60 +249,6 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
     regenerate:"Módulo regenerado ✨",
   };
 
-  /**
-   * Decide o que a IA vai reescrever.
-   *
-   * Seleção primeiro; sem seleção, a SEÇÃO sob o cursor — antes disso, qualquer
-   * ação sem seleção reescrevia o módulo inteiro, o que é uma cirurgia grande
-   * demais para quem só queria melhorar um parágrafo. O módulo inteiro continua
-   * disponível, mas só quando o autor pede explicitamente.
-   */
-  const resolverEscopo = useCallback((forcarModulo: boolean): EscopoIA => {
-    if (!editor || forcarModulo) return { tipo: "modulo" };
-    const { from, to } = editor.state.selection;
-    if (from !== to) return { tipo: "selecao", from, to };
-
-    // Sem seleção: acha o H2 em que o cursor está e o próximo, delimitando a
-    // seção. A varredura é no documento do ProseMirror, e não no markdown,
-    // porque é lá que a posição do cursor tem significado.
-    const encabecamentos: Array<{ pos: number; fim: number; texto: string }> = [];
-    editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === "heading" && node.attrs.level === 2) {
-        encabecamentos.push({ pos, fim: pos + node.nodeSize, texto: node.textContent });
-      }
-      return true;
-    });
-    if (!encabecamentos.length) return { tipo: "modulo" };
-
-    let idx = -1;
-    for (let i = 0; i < encabecamentos.length; i++) {
-      if (encabecamentos[i].pos <= from) idx = i;
-    }
-    if (idx < 0) return { tipo: "modulo" }; // cursor antes do primeiro título
-    const inicio = encabecamentos[idx].pos;
-    const fim = idx + 1 < encabecamentos.length
-      ? encabecamentos[idx + 1].pos
-      : editor.state.doc.content.size;
-    return { tipo: "secao", from: inicio, to: fim, titulo: encabecamentos[idx].texto };
-  }, [editor]);
-
-  /** Markdown do trecho que será enviado à IA. */
-  const markdownDoEscopo = useCallback((escopo: EscopoIA): string => {
-    if (!editor) return "";
-    if (escopo.tipo === "modulo") {
-      return htmlToMarkdown(editor.getHTML(), protegidosRef.current);
-    }
-    // Serializa apenas a fatia, para que a IA veja markdown de verdade
-    // (títulos, listas, ênfase) em vez de texto plano.
-    const slice = editor.state.doc.slice(escopo.from, escopo.to);
-    const div = document.createElement("div");
-    const frag = DOMSerializer
-      .fromSchema(editor.schema)
-      .serializeFragment(slice.content);
-    div.appendChild(frag);
-    return htmlToMarkdown(div.innerHTML, protegidosRef.current);
-  }, [editor]);
-
   const handleAIEnhance = useCallback(
     async (
       action: string,
@@ -304,8 +256,13 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
     ) => {
       if (!editor || enhancing) return;
 
-      const escopo = resolverEscopo(opcoes?.escopoModulo ?? false);
-      const contextText = markdownDoEscopo(escopo);
+      const escopo = resolverEscopo(editor, opcoes?.escopoModulo ?? false);
+      const { texto: contextText, tabelas } = markdownDoEscopo(
+        editor,
+        escopo,
+        protegidosRef.current,
+      );
+      const mode = opcoes?.mode ?? DEFAULT_MODE[action] ?? "replace";
 
       if (!contextText || contextText.trim().length < 5) {
         toast({
@@ -328,6 +285,16 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
         if (error) throw error;
         if (!data?.enhanced) throw new Error("Nenhum conteúdo retornado");
 
+        // As tabelas originais voltam para o resultado antes de ele virar diff:
+        // o autor precisa aprovar exatamente o que será gravado. Em "append" o
+        // texto original continua no documento, então não há original a repor —
+        // repor aqui duplicaria toda tabela do módulo.
+        const rec = reconcileProtectedTables(
+          String(data.enhanced).trim(),
+          mode === "append" ? [] : tabelas,
+          protegidosRef.current.length,
+        );
+
         // O resultado NÃO é aplicado aqui. Ele fica pendente até o autor aceitar
         // no diff — antes, a IA sobrescrevia a seleção na hora e só depois se
         // via o que havia mudado.
@@ -335,8 +302,10 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
           escopo,
           action,
           antes: contextText,
-          depois: String(data.enhanced).trim(),
-          mode: opcoes?.mode ?? DEFAULT_MODE[action] ?? "replace",
+          depois: restoreProtectedBlocks(rec.markdown, rec.blocks),
+          depoisComTokens: rec.markdown,
+          blocos: rec.blocks,
+          mode,
         });
       } catch (err: any) {
         toast({
@@ -348,36 +317,27 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
         setEnhancing(false);
       }
     },
-    [editor, enhancing, resolverEscopo, markdownDoEscopo, toast],
+    [editor, enhancing, toast],
   );
 
   /** Aplica a edição aprovada. Só daqui sai escrita no documento. */
   const aceitarEdicao = useCallback(() => {
     if (!editor || !pendente) return;
-    const { escopo, depois, action, mode } = pendente;
+    const { escopo, depoisComTokens, blocos, action, mode } = pendente;
 
-    // O texto da IA pode trazer tabela: protege antes de converter, com a
-    // numeração deslocada para não colidir com os blocos já existentes.
-    const { html, protectedBlocks } = markdownToHtml(depois, protegidosRef.current.length);
-    protegidosRef.current = [...protegidosRef.current, ...protectedBlocks];
-
-    if (escopo.tipo === "selecao" || escopo.tipo === "secao") {
-      // Uma única transação: o ⌘Z desfaz a edição inteira de uma vez.
-      editor
-        .chain()
-        .focus()
-        .deleteRange({ from: escopo.from, to: escopo.to })
-        .insertContentAt(escopo.from, html)
-        .run();
-    } else if (mode === "append") {
-      editor.chain().focus().insertContentAt(editor.state.doc.content.size, html).run();
-    } else {
-      editor.commands.setContent(html);
-    }
+    const { markdown, protegidos } = aplicarEdicaoAprovada(
+      editor,
+      escopo,
+      depoisComTokens,
+      blocos,
+      protegidosRef.current,
+      mode,
+    );
+    protegidosRef.current = protegidos;
 
     // O onUpdate do TipTap dispara o onChange e, com ele, o auto-save do
     // CourseView. setContent não emite update por padrão, então garantimos aqui.
-    onChange(htmlToMarkdown(editor.getHTML(), protegidosRef.current));
+    onChange(markdown);
 
     setPendente(null);
     toast({ title: ACTION_LABELS[action] ?? "Pronto ✨" });
