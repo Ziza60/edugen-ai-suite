@@ -74,11 +74,18 @@ Deno.serve(async (req: Request) => {
 
     // ── CACHE CHECK ──
     // A instrução entra na chave: sem isso, duas instruções diferentes sobre o
-    // mesmo texto devolveriam o mesmo resultado. Fica no fim para que as ações
-    // fixas continuem gerando exatamente a chave de antes — o cache delas não
-    // é invalidado por esta mudança.
+    // mesmo texto devolveriam o mesmo resultado.
+    //
+    // O "v2" invalida tudo o que foi gravado antes da correção do max_tokens.
+    // Aquelas respostas nasceram sob um teto de 800 tokens e podem estar
+    // cortadas no meio de uma frase — e um acerto de cache devolve o texto
+    // guardado sem passar pela verificação de finish_reason, então a trava nova
+    // não as pegaria nunca. Sem esta linha, quem editou um trecho grande antes
+    // da correção receberia o mesmo texto truncado para sempre, e o redeploy
+    // pareceria não ter feito nada.
+    const CACHE_VERSION = "v2";
     const cacheKey = await hashInput(
-      `enhance:${action}:${language}:${text}${customInstruction ? `:${customInstruction}` : ""}`,
+      `enhance:${CACHE_VERSION}:${action}:${language}:${text}${customInstruction ? `:${customInstruction}` : ""}`,
     );
     const { data: cached } = await serviceClient
       .from("ai_cache")
