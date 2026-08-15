@@ -1,18 +1,29 @@
 import { useEditor, EditorContent } from "@tiptap/react";
+import { DOMSerializer } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Bold, Italic, List, ListOrdered, Heading2, Heading3,
   Link as LinkIcon, Undo2, Redo2, Sparkles, Loader2,
   Type, Minus, Quote, Code, Scissors, Layers, Lightbulb,
-  FlaskConical, BookOpen,
+  FlaskConical, BookOpen, PenLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { AiDiffDialog } from "./AiDiffDialog";
+import {
+  markdownToHtml,
+  htmlToMarkdown,
+  type ProtectedBlock,
+} from "@/lib/markdown-roundtrip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +32,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
 // ── Pedagogical section emojis for visual blocks ──
@@ -46,132 +58,6 @@ function getSectionIcon(title: string): string {
     if (lower.includes(key)) return icon;
   }
   return "📝";
-}
-
-// ── Markdown ↔ HTML conversion helpers ──
-function markdownToHtml(md: string): string {
-  let html = md;
-
-  // Headers
-  html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
-  html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
-  html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
-
-  // Horizontal rules
-  html = html.replace(/^---$/gm, "<hr>");
-
-  // Bold and italic
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
-  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-
-  // Blockquotes
-  html = html.replace(/^> (.+)$/gm, "<blockquote><p>$1</p></blockquote>");
-
-  // Unordered lists (handle nested with spaces)
-  const lines = html.split("\n");
-  const result: string[] = [];
-  let inUl = false;
-  let inOl = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const ulMatch = line.match(/^[\s]*[-*] (.+)$/);
-    const olMatch = line.match(/^[\s]*\d+\. (.+)$/);
-
-    if (ulMatch) {
-      if (!inUl) { result.push("<ul>"); inUl = true; }
-      if (inOl) { result.push("</ol>"); inOl = false; }
-      result.push(`<li>${ulMatch[1]}</li>`);
-    } else if (olMatch) {
-      if (!inOl) { result.push("<ol>"); inOl = true; }
-      if (inUl) { result.push("</ul>"); inUl = false; }
-      result.push(`<li>${olMatch[1]}</li>`);
-    } else {
-      if (inUl) { result.push("</ul>"); inUl = false; }
-      if (inOl) { result.push("</ol>"); inOl = false; }
-      // Wrap plain text lines in <p> if they're not already wrapped
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith("<")) {
-        result.push(`<p>${trimmed}</p>`);
-      } else {
-        result.push(line);
-      }
-    }
-  }
-  if (inUl) result.push("</ul>");
-  if (inOl) result.push("</ol>");
-
-  return result.join("\n");
-}
-
-function htmlToMarkdown(html: string): string {
-  // Use a simple regex-based converter
-  let md = html;
-
-  // Remove wrapping divs
-  md = md.replace(/<div[^>]*>/gi, "").replace(/<\/div>/gi, "\n");
-
-  // Headers
-  md = md.replace(/<h1[^>]*>(.*?)<\/h1>/gi, "# $1");
-  md = md.replace(/<h2[^>]*>(.*?)<\/h2>/gi, "## $1");
-  md = md.replace(/<h3[^>]*>(.*?)<\/h3>/gi, "### $1");
-
-  // Horizontal rules
-  md = md.replace(/<hr[^>]*\/?>/gi, "---");
-
-  // Bold and italic
-  md = md.replace(/<strong><em>(.*?)<\/em><\/strong>/gi, "***$1***");
-  md = md.replace(/<em><strong>(.*?)<\/strong><\/em>/gi, "***$1***");
-  md = md.replace(/<strong>(.*?)<\/strong>/gi, "**$1**");
-  md = md.replace(/<b>(.*?)<\/b>/gi, "**$1**");
-  md = md.replace(/<em>(.*?)<\/em>/gi, "*$1*");
-  md = md.replace(/<i>(.*?)<\/i>/gi, "*$1*");
-
-  // Code
-  md = md.replace(/<code>(.*?)<\/code>/gi, "`$1`");
-
-  // Links
-  md = md.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)");
-
-  // Lists
-  md = md.replace(/<ul[^>]*>/gi, "");
-  md = md.replace(/<\/ul>/gi, "");
-  md = md.replace(/<ol[^>]*>/gi, "");
-  md = md.replace(/<\/ol>/gi, "");
-  md = md.replace(/<li[^>]*>(.*?)<\/li>/gi, "- $1");
-
-  // Blockquotes
-  md = md.replace(/<blockquote[^>]*><p>(.*?)<\/p><\/blockquote>/gi, "> $1");
-  md = md.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, "> $1");
-
-  // Paragraphs
-  md = md.replace(/<p[^>]*>(.*?)<\/p>/gi, "$1\n");
-
-  // Line breaks
-  md = md.replace(/<br\s*\/?>/gi, "\n");
-
-  // Remove remaining HTML tags
-  md = md.replace(/<[^>]+>/g, "");
-
-  // Decode entities
-  md = md.replace(/&amp;/g, "&");
-  md = md.replace(/&lt;/g, "<");
-  md = md.replace(/&gt;/g, ">");
-  md = md.replace(/&quot;/g, '"');
-  md = md.replace(/&#39;/g, "'");
-  md = md.replace(/&nbsp;/g, " ");
-
-  // Clean up excessive newlines
-  md = md.replace(/\n{3,}/g, "\n\n");
-
-  return md.trim();
 }
 
 // ── Section parser for visual blocks ──
@@ -259,13 +145,47 @@ interface BlockEditorProps {
   isStarter?: boolean;
 }
 
+/** O que a IA vai reescrever, e como o resultado volta para o documento. */
+type EscopoIA =
+  | { tipo: "selecao"; from: number; to: number }
+  | { tipo: "secao"; from: number; to: number; titulo: string }
+  | { tipo: "modulo" };
+
+interface EdicaoPendente {
+  escopo: EscopoIA;
+  action: string;
+  antes: string;
+  depois: string;
+  /** "append" só existe no escopo de módulo (gerar exemplo, atividade…). */
+  mode: "append" | "replace";
+}
+
+const ESCOPO_LABEL: Record<EscopoIA["tipo"], string> = {
+  selecao: "trecho selecionado",
+  secao: "seção sob o cursor",
+  modulo: "módulo inteiro",
+};
+
 export function BlockEditor({ content, onChange, isPro = false, isStarter = false }: BlockEditorProps) {
   const hasAI = isPro || isStarter;
   const { toast } = useToast();
   const [enhancing, setEnhancing] = useState(false);
+  const [pendente, setPendente] = useState<EdicaoPendente | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customText, setCustomText] = useState("");
+  const [customEscopoModulo, setCustomEscopoModulo] = useState(false);
   const sections = useMemo(() => parseSections(content), [content]);
 
-  const initialHtml = useMemo(() => markdownToHtml(content), []);
+  // Blocos que o TipTap não representa (tabelas) ficam fora do editor e voltam
+  // no caminho de saída. Sem isto, abrir e fechar o editor já destruía toda
+  // tabela do módulo — ver src/lib/markdown-roundtrip.ts.
+  const protegidosRef = useRef<ProtectedBlock[]>([]);
+
+  const initialHtml = useMemo(() => {
+    const { html, protectedBlocks } = markdownToHtml(content);
+    protegidosRef.current = protectedBlocks;
+    return html;
+  }, []);
 
   const editor = useEditor({
     extensions: [
@@ -297,9 +217,9 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
       },
     },
     onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      const md = htmlToMarkdown(html);
-      onChange(md);
+      // Os blocos protegidos voltam aqui: é este markdown que o CourseView
+      // grava no banco pelo auto-save.
+      onChange(htmlToMarkdown(editor.getHTML(), protegidosRef.current));
     },
   });
 
@@ -323,46 +243,101 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
     regenerate:"Módulo regenerado ✨",
   };
 
+  /**
+   * Decide o que a IA vai reescrever.
+   *
+   * Seleção primeiro; sem seleção, a SEÇÃO sob o cursor — antes disso, qualquer
+   * ação sem seleção reescrevia o módulo inteiro, o que é uma cirurgia grande
+   * demais para quem só queria melhorar um parágrafo. O módulo inteiro continua
+   * disponível, mas só quando o autor pede explicitamente.
+   */
+  const resolverEscopo = useCallback((forcarModulo: boolean): EscopoIA => {
+    if (!editor || forcarModulo) return { tipo: "modulo" };
+    const { from, to } = editor.state.selection;
+    if (from !== to) return { tipo: "selecao", from, to };
+
+    // Sem seleção: acha o H2 em que o cursor está e o próximo, delimitando a
+    // seção. A varredura é no documento do ProseMirror, e não no markdown,
+    // porque é lá que a posição do cursor tem significado.
+    const encabecamentos: Array<{ pos: number; fim: number; texto: string }> = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "heading" && node.attrs.level === 2) {
+        encabecamentos.push({ pos, fim: pos + node.nodeSize, texto: node.textContent });
+      }
+      return true;
+    });
+    if (!encabecamentos.length) return { tipo: "modulo" };
+
+    let idx = -1;
+    for (let i = 0; i < encabecamentos.length; i++) {
+      if (encabecamentos[i].pos <= from) idx = i;
+    }
+    if (idx < 0) return { tipo: "modulo" }; // cursor antes do primeiro título
+    const inicio = encabecamentos[idx].pos;
+    const fim = idx + 1 < encabecamentos.length
+      ? encabecamentos[idx + 1].pos
+      : editor.state.doc.content.size;
+    return { tipo: "secao", from: inicio, to: fim, titulo: encabecamentos[idx].texto };
+  }, [editor]);
+
+  /** Markdown do trecho que será enviado à IA. */
+  const markdownDoEscopo = useCallback((escopo: EscopoIA): string => {
+    if (!editor) return "";
+    if (escopo.tipo === "modulo") {
+      return htmlToMarkdown(editor.getHTML(), protegidosRef.current);
+    }
+    // Serializa apenas a fatia, para que a IA veja markdown de verdade
+    // (títulos, listas, ênfase) em vez de texto plano.
+    const slice = editor.state.doc.slice(escopo.from, escopo.to);
+    const div = document.createElement("div");
+    const frag = DOMSerializer
+      .fromSchema(editor.schema)
+      .serializeFragment(slice.content);
+    div.appendChild(frag);
+    return htmlToMarkdown(div.innerHTML, protegidosRef.current);
+  }, [editor]);
+
   const handleAIEnhance = useCallback(
-    async (action: string, modeOverride?: "append" | "replace") => {
+    async (
+      action: string,
+      opcoes?: { mode?: "append" | "replace"; escopoModulo?: boolean; instruction?: string },
+    ) => {
       if (!editor || enhancing) return;
 
-      const { from, to } = editor.state.selection;
-      const hasSelection = from !== to;
-
-      const contextText = hasSelection
-        ? editor.state.doc.textBetween(from, to, "\n")
-        : htmlToMarkdown(editor.getHTML());
+      const escopo = resolverEscopo(opcoes?.escopoModulo ?? false);
+      const contextText = markdownDoEscopo(escopo);
 
       if (!contextText || contextText.trim().length < 5) {
-        toast({ title: "O módulo está vazio — adicione conteúdo antes de usar a IA", variant: "destructive" });
+        toast({
+          title: "O módulo está vazio — adicione conteúdo antes de usar a IA",
+          variant: "destructive",
+        });
         return;
       }
 
       setEnhancing(true);
       try {
         const { data, error } = await supabase.functions.invoke("enhance-paragraph", {
-          body: { text: contextText, action },
+          body: {
+            text: contextText,
+            action,
+            ...(opcoes?.instruction ? { instruction: opcoes.instruction } : {}),
+          },
         });
 
         if (error) throw error;
         if (!data?.enhanced) throw new Error("Nenhum conteúdo retornado");
 
-        const enhancedHtml = markdownToHtml(data.enhanced);
-        const mode = modeOverride ?? DEFAULT_MODE[action] ?? "replace";
-
-        if (hasSelection) {
-          editor.chain().focus().deleteRange({ from, to }).insertContent(enhancedHtml).run();
-        } else if (mode === "append") {
-          editor.chain().focus().insertContentAt(editor.state.doc.content.size, enhancedHtml).run();
-          const newMd = htmlToMarkdown(editor.getHTML());
-          onChange(newMd);
-        } else {
-          editor.commands.setContent(enhancedHtml);
-          onChange(data.enhanced);
-        }
-
-        toast({ title: ACTION_LABELS[action] ?? "Pronto ✨" });
+        // O resultado NÃO é aplicado aqui. Ele fica pendente até o autor aceitar
+        // no diff — antes, a IA sobrescrevia a seleção na hora e só depois se
+        // via o que havia mudado.
+        setPendente({
+          escopo,
+          action,
+          antes: contextText,
+          depois: String(data.enhanced).trim(),
+          mode: opcoes?.mode ?? DEFAULT_MODE[action] ?? "replace",
+        });
       } catch (err: any) {
         toast({
           title: "Erro ao processar com IA",
@@ -373,8 +348,40 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
         setEnhancing(false);
       }
     },
-    [editor, enhancing, onChange, toast]
+    [editor, enhancing, resolverEscopo, markdownDoEscopo, toast],
   );
+
+  /** Aplica a edição aprovada. Só daqui sai escrita no documento. */
+  const aceitarEdicao = useCallback(() => {
+    if (!editor || !pendente) return;
+    const { escopo, depois, action, mode } = pendente;
+
+    // O texto da IA pode trazer tabela: protege antes de converter, com a
+    // numeração deslocada para não colidir com os blocos já existentes.
+    const { html, protectedBlocks } = markdownToHtml(depois, protegidosRef.current.length);
+    protegidosRef.current = [...protegidosRef.current, ...protectedBlocks];
+
+    if (escopo.tipo === "selecao" || escopo.tipo === "secao") {
+      // Uma única transação: o ⌘Z desfaz a edição inteira de uma vez.
+      editor
+        .chain()
+        .focus()
+        .deleteRange({ from: escopo.from, to: escopo.to })
+        .insertContentAt(escopo.from, html)
+        .run();
+    } else if (mode === "append") {
+      editor.chain().focus().insertContentAt(editor.state.doc.content.size, html).run();
+    } else {
+      editor.commands.setContent(html);
+    }
+
+    // O onUpdate do TipTap dispara o onChange e, com ele, o auto-save do
+    // CourseView. setContent não emite update por padrão, então garantimos aqui.
+    onChange(htmlToMarkdown(editor.getHTML(), protegidosRef.current));
+
+    setPendente(null);
+    toast({ title: ACTION_LABELS[action] ?? "Pronto ✨" });
+  }, [editor, pendente, onChange, toast]);
 
   const setLink = useCallback(() => {
     if (!editor) return;
@@ -536,11 +543,11 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
                   Gerar exemplo prático
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
-                  <DropdownMenuItem onClick={() => handleAIEnhance("example", "append")}>
+                  <DropdownMenuItem onClick={() => handleAIEnhance("example", { mode: "append" })}>
                     <ListOrdered className="h-4 w-4 mr-2" />
                     Adicionar ao módulo
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAIEnhance("example", "replace")}>
+                  <DropdownMenuItem onClick={() => handleAIEnhance("example", { mode: "replace" })}>
                     <Scissors className="h-4 w-4 mr-2" />
                     Substituir exemplo existente
                   </DropdownMenuItem>
@@ -554,6 +561,41 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
                 <BookOpen className="h-4 w-4 mr-2" />
                 Adicionar atividade
               </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                onClick={() => { setCustomText(""); setCustomEscopoModulo(false); setCustomOpen(true); }}
+                data-testid="menu-ai-custom"
+              >
+                <PenLine className="h-4 w-4 mr-2 text-primary" />
+                Instrução personalizada…
+              </DropdownMenuItem>
+
+              {/* O escopo padrão é a seleção ou a seção sob o cursor. O módulo
+                  inteiro continua acessível, mas exige escolha explícita. */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Layers className="h-4 w-4 mr-2" />
+                  Aplicar ao módulo inteiro
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => handleAIEnhance("improve", { escopoModulo: true })}>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Melhorar o módulo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAIEnhance("simplify", { escopoModulo: true })}>
+                    <Type className="h-4 w-4 mr-2" />
+                    Simplificar o módulo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => { setCustomText(""); setCustomEscopoModulo(true); setCustomOpen(true); }}
+                  >
+                    <PenLine className="h-4 w-4 mr-2" />
+                    Instrução personalizada…
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
@@ -614,6 +656,81 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
           </span>
         )}
       </div>
+
+      {/* ── Instrução personalizada ── */}
+      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <PenLine className="h-4 w-4 text-primary" />
+              Instrução personalizada
+            </DialogTitle>
+            <DialogDescription>
+              Diga o que fazer com {customEscopoModulo ? "o módulo inteiro" : "o trecho selecionado (ou a seção sob o cursor)"}.
+              O resultado aparece antes de ser aplicado.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={customText}
+            onChange={(e) => setCustomText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && customText.trim().length >= 3) {
+                e.preventDefault();
+                const instrucao = customText.trim();
+                setCustomOpen(false);
+                handleAIEnhance("custom", { instruction: instrucao, escopoModulo: customEscopoModulo });
+              }
+            }}
+            maxLength={400}
+            autoFocus
+            placeholder="Ex: reescreva em tom mais direto, com exemplos do varejo"
+            data-testid="input-ai-custom-instruction"
+          />
+          <DialogFooter className="gap-2 sm:justify-between">
+            <span className="text-xs text-muted-foreground self-center">{customText.length}/400</span>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setCustomOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                disabled={customText.trim().length < 3 || enhancing}
+                onClick={() => {
+                  const instrucao = customText.trim();
+                  setCustomOpen(false);
+                  handleAIEnhance("custom", { instruction: instrucao, escopoModulo: customEscopoModulo });
+                }}
+                data-testid="button-ai-custom-run"
+              >
+                {enhancing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Gerar"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Diff antes/depois: nada é escrito no documento até "Aceitar" ── */}
+      {pendente && (
+        <AiDiffDialog
+          open
+          onOpenChange={(o) => { if (!o) setPendente(null); }}
+          title={ACTION_LABELS[pendente.action]?.replace(" ✨", "") ?? "Sugestão da IA"}
+          pairs={[{
+            id: "ai",
+            label: "Trecho",
+            before: pendente.antes,
+            after: pendente.mode === "append"
+              ? `${pendente.antes}\n\n${pendente.depois}`
+              : pendente.depois,
+          }]}
+          onAccept={aceitarEdicao}
+          onReject={() => setPendente(null)}
+          acceptLabel="Aceitar"
+          rejectLabel="Rejeitar"
+          hint={`Escopo: ${ESCOPO_LABEL[pendente.escopo.tipo]}${
+            pendente.escopo.tipo === "secao" ? ` — ${pendente.escopo.titulo}` : ""
+          }`}
+        />
+      )}
     </div>
   );
 }
