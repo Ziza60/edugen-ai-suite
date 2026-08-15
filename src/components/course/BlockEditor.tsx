@@ -286,7 +286,25 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
           },
         });
 
-        if (error) throw error;
+        if (error) {
+          // O supabase-js não entrega o corpo das respostas não-2xx em `data`:
+          // ele vem preso no erro, e sem abrir isto a função devolveria ao autor
+          // um "non-2xx status code" que não diz nada.
+          const corpo = await (error as { context?: Response }).context
+            ?.json()
+            .catch(() => null);
+          if (corpo?.truncated) {
+            toast({
+              title: "O trecho é grande demais para uma edição só",
+              description:
+                "A IA não conseguiu terminar e o resultado sairia cortado — nada foi alterado. " +
+                "Selecione um trecho menor e tente de novo.",
+              variant: "destructive",
+            });
+            return;
+          }
+          throw new Error(corpo?.error ?? (error as Error).message);
+        }
         if (!data?.enhanced) throw new Error("Nenhum conteúdo retornado");
 
         // As tabelas originais voltam para o resultado antes de ele virar diff:

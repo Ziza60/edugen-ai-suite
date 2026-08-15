@@ -123,6 +123,18 @@ Deno.serve(async (req: Request) => {
       ? `Você é um editor pedagógico especialista. Aplique ao texto fornecido a seguinte instrução do autor:\n\n"${customInstruction}"\n\n${TRAVAS}`
       : (systemPrompts[action] || systemPrompts.improve);
 
+    // O teto de saída precisa caber o texto reescrito INTEIRO — e este modelo
+    // raciocina antes de responder, com os tokens de pensamento saindo deste
+    // mesmo orçamento. Com o valor fixo de 800 que havia aqui, editar uma seção
+    // de curso de verdade devolvia duas linhas e meia: o resto do raciocínio
+    // consumia a cota e o texto era cortado no meio de uma frase. Pior, isso
+    // chegava ao autor como um resultado pronto para aceitar.
+    //
+    // A conta: ~4 caracteres por token em português, o dobro para caber
+    // expansão, mais uma folga fixa para o raciocínio.
+    const tokensEntrada = Math.ceil(text.length / 4);
+    const maxTokens = Math.min(8000, Math.max(1500, tokensEntrada * 2 + 1200));
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -136,7 +148,7 @@ Deno.serve(async (req: Request) => {
           { role: "user", content: text },
         ],
         stream: false,
-        max_tokens: 800,
+        max_tokens: maxTokens,
       }),
     });
 
@@ -163,7 +175,27 @@ Deno.serve(async (req: Request) => {
     }
 
     const result = await response.json();
-    const enhanced = result.choices?.[0]?.message?.content || text;
+    const choice = result.choices?.[0];
+    const enhanced = choice?.message?.content || text;
+
+    // Resposta cortada por limite de tokens NÃO é resultado — é meia edição.
+    // Aplicá-la apaga o resto da seção, e no diff ela parece completa porque o
+    // autor não tem como saber onde o texto deveria terminar. Devolvemos o
+    // aviso para que a interface se recuse a aplicar, e não gravamos em cache:
+    // senão o mesmo texto truncado voltaria para sempre.
+    const truncated = choice?.finish_reason === "length";
+    if (truncated) {
+      console.warn(
+        `[enhance-paragraph] resposta truncada: action=${action} entrada=${text.length} max_tokens=${maxTokens}`,
+      );
+      return new Response(
+        JSON.stringify({
+          error: "A IA não conseguiu terminar a edição deste trecho",
+          truncated: true,
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // ── SAVE TO CACHE ──
     if (enhanced && enhanced !== text) {
