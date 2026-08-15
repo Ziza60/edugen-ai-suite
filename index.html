@@ -1,5 +1,20 @@
 <!doctype html>
-<html lang="en">
+<!--
+  lang="pt-BR", e não "en".
+
+  A interface do EduGen é toda em português. Enquanto o documento se declarava
+  inglês, o Chrome via a divergência entre o idioma declarado e o texto real e
+  traduzia a página automaticamente. O Google Tradutor troca cada nó de texto
+  por um elemento <font> — e aí o React perde a referência dos nós que ele
+  mesmo criou.
+
+  O sintoma era o app inteiro morrer com "Failed to execute 'insertBefore' on
+  'Node'" ao clicar em Editar num módulo: nesse clique o React troca o ícone do
+  botão (Pencil → CheckCircle2) e tenta inserir o ícone novo antes do texto
+  "Editar" — texto que o tradutor já havia substituído. Reproduzido em
+  navegador simulando a mutação do tradutor; a pilha do erro bate exatamente.
+-->
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
