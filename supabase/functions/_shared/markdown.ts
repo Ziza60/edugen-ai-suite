@@ -72,3 +72,39 @@ export function repairTruncation(md: string): string {
   }
   return lines.join("\n").trimEnd();
 }
+
+/**
+ * Normalize a course title before it is ever saved/rendered anywhere (DB,
+ * PDF cover, PPTX cover, module list). Strips command/prompt phrasing users
+ * sometimes paste in ("Crie um curso no tema '...'"), stray quotes and
+ * trailing punctuation, caps length at a word boundary, and falls back to a
+ * cleaned `theme` when the title still looks like a prompt instead of a
+ * real title. Mirrored (can't share a module with) the frontend copy in
+ * src/pages/CourseWizard.tsx and the self-contained copy in
+ * export-pdf/index.ts — keep the three in sync when changing the rules.
+ */
+export function normalizeCourseTitle(rawTitle: string, theme?: string): string {
+  let t = (rawTitle || "").trim();
+  t = t.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
+  t = t.replace(
+    /^(crie|criar|gere|gerar|fa[çc]a|fazer|monte|montar|elabore|elaborar|quero|preciso(\s+de)?|me\s+ajude\s+a\s+criar)\s+(m\s+|um\s+|uma\s+|uns\s+|umas\s+)?(cursos?|treinamentos?|capacita[çc][õã]o?es?)\s*(completos?\s*)?(no\s+tema|com\s+o\s+tema|sobre(\s+o\s+tema)?|a\s+respeito\s+de|de|do|da|em|para|:)?\s*/i,
+    ""
+  );
+  t = t.replace(/^(um\s+|uma\s+)?(cursos?|treinamentos?)\s+(de|sobre|do|da|em)\s+/i, "");
+  t = t.replace(/^["'“”‘’\s]+|["'“”‘’.\s]+$/g, "").trim();
+  t = t.replace(/\s{2,}/g, " ");
+
+  const looksLikePrompt = /\b(crie|criar|gere|gerar|fa[çc]a|monte|elabore|quero|preciso)\b/i.test(t);
+  const cleanTheme = (theme || "").trim().replace(/\s{2,}/g, " ");
+
+  let result = (!t || t.length < 3 || looksLikePrompt) ? cleanTheme : t;
+  if (!result) result = t || cleanTheme;
+
+  const MAX_TITLE_LEN = 90;
+  if (result.length > MAX_TITLE_LEN) {
+    result = result.slice(0, MAX_TITLE_LEN).replace(/\s+\S*$/, "").trim();
+  }
+  result = result.replace(/[.,;:\-–—]+$/, "").trim();
+  if (result) result = result.charAt(0).toUpperCase() + result.slice(1);
+  return result || "Curso sem título";
+}

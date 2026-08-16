@@ -18,6 +18,38 @@ import {
   AlignmentType, BorderStyle, ShadingType,
 } from "docx";
 
+const _INTERNAL_HDR = [
+  /^#{1,4}\s+.*Matriz\s+Objetivo/i,
+  /^#{1,4}\s+.*Nota\s+de\s+Qualidade\s+EduGen/i,
+  /^#{1,4}\s+.*Atividade\s+Pr[áa]tica\s+Avali[áa]vel/i,
+  /^#{1,4}\s+.*Cen[áa]rio\s+Ramificado/i,
+];
+const _INTERNAL_LN = [
+  /^-\s+Score\s+do\s+m[óo]dulo\s*:/i,
+  /^-\s+(CRITICAL|WARNING|INFO|ERROR)\s*:\s+/i,
+  /^\d+\.\s+\*\*.*\*\*\s+[—-]\s+Feedback\s*:/i,
+];
+function stripInternalBlocksDocx(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let skip = false; let skipLvl = 0;
+  for (const line of lines) {
+    const t = line.trim();
+    if (_INTERNAL_HDR.some((re) => re.test(t))) {
+      skip = true; const m = t.match(/^(#{1,4})\s/); skipLvl = m ? m[1].length : 3; continue;
+    }
+    if (skip) {
+      const hm = t.match(/^(#{1,6})\s/);
+      if (hm && hm[1].length <= skipLvl) { skip = false; }
+      else if (t === "---" || t === "***" || t === "___") { skip = false; continue; }
+      else { continue; }
+    }
+    if (_INTERNAL_LN.some((re) => re.test(t))) continue;
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function ExportMenuRow({
   icon, label, pro, isPro, onClick, disabled, loading, title, testId,
 }: {
@@ -60,6 +92,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
   const [exportingMoodle, setExportingMoodle] = useState(false);
   const [exportingDocx, setExportingDocx] = useState(false);
   const [exportingPdfV2, setExportingPdfV2] = useState(false);
+  const [exportingPdfV3, setExportingPdfV3] = useState(false);
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
 
@@ -100,7 +133,7 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
           })
         );
 
-        const rawContent = mod.content || "";
+        const rawContent = stripInternalBlocksDocx(mod.content || "");
         const lines = rawContent.split("\n");
 
         for (const line of lines) {
@@ -284,6 +317,47 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
     }
   };
 
+  const handleExportPdfPuppeteer = async () => {
+    setExportingPdfV3(true);
+    try {
+      const response = await fetch("/api/pdf/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          course: { title: courseTitle, language: "pt-BR" },
+          modules: modules.map((m) => ({ title: m.title, content: m.content })),
+        }),
+      });
+
+      if (!response.ok) {
+        let message = `Falha ao gerar PDF (${response.status})`;
+        try {
+          const parsed = await response.json();
+          if (parsed?.error) message = parsed.error;
+        } catch {
+          // resposta não era JSON
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = formatFileName(courseTitle, "PDF", "pdf");
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      toast({ title: "PDF gerado!" });
+    } catch (err: any) {
+      toast({ title: "Erro ao exportar PDF", description: err.message, variant: "destructive" });
+    } finally {
+      setExportingPdfV3(false);
+    }
+  };
+
   const isPublished = courseStatus === "published";
 
   return (
@@ -326,6 +400,19 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
             loading={exportingPdf}
             title={!isPublished ? "Publique o curso primeiro" : undefined}
           />
+
+          {/* PDF v3 - novo motor HTML/CSS + Puppeteer (dev only) */}
+          {import.meta.env.DEV && (
+            <ExportMenuRow
+              icon={<FileText />}
+              label="PDF (novo motor)"
+              pro isPro={isPro}
+              onClick={handleExportPdfPuppeteer}
+              disabled={exportingPdfV3}
+              loading={exportingPdfV3}
+              testId="button-export-pdf-v3"
+            />
+          )}
 
           {/* PDF v2 (Test) - pdf-lib accurate justification */}
           <ExportMenuRow

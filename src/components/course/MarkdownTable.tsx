@@ -48,21 +48,22 @@ function StyledTr({ children, ...props }: React.HTMLAttributes<HTMLTableRowEleme
 }
 
 function StyledTd({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  // Check if this is the first column (aspect column) by checking if it's the first td
-  const isFirstCol = props.style?.fontWeight === "bold" || false;
-
   return (
     <td
       className={cn(
-        "px-4 py-3 text-sm leading-relaxed",
+        "px-4 py-3 text-sm leading-relaxed align-top",
         "first:font-medium first:text-foreground first:bg-muted/30 first:border-r first:border-border/30",
-        "first:min-w-[140px] first:max-w-[200px]"
+        "first:min-w-[120px]"
       )}
       {...props}
     >
       {children}
     </td>
   );
+}
+
+function StyledTbody({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
+  return <tbody {...props}>{children}</tbody>;
 }
 
 // Mobile: card-based layout
@@ -147,6 +148,7 @@ export function useMarkdownTableComponents() {
         <StyledTable>{children}</StyledTable>
       ),
     thead: ({ children, ...props }: any) => <StyledThead>{children}</StyledThead>,
+    tbody: ({ children, ...props }: any) => <StyledTbody {...props}>{children}</StyledTbody>,
     th: ({ children, ...props }: any) => <StyledTh {...props}>{children}</StyledTh>,
     tr: ({ children, ...props }: any) => <StyledTr {...props}>{children}</StyledTr>,
     td: ({ children, ...props }: any) => <StyledTd {...props}>{children}</StyledTd>,

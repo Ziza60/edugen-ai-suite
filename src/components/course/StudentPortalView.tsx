@@ -49,19 +49,115 @@ function inlineMd(text: string): (string | JSX.Element)[] {
   });
 }
 
+function parseTableRow(line: string): string[] {
+  return line.split("|").slice(1, -1).map((c) => c.trim());
+}
+
+function isTableSeparator(line: string): boolean {
+  return /^\|[-| :]+\|$/.test(line.trim());
+}
+
+const INTERNAL_HEADING_RES = [
+  /^#{1,4}\s+.*Matriz\s+Objetivo/i,
+  /^#{1,4}\s+.*Nota\s+de\s+Qualidade\s+EduGen/i,
+  /^#{1,4}\s+.*Atividade\s+Pr[áa]tica\s+Avali[áa]vel/i,
+  /^#{1,4}\s+.*Cen[áa]rio\s+Ramificado/i,
+];
+const INTERNAL_LINE_RES = [
+  /^-\s+Score\s+do\s+m[óo]dulo\s*:/i,
+  /^-\s+(CRITICAL|WARNING|INFO|ERROR)\s*:\s+/i,
+  /^\d+\.\s+\*\*.*\*\*\s+[—-]\s+Feedback\s*:/i,
+];
+
+function stripInternalBlocks(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let skipping = false;
+  let skipLevel = 0;
+  for (const line of lines) {
+    const t = line.trim();
+    if (INTERNAL_HEADING_RES.some((re) => re.test(t))) {
+      skipping = true;
+      const m = t.match(/^(#{1,4})\s/);
+      skipLevel = m ? m[1].length : 3;
+      continue;
+    }
+    if (skipping) {
+      const hm = t.match(/^(#{1,6})\s/);
+      if (hm && hm[1].length <= skipLevel) {
+        skipping = false;
+      } else if (t === "---" || t === "***" || t === "___") {
+        skipping = false;
+        continue;
+      } else {
+        continue;
+      }
+    }
+    if (INTERNAL_LINE_RES.some((re) => re.test(t))) continue;
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function MarkdownContent({ text }: { text: string }) {
+  text = stripInternalBlocks(text);
   const lines = text.split("\n");
   const els: JSX.Element[] = [];
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
     if (!line.trim()) { i++; continue; }
-    if (line.startsWith("### ")) {
+
+    // ── Horizontal rule ──────────────────────────────────────────────
+    if (/^---+$/.test(line.trim())) {
+      els.push(<hr key={i} className="border-slate-700 my-6" />);
+
+    // ── GFM Table ────────────────────────────────────────────────────
+    } else if (line.trimStart().startsWith("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      const headers = parseTableRow(line);
+      i += 2; // skip header + separator
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].trimStart().startsWith("|")) {
+        rows.push(parseTableRow(lines[i]));
+        i++;
+      }
+      els.push(
+        <div key={`tbl${i}`} className="my-6 w-full overflow-x-auto rounded-xl border border-slate-700 shadow-sm">
+          <table className="w-full border-collapse text-sm">
+            <thead className="bg-slate-800/80 border-b-2 border-slate-600">
+              <tr>
+                {headers.map((h, j) => (
+                  <th key={j} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-purple-300">
+                    {inlineMd(h)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri} className="border-b border-slate-700/60 hover:bg-slate-800/40 even:bg-slate-800/20">
+                  {row.map((cell, ci) => (
+                    <td key={ci} className="px-4 py-3 text-sm leading-relaxed text-slate-300 first:font-medium first:text-white first:min-w-[140px]">
+                      {inlineMd(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+
+    // ── Headings ─────────────────────────────────────────────────────
+    } else if (line.startsWith("### ")) {
       els.push(<h3 key={i} className="text-lg font-semibold mt-6 mb-2 text-white">{inlineMd(line.slice(4))}</h3>);
     } else if (line.startsWith("## ")) {
       els.push(<h2 key={i} className="text-xl font-bold mt-8 mb-3 text-white">{inlineMd(line.slice(3))}</h2>);
     } else if (line.startsWith("# ")) {
       els.push(<h1 key={i} className="text-2xl font-bold mt-8 mb-4 text-white">{inlineMd(line.slice(2))}</h1>);
+
+    // ── Unordered list ───────────────────────────────────────────────
     } else if (line.startsWith("- ") || line.startsWith("* ")) {
       const items: string[] = [];
       while (i < lines.length && (lines[i].startsWith("- ") || lines[i].startsWith("* "))) {
@@ -69,6 +165,8 @@ function MarkdownContent({ text }: { text: string }) {
       }
       els.push(<ul key={`ul${i}`} className="list-disc list-inside space-y-1 my-3 text-slate-300 ml-2">{items.map((t, j) => <li key={j}>{inlineMd(t)}</li>)}</ul>);
       continue;
+
+    // ── Ordered list ─────────────────────────────────────────────────
     } else if (/^\d+\. /.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^\d+\. /.test(lines[i])) {
@@ -76,12 +174,18 @@ function MarkdownContent({ text }: { text: string }) {
       }
       els.push(<ol key={`ol${i}`} className="list-decimal list-inside space-y-1 my-3 text-slate-300 ml-2">{items.map((t, j) => <li key={j}>{inlineMd(t)}</li>)}</ol>);
       continue;
+
+    // ── Code block ───────────────────────────────────────────────────
     } else if (line.startsWith("```")) {
       const codeLines: string[] = []; i++;
       while (i < lines.length && !lines[i].startsWith("```")) { codeLines.push(lines[i]); i++; }
       els.push(<pre key={`code${i}`} className="bg-[#161b22] border border-[#30363d] rounded-xl p-4 my-4 overflow-x-auto"><code className="text-slate-300 text-sm font-mono">{codeLines.join("\n")}</code></pre>);
+
+    // ── Blockquote ───────────────────────────────────────────────────
     } else if (line.startsWith(">")) {
       els.push(<blockquote key={i} className="border-l-4 border-purple-500 pl-4 my-3 text-slate-400 italic">{inlineMd(line.slice(1).trim())}</blockquote>);
+
+    // ── Paragraph ────────────────────────────────────────────────────
     } else {
       els.push(<p key={i} className="text-slate-300 leading-relaxed mb-3">{inlineMd(line)}</p>);
     }

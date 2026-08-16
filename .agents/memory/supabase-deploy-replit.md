@@ -12,4 +12,6 @@ Always use `supabase functions deploy <slug> --project-ref <ref> --use-api` from
 
 Also: remove `import "jsr:@supabase/functions-js/edge-runtime.d.ts"` from function entry points — it's a type-only import that causes the bundler graph to fail even with `--use-api` in older CLI versions.
 
-Project ref: `hqysyalrvxjeadmkujig`
+Project ref: `hhlzaryhsyqbqktxdgyb` (read from `supabase/config.toml` `project_id` — don't trust a hardcoded ref here, it may go stale across projects).
+
+**403 on deploy:** `unexpected deploy status 403: ... does not have the necessary privileges` means the `SUPABASE_ACCESS_TOKEN` secret's account lacks deploy permission on that project (not a CLI/flag problem). This is not fixable from the agent side — ask the user to either generate a token from an account with deploy rights on the project, or deploy the changed functions manually via the Supabase dashboard/CLI on their machine.

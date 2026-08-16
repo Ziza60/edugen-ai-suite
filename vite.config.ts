@@ -12,6 +12,18 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    // O serviço de PDF em Puppeteer roda como processo separado, na 8080. Sem
+    // este proxy o front chamaria uma origem diferente e esbarraria em CORS.
+    proxy: {
+      "/api/pdf": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/pdf/, ""),
+      },
+    },
+    // A lista de ignorados fica como está: o workspace do Replit havia
+    // encurtado para dois itens, e vigiar supabase/functions faz o dev server
+    // recarregar a cada mexida em edge function, que nem é servida por ele.
     watch: {
       ignored: [
         "**/.cache/**",
