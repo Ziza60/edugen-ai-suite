@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { cleanModuleContent } from "../_shared/markdown.ts";
+import {
+  validateModuleSequenceReferences,
+  repairModuleSequenceReferences,
+} from "../_shared/course-quality.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -373,11 +377,37 @@ Deno.serve(async (req: Request) => {
         const moduleIdx = modules.indexOf(mod);
         const validation = validateModuleMarkdown(restructured, moduleIdx, mod.title);
 
+        // ── SEQUENCE INTEGRITY GUARD ──────────────────────────────────────────
+        // Ensure the LLM-restructured content does not introduce broken
+        // cross-module references. Apply deterministic repair before persisting.
+        const moduleTitles = modules.map((m) => m.title);
+        const seqIssues = validateModuleSequenceReferences(
+          restructured, moduleIdx, modules.length, moduleTitles,
+        );
+        let contentToSave = restructured;
+        if (seqIssues.some((i) => i.severity === "critical")) {
+          const repaired = repairModuleSequenceReferences(
+            restructured, moduleIdx, modules.length,
+          );
+          // Only keep repair if it doesn't produce empty/very short content
+          if (repaired.trim().length >= 100) {
+            contentToSave = repaired;
+            console.log(
+              `[Restructure] Sequence repair applied to "${mod.title}": ${seqIssues.map((i) => i.code).join(",")}`,
+            );
+          } else {
+            // Keep original if repair was too aggressive
+            console.warn(
+              `[Restructure] Sequence repair skipped for "${mod.title}" (result too short) — keeping original`,
+            );
+          }
+        }
+
         // Persist the restructured content (manual rewrite mode only; the
         // generate-course pipeline calls this function with validate_only).
         const { error: updateErr } = await serviceClient
           .from("course_modules")
-          .update({ content: restructured, updated_at: new Date().toISOString() })
+          .update({ content: contentToSave, updated_at: new Date().toISOString() })
           .eq("id", mod.id);
 
         if (updateErr) {

@@ -3,3 +3,5 @@
 - [Dev server verification](dev-server-verification.md) — check timestamps/re-read file before trusting an HMR console error; it may be stale from a mid-edit save.
 - [Supabase edge debugging limits](supabase-edge-debugging.md) — no log/DB query access from this env; parse `error.context` in supabase-js to get the real function error instead.
 - [CRLF file edits](crlf-file-edits.md) — edit tool exact-match fails silently on CRLF files; check line endings before assuming a diff bug.
+- [Puppeteer PDF service](puppeteer-pdf-service.md) — course PDF export moved from jsPDF edge function to standalone Node+Puppeteer service; why + how it's wired.
+- [generate-course semantic-qa](generate-course-semantic-qa.md) — validateLearningBlock/validateBlueprintSemantics/repairLesson; em-dash regex and isPlaceholderText guards gotchas.
