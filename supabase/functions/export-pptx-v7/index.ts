@@ -20,7 +20,13 @@ import PptxGenJS from "npm:pptxgenjs@3.12.0";
 import { buildDeck, type ModuleInput, type PlannedDeck } from "./deck-plan.ts";
 import { normalizeDeck } from "./validate.ts";
 import { renderDeck } from "./render.ts";
-import { resolveImages } from "./images.ts";
+import { resolveImages, toDataUri } from "./images.ts";
+import {
+  chaveDeTitulo,
+  consultasPendentes,
+  escolherImagemDoModulo,
+  type FontesDeImagem,
+} from "./curated-images.ts";
 
 const ENGINE_VERSION = "7.36.0";
 
@@ -47,7 +53,11 @@ function moduleImageQuery(m: { title: string; slides: { imageQuery?: string }[] 
  *  slide — keeps the file light and the edge runtime under its CPU/time budget.
  *  The same module image is reused for both the divider and the hero slide (no
  *  extra fetches). The divider picks up whichever slide carries the image. */
-function attachImages(deck: PlannedDeck, images: Record<string, string>) {
+function attachImages(
+  deck: PlannedDeck,
+  images: Record<string, string>,
+  curadas: Omit<FontesDeImagem, "buscadas">,
+) {
   const lookup = (q?: string) =>
     q ? images[q.trim().toLowerCase()] : undefined;
   (deck as any).coverImage = lookup(deck.courseTitle) ||
@@ -59,7 +69,16 @@ function attachImages(deck: PlannedDeck, images: Record<string, string>) {
   // per module to break the "image always on the same side" rhythm.
   const orientations = ["split-right", "top", "split-left"] as const;
   deck.modules.forEach((m, mi) => {
-    const img = lookup(moduleImageQuery(m));
+    // A imagem que o autor escolheu no app vence a que a busca automática
+    // resolveu. Antes o slide trazia uma foto do Pexels enquanto a tela do
+    // aluno mostrava outra, escolhida (e às vezes paga) pelo autor.
+    const img = escolherImagemDoModulo({
+      indice: mi,
+      titulo: m.title,
+      consultaDeBusca: moduleImageQuery(m),
+      totalDeModulosNoDeck: deck.modules.length,
+      fontes: { ...curadas, buscadas: images },
+    });
     if (!img) return;
     const quote = m.slides.find((s) => s.kind === "quote");
     const hero = m.slides.find((s) =>
@@ -141,7 +160,9 @@ Deno.serve(async (req: Request) => {
 
     const t0 = Date.now();
     console.log(
-      `[V7] ENGINE=${ENGINE_VERSION} "${courseTitle}" modules=${modules.length} llm=${!!geminiKey} images=${includeImages && !!(pexelsKey || pixabayKey)} density=${density} template=${template} palette=${palette}`,
+      // "images" não depende mais das chaves de busca: a imagem curada pelo
+      // autor vem do banco, e é usada mesmo sem Pexels nem Pixabay configurados.
+      `[V7] ENGINE=${ENGINE_VERSION} "${courseTitle}" modules=${modules.length} llm=${!!geminiKey} images=${includeImages} busca=${!!(pexelsKey || pixabayKey)} density=${density} template=${template} palette=${palette}`,
     );
 
     // 1. Build deck (structured planner + deterministic fallback)
@@ -161,15 +182,65 @@ Deno.serve(async (req: Request) => {
     );
 
     // 3. Optional images (best-effort)
-    if (includeImages && (pexelsKey || pixabayKey)) {
-      // One query per module (planner hint, else module title) + the cover, so
-      // every module divider gets a photo.
-      const queries: string[] = [courseTitle];
-      for (const m of deck.modules) queries.push(moduleImageQuery(m));
+    if (includeImages) {
       try {
-        const images = await resolveImages(queries, pexelsKey, queries.length, pixabayKey);
-        attachImages(deck, images);
-        console.log(`[V7-IMAGES] resolved=${Object.keys(images).length}`);
+        // 3a. As imagens que o autor escolheu ou gerou no app. Esta tabela é a
+        // mesma que o portal do aluno e o PDF leem; o PPTX nunca a consultou, e
+        // por isso o slide vinha com foto diferente da que estava na tela.
+        const curadasPorIndice: Array<string | undefined> = [];
+        const curadasPorTitulo: Record<string, string> = {};
+
+        const moduleIds = (modulesRaw as any[]).map((m) => m.id).filter(Boolean);
+        if (moduleIds.length > 0) {
+          const { data: imagensRaw, error: imgErr } = await serviceClient
+            .from("course_images")
+            .select("module_id, url")
+            .in("module_id", moduleIds);
+          if (imgErr) console.warn("[V7-IMAGES] course_images:", imgErr.message);
+
+          const urlPorModulo: Record<string, string> = {};
+          for (const img of imagensRaw ?? []) {
+            if (img.module_id && img.url) urlPorModulo[img.module_id] = img.url;
+          }
+
+          // Baixa em paralelo, na ordem dos módulos do curso.
+          const baixadas = await Promise.all(
+            (modulesRaw as any[]).map(async (m) => {
+              const url = urlPorModulo[m.id];
+              if (!url) return undefined;
+              try {
+                return (await toDataUri(url)) ?? undefined;
+              } catch {
+                return undefined; // imagem é enriquecimento, nunca bloqueia
+              }
+            }),
+          );
+          baixadas.forEach((dataUri, i) => {
+            curadasPorIndice.push(dataUri);
+            const titulo = chaveDeTitulo((modulesRaw as any[])[i]?.title || "");
+            if (dataUri && titulo) curadasPorTitulo[titulo] = dataUri;
+          });
+        }
+
+        // 3b. Busca automática só para o que ficou sem imagem curada — buscar
+        // foto para módulo que já tem é chamada de API jogada fora, e o v7 roda
+        // com orçamento apertado de tempo e CPU.
+        const curadas = { curadasPorIndice, curadasPorTitulo };
+        const pendentes = consultasPendentes(
+          deck.modules.map((m) => ({ titulo: m.title, consulta: moduleImageQuery(m) })),
+          curadas,
+        );
+
+        let images: Record<string, string> = {};
+        if ((pexelsKey || pixabayKey) && (pendentes.length > 0 || !(deck as any).coverImage)) {
+          const queries = [courseTitle, ...pendentes];
+          images = await resolveImages(queries, pexelsKey, queries.length, pixabayKey);
+        }
+
+        attachImages(deck, images, curadas);
+        console.log(
+          `[V7-IMAGES] curadas=${curadasPorIndice.filter(Boolean).length} buscadas=${Object.keys(images).length} pendentes=${pendentes.length}`,
+        );
       } catch (e) {
         console.warn("[V7-IMAGES] failed (non-blocking):", e);
       }

@@ -25,7 +25,9 @@ async function fetchWithTimeout(
   }
 }
 
-async function toDataUri(url: string): Promise<string | null> {
+/** Baixa a imagem e devolve como data URI. Exportada porque as imagens curadas
+ *  em course_images passam por este mesmo caminho — elas também são URL. */
+export async function toDataUri(url: string): Promise<string | null> {
   try {
     const res = await fetchWithTimeout(url);
     if (!res.ok) return null;
