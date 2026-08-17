@@ -12,6 +12,7 @@ import { autoBodyFontSize } from "./validate.ts";
 import { coverBoxSize, imageSizeFromDataUri } from "../_shared/image-size.ts";
 import { categoricalColors } from "./chart-palette.ts";
 import { chevronNumberBox } from "./chevron-geometry.ts";
+import { ehSequencia } from "./layout-fit.ts";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
@@ -2069,69 +2070,6 @@ function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
   footer(slide, d, brand, num);
 }
 
-/** Segmented ring (donut split into wedges) + legend — a cycle / categories. */
-function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
-  bgFill(slide, d.bg);
-  header(slide, d, s, moduleLabel);
-  const items = bulletItems(s, 6);
-  const n = Math.max(items.length, 1);
-  const D = Math.min(4.6, CONTENT_H - 0.2);
-  const ringX = ML + 0.2;
-  const ringY = CONTENT_Y + (CONTENT_H - D) / 2;
-  const cxr = ringX + D / 2, cyr = ringY + D / 2;
-  const seg = 360 / n;
-  // Cada fatia é uma CATEGORIA, não um degrau de intensidade: a cor aqui diz
-  // "qual dos itens", e para isso precisa de matiz própria. A rampa antiga
-  // (accent → accent2) devolvia cinco laranjas quase iguais no tema escuro.
-  // A fatia e o ponto da legenda tomam a MESMA cor, pelo mesmo índice.
-  const cores = categoricalColors(n);
-  for (let i = 0; i < n; i++) {
-    const color = cores[i];
-    slide.addShape("pie", {
-      x: ringX, y: ringY, w: D, h: D,
-      fill: { color }, line: { color: d.bg, width: 2.5 },
-      angleRange: [i * seg, (i + 1) * seg],
-    });
-  }
-  const hole = D * 0.5;
-  slide.addShape("ellipse", {
-    x: cxr - hole / 2, y: cyr - hole / 2, w: hole, h: hole,
-    fill: { color: d.bg }, line: { type: "none" },
-  });
-  slide.addText(String(n), {
-    x: cxr - hole / 2, y: cyr - hole / 2, w: hole, h: hole,
-    fontFace: FONT_TITLE, fontSize: 40, bold: true, color: d.accent2,
-    align: "center", valign: "middle",
-  });
-  // Bright studs on the segment divisions (premium donut detail).
-  const Rmid = (D / 2 + hole / 2) / 2;
-  for (let i = 0; i < n; i++) {
-    const th = (i * seg * Math.PI) / 180;
-    const px = cxr + Rmid * Math.sin(th), py = cyr - Rmid * Math.cos(th);
-    slide.addShape("ellipse", { x: px - 0.09, y: py - 0.09, w: 0.18, h: 0.18, fill: { color: d.bg }, line: { type: "none" } });
-    slide.addShape("ellipse", { x: px - 0.05, y: py - 0.05, w: 0.1, h: 0.1, fill: { color: d.accent2 }, line: { type: "none" } });
-  }
-  const legX = ringX + D + 0.55;
-  const legW = ML + CW - legX;
-  const rowH = Math.min(1.1, CONTENT_H / n);
-  const startY = CONTENT_Y + (CONTENT_H - rowH * n) / 2;
-  const fs = autoBodyFontSize(n, items.join("").length);
-  items.forEach((b, i) => {
-    const ry = startY + i * rowH;
-    const color = cores[i];
-    slide.addShape("ellipse", {
-      x: legX, y: ry + rowH / 2 - 0.16, w: 0.32, h: 0.32,
-      fill: { color }, line: { type: "none" },
-    });
-    slide.addText(b, {
-      x: legX + 0.5, y: ry, w: legW - 0.5, h: rowH,
-      fontFace: FONT_BODY, fontSize: fs, color: d.subtext,
-      valign: "middle", lineSpacingMultiple: 1.02,
-    });
-  });
-  footer(slide, d, brand, num);
-}
-
 /**
  * Stacked pyramid — pointed triangular apex over trapezoid tiers, LEFT-aligned,
  * with the short title INSIDE each tier and a longer description pulled out to
@@ -2703,14 +2641,31 @@ export function renderDeck(
               const wordShort = its.every((b) => b.trim().split(/\s+/).length <= 10);
               const variants: Array<typeof renderBullets> = [];
               if (k >= 3 && k <= 5 && short) {
-                // Curated pool (v7.28): tiles dropped (bento owns the grid role),
-                // zig-zag + mountain demoted in favour of the clean bullet timeline.
-                variants.push(renderProcessArrows);
-                variants.push(renderSegmentedRing, renderNetwork);
+                // O rodízio garante VARIEDADE, mas variedade não pode custar
+                // veracidade: uma forma que afirma estrutura (ordem, proporção)
+                // só entra no sorteio quando o conteúdo tem essa estrutura.
+                //
+                // Setas, espiral, linha do tempo e diagonais afirmam ORDEM.
+                // Numa lista comum — duas características e três exemplos, por
+                // exemplo — elas transformam tópicos soltos num processo de
+                // cinco etapas que ninguém escreveu. Ficam atrás do detector.
+                //
+                // A rosca segmentada saiu de vez: dividida em partes iguais,
+                // ela afirma proporções que a lista não tem, e não existe
+                // conteúdo de lista neste produto em que essa afirmação seja
+                // verdadeira. Proporção tem um lugar próprio — kind "chart",
+                // onde o planejador fornece números de verdade.
+                if (ehSequencia(s.title, its)) {
+                  variants.push(
+                    renderProcessArrows, renderDiagonalArrows,
+                    renderBulletTimeline, renderSpiral,
+                  );
+                }
+                variants.push(renderNetwork);
                 if (wordShort && k <= 4) variants.push(renderBento);
                 variants.push(
-                  renderSpiral, renderBulletTimeline, renderNumberedIcons,
-                  renderDiagonalArrows, renderAsymPanels, renderConnectionLines, renderMarkers,
+                  renderNumberedIcons, renderAsymPanels,
+                  renderConnectionLines, renderMarkers,
                 );
               } else if (k === 2 && wordShort) {
                 variants.push(renderBullets, renderBento, renderMarkers);

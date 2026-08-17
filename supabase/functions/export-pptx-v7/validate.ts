@@ -16,6 +16,7 @@ import type {
   PlannedDeck,
   SlideSpec,
 } from "./deck-plan.ts";
+import { proporcaoInformativa } from "./layout-fit.ts";
 
 export const LIMITS = {
   MAX_BULLETS: 5,
@@ -342,6 +343,14 @@ function normChart(slide: SlideSpec):
     .filter((p) => p.label.length > 0 && Number.isFinite(p.value) && p.value >= 0)
     .slice(0, LIMITS.MAX_CHART_POINTS);
   if (points.length < 2) return null;
+  // Rosca com todas as fatias iguais não é dado: é um todo repartido em partes
+  // idênticas, que não informa nada e ainda tem cara de medição. Devolvendo
+  // null, o slide cai no resgate para tópicos logo abaixo — que preserva o
+  // conteúdo e larga a falsa proporção. A barra escapa da regra porque ali o
+  // comprimento É o dado, e barras iguais mostram empate, que é informação.
+  if (type === "donut" && !proporcaoInformativa(points.map((p) => p.value))) {
+    return null;
+  }
   const unit = c.unit ? capText(String(c.unit), 2, 6) : undefined;
   return { type, points, unit };
 }
@@ -492,9 +501,16 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
   // otherwise drop the slide (degrade, never veto).
   if (!hasMinimumContent(base)) {
     // A degenerate chart still has its points as data → salvage to bullets
-    // ("label: value") instead of dropping the slide.
-    const fromChart = (slide.chart?.points ?? [])
-      .map((p) => `${p?.label ?? ""}: ${p?.value ?? ""}${slide.chart?.unit ?? ""}`.trim());
+    // ("label: value") instead of dropping the slide. Quando os valores são
+    // todos iguais — o caso da rosca recusada acima — o número não distingue
+    // nada e só polui o tópico, então sobra só o rótulo.
+    const pontos = slide.chart?.points ?? [];
+    const comValor = proporcaoInformativa(pontos.map((p) => Number(p?.value)));
+    const fromChart = pontos.map((p) =>
+      comValor
+        ? `${p?.label ?? ""}: ${p?.value ?? ""}${slide.chart?.unit ?? ""}`.trim()
+        : `${p?.label ?? ""}`.trim()
+    );
     const source = (slide.bullets?.length ? slide.bullets : fromChart);
     const salvage = normItems(source, LIMITS.MAX_BULLETS);
     if (salvage.length > 0) {
