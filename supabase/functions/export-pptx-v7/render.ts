@@ -9,6 +9,7 @@
 
 import type { PlannedDeck, SlideSpec } from "./deck-plan.ts";
 import { autoBodyFontSize } from "./validate.ts";
+import { coverBoxSize, imageSizeFromDataUri } from "../_shared/image-size.ts";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
@@ -329,7 +330,23 @@ function maybeImage(slide: AnySlide, s: SlideSpec, box: {
 }, extra: Record<string, unknown> = {}) {
   if (!s.imageData) return false;
   try {
-    slide.addImage({ data: s.imageData, ...box, sizing: { type: "cover", w: box.w, h: box.h }, ...extra });
+    // `sizing: cover` recorta em vez de esticar — mas o pptxgenjs toma `w`/`h`
+    // como sendo as dimensões DO ARQUIVO, não da caixa. Passando a caixa nos
+    // dois lugares, a proporção declarada era a da caixa, o recorte calculado
+    // dava zero e a imagem saía esticada: na faixa vertical da capa (4,93 x
+    // 7,50 pol) uma imagem 16:9 chegava achatada quase 3x na horizontal.
+    // Declaramos aqui a proporção verdadeira, lida do cabeçalho do binário.
+    const natural = imageSizeFromDataUri(s.imageData);
+    const proporcao = natural ? coverBoxSize(natural, box) : { w: box.w, h: box.h };
+    slide.addImage({
+      data: s.imageData,
+      x: box.x,
+      y: box.y,
+      w: proporcao.w,
+      h: proporcao.h,
+      sizing: { type: "cover", w: box.w, h: box.h },
+      ...extra,
+    });
     return true;
   } catch {
     return false;
