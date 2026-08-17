@@ -73,6 +73,50 @@ export function fitImageBox(
   return { w, h };
 }
 
+/** Quanto uma maiúscula sobe acima da linha de base, em fração do corpo. */
+const ALTURA_CAIXA_ALTA = 0.72;
+/** Quanto uma descendente (g, p, q) desce abaixo da linha de base. */
+const DESCIDA = 0.21;
+/** Pontos por milímetro. */
+const PT_POR_MM = 72 / 25.4;
+
+/**
+ * Espaçamento real entre linhas de um texto de várias linhas, em milímetros.
+ *
+ * O jsPDF empilha as linhas em corpo × fator, e o corpo é dado em pontos. O
+ * sumário assumia 5,2 mm fixos enquanto o jsPDF usava 4,26 — de modo que, num
+ * título de duas linhas, os pontinhos e o número da página caíam um milímetro
+ * abaixo da segunda linha em vez de alinhados com ela.
+ */
+export function lineHeightMm(fontSizePt: number, lineHeightFactor = 1.15): number {
+  return (fontSizePt * lineHeightFactor) / PT_POR_MM;
+}
+
+/**
+ * Onde desenhar o traço separador entre dois itens do sumário.
+ *
+ * Recebe a linha de base da última linha do item de cima e o vão até o item de
+ * baixo. Devolve um Y que não encosta em nenhum dos dois.
+ *
+ * A versão anterior desenhava o traço a 1 mm da linha de base do item seguinte.
+ * Uma maiúscula de corpo 10,5 sobe 2,67 mm acima da base — então o traço não
+ * ficava entre os itens, ele cortava as letras do título de baixo.
+ */
+export function tocSeparatorY(
+  ultimaLinhaBaseY: number,
+  vaoEntreItens: number,
+  fontSizePt: number,
+): number {
+  const corpoMm = fontSizePt / PT_POR_MM;
+  const limiteSuperior = ultimaLinhaBaseY + corpoMm * DESCIDA;
+  const limiteInferior = ultimaLinhaBaseY + vaoEntreItens - corpoMm * ALTURA_CAIXA_ALTA;
+  // Se o vão for apertado demais para caber o traço, fica no meio do que há.
+  if (limiteInferior <= limiteSuperior) {
+    return ultimaLinhaBaseY + vaoEntreItens / 2;
+  }
+  return (limiteSuperior + limiteInferior) / 2;
+}
+
 /**
  * Limita o título do sumário a um número de linhas, com reticências.
  *

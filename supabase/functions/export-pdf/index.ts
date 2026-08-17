@@ -1,6 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
-import { detectImageFormat, fitImageBox, tocTitleLines } from "../_shared/pdf-layout.ts";
+import {
+  detectImageFormat,
+  fitImageBox,
+  lineHeightMm,
+  tocSeparatorY,
+  tocTitleLines,
+} from "../_shared/pdf-layout.ts";
 
 // Este arquivo era autocontido para poder ser colado inteiro no editor do painel
 // do Supabase. Deixou de ser: as contas de layout do sumário e da imagem foram
@@ -508,6 +514,13 @@ class PdfRenderer {
     const DOT_FIXED_X = PAGE_NUM_X - 30;
     const DOT_END_X = PAGE_NUM_X - 8;
 
+    // O avanço por linha tem que ser o que o jsPDF de fato usa. Com o valor
+    // fixo de antes, num título de duas linhas os pontinhos e o número saíam
+    // um milímetro abaixo da segunda linha, em vez de alinhados com ela.
+    const LH = lineHeightMm(FONT.BODY, this.doc.getLineHeightFactor?.() ?? 1.15);
+    /** Da última linha de um item à linha de base do item seguinte. */
+    const VAO = 9;
+
     for (let i = 0; i < moduleTitles.length; i++) {
       const label = sanitizeText(moduleTitles[i] || `Módulo ${i + 1}`);
 
@@ -524,7 +537,7 @@ class PdfRenderer {
 
       // Pontinhos e número ancoram na ÚLTIMA linha do título; ancorar na
       // primeira fazia o número cortar um título de duas linhas ao meio.
-      const lastLineY = this.y + (titleLines.length - 1) * SP.LINE_HEIGHT;
+      const lastLineY = this.y + (titleLines.length - 1) * LH;
       this.tocLines.push({ page: this.pageNum, y: lastLineY });
 
       this.doc.setFontSize(7);
@@ -537,14 +550,19 @@ class PdfRenderer {
       this.doc.setFont("helvetica", "bold");
       this.doc.text("...", PAGE_NUM_X, lastLineY, { align: "right" });
 
-      this.y += titleLines.length * SP.LINE_HEIGHT + 4;
-
+      // O separador vai no meio do vão, calculado a partir da altura das
+      // letras dos dois lados. Antes ele ficava a 1 mm da linha de base do
+      // item seguinte — e como uma maiúscula sobe 2,67 mm, o traço não separava
+      // nada: ele cortava o título de baixo.
       if (i < moduleTitles.length - 1) {
+        const ySep = tocSeparatorY(lastLineY, VAO, FONT.BODY);
         this.doc.setDrawColor(...COLOR.TEXT_MUTED);
         this.doc.setLineWidth(0.1);
-        this.doc.line(MARGIN_LEFT, this.y - 1, PAGE_W - MARGIN_RIGHT, this.y - 1);
+        this.doc.line(MARGIN_LEFT, ySep, PAGE_W - MARGIN_RIGHT, ySep);
       }
-      this.checkPage(14);
+
+      this.y = lastLineY + VAO;
+      this.checkPage(VAO + 6);
     }
 
     this.doc.setFont("helvetica", "normal");

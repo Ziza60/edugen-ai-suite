@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   detectImageFormat,
   fitImageBox,
+  lineHeightMm,
+  tocSeparatorY,
   tocTitleLines,
 } from "../../supabase/functions/_shared/pdf-layout";
 
@@ -121,5 +123,65 @@ describe("tocTitleLines", () => {
     // ficava longe do título e o sumário deixava de se ler como tabela.
     const r = tocTitleLines(["a", "b", "c", "d", "e"]);
     expect(r).toHaveLength(2);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A geometria do sumário
+//
+// No primeiro PDF gerado com o sumário restaurado, um traço fino cortava o
+// texto dos títulos. A causa foram duas contas erradas: o traço era posto a
+// 1 mm da linha de base do item seguinte — dentro das maiúsculas, que sobem
+// 2,67 mm — e o avanço por linha era 5,2 mm enquanto o jsPDF empilha a 4,26.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CORPO = 10.5; // FONT.BODY do export-pdf
+
+describe("lineHeightMm", () => {
+  it("bate com o que o jsPDF realmente empilha em corpo 10,5", () => {
+    // Medido no PDF gerado: linhas de um mesmo título a 12,1 pt de distância.
+    expect(lineHeightMm(CORPO, 1.15)).toBeCloseTo(12.075 / (72 / 25.4), 3);
+    expect(lineHeightMm(CORPO, 1.15)).toBeCloseTo(4.26, 2);
+  });
+
+  it("não é o 5,2 mm que estava fixo no código", () => {
+    expect(lineHeightMm(CORPO, 1.15)).toBeLessThan(5.2);
+  });
+
+  it("acompanha o corpo da fonte e o fator", () => {
+    expect(lineHeightMm(21, 1.15)).toBeCloseTo(2 * lineHeightMm(10.5, 1.15), 6);
+    expect(lineHeightMm(10.5, 2)).toBeCloseTo(2 * lineHeightMm(10.5, 1), 6);
+  });
+});
+
+describe("tocSeparatorY", () => {
+  const VAO = 9; // mm entre a última linha de um item e a base do próximo
+
+  it("fica abaixo das descendentes do item de cima", () => {
+    const y = tocSeparatorY(100, VAO, CORPO);
+    const descida = (CORPO / (72 / 25.4)) * 0.21;
+    expect(y).toBeGreaterThan(100 + descida);
+  });
+
+  it("fica acima das maiúsculas do item de baixo", () => {
+    const y = tocSeparatorY(100, VAO, CORPO);
+    const caixaAlta = (CORPO / (72 / 25.4)) * 0.72;
+    expect(y).toBeLessThan(100 + VAO - caixaAlta);
+  });
+
+  it("o defeito relatado não se repete: 1 mm acima da base seguinte cortava as letras", () => {
+    const baseSeguinte = 100 + VAO;
+    const posicaoAntiga = baseSeguinte - 1;
+    const caixaAlta = (CORPO / (72 / 25.4)) * 0.72;
+    // A posição antiga caía dentro do corpo das letras…
+    expect(posicaoAntiga).toBeGreaterThan(baseSeguinte - caixaAlta);
+    // …e a nova, não.
+    expect(tocSeparatorY(100, VAO, CORPO)).toBeLessThan(baseSeguinte - caixaAlta);
+  });
+
+  it("com vão apertado devolve o meio, em vez de uma posição impossível", () => {
+    const y = tocSeparatorY(100, 1, CORPO);
+    expect(y).toBeCloseTo(100.5, 6);
+    expect(Number.isFinite(y)).toBe(true);
   });
 });
