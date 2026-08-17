@@ -1,6 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import JSZip from "https://esm.sh/jszip@3.10.1";
+import {
+  baixarImagem,
+  buscarImagensDosModulos,
+  figuraHtml,
+  nomeDoArquivoNoPacote,
+} from "../_shared/course-images.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -164,6 +170,25 @@ Deno.serve(async (req: Request) => {
 
     // Build SCORM 1.2 package
     const zip = new JSZip();
+
+    // A imagem do módulo é EMBUTIDA no pacote, não referenciada por URL. Um
+    // SCORM roda dentro do LMS e muitas vezes sem internet; a URL assinada do
+    // storage ainda por cima expira, e o pacote ficaria quebrado depois disso.
+    // Baixar aqui custa uma requisição por módulo e resolve os dois problemas.
+    const imagens = await buscarImagensDosModulos(serviceClient, moduleIds, "export-scorm");
+    const figuraDoModulo = new Map<string, string>();
+    for (const [i, mod] of modules.entries()) {
+      const img = imagens.get(mod.id);
+      if (!img) continue;
+      const bytes = await baixarImagem(img.url, "export-scorm");
+      if (!bytes) continue;
+      const caminho = nomeDoArquivoNoPacote(img.url, i);
+      zip.file(caminho, bytes);
+      figuraDoModulo.set(mod.id, figuraHtml(caminho, img.altText));
+    }
+    console.log(
+      `[export-scorm] imagens: ${figuraDoModulo.size} embutidas de ${imagens.size} encontradas`,
+    );
     const courseTitle = escapeXml(course.title);
 
     // Generate HTML pages for each module
@@ -196,6 +221,7 @@ Deno.serve(async (req: Request) => {
 </head>
 <body>
   <h1>${escapeHtml(mod.title)}</h1>
+  ${figuraDoModulo.get(mod.id) ?? ""}
   ${markdownToHtml(mod.content || "")}
   ${quizHtml}
   <div class="nav">

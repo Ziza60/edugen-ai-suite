@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import JSZip from "https://esm.sh/jszip@3.10.1";
+import { buscarImagensDosModulos, figuraHtml } from "../_shared/course-images.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -210,6 +211,13 @@ Deno.serve(async (req: Request) => {
       allFlashcards = (flashData || []) as Flashcard[];
     }
 
+    // A imagem de cada módulo entra por URL, não embutida como no SCORM: pôr um
+    // arquivo dentro de um backup .mbz exige declará-lo no manifesto files.xml
+    // com hash de conteúdo, e um erro ali quebra a restauração do curso inteiro.
+    // O <img> remoto o Moodle renderiza sem manifesto nenhum.
+    const imagens = await buscarImagensDosModulos(serviceClient, moduleIds, "export-moodle");
+    console.log(`[export-moodle] imagens: ${imagens.size} de ${moduleIds.length} módulos`);
+
     // Build Moodle backup XML
     const zip = new JSZip();
     zip.folder("files"); // empty files folder
@@ -223,7 +231,9 @@ Deno.serve(async (req: Request) => {
 
     modules.forEach((mod: any, i: number) => {
       const sectionId = i + 1;
-      const contentHtml = markdownToHtml(mod.content || "");
+      const img = imagens.get(mod.id);
+      const contentHtml = (img ? figuraHtml(img.url, img.altText) : "") +
+        markdownToHtml(mod.content || "");
       
       // Main page activity
       const pageActivityId = activityCounter++;

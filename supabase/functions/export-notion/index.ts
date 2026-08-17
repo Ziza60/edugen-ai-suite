@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buscarImagensDosModulos, figuraMarkdown } from "../_shared/course-images.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,7 +19,13 @@ function buildNotionMarkdown(
   course: any,
   modules: any[],
   quizzes: any[],
-  flashcards: any[]
+  flashcards: any[],
+  /**
+   * Imagens por module_id. Vão como referência remota, não embutidas: o arquivo
+   * é um .md solto, sem pacote onde guardar binário, e a importação do Notion
+   * busca a imagem pela URL.
+   */
+  imagens: Map<string, { url: string; altText: string }> = new Map(),
 ): string {
   const lines: string[] = [];
 
@@ -49,6 +56,11 @@ function buildNotionMarkdown(
   modules.forEach((mod, i) => {
     lines.push(`## ${i + 1}. ${mod.title}`);
     lines.push("");
+    const img = imagens.get(mod.id);
+    if (img) {
+      lines.push(figuraMarkdown(img.url, img.altText));
+      lines.push("");
+    }
     if (mod.content) {
       lines.push(mod.content);
     }
@@ -186,7 +198,10 @@ Deno.serve(async (req: Request) => {
       flashcards = flashRes.data || [];
     }
 
-    const markdown = buildNotionMarkdown(course, modules, quizzes, flashcards);
+    const imagens = await buscarImagensDosModulos(serviceClient, moduleIds, "export-notion");
+    console.log(`[export-notion] imagens: ${imagens.size} de ${moduleIds.length} módulos`);
+
+    const markdown = buildNotionMarkdown(course, modules, quizzes, flashcards, imagens);
     const encoder = new TextEncoder();
     const mdBytes = encoder.encode(markdown);
 

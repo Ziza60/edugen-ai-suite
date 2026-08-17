@@ -23,7 +23,16 @@ export function useSubscription() {
     enabled: !!user,
   });
 
-  const plan: PlanType = (subscription?.plan as PlanType) ?? "pro";
+  // Sem assinatura encontrada, o plano é "free" — o mesmo que TODA edge function
+  // assume. Aqui estava "pro", e a divergência chegava ao autor como promessa
+  // quebrada: a interface liberava recurso de Pro, o servidor recusava com o
+  // limite do free, e numa conta paga aparecia "Você usou 3/3 gerações de
+  // imagem" sem nada explicar a contradição.
+  //
+  // Errar para o lado do free é o certo: se a consulta falhar, ou enquanto ela
+  // carrega, o pior que acontece é um recurso aparecer travado por um instante —
+  // em vez de o app oferecer o que o servidor vai negar depois.
+  const plan: PlanType = (subscription?.plan as PlanType) ?? "free";
   const limits = getPlanLimits(plan);
 
   return { subscription, plan, limits, isLoading };
