@@ -73,6 +73,79 @@ export function fitImageBox(
   return { w, h };
 }
 
+export interface DesenhoImagem {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** true quando a imagem foi ampliada além da faixa e precisa de recorte. */
+  recortada: boolean;
+}
+
+/**
+ * Fração da imagem que se aceita perder no recorte antes de desistir de
+ * preencher. Uma foto em pé numa faixa deitada precisaria de um corte enorme, e
+ * o que sobra na tela é uma tira fina que não se lê. Nesse caso vale mais a
+ * sobra branca das laterais do que uma fatia sem sentido.
+ */
+const PERDA_MAXIMA = 0.6;
+
+/**
+ * Preenche a faixa INTEIRA com a imagem, sem distorcer: amplia até cobrir os
+ * dois lados e centraliza, deixando o excedente para fora — quem chama recorta
+ * na faixa.
+ *
+ * Por que não basta o fitImageBox: ele encaixa a imagem DENTRO da faixa, então
+ * sobra branco no lado que não limitou. Na capa do PDF a faixa tem 162 x 62 mm
+ * e a imagem gerada é 16:9; encaixando, ela saía com 108,5 mm e deixava 53,5 mm
+ * de branco — um terço da largura reservada, vazio. Onde a faixa é fixa e o
+ * espaço não é reaproveitado por mais nada, encaixar é desperdício.
+ *
+ * O fitImageBox continua certo onde a imagem FLUI com o texto (a do módulo): lá
+ * a altura não é reservada, ela empurra o que vem depois, e recortar só perderia
+ * conteúdo sem ganhar espaço nenhum.
+ */
+export function fillImageBox(
+  imgW: number,
+  imgH: number,
+  caixaX: number,
+  caixaY: number,
+  caixaW: number,
+  caixaH: number,
+): DesenhoImagem {
+  if (!(imgW > 0) || !(imgH > 0)) {
+    return { x: caixaX, y: caixaY, w: caixaW, h: caixaH, recortada: false };
+  }
+
+  const escala = Math.max(caixaW / imgW, caixaH / imgH);
+  const w = imgW * escala;
+  const h = imgH * escala;
+
+  const perda = 1 - (caixaW * caixaH) / (w * h);
+  if (perda > PERDA_MAXIMA) {
+    const encaixe = fitImageBox(imgW, imgH, caixaW, caixaH);
+    return {
+      x: caixaX + (caixaW - encaixe.w) / 2,
+      y: caixaY + (caixaH - encaixe.h) / 2,
+      w: encaixe.w,
+      h: encaixe.h,
+      recortada: false,
+    };
+  }
+
+  // A marca diz se sobra imagem para fora da faixa — não se o caminho de
+  // preenchimento foi tomado. Quando a imagem já vem na proporção da faixa,
+  // ela preenche sem sobrar nada, e recortar seria trabalho à toa.
+  const FOLGA = 1e-9;
+  return {
+    x: caixaX + (caixaW - w) / 2,
+    y: caixaY + (caixaH - h) / 2,
+    w,
+    h,
+    recortada: w > caixaW + FOLGA || h > caixaH + FOLGA,
+  };
+}
+
 /** Quanto uma maiúscula sobe acima da linha de base, em fração do corpo. */
 const ALTURA_CAIXA_ALTA = 0.72;
 /** Quanto uma descendente (g, p, q) desce abaixo da linha de base. */

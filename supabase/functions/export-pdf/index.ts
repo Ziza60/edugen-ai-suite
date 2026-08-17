@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 import {
   detectImageFormat,
+  fillImageBox,
   fitImageBox,
   lineHeightMm,
   tocSeparatorY,
@@ -476,6 +477,8 @@ class PdfRenderer {
     // Capa escolhida pelo autor, na faixa branca abaixo dos metadados. Fica
     // depois do texto de propósito: a página de rosto tem que se sustentar
     // sozinha quando não há capa — e até agora nunca havia.
+    const CAPA_Y = 220;
+    const CAPA_H = 62;
     if (capa) {
       try {
         const formato = detectImageFormat(capa);
@@ -484,8 +487,28 @@ class PdfRenderer {
           for (let i = 0; i < capa.length; i++) binary += String.fromCharCode(capa[i]);
           const dataUri = `data:image/${formato.toLowerCase()};base64,${btoa(binary)}`;
           const props = this.doc.getImageProperties(dataUri);
-          const { w, h } = fitImageBox(props.width, props.height, CONTENT_W, 62);
-          this.doc.addImage(dataUri, formato, MARGIN_LEFT + (CONTENT_W - w) / 2, 220, w, h);
+          // A faixa da capa é FIXA: 162 x 62 mm entre os metadados e o rodapé.
+          // Encaixando a imagem dentro dela, uma 16:9 ficava com 108,5 mm e
+          // sobravam 53,5 mm de branco — um terço da faixa reservada, que
+          // ninguém mais aproveita. Agora a imagem preenche a faixa inteira e o
+          // que passa dela é recortado.
+          const box = fillImageBox(
+            props.width, props.height, MARGIN_LEFT, CAPA_Y, CONTENT_W, CAPA_H,
+          );
+          if (box.recortada) {
+            // O recorte é do PDF, não da imagem: salva o estado gráfico, elege
+            // a faixa como região de desenho, desenha e devolve o estado. O
+            // `null` no rect é o que impede o jsPDF de traçar a borda do
+            // próprio caminho de recorte.
+            this.doc.saveGraphicsState();
+            this.doc.rect(MARGIN_LEFT, CAPA_Y, CONTENT_W, CAPA_H, null);
+            this.doc.clip();
+            this.doc.discardPath();
+            this.doc.addImage(dataUri, formato, box.x, box.y, box.w, box.h);
+            this.doc.restoreGraphicsState();
+          } else {
+            this.doc.addImage(dataUri, formato, box.x, box.y, box.w, box.h);
+          }
         } else {
           console.error("[export-pdf] capa em formato não suportado pelo jsPDF — ignorada");
         }

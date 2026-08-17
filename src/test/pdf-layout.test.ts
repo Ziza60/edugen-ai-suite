@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   detectImageFormat,
+  fillImageBox,
   fitImageBox,
   lineHeightMm,
   tocSeparatorY,
@@ -183,5 +184,75 @@ describe("tocSeparatorY", () => {
     const y = tocSeparatorY(100, 1, CORPO);
     expect(y).toBeCloseTo(100.5, 6);
     expect(Number.isFinite(y)).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A capa ficava pequena no meio da faixa reservada: encaixada dentro dela, uma
+// imagem 16:9 usava 108,5 dos 162 mm e deixava 53,5 mm de branco que mais
+// ninguém aproveita. Estes testes fixam o preenchimento e o limite de recorte.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Faixa real da capa no export-pdf: x=24, y=220, 162 x 62 mm.
+const FX = 24, FY = 220, FW = 162, FH = 62;
+
+describe("fillImageBox", () => {
+  it("preenche a faixa inteira, sem sobra em nenhum lado", () => {
+    const b = fillImageBox(1344, 768, FX, FY, FW, FH);
+    expect(b.w).toBeGreaterThanOrEqual(FW);
+    expect(b.h).toBeGreaterThanOrEqual(FH);
+    expect(b.x).toBeLessThanOrEqual(FX);
+    expect(b.y).toBeLessThanOrEqual(FY);
+    expect(b.x + b.w).toBeGreaterThanOrEqual(FX + FW);
+    expect(b.y + b.h).toBeGreaterThanOrEqual(FY + FH);
+  });
+
+  it("não distorce: mantém a proporção do arquivo", () => {
+    const b = fillImageBox(1344, 768, FX, FY, FW, FH);
+    expect(b.w / b.h).toBeCloseTo(1344 / 768, 6);
+  });
+
+  it("centraliza o excedente, cortando igual dos dois lados", () => {
+    const b = fillImageBox(1344, 768, FX, FY, FW, FH);
+    expect(FX - b.x).toBeCloseTo(b.x + b.w - (FX + FW), 6);
+    expect(FY - b.y).toBeCloseTo(b.y + b.h - (FY + FH), 6);
+  });
+
+  it("na capa 16:9 recupera os 53,5 mm que ficavam em branco", () => {
+    const encaixe = fitImageBox(1344, 768, FW, FH);
+    expect(FW - encaixe.w).toBeCloseTo(53.5, 1); // o desperdício de antes
+    expect(fillImageBox(1344, 768, FX, FY, FW, FH).w).toBeCloseTo(FW, 6);
+  });
+
+  it("marca recortada quando ampliou além da faixa", () => {
+    expect(fillImageBox(1344, 768, FX, FY, FW, FH).recortada).toBe(true);
+  });
+
+  it("imagem já na proporção da faixa não precisa de recorte", () => {
+    const b = fillImageBox(1620, 620, FX, FY, FW, FH);
+    expect(b.recortada).toBe(false);
+    expect(b.w).toBeCloseTo(FW, 6);
+    expect(b.h).toBeCloseTo(FH, 6);
+  });
+
+  it("desiste de preencher quando o corte comeria a imagem — foto em pé", () => {
+    // 768x1344 numa faixa deitada exigiria descartar 78% da imagem. O que
+    // sobraria é uma tira fina; melhor a sobra branca das laterais.
+    const b = fillImageBox(768, 1344, FX, FY, FW, FH);
+    expect(b.recortada).toBe(false);
+    expect(b.w).toBeLessThanOrEqual(FW);
+    expect(b.h).toBeLessThanOrEqual(FH + 1e-9);
+    expect(b.w / b.h).toBeCloseTo(768 / 1344, 6);
+  });
+
+  it("o que sobra do recorte fica dentro do limite aceito", () => {
+    const b = fillImageBox(1344, 768, FX, FY, FW, FH);
+    const perda = 1 - (FW * FH) / (b.w * b.h);
+    expect(perda).toBeLessThanOrEqual(0.6);
+  });
+
+  it("dimensões inválidas devolvem a faixa, sem quebrar", () => {
+    const b = fillImageBox(0, 0, FX, FY, FW, FH);
+    expect(b).toEqual({ x: FX, y: FY, w: FW, h: FH, recortada: false });
   });
 });
