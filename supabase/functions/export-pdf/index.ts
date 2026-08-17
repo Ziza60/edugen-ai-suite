@@ -7,6 +7,7 @@ import {
   tocSeparatorY,
   tocTitleLines,
 } from "../_shared/pdf-layout.ts";
+import { splitCourseOverview } from "../_shared/course-frontmatter.ts";
 
 // Este arquivo era autocontido para poder ser colado inteiro no editor do painel
 // do Supabase. Deixou de ser: as contas de layout do sumário e da imagem foram
@@ -649,9 +650,10 @@ class PdfRenderer {
     // lateral do leitor ficava vazio, e a única navegação era o sumário da
     // página 2 — para trocar de módulo o aluno tinha que rolar o documento.
     try {
-      this.doc.outline?.add?.(null, `${this.moduleIndex}. ${title}`, {
-        pageNumber: this.pageNum,
-      });
+      // moduleIndex 0 é a apresentação do curso, que não é um módulo e portanto
+      // não recebe número no marcador.
+      const rotulo = this.moduleIndex > 0 ? `${this.moduleIndex}. ${title}` : title;
+      this.doc.outline?.add?.(null, rotulo, { pageNumber: this.pageNum });
     } catch {
       // Outline é conveniência de navegação; nunca pode custar o PDF.
     }
@@ -1517,23 +1519,47 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Cada módulo com o conteúdo já limpo, para que o sumário e o laço adiante
+    // enxerguem exatamente a mesma lista.
+    const renderableModules = modules
+      .map((mod) => ({
+        mod,
+        // Defensive: older courses stored a stray ```fence and a leading
+        // "## <title>" that duplicates the title we just rendered.
+        content: cleanModuleContent(mod.content || "", mod.title),
+      }))
+      .filter((m) => m.content || (m.mod.title || "").trim());
+
+    // A apresentação do curso vem gravada dentro do primeiro módulo (o gerador
+    // a prepende lá). Sem separar, o leitor abre em "MÓDULO 1 — <título>" e
+    // encontra cinco páginas de folheto antes da primeira lição.
+    let apresentacao: string | null = null;
+    if (renderableModules.length > 0) {
+      const separado = splitCourseOverview(renderableModules[0].content);
+      if (separado.apresentacao) {
+        apresentacao = separado.apresentacao;
+        renderableModules[0].content = cleanModuleContent(
+          separado.modulo,
+          renderableModules[0].mod.title,
+        );
+      }
+    }
+
     // O sumário é desenhado antes dos módulos, com "..." no lugar do número de
     // página; finalizeTOC volta e preenche. Só faz sentido com mais de um módulo.
-    const renderableModules = modules.filter(
-      (m) => cleanModuleContent(m.content || "", m.title) || (m.title || "").trim(),
-    );
     if (renderableModules.length > 1) {
-      pdf.renderTOCPage(renderableModules.map((m) => m.title || ""));
+      pdf.renderTOCPage(renderableModules.map((m) => m.mod.title || ""));
+    }
+
+    if (apresentacao) {
+      pdf.moduleIndex = 0;
+      pdf.renderModuleTitle("Apresentação do curso");
+      pdf.renderModuleContent(apresentacao);
     }
 
     const moduleStartPages: number[] = [];
     let moduleNum = 0;
-    for (const mod of modules) {
-      // Defensive: older courses stored a stray ```fence and a leading
-      // "## <title>" that duplicates the title we just rendered.
-      const content = cleanModuleContent(mod.content || "", mod.title);
-      // Skip modules with no renderable content to avoid blank pages
-      if (!content && !mod.title) continue;
+    for (const { mod, content } of renderableModules) {
       moduleNum++;
       pdf.moduleIndex = moduleNum;
       pdf.renderModuleTitle(mod.title);
