@@ -645,6 +645,24 @@ function validateSemanticCodeCompleteness(code: string): string | null {
 // (chicken-and-egg: only ran AFTER validation failed — but slide 35 made
 // validation PASS via the bare `print(obj)` escape, so the repair never
 // got a chance to fix the pedagogical bug).
+// O método escolhido DEVOLVE um valor? Decide se a chamada precisa ir dentro
+// de um print(). Procura o `def <nome>(` e varre o corpo dele — o corpo termina
+// na primeira linha não vazia com indentação menor ou igual à do próprio def.
+// Um `return` pelado (sem expressão) não conta: não há o que imprimir.
+function metodoRetornaValor(code: string, metodo: string): boolean {
+  const def = new RegExp(`^([ \\t]*)def\\s+${metodo}\\s*\\(`, "m").exec(code);
+  if (!def) return false;
+  const recuoDef = def[1].length;
+  const linhas = code.slice(def.index).split("\n").slice(1);
+  for (const linha of linhas) {
+    if (!linha.trim()) continue;
+    const recuo = linha.length - linha.trimStart().length;
+    if (recuo <= recuoDef) break; // saiu do corpo do método
+    if (/^\s*return\s+\S/.test(linha)) return true;
+  }
+  return false;
+}
+
 function repairBareInstancePrint(
   code: string,
   moduleCtx: CodeSymbols,
@@ -662,7 +680,17 @@ function repairBareInstancePrint(
     localFuncs.find((f) => !SKIP_FNS.has(f)) ??
     moduleCtx.funcs.find((f) => !SKIP_FNS.has(f));
   if (!candidate) return code;
-  const replaced = code.replace(fullMatch, `${indent}${instName}.${candidate}()`);
+  // O print TEM de sobreviver. A troca antiga era
+  //   print(carro_amigo)  →  carro_amigo.exibir_info()
+  // que resolvia a queixa pedagógica (imprimir o endereço do objeto) mas
+  // levava junto a única saída do exemplo: o aluno rodava e não via nada, e o
+  // próprio validador reprovava logo depois com class_defined_but_no_output.
+  // Quando o método devolve valor, a chamada entra DENTRO do print. Quando não
+  // devolve, a chamada fica pelada mesmo — envolvê-la faria o exemplo imprimir
+  // "None", que é pior que o problema original.
+  const chamada = `${instName}.${candidate}()`;
+  const nova = metodoRetornaValor(code, candidate) ? `print(${chamada})` : chamada;
+  const replaced = code.replace(fullMatch, `${indent}${nova}`);
   console.log(
     `[CODE-PREVENTIVE-REPAIR] slide=${slideNum} pattern=print_inst_to_method inst=${instName} method=${candidate}`,
   );
@@ -714,7 +742,13 @@ function repairIncompleteCodeExample(
         (f) => f !== "__init__" && !["main", "init"].includes(f),
       );
       if (candidate) {
-        out = out.replace(fullMatch, `${indent}${instName}.${candidate}()`);
+        // Mesma regra do repairBareInstancePrint acima: preserva o print
+        // quando o método devolve valor, para não apagar a saída do exemplo.
+        const chamada = `${instName}.${candidate}()`;
+        out = out.replace(
+          fullMatch,
+          `${indent}${metodoRetornaValor(out, candidate) ? `print(${chamada})` : chamada}`,
+        );
         console.log(
           `[CODE-REPAIR] slide=${slideNum} pattern=print_inst_to_method inst=${instName} method=${candidate}`,
         );

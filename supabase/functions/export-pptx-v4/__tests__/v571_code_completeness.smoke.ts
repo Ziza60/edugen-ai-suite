@@ -96,6 +96,20 @@ function extractCodeSymbols(code: string | null | undefined): CodeSymbols {
   }
   return out;
 }
+// Espelha metodoRetornaValor de index.ts. A cópia é inline de propósito: o
+// smoke test roda sem importar o módulo de produção.
+function metodoRetornaValor(code: string, metodo: string): boolean {
+  const def = new RegExp(`^([ \\t]*)def\\s+${metodo}\\s*\\(`, "m").exec(code);
+  if (!def) return false;
+  const recuoDef = def[1].length;
+  for (const linha of code.slice(def.index).split("\n").slice(1)) {
+    if (!linha.trim()) continue;
+    const recuo = linha.length - linha.trimStart().length;
+    if (recuo <= recuoDef) break;
+    if (/^\s*return\s+\S/.test(linha)) return true;
+  }
+  return false;
+}
 function repairBareInstancePrint(code: string, moduleCtx: CodeSymbols): string {
   if (!code) return code;
   const m = code.match(/^([ \t]*)print\(\s*([a-z_][\w]*)\s*\)\s*$/m);
@@ -108,7 +122,11 @@ function repairBareInstancePrint(code: string, moduleCtx: CodeSymbols): string {
   const candidate = localFuncs.find((f) => !SKIP_FNS.has(f)) ??
     moduleCtx.funcs.find((f) => !SKIP_FNS.has(f));
   if (!candidate) return code;
-  return code.replace(fullMatch, `${indent}${instName}.${candidate}()`);
+  const chamada = `${instName}.${candidate}()`;
+  return code.replace(
+    fullMatch,
+    `${indent}${metodoRetornaValor(code, candidate) ? `print(${chamada})` : chamada}`,
+  );
 }
 
 // ─── REGRESSION FIXTURES — actual user-reported slides ───────────────────

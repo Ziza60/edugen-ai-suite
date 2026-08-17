@@ -15,6 +15,7 @@
 // string, tagged so production logs can be filtered by feature.
 
 import {
+  __TECH_PLACEHOLDER_RE,
   protectTechnicalTokens,
   restoreTechnicalTokens,
   validateTechnicalTokenIntegrity,
@@ -261,8 +262,31 @@ function maskAllProtected(text: string): { masked: string; restore: (s: string) 
 // Sentence-case a string: lowercase everything, then capitalise the
 // first letter of each sentence. Sentences are separated by `.`, `!`,
 // `?`, or newline followed by whitespace.
+//
+// OS MARCADORES SÃO OPACOS. O masker editorial daqui de cima já respeita isso:
+// a chave dele é `N`, sem nenhuma letra ASCII, justamente porque
+// esta função baixa a caixa do texto inteiro. O marcador da camada TÉCNICA
+// (technical-preservation.ts) veio depois, de outro módulo, e tem a forma
+// `T000` — com um "T" no meio. Baixar a caixa dele produzia
+// `t000`, que `restoreTechnicalTokens` não reconhece; o token
+// original nunca voltava, a checagem de integridade percebia a perda e
+// revertia TUDO. Resultado: qualquer texto gritado que contivesse um token
+// técnico (HTTP, GET, DEBUG…) ficava em caixa alta, sem normalização nenhuma.
+//
+// Por isso o abaixamento pula os trechos de marcador. A regra de
+// capitalização não precisa de exceção: ela só casa `[a-zà-ÿ]`, e o marcador
+// começa por um caractere de uso privado — um marcador em início de frase
+// simplesmente não é capitalizado, que é o certo, porque o token traz a
+// própria caixa de volta na restauração.
 function toSentenceCase(text: string): string {
-  const lowered = text.toLowerCase();
+  const marcador = new RegExp(__TECH_PLACEHOLDER_RE.source, "g");
+  let lowered = "";
+  let cursor = 0;
+  for (let m = marcador.exec(text); m !== null; m = marcador.exec(text)) {
+    lowered += text.slice(cursor, m.index).toLowerCase() + m[0];
+    cursor = m.index + m[0].length;
+  }
+  lowered += text.slice(cursor).toLowerCase();
   return lowered.replace(
     /(^|[.!?]\s+|\n\s*)([a-zà-ÿ])/g,
     (_m, sep, ch) => sep + ch.toUpperCase(),
