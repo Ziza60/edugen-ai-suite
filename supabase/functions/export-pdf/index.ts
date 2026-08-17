@@ -1,8 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
+import { detectImageFormat, fitImageBox, tocTitleLines } from "../_shared/pdf-layout.ts";
 
-// Self-contained (no ../_shared import) so this function can be deployed by
-// pasting THIS single file into the Supabase Dashboard editor.
+// Este arquivo era autocontido para poder ser colado inteiro no editor do painel
+// do Supabase. Deixou de ser: as contas de layout do sumário e da imagem foram
+// para ../_shared/pdf-layout.ts porque precisavam de teste — foi por não terem
+// teste que a imagem do módulo e o sumário sumiram numa refatoração e ninguém
+// percebeu. Para deploy pelo painel, cole também aquele arquivo; pelo CLI
+// (`supabase functions deploy export-pdf`) o _shared vai junto, como já vai nas
+// outras funções.
 function _headingKey(s: string): string {
   return (s || "")
     .replace(/^#{1,6}\s*/, "")
@@ -249,6 +255,14 @@ class PdfRenderer {
   pageNum: number;
   courseTitle: string = "";
   moduleIndex: number = 0;
+  /** Onde ficou o "..." de cada módulo no sumário, para que finalizeTOC volte
+   *  lá e escreva o número de página real por cima.
+   *
+   *  Guarda a PÁGINA junto com o Y: um curso com muitos módulos faz o sumário
+   *  passar de uma página, e guardar só o Y escreveria todos os números na
+   *  primeira delas. */
+  tocPageNum: number = 0;
+  tocLines: Array<{ page: number; y: number }> = [];
 
   constructor() {
     this.doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -459,6 +473,153 @@ class PdfRenderer {
     this.doc.setTextColor(...COLOR.TEXT_WHITE);
     this.doc.text("1", PAGE_W / 2, 293, { align: "center" });
     this.doc.setTextColor(...COLOR.TEXT_BODY);
+  }
+
+  // ── Sumário ───────────────────────────────────────────────────────
+  //
+  // Existia, e se perdeu quando este arquivo foi separado em módulos. O leitor
+  // ficou com os marcadores laterais e nada impresso: quem abre a apostila em
+  // papel, ou num visualizador sem painel lateral, não tem por onde navegar.
+  //
+  // O número da página não dá para saber na hora de desenhar o sumário — ele
+  // vem antes dos módulos. Então imprimimos "..." e voltamos depois, em
+  // finalizeTOC, para escrever o número por cima.
+
+  renderTOCPage(moduleTitles: string[]) {
+    this.addPage();
+    this.tocPageNum = this.pageNum;
+    this.tocLines = [];
+    this.y = MARGIN_TOP + 4;
+
+    this.doc.setFontSize(FONT.MODULE_TITLE);
+    this.doc.setFont("helvetica", "bold");
+    this.doc.setTextColor(...COLOR.PRIMARY);
+    this.doc.text("Sumário", MARGIN_LEFT, this.y);
+    this.y += FONT.MODULE_TITLE * 0.5 + 6;
+
+    this.doc.setFillColor(...COLOR.ACCENT);
+    this.doc.rect(MARGIN_LEFT, this.y, 40, 0.8, "F");
+    this.y += 8;
+
+    // A faixa dos pontinhos é fixa. Se ela flutuasse conforme o tamanho do
+    // título, um título longo comeria o espaço do número da página.
+    const MAX_TITLE_W = CONTENT_W - 48;
+    const PAGE_NUM_X = PAGE_W - MARGIN_RIGHT;
+    const DOT_FIXED_X = PAGE_NUM_X - 30;
+    const DOT_END_X = PAGE_NUM_X - 8;
+
+    for (let i = 0; i < moduleTitles.length; i++) {
+      const label = sanitizeText(moduleTitles[i] || `Módulo ${i + 1}`);
+
+      this.doc.setFontSize(FONT.SMALL);
+      this.doc.setFont("helvetica", "bold");
+      this.doc.setTextColor(...COLOR.ACCENT);
+      this.doc.text(`${i + 1}.`, MARGIN_LEFT, this.y);
+
+      this.doc.setFontSize(FONT.BODY);
+      this.doc.setFont("helvetica", "normal");
+      this.doc.setTextColor(...COLOR.TEXT_DARK);
+      const titleLines = tocTitleLines(this.doc.splitTextToSize(label, MAX_TITLE_W));
+      this.doc.text(titleLines, MARGIN_LEFT + 8, this.y);
+
+      // Pontinhos e número ancoram na ÚLTIMA linha do título; ancorar na
+      // primeira fazia o número cortar um título de duas linhas ao meio.
+      const lastLineY = this.y + (titleLines.length - 1) * SP.LINE_HEIGHT;
+      this.tocLines.push({ page: this.pageNum, y: lastLineY });
+
+      this.doc.setFontSize(7);
+      this.doc.setTextColor(...COLOR.TEXT_MUTED);
+      const dotLine: string =
+        this.doc.splitTextToSize(". ".repeat(40), DOT_END_X - DOT_FIXED_X)[0] || "";
+      if (dotLine) this.doc.text(dotLine, DOT_FIXED_X, lastLineY);
+
+      this.doc.setFontSize(FONT.BODY);
+      this.doc.setFont("helvetica", "bold");
+      this.doc.text("...", PAGE_NUM_X, lastLineY, { align: "right" });
+
+      this.y += titleLines.length * SP.LINE_HEIGHT + 4;
+
+      if (i < moduleTitles.length - 1) {
+        this.doc.setDrawColor(...COLOR.TEXT_MUTED);
+        this.doc.setLineWidth(0.1);
+        this.doc.line(MARGIN_LEFT, this.y - 1, PAGE_W - MARGIN_RIGHT, this.y - 1);
+      }
+      this.checkPage(14);
+    }
+
+    this.doc.setFont("helvetica", "normal");
+    this.doc.setTextColor(...COLOR.TEXT_BODY);
+  }
+
+  /** Volta ao sumário e troca cada "..." pelo número de página real. */
+  finalizeTOC(moduleStartPages: number[]) {
+    if (!this.tocPageNum || this.tocLines.length === 0) return;
+    const lastPage = this.pageNum;
+    const PAGE_NUM_X = PAGE_W - MARGIN_RIGHT;
+    try {
+      const total = Math.min(moduleStartPages.length, this.tocLines.length);
+      for (let i = 0; i < total; i++) {
+        const { page, y } = this.tocLines[i];
+        this.doc.setPage(page);
+        // Apaga o "..." antes de escrever por cima; sem isso o número sai
+        // sobreposto às reticências.
+        this.doc.setFillColor(255, 255, 255);
+        this.doc.rect(PAGE_NUM_X - 22, y - 5, 24, 6.5, "F");
+        this.doc.setFontSize(FONT.BODY);
+        this.doc.setFont("helvetica", "bold");
+        this.doc.setTextColor(...COLOR.PRIMARY);
+        this.doc.text(String(moduleStartPages[i]), PAGE_NUM_X, y, { align: "right" });
+      }
+      this.doc.setFont("helvetica", "normal");
+      this.doc.setTextColor(...COLOR.TEXT_BODY);
+    } finally {
+      // Sem voltar para a última página, o output() sai truncado.
+      this.doc.setPage(lastPage);
+    }
+  }
+
+  // ── Imagem do módulo ──────────────────────────────────────────────
+  //
+  // Também se perdeu na separação do arquivo. As imagens continuavam sendo
+  // geradas, pagas e gravadas em course_images — o portal do aluno as mostra —
+  // mas nenhuma exportação as lia. O comprador levava a apostila sem elas.
+
+  renderModuleImage(bytes: Uint8Array, altText?: string) {
+    try {
+      const format = detectImageFormat(bytes);
+      if (!format) {
+        console.error("[export-pdf] formato de imagem não suportado pelo jsPDF — ignorada");
+        return;
+      }
+
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+      const dataUri = `data:image/${format.toLowerCase()};base64,${base64}`;
+
+      const props = this.doc.getImageProperties(dataUri);
+      const { w, h } = fitImageBox(props.width, props.height, CONTENT_W, 70);
+
+      this.checkPage(h + 8);
+      this.doc.addImage(dataUri, format, MARGIN_LEFT + (CONTENT_W - w) / 2, this.y, w, h);
+      this.y += h + 8;
+
+      // A legenda é o alt-text que a busca de imagem já grava. Ela serve ao
+      // leitor de tela e, aqui, a quem lê no papel.
+      if (altText) {
+        this.doc.setFontSize(FONT.SMALL);
+        this.doc.setFont("helvetica", "italic");
+        this.doc.setTextColor(...COLOR.TEXT_MUTED);
+        const capLines = this.doc.splitTextToSize(sanitizeText(altText), CONTENT_W);
+        this.doc.text(capLines, MARGIN_LEFT + CONTENT_W / 2, this.y, { align: "center" });
+        this.y += capLines.length * 4 + 6;
+        this.doc.setFont("helvetica", "normal");
+        this.doc.setTextColor(...COLOR.TEXT_BODY);
+      }
+    } catch (imgErr) {
+      // Imagem é enriquecimento; nunca pode custar a apostila inteira.
+      console.error("[export-pdf] falha ao embutir imagem do módulo:", imgErr);
+    }
   }
 
   // ── Module title ──────────────────────────────────────────────────
@@ -1320,6 +1481,34 @@ Deno.serve(async (req: Request) => {
 
     pdf.renderTitlePage(course.title, course.description, course.language);
 
+    // Ilustrações dos módulos — a mesma tabela que o portal do aluno e o editor
+    // já leem. Nenhuma exportação a lia: o autor gerava (e pagava) a imagem,
+    // via na tela, e ela não saía na apostila.
+    const imageByModuleId: Record<string, { url: string; alt_text: string | null }> = {};
+    const moduleIds = modules.map((m) => m.id).filter(Boolean);
+    if (moduleIds.length > 0) {
+      const { data: imagesRaw, error: imgQueryErr } = await serviceClient
+        .from("course_images")
+        .select("module_id, url, alt_text")
+        .in("module_id", moduleIds);
+      if (imgQueryErr) {
+        console.error("[export-pdf] falha ao consultar course_images:", imgQueryErr.message);
+      }
+      for (const img of imagesRaw ?? []) {
+        if (img.module_id && img.url) imageByModuleId[img.module_id] = img;
+      }
+    }
+
+    // O sumário é desenhado antes dos módulos, com "..." no lugar do número de
+    // página; finalizeTOC volta e preenche. Só faz sentido com mais de um módulo.
+    const renderableModules = modules.filter(
+      (m) => cleanModuleContent(m.content || "", m.title) || (m.title || "").trim(),
+    );
+    if (renderableModules.length > 1) {
+      pdf.renderTOCPage(renderableModules.map((m) => m.title || ""));
+    }
+
+    const moduleStartPages: number[] = [];
     let moduleNum = 0;
     for (const mod of modules) {
       // Defensive: older courses stored a stray ```fence and a leading
@@ -1330,10 +1519,33 @@ Deno.serve(async (req: Request) => {
       moduleNum++;
       pdf.moduleIndex = moduleNum;
       pdf.renderModuleTitle(mod.title);
+      moduleStartPages.push(pdf.pageNum);
+
+      const img = imageByModuleId[mod.id];
+      if (img?.url) {
+        try {
+          const imgRes = await fetch(img.url);
+          if (imgRes.ok) {
+            pdf.renderModuleImage(
+              new Uint8Array(await imgRes.arrayBuffer()),
+              img.alt_text || undefined,
+            );
+          } else {
+            console.error(
+              `[export-pdf] imagem do módulo ${mod.id} respondeu ${imgRes.status}`,
+            );
+          }
+        } catch (imgFetchErr) {
+          console.error(`[export-pdf] erro ao buscar imagem do módulo ${mod.id}:`, imgFetchErr);
+        }
+      }
+
       if (content) {
         pdf.renderModuleContent(content);
       }
     }
+
+    pdf.finalizeTOC(moduleStartPages);
 
     const pdfBytes = pdf.output();
     const dateStr = new Date().toISOString().slice(0, 10);
