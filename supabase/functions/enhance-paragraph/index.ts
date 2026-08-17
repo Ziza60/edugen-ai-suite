@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { promptDaAcao, promptPersonalizado } from "./actions.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,7 +50,15 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { text, action = "improve", language = "pt-BR", instruction } = await req.json();
+    const { text, action = "improve", language = "pt-BR", instruction, mode } =
+      await req.json();
+
+    // O modo diz se a resposta SUBSTITUI o trecho ou é ANEXADA depois dele, e
+    // isso muda o que a IA precisa devolver: no anexo, só o pedaço novo; na
+    // substituição, o texto inteiro reescrito. A mesma ação "example" serve aos
+    // dois — o submenu oferece "Adicionar ao módulo" e "Substituir existente" —
+    // então sem esta informação o servidor não tem como acertar os dois.
+    const modo: "append" | "replace" = mode === "append" ? "append" : "replace";
 
     if (!text || text.trim().length < 5) {
       return new Response(JSON.stringify({ error: "Text too short" }), {
@@ -83,9 +92,16 @@ Deno.serve(async (req: Request) => {
     // não as pegaria nunca. Sem esta linha, quem editou um trecho grande antes
     // da correção receberia o mesmo texto truncado para sempre, e o redeploy
     // pareceria não ter feito nada.
-    const CACHE_VERSION = "v2";
+    // O "v3" invalida o que foi gravado enquanto seis das dez ações recebiam
+    // calada a instrução de "melhorar o texto". Aquelas respostas estão sob a
+    // chave da ação certa mas com o conteúdo da ação errada — quem pediu
+    // "Encurtar" antes desta correção receberia para sempre o texto melhorado.
+    const CACHE_VERSION = "v3";
+    // O modo entra na chave: "example" anexando devolve só o exemplo novo,
+    // "example" substituindo devolve o texto inteiro. Duas respostas
+    // diferentes para a mesma ação e o mesmo texto.
     const cacheKey = await hashInput(
-      `enhance:${CACHE_VERSION}:${action}:${language}:${text}${customInstruction ? `:${customInstruction}` : ""}`,
+      `enhance:${CACHE_VERSION}:${action}:${modo}:${language}:${text}${customInstruction ? `:${customInstruction}` : ""}`,
     );
     const { data: cached } = await serviceClient
       .from("ai_cache")
@@ -112,23 +128,22 @@ Deno.serve(async (req: Request) => {
     const url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     const model = "gemini-3-flash-preview"; 
 
-    const systemPrompts: Record<string, string> = {
-      improve: `Você é um editor pedagógico especialista. Melhore o texto fornecido mantendo o mesmo significado mas tornando-o mais claro, conciso e profissional. Mantenha o formato markdown. Responda APENAS com o texto melhorado, sem explicações.`,
-      simplify: `Você é um editor pedagógico. Simplifique o texto fornecido para que seja compreensível por iniciantes. Use linguagem simples e direta. Mantenha o formato markdown. Responda APENAS com o texto simplificado.`,
-      expand: `Você é um editor pedagógico. Expanda o texto fornecido com mais detalhes, exemplos e explicações. Mantenha o formato markdown. Responda APENAS com o texto expandido.`,
-      fix: `Você é um editor. Corrija erros gramaticais, ortográficos e de formatação no texto. Mantenha o formato markdown. Responda APENAS com o texto corrigido.`,
-    };
-
-    // As travas que valem para TODA edição, inclusive a personalizada: sem elas
-    // o modelo responde com explicação em volta do texto, ou devolve prosa onde
-    // havia markdown — e o resultado entra direto no editor do autor.
-    const TRAVAS =
-      "Mantenha o formato markdown do original, incluindo listas, tabelas e citações. " +
-      "Responda APENAS com o texto editado, sem preâmbulo, sem comentários e sem cercas de código.";
-
+    // As instruções de cada ação moram em actions.ts, junto com a lista
+    // canônica — ver o cabeçalho de lá para o defeito que motivou a separação.
     const systemPrompt = action === "custom"
-      ? `Você é um editor pedagógico especialista. Aplique ao texto fornecido a seguinte instrução do autor:\n\n"${customInstruction}"\n\n${TRAVAS}`
-      : (systemPrompts[action] || systemPrompts.improve);
+      ? promptPersonalizado(customInstruction)
+      : promptDaAcao(action, modo);
+
+    // Ação que o servidor não conhece não pode ser servida como se fosse outra:
+    // era assim que "Encurtar" virava "Melhorar" sem ninguém notar.
+    if (!systemPrompt) {
+      console.error(`[enhance-paragraph] ação desconhecida: ${action}`);
+      return new Response(
+        JSON.stringify({ error: `Ação não suportada: ${action}` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
 
     // O teto de saída precisa caber o texto reescrito INTEIRO — e este modelo
     // raciocina antes de responder, com os tokens de pensamento saindo deste
@@ -183,7 +198,7 @@ Deno.serve(async (req: Request) => {
 
     const result = await response.json();
     const choice = result.choices?.[0];
-    const enhanced = choice?.message?.content || text;
+    const enhanced = (choice?.message?.content ?? "").trim();
 
     // Resposta cortada por limite de tokens NÃO é resultado — é meia edição.
     // Aplicá-la apaga o resto da seção, e no diff ela parece completa porque o
@@ -199,6 +214,37 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           error: "A IA não conseguiu terminar a edição deste trecho",
           truncated: true,
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Resposta vazia NÃO é resultado. Antes daqui saía `content || text`: com o
+    // corpo vazio, o próprio texto do autor voltava com status 200, a interface
+    // abria o diff sem diferença nenhuma e o autor via a ação "não fazer nada".
+    // Este modelo raciocina antes de responder, e há casos em que o raciocínio
+    // termina sem produzir texto — silenciar isso como se fosse uma edição é o
+    // pior desfecho possível, porque não dá nem para saber que houve falha.
+    if (!enhanced) {
+      console.error(
+        `[enhance-paragraph] resposta vazia: action=${action} modo=${modo} finish=${choice?.finish_reason}`,
+      );
+      return new Response(
+        JSON.stringify({ error: "A IA não retornou texto. Tente novamente." }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Edição que devolve o texto igual ao que entrou também não é resultado —
+    // é a ação não tendo efeito. Dizer isso é melhor que abrir um diff vazio e
+    // deixar o autor achando que o botão está quebrado. Só vale para quem
+    // SUBSTITUI: no anexo, o retorno é um trecho novo e nunca igual à entrada.
+    if (modo === "replace" && enhanced === text.trim()) {
+      console.warn(`[enhance-paragraph] sem efeito: action=${action} entrada=${text.length}`);
+      return new Response(
+        JSON.stringify({
+          error: "A IA devolveu o texto sem alterações",
+          semEfeito: true,
         }),
         { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );

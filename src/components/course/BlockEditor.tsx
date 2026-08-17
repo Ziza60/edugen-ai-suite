@@ -33,6 +33,7 @@ import {
   ESCOPO_LABEL,
   type EscopoIA,
 } from "@/lib/editor-scope";
+import { MODO_PADRAO, ROTULOS_IA } from "@/lib/ai-actions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -233,25 +234,11 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
     },
   });
 
-  // Default insertion mode per action ("append" = add at end, "replace" = overwrite)
-  const DEFAULT_MODE: Record<string, "append" | "replace"> = {
-    example:   "append",
-    practical: "append",
-    activity:  "append",
-  };
-
-  const ACTION_LABELS: Record<string, string> = {
-    improve:   "Texto melhorado ✨",
-    fix:       "Erros corrigidos ✨",
-    simplify:  "Texto simplificado ✨",
-    shorten:   "Texto encurtado ✨",
-    expand:    "Texto expandido ✨",
-    deepen:    "Conteúdo aprofundado ✨",
-    example:   "Exemplo prático adicionado ✨",
-    practical: "Aula prática gerada ✨",
-    activity:  "Atividade adicionada ✨",
-    regenerate:"Módulo regenerado ✨",
-  };
+  // O modo de inserção e os rótulos moram em src/lib/ai-actions.ts, ao lado da
+  // lista canônica das ações — um teste compara essa lista com a do servidor,
+  // que é o que faltava quando seis ações do menu não existiam lá.
+  const DEFAULT_MODE = MODO_PADRAO as Record<string, "append" | "replace">;
+  const ACTION_LABELS = ROTULOS_IA as Record<string, string>;
 
   const handleAIEnhance = useCallback(
     async (
@@ -282,6 +269,11 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
           body: {
             text: contextText,
             action,
+            // O servidor precisa do modo: anexando, ele devolve SÓ o trecho
+            // novo; substituindo, o texto inteiro reescrito. Sem isto, "Gerar
+            // exemplo → Adicionar ao módulo" recebia o módulo reescrito e o
+            // anexava — o conteúdo saía duplicado.
+            mode,
             ...(opcoes?.instruction ? { instruction: opcoes.instruction } : {}),
           },
         });
@@ -300,6 +292,19 @@ export function BlockEditor({ content, onChange, isPro = false, isStarter = fals
                 "A IA não conseguiu terminar e o resultado sairia cortado — nada foi alterado. " +
                 "Selecione um trecho menor e tente de novo.",
               variant: "destructive",
+            });
+            return;
+          }
+          if (corpo?.semEfeito) {
+            // Antes isto chegava como sucesso: a função devolvia o próprio texto
+            // do autor e o diff abria sem nenhuma diferença, o que se lê como
+            // "o botão não faz nada". Dizer que a IA não mudou nada é honesto e
+            // dá ao autor o que fazer a seguir.
+            toast({
+              title: "A IA não mudou nada neste trecho",
+              description:
+                "Ela considerou que o texto já atende ao que foi pedido. Tente um trecho " +
+                "maior, outra ação, ou use “Instrução personalizada” dizendo o que mudar.",
             });
             return;
           }
