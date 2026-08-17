@@ -9,6 +9,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Sparkles } from "lucide-react";
+import {
+  agruparEmTrechos,
+  contarLinhasAlteradas,
+  diffLinhas,
+  type LinhaDiff,
+} from "@/lib/text-diff";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Diálogo de diff antes/depois — aceitar ou rejeitar
@@ -47,15 +53,66 @@ interface AiDiffDialogProps {
   hint?: string;
 }
 
-/** Quantas linhas mudaram entre os dois lados. */
+/**
+ * Quantas linhas mudaram entre os dois lados.
+ *
+ * A versão anterior comparava a linha 1 com a linha 1, a 2 com a 2. Bastava a
+ * IA inserir uma linha no começo para todo o resto escorregar de posição e
+ * entrar na conta: numa seção de 40 linhas, um acréscimo virava "40 linhas
+ * modificadas". Agora a conta sai do alinhamento de verdade.
+ */
 export function countChangedLines(before: string, after: string): number {
-  const b = (before || "").split("\n");
-  const a = (after || "").split("\n");
-  let n = 0;
-  for (let i = 0; i < Math.max(b.length, a.length); i++) {
-    if ((b[i] || "") !== (a[i] || "")) n++;
+  return contarLinhasAlteradas(before, after);
+}
+
+/**
+ * Marca onde um bloco sem alteração foi escondido. Aparece nos DOIS painéis com
+ * a mesma altura, senão os lados se desencontram e a rolagem sincronizada passa
+ * a comparar linhas erradas.
+ */
+function Recolhida({ n }: { n: number }) {
+  return (
+    <div className="px-2 my-1 text-[10px] text-muted-foreground/70 border-y border-dashed border-border select-none">
+      ⋯ {n} {n === 1 ? "linha sem alteração" : "linhas sem alteração"}
+    </div>
+  );
+}
+
+/** Uma linha do diff, pintada conforme o que aconteceu com ela. */
+function Linha({ lado, linha }: { lado: "antes" | "depois"; linha: LinhaDiff }) {
+  const conteudo = lado === "antes" ? linha.antes : linha.depois;
+
+  // Linha que não existe deste lado vira faixa vazia, para os dois painéis
+  // ficarem na mesma altura e a rolagem sincronizada continuar valendo.
+  if (conteudo === undefined) {
+    return <div className="px-2 min-h-[1.25rem] bg-muted/20 rounded-sm" aria-hidden="true">{" "}</div>;
   }
-  return n;
+
+  const pedacos = lado === "antes" ? linha.pedacosAntes : linha.pedacosDepois;
+  const fundo = linha.tipo === "igual"
+    ? ""
+    : lado === "antes"
+    ? "bg-red-500/10 border-l-2 border-red-500/50"
+    : "bg-emerald-500/10 border-l-2 border-emerald-500/50";
+
+  return (
+    <div className={`px-2 min-h-[1.25rem] rounded-sm ${fundo}`}>
+      {pedacos
+        ? pedacos.map((p, i) => (
+          <span
+            key={i}
+            className={p.tipo === "removido"
+              ? "bg-red-500/35 text-red-100 rounded-[2px]"
+              : p.tipo === "adicionado"
+              ? "bg-emerald-500/35 text-emerald-50 rounded-[2px]"
+              : ""}
+          >
+            {p.texto}
+          </span>
+        ))
+        : conteudo || " "}
+    </div>
+  );
 }
 
 export function AiDiffDialog({
@@ -97,6 +154,12 @@ export function AiDiffDialog({
   );
 
   const atual = pairs[activeIndex] ?? pairs[0];
+
+  // O diff é caro o suficiente para não ser refeito a cada rolagem do diálogo.
+  const trechos = useMemo(
+    () => agruparEmTrechos(diffLinhas(atual?.before ?? "", atual?.after ?? "")),
+    [atual?.before, atual?.after],
+  );
 
   const rejeitar = () => {
     onReject?.();
@@ -143,6 +206,12 @@ export function AiDiffDialog({
           </div>
         )}
 
+        {/* O painel da direita já foi tingido inteiro com a cor do tema. Lido
+            no tema escuro, aquilo virava um fundo marrom que parecia destaque
+            de alteração sem marcar alteração nenhuma — e para achar o que a IA
+            fez era preciso ler os dois lados inteiros. Agora só o que MUDOU
+            recebe cor: vermelho no que saiu, verde no que entrou, e dentro de
+            uma frase reescrita a marca desce ao nível da palavra. */}
         <div className="flex-1 grid grid-cols-2 gap-3 min-h-0">
           <div className="flex flex-col min-h-0">
             <p className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wider">
@@ -150,11 +219,18 @@ export function AiDiffDialog({
             </p>
             <div
               ref={leftRef}
-              className="flex-1 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3"
+              className="flex-1 overflow-y-auto rounded-lg border border-border bg-background p-2"
             >
-              <pre className="text-xs whitespace-pre-wrap font-mono text-foreground/80">
-                {atual?.before || "(vazio)"}
-              </pre>
+              <div className="text-xs whitespace-pre-wrap font-mono text-foreground/80 leading-5">
+                {trechos.length === 0
+                  ? <div className="px-2 text-muted-foreground">(sem alterações)</div>
+                  : trechos.map((t, ti) => (
+                    <div key={ti}>
+                      {t.ocultasAntes > 0 && <Recolhida n={t.ocultasAntes} />}
+                      {t.linhas.map((l, li) => <Linha key={li} lado="antes" linha={l} />)}
+                    </div>
+                  ))}
+              </div>
             </div>
           </div>
           <div className="flex flex-col min-h-0">
@@ -163,13 +239,32 @@ export function AiDiffDialog({
             </p>
             <div
               ref={rightRef}
-              className="flex-1 overflow-y-auto rounded-lg border border-primary/20 bg-primary/5 p-3"
+              className="flex-1 overflow-y-auto rounded-lg border border-border bg-background p-2"
             >
-              <pre className="text-xs whitespace-pre-wrap font-mono text-foreground">
-                {atual?.after || "(vazio)"}
-              </pre>
+              <div className="text-xs whitespace-pre-wrap font-mono text-foreground leading-5">
+                {trechos.length === 0
+                  ? <div className="px-2 text-muted-foreground">(sem alterações)</div>
+                  : trechos.map((t, ti) => (
+                    <div key={ti}>
+                      {t.ocultasAntes > 0 && <Recolhida n={t.ocultasAntes} />}
+                      {t.linhas.map((l, li) => <Linha key={li} lado="depois" linha={l} />)}
+                    </div>
+                  ))}
+              </div>
             </div>
           </div>
+        </div>
+
+        <div className="flex items-center gap-4 text-[11px] text-muted-foreground px-1">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-red-500/35" />
+            saiu
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-500/35" />
+            entrou
+          </span>
+          <span>Trechos sem alteração ficam recolhidos.</span>
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
