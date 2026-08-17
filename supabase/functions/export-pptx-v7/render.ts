@@ -10,6 +10,8 @@
 import type { PlannedDeck, SlideSpec } from "./deck-plan.ts";
 import { autoBodyFontSize } from "./validate.ts";
 import { coverBoxSize, imageSizeFromDataUri } from "../_shared/image-size.ts";
+import { categoricalColors } from "./chart-palette.ts";
+import { chevronNumberBox } from "./chevron-geometry.ts";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
@@ -1672,8 +1674,13 @@ function renderChart(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const labels = c.points.map((p) => p.label);
   const values = c.points.map((p) => p.value);
   const data = [{ name: s.title || "Dados", labels, values }];
-  const series = [d.accent, d.accent2, "5B8FB9", "B6CFE0", "D8A657", "8E7DBE"];
-  const chartColors = labels.map((_, i) => series[i % series.length]);
+  // As fatias do donut identificam categorias, então cada uma precisa de matiz
+  // própria — não de degraus da mesma cor. A lista antiga começava em
+  // accent/accent2, que num tema de dois laranjas dava duas fatias iguais, e
+  // depois CICLAVA: a sétima fatia repetia a cor da primeira. Ordem fixa, sem
+  // ciclo. (Barra continua monocromática de propósito: ali quem mede é o
+  // comprimento, e colorir cada barra gastaria o canal de identidade à toa.)
+  const chartColors = categoricalColors(labels.length);
 
   if (c.type === "bar") {
     slide.addChart("bar", data, {
@@ -2032,14 +2039,14 @@ function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
   const y = CONTENT_Y + (CONTENT_H - blocoH) / 2;
   const fs = autoBodyFontSize(n, items.join("").length);
 
-  // Zona segura para o número: ele ocupa a faixa central da forma, então o
-  // limite à esquerda é o próprio x1 e à direita sobra o deslocamento do topo
-  // e da base da caixa do número.
-  const x1 = Math.min(chW, chH) / 2;
+  // A caixa do número precisa de duas coisas ao mesmo tempo: cair no CENTRO
+  // VISUAL da forma (que é w/2 — o entalhe da esquerda e o bico da direita têm
+  // a mesma área e se anulam) e caber inteira dentro da faixa preenchida, que
+  // é assimétrica em relação a esse centro. Centrar na faixa segura, como se
+  // fazia antes, jogava o número 0,22 pol à direita do centro. A conta está em
+  // chevron-geometry.ts, com teste.
   const numH = 0.62;
-  const uNum = numH / chH; // quanto a caixa do número se afasta do meio
-  const safeL = x1;
-  const safeW = Math.max(0.4, chW - x1 - x1 * uNum);
+  const caixaNum = chevronNumberBox(chW, chH, numH);
 
   items.forEach((b, i) => {
     const x = ML + i * (chW + gap);
@@ -2049,7 +2056,7 @@ function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
       fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 },
     });
     slide.addText(String(i + 1), {
-      x: x + safeL, y: y + (chH - numH) / 2, w: safeW, h: numH,
+      x: x + caixaNum.dx, y: y + caixaNum.dy, w: caixaNum.w, h: caixaNum.h,
       fontFace: FONT_TITLE, fontSize: 26, bold: true,
       color: accent ? d.onAccent : d.accent2, align: "center", valign: "middle",
     });
@@ -2073,8 +2080,13 @@ function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
   const ringY = CONTENT_Y + (CONTENT_H - D) / 2;
   const cxr = ringX + D / 2, cyr = ringY + D / 2;
   const seg = 360 / n;
+  // Cada fatia é uma CATEGORIA, não um degrau de intensidade: a cor aqui diz
+  // "qual dos itens", e para isso precisa de matiz própria. A rampa antiga
+  // (accent → accent2) devolvia cinco laranjas quase iguais no tema escuro.
+  // A fatia e o ponto da legenda tomam a MESMA cor, pelo mesmo índice.
+  const cores = categoricalColors(n);
   for (let i = 0; i < n; i++) {
-    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    const color = cores[i];
     slide.addShape("pie", {
       x: ringX, y: ringY, w: D, h: D,
       fill: { color }, line: { color: d.bg, width: 2.5 },
@@ -2106,7 +2118,7 @@ function renderSegmentedRing(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
   const fs = autoBodyFontSize(n, items.join("").length);
   items.forEach((b, i) => {
     const ry = startY + i * rowH;
-    const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
+    const color = cores[i];
     slide.addShape("ellipse", {
       x: legX, y: ry + rowH / 2 - 0.16, w: 0.32, h: 0.32,
       fill: { color }, line: { type: "none" },
