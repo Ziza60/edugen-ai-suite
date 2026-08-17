@@ -418,7 +418,12 @@ class PdfRenderer {
 
   // ── Title page ────────────────────────────────────────────────────
 
-  renderTitlePage(title: string, description: string | null, language: string) {
+  renderTitlePage(
+    title: string,
+    description: string | null,
+    language: string,
+    capa?: Uint8Array,
+  ) {
     // Full-height navy background (top 2/3)
     this.doc.setFillColor(...COLOR.PRIMARY);
     this.doc.rect(0, 0, PAGE_W, 185, "F");
@@ -467,6 +472,27 @@ class PdfRenderer {
     this.doc.setTextColor(...COLOR.TEXT_MUTED);
     this.doc.text(`Idioma: ${language}`, MARGIN_LEFT, 202);
     this.doc.text(new Date().toLocaleDateString("pt-BR"), MARGIN_LEFT, 210);
+
+    // Capa escolhida pelo autor, na faixa branca abaixo dos metadados. Fica
+    // depois do texto de propósito: a página de rosto tem que se sustentar
+    // sozinha quando não há capa — e até agora nunca havia.
+    if (capa) {
+      try {
+        const formato = detectImageFormat(capa);
+        if (formato) {
+          let binary = "";
+          for (let i = 0; i < capa.length; i++) binary += String.fromCharCode(capa[i]);
+          const dataUri = `data:image/${formato.toLowerCase()};base64,${btoa(binary)}`;
+          const props = this.doc.getImageProperties(dataUri);
+          const { w, h } = fitImageBox(props.width, props.height, CONTENT_W, 62);
+          this.doc.addImage(dataUri, formato, MARGIN_LEFT + (CONTENT_W - w) / 2, 220, w, h);
+        } else {
+          console.error("[export-pdf] capa em formato não suportado pelo jsPDF — ignorada");
+        }
+      } catch (capaErr) {
+        console.error("[export-pdf] falha ao embutir a capa:", capaErr);
+      }
+    }
 
     // Premium footer bar
     this.doc.setFillColor(...COLOR.PRIMARY);
@@ -1499,7 +1525,19 @@ Deno.serve(async (req: Request) => {
       // Metadado é cosmético; não pode custar a exportação.
     }
 
-    pdf.renderTitlePage(course.title, course.description, course.language);
+    // Capa escolhida pelo autor. Falhar aqui não pode custar a apostila.
+    let capaBytes: Uint8Array | undefined;
+    if (course.cover_image_url) {
+      try {
+        const capaRes = await fetch(course.cover_image_url);
+        if (capaRes.ok) capaBytes = new Uint8Array(await capaRes.arrayBuffer());
+        else console.error(`[export-pdf] capa respondeu ${capaRes.status}`);
+      } catch (capaErr) {
+        console.error("[export-pdf] erro ao buscar a capa:", capaErr);
+      }
+    }
+
+    pdf.renderTitlePage(course.title, course.description, course.language, capaBytes);
 
     // Ilustrações dos módulos — a mesma tabela que o portal do aluno e o editor
     // já leem. Nenhuma exportação a lia: o autor gerava (e pagava) a imagem,

@@ -18,8 +18,14 @@ interface PexelsPhoto {
 }
 
 interface Props {
+  /** Assunto da imagem: o título do módulo, ou o do curso quando é a capa. */
   moduleTitle: string;
-  moduleId: string;
+  /** Ausente quando o alvo é a capa — a capa não pertence a módulo nenhum. */
+  moduleId?: string;
+  /** Obrigatório quando `scope` é "cover": diz ao gerador onde a imagem vive. */
+  courseId?: string;
+  /** "module" (padrão) grava em course_images; "cover" devolve para quem chamou. */
+  scope?: "module" | "cover";
   courseTitle?: string;
   /** Idioma do curso — define em que língua vêm as descrições das fotos. */
   courseLanguage?: string;
@@ -31,7 +37,7 @@ interface Props {
 
 type Tab = "pexels" | "ai";
 
-export function PexelsPicker({ moduleTitle, moduleId, courseTitle, courseLanguage, currentImageUrl, onSelect, onRemove, disabled }: Props) {
+export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module", courseTitle, courseLanguage, currentImageUrl, onSelect, onRemove, disabled }: Props) {
   const [open, setOpen]         = useState(false);
   const [tab, setTab]           = useState<Tab>("pexels");
 
@@ -128,7 +134,11 @@ export function PexelsPicker({ moduleTitle, moduleId, courseTitle, courseLanguag
     try {
       const { data, error } = await supabase.functions.invoke("generate-module-image", {
         body: {
-          module_id: moduleId,
+          // Na capa não vai module_id: o gerador não deve gravar em
+          // course_images, senão a capa tomaria o lugar da imagem de um módulo.
+          ...(scope === "cover"
+            ? { scope: "cover", course_id: courseId }
+            : { module_id: moduleId }),
           module_title: moduleTitle,
           course_title: courseTitle ?? "",
           user_prompt: aiBrief.trim(),

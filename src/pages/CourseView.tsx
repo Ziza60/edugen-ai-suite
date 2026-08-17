@@ -14,6 +14,7 @@ import {
   Pencil, Share2, GraduationCap, CheckCircle2, XCircle, Copy, Link2,
   BarChart3, Globe, Rocket, Languages, Save, Cloud, CloudOff,
   Mic, ChevronDown, Wrench, ShieldCheck, AlignLeft, Sparkles, WandSparkles,
+  Image as ImageIcon,
 } from "lucide-react";
 import { PexelsPicker } from "@/components/course/PexelsPicker";
 import {
@@ -219,6 +220,41 @@ export default function CourseView() {
       toast({ title: "Imagem salva!" });
     },
     onError: () => toast({ title: "Erro ao salvar imagem", variant: "destructive" }),
+  });
+
+  // ── Capa do curso ─────────────────────────────────────────────────────────
+  // A capa não cabia em course_images: aquela tabela exige module_id e é
+  // indexada por módulo. Sem lugar próprio, a capa do PPTX caía numa busca
+  // automática no Pexels — que num curso sobre administração pública municipal
+  // devolveu a foto de um gari, com marca de terceiros legível no uniforme.
+  const saveCoverImage = useMutation({
+    mutationFn: async ({ url, altText }: { url: string; altText: string }) => {
+      const { error } = await supabase
+        .from("courses")
+        .update({ cover_image_url: url, cover_image_alt: altText })
+        .eq("id", id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course", id] });
+      toast({ title: "Capa do curso salva!" });
+    },
+    onError: () => toast({ title: "Erro ao salvar a capa", variant: "destructive" }),
+  });
+
+  const removeCoverImage = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("courses")
+        .update({ cover_image_url: null, cover_image_alt: null })
+        .eq("id", id!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course", id] });
+      toast({ title: "Capa removida" });
+    },
+    onError: () => toast({ title: "Erro ao remover a capa", variant: "destructive" }),
   });
 
   const removeModuleImage = useMutation({
@@ -445,6 +481,45 @@ export default function CourseView() {
                   </span>
                 ))}
                 <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium ml-1">{course.language}</span>
+              </div>
+
+              {/* ── Capa do curso ──
+                  É a imagem do slide de abertura do PPTX e da capa do PDF. Sem
+                  ela, a exportação busca uma foto sozinha — e foto de banco de
+                  imagens na capa de um curso vendido já trouxe marca de
+                  terceiros visível. */}
+              <div className="flex items-center gap-3 mt-4">
+                {course.cover_image_url ? (
+                  <img
+                    src={course.cover_image_url}
+                    alt={course.cover_image_alt || `Capa do curso ${course.title}`}
+                    className="h-14 w-24 rounded-md object-cover border border-border shrink-0"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="h-14 w-24 rounded-md border border-dashed border-border bg-muted/40 flex items-center justify-center shrink-0">
+                    <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-foreground">Capa do curso</p>
+                  <p className="text-xs text-muted-foreground mb-1.5">
+                    {course.cover_image_url
+                      ? "Usada na abertura do PPTX e na capa do PDF."
+                      : "Sem capa escolhida — a exportação busca uma foto sozinha."}
+                  </p>
+                  <PexelsPicker
+                    scope="cover"
+                    courseId={id!}
+                    moduleTitle={course.title}
+                    courseTitle={course.title}
+                    courseLanguage={course.language}
+                    currentImageUrl={course.cover_image_url ?? undefined}
+                    onSelect={({ url, alt }) => saveCoverImage.mutate({ url, altText: alt })}
+                    onRemove={course.cover_image_url ? () => removeCoverImage.mutate() : undefined}
+                    disabled={saveCoverImage.isPending || removeCoverImage.isPending}
+                  />
+                </div>
               </div>
             </div>
 

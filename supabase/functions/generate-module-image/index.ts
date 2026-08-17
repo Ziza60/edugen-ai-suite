@@ -28,9 +28,23 @@ serve(async (req) => {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
-    const { module_id, module_title, course_title, user_prompt } = await req.json();
-    if (!module_id || !module_title) return new Response(
-      JSON.stringify({ error: "module_id and module_title are required" }),
+    const { module_id, module_title, course_title, user_prompt, course_id, scope } =
+      await req.json();
+
+    // A capa do curso usa o mesmo gerador. O que muda é onde o resultado é
+    // gravado: a imagem de módulo entra em course_images, indexada por módulo;
+    // a capa é atributo do curso, e quem a grava é quem chamou, em
+    // courses.cover_image_url. Sem essa distinção, gerar uma capa sobrescreveria
+    // a imagem de algum módulo — course_images tem module_id obrigatório.
+    const isCover = scope === "cover";
+    if (isCover ? !course_id : !module_id) return new Response(
+      JSON.stringify({
+        error: isCover ? "course_id is required for scope=cover" : "module_id is required",
+      }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+    if (!module_title) return new Response(
+      JSON.stringify({ error: "module_title is required" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
 
@@ -150,7 +164,9 @@ Strict directive: purely visual — no text, no typography, no letters, no numbe
     const mimeType: string = imgPart.inlineData.mimeType || "image/png";
     const ext = mimeType.includes("png") ? "png" : "jpg";
     const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-    const storagePath = `${user.id}/module-ai-${module_id}.${ext}`;
+    const storagePath = isCover
+      ? `${user.id}/course-cover-ai-${course_id}.${ext}`
+      : `${user.id}/module-ai-${module_id}.${ext}`;
 
     const { error: uploadErr } = await serviceClient.storage
       .from("course-exports")
@@ -173,17 +189,28 @@ Strict directive: purely visual — no text, no typography, no letters, no numbe
     const altText = brief ? `Imagem IA: ${brief}` : `Imagem IA: ${module_title}`;
 
     // ── Upsert course_images ─────────────────────────────────────────────────
-    const { error: dbErr } = await serviceClient.from("course_images").upsert(
-      { module_id, url: imageUrl, alt_text: altText },
-      { onConflict: "module_id" },
-    );
-    if (dbErr) throw dbErr;
+    // Só para imagem de módulo. A capa volta na resposta e quem grava é o
+    // cliente, em courses.cover_image_url — course_images exige module_id, e
+    // gravar a capa ali tomaria o lugar da imagem de um módulo.
+    if (!isCover) {
+      const { error: dbErr } = await serviceClient.from("course_images").upsert(
+        { module_id, url: imageUrl, alt_text: altText },
+        { onConflict: "module_id" },
+      );
+      if (dbErr) throw dbErr;
+    }
 
     // ── Track usage ──────────────────────────────────────────────────────────
     await serviceClient.from("usage_events").insert({
       user_id: user.id,
       event_type: "AI_IMAGE_GENERATED",
-      metadata: { module_id, module_title, has_user_prompt: brief.length > 0 },
+      metadata: {
+        scope: isCover ? "cover" : "module",
+        module_id: module_id ?? null,
+        course_id: course_id ?? null,
+        module_title,
+        has_user_prompt: brief.length > 0,
+      },
     }).then(() => {});
 
     return new Response(

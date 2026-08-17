@@ -389,6 +389,8 @@ export type Database = {
       }
       courses: {
         Row: {
+          cover_image_alt: string | null
+          cover_image_url: string | null
           created_at: string
           description: string | null
           id: string
@@ -409,6 +411,8 @@ export type Database = {
           workspace_id: string | null
         }
         Insert: {
+          cover_image_alt?: string | null
+          cover_image_url?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -429,6 +433,8 @@ export type Database = {
           workspace_id?: string | null
         }
         Update: {
+          cover_image_alt?: string | null
+          cover_image_url?: string | null
           created_at?: string
           description?: string | null
           id?: string

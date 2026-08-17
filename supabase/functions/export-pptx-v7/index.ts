@@ -57,10 +57,16 @@ function attachImages(
   deck: PlannedDeck,
   images: Record<string, string>,
   curadas: Omit<FontesDeImagem, "buscadas">,
+  capaDoAutor?: string,
 ) {
   const lookup = (q?: string) =>
     q ? images[q.trim().toLowerCase()] : undefined;
-  (deck as any).coverImage = lookup(deck.courseTitle) ||
+  // A capa escolhida pelo autor vence a busca automática. Antes a capa saía de
+  // uma consulta ao Pexels com o título do curso — num curso de "administração
+  // pública municipal" isso devolveu a foto de um gari, com marca de terceiros
+  // legível no uniforme. Numa capa de curso vendido, isso é pior que fora de
+  // tema: sugere um vínculo institucional que não existe.
+  (deck as any).coverImage = capaDoAutor || lookup(deck.courseTitle) ||
     Object.values(images)[0] || undefined;
   // One image per module on a single "feature" slide (reused by the module
   // divider — no extra fetch/decode). A quote slide, when present, wins the image
@@ -231,15 +237,27 @@ Deno.serve(async (req: Request) => {
           curadas,
         );
 
+        // 3c. A capa escolhida pelo autor, quando existe. Só aí a busca deixa
+        // de precisar do título do curso como consulta.
+        let capaDoAutor: string | undefined;
+        if (course.cover_image_url) {
+          try {
+            capaDoAutor = (await toDataUri(course.cover_image_url)) ?? undefined;
+          } catch {
+            /* capa é enriquecimento, nunca bloqueia a exportação */
+          }
+        }
+
         let images: Record<string, string> = {};
-        if ((pexelsKey || pixabayKey) && (pendentes.length > 0 || !(deck as any).coverImage)) {
-          const queries = [courseTitle, ...pendentes];
+        const precisaBuscarCapa = !capaDoAutor;
+        if ((pexelsKey || pixabayKey) && (pendentes.length > 0 || precisaBuscarCapa)) {
+          const queries = precisaBuscarCapa ? [courseTitle, ...pendentes] : pendentes;
           images = await resolveImages(queries, pexelsKey, queries.length, pixabayKey);
         }
 
-        attachImages(deck, images, curadas);
+        attachImages(deck, images, curadas, capaDoAutor);
         console.log(
-          `[V7-IMAGES] curadas=${curadasPorIndice.filter(Boolean).length} buscadas=${Object.keys(images).length} pendentes=${pendentes.length}`,
+          `[V7-IMAGES] capa=${capaDoAutor ? "autor" : "busca"} curadas=${curadasPorIndice.filter(Boolean).length} buscadas=${Object.keys(images).length} pendentes=${pendentes.length}`,
         );
       } catch (e) {
         console.warn("[V7-IMAGES] failed (non-blocking):", e);
