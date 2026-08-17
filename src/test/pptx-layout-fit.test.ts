@@ -76,6 +76,35 @@ describe("ehSequencia — sinal no título", () => {
     expect(ehSequencia("Documentos do processo licitatório", DETECTIVOS)).toBe(false);
   });
 
+  it("'Etapa 1:' no título diz que o SLIDE é uma etapa, não que os itens são", () => {
+    // Título e itens verbatim de um slide de questão do curso entregue: as
+    // alternativas A/B/C/D não são um processo de quatro passos.
+    expect(ehSequencia("Etapa 1: Como Responder ao Desconhecimento?", [
+      "A. Enviar e-mail com a política e lembrete, copiando a alta gestão.",
+      "B. Agendar reunião presencial urgente para explicar e tirar dúvidas.",
+      "C. Solicitar parecer jurídico sobre a obrigatoriedade da política.",
+      "D. Ignorar o pedido, esperando que o chefe de setor perceba o erro.",
+    ])).toBe(false);
+  });
+
+  it("'Roteiro' e 'fase' no singular são floreio de título, não ordem", () => {
+    // Os dois vieram do mesmo curso entregue.
+    expect(ehSequencia("PGCI: Roteiro Essencial para a Governança Municipal", [
+      "Guia para um ambiente de governança robusto",
+      "Mitiga riscos e promove eficiência na gestão pública",
+      "Expressa compromisso com integridade e transparência",
+      "Adaptado às particularidades de Vila Sereno",
+      "Integra esforços de secretarias em um sistema coeso",
+    ])).toBe(false);
+    expect(ehSequencia("Avançar na fase prática dos controles internos", ["a", "b", "c"]))
+      .toBe(false);
+  });
+
+  it("o plural continua valendo, que é como uma lista ordenada se anuncia", () => {
+    expect(ehSequencia("Etapas da implantação", ["a", "b", "c"])).toBe(true);
+    expect(ehSequencia("Fases do plano", ["a", "b", "c"])).toBe(true);
+  });
+
   it("não casa palavra dentro de outra", () => {
     expect(ehSequencia("Ciclovias e mobilidade urbana", ["A", "B", "C"])).toBe(false);
     expect(ehSequencia("Passivos contingentes", ["A", "B", "C"])).toBe(false);

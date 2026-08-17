@@ -23,22 +23,32 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Palavras que, no TÍTULO do slide, indicam que os itens estão em ordem.
- * Propositalmente restrita às fortes: "processo"/"process" ficou de fora
- * porque em conteúdo administrativo aparece o tempo todo sem querer dizer
- * sequência ("pastas de processo", "processo licitatório"), e um falso
- * positivo aqui devolve exatamente o defeito que estamos corrigindo.
+ * Palavras que, no TÍTULO do slide, indicam que OS ITENS estão em ordem.
+ *
+ * Duas exclusões deliberadas, as duas por falso positivo observado em curso
+ * real:
+ *
+ * • "processo"/"process" ficou de fora porque em conteúdo administrativo
+ *   aparece o tempo todo sem querer dizer sequência: "processo licitatório",
+ *   "pastas de processo".
+ *
+ * • as formas SINGULARES de etapa/passo/fase saíram junto com "roteiro" e
+ *   "jornada". Um título como "Etapa 1: Como responder ao desconhecimento?"
+ *   diz que ESTE SLIDE é uma etapa — os itens dele eram alternativas A/B/C/D
+ *   de uma questão. "PGCI: Roteiro Essencial" e "Avançar na fase prática" são
+ *   floreio de título, não anúncio de lista ordenada. Quando os itens são
+ *   mesmo etapas, o título quase sempre traz o PLURAL ("Etapas da
+ *   implantação"), e se não trouxer, os sinais 2 e 3 ainda pegam.
  */
 const TITULO_SEQUENCIAL = [
-  // português
-  "etapa", "etapas", "passo", "passos", "fase", "fases", "ciclo", "fluxo",
-  "sequência", "sequencia", "cronologia", "roteiro", "jornada",
-  "linha do tempo", "passo a passo",
+  // português — plurais e coletivos
+  "etapas", "passos", "fases", "ciclo", "fluxo",
+  "sequência", "sequencia", "cronologia", "linha do tempo", "passo a passo",
   // inglês
-  "step", "steps", "phase", "phases", "stage", "stages", "cycle", "flow",
-  "sequence", "timeline", "journey", "roadmap", "workflow",
+  "steps", "phases", "stages", "cycle", "flow",
+  "sequence", "timeline", "workflow",
   // espanhol
-  "paso", "pasos", "secuencia", "cronología", "cronologia", "hoja de ruta",
+  "pasos", "secuencia", "cronología", "cronologia",
 ];
 
 /** "1." / "2)" / "3 -" / "1º" no começo do item. */
