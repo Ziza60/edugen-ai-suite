@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import { limparAutoelogio } from "../../supabase/functions/_shared/course-description";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// A descrição saía como "Este curso premium é projetado para...". Tirei a
-// palavra do prompt de arquitetura e escrevi a regra "sem adjetivo de
-// autoelogio" — e ela continuou aparecendo. Regra de prompt é probabilística;
-// para uma lista curta e fechada num texto de vitrine, dá para garantir no
-// código. É o que este módulo faz.
+// A descrição saía como "Este curso premium é projetado para...". A correção
+// anterior tirou a palavra do prompt de arquitetura e escreveu a regra "sem
+// adjetivo de autoelogio".
+//
+// Esta camada nasceu de uma suposição errada minha: interpretei um novo relato
+// de "premium" como a regra tendo falhado, quando o relato era de um curso
+// ANTIGO, com a descrição já gravada. A regra de prompt segue sem teste real.
+//
+// A camada fica porque se justifica por si: regra de prompt é tendência, não
+// garantia, e esta frase é a vitrine que o comprador lê.
 //
 // O risco do caminho determinístico é apagar a palavra quando ela é o ASSUNTO
 // do curso, e não elogio a ele. Metade destes testes existe por isso.

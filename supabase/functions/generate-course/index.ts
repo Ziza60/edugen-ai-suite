@@ -413,11 +413,13 @@ Deno.serve(async (req: Request) => {
         .insert({
           user_id: userId,
           title: blueprint.course_title,
-          // A regra "sem adjetivo de autoelogio" está no prompt de arquitetura,
-          // mas regra de prompt é probabilística — o "curso premium" voltou
-          // mesmo depois dela. Aqui a limpeza é determinística, e acontece na
-          // GRAVAÇÃO e não na exibição, para o autor ver no editor exatamente o
-          // texto que vai sair no PDF.
+          // A regra "sem adjetivo de autoelogio" está no prompt de arquitetura;
+          // esta limpeza é a garantia determinística ao lado dela — ver o
+          // cabeçalho de _shared/course-description.ts, inclusive para o registro
+          // de que a regra de prompt nunca chegou a ser testada de verdade.
+          //
+          // Acontece na GRAVAÇÃO e não na exibição, para o autor ver no editor
+          // exatamente o texto que vai sair no PDF.
           description: limparAutoelogio(blueprint.description),
           theme,
           target_audience: blueprint.audience_label || targetAudience,

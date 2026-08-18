@@ -5,12 +5,20 @@
 //
 // A descrição saía como "Este curso premium é projetado para...". A palavra
 // vinha da primeira linha do prompt de arquitetura ("Projete um curso premium"),
-// e o modelo a copiava para o texto que o COMPRADOR lê. Tirar do prompt e
-// escrever a regra "sem adjetivo de autoelogio" reduziu a chance — mas regra de
-// prompt é probabilística, e continuou aparecendo.
+// e o modelo a copiava para o texto que o COMPRADOR lê. A correção anterior
+// tirou a palavra do prompt e escreveu a regra "sem adjetivo de autoelogio".
 //
-// Isto aqui é determinístico. A lista é curta e fechada, e o texto é uma frase
-// de vitrine: dá para garantir no código em vez de pedir por favor ao modelo.
+// Registro honesto de por que ISTO existe: a regra de prompt nunca chegou a ser
+// testada. O relato de que o premium "continuava" veio de um curso ANTIGO, cuja
+// descrição já estava gravada no banco desde antes da correção — a regra pode
+// muito bem estar funcionando. Este módulo foi escrito sobre essa suposição
+// errada.
+//
+// Ele fica assim mesmo, e por um motivo que se sustenta sozinho: regra de prompt
+// é uma tendência, não uma garantia, e esta frase é a vitrine que o comprador lê.
+// A lista é curta e fechada e o alvo tem duas linhas — dá para garantir no
+// código em vez de contar com a boa vontade do modelo. As duas camadas convivem:
+// o prompt reduz a frequência, o código fecha a porta.
 //
 // CUIDADO QUE A IMPLEMENTAÇÃO TOMA
 //
