@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Search, Check, Image, X, Sparkles, Zap } from "lucide-react";
+import { Loader2, Search, Check, Image, X, Sparkles, Zap, Wand2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 
@@ -58,6 +58,43 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
   const [aiCredits, setAiCredits]     = useState<{ used: number; limit: number; plan: string } | null>(null);
   const [aiPreview, setAiPreview]     = useState<{ url: string; alt: string } | null>(null);
   const [aiBrief, setAiBrief]         = useState("");
+  const [sugerindo, setSugerindo]     = useState(false);
+
+  /**
+   * Sugere a descrição a partir do título.
+   *
+   * O campo é opcional, e em branco o gerador manda o TÍTULO direto para o
+   * modelo de imagem. Título é abstrato — "Monitoramento, Informação e
+   * Comunicação" não diz o que desenhar — e daí saíam as imagens genéricas. Um
+   * modelo de texto traduz o título em objetos concretos e escreve aqui; o
+   * autor edita antes de gerar, que é o motivo de o campo existir.
+   *
+   * Não gasta crédito de imagem: é chamada de texto, curta.
+   */
+  const sugerirDescricao = useCallback(async () => {
+    setSugerindo(true);
+    setAiError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("suggest-image-brief", {
+        body: {
+          scope: scope === "cover" ? "cover" : "module",
+          title: scope === "cover" ? (courseTitle ?? moduleTitle) : moduleTitle,
+          course_title: courseTitle ?? "",
+        },
+      });
+      if (error) {
+        let body: any = null;
+        try { body = await (error as any).context?.json?.(); } catch { /* sem corpo */ }
+        throw new Error(body?.error ?? (error as Error).message);
+      }
+      if (!data?.brief) throw new Error("A IA não retornou uma descrição.");
+      setAiBrief(String(data.brief).slice(0, 500));
+    } catch (err: any) {
+      setAiError(err?.message ?? "Não foi possível sugerir agora.");
+    } finally {
+      setSugerindo(false);
+    }
+  }, [scope, moduleTitle, courseTitle]);
 
   /**
    * Busca no Pexels.
@@ -384,9 +421,26 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
             {/* Briefing do usuário: sem ele, o único insumo era o título do
                 módulo e "Regerar" repetia o mesmo prompt. */}
             <div className="shrink-0 space-y-1.5">
-              <label htmlFor="ai-brief" className="text-xs font-medium text-foreground">
-                Descreva a imagem <span className="text-muted-foreground font-normal">(opcional)</span>
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="ai-brief" className="text-xs font-medium text-foreground">
+                  Descreva a imagem <span className="text-muted-foreground font-normal">(opcional)</span>
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px] gap-1 text-primary hover:text-primary"
+                  onClick={sugerirDescricao}
+                  disabled={sugerindo || aiLoading}
+                  data-testid="button-sugerir-descricao"
+                  title="A IA escreve uma descrição a partir do título. Não gasta crédito."
+                >
+                  {sugerindo
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <Wand2 className="h-3 w-3" />}
+                  {sugerindo ? "Sugerindo…" : "Sugerir"}
+                </Button>
+              </div>
               <Textarea
                 id="ai-brief"
                 value={aiBrief}
@@ -400,7 +454,8 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[10px] text-muted-foreground leading-snug">
                   Diga o que deve aparecer na cena. Em branco, a IA decide sozinha a
-                  partir do título — que é o que produz resultados fora do tema.
+                  partir do título — que é o que produz resultados fora do tema. Use
+                  “Sugerir” para começar de um rascunho e ajustar.
                 </p>
                 <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
                   {aiBrief.length}/500
