@@ -167,6 +167,30 @@ Deno.serve(async (req: Request) => {
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
+    // Trava de plano Pro — não havia nenhuma aqui.
+    //
+    // A página de planos vende Notion como recurso do Pro
+    // ({ free: false, starter: false, pro: true }), o PLAN_LIMITS marca
+    // pro.hasNotion = true e o PRO_ONLY_FEATURES lista export_notion. A função,
+    // porém, exportava para qualquer conta autenticada — inclusive as gratuitas.
+    // O botão some da tela no plano free, mas a tela não é a trava: quem
+    // chamasse a função direto levava o recurso pago de graça.
+    //
+    // Igual à do export-moodle, de propósito: são o mesmo nível de recurso e
+    // divergir de novo é como este conjunto se desencontrou.
+    const { data: sub } = await serviceClient.from("subscriptions").select("plan").eq("user_id", userId).single();
+    const plan = sub?.plan || "free";
+
+    if (plan !== "pro" && plan !== "business") {
+      const { data: profile } = await serviceClient.from("profiles").select("is_dev").eq("user_id", userId).maybeSingle();
+      if (!profile?.is_dev) {
+        return new Response(
+          JSON.stringify({ error: "Notion export requires a Pro plan.", feature: "export_notion" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Fetch course
     const { data: course, error: courseErr } = await serviceClient
       .from("courses").select("*").eq("id", course_id).eq("user_id", userId).single();

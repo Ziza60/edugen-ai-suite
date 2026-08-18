@@ -125,16 +125,27 @@ Deno.serve(async (req: Request) => {
 
     const serviceClient = createClient(supabaseUrl, serviceKey);
 
-    // Business-only gate (currently no business plan exists, so always 403)
+    // Trava de plano Pro — a mesma do export-moodle, que é a referência certa
+    // para uma exportação do mesmo nível.
+    //
+    // Aqui a trava exigia o plano "business", e o comentário original dizia,
+    // com todas as letras, que nenhum plano business existe — ou seja, ela
+    // devolvia 403 para TODO MUNDO. Só passava quem tivesse profiles.is_dev.
+    //
+    // Enquanto isso, a página de planos vende SCORM no Pro
+    // ({ free: false, starter: false, pro: true }), o PLAN_LIMITS dos dois
+    // lados marca pro.hasScorm = true, o PRO_ONLY_FEATURES lista export_scorm
+    // e o check-entitlements também. Quatro lugares dizem Pro e só este dizia
+    // Business: o assinante pagava pelo recurso, via o botão liberado na tela e
+    // recebia "requires a Business plan" — um plano que não está à venda.
     const { data: sub } = await serviceClient.from("subscriptions").select("plan").eq("user_id", userId).single();
     const plan = sub?.plan || "free";
 
-    // SCORM is Business-only. Since business plan doesn't exist yet, check is_dev for testing
-    if (plan !== "business") {
+    if (plan !== "pro" && plan !== "business") {
       const { data: profile } = await serviceClient.from("profiles").select("is_dev").eq("user_id", userId).maybeSingle();
       if (!profile?.is_dev) {
         return new Response(
-          JSON.stringify({ error: "SCORM export requires a Business plan.", feature: "export_scorm" }),
+          JSON.stringify({ error: "SCORM export requires a Pro plan.", feature: "export_scorm" }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
