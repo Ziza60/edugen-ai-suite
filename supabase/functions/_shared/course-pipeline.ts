@@ -2178,7 +2178,7 @@ function buildStructurePrompt(params: {
 
   return `Você é um arquiteto instrucional sênior de e-learning B2B e corporativo.
 
-Projete um curso premium usando BACKWARD DESIGN. Comece pela competência final observável, desdobre objetivos mensuráveis, associe cada objetivo a evidências e organize uma progressão real de módulos e lições.
+Projete um curso usando BACKWARD DESIGN. Comece pela competência final observável, desdobre objetivos mensuráveis, associe cada objetivo a evidências e organize uma progressão real de módulos e lições.
 
 DADOS DO CURSO
 - Pedido/título: ${title}
@@ -2226,6 +2226,11 @@ ${
 
 SAÍDA
 - Retorne somente o objeto JSON previsto no esquema, com TODOS os campos preenchidos.
+- description: 1 a 3 frases dizendo para quem é o curso e o que o aluno será capaz
+  de fazer ao final. SEM adjetivo de autoelogio sobre o próprio curso — nada de
+  "premium", "completo", "excepcional", "inovador", "abrangente" ou "de alta
+  qualidade". Quem lê a descrição já sabe que ela descreve o produto; o elogio
+  ocupa o lugar da informação e soa a folheto.
 - prerequisites: até 6 itens.
 - skills_and_knowledge: 5 a 8 etiquetas curtas.
 - course_objectives: 4 a 8 objetivos.
