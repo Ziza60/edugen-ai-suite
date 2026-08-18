@@ -85,7 +85,11 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
       if (error) {
         let body: any = null;
         try { body = await (error as any).context?.json?.(); } catch { /* sem corpo */ }
-        throw new Error(body?.error ?? (error as Error).message);
+        // O `detail` do servidor traz o motivo real — nome de modelo recusado,
+        // cota, chave. Sem ele na tela, "não foi possível sugerir" é um beco
+        // sem saída: nem o autor nem eu sabemos o que tentar em seguida.
+        const base = body?.error ?? (error as Error).message;
+        throw new Error(body?.detail ? `${base} (${body.detail})` : base);
       }
       if (!data?.brief) throw new Error("A IA não retornou uma descrição.");
       setAiBrief(String(data.brief).slice(0, 500));

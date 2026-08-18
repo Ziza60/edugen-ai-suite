@@ -53,15 +53,24 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Modelo leve: a tarefa é uma tradução curta de título para objetos, não
-    // exige raciocínio longo, e o autor está esperando na tela.
+    // O modelo é o MESMO que a enhance-paragraph usa neste endpoint, e que está
+    // comprovadamente funcionando em produção. A primeira versão daqui pediu
+    // "gemini-3-flash-lite", e o comentário no upload-course-source avisa que o
+    // endpoint nativo do Google recusa certos ids — nome de modelo é coisa para
+    // copiar de um caminho que se sabe que funciona, não para escolher no chute.
+    const MODELO = "gemini-3-flash-preview";
+
+    // Este modelo RACIOCINA antes de responder, e os tokens de pensamento saem
+    // deste mesmo orçamento. Foi assim que a enhance-paragraph, com teto de 800,
+    // devolvia duas linhas e meia. A descrição em si tem ~150 tokens; o resto é
+    // folga para o raciocínio.
     const res = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${geminiKey}` },
         body: JSON.stringify({
-          model: "gemini-3-flash-lite",
+          model: MODELO,
           messages: [{
             role: "user",
             content: promptDeSugestao({
@@ -71,30 +80,53 @@ Deno.serve(async (req: Request) => {
             }),
           }],
           stream: false,
-          max_tokens: 700,
+          max_tokens: 3000,
         }),
       },
     );
 
     if (!res.ok) {
-      console.error("[suggest-image-brief] gateway", res.status, await res.text());
+      // O erro do gateway VOLTA para a tela. A primeira versão respondia só
+      // "Não foi possível sugerir agora", e com isso não havia como saber se o
+      // problema era nome de modelo, chave, cota ou rede — exatamente o beco em
+      // que a generate-module-image já esteve antes de passar a devolver
+      // `detail`. Mensagem genérica não é proteção, é diagnóstico jogado fora.
+      const texto = await res.text();
+      console.error("[suggest-image-brief] gateway", res.status, texto);
+      let detalhe = "";
+      try { detalhe = JSON.parse(texto)?.error?.message ?? texto.slice(0, 200); }
+      catch { detalhe = texto.slice(0, 200); }
       return new Response(
-        JSON.stringify({ error: "Não foi possível sugerir agora. Tente de novo." }),
+        JSON.stringify({
+          error: "Não foi possível sugerir agora. Tente de novo.",
+          detail: detalhe,
+          status: res.status,
+          model: MODELO,
+        }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const json = await res.json();
-    const bruto = json.choices?.[0]?.message?.content ?? "";
-    const brief = limparSugestao(bruto);
+    const escolha = json.choices?.[0];
+    const brief = limparSugestao(escolha?.message?.content ?? "");
 
     // Sugestão vazia não pode voltar como sucesso: o campo ficaria em branco e
     // o botão pareceria não fazer nada — o mesmo defeito que o enhance-paragraph
     // tinha ao devolver o próprio texto do autor.
     if (!brief) {
-      console.error("[suggest-image-brief] resposta vazia", json.choices?.[0]?.finish_reason);
+      const motivo = escolha?.finish_reason ?? "desconhecido";
+      console.error(`[suggest-image-brief] resposta vazia: finish=${motivo}`);
       return new Response(
-        JSON.stringify({ error: "A IA não retornou uma descrição. Tente de novo." }),
+        JSON.stringify({
+          // "length" aqui significa que o raciocínio consumiu o orçamento antes
+          // de sobrar texto. Dizer isso poupa o autor de tentar dez vezes.
+          error: motivo === "length"
+            ? "A IA não terminou a descrição. Tente de novo."
+            : "A IA não retornou uma descrição. Tente de novo.",
+          detail: `finish_reason=${motivo}`,
+          model: MODELO,
+        }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
