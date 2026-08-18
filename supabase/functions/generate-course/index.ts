@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { limparAutoelogio } from "../_shared/course-description.ts";
 
 import {
   asString,
@@ -412,7 +413,12 @@ Deno.serve(async (req: Request) => {
         .insert({
           user_id: userId,
           title: blueprint.course_title,
-          description: blueprint.description,
+          // A regra "sem adjetivo de autoelogio" está no prompt de arquitetura,
+          // mas regra de prompt é probabilística — o "curso premium" voltou
+          // mesmo depois dela. Aqui a limpeza é determinística, e acontece na
+          // GRAVAÇÃO e não na exibição, para o autor ver no editor exatamente o
+          // texto que vai sair no PDF.
+          description: limparAutoelogio(blueprint.description),
           theme,
           target_audience: blueprint.audience_label || targetAudience,
           tone,

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { limparAutoelogio } from "../_shared/course-description.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,7 +143,10 @@ Deno.serve(async (req: Request) => {
       .insert({
         user_id: userId,
         title: translatedTitle,
-        description: translatedDesc,
+        // O curso traduzido nasce da descrição do original, que pode carregar o
+        // autoelogio de antes desta limpeza existir. A lista é de português, e
+        // em outro idioma isto é um no-op inofensivo.
+        description: limparAutoelogio(translatedDesc),
         language: target_language,
         tone: course.tone,
         target_audience: course.target_audience,
