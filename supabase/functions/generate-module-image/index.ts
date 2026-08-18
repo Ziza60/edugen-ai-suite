@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { montarPromptDeImagem } from "./image-prompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -90,21 +91,15 @@ serve(async (req) => {
     );
 
     // ── Generate image with Gemini ───────────────────────────────────────────
-    // Quando o usuário descreve a imagem, a descrição é o ASSUNTO e o título
-    // vira apenas contexto — inverter isso faria a descrição ser ignorada, que
-    // é justamente a queixa que motivou o campo.
-    const subject = brief
-      ? `The user has described the image they want. Follow this description as the subject — it takes priority over the module title, which is context only:
-
-USER'S DESCRIPTION: "${brief}"
-
-Context — educational module "${module_title}" (course: "${course_title ?? ""}").`
-      : `Generate a conceptual illustration for the educational module "${module_title}" (course: "${course_title ?? ""}").`;
-
-    const imagePrompt = `${subject}
-
-Style: premium and minimalist — flat vector / soft 3D, geometric shapes, smooth matte surfaces, soft gradient colors, modern and elegant, 16:9 aspect, generous negative space.
-Strict directive: purely visual — no text, no typography, no letters, no numbers, no logos, no watermarks. Any surface that would carry writing must be blank and smooth.`;
+    // O texto do prompt mora em image-prompt.ts. A regra de enquadramento da
+    // CAPA é diferente da imagem de módulo, e é regra do sistema: só ele sabe
+    // que a capa vai ser recortada numa faixa larga. Ver o cabeçalho de lá.
+    const imagePrompt = montarPromptDeImagem({
+      escopo: isCover ? "cover" : "module",
+      moduleTitle: module_title,
+      courseTitle: course_title,
+      brief,
+    });
 
     // gemini-2.5-flash-image is the stable Gemini native image generation model
     // (also known as "Nano Banana"). See:
