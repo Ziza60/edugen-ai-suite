@@ -256,3 +256,59 @@ describe("fillImageBox", () => {
     expect(b).toEqual({ x: FX, y: FY, w: FW, h: FH, recortada: false });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A capa passou a ocupar a ÁREA INTEIRA abaixo da divisória dourada, e não uma
+// faixa de 162 x 62 no meio dela. Além de maior, é MENOS recortada — a conta
+// abaixo é a justificativa dessa afirmação.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("área da capa na página de rosto", () => {
+  const AX = 0, AY = 186.5, AW = 210, AH = 287 - 186.5; // 100,5 mm
+  const IMG = { w: 1344, h: 768 }; // o que o gerador devolve
+
+  /** Fração da imagem descartada no recorte, dada a área visível. */
+  const perda = (b: { w: number; h: number }, areaW: number, areaH: number) =>
+    1 - (areaW * areaH) / (b.w * b.h);
+
+  it("vai de borda a borda, da divisória ao rodapé", () => {
+    expect(AW).toBe(210);
+    expect(AH).toBeCloseTo(100.5, 6);
+    expect(AY).toBeCloseTo(185 + 1.5, 6); // logo abaixo da divisória dourada
+  });
+
+  it("preenche a área toda, sem sobra em lado nenhum", () => {
+    const b = fillImageBox(IMG.w, IMG.h, AX, AY, AW, AH);
+    expect(b.w).toBeGreaterThanOrEqual(AW);
+    expect(b.h).toBeGreaterThanOrEqual(AH);
+    expect(b.x).toBeLessThanOrEqual(AX);
+    expect(b.y).toBeLessThanOrEqual(AY);
+  });
+
+  it("recorta MENOS que a faixa antiga — 16% contra 33%", () => {
+    const nova = perda(fillImageBox(IMG.w, IMG.h, AX, AY, AW, AH), AW, AH);
+    const antiga = perda(fillImageBox(IMG.w, IMG.h, 24, 220, 162, 62), 162, 62);
+    expect(nova).toBeLessThan(antiga);
+    expect(nova).toBeCloseTo(0.16, 2);
+    expect(antiga).toBeCloseTo(0.33, 2);
+  });
+
+  it("a imagem fica bem maior que na faixa antiga", () => {
+    const nova = fillImageBox(IMG.w, IMG.h, AX, AY, AW, AH);
+    // Área visível: a antiga mostrava 162x62 = 10.044 mm²; a nova, 210x100,5.
+    expect(AW * AH).toBeGreaterThan(2 * 162 * 62);
+    expect(nova.w).toBe(210);
+  });
+
+  it("o corte continua vertical, e a proporção intacta", () => {
+    const b = fillImageBox(IMG.w, IMG.h, AX, AY, AW, AH);
+    expect(b.w / b.h).toBeCloseTo(IMG.w / IMG.h, 6);
+    expect(b.w).toBeCloseTo(AW, 6);       // largura exata: nada cortado nos lados
+    expect(b.h).toBeGreaterThan(AH);      // sobra em cima e embaixo
+  });
+
+  it("foto em pé continua caindo no encaixe, sem virar tira fina", () => {
+    const b = fillImageBox(768, 1344, AX, AY, AW, AH);
+    expect(b.recortada).toBe(false);
+  });
+});

@@ -459,26 +459,55 @@ class PdfRenderer {
     this.doc.rect(MARGIN_LEFT + 10, underY, 45, 1, "F");
 
     // Description — light text, left-aligned
+    let fimDaDescricao = underY + 14;
     if (description) {
       this.doc.setFontSize(10.5);
       this.doc.setFont("helvetica", "normal");
       this.doc.setTextColor(...COLOR.TEXT_LIGHT);
       const descLines = this.doc.splitTextToSize(sanitizeText(description), CONTENT_W - 14);
       this.doc.text(descLines, MARGIN_LEFT + 10, underY + 14);
+      fimDaDescricao = underY + 14 + descLines.length * lineHeightMm(10.5);
     }
 
-    // White section — metadata
+    // Idioma e data.
+    //
+    // Com capa, eles SOBEM para dentro do bloco azul: a área de baixo passa a
+    // ser da imagem inteira, e texto cinza sobre uma foto qualquer é aposta —
+    // sobre imagem clara ainda se lê, sobre escura não. No azul o tratamento
+    // já é texto claro sobre fundo escuro, o mesmo do título.
+    //
+    // Sem capa, ficam onde sempre estiveram: a área de baixo continua branca e
+    // esvaziá-la deixaria a página de rosto com um vão sem motivo.
+    const dataHoje = new Date().toLocaleDateString("pt-BR");
     this.doc.setFontSize(9);
     this.doc.setFont("helvetica", "normal");
-    this.doc.setTextColor(...COLOR.TEXT_MUTED);
-    this.doc.text(`Idioma: ${language}`, MARGIN_LEFT, 202);
-    this.doc.text(new Date().toLocaleDateString("pt-BR"), MARGIN_LEFT, 210);
+    if (capa) {
+      // Ancorado perto da divisória dourada, e não colado na descrição: assim a
+      // posição não dança conforme o tamanho do título e do resumo. O piso
+      // empurra para baixo da descrição quando ela é longa.
+      const yMeta = Math.min(178, Math.max(172, fimDaDescricao + 8));
+      this.doc.setTextColor(...COLOR.TEXT_LIGHT);
+      this.doc.text(`Idioma: ${language}   ·   ${dataHoje}`, MARGIN_LEFT + 10, yMeta);
+    } else {
+      this.doc.setTextColor(...COLOR.TEXT_MUTED);
+      this.doc.text(`Idioma: ${language}`, MARGIN_LEFT, 202);
+      this.doc.text(dataHoje, MARGIN_LEFT, 210);
+    }
 
-    // Capa escolhida pelo autor, na faixa branca abaixo dos metadados. Fica
-    // depois do texto de propósito: a página de rosto tem que se sustentar
-    // sozinha quando não há capa — e até agora nunca havia.
-    const CAPA_Y = 220;
-    const CAPA_H = 62;
+    // Capa escolhida pelo autor, ocupando a ÁREA INTEIRA abaixo da divisória
+    // dourada: de borda a borda da página, da divisória até o rodapé.
+    //
+    // Antes ela vivia numa faixa de 162 x 62 mm no meio de uma área branca de
+    // 210 x 100,5 — sobrava branco nos quatro lados em volta dela. Usar a área
+    // toda não é só maior: é MENOS recortado. A área é 2,09:1 e a imagem gerada
+    // é 1,78:1, então o corte cai de 33% da altura para 16%.
+    //
+    // Fica depois do texto de propósito: a página de rosto tem que se sustentar
+    // sozinha quando não há capa.
+    const CAPA_Y = 186.5;          // logo abaixo da divisória (185 + 1,5)
+    const CAPA_X = 0;              // sangra até a borda da página
+    const CAPA_W = PAGE_W;
+    const CAPA_H = 287 - CAPA_Y;   // encosta na barra do rodapé
     if (capa) {
       try {
         const formato = detectImageFormat(capa);
@@ -487,13 +516,10 @@ class PdfRenderer {
           for (let i = 0; i < capa.length; i++) binary += String.fromCharCode(capa[i]);
           const dataUri = `data:image/${formato.toLowerCase()};base64,${btoa(binary)}`;
           const props = this.doc.getImageProperties(dataUri);
-          // A faixa da capa é FIXA: 162 x 62 mm entre os metadados e o rodapé.
-          // Encaixando a imagem dentro dela, uma 16:9 ficava com 108,5 mm e
-          // sobravam 53,5 mm de branco — um terço da faixa reservada, que
-          // ninguém mais aproveita. Agora a imagem preenche a faixa inteira e o
-          // que passa dela é recortado.
+          // A área é FIXA, então encaixar a imagem dentro dela deixaria branco
+          // no lado que não limitou. Preenche e recorta o excedente.
           const box = fillImageBox(
-            props.width, props.height, MARGIN_LEFT, CAPA_Y, CONTENT_W, CAPA_H,
+            props.width, props.height, CAPA_X, CAPA_Y, CAPA_W, CAPA_H,
           );
           if (box.recortada) {
             // O recorte é do PDF, não da imagem: salva o estado gráfico, elege
@@ -501,7 +527,7 @@ class PdfRenderer {
             // `null` no rect é o que impede o jsPDF de traçar a borda do
             // próprio caminho de recorte.
             this.doc.saveGraphicsState();
-            this.doc.rect(MARGIN_LEFT, CAPA_Y, CONTENT_W, CAPA_H, null);
+            this.doc.rect(CAPA_X, CAPA_Y, CAPA_W, CAPA_H, null);
             this.doc.clip();
             this.doc.discardPath();
             this.doc.addImage(dataUri, formato, box.x, box.y, box.w, box.h);
