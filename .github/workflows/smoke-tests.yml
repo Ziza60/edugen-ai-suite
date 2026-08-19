@@ -8,7 +8,7 @@ on:
 
 jobs:
   smoke-tests:
-    name: Run Deno smoke tests
+    name: Run Deno smoke tests (v4 — fallback engine)
     runs-on: ubuntu-latest
 
     steps:
@@ -28,3 +28,36 @@ jobs:
             supabase/functions/export-pptx-v4/__tests__/v541_fixes.smoke.ts \
             supabase/functions/export-pptx-v4/__tests__/editorial.smoke.ts \
             supabase/functions/export-pptx-v4/__tests__/v572_observable_outcome.smoke.ts
+
+  # O motor que o produto usa é o v7 — o v4 só entra se o v7 falhar. Ainda
+  # assim, até aqui só o v4 era testado no CI: a cobertura estava no motor de
+  # reserva e ausente no que gera os arquivos que o cliente baixa. Os testes
+  # existiam, escritos junto com o v7, mas ficaram parados numa branch que nunca
+  # chegou à main e quase foram apagados na limpeza de branches.
+  #
+  # Rodam sob Bun, não Deno: o render.ts recebe a classe PptxGenJS por injeção
+  # justamente para poder ser exercitado fora do Deno, e os testes importam
+  # "pptxgenjs" como pacote npm comum.
+  smoke-tests-v7:
+    name: Run v7 smoke tests (primary engine)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # --no-save de propósito: pptxgenjs é dependência do runtime Deno da edge
+      # function (que o fixa em npm:pptxgenjs@3.12.0), não do pacote do front.
+      # Declará-lo no package.json o empurraria para o bundle do site.
+      - name: Install pptxgenjs (test-only)
+        run: npm install pptxgenjs@3.12.0 --no-save --no-audit --no-fund
+
+      - name: Run v7 smoke tests
+        run: |
+          bun run supabase/functions/export-pptx-v7/__tests__/render.smoke.ts
+          bun run supabase/functions/export-pptx-v7/__tests__/robustness.smoke.ts

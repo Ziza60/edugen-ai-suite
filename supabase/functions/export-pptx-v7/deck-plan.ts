@@ -1212,7 +1212,12 @@ export function dedupeModules(modules: DeckModule[]): number {
 // one below its minimum — enough slack for a legitimately short module without
 // licensing a hollow one.
 const INTRA_DUP_THRESHOLD = 0.85;
-function floorMinContent(density: Density): number {
+/**
+ * Exportada porque o teste de robustez precisa montar um módulo que já esteja
+ * NO piso, e um número copiado à mão ali envelhece calado — foi o que
+ * aconteceu quando o piso subiu de 2 para 5 e o fixture ficou em três slides.
+ */
+export function floorMinContent(density: Density): number {
   return Math.max(2, (DENSITY_SPECS[density] ?? DENSITY_SPECS.standard).min - 1);
 }
 export function enforceModuleFloors(
