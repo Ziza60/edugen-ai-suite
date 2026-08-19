@@ -5,6 +5,7 @@ import {
   fillImageBox,
   fitImageBox,
   lineHeightMm,
+  medidorSemKerning,
   tocSeparatorY,
   tocTitleLines,
 } from "../_shared/pdf-layout.ts";
@@ -821,17 +822,23 @@ class PdfRenderer {
     const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
     this.checkPage(lines.length * SP.LINE_HEIGHT + 3);
 
-    // Word-width measurement for justification.
-    // Primary: doc.getTextWidth (returns mm in jsPDF 2.x).
-    // Fallback: character-count estimate using Helvetica average glyph width (0.48em).
-    // This avoids relying on getStringUnitWidth which can return 0 in Deno/esm.sh contexts.
-    const SF = 72 / 25.4; // mm per point (jsPDF scale factor for mm units)
-    const wordWidthMm = (w: string): number => {
+    // Largura de palavra para justificação — caractere a caractere, de
+    // propósito. Medir a palavra inteira traz o kerning do getTextWidth, que o
+    // doc.text() não desenha: a palavra fica mais larga que a medida e come o
+    // espaço seguinte ("PPAé", "Tomadade"). Ver medidorSemKerning.
+    const SF = 72 / 25.4; // mm por ponto (escala do jsPDF em mm)
+    const medir = medidorSemKerning((ch) => {
       try {
-        const tw: number = this.doc.getTextWidth(w);
-        if (tw > 0 && tw < 40) return tw;
-      } catch (_) {}
-      // Fallback: 0.48em avg char width for Helvetica mixed-case Latin text
+        return this.doc.getTextWidth(ch);
+      } catch (_) {
+        return 0;
+      }
+    });
+    const wordWidthMm = (w: string): number => {
+      const tw = medir(w);
+      if (tw > 0 && tw < 40) return tw;
+      // Rede de segurança: 0,48 em por caractere, média da Helvetica. Cobre o
+      // getTextWidth devolvendo 0 em contextos Deno/esm.sh.
       return w.length * FONT.BODY * 0.48 / SF;
     };
 

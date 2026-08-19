@@ -165,6 +165,68 @@ export function lineHeightMm(fontSizePt: number, lineHeightFactor = 1.15): numbe
   return (fontSizePt * lineHeightFactor) / PT_POR_MM;
 }
 
+// ── Largura de palavra para justificação ────────────────────────────────────
+//
+// O DEFEITO: "PPAé", "PPAà", "PPApara", "Tomadade Contas". Palavras coladas na
+// seguinte, sempre as mesmas — relatado numa avaliação do material e conferido
+// no PDF: na frase "O PPA é mais do que um documento legal", o espaço depois de
+// PPA mede 1,51 pt onde os outros espaços da MESMA linha medem 2,7 a 3,0.
+//
+// A CAUSA: o parágrafo justificado é desenhado palavra a palavra, avançando
+// `x += doc.getTextWidth(palavra) + folga`. E o `getTextWidth` do jsPDF aplica
+// o KERNING da fonte, enquanto o `doc.text()` desenha um `Tj` simples, sem
+// kerning nenhum. A palavra então ocupa mais espaço do que foi medido, e a
+// diferença é descontada do espaço seguinte. Medido na própria biblioteca:
+//
+//   getTextWidth("PPA")    19,53 pt   soma caractere a caractere  20,79 pt
+//   getTextWidth("Tomada") 36,96 pt   soma caractere a caractere  38,22 pt
+//   getTextWidth("LDO")    21,52 pt   soma caractere a caractere  21,52 pt
+//
+// Só erra quem tem par de kerning. "PA" e "To" têm; "LDO", "LOA", "RGF" não —
+// e é exatamente por isso que o relato citou PPA e Tomada, e nunca LDO ou LOA.
+// A tabela da Helvetica desconta 120 milésimos de em no par "PA", que a 10,5 pt
+// dá 1,26 pt: o tamanho do buraco que aparece no papel.
+//
+// A CORREÇÃO: medir caractere a caractere. Um caractere sozinho não forma par,
+// então a soma é a largura que o `Tj` realmente desenha. A justificação passa a
+// distribuir folga igual de verdade.
+//
+// Não dá para "consertar o kerning" desenhando com ele: quem decide é o
+// visualizador de PDF a partir do `Tj`, e o jsPDF 2.5.2 não emite os ajustes de
+// TJ que aplicariam o kerning. Medir como se desenha é o que fecha a conta.
+
+/**
+ * Cria um medidor de palavras que ignora kerning, com cache por caractere.
+ *
+ * Recebe a função de medir do jsPDF (`(t) => doc.getTextWidth(t)`) e devolve
+ * uma função que mede palavras somando caractere a caractere. O cache existe
+ * porque um curso de 90 páginas mede dezenas de milhares de palavras e o
+ * alfabeto tem algumas dezenas de caracteres.
+ *
+ * `medirCaractere` NUNCA recebe mais de um caractere — é essa a correção. Se
+ * alguém "otimizar" isto passando a palavra inteira, o defeito volta.
+ */
+export function medidorSemKerning(
+  medirCaractere: (t: string) => number,
+): (palavra: string) => number {
+  const cache = new Map<string, number>();
+  return (palavra: string): number => {
+    let total = 0;
+    // Itera por ponto de código: "ç" e "ã" vêm do modelo em forma composta
+    // (NFC) e medem como um caractere só, que é como o jsPDF os desenha.
+    for (const ch of palavra) {
+      let w = cache.get(ch);
+      if (w === undefined) {
+        const medido = medirCaractere(ch);
+        w = Number.isFinite(medido) && medido > 0 ? medido : 0;
+        cache.set(ch, w);
+      }
+      total += w;
+    }
+    return total;
+  };
+}
+
 /**
  * Onde desenhar o traço separador entre dois itens do sumário.
  *
