@@ -136,7 +136,19 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
       setEnvPreview(null);
       setEnvAlt("");
     } catch (e) {
-      setEnvErro(e instanceof Error ? e.message : "Falha ao enviar a imagem.");
+      // O Storage devolve mensagens de banco de dados, escritas para quem
+      // administra o servidor. "new row violates row-level security policy" não
+      // diz nada a quem só queria pôr uma foto no módulo — e o pior é que
+      // sugere culpa do arquivo, quando o problema é de permissão no servidor.
+      const bruto = e instanceof Error ? e.message : String(e ?? "");
+      const legivel = /row-level security|violates|policy/i.test(bruto)
+        ? "O servidor recusou o envio por falta de permissão de escrita. " +
+          "Isso é configuração do projeto, não problema da sua imagem — avise o responsável técnico."
+        : /exceeded|payload|too large/i.test(bruto)
+        ? "A imagem ficou grande demais para o envio. Tente uma foto menor."
+        : bruto || "Falha ao enviar a imagem.";
+      setEnvErro(legivel);
+      console.error("[upload-imagem]", bruto);
     } finally {
       setEnvLoading(false);
     }
