@@ -44,8 +44,12 @@ export const LIMITS = {
 
 const TRAILING_JUNK_RE = /[\s,;:\-–—]+$/;
 const ELLIPSIS_RE = /(\.{2,}|…)+\s*$/;
+// O artigo "o" faltava. A lista trazia "a", "as" e "os", e só o masculino
+// singular ficou de fora — uma omissão de um caractere com efeito visível:
+// "…e a" era aparado, "…e os" era aparado, e "Conclua com a fase de pagamento
+// e o" foi entregue assim mesmo, num slide de atividade.
 const DANGLING_PREP_RE =
-  /\s+(para|de|da|do|das|dos|com|e|ou|que|em|no|na|nos|nas|ao|à|aos|às|por|sobre|entre|sem|sob|a|as|os|um|uma|uns|umas)\s*$/i;
+  /\s+(para|de|da|do|das|dos|com|e|ou|que|em|no|na|nos|nas|ao|à|aos|às|por|sobre|entre|sem|sob|a|o|as|os|um|uma|uns|umas)\s*$/i;
 
 // Words that CAN legitimately end an intact sentence ("a decisão é sua", "isso
 // depende de você") but never end an acceptable CUT one. They are stripped only
@@ -246,7 +250,28 @@ function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
   if (!Array.isArray(steps)) return [];
   return steps
     .map((s) => {
-      let heading = capText(stripLeadingOrdinal(String(s?.heading ?? "")), 8, 48);
+      // O TÍTULO DO PASSO TEM DOIS PAPÉIS, E SÓ UM ORÇAMENTO SERVIA PARA AMBOS
+      //
+      // Quando o passo tem corpo, o título é um RÓTULO ("Empenho", "Previsão") e
+      // 8 palavras sobram. Quando não tem, o título É o conteúdo — e numa
+      // atividade ele carrega a instrução inteira. Cortar em 8 palavras ali
+      // entrega ordem pela metade: "Defina qual departamento necessita",
+      // "Estime um valor e identifique qual dotação", "Detalhe as verificações".
+      // O aluno lê e não sabe o que fazer.
+      //
+      // O corpo já tinha sido corrigido por este mesmo motivo — o comentário
+      // abaixo é de então. O título ficou para trás.
+      //
+      // Espaço existe: sem corpo, renderStairs e renderSteps dão a linha inteira
+      // ao título em vez de metade dela. E o rodízio se ajusta sozinho — a linha
+      // do tempo e o chevron só entram com título curto, então uma instrução
+      // longa cai na lista vertical, que é onde ela cabe.
+      const temCorpo = !!String(s?.body ?? "").trim();
+      let heading = capText(
+        stripLeadingOrdinal(String(s?.heading ?? "")),
+        temCorpo ? 8 : 20,
+        temCorpo ? 48 : 120,
+      );
       // Steps carry the worked-example / activity prose (Contexto/Desafio/…), so
       // a 12-word cap chopped real sentences mid-thought. Allow a full short
       // sentence; capText still ends it on a clean clause. The vertical step
@@ -259,7 +284,7 @@ function normSteps(steps: DeckStep[] | undefined): DeckStep[] {
       // e se não houver corpo, o passo não tem conteúdo para justificar a barra.
       if (isEmptyLabel(heading)) {
         if (body && !isEmptyLabel(body)) {
-          heading = capText(body, 8, 48);
+          heading = capText(body, 20, 120);
           body = undefined;
         } else {
           heading = "";

@@ -165,6 +165,76 @@ export function lineHeightMm(fontSizePt: number, lineHeightFactor = 1.15): numbe
   return (fontSizePt * lineHeightFactor) / PT_POR_MM;
 }
 
+// ── Símbolos que a fonte do PDF não sabe desenhar ───────────────────────────
+//
+// O DEFEITO: numa tabela de conferência dos mínimos constitucionais, a célula
+// dizia «Verificar se Gasto Efetivo "e Mínimo Saúde». O autor escreveu
+// «Gasto Efetivo ≥ Mínimo Saúde». O ≥ virou `"e`.
+//
+// A CAUSA: as fontes padrão do PDF usam a codificação WinAnsi, que só alcança o
+// Latin-1 mais uma pequena tabela extra. O ≥ (U+2265) está fora dela. O jsPDF
+// não avisa e não desenha um quadradinho — ele emite os bytes do caractere como
+// se fossem Latin-1, e o leitor mostra os caracteres correspondentes. Ou seja: o
+// texto sai ERRADO em vez de sair faltando, que é o pior dos dois mundos, porque
+// ninguém percebe pela ausência.
+//
+// A CORREÇÃO tem duas camadas. Primeiro, traduzir os símbolos que têm
+// equivalente óbvio em ASCII — ≥ vira >=, → vira ->, ≠ vira !=. Depois, uma rede
+// para o que sobrar acima do Latin-1: sai do texto. Um caractere que a fonte não
+// sabe desenhar já estava perdido; tirá-lo é melhor que exibi-lo mutilado.
+
+/**
+ * Símbolos comuns em material técnico, com o equivalente que a fonte desenha.
+ *
+ * A pontuação tipográfica (travessão, aspas curvas, reticências) entra aqui
+ * mesmo já sendo tratada pelo chamador: ela também está acima do Latin-1, e uma
+ * função que se basta sozinha não depende da ordem em que é chamada. Aplicar
+ * duas vezes não muda nada.
+ */
+const SIMBOLOS: Array<[RegExp, string]> = [
+  [/[‘’‚‛]/g, "'"],
+  [/[“”„‟]/g, '"'],
+  [/[«»]/g, '"'],
+  [/[‹›]/g, "'"],
+  [/[–—―]/g, "-"],
+  [/[…]/g, "..."],
+  [/[≥]/g, ">="],
+  [/[≤]/g, "<="],
+  [/[≠]/g, "!="],
+  [/[≈≅≃]/g, "~="],
+  [/[≡]/g, "=="],
+  [/[→➡⇒]/g, "->"],
+  [/[←⇐]/g, "<-"],
+  [/[↔⇔]/g, "<->"],
+  [/[↑]/g, "^"],
+  [/[↓]/g, "v"],
+  [/[−]/g, "-"],
+  [/[⁄∕]/g, "/"],
+  [/[•●▪■‣⁃]/g, "-"],
+  [/[∞]/g, "infinito"],
+  [/[′]/g, "'"],
+  [/[″]/g, '"'],
+  [/[✓✔]/g, "OK"],
+  [/[✗✘❌]/g, "X"],
+  [/[     ]/g, " "],
+  [/[‑]/g, "-"],
+];
+
+/**
+ * Deixa o texto com apenas caracteres que a fonte do PDF sabe desenhar.
+ *
+ * Traduz os símbolos com equivalente conhecido e remove o que restar acima do
+ * Latin-1. Nunca lança: texto do curso não pode custar a apostila.
+ */
+export function transliterarSimbolos(texto: string): string {
+  if (!texto) return "";
+  let t = String(texto);
+  for (const [re, sub] of SIMBOLOS) t = t.replace(re, sub);
+  // Rede final. O intervalo Latin-1 (até U+00FF) cobre todo o português; o que
+  // passa disso e não foi traduzido acima a fonte não desenha.
+  return t.replace(/[^ -ÿ]/g, "");
+}
+
 // ── Largura de palavra para justificação ────────────────────────────────────
 //
 // O DEFEITO: "PPAé", "PPAà", "PPApara", "Tomadade Contas". Palavras coladas na

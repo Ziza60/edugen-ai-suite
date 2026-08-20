@@ -1499,9 +1499,23 @@ function fitNote(raw: string): string {
 }
 
 /** The prose passages of a module, in document order, largest units first. */
+// RECAPITULAÇÃO NÃO É NARRAÇÃO
+//
+// O bloco de pontos-chave do módulo repete, em forma curta, o vocabulário de
+// tudo o que veio antes. Oferecido como trecho candidato, ele casa com QUASE
+// TODO slide — e como casa forte, ganha pares que não são dele. Foi assim que o
+// slide "PPA, LDO e LOA: Comparativo Essencial" recebeu como nota do orador os
+// "📌 Pontos-chave" do módulo inteiro.
+//
+// O lugar desse texto é o slide de fechamento, que já o tem como conteúdo
+// próprio. Como narração de outro slide, ele não explica: resume.
+const RECAPITULACAO_RE =
+  /^\s*(?:📌\s*)?(?:pontos?[-\s]chave|principais\s+(?:aprendizados|pontos)|resumo|recapitula|s[ií]ntese|key\s+takeaways?|takeaways?|em\s+resumo|conclus[ãa]o\s+do\s+m[óo]dulo)\b/i;
+
 function sourcePassages(content: string): { text: string; toks: Set<string> }[] {
   const out: { text: string; toks: Set<string> }[] = [];
   for (const b of segmentMarkdown(content)) {
+    if (b.heading && RECAPITULACAO_RE.test(b.heading)) continue;
     const parts: string[] = [];
     if (b.heading) parts.push(b.heading);
     parts.push(...b.paras);

@@ -8,6 +8,7 @@ import {
   medidorSemKerning,
   tocSeparatorY,
   tocTitleLines,
+  transliterarSimbolos,
 } from "../_shared/pdf-layout.ts";
 import { splitCourseOverview } from "../_shared/course-frontmatter.ts";
 import { separarListaEmbutida } from "../_shared/markdown.ts";
@@ -99,6 +100,11 @@ function sanitizeText(text: string): string {
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2013\u2014]/g, "-")
     .replace(/[\u2026]/g, "...");
+
+  // Aspas, travess\u00F5es e retic\u00EAncias j\u00E1 estavam cobertos acima; o resto do que a
+  // fonte WinAnsi n\u00E3o desenha n\u00E3o estava. Um \u2265 numa regra de confer\u00EAncia saiu
+  // como `"e` \u2014 o texto errado, n\u00E3o faltando, que \u00E9 pior porque ningu\u00E9m nota.
+  clean = transliterarSimbolos(clean);
 
   clean = clean.replace(/  +/g, " ").trim();
   return clean;
