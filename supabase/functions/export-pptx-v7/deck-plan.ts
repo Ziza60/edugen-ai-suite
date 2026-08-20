@@ -146,6 +146,10 @@ export const SLIDE_RESPONSE_SCHEMA = {
               "quote",
               "stat",
               "chart",
+              // "table" já era anunciada ao modelo no prompt e no exemplo de
+              // JSON, mas não constava aqui — então ele nunca pôde escolhê-la.
+              // As tabelas dos decks vinham todas do caminho determinístico.
+              "table",
               "code",
               "closing",
             ],
@@ -202,6 +206,61 @@ export const SLIDE_RESPONSE_SCHEMA = {
             properties: {
               language: { type: "string" },
               text: { type: "string" },
+            },
+          },
+          // ── chart e table: por que estavam faltando, e o que isso causava ──
+          //
+          // Este esquema não é documentação: é CONTRATO. A resposta do modelo é
+          // gerada sob `responseSchema`, então o que não está declarado aqui
+          // simplesmente não pode ser devolvido — a API descarta antes de nos
+          // entregar.
+          //
+          // "chart" estava na lista de `kind` permitidos, o prompt o descrevia,
+          // o exemplo de JSON o mostrava por extenso, o normalizador sabia
+          // tratá-lo e o renderizador sabia desenhá-lo. Só faltava o lugar onde
+          // os dados moram. Resultado: toda vez que o planejador decidia fazer
+          // um gráfico, o objeto com os pontos era removido no caminho, o slide
+          // chegava vazio e `isRenderable` o descartava por ter menos de dois
+          // pontos. O gráfico era IMPOSSÍVEL desde que o v7 foi escrito.
+          //
+          // Foi por isso que nada do que fizemos antes o acordou: pôr número no
+          // conteúdo era necessário, alargar o que o planejador enxerga era
+          // necessário, transformar a permissão em exigência era necessário — e
+          // nenhum dos três bastava, porque a porta estava fechada mais adiante.
+          //
+          // "table" tinha o mesmo defeito, com um disfarce: as tabelas que
+          // aparecem nos decks vêm do caminho determinístico
+          // (fallbackModuleSlides lendo tabelas do markdown), nunca do
+          // planejador. Como havia tabelas, ninguém procurou o buraco.
+          chart: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["donut", "bar"] },
+              unit: { type: "string" },
+              points: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: { type: "string" },
+                    value: { type: "number" },
+                  },
+                  required: ["label", "value"],
+                },
+              },
+            },
+            required: ["type", "points"],
+          },
+          columns: { type: "array", items: { type: "string" } },
+          rows: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string" },
+                cells: { type: "array", items: { type: "string" } },
+              },
+              required: ["label", "cells"],
             },
           },
           imageQuery: { type: "string" },
