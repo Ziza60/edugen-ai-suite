@@ -18,6 +18,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { cleanModuleContent, repairTruncation } from "./markdown.ts";
+import { descricaoDoTom } from "./course-tone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2185,7 +2186,7 @@ DADOS DO CURSO
 - Tema: ${theme}
 - Público: ${targetAudience}
 - Nível atual: ${knowledgeLevel}
-- Tom: ${tone}
+- Tom: ${descricaoDoTom(tone)}
 - Idioma: ${language}
 - Resultado desejado: ${outcomeLabel}
 - Tipo obrigatório do encerramento: ${capstoneType}
@@ -2485,7 +2486,7 @@ CURSO
 - Público: ${course.audience_label}
 - Nível: ${knowledgeLevel}
 - Idioma: ${language}
-- Tom: ${tone}
+- Tom: ${descricaoDoTom(tone)}
 - Competência final: ${course.final_competency}
 
 MÓDULO ${module.module_number} DE ${course.modules.length}

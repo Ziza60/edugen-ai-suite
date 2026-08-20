@@ -224,9 +224,26 @@ Deno.serve(async (req: Request) => {
         sourceChunks = chunkSourceDocuments(sourceDocs);
       }
 
+      // DE PERMISSÃO PARA EXIGÊNCIA
+      //
+      // A regra antiga dizia quando número era PERMITIDO e nunca que ele era
+      // devido. Diante de uma permissão sem pedido, o modelo joga seguro e não
+      // escreve nenhum. Um curso inteiro sobre orçamento público municipal saiu
+      // com zero percentual: sem os 25% da educação, sem os 15% da saúde, sem o
+      // limite de pessoal — e ainda trocou a regra de publicação do RGF, que é
+      // semestral para município pequeno, por um confuso "3º período bimestral".
+      // Números certos são o que separa curso de conversa sobre o assunto.
+      //
+      // Efeito colateral bem-vindo: sem número na origem, o exportador de PPTX
+      // não tem o que desenhar, e o tipo de slide "chart" ficava dormente no
+      // produto inteiro — ele é proibido de inventar dado, e com razão.
       const numbersRule = useSources
         ? "Use somente números que apareçam literalmente nas fontes. Não invente valores, percentuais, prazos, quantidades, custos ou resultados, nem como ilustração."
-        : "Use número somente quando for requisito normativo, parâmetro técnico ou fato consolidado do domínio. Não invente estatísticas, resultados, custos ou prazos.";
+        : [
+          "TRAGA os números que o assunto exige. Quando houver limite legal, percentual mínimo ou máximo, prazo normativo, alíquota, parâmetro técnico oficial ou composição consolidada do domínio, ESCREVA o valor — omitir deixa o curso incompleto e genérico.",
+          "Cite o número junto do dispositivo ou da norma que o fixa, para que o leitor possa conferir.",
+          "Continua proibido inventar estatística, resultado de pesquisa, custo, preço ou prazo que você não conheça com certeza. Na dúvida sobre um valor específico, descreva a regra sem o número em vez de arriscar um palpite — errar um limite legal é pior que omiti-lo.",
+        ].join(" ");
 
       const generationStart = Date.now();
       const msLeft = () => SOFT_DEADLINE_MS - (Date.now() - generationStart);

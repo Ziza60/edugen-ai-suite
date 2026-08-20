@@ -42,7 +42,7 @@
  */
 const TITULO_SEQUENCIAL = [
   // português — plurais e coletivos
-  "etapas", "passos", "fases", "ciclo", "fluxo",
+  "etapas", "passos", "fases", "estágios", "estagios", "ciclo", "fluxo",
   "sequência", "sequencia", "cronologia", "linha do tempo", "passo a passo",
   // inglês
   "steps", "phases", "stages", "cycle", "flow",

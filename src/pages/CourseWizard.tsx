@@ -628,11 +628,15 @@ export default function CourseWizard() {
     },
     {
       key: "tone",
+      // Os valores eram "didatico" no botão Prático e "direto" no
+      // Conversacional: o modelo recebia um tom diferente do que a pessoa
+      // pediu. Agora cada rótulo tem o seu, e o que chega ao modelo é uma
+      // instrução inteira — ver _shared/course-tone.ts.
       question: "Que tom você prefere no material?",
       options: [
-        { label: "Prático", value: "didatico" },
+        { label: "Prático", value: "pratico" },
         { label: "Profissional", value: "profissional" },
-        { label: "Conversacional", value: "direto" },
+        { label: "Conversacional", value: "conversacional" },
         { label: "Acadêmico", value: "academico" },
       ],
     },
@@ -644,9 +648,85 @@ export default function CourseWizard() {
       setForm((prev) => ({ ...prev, [q.key]: value.trim() }));
     }
     setQuickCustom("");
-    if (quickStep < QUICK_QUESTIONS.length - 1) setQuickStep(quickStep + 1);
-    else setPendingQuickGenerate(true);
+    // A quarta resposta levava direto à geração. O caminho rápido decide
+    // sozinho o que nunca perguntou — 5 módulos, densidade padrão, SEM imagens
+    // e sem fontes próprias — e a pessoa só descobria com o curso pronto.
+    // Agora ele mostra o que vai fazer antes de fazer.
+    setQuickStep(quickStep + 1);
   };
+
+  /** Passo além da última pergunta: a confirmação. */
+  const naConfirmacao = quickStep >= QUICK_QUESTIONS.length;
+
+  if (quickMode && !generating && !pendingQuickGenerate && naConfirmacao) {
+    const rotuloDaResposta = (chave: typeof QUICK_QUESTIONS[number]["key"]) => {
+      const q = QUICK_QUESTIONS.find((x) => x.key === chave)!;
+      const v = form[chave];
+      return q.options.find((o) => o.value === v)?.label || v || "não informado";
+    };
+    return (
+      <div className="min-h-screen bg-muted/30 flex items-center justify-center px-4">
+        <Card className="rounded-2xl border-border shadow-sm w-full max-w-xl">
+          <CardContent className="p-8">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+              Novo curso
+            </p>
+            <h1 className="font-semibold text-lg mb-6 leading-snug">{resolvedTitle || resolvedTheme}</h1>
+
+            <p className="font-medium text-base mb-4">Confira antes de gerar</p>
+
+            <div className="rounded-xl border border-border bg-card divide-y divide-border mb-4 text-sm">
+              {([
+                ["Público", rotuloDaResposta("targetAudience")],
+                ["Nível", rotuloDaResposta("knowledgeLevel")],
+                ["Resultado", rotuloDaResposta("outcome")],
+                ["Tom", rotuloDaResposta("tone")],
+              ] as const).map(([rotulo, valor]) => (
+                <div key={rotulo} className="flex items-center justify-between px-4 py-2.5">
+                  <span className="text-muted-foreground">{rotulo}</span>
+                  <span className="font-medium text-right ml-4">{valor}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* O que o caminho rápido decidiu sem perguntar. Está aqui para a
+                pessoa poder discordar antes, e não depois do curso pronto. */}
+            <p className="text-xs text-muted-foreground leading-relaxed mb-5">
+              E mais: <strong className="font-medium text-foreground">{form.numModules} módulos</strong>,
+              densidade padrão, quizzes e flashcards,{" "}
+              <strong className="font-medium text-foreground">sem imagens de IA</strong>, em português.
+            </p>
+
+            <div className="flex items-center gap-2">
+              <Button className="flex-1" onClick={() => setPendingQuickGenerate(true)}>
+                Gerar curso
+              </Button>
+              <Button variant="outline" onClick={() => { setQuickMode(false); setShowTemplates(false); }}>
+                Ajustar
+              </Button>
+            </div>
+
+            {/* A alavanca de qualidade mais forte do produto — com fonte
+                anexada, o curso só usa números que estão nela — era invisível
+                para quem entrava pela caixa de tema. */}
+            <button
+              onClick={() => { setQuickMode(false); setShowTemplates(false); setUseSources(true); }}
+              className="mt-5 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground text-left"
+            >
+              Tenho um documento ou vídeo sobre isso — quero que o curso seja baseado nele
+            </button>
+
+            <button
+              onClick={() => setQuickStep(QUICK_QUESTIONS.length - 1)}
+              className="block mt-3 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Voltar para a última pergunta
+            </button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (quickMode && !generating && !pendingQuickGenerate) {
     const q = QUICK_QUESTIONS[quickStep];
@@ -922,7 +1002,9 @@ export default function CourseWizard() {
                               <SelectContent>
                                 <SelectItem value="profissional">Profissional</SelectItem>
                                 <SelectItem value="didatico">Didático</SelectItem>
+                                <SelectItem value="pratico">Prático</SelectItem>
                                 <SelectItem value="direto">Direto</SelectItem>
+                                <SelectItem value="conversacional">Conversacional</SelectItem>
                                 <SelectItem value="academico">Acadêmico</SelectItem>
                               </SelectContent>
                             </Select>

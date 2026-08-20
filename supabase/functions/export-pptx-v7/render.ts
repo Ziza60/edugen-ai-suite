@@ -2056,15 +2056,19 @@ function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
 
   items.forEach((b, i) => {
     const x = ML + i * (chW + gap);
-    const accent = i % 2 === 0;
+    // Todas as setas iguais, pelo mesmo motivo dos degraus em renderStairs:
+    // `i % 2 === 0` pintava a 1 e a 3 de acento e a 2 e a 4 de superfície, e
+    // quem olha lê ênfase onde havia só decoração. Numa sequência em que todo
+    // passo é obrigatório, isso hierarquiza o que não tem hierarquia. A ordem
+    // já é dita pela direção do bico e pelo número dentro de cada seta.
     slide.addShape("chevron", {
       x, y, w: chW, h: chH,
-      fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 },
+      fill: { color: d.accent }, line: { color: d.border, width: 1 },
     });
     slide.addText(String(i + 1), {
       x: x + caixaNum.dx, y: y + caixaNum.dy, w: caixaNum.w, h: caixaNum.h,
       fontFace: FONT_TITLE, fontSize: 26, bold: true,
-      color: accent ? d.onAccent : d.accent2, align: "center", valign: "middle",
+      color: d.onAccent, align: "center", valign: "middle",
     });
     slide.addText(b, {
       x, y: y + chH + 0.16, w: chW, h: capH,
@@ -2600,10 +2604,43 @@ export function renderDeck(
             }
             break;
           }
-          case "steps":
-            if (stepsVar++ % 2 === 1) renderStairs(slide, s, d, brand, num, m.title);
-            else renderSteps(slide, s, d, brand, num, m.title);
+          case "steps": {
+            // O CHEVRON MORAVA NO LUGAR ERRADO
+            //
+            // Ele só existia no rodízio dos slides de BULLETS, atrás do
+            // detector ehSequencia — que serve para impedir que uma lista sem
+            // ordem ganhe cara de processo. A trava está certa; o endereço
+            // estava errado. Conteúdo em ordem o planejador classifica como
+            // "steps", e o rodízio de steps não tinha chevron nenhum. Resultado:
+            // a forma só podia aparecer quando o planejador ERRAVA de categoria
+            // — exatamente o caso que o prompt manda evitar. Na prática, nunca
+            // aparecia.
+            //
+            // Aqui a ordem é garantida pelo TIPO do slide: um "steps" é
+            // ordenado por definição. O chevron faz afirmação verdadeira por
+            // construção, sem depender de detector.
+            //
+            // Só entra com rótulo curto, porque a seta carrega o número dentro
+            // e a legenda embaixo, na largura de uma coluna estreita. Texto
+            // longo ali vira duas linhas apertadas — o mesmo motivo pelo qual
+            // renderSteps escolhe a linha do tempo apenas para passos curtos.
+            const passos = s.steps ?? [];
+            const cabeRotulo = passos.length >= 3 && passos.length <= 5 &&
+              passos.every((st) => (st.heading?.length ?? 0) <= 26);
+            const v = stepsVar++ % (cabeRotulo ? 3 : 2);
+            if (v === 1) renderStairs(slide, s, d, brand, num, m.title);
+            else if (v === 2) {
+              // renderProcessArrows lê s.bullets. Os títulos dos passos são o
+              // que cabe na seta; o corpo fica de fora, como já ficava na
+              // linha do tempo.
+              renderProcessArrows(
+                slide,
+                { ...s, bullets: passos.map((st) => st.heading ?? "").filter(Boolean) },
+                d, brand, num, m.title,
+              );
+            } else renderSteps(slide, s, d, brand, num, m.title);
             break;
+          }
           case "compare":
             renderCompare(slide, s, d, brand, num, m.title, compareCount++);
             break;
