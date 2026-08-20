@@ -113,3 +113,62 @@ export function proporcaoInformativa(valores: number[]): boolean {
   if (max <= 0) return false;
   return (max - min) / max >= 0.02;
 }
+
+// ── Rótulo do núcleo (teia e radial) ────────────────────────────────────────
+//
+// O núcleo é um círculo pequeno no meio do diagrama e cabe pouca coisa nele, de
+// modo que o título precisa virar um rótulo curto. A regra antiga era "tire as
+// palavras de ligação e fique com as duas primeiras". Em "PPA: O Plano
+// Plurianual" isso devolveu **"PPA: Plano"** — que não parece um resumo, parece
+// um defeito: termina em dois-pontos, prometendo uma continuação que não vem.
+//
+// A sigla antes do dois-pontos costuma ser o melhor rótulo que existe: já é
+// curta e já é o nome da coisa. Então o dois-pontos deixa de ser um caractere
+// qualquer no meio das palavras e passa a ser o que sempre foi — a divisa entre
+// um nome e sua explicação. Fica-se com um lado ou com o outro, nunca com um
+// pedaço de cada.
+
+const LIGACAO = new Set([
+  "a", "o", "as", "os", "da", "de", "do", "das", "dos", "e", "em", "na", "no",
+  "nas", "nos", "por", "para", "com", "sobre", "um", "uma",
+  "the", "of", "to", "and", "in", "on", "for", "a", "an",
+  "el", "la", "los", "las", "y", "en", "por", "para", "con",
+]);
+
+/**
+ * Rótulo curto para o centro de um diagrama, a partir do título do slide.
+ *
+ * `maxPalavras` e `maxChars` são o que cabe no círculo de cada layout.
+ */
+export function rotuloDoNucleo(titulo: string, maxPalavras = 2, maxChars = 18): string {
+  const bruto = (titulo || "").trim();
+  if (!bruto) return "";
+
+  // O dois-pontos separa nome e explicação. Se o nome couber, ele É o rótulo.
+  // `>= 0` e não `> 0`: um título que ABRE com dois-pontos tem nome vazio, e o
+  // ramo abaixo já sabe cair na explicação. Com `> 0` ele escapava do
+  // tratamento e voltava a sair com dois-pontos no rótulo — ": Plano".
+  const divisa = bruto.indexOf(":");
+  let base = bruto;
+  if (divisa >= 0) {
+    const nome = bruto.slice(0, divisa).trim();
+    const explicacao = bruto.slice(divisa + 1).trim();
+    base = nome && nome.length <= maxChars ? nome : (explicacao || nome);
+  }
+
+  const palavras = base.split(/\s+/).filter((p) => p && !LIGACAO.has(p.toLowerCase()));
+  const escolhidas = (palavras.length ? palavras : base.split(/\s+/).filter(Boolean))
+    .slice(0, maxPalavras);
+  let rotulo = escolhidas.join(" ").trim();
+
+  if (rotulo.length > maxChars) {
+    // Uma palavra só e longa demais: corta com reticência, que ao menos avisa
+    // que há mais. Duas palavras: fica com a primeira, inteira.
+    rotulo = escolhidas.length > 1 && escolhidas[0].length <= maxChars
+      ? escolhidas[0]
+      : `${rotulo.slice(0, maxChars - 1).trim()}…`;
+  }
+  // Nenhum rótulo termina em pontuação de divisa — é ela que fazia "PPA:
+  // Plano" parecer um corte.
+  return rotulo.replace(/[\s:;,\-–—]+$/, "");
+}

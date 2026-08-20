@@ -2206,7 +2206,7 @@ REGRAS DE ARQUITETURA
    - integration: explicação + mapa de decisão + atividade;
    - assessment: atividade + mapa de decisão + alerta.
 8. O projeto final deve conter briefing, requisitos, entregável e rubrica com pesos somando 100.
-9. "additional_readings" deve conter apenas TÓPICOS e tipos de fonte recomendados. Não invente links, títulos de documentos ou autores.
+9. "additional_readings": em "preferred_source_type", NOMEIE o instrumento quando ele for um marco normativo, técnico ou institucional inequívoco do assunto — "Constituição Federal, arts. 165 a 169", "Lei Complementar nº 101/2000 (LRF)", "Lei nº 4.320/64", "MCASP", "NBC TSP", "Lei nº 13.709/2018 (LGPD)". Nomear uma lei ou uma norma pelo nome oficial não é inventar referência: é dizer o que o próprio módulo já cita. Continua proibido inventar LINK, título de livro, artigo, autor ou número de edição — sem esses, use o tipo de fonte ("Manual de Tribunal de Contas", "Artigo acadêmico").
 
 INTEGRIDADE FACTUAL
 ${numbersRule}
@@ -2528,7 +2528,7 @@ DESIGN DE BLOCOS
 - code: somente quando necessário ao domínio; use code.language, code.code e code.explanation (explicação com pelo menos 35 palavras).
 - worked_example: preencha Contexto (20+ palavras), Desafio (12+), Solução (30+) e Resultado (12+). O resultado deve ser qualitativo, salvo número permitido.
 - scenario: use apenas quando planejado. Contexto com pelo menos 45 palavras. Deve ter EXATAMENTE 4 turnos; cada turno deve ter EXATAMENTE 4 opções, apenas 1 correta e feedback específico de pelo menos 10 palavras para cada opção. As alternativas erradas devem ser plausíveis, não absurdas. Debriefing com pelo menos 3 itens.
-- activity: inclua objetivo, template com pelo menos 3 linhas, 3 a 7 passos, entregável e pelo menos 3 critérios de sucesso.
+- activity: inclua objetivo, template com pelo menos 3 linhas, 3 a 7 passos, entregável e pelo menos 3 critérios de sucesso. O aluno faz o curso SOZINHO e no ritmo dele: nenhum passo pode depender de colega, turma, instrutor, grupo, fórum, aula ao vivo ou prazo combinado. Nada de "compartilhe com colegas para discussão", "debata em grupo" ou "apresente à turma" — troque por autoverificação contra os critérios de sucesso, comparação com a resposta-modelo, ou aplicação no próprio trabalho do aluno.
 - callout: use para erro crítico, limite, norma ou orientação de alto valor. Mínimo 35 palavras.
 - Não force dois widgets por lição. Cumpra o plano e use interatividade apenas quando ela mede ou pratica a competência.
 

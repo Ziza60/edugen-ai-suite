@@ -82,3 +82,53 @@ Context — ${ehCapa ? `course cover for "${curso || e.moduleTitle}"` : `educati
 ${ehCapa ? ESTILO_CAPA : ESTILO_MODULO}
 ${SEM_TEXTO}`;
 }
+
+// ── Texto alternativo da imagem ─────────────────────────────────────────────
+//
+// O alt_text gravado era `Imagem IA: ${brief}` — o PROMPT inteiro, com as
+// instruções de composição e de paleta. Ele saía impresso na apostila, cinco
+// linhas de "A paleta de cores foca em azul marinho, dourado e tons de
+// madeira", que é conversa interna com o gerador e não diz nada a quem lê.
+//
+// Alt-text é para o leitor de tela e responde a uma pergunta só: o que a
+// imagem mostra. Nem "Imagem IA:" entra — o leitor de tela já anuncia que
+// aquilo é uma imagem, e a procedência não ajuda quem não está vendo.
+
+/** Frases que instruem o gerador em vez de descrever a cena. */
+const INSTRUCAO_DE_ESTILO =
+  /\b(paleta|estilo|ilumina|renderiz|render\b|3d\b|resolu[çc][ãa]o|propor[çc][ãa]o|c[âa]mera|profundidade de campo|fotorrealis|alta qualidade|sem (?:texto|palavras|letras)|nenhum texto)/i;
+
+const LIMITE_ALT = 180;
+
+/**
+ * Transforma a descrição usada para gerar a imagem num texto alternativo.
+ *
+ * Fica com as frases que descrevem a CENA, descarta as que instruem o gerador
+ * e corta em fronteira de frase. Sem descrição aproveitável, cai no título do
+ * módulo, que é impreciso mas honesto.
+ */
+export function altDaImagem(brief: string | null | undefined, tituloDoModulo: string): string {
+  const limpo = (brief ?? "").replace(/\s+/g, " ").trim();
+  const titulo = (tituloDoModulo || "").trim();
+  if (!limpo) return titulo;
+
+  const frases = limpo.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const cena: string[] = [];
+  for (const f of frases) {
+    if (INSTRUCAO_DE_ESTILO.test(f)) continue;
+    const proximo = cena.length ? `${cena.join(" ")} ${f}` : f;
+    // Sempre entra a primeira frase, mesmo longa: melhor uma frase inteira e
+    // um pouco acima do limite do que nenhuma descrição.
+    if (cena.length && proximo.length > LIMITE_ALT) break;
+    cena.push(f);
+  }
+  if (!cena.length) return titulo;
+
+  let alt = cena.join(" ").trim();
+  if (alt.length > LIMITE_ALT) {
+    const corte = alt.slice(0, LIMITE_ALT);
+    const espaco = corte.lastIndexOf(" ");
+    alt = `${(espaco > 40 ? corte.slice(0, espaco) : corte).replace(/[,;:\s]+$/, "")}…`;
+  }
+  return alt;
+}

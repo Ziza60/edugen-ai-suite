@@ -73,6 +73,66 @@ export function repairTruncation(md: string): string {
   return lines.join("\n").trimEnd();
 }
 
+// ── Lista numerada que veio grudada no parágrafo ────────────────────────────
+//
+// O modelo às vezes devolve a enumeração dentro da mesma linha, sem quebra e
+// até sem espaço antes do marcador:
+//
+//   "Plano para Vila Nova da Esperança:1. Ação: Portal da Transparência. O
+//    município deve … legitimando as ações governamentais.2. Ação: Capacitação
+//    Contínua … contra irregularidades.3. Ação: Audiências Públicas …"
+//
+// O exportador não tem como adivinhar: recebe uma linha só e desenha um bloco
+// corrido de vinte linhas onde deveria haver três itens. Foi assim que saiu a
+// página 55 do curso de orçamento — o conteúdo estava certo e ilegível.
+//
+// POR QUE A REGRA É ESTREITA
+//
+// Quebrar em todo "n." destruiria texto correto: "Lei nº 4.320/64", "R$ 3.500,00",
+// "art. 5º", "no exercício de 2026. 300 servidores". Por isso não basta achar
+// UM marcador — os marcadores encontrados precisam formar a sequência 1, 2, 3…
+// começando em 1 e sem pular. Numeração de verdade tem essa forma; coincidência
+// não tem. Duas ocorrências é o mínimo, porque um "1." solto não é lista.
+
+/** ".2. " ou ":2. " — marcador colado ao que vem antes, que é o sintoma. */
+const MARCADOR_COLADO = /([.:;!?])(\d{1,2})\.\s+/g;
+
+/**
+ * Devolve o texto com a lista numerada embutida quebrada em linhas.
+ *
+ * Sem sequência válida, devolve o texto exatamente como veio.
+ */
+export function separarListaEmbutida(texto: string): string {
+  const t = texto || "";
+  const achados: Array<{ inicio: number; fim: number; n: number }> = [];
+  for (const m of t.matchAll(MARCADOR_COLADO)) {
+    achados.push({
+      inicio: m.index ?? 0,
+      fim: (m.index ?? 0) + m[0].length,
+      n: Number(m[2]),
+    });
+  }
+  if (achados.length < 2) return t;
+
+  // A prova de que é lista: os marcadores formam 1, 2, 3… começando em 1 e sem
+  // pular. Coincidência não tem essa forma — "em 2024. 300 servidores. 45 já
+  // concluíram" dá 300 e 45, que não abrem em 1 nem se sucedem.
+  const sequencia = achados.every((a, i) => a.n === i + 1);
+  if (!sequencia) return t;
+
+  let saida = "";
+  let cursor = 0;
+  for (const c of achados) {
+    // A pontuação que vinha antes do marcador pertence à frase anterior e fica
+    // com ela; o dois-pontos que anuncia a lista, idem.
+    saida += t.slice(cursor, c.inicio + 1);
+    saida += `\n\n${c.n}. `;
+    cursor = c.fim;
+  }
+  saida += t.slice(cursor);
+  return saida;
+}
+
 /**
  * Normalize a course title before it is ever saved/rendered anywhere (DB,
  * PDF cover, PPTX cover, module list). Strips command/prompt phrasing users

@@ -10,6 +10,7 @@ import {
   tocTitleLines,
 } from "../_shared/pdf-layout.ts";
 import { splitCourseOverview } from "../_shared/course-frontmatter.ts";
+import { separarListaEmbutida } from "../_shared/markdown.ts";
 
 // Este arquivo era autocontido para poder ser colado inteiro no editor do painel
 // do Supabase. Deixou de ser: as contas de layout do sumário e da imagem foram
@@ -46,7 +47,10 @@ function cleanModuleContent(content: string, title?: string): string {
       c = lines.join("\n").trim();
     }
   }
-  return c;
+  // A enumeração que o modelo devolveu dentro do parágrafo vira lista de
+  // verdade. Sem isto, a apostila desenha o que recebeu: um bloco corrido de
+  // vinte linhas onde deveria haver três ações numeradas.
+  return separarListaEmbutida(c);
 }
 
 // TESTING_MODE: fase de testes sem usuários reais — libera o gate de plano Pro
@@ -699,18 +703,24 @@ class PdfRenderer {
       this.doc.addImage(dataUri, format, MARGIN_LEFT + (CONTENT_W - w) / 2, this.y, w, h);
       this.y += h + 8;
 
-      // A legenda é o alt-text que a busca de imagem já grava. Ela serve ao
-      // leitor de tela e, aqui, a quem lê no papel.
-      if (altText) {
-        this.doc.setFontSize(FONT.SMALL);
-        this.doc.setFont("helvetica", "italic");
-        this.doc.setTextColor(...COLOR.TEXT_MUTED);
-        const capLines = this.doc.splitTextToSize(sanitizeText(altText), CONTENT_W);
-        this.doc.text(capLines, MARGIN_LEFT + CONTENT_W / 2, this.y, { align: "center" });
-        this.y += capLines.length * 4 + 6;
-        this.doc.setFont("helvetica", "normal");
-        this.doc.setTextColor(...COLOR.TEXT_BODY);
-      }
+      // SEM LEGENDA, DE PROPÓSITO
+      //
+      // Aqui era impresso o alt_text. Ele existe para o leitor de tela e
+      // descreve O QUE A FOTO MOSTRA — trabalho diferente do de uma legenda,
+      // que liga a imagem ao que a lição ensina. Publicar um pelo outro pôs
+      // "Profissionais de negócios discutindo amostras de design de interiores"
+      // na primeira página de conteúdo de um curso de orçamento público, e, na
+      // imagem gerada por IA, cinco linhas do PRÓPRIO PROMPT abrindo com
+      // "Imagem IA:" — metadado interno vazando para o documento do comprador.
+      //
+      // Tirar não custa acessibilidade: este PDF não é marcado (Tagged: no),
+      // então o alt nunca chegou a leitor de tela nenhum por aqui — ele só
+      // aparecia impresso. Onde o alt tem função de verdade (HTML do SCORM,
+      // Moodle, Notion) ele continua intacto, em course-images.ts.
+      //
+      // Legenda boa exigiria uma frase escrita a partir da lição. Enquanto ela
+      // não existe, nenhuma legenda é melhor que a errada.
+      void altText;
     } catch (imgErr) {
       // Imagem é enriquecimento; nunca pode custar a apostila inteira.
       console.error("[export-pdf] falha ao embutir imagem do módulo:", imgErr);

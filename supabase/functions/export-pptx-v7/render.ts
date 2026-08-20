@@ -12,7 +12,7 @@ import { autoBodyFontSize } from "./validate.ts";
 import { coverBoxSize, imageSizeFromDataUri } from "../_shared/image-size.ts";
 import { categoricalColors } from "./chart-palette.ts";
 import { chevronNumberBox } from "./chevron-geometry.ts";
-import { ehSequencia } from "./layout-fit.ts";
+import { ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
@@ -1905,19 +1905,9 @@ function renderRadial(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
     x: cx - hubR, y: cy - hubR, w: hubR * 2, h: hubR * 2,
     fill: { color: d.accent }, line: { type: "none" },
   });
-  // Central label = the SUBJECT of the title, not its first two words (which are
-  // often a framing noun + connector, e.g. "Pilares da" → meaningless). Drop a
-  // leading framing word and any connectors, then keep the key term(s).
-  const HUB_STOP = new Set([
-    "a", "o", "as", "os", "da", "de", "do", "das", "dos", "e", "em", "na", "no",
-    "nas", "nos", "por", "para", "com", "sobre", "the", "of", "to", "and", "in", "on", "for",
-  ]);
-  const hubWords = s.title.split(/\s+/).filter(Boolean);
-  let hs = 0;
-  if (hubWords.length > 2 && HUB_STOP.has((hubWords[1] || "").toLowerCase())) hs = 1;
-  while (hs < hubWords.length && HUB_STOP.has((hubWords[hs] || "").toLowerCase())) hs++;
-  const hubPick = (hs < hubWords.length ? hubWords.slice(hs) : hubWords).slice(0, 2);
-  const hub = hubPick.join(" ").slice(0, 22);
+  // Rótulo central: o ASSUNTO do título, não suas duas primeiras palavras. A
+  // regra mora em layout-fit.ts, com teste — foi ela que devolvia "PPA: Plano".
+  const hub = rotuloDoNucleo(s.title, 2, 22);
   slide.addText(hub, {
     x: cx - hubR + 0.05, y: cy - hubR, w: hubR * 2 - 0.1, h: hubR * 2,
     fontFace: FONT_BODY, fontSize: hub.length > 14 ? 11 : 12, bold: true,
@@ -1960,26 +1950,41 @@ function renderStairs(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
     const y = CONTENT_Y + i * rowH;
     const x = ML + indent;
     const w = CW - indent;
-    const accent = i % 2 === 0;
+    // TODOS OS DEGRAUS IGUAIS
+    //
+    // Aqui havia `const accent = i % 2 === 0`, que pintava os passos 1 e 3 de
+    // laranja cheio e o 2 e o 4 de escuro. A alternância era decoração, mas
+    // ninguém lê decoração: lê ênfase, e conclui que os ímpares importam mais.
+    // Num processo em que todo passo é obrigatório, isso é afirmação falsa — o
+    // mesmo defeito da rosca repartida em fatias iguais e da fila de setas
+    // sobre uma lista que não tem ordem.
+    //
+    // A progressão continua visível por meios que não mentem: cada degrau
+    // recua um pouco mais que o anterior e o número cresce. A barra de acento à
+    // esquerda devolve o ritmo vertical que a alternância dava, sem hierarquia.
     slide.addShape("roundRect", {
       x, y: y + 0.06, w, h: rowH - 0.12, rectRadius: 0.06,
-      fill: { color: accent ? d.accent : d.surface }, line: { type: "none" },
+      fill: { color: d.surface }, line: { type: "none" },
+    });
+    slide.addShape("rect", {
+      x, y: y + 0.06, w: 0.06, h: rowH - 0.12,
+      fill: { color: d.accent }, line: { type: "none" },
     });
     slide.addText(String(i + 1), {
-      x: x + 0.18, y: y + 0.06, w: 0.7, h: rowH - 0.12,
+      x: x + 0.22, y: y + 0.06, w: 0.7, h: rowH - 0.12,
       fontFace: FONT_TITLE, fontSize: 24, bold: true,
-      color: accent ? d.onAccent : d.accent2, align: "left", valign: "middle",
+      color: d.accent2, align: "left", valign: "middle",
     });
     slide.addText(st.heading ?? "", {
-      x: x + 0.95, y: y + 0.1, w: w - 1.15, h: (rowH - 0.12) * (st.body ? 0.5 : 1),
+      x: x + 0.99, y: y + 0.1, w: w - 1.19, h: (rowH - 0.12) * (st.body ? 0.5 : 1),
       fontFace: FONT_BODY, fontSize: 14, bold: true,
-      color: accent ? d.onAccent : d.text, valign: "middle",
+      color: d.text, valign: "middle",
     });
     if (st.body) {
       slide.addText(st.body, {
-        x: x + 0.95, y: y + (rowH - 0.12) * 0.5, w: w - 1.15, h: (rowH - 0.12) * 0.45,
+        x: x + 0.99, y: y + (rowH - 0.12) * 0.5, w: w - 1.19, h: (rowH - 0.12) * 0.45,
         fontFace: FONT_BODY, fontSize: 11,
-        color: accent ? d.onAccent : d.subtext, valign: "middle", lineSpacingMultiple: 1.0,
+        color: d.subtext, valign: "middle", lineSpacingMultiple: 1.0,
       });
     }
   });
@@ -2279,9 +2284,9 @@ function renderNetwork(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   }
   const hubR = 0.7;
   slide.addShape("ellipse", { x: cx - hubR, y: cy - hubR, w: hubR * 2, h: hubR * 2, fill: { color: d.accent }, line: { type: "none" } });
-  const stop = new Set(["a", "o", "as", "os", "da", "de", "do", "das", "dos", "e", "em", "na", "no", "para", "com", "the", "of", "to", "and", "in", "on"]);
-  const words = s.title.split(/\s+/).filter((w) => w && !stop.has(w.toLowerCase()));
-  const hub = (words.slice(0, 2).join(" ") || s.title).slice(0, 18);
+  // Mesma regra do outro núcleo — foi ESTA linha que produziu "PPA: Plano" no
+  // slide "PPA: O Plano Plurianual". Ver rotuloDoNucleo, em layout-fit.ts.
+  const hub = rotuloDoNucleo(s.title, 2, 18);
   slide.addText(hub, { x: cx - hubR + 0.04, y: cy - hubR, w: hubR * 2 - 0.08, h: hubR * 2, fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent, align: "center", valign: "middle", lineSpacingMultiple: 0.95 });
   const sw = 2.5, sh = 0.9;
   const fs = autoBodyFontSize(N, items.join("").length);

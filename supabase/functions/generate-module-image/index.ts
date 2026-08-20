@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { montarPromptDeImagem } from "./image-prompt.ts";
+import { altDaImagem, montarPromptDeImagem } from "./image-prompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -178,10 +178,10 @@ serve(async (req) => {
     // botão parecia não fazer nada. O carimbo força a releitura.
     const imageUrl = `${signed.signedUrl}${signed.signedUrl.includes("?") ? "&" : "?"}v=${Date.now()}`;
 
-    // O alt_text é lido em voz alta por leitores de tela e vira a legenda no
-    // PDF, então quando o usuário descreve a imagem é a descrição dele que
-    // descreve o que está na tela — não o título do módulo.
-    const altText = brief ? `Imagem IA: ${brief}` : `Imagem IA: ${module_title}`;
+    // O alt_text é lido em voz alta por leitores de tela. Antes ele era
+    // `Imagem IA: ${brief}` — o prompt inteiro, instruções de paleta e tudo —
+    // e o export-pdf o imprimia como legenda. Agora sai só a descrição da cena.
+    const altText = altDaImagem(brief, module_title);
 
     // ── Upsert course_images ─────────────────────────────────────────────────
     // Só para imagem de módulo. A capa volta na resposta e quem grava é o
