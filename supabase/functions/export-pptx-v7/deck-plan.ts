@@ -219,8 +219,52 @@ export const SLIDE_RESPONSE_SCHEMA = {
  * the full code to decide slide structure, so we collapse them to a few lines.
  * Prose is kept intact, then the whole thing is capped.
  */
+// A FUNÇÃO PROMETIA CONDENSAR E ENTREGAVA UM CORTE
+//
+// Ela encurtava blocos de código e, no fim, fazia `slice(0, maxChars)`. Chamada
+// com 4.000 sobre um módulo real de ~32.000 caracteres, isso significa que o
+// planejador enxergava **12% do módulo** — sempre os 12% iniciais, que são a
+// abertura e os objetivos, e quase nunca a substância.
+//
+// Medido no curso de orçamento de 20/08: dos 153 percentuais que o conteúdo
+// passou a trazer, só 12 caíam dentro da janela. Os 141 restantes eram
+// invisíveis para quem monta os slides. Foi por isso que o tipo de slide
+// "chart" continuou dormente mesmo depois de o conteúdo ganhar números: o
+// gargalo tinha mudado de lugar sem ninguém perceber.
+//
+// O corte também caía no meio de uma frase e desprezava a estrutura: um módulo
+// com cinco seções chegava como uma seção e meia.
+//
+// O QUE ELA FAZ AGORA
+//
+// Condensa de verdade, preservando o que serve para PLANEJAR e descartando o
+// que serve para LER. Quem planeja precisa da estrutura (os títulos), das
+// evidências (números, tabelas, listas) e do assunto de cada parágrafo — não da
+// prosa inteira. Por isso, dentro de cada parágrafo:
+//
+//   • toda frase com número sobrevive — é ela que sustenta gráfico, destaque
+//     numérico e citação de norma;
+//   • a primeira frase sobrevive — é ela que diz do que o parágrafo trata;
+//   • o resto sai.
+//
+// Títulos, itens de lista e linhas de tabela ficam sempre: são curtos e são
+// exatamente a matéria-prima dos slides.
+//
+// Só se ainda passar do orçamento é que se corta — e aí em fronteira de LINHA,
+// nunca no meio de uma frase.
+
+/** Uma frase que carrega número: percentual, valor, prazo, artigo de lei. */
+const TEM_NUMERO = /\d/;
+
+function condensarParagrafo(paragrafo: string): string {
+  const frases = paragrafo.split(/(?<=[.!?])\s+/).filter((f) => f.trim());
+  if (frases.length <= 1) return paragrafo;
+  const mantidas = frases.filter((f, i) => i === 0 || TEM_NUMERO.test(f));
+  return mantidas.join(" ");
+}
+
 export function condenseForPlanning(md: string, maxChars = 6000): string {
-  const condensed = (md || "").replace(
+  const semCodigoLongo = (md || "").replace(
     /```(\w*)\n([\s\S]*?)```/g,
     (_m, lang, body) => {
       const lines = String(body).split("\n");
@@ -230,7 +274,35 @@ export function condenseForPlanning(md: string, maxChars = 6000): string {
       return "```" + lang + "\n" + lines.slice(0, 8).join("\n") + "\n```";
     },
   );
-  return condensed.length > maxChars ? condensed.slice(0, maxChars) : condensed;
+  if (semCodigoLongo.length <= maxChars) return semCodigoLongo;
+
+  let dentroDeCodigo = false;
+  const linhas = semCodigoLongo.split("\n").map((linha) => {
+    const t = linha.trim();
+    if (t.startsWith("```")) {
+      dentroDeCodigo = !dentroDeCodigo;
+      return linha;
+    }
+    // Código, título, item de lista, linha de tabela e citação passam inteiros:
+    // são curtos e são a estrutura que o planejador transforma em slide.
+    if (
+      dentroDeCodigo || !t ||
+      /^#{1,6}\s/.test(t) || /^([-*+]|\d{1,3}[.)])\s/.test(t) ||
+      t.startsWith("|") || t.startsWith(">")
+    ) {
+      return linha;
+    }
+    return condensarParagrafo(linha);
+  });
+
+  const condensado = linhas.join("\n");
+  if (condensado.length <= maxChars) return condensado;
+
+  // Ainda longo: corta em fronteira de linha, para não entregar meia frase.
+  const cortado = condensado.slice(0, maxChars);
+  const ultimaQuebra = cortado.lastIndexOf("\n");
+  return (ultimaQuebra > maxChars * 0.5 ? cortado.slice(0, ultimaQuebra) : cortado)
+    .trimEnd();
 }
 
 export type Density = "compact" | "standard" | "detailed";
@@ -269,7 +341,11 @@ export function buildModulePlanPrompt(
   const dspec = DENSITY_SPECS[density] ?? DENSITY_SPECS.standard;
   // NOTE: deliberately ZERO domain rules. We describe slide *shapes* and
   // universal visual-design quality, and let the model map ANY topic onto them.
-  const trimmed = condenseForPlanning(moduleContent, 4000);
+  // 4.000 era pouco mesmo depois de condensar: um módulo real tem ~32.000
+  // caracteres, e a condensação o leva a algo em torno de um terço disso. Com
+  // 9.000 o planejador passa a ver o módulo inteiro na maioria dos casos, e o
+  // custo é modesto — cerca de 2.500 tokens a mais por módulo.
+  const trimmed = condenseForPlanning(moduleContent, 9000);
   // Cross-module awareness: each module is planned in isolation, so without the
   // course outline the model re-derives shared themes in every module (e.g. it
   // re-explains the same overarching premise) → a repetitive deck. We give it
@@ -322,7 +398,11 @@ PICK THE RIGHT SLIDE TYPE for each idea — this is what makes a deck feel premi
   the definition), where several terms share one slide. A full-screen pull-quote
   spent on "X is defined as…" wastes the module's strongest visual beat.
 - "stat"     → one striking number or metric worth a whole slide.
-- "chart"    → quantitative data worth visualizing. Provide "chart" with a "type"
+- "chart"    → quantitative data worth visualizing. When the module's source
+  contains two or more comparable numbers — percentages of a whole, legal limits
+  against actual figures, values across categories — you MUST use a chart slide
+  for them. A number that stays inside a paragraph is a number the audience will
+  not see. Provide "chart" with a "type"
   and 2–6 "points", each { "label", "value" } (value is a NUMBER, no units in it):
     • type "donut" → parts of a whole / proportions that add up (market share,
       time split, % breakdown). Optionally set "unit":"%".
@@ -380,8 +460,10 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
     be "cards" / "steps" / "compare" / "table" carrying the module's actual
     substance. A module made only of an overview, a quote and a recap is a
     failure even if each slide is individually well-formed.
-  • Use "chart" (donut for proportions, bar for ranking magnitudes) when the
-    source gives REAL numbers worth visualizing — never with invented data.
+  • Use "chart" (donut for proportions, bar for ranking magnitudes) whenever the
+    source gives two or more comparable REAL numbers — never with invented data.
+    A module whose source carries percentages, legal limits or figures across
+    categories and ships WITHOUT a chart has wasted its clearest evidence.
 - Do NOT prepend ordinals ("1.", "2)") inside a step's heading — the renderer
   numbers steps automatically. Write the heading as plain text.
 - Plain text only in every field — NO Markdown emphasis (no asterisks, backticks or #).

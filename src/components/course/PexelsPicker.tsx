@@ -3,8 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Search, Check, Image, X, Sparkles, Zap, Wand2 } from "lucide-react";
+import { Loader2, Search, Check, Image, X, Sparkles, Zap, Wand2, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  ACCEPT_UPLOAD,
+  altDoUpload,
+  caminhoDoUpload,
+  reduzirImagem,
+  validarArquivo,
+} from "@/lib/image-upload";
 import { Badge } from "@/components/ui/badge";
 
 interface PexelsPhoto {
@@ -35,7 +42,7 @@ interface Props {
   disabled?: boolean;
 }
 
-type Tab = "pexels" | "ai";
+type Tab = "pexels" | "ai" | "upload";
 
 export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module", courseTitle, courseLanguage, currentImageUrl, onSelect, onRemove, disabled }: Props) {
   const [open, setOpen]         = useState(false);
@@ -59,6 +66,81 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
   const [aiPreview, setAiPreview]     = useState<{ url: string; alt: string } | null>(null);
   const [aiBrief, setAiBrief]         = useState("");
   const [sugerindo, setSugerindo]     = useState(false);
+
+  // Envio do computador do autor. As regras (formatos, teto, redução, caminho
+  // no bucket) moram em @/lib/image-upload, com teste — aqui fica só a tela.
+  const [envLoading, setEnvLoading]   = useState(false);
+  const [envErro, setEnvErro]         = useState<string | null>(null);
+  const [envArquivo, setEnvArquivo]   = useState<File | null>(null);
+  const [envPreview, setEnvPreview]   = useState<string | null>(null);
+  const [envAlt, setEnvAlt]           = useState("");
+
+  const escolherArquivo = (arquivo: File | null) => {
+    setEnvErro(null);
+    const v = validarArquivo(arquivo);
+    if (!v.ok) {
+      setEnvArquivo(null);
+      setEnvPreview(null);
+      setEnvErro(v.motivo);
+      return;
+    }
+    setEnvArquivo(arquivo);
+    setEnvPreview(URL.createObjectURL(arquivo!));
+  };
+
+  const enviarImagem = async () => {
+    if (!envArquivo) return;
+    setEnvLoading(true);
+    setEnvErro(null);
+    try {
+      const v = validarArquivo(envArquivo);
+      if (!v.ok) throw new Error(v.motivo);
+
+      const { data: sessao } = await supabase.auth.getUser();
+      const userId = sessao?.user?.id;
+      if (!userId) throw new Error("Faça login novamente para enviar a imagem.");
+
+      const reduzida = await reduzirImagem(envArquivo);
+      const caminho = caminhoDoUpload(
+        userId,
+        scope,
+        (scope === "cover" ? courseId : moduleId) ?? "sem-id",
+        v.extensao,
+      );
+
+      // upsert: reenviar substitui a imagem anterior em vez de acumular lixo.
+      const { error: upErr } = await supabase.storage
+        .from("course-exports")
+        .upload(caminho, reduzida, {
+          contentType: envArquivo.type,
+          upsert: true,
+        });
+      if (upErr) throw upErr;
+
+      // O bucket é privado; a URL assinada é o que o resto do produto consome,
+      // igual ao que a geração por IA já faz.
+      const { data: assinada, error: signErr } = await supabase.storage
+        .from("course-exports")
+        .createSignedUrl(caminho, 60 * 60 * 24 * 365);
+      if (signErr || !assinada?.signedUrl) {
+        throw signErr ?? new Error("Não foi possível gerar o endereço da imagem.");
+      }
+
+      // Carimbo de tempo: o caminho é fixo por módulo, então sem ele o
+      // navegador serviria a imagem antiga do cache depois de um reenvio.
+      const sep = assinada.signedUrl.includes("?") ? "&" : "?";
+      const url = `${assinada.signedUrl}${sep}v=${Date.now()}`;
+      onSelect({ url, alt: altDoUpload(envAlt, moduleTitle), credit: "", creditUrl: "" });
+      setOpen(false);
+      setEnvArquivo(null);
+      setEnvPreview(null);
+      setEnvAlt("");
+    } catch (e) {
+      setEnvErro(e instanceof Error ? e.message : "Falha ao enviar a imagem.");
+    } finally {
+      setEnvLoading(false);
+    }
+  };
 
   /**
    * Sugere a descrição a partir do título.
@@ -285,7 +367,89 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
             <Sparkles className="h-3 w-3" />
             Gerar com IA
           </button>
+          <button
+            onClick={() => setTab("upload")}
+            data-testid="tab-upload"
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-all ${
+              tab === "upload" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Upload className="h-3 w-3" />
+            Do meu PC
+          </button>
         </div>
+
+        {/* ── Envio do computador ── */}
+        {tab === "upload" && (
+          <div className="space-y-3 shrink-0">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Sua própria foto, organograma ou captura de tela. JPG ou PNG — imagens
+              grandes são reduzidas automaticamente antes do envio.
+            </p>
+
+            <label
+              className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 cursor-pointer hover:border-primary/50 hover:bg-primary/3 transition-colors"
+              data-testid="dropzone-upload"
+            >
+              {envPreview ? (
+                <img
+                  src={envPreview}
+                  alt="Prévia da imagem escolhida"
+                  className="max-h-40 w-auto rounded-lg object-contain"
+                />
+              ) : (
+                <>
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                  <span className="text-sm font-medium">Escolher imagem</span>
+                  <span className="text-xs text-muted-foreground">JPG ou PNG, até 20 MB</span>
+                </>
+              )}
+              <input
+                type="file"
+                accept={ACCEPT_UPLOAD}
+                className="hidden"
+                data-testid="input-upload"
+                onChange={(e) => escolherArquivo(e.target.files?.[0] ?? null)}
+              />
+            </label>
+
+            {envArquivo && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">
+                  Descreva a imagem <span className="text-muted-foreground">(opcional)</span>
+                </label>
+                <Input
+                  value={envAlt}
+                  onChange={(e) => setEnvAlt(e.target.value)}
+                  placeholder="Ex: organograma da Secretaria de Finanças"
+                  className="text-sm"
+                  data-testid="input-upload-alt"
+                />
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  É o que um leitor de tela anuncia para quem não enxerga a imagem,
+                  no curso publicado em SCORM ou Moodle.
+                </p>
+              </div>
+            )}
+
+            {envErro && (
+              <p className="text-xs text-destructive leading-relaxed" data-testid="erro-upload">
+                {envErro}
+              </p>
+            )}
+
+            <Button
+              onClick={enviarImagem}
+              disabled={!envArquivo || envLoading}
+              className="w-full"
+              data-testid="button-enviar-upload"
+            >
+              {envLoading
+                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando…</>
+                : <>Usar esta imagem</>}
+            </Button>
+          </div>
+        )}
 
         {/* ── Pexels tab ── */}
         {tab === "pexels" && (
