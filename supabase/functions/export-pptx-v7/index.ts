@@ -68,11 +68,26 @@ function attachImages(
   // tema: sugere um vínculo institucional que não existe.
   (deck as any).coverImage = capaDoAutor || lookup(deck.courseTitle) ||
     Object.values(images)[0] || undefined;
-  // One image per module on a single "feature" slide (reused by the module
-  // divider — no extra fetch/decode). A quote slide, when present, wins the image
-  // and renders FULL-BLEED (cinematic). Otherwise a short bullets "hero" gets it
-  // and renders as a bleeding split / image-top, with the orientation rotating
-  // per module to break the "image always on the same side" rhythm.
+  // Uma imagem por módulo, em UM slide. A quote, quando existe, ganha a imagem
+  // e sai em sangria total (cinematográfico). Sem ela, um bullets curto vira o
+  // destaque e sai em divisão sangrada, com a orientação girando por módulo
+  // para quebrar o "a imagem está sempre do mesmo lado".
+  //
+  // UMA VEZ, NÃO DUAS
+  //
+  // A divisória do módulo reaproveitava a mesma foto — sem custo de download, e
+  // por isso parecia grátis. Não era: quem folheia vê a foto esmaecida sob o
+  // número gigante e, no slide seguinte, a MESMA foto em brilho normal. Num
+  // curso de 45 slides isso deu 11 usos de apenas 6 imagens, cada uma aparecendo
+  // duas vezes — e a avaliação registrou o deck como "imagens repetitivas".
+  //
+  // A divisória perde pouco: lá a foto ficava sob dois véus (28% sobre tudo, 6%
+  // sobre o terço da esquerda), praticamente uma textura. O número gigante e a
+  // barra de acento seguram a página sozinhos. A foto passa a aparecer uma vez
+  // só, no lugar onde é de fato vista.
+  //
+  // Por isso o destaque também nunca pode ser uma divisória: se a imagem caísse
+  // no próprio slide de seção, voltaríamos ao ponto de partida por outro caminho.
   const orientations = ["split-right", "top", "split-left"] as const;
   deck.modules.forEach((m, mi) => {
     // A imagem que o autor escolheu no app vence a que a busca automática
@@ -92,7 +107,11 @@ function attachImages(
       (s.bullets?.length ?? 0) >= 2 && (s.bullets?.length ?? 0) <= 4 &&
       (s.bullets ?? []).every((b) => b.trim().length <= 95)
     );
-    const feature = quote ?? hero ?? m.slides[0];
+    const primeiroDeConteudo = m.slides.find(
+      (s) => s.kind !== "section" && s.kind !== "cover" && s.kind !== "toc",
+    );
+    const feature = quote ?? hero ?? primeiroDeConteudo;
+    if (!feature) return;
     feature.imageData = img;
     if (feature.kind !== "quote") {
       feature.imageLayout = orientations[mi % orientations.length];

@@ -2546,11 +2546,14 @@ export function renderDeck(
   deck.modules.forEach((m, mi) => {
     // Module divider (if the planner didn't already provide a section slide).
     if (m.slides[0]?.kind !== "section") {
+      // Sem imageData de propósito: a divisória reaproveitava a foto do slide
+      // de destaque do módulo, e a mesma imagem aparecia duas vezes em poucos
+      // segundos — esmaecida aqui, em brilho normal logo adiante. Ver o
+      // comentário em index.ts. O número gigante segura a página sozinho.
       renderSection(add(), {
         kind: "section",
         title: m.title,
         eyebrow: m.title,
-        imageData: m.slides.find((x) => x.imageData)?.imageData,
       }, d, mi + 1);
     }
     // Per-module memory for the anti-repetition guard: two card-family grids in

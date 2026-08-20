@@ -1516,6 +1516,43 @@ function sourcePassages(content: string): { text: string; toks: Set<string> }[] 
   return out;
 }
 
+// POR QUE AS NOTAS SAÍAM TROCADAS
+//
+// O relato: no slide "Benefícios do Planejamento Orçamentário" a nota era a
+// atividade da LOA; no "Estágios da Receita Pública", os pontos-chave do módulo
+// inteiro. A hipótese de quem relatou era que o texto-fonte fosse distribuído em
+// sequência. Não é — cada slide procura mesmo o trecho que mais o explica. O
+// defeito é mais sutil e está em COMO a escolha era feita.
+//
+// A varredura era gulosa na ORDEM DOS SLIDES: o primeiro slide pegava o melhor
+// trecho ainda livre, o segundo o melhor do que sobrou, e assim por diante. Um
+// slide que casa fraco com um trecho (0,20) chega antes e o consome; o slide
+// que casaria forte com aquele mesmo trecho (0,70) chega depois, encontra-o
+// ocupado e leva um resto qualquer. Os dois saem errados por causa da ordem de
+// chegada — é o problema clássico de atribuição resolvido do jeito ingênuo.
+//
+// A CORREÇÃO tem duas partes.
+//
+// 1) Decidir pelos PARES, não pelos slides. Monta-se a tabela inteira de
+//    slide × trecho, ordena-se por afinidade decrescente e atribui-se de cima
+//    para baixo, pulando quem já foi usado. O par mais forte do módulo é
+//    fechado primeiro, aconteça o que acontecer com a ordem dos slides. Continua
+//    determinístico e é barato: dezenas de slides, dezenas de trechos.
+//
+// 2) Usar a ORDEM, que estava sendo ignorada. Slides e trechos seguem a mesma
+//    progressão da lição: o terceiro slide de oito provavelmente nasceu perto do
+//    terceiro trecho de oito. Isso entra como um empurrãozinho de proximidade,
+//    pequeno de propósito — serve para desempatar afinidades parecidas, nunca
+//    para vencer evidência de vocabulário.
+//
+// O piso de afinidade continua sendo cobrado sobre a afinidade CRUA, sem o
+// empurrão: proximidade de posição não pode fabricar um par que o texto não
+// sustenta. Sem par bom, o slide fica sem nota de propósito — para quem vai
+// apresentar, narração errada é pior que nenhuma.
+
+/** Quanto a proximidade de posição vale. Só desempata. */
+const NOTES_PESO_ORDEM = 0.08;
+
 /**
  * Attach speaker notes to every content slide by matching it back to the source
  * passage it was distilled from. A passage is consumed once so two slides never
@@ -1530,28 +1567,52 @@ export function attachSpeakerNotes(
   let total = 0;
   for (let i = 0; i < out.length; i++) {
     const passages = sourcePassages(inputs[i]?.content ?? "");
-    const used = new Set<number>();
-    for (const s of out[i].slides) {
-      // Dividers and the cover carry no teaching content of their own.
-      if (s.kind === "section" || s.kind === "cover" || s.kind === "toc") continue;
-      total++;
+
+    // Os slides que podem receber nota, na ordem em que aparecem. Divisórias,
+    // capa e sumário não ensinam nada por conta própria.
+    const candidatos = out[i].slides.filter(
+      (s) => s.kind !== "section" && s.kind !== "cover" && s.kind !== "toc",
+    );
+    total += candidatos.length;
+    if (!candidatos.length || !passages.length) continue;
+
+    const posicao = (indice: number, quantos: number) =>
+      quantos <= 1 ? 0.5 : indice / (quantos - 1);
+
+    type Par = { slide: number; trecho: number; afinidade: number; nota: number };
+    const pares: Par[] = [];
+    candidatos.forEach((s, si) => {
       const toks = new Set<string>([
         ...textTokens(s.title ?? ""),
         ...contentTokens(s),
       ]);
-      let bestIdx = -1;
-      let bestScore = 0;
-      for (let p = 0; p < passages.length; p++) {
-        if (used.has(p)) continue;
-        const score = coverage(toks, passages[p].toks);
-        if (score > bestScore) {
-          bestScore = score;
-          bestIdx = p;
-        }
-      }
-      if (bestIdx < 0 || bestScore < NOTES_MIN_MATCH) continue;
-      used.add(bestIdx);
-      s.notes = fitNote(passages[bestIdx].text);
+      const ps = posicao(si, candidatos.length);
+      passages.forEach((p, pi) => {
+        const afinidade = coverage(toks, p.toks);
+        if (afinidade < NOTES_MIN_MATCH) return;
+        const perto = 1 - Math.abs(ps - posicao(pi, passages.length));
+        pares.push({
+          slide: si,
+          trecho: pi,
+          afinidade,
+          nota: afinidade + NOTES_PESO_ORDEM * perto,
+        });
+      });
+    });
+
+    // Empate desfeito pela ordem do documento, para a saída não depender da
+    // ordem em que os pares foram gerados.
+    pares.sort((a, b) =>
+      b.nota - a.nota || a.slide - b.slide || a.trecho - b.trecho
+    );
+
+    const slideUsado = new Set<number>();
+    const trechoUsado = new Set<number>();
+    for (const par of pares) {
+      if (slideUsado.has(par.slide) || trechoUsado.has(par.trecho)) continue;
+      slideUsado.add(par.slide);
+      trechoUsado.add(par.trecho);
+      candidatos[par.slide].notes = fitNote(passages[par.trecho].text);
       withNotes++;
     }
   }
