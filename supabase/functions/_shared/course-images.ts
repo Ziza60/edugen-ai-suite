@@ -94,13 +94,24 @@ export function escaparAtributo(texto: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** `<figure>` com legenda, para SCORM e Moodle. */
+/**
+ * `<figure>` para SCORM e Moodle. Com `alt`, SEM legenda visível.
+ *
+ * A legenda repetia o alt_text — e alt_text responde a "o que a foto mostra",
+ * pergunta diferente de "o que esta imagem tem a ver com a lição". Publicar um
+ * pelo outro pôs "Profissionais de negócios discutindo amostras de design de
+ * interiores" sob a imagem de um módulo de orçamento público. O mesmo defeito
+ * foi tirado da apostila em PDF; aqui ele tinha ficado.
+ *
+ * A diferença em relação ao PDF é que aqui o `alt` faz o seu trabalho de
+ * verdade: o HTML é lido por leitor de tela, e é por isso que ele fica. O que
+ * sai é só a repetição visível.
+ */
 export function figuraHtml(src: string, altText: string): string {
   const alt = escaparAtributo(altText);
   return `<figure style="margin:24px 0;text-align:center">` +
     `<img src="${escaparAtributo(src)}" alt="${alt}" ` +
     `style="max-width:100%;height:auto;border-radius:6px">` +
-    `<figcaption style="font-size:0.85em;color:#666;margin-top:6px">${alt}</figcaption>` +
     `</figure>`;
 }
 

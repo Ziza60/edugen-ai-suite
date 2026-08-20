@@ -107,12 +107,21 @@ describe("escaparAtributo", () => {
 });
 
 describe("figuraHtml", () => {
-  it("monta figure com img e legenda", () => {
+  it("monta figure com img e alt", () => {
     const h = figuraHtml("assets/modulo-1.jpg", "Fluxo de aprovação");
     expect(h).toContain('src="assets/modulo-1.jpg"');
     expect(h).toContain('alt="Fluxo de aprovação"');
-    expect(h).toContain("<figcaption");
-    expect(h).toContain("Fluxo de aprovação</figcaption>");
+  });
+
+  // O alt responde a "o que a foto mostra"; legenda responderia a "o que esta
+  // imagem tem a ver com a lição". Publicar um pelo outro pôs "Profissionais de
+  // negócios discutindo amostras de design de interiores" sob a imagem de um
+  // módulo de orçamento público. Foi tirado da apostila em PDF e aqui tinha
+  // ficado. O alt fica — no HTML ele é lido por leitor de tela de verdade.
+  it("não repete o alt como legenda visível", () => {
+    const h = figuraHtml("assets/modulo-1.jpg", "Profissionais discutindo design de interiores");
+    expect(h).not.toContain("<figcaption");
+    expect(h.match(/Profissionais discutindo/g) ?? []).toHaveLength(1);
   });
 
   it("não deixa alt hostil quebrar o atributo", () => {

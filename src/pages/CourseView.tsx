@@ -1154,14 +1154,15 @@ export default function CourseView() {
                     className="w-full h-auto object-cover max-h-[360px]"
                     loading="lazy"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-6">
-                    <p className="text-xs font-semibold text-white/80 uppercase tracking-wider mb-1">
-                      Módulo {activeModuleIndex + 1}
-                    </p>
-                    <h3 className="text-xl lg:text-2xl font-bold text-white font-display leading-tight drop-shadow-md">
-                      {activeModule.title}
-                    </h3>
-                  </div>
+                  {/* SEM TÍTULO SOBRE A IMAGEM
+                      Aqui havia um véu escuro com "Módulo N" e o título escritos
+                      por cima da foto. Mas o cabeçalho logo acima já traz os
+                      dois — "MÓDULO 5 DE 5" e o mesmo activeModule.title, a
+                      cerca de 90 linhas daqui. O leitor via o título duas vezes
+                      na mesma tela, e a segunda vez por cima de uma foto, onde
+                      ele fica menos legível do que no cabeçalho.
+                      O véu saiu junto: sem texto para destacar, ele apenas
+                      escurecia o pé da imagem sem motivo. */}
                   <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <PexelsPicker
                       moduleTitle={activeModule.title}
