@@ -1586,6 +1586,38 @@ function buildTableSlide(b: MdBlock, moduleTitle: string): SlideSpec | null {
   };
 }
 
+/**
+ * Assinatura de cabeçalho de um slide de tabela: o rótulo da coluna de rótulos
+ * mais os cabeçalhos de dados, normalizados.
+ *
+ * Precisa somar `rowHeader` e `columns` porque a MESMA tabela aparece nas duas
+ * formas dependendo de quem a montou: o planejador devolve as três colunas em
+ * `columns` (o esquema nem tem `rowHeader`), e o construtor determinístico já
+ * separa a primeira em `rowHeader`. Somando os dois campos, as duas formas dão
+ * o mesmo conjunto.
+ */
+function assinaturaTabela(s: SlideSpec): Set<string> {
+  const out = new Set<string>();
+  for (const c of [s.rowHeader ?? "", ...(s.columns ?? [])]) {
+    const t = String(c ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (t) out.add(t);
+  }
+  return out;
+}
+
+/** Dois slides de tabela são a MESMA tabela quando os cabeçalhos coincidem. */
+function mesmaTabela(a: SlideSpec, b: SlideSpec): boolean {
+  if (a.kind !== "table" || b.kind !== "table") return false;
+  const x = assinaturaTabela(a);
+  const y = assinaturaTabela(b);
+  if (x.size < 2 || y.size < 2) return false;
+  const [menor, maior] = x.size <= y.size ? [x, y] : [y, x];
+  let comuns = 0;
+  for (const t of menor) if (maior.has(t)) comuns++;
+  return comuns >= 2 && comuns / menor.size >= 0.6;
+}
+
 // ── Speaker notes (deterministic) ────────────────────────────────────────────
 // A slide carries ~45 words; the lesson it came from carries hundreds. Without
 // notes the deck is ~10% of the course and the other 90% is simply discarded —
@@ -1840,7 +1872,39 @@ export function ensurePedagogicalCoverage(
     );
     if (tblBlock) {
       const c = buildTableSlide(tblBlock, m.title);
-      if (c && !represented(c)) { toAdd.push(c); tablesAdded++; }
+      if (c) {
+        // A TABELA AMPUTADA
+        //
+        // O planejador transcreve a tabela do módulo e, quando ela é longa,
+        // transcreve SÓ A PRIMEIRA LINHA. Medido no curso de orçamento de
+        // 21/08: a atividade "Identificação de Dados Críticos" tem cinco linhas
+        // no PDF (pág. 57) e chegou ao slide 39 com uma. As outras quatro não
+        // foram cortadas por nenhum limite nosso — MAX_TABLE_ROWS é 6, e a
+        // tabela montada aqui a partir do markdown trazia as cinco. Elas nunca
+        // foram escritas pelo planejador.
+        //
+        // A tabela completa era descartada logo em seguida porque `represented`
+        // via a do planejador e concluía "esta seção já está no deck". Está —
+        // amputada. É o mesmo caso já resolvido acima para o exemplo
+        // trabalhado: quando já existe um slide do mesmo tipo para a mesma
+        // seção, a pergunta certa não é "existe?" e sim "qual dos dois está
+        // mais completo?".
+        const linhas = (s: SlideSpec) => (s.rows ?? []).length;
+        const idx = m.slides.findIndex((s) => mesmaTabela(s, c));
+        if (idx >= 0) {
+          if (linhas(c) > linhas(m.slides[idx])) {
+            // O título e o olho do planejador já passaram pelo ajuste de
+            // tamanho; só os dados vêm da fonte.
+            c.title = m.slides[idx].title || c.title;
+            c.eyebrow = m.slides[idx].eyebrow ?? c.eyebrow;
+            m.slides[idx] = c;
+            tablesAdded++;
+          }
+        } else if (!represented(c)) {
+          toAdd.push(c);
+          tablesAdded++;
+        }
+      }
     }
 
     if (toAdd.length) {

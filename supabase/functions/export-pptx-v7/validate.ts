@@ -325,9 +325,17 @@ function normTable(slide: SlideSpec):
   // every cell under the wrong header and leaves the last column empty. When the
   // data rows consistently have columns-1 cells, treat columns[0] as the header
   // of the row-label column instead, keeping all data aligned with its header.
-  let rowHeader = "";
+  //
+  // O `rowHeader` que já vem pronto tem de ser respeitado. Ele era zerado aqui,
+  // e por isso TODA tabela montada a partir do markdown chegava ao slide com a
+  // célula do canto superior esquerdo em branco: no deck de 21/08, "Campo"
+  // sumiu dos slides 20, 30 e 49, "Critério" do 50 e "Instrumento" do 8. A
+  // única que exibia o rótulo era a do slide 39 — por acidente, porque veio do
+  // planejador e caiu justamente no conserto de defasagem abaixo.
+  let rowHeader = capText(String(slide.rowHeader ?? ""), 6, 28);
   const dataRows = rawRows.filter((r) => r.cells.length > 0);
   if (
+    !rowHeader &&
     columns.length >= 3 &&
     dataRows.length > 0 &&
     dataRows.every((r) => r.cells.length === columns.length - 1)
