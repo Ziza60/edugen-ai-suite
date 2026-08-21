@@ -14,6 +14,22 @@ import { categoricalColors } from "./chart-palette.ts";
 import { chevronNumberBox } from "./chevron-geometry.ts";
 import { ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 
+// ── Carimbo de build ─────────────────────────────────────────────────────────
+// UM DECK TEM DE DIZER QUEM O FEZ
+//
+// Passei uma tarde sem conseguir responder a uma pergunta simples: o deck que
+// chegou saiu do código novo ou do antigo? Um reparo verificado por teste não
+// aparecia no arquivo gerado, e não havia como distinguir "o código está errado"
+// de "o deploy não pegou" — as duas hipóteses explicavam o mesmo arquivo.
+//
+// Agora o build vai dentro do PPTX, no campo Company das propriedades (Arquivo →
+// Informações → Propriedades). Não aparece em nenhum slide. Qualquer deck passa
+// a responder sozinho de que versão veio — e um deck SEM o carimbo é, ele
+// próprio, a resposta: veio de antes de 21/08.
+//
+// Bump this on every behavioural change to the engine.
+export const V7_BUILD = "2026-08-21-esqueleto-e-rubrica";
+
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
 const H = 7.5;
@@ -2526,7 +2542,9 @@ export function renderDeck(
   // Left unset, PptxGenJS stamps dc:subject with its own name — the literal
   // string "PptxGenJS Presentation" showed up in the file's properties.
   pptx.subject = deck.subtitle?.trim() || deck.courseTitle;
-  pptx.company = brand;
+  // O carimbo de build viaja aqui: invisível nos slides, legível nas
+  // propriedades do arquivo. Ver V7_BUILD, no topo.
+  pptx.company = `${brand} · v7 ${V7_BUILD}`;
 
   let num = 0;
   const add = () => {
