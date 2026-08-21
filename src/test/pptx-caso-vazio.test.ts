@@ -133,3 +133,94 @@ describe("quando não há como preencher", () => {
     expect(modulo.slides[0].title).toBe("Estágios da Receita");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O ESQUELETO NÃO É SÓ DE `steps`
+//
+// A primeira versão desta proteção só olhava slides do tipo `steps` — erro de
+// escopo meu. O mesmo conteúdo vazio chega como cartões, como tópicos (quando a
+// normalização salva um slide sem conteúdo mínimo) ou como matriz, conforme o
+// formato que o planejador escolheu. O defeito não é do formato; é de não haver
+// texto nenhum sob os rótulos.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const ROTULOS = ["Contexto", "Desafio", "Solução", "Resultado"];
+
+describe("esqueleto em qualquer formato", () => {
+  const semFonte = "#### Uma lição qualquer\n\nProsa comum, sem caso nenhum.";
+
+  const casos: Array<[string, Record<string, unknown>]> = [
+    ["steps", { kind: "steps", title: "Estudo de Caso", steps: ROTULOS.map((h) => ({ heading: h })) }],
+    ["cards", { kind: "cards", title: "Estudo de Caso", cards: ROTULOS.map((h) => ({ heading: h, body: "" })) }],
+    ["matrix", { kind: "matrix", title: "Estudo de Caso", cards: ROTULOS.map((h) => ({ heading: h, body: "" })) }],
+    ["bullets", { kind: "bullets", title: "Estudo de Caso", bullets: ROTULOS }],
+    ["tiles", { kind: "tiles", title: "Estudo de Caso", tiles: [], bullets: ROTULOS }],
+  ];
+
+  for (const [nome, slide] of casos) {
+    it(`${nome} com quatro rótulos e nada mais não embarca`, () => {
+      const { modulo, emptyExamplesDropped } = rodar([slide, FECHAMENTO], semFonte);
+      expect(emptyExamplesDropped).toBe(1);
+      expect(modulo.slides).toHaveLength(1);
+      expect(modulo.slides[0].kind).toBe("closing");
+    });
+
+    it(`${nome} vazio é SUBSTITUÍDO quando a fonte tem o caso`, () => {
+      const { modulo, examplesAdded } = rodar([slide, FECHAMENTO], SEM_PALAVRA);
+      expect(examplesAdded).toBe(1);
+      // Um slide preenchido no lugar — não dois slides lado a lado.
+      expect(modulo.slides).toHaveLength(2);
+      expect(comCorpo(modulo.slides[0])).toBe(4);
+    });
+  }
+});
+
+describe("o que o critério estrito protege", () => {
+  const semFonte = "#### Uma lição\n\nProsa.";
+
+  it("sequência legítima sem rótulo de caso não é tocada", () => {
+    const passos = {
+      kind: "steps",
+      title: "Estágios da Despesa Pública Municipal",
+      steps: ["Fixação", "Empenho", "Liquidação", "Pagamento"].map((h) => ({ heading: h })),
+    };
+    const { modulo, emptyExamplesDropped } = rodar([passos, FECHAMENTO], semFonte);
+    expect(emptyExamplesDropped).toBe(0);
+    expect(modulo.slides[0].title).toBe("Estágios da Despesa Pública Municipal");
+  });
+
+  it("rótulo de caso MISTURADO com item comum não conta como esqueleto", () => {
+    const misto = {
+      kind: "steps",
+      title: "Roteiro",
+      steps: [{ heading: "Contexto" }, { heading: "Desafio" }, { heading: "Cronograma" }],
+    };
+    const { emptyExamplesDropped } = rodar([misto, FECHAMENTO], semFonte);
+    expect(emptyExamplesDropped).toBe(0);
+  });
+
+  it("tópicos que CITAM o caso, com texto, ficam", () => {
+    const comTexto = {
+      kind: "bullets",
+      title: "Estudo de Caso",
+      bullets: [
+        "Contexto: a prefeitura precisa alinhar a LOA à LDO.",
+        "Desafio: ajustar a dotação sem romper o limite da LRF.",
+        "Resultado: execução dentro dos limites legais.",
+      ],
+    };
+    const { modulo, emptyExamplesDropped } = rodar([comTexto, FECHAMENTO], semFonte);
+    expect(emptyExamplesDropped).toBe(0);
+    expect(modulo.slides[0].bullets).toHaveLength(3);
+  });
+
+  it("dois rótulos só não bastam para descartar", () => {
+    const dois = {
+      kind: "steps",
+      title: "Caso",
+      steps: [{ heading: "Contexto" }, { heading: "Resultado" }],
+    };
+    const { emptyExamplesDropped } = rodar([dois, FECHAMENTO], semFonte);
+    expect(emptyExamplesDropped).toBe(0);
+  });
+});

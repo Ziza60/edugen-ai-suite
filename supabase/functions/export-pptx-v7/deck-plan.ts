@@ -1851,10 +1851,44 @@ function pareceExemplo(b: MdBlock): boolean {
   return rotulos.size >= 3;
 }
 
-/** Um estudo de caso cujos passos não têm corpo nenhum. */
+/**
+ * Um estudo de caso que chegou só com os rótulos: Contexto, Desafio, Solução,
+ * Resultado — e nenhuma frase.
+ *
+ * A primeira versão disto só olhava slides do tipo `steps`, e isso foi um erro
+ * de escopo: o mesmo conteúdo vazio chega como `cards`, como `bullets` (quando
+ * a normalização salva um slide sem conteúdo mínimo) ou como `matrix`,
+ * conforme o que o planejador escolheu. O defeito não é do formato; é de não
+ * haver texto.
+ *
+ * O critério é estrito de propósito — TODOS os itens têm de ser rótulo de caso,
+ * e são precisos três no mínimo. Um slide legítimo como "Estágios da Despesa"
+ * (Fixação · Empenho · Liquidação · Pagamento) não tem rótulo de caso nenhum e
+ * não corre risco; um "Contexto · Desafio · Solução · Resultado" sem uma linha
+ * de texto não é outra coisa senão um esqueleto.
+ */
 function casoVazio(s: SlideSpec): boolean {
-  return isCaseStudySlide(s) &&
-    (s.steps ?? []).every((st) => !String(st.body ?? "").trim());
+  const rotulo = (t: unknown) => CASE_LABEL_RE.test(String(t ?? "").trim());
+  const semTexto = (t: unknown) => !String(t ?? "").trim();
+
+  if (s.kind === "steps") {
+    const ss = s.steps ?? [];
+    return ss.length >= 3 && ss.every((x) => rotulo(x.heading)) &&
+      ss.every((x) => semTexto(x.body));
+  }
+  if (s.kind === "cards" || s.kind === "matrix") {
+    const cs = s.cards ?? [];
+    return cs.length >= 3 && cs.every((x) => rotulo(x.heading)) &&
+      cs.every((x) => semTexto(x.body));
+  }
+  if (s.kind === "bullets" || s.kind === "tiles" || s.kind === "bento") {
+    // Aqui o rótulo é o item inteiro: "Contexto", e nada mais. Se vier
+    // "Contexto: a prefeitura...", há conteúdo e o slide fica.
+    const bs = s.bullets ?? [];
+    return bs.length >= 3 &&
+      bs.every((b) => rotulo(b) && String(b).trim().split(/\s+/).length <= 2);
+  }
+  return false;
 }
 
 export function ensurePedagogicalCoverage(
@@ -1910,7 +1944,13 @@ export function ensurePedagogicalCoverage(
         buildExampleSlide(exBlock, m.title, t.example);
       if (c) {
         const bodied = (s: SlideSpec) => (s.steps ?? []).filter((st) => st.body && st.body.trim()).length;
-        const existingIdx = m.slides.findIndex(isCaseStudySlide);
+        // Também acha o esqueleto que não é `steps` — um "Contexto ·
+        // Desafio · Solução · Resultado" vazio em forma de cartões ou de
+        // tópicos é o mesmo slide, e deve ser SUBSTITUÍDO pelo preenchido em
+        // vez de ganhar um segundo slide ao lado.
+        const existingIdx = m.slides.findIndex(
+          (s) => isCaseStudySlide(s) || casoVazio(s),
+        );
         if (existingIdx >= 0) {
           // The planner already made an example slide — replace it only if ours
           // is MORE complete (more steps carry a body), e.g. its Resultado was empty.
@@ -2046,18 +2086,18 @@ const WEIGHT_HEADER_RE = /^(peso|weight|poids|ponderaci[óo]n)$/i;
 
 function rubricStrings(
   language: string,
-): { title: string; weight: string; excellent: string } {
+): { title: string; weight: string; excellent: string; criterion: string } {
   const l = (language || "").toLowerCase();
   if (/portug/.test(l)) {
-    return { title: "Como Você Será Avaliado", weight: "Peso", excellent: "Nível Excelente" };
+    return { title: "Como Você Será Avaliado", weight: "Peso", excellent: "Nível Excelente", criterion: "Critério" };
   }
   if (/espa|spanish/.test(l)) {
-    return { title: "Cómo Serás Evaluado", weight: "Peso", excellent: "Nivel Excelente" };
+    return { title: "Cómo Serás Evaluado", weight: "Peso", excellent: "Nivel Excelente", criterion: "Criterio" };
   }
   if (/fran|french/.test(l)) {
-    return { title: "Comment Vous Serez Évalué", weight: "Poids", excellent: "Niveau Excellent" };
+    return { title: "Comment Vous Serez Évalué", weight: "Poids", excellent: "Niveau Excellent", criterion: "Critère" };
   }
-  return { title: "How You Will Be Assessed", weight: "Weight", excellent: "Excellent Level" };
+  return { title: "How You Will Be Assessed", weight: "Weight", excellent: "Excellent Level", criterion: "Criterion" };
 }
 
 /** Find the rubric table in a module's source, whatever its column order. */
@@ -2119,6 +2159,12 @@ export function ensureRubricSlide(
       kind: "table",
       title: t.title,
       eyebrow: m.title,
+      // A coluna dos critérios ficava sem cabeçalho — no deck de 21/08 o slide
+      // "Como Você Será Avaliado" mostrava uma célula vazia sobre "Compreensão
+      // e Análise", "Adequação Legal", "Clareza". Era a última tabela do deck
+      // ainda com o canto em branco. O rótulo vem da própria fonte quando ela o
+      // traz ("Critério"), com um padrão traduzido para quando não traz.
+      rowHeader: cleanLine(header[iCrit] ?? "") || t.criterion,
       columns: iWeight >= 0 ? [t.weight, t.excellent] : [t.excellent],
       rows: iWeight >= 0 ? trows : trows.map((r) => ({ ...r, cells: [r.cells[1]] })),
     };
