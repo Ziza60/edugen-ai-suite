@@ -143,17 +143,6 @@ describe("o que NÃO deve mexer", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// O CANTO SUPERIOR ESQUERDO EM BRANCO
-//
-// Achado ao escrever o teste acima. A normalização recalculava `rowHeader` do
-// zero e jogava fora o que vinha pronto, então toda tabela montada a partir do
-// markdown chegava ao slide sem o rótulo da primeira coluna. No deck de 21/08:
-// "Campo" ausente nos slides 20, 30 e 49, "Critério" no 50, "Instrumento" no 8.
-// A do slide 39 exibia "Campo" por acidente — veio do planejador e caiu no
-// conserto de defasagem de coluna.
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════════
 // SÓ A PRIMEIRA TABELA DO MÓDULO ERA OLHADA
 //
 // Módulo 1 do mesmo curso. A primeira tabela da fonte é o comparativo
@@ -209,6 +198,17 @@ describe("módulo com duas tabelas, a primeira já coberta", () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// O CANTO SUPERIOR ESQUERDO EM BRANCO
+//
+// Achado ao escrever o teste acima. A normalização recalculava `rowHeader` do
+// zero e jogava fora o que vinha pronto, então toda tabela montada a partir do
+// markdown chegava ao slide sem o rótulo da primeira coluna. No deck de 21/08:
+// "Campo" ausente nos slides 20, 30 e 49, "Critério" no 50, "Instrumento" no 8.
+// A do slide 39 exibia "Campo" por acidente — veio do planejador e caiu no
+// conserto de defasagem de coluna.
+// ═══════════════════════════════════════════════════════════════════════════
+
 describe("rótulo da coluna de rótulos", () => {
   const tabela = (extra: Record<string, unknown>) => {
     const { deck } = normalizeDeck({
@@ -259,5 +259,70 @@ describe("as cinco linhas sobrevivem à normalização", () => {
       expect(r.cells).toHaveLength(2);
       expect(r.cells[0].length).toBeGreaterThan(0);
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UM ARTEFATO POR SEÇÃO
+//
+// A atividade prática rende duas coisas: o modelo preenchível e a lista de
+// passos. Nós acrescentávamos as DUAS, e o planejador ainda fazia a sua versão:
+// no deck de 21/08 o módulo 4 gastou TRÊS slides seguidos com a mesma atividade
+// (39, 40 e 41), todos sob o mesmo título. Entre modelo e passos, o modelo é o
+// que o aluno entrega; os passos ficam no PDF e na nota do apresentador.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("atividade com modelo preenchível e passos", () => {
+  const FONTE_ATIVIDADE = `
+#### Atividade Prática: Identificação de Dados Críticos
+
+> **Objetivo:** Preencher um modelo simplificado de parecer técnico.
+
+| Campo | Orientação | Seu caso |
+| --- | --- | --- |
+| Relatório (RGF/RREO) | Indique qual relatório está sendo analisado. | ________________ |
+| Indicador Fiscal | Nomeie o indicador fiscal. | ________________ |
+| Valor Apurado | Apresente um valor hipotético. | ________________ |
+
+**Passos**
+
+1. Selecione um indicador fiscal crítico para a gestão municipal.
+2. Escolha o relatório mais adequado para a análise deste indicador.
+3. Preencha as colunas do modelo com um valor hipotético.
+`;
+
+  const { modulo } = rodar([FECHAMENTO], FONTE_ATIVIDADE);
+
+  it("entra a tabela, não a tabela MAIS os passos", () => {
+    const tabelas = modulo.slides.filter((s: any) => s.kind === "table");
+    const passos = modulo.slides.filter((s: any) => s.kind === "steps");
+    expect(tabelas).toHaveLength(1);
+    expect(passos).toHaveLength(0);
+  });
+
+  it("o módulo ganha um slide, não dois", () => {
+    expect(modulo.slides).toHaveLength(2); // a tabela + o fechamento
+  });
+
+  it("é o modelo preenchível que fica", () => {
+    const tabela = modulo.slides.find((s: any) => s.kind === "table");
+    expect(tabela.rows).toHaveLength(3);
+    expect(tabela.rowHeader).toBe("Campo");
+  });
+
+  it("atividade SEM modelo preenchível continua virando slide de passos", () => {
+    const semTabela = `
+#### Atividade Prática: Plano de Ação
+
+> **Objetivo:** Elaborar um plano de execução orçamentária.
+
+**Passos**
+
+1. Analise o cenário do município e os objetivos da despesa.
+2. Defina a dotação orçamentária e o valor estimado do gasto.
+3. Descreva as fases de empenho, liquidação e pagamento.
+`;
+    const { modulo: m } = rodar([FECHAMENTO], semTabela);
+    expect(m.slides.filter((s: any) => s.kind === "steps")).toHaveLength(1);
   });
 });

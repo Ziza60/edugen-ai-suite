@@ -3476,6 +3476,22 @@ function deterministicModuleRepair(
  * Devolve null quando não há material suficiente para uma atividade honesta:
  * um template de uma linha só seria pior que nenhum.
  */
+/**
+ * A primeira frase de um texto, no máximo `maxPalavras` palavras, terminando em
+ * ponto. Serve para citar um momento do exemplo dentro da orientação de um
+ * campo sem despejar o parágrafo inteiro dentro de uma célula de tabela.
+ */
+function primeiraFrase(texto: string, maxPalavras = 24): string {
+  const limpo = normalizeWhitespace(stripMarkdown(String(texto ?? "")));
+  if (!limpo) return "";
+  const frase = limpo.split(/(?<=[.!?])\s+/)[0] || limpo;
+  const palavras = frase.split(/\s+/);
+  if (palavras.length <= maxPalavras) {
+    return /[.!?…]$/.test(frase) ? frase : `${frase}.`;
+  }
+  return `${palavras.slice(0, maxPalavras).join(" ")}…`;
+}
+
 function buildActivityFromModule(
   document: ModuleDocument,
   blueprint: ModuleBlueprint,
@@ -3527,11 +3543,41 @@ function buildActivityFromModule(
   }
 
   // 2. Exemplo trabalhado — o aluno refaz o mesmo raciocínio no caso dele.
+  //
+  // A ATIVIDADE QUE SERVIA PARA QUALQUER CURSO
+  //
+  // Este ramo tinha o exemplo resolvido inteiro na mão — contexto, desafio,
+  // solução e resultado — e não usava uma palavra dele. Produzia sempre o mesmo
+  // molde: "Seu contexto / Desafio identificado / Sua solução / Resultado
+  // esperado", com os passos "Releia o exemplo trabalhado do módulo. /
+  // Identifique a situação equivalente no seu contexto. / …". Serve para
+  // orçamento público, para panificação e para mergulho autônomo — que é
+  // exatamente o problema: o aluno abre a página 17 do curso de orçamento e não
+  // encontra ali nada de orçamento.
+  //
+  // Agora cada campo cita o momento correspondente do exemplo antes de fazer a
+  // pergunta, e os passos apontam para o caso concreto. O molde continua o
+  // mesmo — é o molde certo para "refaça no seu contexto" —, mas ancorado.
   for (let i = document.lessons.length - 1; i >= 0; i--) {
     const ex = document.lessons[i].blocks.find(
       (b) => b.type === "worked_example" && b.example.challenge && b.example.solution,
     );
     if (!ex) continue;
+    const tituloEx = normalizeWhitespace(ex.heading || "") ||
+      "o exemplo trabalhado do módulo";
+    const ctx = primeiraFrase(ex.example.context, 18);
+    const des = primeiraFrase(ex.example.challenge, 18);
+    const sol = primeiraFrase(ex.example.solution, 18);
+    const res = primeiraFrase(ex.example.result, 18);
+    /**
+     * A PERGUNTA VEM PRIMEIRO.
+     *
+     * A célula desta tabela é cortada por palavra quando vai para o slide. Se a
+     * citação do exemplo abrisse a frase, o corte comeria justamente a pergunta
+     * — o aluno leria o caso alheio e não saberia o que fazer com ele.
+     */
+    const campo = (pergunta: string, trecho: string) =>
+      trecho ? `${pergunta} No exemplo: ${trecho}` : pergunta;
     return {
       lessonIndex: i,
       block: normalizeLearningBlock(
@@ -3540,23 +3586,43 @@ function buildActivityFromModule(
           type: "activity",
           heading: "Atividade Prática",
           activity: {
-            objective: `Refazer, no seu próprio contexto, a análise apresentada em ${(ex.heading || "exemplo do módulo").toLowerCase()}.`,
+            // Sem `.toLowerCase()`: ele destruía as siglas do título do exemplo
+            // ("Aplicação da LDO e LOA" virava "aplicação da ldo e loa"). Entre
+            // aspas, como já era feito no ramo 1.
+            objective: `Refazer, no seu próprio contexto, a análise apresentada em "${tituloEx}".`,
             template_rows: [
-              { field: "Seu contexto", instruction: "Descreva a situação equivalente na sua realidade." },
-              { field: "Desafio identificado", instruction: "Qual é o problema central a resolver?" },
-              { field: "Sua solução", instruction: "Que caminho você adotaria, e por quê?" },
-              { field: "Resultado esperado", instruction: "O que mudaria se a solução funcionasse?" },
+              {
+                field: "Seu contexto",
+                instruction: campo("Descreva a situação equivalente na sua realidade.", ctx),
+              },
+              {
+                field: "Desafio identificado",
+                instruction: campo("Qual é o problema central a resolver no seu caso?", des),
+              },
+              {
+                field: "Sua solução",
+                instruction: campo("Que caminho você adotaria, e por quê?", sol),
+              },
+              {
+                field: "Resultado esperado",
+                instruction: campo("O que mudaria se a sua solução funcionasse?", res),
+              },
             ],
             steps: [
-              "Releia o exemplo trabalhado do módulo.",
-              "Identifique a situação equivalente no seu contexto.",
-              "Preencha cada campo do template com os seus próprios dados.",
-              "Justifique as escolhas usando os conceitos do módulo.",
+              `Releia "${tituloEx}", o exemplo trabalhado deste módulo.`,
+              des
+                ? `Identifique, no seu contexto, a situação equivalente a: ${des}`
+                : "Identifique a situação equivalente no seu contexto.",
+              sol
+                ? `Compare o caminho que você adotaria com o do exemplo: ${sol}`
+                : "Decida que caminho você adotaria, e por quê.",
+              `Preencha cada campo do modelo com os seus próprios dados e justifique as escolhas pelos conceitos de ${blueprint.title}.`,
             ],
             deliverable: artefato,
             success_criteria: [
               "O caso descrito é real e específico, não genérico.",
-              "A solução se apoia nos conceitos trabalhados.",
+              `A solução se apoia nos conceitos de ${blueprint.title}.`,
+              `A comparação com "${tituloEx}" aponta ao menos uma diferença relevante.`,
             ],
           },
         },
@@ -4611,6 +4677,7 @@ function courseQualitySummary(
 
 export {
   ACTIVE_BLOCK_TYPES,
+  buildActivityFromModule,
   ASSESSMENT_SCHEMA,
   BLOCKS_BY_PATTERN,
   BLOOM_POSITION,

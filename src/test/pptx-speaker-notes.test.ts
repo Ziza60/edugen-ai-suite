@@ -151,3 +151,68 @@ describe("attachSpeakerNotes — o que ele NÃO deve fazer", () => {
     expect(a[0].slides.map((s) => s.notes)).toEqual(b[0].slides.map((s) => s.notes));
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O RECAPITULATIVO NÃO PRECISA DE NARRAÇÃO
+//
+// O texto que dá origem ao slide de recapitulação — os pontos-chave do módulo —
+// é excluído de propósito das passagens de origem: como narração de OUTRO
+// slide, ele resume em vez de explicar. Só que o recapitulativo continuava na
+// fila pedindo nota. Sem par natural, ele atraía a passagem que estivesse
+// sobrando.
+//
+// Medido no deck de 21/08: das três notas claramente fora de lugar, as três
+// estavam em "Principais Aprendizados" — o slide 10 recebeu uma narração sobre
+// PPA/LDO/LOA com 4% de vocabulário em comum com o que estava na tela.
+//
+// Ele não precisa de nota: os próprios itens JÁ são o resumo que o professor lê.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("attachSpeakerNotes — slides de recapitulação", () => {
+  const comRecap = (titulo: string): DeckModule[] => [{
+    title: "Execução Orçamentária",
+    slides: [
+      {
+        kind: "steps",
+        title: "Estágios da Receita Pública",
+        steps: [
+          { heading: "Previsão", body: "Estima quanto se espera arrecadar no exercício." },
+          { heading: "Lançamento", body: "Identifica o devedor e apura o valor devido." },
+        ],
+      },
+      { kind: "bullets", title: titulo, bullets: ["A receita tem quatro estágios.", "A execução segue a LRF."] },
+    ],
+  }];
+
+  for (
+    const titulo of [
+      "Principais Aprendizados",
+      "Principais Pontos do Módulo",
+      "Principais Conclusões do Módulo",
+      "Pontos-chave",
+      "Key Takeaways",
+    ]
+  ) {
+    it(`"${titulo}" não recebe narração de outro assunto`, () => {
+      const m = comRecap(titulo);
+      attachSpeakerNotes(m, entrada);
+      expect(m[0].slides[1].notes ?? "").toBe("");
+    });
+  }
+
+  it("o slide de conteúdo ao lado continua recebendo a sua", () => {
+    const m = comRecap("Principais Aprendizados");
+    attachSpeakerNotes(m, entrada);
+    expect(m[0].slides[0].notes ?? "").toMatch(/estágios/i);
+  });
+
+  it("o fechamento do módulo também fica de fora", () => {
+    const m: DeckModule[] = [{
+      title: "Execução Orçamentária",
+      slides: [{ kind: "closing", title: "Recapitulando", bullets: ["A receita tem quatro estágios."] }],
+    }];
+    const r = attachSpeakerNotes(m, entrada);
+    expect(r.total).toBe(0);
+    expect(m[0].slides[0].notes ?? "").toBe("");
+  });
+});

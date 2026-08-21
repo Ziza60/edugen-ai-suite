@@ -1683,7 +1683,9 @@ function fitNote(raw: string): string {
 // O lugar desse texto é o slide de fechamento, que já o tem como conteúdo
 // próprio. Como narração de outro slide, ele não explica: resume.
 const RECAPITULACAO_RE =
-  /^\s*(?:📌\s*)?(?:pontos?[-\s]chave|principais\s+(?:aprendizados|pontos)|resumo|recapitula|s[ií]ntese|key\s+takeaways?|takeaways?|em\s+resumo|conclus[ãa]o\s+do\s+m[óo]dulo)\b/i;
+  // "Principais Conclusões do Módulo" faltava: o plural não casava com
+  // `conclusão do módulo`, e era o título do recapitulativo do módulo 5.
+  /^\s*(?:📌\s*)?(?:pontos?[-\s]chave|principais\s+(?:aprendizados|pontos|conclus[õo]es)|resumo|recapitula|s[ií]ntese|key\s+takeaways?|takeaways?|em\s+resumo|conclus[õoãa]\w*\s+do\s+m[óo]dulo)\b/i;
 
 function sourcePassages(content: string): { text: string; toks: Set<string> }[] {
   const out: { text: string; toks: Set<string> }[] = [];
@@ -1757,8 +1759,20 @@ export function attachSpeakerNotes(
 
     // Os slides que podem receber nota, na ordem em que aparecem. Divisórias,
     // capa e sumário não ensinam nada por conta própria.
+    //
+    // O slide de RECAPITULAÇÃO também fica de fora, e por um motivo diferente:
+    // o texto que o originou — os pontos-chave do módulo — já é excluído das
+    // passagens de origem (ver RECAPITULACAO_RE acima), justamente para não ser
+    // usado como narração de outro slide. Sobrando sem par natural, o
+    // recapitulativo atraía a passagem que por acaso estivesse livre. Medido no
+    // deck de 21/08: das três notas claramente fora de lugar, as três estavam
+    // em "Principais Aprendizados" — o slide 10 narrava PPA/LDO/LOA com 4% de
+    // vocabulário em comum. Ele não precisa de narração: seus próprios itens
+    // JÁ são o resumo que o professor vai ler.
     const candidatos = out[i].slides.filter(
-      (s) => s.kind !== "section" && s.kind !== "cover" && s.kind !== "toc",
+      (s) =>
+        s.kind !== "section" && s.kind !== "cover" && s.kind !== "toc" &&
+        s.kind !== "closing" && !RECAPITULACAO_RE.test(s.title ?? ""),
     );
     total += candidatos.length;
     if (!candidatos.length || !passages.length) continue;
@@ -1911,11 +1925,6 @@ export function ensurePedagogicalCoverage(
         }
       }
     }
-    const actBlock = blocks.find((b) => ACTIVITY_RE.test(b.heading));
-    if (actBlock) {
-      const c = buildActivitySlide(actBlock, m.title, t.activity);
-      if (c && !represented(c)) { toAdd.push(c); activitiesAdded++; }
-    }
     // SÓ A PRIMEIRA TABELA DO MÓDULO ERA CONSIDERADA
     //
     // Era um `find`: encontrada a primeira tabela do módulo, as outras nem eram
@@ -1932,6 +1941,8 @@ export function ensurePedagogicalCoverage(
       (b) => b.tableRows.length >= 2 && Math.max(...b.tableRows.map((r) => r.length)) >= 3,
     );
     let tabelasDesteModulo = 0;
+    const tabelas: SlideSpec[] = [];
+    const blocosComTabela = new Set<MdBlock>();
     for (const tblBlock of tblBlocks) {
       if (tabelasDesteModulo >= 2) break;
       const c = buildTableSlide(tblBlock, m.title);
@@ -1964,16 +1975,35 @@ export function ensurePedagogicalCoverage(
             tablesAdded++;
           }
           tabelasDesteModulo++;
+          blocosComTabela.add(tblBlock);
         } else if (!represented(c)) {
-          toAdd.push(c);
+          tabelas.push(c);
           // Entra na lista de cobertura: sem isso, duas tabelas parecidas do
           // mesmo módulo entrariam as duas.
           existing.push(contentTokens(c));
           tablesAdded++;
           tabelasDesteModulo++;
+          blocosComTabela.add(tblBlock);
         }
       }
     }
+
+    // UM ARTEFATO POR SEÇÃO
+    //
+    // A atividade prática rende duas coisas: o modelo preenchível (tabela) e a
+    // lista de passos. Nós acrescentávamos as DUAS, e o planejador ainda fazia
+    // a sua própria versão — no deck de 21/08 o módulo 4 gastou TRÊS slides
+    // seguidos com a mesma atividade (39, 40 e 41), todos sob o mesmo título.
+    //
+    // Entre os dois, o modelo preenchível é o que o aluno entrega; os passos
+    // ficam no PDF e na nota do apresentador. Então, quando a tabela da própria
+    // seção da atividade já entrou, o slide de passos não entra.
+    const actBlock = blocks.find((b) => ACTIVITY_RE.test(b.heading));
+    if (actBlock && !blocosComTabela.has(actBlock)) {
+      const c = buildActivitySlide(actBlock, m.title, t.activity);
+      if (c && !represented(c)) { toAdd.push(c); activitiesAdded++; }
+    }
+    toAdd.push(...tabelas);
 
     if (toAdd.length) {
       // Insert just before the closing so takeaways stay last.
