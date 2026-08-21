@@ -1806,13 +1806,56 @@ export function attachSpeakerNotes(
   return { withNotes, total };
 }
 
+/** Escapa um texto para casar com ele mesmo, ao pé da letra, dentro de regex. */
+function comoRegex(t: string): RegExp {
+  return new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+}
+
+/**
+ * O bloco PARECE um exemplo trabalhado pela forma, não pelo título?
+ *
+ * EXAMPLE_RE procura "exemplo prático", "estudo de caso" ou "case study" no
+ * título. Só que o gerador de curso costuma dar ao exemplo um título temático:
+ * no curso de orçamento, o exemplo do módulo 4 chama-se "Análise de Relatórios
+ * para Conformidade Fiscal em Cidade Nova". Nenhuma das três expressões aparece
+ * ali, então a seção ficava invisível e o slide do planejador — quatro rótulos
+ * sem uma linha de conteúdo — ia para o deck do jeito que estava.
+ *
+ * A forma denuncia o que o título esconde: três ou mais rótulos de caso
+ * (Contexto, Desafio, Solução, Resultado…) abrindo linhas do mesmo bloco.
+ */
+function pareceExemplo(b: MdBlock): boolean {
+  const rotulos = new Set<string>();
+  for (const linha of [...b.paras, ...b.bullets]) {
+    const m = linha.match(CASE_LABEL_LINE_RE);
+    if (m) {
+      rotulos.add(
+        m[1].normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(),
+      );
+    }
+  }
+  return rotulos.size >= 3;
+}
+
+/** Um estudo de caso cujos passos não têm corpo nenhum. */
+function casoVazio(s: SlideSpec): boolean {
+  return isCaseStudySlide(s) &&
+    (s.steps ?? []).every((st) => !String(st.body ?? "").trim());
+}
+
 export function ensurePedagogicalCoverage(
   out: DeckModule[],
   inputs: ModuleInput[],
   language: string,
-): { examplesAdded: number; activitiesAdded: number; tablesAdded: number } {
+): {
+  examplesAdded: number;
+  activitiesAdded: number;
+  tablesAdded: number;
+  emptyExamplesDropped: number;
+} {
   const t = coverageTitles(language);
   let examplesAdded = 0, activitiesAdded = 0, tablesAdded = 0;
+  let emptyExamplesDropped = 0;
   for (let i = 0; i < out.length; i++) {
     const m = out[i];
     const src = inputs[i]?.content ?? "";
@@ -1838,11 +1881,17 @@ export function ensurePedagogicalCoverage(
     };
     const toAdd: SlideSpec[] = [];
 
-    const exBlock = blocks.find((b) => EXAMPLE_RE.test(b.heading));
+    let exBlock = blocks.find((b) => EXAMPLE_RE.test(b.heading));
+    let exRe = EXAMPLE_RE;
+    if (!exBlock) {
+      // Título temático: reconhece pela forma (ver pareceExemplo).
+      exBlock = blocks.find((b) => b.heading && pareceExemplo(b));
+      if (exBlock) exRe = comoRegex(exBlock.heading);
+    }
     if (exBlock) {
       // Prefer the raw-section parser (captures a Resultado expressed as bullets);
       // fall back to the flattened-block builder.
-      const exLines = sliceSection(src, EXAMPLE_RE);
+      const exLines = sliceSection(src, exRe);
       const c = (exLines.length && buildExampleFromRaw(exLines, m.title, t.example)) ||
         buildExampleSlide(exBlock, m.title, t.example);
       if (c) {
@@ -1867,10 +1916,24 @@ export function ensurePedagogicalCoverage(
       const c = buildActivitySlide(actBlock, m.title, t.activity);
       if (c && !represented(c)) { toAdd.push(c); activitiesAdded++; }
     }
-    const tblBlock = blocks.find(
+    // SÓ A PRIMEIRA TABELA DO MÓDULO ERA CONSIDERADA
+    //
+    // Era um `find`: encontrada a primeira tabela do módulo, as outras nem eram
+    // olhadas. E bastava que ESSA primeira já estivesse coberta por algum slide
+    // para o módulo inteiro ficar sem tabela nenhuma. Foi o que aconteceu com o
+    // módulo 1 do curso de orçamento de 21/08: a primeira tabela é o
+    // comparativo PPA/LDO/LOA, que o planejador já havia transformado em cartões
+    // (slide 5); a checagem disse "coberta", e o modelo preenchível da atividade
+    // — quatro linhas, o entregável da lição — nunca chegou ao deck.
+    //
+    // Agora todas as tabelas do módulo são consideradas, com teto de duas por
+    // módulo para o deck não virar uma sequência de grades.
+    const tblBlocks = blocks.filter(
       (b) => b.tableRows.length >= 2 && Math.max(...b.tableRows.map((r) => r.length)) >= 3,
     );
-    if (tblBlock) {
+    let tabelasDesteModulo = 0;
+    for (const tblBlock of tblBlocks) {
+      if (tabelasDesteModulo >= 2) break;
       const c = buildTableSlide(tblBlock, m.title);
       if (c) {
         // A TABELA AMPUTADA
@@ -1900,9 +1963,14 @@ export function ensurePedagogicalCoverage(
             m.slides[idx] = c;
             tablesAdded++;
           }
+          tabelasDesteModulo++;
         } else if (!represented(c)) {
           toAdd.push(c);
+          // Entra na lista de cobertura: sem isso, duas tabelas parecidas do
+          // mesmo módulo entrariam as duas.
+          existing.push(contentTokens(c));
           tablesAdded++;
+          tabelasDesteModulo++;
         }
       }
     }
@@ -1913,8 +1981,22 @@ export function ensurePedagogicalCoverage(
       if (ci >= 0) m.slides.splice(ci, 0, ...toAdd);
       else m.slides.push(...toAdd);
     }
+
+    // ÚLTIMA LINHA DE DEFESA
+    //
+    // Se, depois de tudo, ainda restar um estudo de caso sem corpo, ele sai. O
+    // deck de 21/08 embarcou dois desses: os slides 26 e 38 mostravam ao aluno
+    // "1 Contexto · 2 Desafio · 3 Solução · 4 Resultado" e mais nada. Um slide
+    // com quatro rótulos e nenhuma frase não ensina — ocupa tempo de aula e faz
+    // o professor parecer despreparado. Melhor não existir.
+    for (let k = m.slides.length - 1; k >= 0; k--) {
+      if (casoVazio(m.slides[k])) {
+        m.slides.splice(k, 1);
+        emptyExamplesDropped++;
+      }
+    }
   }
-  return { examplesAdded, activitiesAdded, tablesAdded };
+  return { examplesAdded, activitiesAdded, tablesAdded, emptyExamplesDropped };
 }
 
 // ── Assessment rubric (capstone modules) ─────────────────────────────────────
@@ -2125,9 +2207,12 @@ export async function buildDeck(
   // hands-on activity, comparison table) survive even when the planner dropped
   // them under the slide cap. Runs AFTER dedup so its backfills aren't removed.
   const cov = ensurePedagogicalCoverage(out, modules, language);
-  if (cov.examplesAdded || cov.activitiesAdded || cov.tablesAdded) {
+  if (
+    cov.examplesAdded || cov.activitiesAdded || cov.tablesAdded ||
+    cov.emptyExamplesDropped
+  ) {
     console.log(
-      `[V7-COVERAGE] examples=${cov.examplesAdded} activities=${cov.activitiesAdded} tables=${cov.tablesAdded}`,
+      `[V7-COVERAGE] examples=${cov.examplesAdded} activities=${cov.activitiesAdded} tables=${cov.tablesAdded} emptyExamplesDropped=${cov.emptyExamplesDropped}`,
     );
   }
 

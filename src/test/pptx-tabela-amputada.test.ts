@@ -153,6 +153,62 @@ describe("o que NÃO deve mexer", () => {
 // conserto de defasagem de coluna.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SÓ A PRIMEIRA TABELA DO MÓDULO ERA OLHADA
+//
+// Módulo 1 do mesmo curso. A primeira tabela da fonte é o comparativo
+// PPA/LDO/LOA, que o planejador já tinha transformado em cartões. A checagem
+// dizia "coberta" e parava ali — e o modelo preenchível da atividade, quatro
+// linhas, o entregável da lição, nunca chegava ao deck. No PPTX de 21/08 o
+// módulo 1 ficou sem tabela nenhuma.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("módulo com duas tabelas, a primeira já coberta", () => {
+  const FONTE = `
+#### PPA, LDO e LOA: Comparativo Essencial
+
+| Instrumento | Prazo | Função |
+| --- | --- | --- |
+| PPA | 4 anos | Diretrizes, objetivos e metas de médio prazo |
+| LDO | 1 ano | Metas e prioridades do exercício seguinte |
+| LOA | 1 ano | Estima receitas e fixa despesas |
+
+#### Atividade Prática
+
+| Campo | Orientação | Seu caso |
+| --- | --- | --- |
+| Seu contexto | Descreva a situação equivalente na sua realidade. | ________________ |
+| Desafio identificado | Qual é o problema central a resolver? | ________________ |
+| Sua solução | Que caminho você adotaria, e por quê? | ________________ |
+| Resultado esperado | O que mudaria se a solução funcionasse? | ________________ |
+`;
+
+  // O slide 5 do deck: o comparativo já virou cartões.
+  const CARTOES = {
+    kind: "cards",
+    title: "Termos Essenciais do Orçamento Municipal",
+    cards: [
+      { heading: "PPA", body: "Diretrizes, objetivos e metas de médio prazo, 4 anos." },
+      { heading: "LDO", body: "Metas e prioridades do exercício seguinte, 1 ano." },
+      { heading: "LOA", body: "Estima receitas e fixa despesas do exercício." },
+    ],
+  };
+
+  const { modulo } = rodar([CARTOES, FECHAMENTO], FONTE);
+  const tabelas = modulo.slides.filter((s: any) => s.kind === "table");
+
+  it("a atividade não é mais perdida atrás do comparativo", () => {
+    expect(tabelas.length).toBeGreaterThanOrEqual(1);
+    const atividade = tabelas.find((s: any) => s.rowHeader === "Campo");
+    expect(atividade).toBeDefined();
+    expect(atividade.rows).toHaveLength(4);
+  });
+
+  it("no máximo duas tabelas por módulo", () => {
+    expect(tabelas.length).toBeLessThanOrEqual(2);
+  });
+});
+
 describe("rótulo da coluna de rótulos", () => {
   const tabela = (extra: Record<string, unknown>) => {
     const { deck } = normalizeDeck({
