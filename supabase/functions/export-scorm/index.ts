@@ -1,3 +1,4 @@
+import { ESTILO_CONTEUDO, markdownParaHtml } from "../_shared/markdown-html.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import JSZip from "https://esm.sh/jszip@3.10.1";
@@ -33,58 +34,8 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function markdownToHtml(md: string): string {
-  let html = md
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code>$1</code>")
-    .replace(/^[-*]\s+(.+)$/gm, "<li>$1</li>")
-    .replace(/^\d+\.\s+(.+)$/gm, "<li>$1</li>");
 
-  // Wrap consecutive <li> in <ul>
-  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
-
-  // Wrap remaining lines in <p>
-  const lines = html.split("\n");
-  const result: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed.startsWith("<h") || trimmed.startsWith("<ul") || trimmed.startsWith("<li") || trimmed.startsWith("</")) {
-      result.push(trimmed);
-    } else {
-      result.push(`<p>${trimmed}</p>`);
-    }
-  }
-  return result.join("\n");
-}
-
-interface QuizQuestion {
-  question: string;
-  options: string[];
-  correct_answer: number;
-  explanation: string | null;
-}
-
-function generateQuizHtml(quizzes: QuizQuestion[]): string {
-  if (quizzes.length === 0) return "";
-  let html = `<hr><h2>Quiz</h2>`;
-  quizzes.forEach((q, i) => {
-    html += `<p><strong>${i + 1}. ${escapeHtml(q.question)}</strong></p><ul>`;
-    (q.options || []).forEach((opt: string, j: number) => {
-      const marker = j === q.correct_answer ? " ✓" : "";
-      html += `<li>${String.fromCharCode(65 + j)}) ${escapeHtml(opt)}${marker}</li>`;
-    });
-    html += `</ul>`;
-    if (q.explanation) {
-      html += `<p><em>${escapeHtml(q.explanation)}</em></p>`;
-    }
-  });
-  return html;
-}
+import { quizInterativoHtml, scriptSemQuiz } from "./quiz.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -209,7 +160,7 @@ Deno.serve(async (req: Request) => {
     modules.forEach((mod: any, i: number) => {
       const filename = `module_${i + 1}.html`;
       const moduleQuizzes = allQuizzes.filter((q: any) => q.module_id === mod.id);
-      const quizHtml = generateQuizHtml(moduleQuizzes);
+      const quizHtml = quizInterativoHtml(moduleQuizzes);
 
       const htmlContent = `<!DOCTYPE html>
 <html lang="${course.language || "pt-BR"}">
@@ -228,33 +179,19 @@ Deno.serve(async (req: Request) => {
     .nav { display: flex; justify-content: space-between; margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; }
     .nav a { color: #0f3460; text-decoration: none; padding: 8px 16px; border: 1px solid #0f3460; border-radius: 4px; }
     .nav a:hover { background: #0f3460; color: white; }
+${ESTILO_CONTEUDO}
   </style>
 </head>
 <body>
   <h1>${escapeHtml(mod.title)}</h1>
   ${figuraDoModulo.get(mod.id) ?? ""}
-  ${markdownToHtml(mod.content || "")}
+  ${markdownParaHtml(mod.content || "")}
   ${quizHtml}
   <div class="nav">
     ${i > 0 ? `<a href="module_${i}.html">← Anterior</a>` : "<span></span>"}
     ${i < modules.length - 1 ? `<a href="module_${i + 2}.html">Próximo →</a>` : "<span></span>"}
   </div>
-  <script>
-    // SCORM 1.2 API wrapper
-    var API = null;
-    function findAPI(win) {
-      try {
-        while (win && !win.API) { win = win.parent; if (win === win.parent) break; }
-        return win ? win.API : null;
-      } catch(e) { return null; }
-    }
-    API = findAPI(window);
-    if (API) {
-      API.LMSInitialize("");
-      API.LMSSetValue("cmi.core.lesson_status", "completed");
-      API.LMSCommit("");
-    }
-  </script>
+  ${quizHtml ? "" : scriptSemQuiz()}
 </body>
 </html>`;
 

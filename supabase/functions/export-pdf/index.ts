@@ -12,6 +12,7 @@ import {
 } from "../_shared/pdf-layout.ts";
 import { splitCourseOverview } from "../_shared/course-frontmatter.ts";
 import { separarListaEmbutida } from "../_shared/markdown.ts";
+import { removerRepeticoes } from "../_shared/dedupe-licoes.ts";
 
 // Este arquivo era autocontido para poder ser colado inteiro no editor do painel
 // do Supabase. Deixou de ser: as contas de layout do sumário e da imagem foram
@@ -1639,6 +1640,28 @@ Deno.serve(async (req: Request) => {
         content: cleanModuleContent(mod.content || "", mod.title),
       }))
       .filter((m) => m.content || (m.mod.title || "").trim());
+
+    // DEDUPE ENTRE MÓDULOS
+    //
+    // Cada módulo é escrito por uma invocação independente e nenhum sabe o que
+    // os outros disseram, então todos reapresentam o conceito central antes de
+    // usá-lo: o trio PPA/LDO/LOA saiu explicado por extenso três vezes, quase
+    // com as mesmas frases. Aqui os módulos estão todos na mão, então dá para
+    // trocar a repetição por uma remissão a quem explicou primeiro.
+    //
+    // Só a apostila é limpa. O texto gravado e a tela do curso seguem como
+    // estão: dar memória à geração exigiria serializá-la, desfazendo a divisão
+    // que impede o estouro de tempo da edge function.
+    {
+      const { modulos: semRepeticao, remocoes } = removerRepeticoes(
+        renderableModules.map((m) => ({ titulo: m.mod.title || "", conteudo: m.content })),
+      );
+      if (remocoes.length) {
+        renderableModules.forEach((m, i) => { m.content = semRepeticao[i].conteudo; });
+        console.log(`[export-pdf] dedupe: ${remocoes.length} parágrafo(s) repetido(s) — ` +
+          remocoes.map((r) => `M${r.modulo + 1}<-M${r.origem + 1} (${r.semelhanca})`).join(", "));
+      }
+    }
 
     // A apresentação do curso vem gravada dentro do primeiro módulo (o gerador
     // a prepende lá). Sem separar, o leitor abre em "MÓDULO 1 — <título>" e

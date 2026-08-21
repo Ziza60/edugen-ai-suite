@@ -1,3 +1,4 @@
+import { ESTILO_CONTEUDO, markdownParaHtml } from "../_shared/markdown-html.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import JSZip from "https://esm.sh/jszip@3.10.1";
@@ -13,30 +14,6 @@ function escapeXml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
-function markdownToHtml(md: string): string {
-  let html = md
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code>$1</code>")
-    .replace(/^[-*]\s+(.+)$/gm, "<li>$1</li>")
-    .replace(/^\d+\.\s+(.+)$/gm, "<li>$1</li>");
-  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
-  const lines = html.split("\n");
-  const result: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed.startsWith("<h") || trimmed.startsWith("<ul") || trimmed.startsWith("<li") || trimmed.startsWith("</")) {
-      result.push(trimmed);
-    } else {
-      result.push(`<p>${trimmed}</p>`);
-    }
-  }
-  return result.join("\n");
-}
 
 interface QuizQuestion {
   question: string;
@@ -232,8 +209,13 @@ Deno.serve(async (req: Request) => {
     modules.forEach((mod: any, i: number) => {
       const sectionId = i + 1;
       const img = imagens.get(mod.id);
-      const contentHtml = (img ? figuraHtml(img.url, img.altText) : "") +
-        markdownToHtml(mod.content || "");
+      // O Moodle guarda o HTML da página sem folha de estilo própria, então o
+      // CSS das tabelas e da sequência de passos viaja junto do conteúdo. Uma
+      // vez por página: repetir a regra é inofensivo e evita depender do tema
+      // que a instituição tiver instalado.
+      const contentHtml = `<style>${ESTILO_CONTEUDO}</style>` +
+        (img ? figuraHtml(img.url, img.altText) : "") +
+        markdownParaHtml(mod.content || "");
       
       // Main page activity
       const pageActivityId = activityCounter++;
