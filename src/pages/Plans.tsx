@@ -80,8 +80,10 @@ const CATEGORIES: FeatureCategory[] = [
                                            values: { free: false, starter: false, pro: "3/mês"  } },
       { label: "PowerPoint — 2Slides AI",  tip: "Design profissional premium · compartilha a cota de 3 exports/mês",
                                            values: { free: false, starter: false, pro: "3/mês (compartilhado)"  } },
-      { label: "SCORM (LMS)",              values: { free: false, starter: false, pro: true  } },
-      { label: "Moodle XML",               values: { free: false, starter: false, pro: true  } },
+      { label: "SCORM 1.2 (LMS, com nota)", values: { free: false, starter: false, pro: true  } },
+      // "Moodle XML" sem qualificação sugere backup restaurável, que este
+      // arquivo não é. Quem leva o curso ao Moodle usa o SCORM da linha acima.
+      { label: "Moodle XML (conteúdo)",    values: { free: false, starter: false, pro: true  } },
       { label: "Notion",                   values: { free: false, starter: false, pro: true  } },
       { label: "Google Slides / MS Office",values: { free: false, starter: false, pro: true  } },
     ],

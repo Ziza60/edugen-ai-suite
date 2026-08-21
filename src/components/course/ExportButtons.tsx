@@ -51,9 +51,14 @@ function stripInternalBlocksDocx(md: string): string {
 }
 
 function ExportMenuRow({
-  icon, label, pro, isPro, onClick, disabled, loading, title, testId,
+  icon, label, descricao, pro, isPro, onClick, disabled, loading, title, testId,
 }: {
-  icon: React.ReactNode; label: string; pro?: boolean; isPro?: boolean;
+  icon: React.ReactNode; label: string;
+  /** Linha de apoio sob o rótulo. Existe porque a promessa de um formato não
+   *  cabe numa palavra: "SCORM" não diz onde se usa nem o que ele rastreia, e
+   *  o tooltip só aparece para quem passa o mouse e espera. */
+  descricao?: string;
+  pro?: boolean; isPro?: boolean;
   onClick: () => void; disabled?: boolean; loading?: boolean; title?: string; testId?: string;
 }) {
   return (
@@ -63,12 +68,21 @@ function ExportMenuRow({
       disabled={disabled}
       title={title}
       data-testid={testId}
-      className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 text-left"
+      className="flex w-full items-start gap-3 rounded-sm px-2 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 text-left"
     >
-      {loading ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : <span className="shrink-0 text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">{icon}</span>}
-      <span className="flex items-center gap-1.5 font-medium">
-        {label}
-        {pro && !isPro && <Badge variant="outline" className="text-[10px] px-1 py-0">PRO</Badge>}
+      {loading
+        ? <Loader2 className="h-4 w-4 animate-spin shrink-0 mt-0.5" />
+        : <span className="shrink-0 text-muted-foreground mt-0.5 [&>svg]:h-4 [&>svg]:w-4">{icon}</span>}
+      <span className="min-w-0">
+        <span className="flex items-center gap-1.5 font-medium">
+          {label}
+          {pro && !isPro && <Badge variant="outline" className="text-[10px] px-1 py-0">PRO</Badge>}
+        </span>
+        {descricao && (
+          <span className="block text-xs text-muted-foreground leading-snug mt-0.5">
+            {descricao}
+          </span>
+        )}
       </span>
     </button>
   );
@@ -692,26 +706,40 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
             title={!isPublished ? "Publique o curso primeiro" : undefined}
           />
 
-          {/* Moodle - Pro */}
-          <ExportMenuRow
-            icon={<GraduationCap />}
-            label="Moodle"
-            pro isPro={isPro}
-            onClick={() => handleExportWithFunction("export-moodle", "zip", setExportingMoodle, "Moodle")}
-            disabled={exportingMoodle || !isPublished}
-            loading={exportingMoodle}
-            title={!isPublished ? "Publique o curso primeiro" : "Exportar para Moodle (XML Backup)"}
-          />
-
-          {/* SCORM - Pro */}
+          {/* SCORM — o caminho para o Moodle
+              Vem ANTES do Moodle de propósito. Quem procura "como levo isto
+              para o Moodle" tem de encontrar primeiro a opção que funciona:
+              o Moodle importa SCORM nativamente, com conclusão e nota, e é
+              disso que o comprador precisa. */}
           <ExportMenuRow
             icon={<Package />}
-            label="SCORM"
+            label="SCORM 1.2 (.zip)"
+            descricao="Para Moodle e outros LMS compatíveis com SCORM. Importe o curso no Moodle como uma atividade SCORM, com acompanhamento de conclusão e avaliação."
             pro isPro={isPro}
             onClick={() => handleExportWithFunction("export-scorm", "zip", setExportingScorm, "SCORM")}
             disabled={exportingScorm || !isPublished}
             loading={exportingScorm}
-            title={!isPublished ? "Publique o curso primeiro" : "Exportar pacote SCORM 1.2 para LMS (Moodle, Canvas, etc.)"}
+            title={!isPublished ? "Publique o curso primeiro" : undefined}
+          />
+
+          {/* Moodle (XML) — o que ele É, e não o que se esperaria dele
+              Este export gera um moodle_backup.xml com o conteúdo do curso, e
+              só isso. NÃO é um pacote .mbz restaurável: um backup de curso do
+              Moodle exige uma árvore inteira de arquivos (files.xml, roles.xml,
+              questions.xml, activities/, sections/) da qual aqui só existe o
+              inventário. Tentar restaurá-lo falha.
+              O rótulo antigo dizia apenas "Moodle" e o tooltip prometia
+              "XML Backup" — promessa que o arquivo não cumpre. Agora a linha
+              diz o que serve e aponta para o SCORM, que é o caminho real. */}
+          <ExportMenuRow
+            icon={<GraduationCap />}
+            label="Moodle (XML de conteúdo)"
+            descricao="Arquivo XML com o texto dos módulos, para inspeção ou migração manual. Não é um backup restaurável — para levar o curso ao Moodle, use o SCORM acima."
+            pro isPro={isPro}
+            onClick={() => handleExportWithFunction("export-moodle", "zip", setExportingMoodle, "Moodle")}
+            disabled={exportingMoodle || !isPublished}
+            loading={exportingMoodle}
+            title={!isPublished ? "Publique o curso primeiro" : undefined}
           />
 
           {qualityReport && (

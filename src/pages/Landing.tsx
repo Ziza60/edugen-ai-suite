@@ -33,8 +33,16 @@ const features = [
   { icon: Pencil, title: "Editor rico com IA", desc: "TipTap com toolbar completa. Selecione qualquer trecho e melhore com IA em 1 clique.", cat: "Qualidade", pro: false },
   { icon: Globe, title: "Tradução pedagógica", desc: "Traduz e adapta exemplos culturais para o idioma-alvo. Localização real, não só tradução.", cat: "Qualidade", pro: true },
   { icon: Presentation, title: "PPTX profissional", desc: "Apresentações com design premium, temas, paletas e densidade configurável.", cat: "Distribuição", pro: true },
-  { icon: GraduationCap, title: "SCORM para LMS", desc: "Exportação compatível com Moodle, Canvas, Blackboard e qualquer LMS.", cat: "Distribuição", pro: true },
-  { icon: School, title: "Moodle XML", desc: "Backup nativo do Moodle com quiz, páginas e flashcards. Sem API, funciona offline.", cat: "Distribuição", pro: true },
+  // A promessa do SCORM cresceu porque o produto cresceu: o quiz agora corrige
+  // e manda a nota para o boletim do LMS, que é o que o comprador corporativo
+  // precisa comprovar.
+  { icon: GraduationCap, title: "SCORM para LMS", desc: "Pacote SCORM 1.2 para Moodle, Canvas, Blackboard e qualquer LMS. Quiz com correção e nota no boletim.", cat: "Distribuição", pro: true },
+  // Dizia "Backup nativo do Moodle com quiz, páginas e flashcards" — e não é.
+  // O que sai é um XML com o conteúdo dos módulos; restaurar como backup de
+  // curso não funciona, porque falta a árvore de arquivos que o Moodle exige
+  // (files.xml, roles.xml, questions.xml, activities/, sections/). Quem quer o
+  // curso no Moodle usa o SCORM acima, que entrega mais do que isto prometia.
+  { icon: School, title: "Moodle XML", desc: "Conteúdo dos módulos em XML, para inspeção ou migração manual. Para publicar no Moodle, use o SCORM.", cat: "Distribuição", pro: true },
   { icon: Bot, title: "Tutor IA para alunos", desc: "Link público com chat IA treinado no seu curso. Alunos perguntam, a IA responde.", cat: "Engajamento", pro: true },
   { icon: Video, title: "Script para vídeo", desc: "Gera roteiro de apresentação oral com marcadores de pausa e ênfases. Exporta em DOCX.", cat: "Engajamento", pro: true },
   { icon: Users, title: "Revisão colaborativa", desc: "Compartilhe o curso para revisores externos deixarem comentários por módulo.", cat: "Engajamento", pro: true },
