@@ -2358,12 +2358,20 @@ export async function buildDeck(
 // e o par "divisória + visão geral" para de dizer duas vezes a mesma coisa.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Um slide que só anuncia o módulo: título genérico de visão geral e tópicos. */
+/**
+ * Um slide que só anuncia o módulo: título genérico de visão geral e tópicos.
+ *
+ * UM tópico já basta. O piso era de dois, para não montar uma coluna de
+ * objetivos raquítica na divisória — e o efeito foi o oposto do pretendido: no
+ * deck de 22/08 (3ª geração) o módulo 5 abriu com uma página inteira para uma
+ * frase só, sob o título genérico "Visão Geral do Módulo". Uma linha na
+ * divisória é melhor que um slide inteiro para uma linha.
+ */
 function ehVisaoGeral(s: SlideSpec | undefined, rotulo: string): boolean {
   if (!s || !rotulo) return false;
   const t = (s.title ?? "").trim().toLowerCase();
   if (t !== rotulo.trim().toLowerCase()) return false;
-  return (s.bullets?.length ?? 0) >= 2;
+  return (s.bullets ?? []).some((b) => String(b ?? "").trim());
 }
 
 /**

@@ -70,9 +70,23 @@ describe("a visão geral vira os objetivos da divisória", () => {
     expect(objetivosParaDivisoria(out, "Português")).toBe(0);
   });
 
-  it("visão geral de um item só não vira coluna de objetivos", () => {
+  it("UM objetivo já vai para a divisória", () => {
+    // O piso de dois produzia o oposto do pretendido: no deck de 22/08 (3ª
+    // geração) o módulo 5 gastou uma página inteira com uma frase só, sob o
+    // título genérico. Uma linha na divisória é melhor que um slide para uma
+    // linha.
     const out: any = [modulo([
-      { kind: "bullets", title: "Visão Geral do Módulo", bullets: ["Só isto."] },
+      { kind: "bullets", title: "Visão Geral do Módulo", bullets: ["Integrar Curva ABC, LEC e Ponto de Pedido."] },
+      { kind: "bullets", title: "Conteúdo", bullets: ["x"] },
+    ])];
+    expect(objetivosParaDivisoria(out, "Português")).toBe(1);
+    expect(out[0].objectives).toEqual(["Integrar Curva ABC, LEC e Ponto de Pedido."]);
+  });
+
+  it("visão geral sem nenhum tópico não vira coluna vazia", () => {
+    const out: any = [modulo([
+      { kind: "bullets", title: "Visão Geral do Módulo", bullets: ["  "] },
+      { kind: "bullets", title: "Conteúdo", bullets: ["x"] },
     ])];
     expect(objetivosParaDivisoria(out, "Português")).toBe(0);
   });
