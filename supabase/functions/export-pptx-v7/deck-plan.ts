@@ -870,7 +870,12 @@ function cleanLine(s: string): string {
   return s
     .replace(/`([^`]+)`/g, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
+    // Itálico de verdade é *palavra*, colado ao texto. Exigir que não haja
+    // espaço logo depois do primeiro asterisco nem logo antes do último impede
+    // que a fórmula "((2 * D * CP) / CM)" perca os sinais de multiplicação — o
+    // par " * D * " casava com a regra antiga e virava " D ", trocando a
+    // fórmula do LEC por outra coisa dentro da célula da atividade.
+    .replace(/\*(\S[^*]*?\S|\S)\*/g, "$1")
     .replace(/^#{1,6}\s*/, "")
     .replace(/^[-*+]\s+/, "")
     .replace(/^\d+\.\s+/, "")
@@ -1624,9 +1629,28 @@ function buildTableSlide(b: MdBlock, moduleTitle: string): SlideSpec | null {
   if (!data.length) return null;
   const columns = header.slice(1).map((h) => toShortPoint(h, 6)).filter(Boolean);
   if (columns.length < 2) return null;
+  // O ORÇAMENTO DA CÉLULA É EM CARACTERES, NÃO EM PALAVRAS
+  //
+  // Eram 10 palavras aqui e 12 na normalização: dois cortes em série, e o
+  // primeiro — o mais apertado — decidia tudo. Na atividade do LEC isso
+  // significava perder justamente o que torna a instrução utilizável:
+  //
+  //   fonte : "Estime o Custo de Manutenção anual por unidade para o produto
+  //            (ex: R$ 2,50 por unidade/ano)."
+  //   slide : "Estime o Custo de Manutenção anual por unidade"
+  //
+  // A frase que sobra é gramaticalmente inteira — a limpeza de sobras faz o
+  // seu trabalho — mas o exemplo que dizia ao aluno o que fazer sumiu. O
+  // mesmo com a fórmula do LEC e com a pergunta que perdeu o ponto de
+  // interrogação junto com o complemento.
+  //
+  // A célula desenhada comporta MAX_TABLE_CELL_CHARS (80). Um teto de palavras
+  // mais restritivo que isso corta texto que caberia na página. Aqui e na
+  // normalização o teto de palavras passa a ser folgado, e quem manda é o
+  // limite de caracteres — que é o que a coluna de fato tem.
   const trows: DeckTableRow[] = data.slice(0, 6).map((r) => ({
     label: toShortPoint(r[0], 6),
-    cells: columns.map((_, ci) => toShortPoint(r[ci + 1] ?? "", 10)),
+    cells: columns.map((_, ci) => toShortPoint(r[ci + 1] ?? "", 18)),
   }));
   return {
     kind: "table",

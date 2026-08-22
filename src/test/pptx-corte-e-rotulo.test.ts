@@ -287,3 +287,86 @@ describe("a seta só desenha o rótulo, então só recebe rótulos", () => {
     ])).toBe(false);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O CORTE VOLTOU — E NUNCA TINHA SIDO CONSERTADO AQUI
+//
+// A pergunta era: consertamos e regrediu, ou o conserto não alcançava estes
+// textos? A contagem responde: 25 células de tabela cortadas no deck de antes,
+// 24 no de depois. As MESMAS células, com o MESMO texto. Nunca foi regressão —
+// o reparo anterior mexeu em toShortPoint com orçamento de 24 palavras, que é
+// o corpo do exemplo trabalhado. A célula de tabela tem outro caminho e outro
+// orçamento, e ficou de fora.
+//
+// A causa é dois tetos em série, de novo: 10 palavras ao montar a tabela e 12
+// ao normalizar. O primeiro, mais apertado, decidia tudo — e a célula desenhada
+// comporta 80 caracteres. Um teto de palavras mais restritivo que o de
+// caracteres corta texto que caberia na página.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("a célula da atividade cabe no que a coluna desenha", () => {
+  // Os três campos da atividade do LEC, exatamente como estão no curso.
+  const FONTE = `#### Atividade: Calcule o LEC para Outro Item do Armazém
+
+> **Objetivo:** Aplicar a fórmula do LEC.
+
+| Campo | Orientação | Seu caso |
+| --- | --- | --- |
+| Custo de Manutenção (CM) | Estime o Custo de Manutenção anual por unidade para o produto (ex: R$ 2,50 por unidade/ano). | ________________ |
+| Cálculo do LEC | Escreva a fórmula e mostre os passos do cálculo (LEC = ((2 * D * CP) / CM)). | ________________ |
+| LEC Resultante | Qual é a quantidade ideal a ser comprada por pedido para este produto? | ________________ |
+`;
+
+  const celulas = (() => {
+    const out: any[] = [{ title: "M", slides: [{ kind: "closing", title: "z", bullets: ["a"] }] }];
+    ensurePedagogicalCoverage(out, [{ title: "M", content: FONTE }] as never, "Português");
+    const { deck } = normalizeDeck({ modules: out } as never);
+    const t = deck.modules[0].slides.find((s) => s.kind === "table")!;
+    return t.rows!.map((r) => r.cells[0]);
+  })();
+
+  it("a instrução mantém o exemplo que a torna utilizável", () => {
+    // Saía "Estime o Custo de Manutenção anual por unidade" — inteira e inútil.
+    expect(celulas[0]).toContain("para o produto");
+  });
+
+  it("a pergunta continua sendo uma pergunta", () => {
+    // Saía "…comprada por pedido", sem complemento e sem interrogação.
+    expect(celulas[2]).toContain("para este produto");
+    expect(celulas[2].trim().endsWith("?")).toBe(true);
+  });
+
+  it("nenhuma célula estoura o que a coluna desenha", () => {
+    for (const c of celulas) expect(c.length).toBeLessThanOrEqual(80);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A FÓRMULA PERDIA OS SINAIS DE MULTIPLICAÇÃO
+//
+// Achado ao conferir a célula acima: "((2 * D * CP) / CM)" chegava ao slide
+// como "((2 D CP) / CM)". A limpeza de itálico do markdown casava com o par
+// " * D * " e engolia os dois asteriscos. Não é texto cortado — é fórmula
+// trocada, que num curso de cálculo de estoque é pior.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("asterisco de multiplicação não é itálico", () => {
+  const passar = (md: string) => {
+    const out: any[] = [{ title: "M", slides: [{ kind: "closing", title: "z", bullets: ["a"] }] }];
+    ensurePedagogicalCoverage(
+      out,
+      [{ title: "M", content: `#### Atividade: Fórmulas\n\n| Campo | Orientação | Seu caso |\n| --- | --- | --- |\n| A | ${md} | ____ |\n| B | Outra coisa qualquer aqui. | ____ |\n| C | Mais uma coisa qualquer. | ____ |\n` }] as never,
+      "Português",
+    );
+    const t = out[0].slides.find((s: any) => s.kind === "table");
+    return t.rows[0].cells[0] as string;
+  };
+
+  it("a multiplicação sobrevive", () => {
+    expect(passar("LEC = ((2 * D * CP) / CM)")).toContain("2 * D * CP");
+  });
+
+  it("itálico de verdade continua sendo removido", () => {
+    expect(passar("O valor é *estimado* pelo gestor")).toBe("O valor é estimado pelo gestor");
+  });
+});

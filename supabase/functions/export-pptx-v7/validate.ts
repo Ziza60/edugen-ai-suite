@@ -269,7 +269,12 @@ function normTable(slide: SlideSpec):
     .map((r) => ({
       label: capText(String(r?.label ?? ""), 8, 32),
       cells: (Array.isArray(r?.cells) ? r.cells : [])
-        .map((c) => capText(String(c ?? ""), 12, LIMITS.MAX_TABLE_CELL_CHARS)),
+        // Teto de palavras folgado de propósito: quem limita a célula é
+        // MAX_TABLE_CELL_CHARS, que corresponde ao que a coluna desenha. Um
+        // teto de 12 palavras cortava frases de 13 que cabiam com sobra —
+        // "Qual é a quantidade ideal a ser comprada por pedido para este
+        // produto?" tem 69 caracteres e perdia o complemento e a interrogação.
+        .map((c) => capText(String(c ?? ""), 18, LIMITS.MAX_TABLE_CELL_CHARS)),
     }))
     .filter((r) => r.label.length > 0 || r.cells.some((c) => c.length > 0));
   if (rawRows.length < 1) return null;

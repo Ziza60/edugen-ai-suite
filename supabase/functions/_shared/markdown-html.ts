@@ -43,7 +43,8 @@ function inline(t: string): string {
   return escapar(t)
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>')
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+    // Mesmo cuidado do deck-plan: *palavra* é itálico, " * " é multiplicação.
+    .replace(/(^|[^*])\*(\S[^*\n]*?\S|\S)\*/g, "$1<em>$2</em>")
     .replace(/`(.+?)`/g, "<code>$1</code>");
 }
 

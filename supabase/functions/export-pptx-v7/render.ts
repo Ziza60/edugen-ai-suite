@@ -28,7 +28,7 @@ import { chevronCabe, ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 // próprio, a resposta: veio de antes de 21/08.
 //
 // Bump this on every behavioural change to the engine.
-export const V7_BUILD = "2026-08-22f-abertura-que-repete-o-modulo";
+export const V7_BUILD = "2026-08-22g-celula-cabe-na-coluna";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
