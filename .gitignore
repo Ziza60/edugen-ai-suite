@@ -24,3 +24,19 @@ dist-ssr
 *.sw?
 .env
 .cache/
+
+# Supabase CLI — caches voláteis
+#
+# Estes arquivos são reescritos pela CLI a CADA execução (cli-latest é o cache
+# de "existe versão nova?"; os *-version são a versão de cada serviço no
+# momento). Rastreá-los fazia com que todo deploy criasse uma alteração local,
+# e o Replit respondia a ela criando um branch de backup e resetando o
+# workspace — foram cinco branches replit-local-* e uma tarde de dúvida sobre
+# QUAL código estava no ar.
+#
+# Ficam de fora. O que identifica o projeto (linked-project.json, project-ref,
+# pooler-url) CONTINUA versionado: é o que permite à CLI publicar sem refazer
+# o `supabase link` depois de um reset.
+supabase/.temp/cli-latest
+supabase/.temp/*-version
+supabase/.temp/storage-migration
