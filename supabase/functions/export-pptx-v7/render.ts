@@ -28,7 +28,7 @@ import { chevronCabe, ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 // próprio, a resposta: veio de antes de 21/08.
 //
 // Bump this on every behavioural change to the engine.
-export const V7_BUILD = "2026-08-22c-menos-moldura-repetida";
+export const V7_BUILD = "2026-08-22d-objetivos-na-divisoria";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;

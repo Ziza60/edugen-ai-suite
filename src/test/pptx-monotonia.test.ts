@@ -4,6 +4,7 @@ import {
   quebrarSequenciaDeLayout,
   tabelaViraPassos,
 } from "../../supabase/functions/export-pptx-v7/deck-plan";
+import { normalizeDeck } from "../../supabase/functions/export-pptx-v7/validate";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // A APRESENTAÇÃO FICOU MONÓTONA
@@ -210,5 +211,40 @@ describe("duas grades seguidas", () => {
     const out: any = [modulo([formulario(), formulario()])];
     expect(quebrarSequenciaDeLayout(out)).toBe(0);
     expect(out[0].slides.every((s: any) => s.kind === "table")).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OS OBJETIVOS SE PERDIAM NA NORMALIZAÇÃO
+//
+// Deck de 22/08 (2ª geração): a fusão funcionou — os quatro slides "Visão Geral
+// do Módulo" sumiram e o deck caiu de 57 para 52 páginas —, mas as divisórias
+// saíram vazias, só com o número e o título. A informação foi retirada de um
+// lugar e não apareceu no outro.
+//
+// A normalização reconstruía cada módulo como { title, slides } e, com isso,
+// descartava em silêncio qualquer campo novo. Um caso em que remover é pior que
+// não ter mexido: o slide foi embora e o conteúdo dele também.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("os objetivos sobrevivem à normalização", () => {
+  it("chegam do outro lado, junto com o módulo", () => {
+    const out: any = [modulo([
+      { kind: "bullets", title: "Visão Geral do Módulo", bullets: objetivo(3) },
+      { kind: "bullets", title: "Conteúdo", bullets: ["Texto de verdade aqui."] },
+    ])];
+    objetivosParaDivisoria(out, "Português");
+    expect(out[0].objectives).toHaveLength(3);
+
+    const { deck } = normalizeDeck({ modules: out } as never);
+    expect(deck.modules[0].objectives).toHaveLength(3);
+    expect(deck.modules[0].objectives![0]).toContain("Objetivo número 1");
+  });
+
+  it("módulo sem objetivos continua sem, e nada quebra", () => {
+    const { deck } = normalizeDeck({
+      modules: [modulo([{ kind: "bullets", title: "Só conteúdo", bullets: ["x"] }])],
+    } as never);
+    expect(deck.modules[0].objectives).toBeUndefined();
   });
 });

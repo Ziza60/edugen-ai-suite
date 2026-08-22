@@ -570,7 +570,12 @@ export function normalizeDeck(deck: PlannedDeck): {
       });
     }
     slidesOut += normalized.length;
-    return { title: cleanTitle, slides: normalized };
+    // `objectives` viaja junto: são os objetivos que saíram do slide de visão
+    // geral para a divisória do módulo. Reconstruir o módulo só com title e
+    // slides os apagava silenciosamente — o slide sumia do deck e a informação
+    // não reaparecia em lugar nenhum. Foi o que aconteceu no deck de 22/08
+    // (2ª geração): cinco divisórias vazias e os objetivos perdidos no caminho.
+    return { title: cleanTitle, slides: normalized, objectives: m.objectives };
   });
 
   return {
