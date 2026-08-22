@@ -28,7 +28,7 @@ import { chevronCabe, ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 // próprio, a resposta: veio de antes de 21/08.
 //
 // Bump this on every behavioural change to the engine.
-export const V7_BUILD = "2026-08-22b-seta-nao-come-o-corpo";
+export const V7_BUILD = "2026-08-22c-menos-moldura-repetida";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
@@ -506,7 +506,13 @@ function renderTOC(slide: AnySlide, deck: PlannedDeck, d: Palette, brand: string
   footer(slide, d, brand, 2);
 }
 
-function renderSection(slide: AnySlide, s: SlideSpec, d: Palette, index: number) {
+function renderSection(
+  slide: AnySlide,
+  s: SlideSpec,
+  d: Palette,
+  index: number,
+  objetivos: string[] = [],
+) {
   bgFill(slide, d.coverBg);
   const numStr = String(index).padStart(2, "0");
   // Full-bleed photo (when available), dimmed for legibility — heavier scrim on
@@ -539,10 +545,45 @@ function renderSection(slide: AnySlide, s: SlideSpec, d: Palette, index: number)
     x: ML + 0.04, y: 4.5, w: 1.1, h: 0.09,
     fill: { color: d.accent2 }, line: { type: "none" },
   });
+  // Com objetivos, o título divide a página com eles: título à esquerda,
+  // objetivos à direita. Sem objetivos, o título ocupa a largura toda, como
+  // sempre ocupou.
+  const temObj = objetivos.length > 0 && !hasImg;
   slide.addText(s.title, {
-    x: ML, y: 4.78, w: hasImg ? 7.9 : 11.4, h: 2.1,
+    x: ML, y: 4.78, w: hasImg ? 7.9 : (temObj ? 6.4 : 11.4), h: 2.1,
     fontFace: FONT_TITLE, fontSize: s.title.length > 44 ? 32 : 42, bold: true,
     color: "FFFFFF", valign: "top", lineSpacingMultiple: 1.02,
+  });
+  if (!temObj) return;
+
+  // OS OBJETIVOS DO MÓDULO, AQUI E NÃO NUM SLIDE PRÓPRIO
+  //
+  // Eram um slide inteiro logo depois desta divisória, com o título genérico
+  // "Visão Geral do Módulo" repetido em todos os módulos. A informação é útil —
+  // é o contrato da lição — mas não sustenta uma página sozinha, e a divisória
+  // tinha metade da tela vazia. Ver objetivosParaDivisoria, em deck-plan.
+  const colX = 7.5;
+  slide.addText("NESTE MÓDULO", {
+    x: colX, y: 1.55, w: 5.2, h: 0.4,
+    fontFace: FONT_BODY, fontSize: 12, bold: true,
+    color: d.accent2, charSpacing: 4,
+  });
+  slide.addShape("rect", {
+    x: colX, y: 2.0, w: 0.9, h: 0.06,
+    fill: { color: d.accent2 }, line: { type: "none" },
+  });
+  const linhaH = 0.62;
+  objetivos.slice(0, 4).forEach((o, i) => {
+    const y = 2.35 + i * linhaH;
+    slide.addShape("ellipse", {
+      x: colX, y: y + 0.16, w: 0.13, h: 0.13,
+      fill: { color: d.accent2 }, line: { type: "none" },
+    });
+    slide.addText(o, {
+      x: colX + 0.32, y, w: 5.0, h: linhaH,
+      fontFace: FONT_BODY, fontSize: 13, color: "FFFFFF",
+      valign: "top", lineSpacingMultiple: 1.04,
+    });
   });
 }
 
@@ -2572,7 +2613,7 @@ export function renderDeck(
         kind: "section",
         title: m.title,
         eyebrow: m.title,
-      }, d, mi + 1);
+      }, d, mi + 1, m.objectives ?? []);
     }
     // Per-module memory for the anti-repetition guard: two card-family grids in
     // a row are visually monotonous, so the SECOND becomes a sidebar layout.
@@ -2685,9 +2726,21 @@ export function renderDeck(
           case "code":
             renderCode(slide, s, d, brand, num, m.title);
             break;
-          case "closing":
-            renderClosing(slide, s, d, brand, num, m.title);
+          case "closing": {
+            // O RECAP ERA O MESMO SLIDE CINCO VEZES
+            //
+            // Um por módulo, todos com o mesmo desenho e quase o mesmo título
+            // ("Principais Aprendizados" aparecia duas vezes idêntico no deck
+            // de estoque). A FUNÇÃO deve mesmo se repetir — todo módulo fecha
+            // recapitulando, e é isso que dá identidade ao material. A FORMA
+            // não precisa. Alterna pelo índice do módulo, o que mantém o
+            // resultado determinístico: o mesmo curso gera o mesmo deck.
+            const vc = mi % 3;
+            if (vc === 1) renderBands(slide, s, d, brand, num, m.title);
+            else if (vc === 2) renderNumberedList(slide, s, d, brand, num, m.title);
+            else renderClosing(slide, s, d, brand, num, m.title);
             break;
+          }
           case "bullets":
           default: {
             if (s.imageData) {

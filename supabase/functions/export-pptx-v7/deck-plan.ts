@@ -103,6 +103,11 @@ export interface SlideSpec {
 export interface DeckModule {
   title: string;
   slides: SlideSpec[];
+  /**
+   * Os objetivos do módulo, quando foram retirados do slide de "Visão Geral"
+   * para irem à divisória. Ver `objetivosParaDivisoria`.
+   */
+  objectives?: string[];
 }
 
 export interface PlannedDeck {
@@ -2316,6 +2321,14 @@ export async function buildDeck(
     );
   }
 
+  const grades = quebrarSequenciaDeLayout(out);
+  if (grades) console.log(`[V7-VARIETY] tables converted to steps=${grades}`);
+
+  // A visão geral vira os objetivos da divisória — antes das notas, para que o
+  // slide removido não consuma uma passagem de origem que pertence a outro.
+  const fundidos = objetivosParaDivisoria(out, language);
+  if (fundidos) console.log(`[V7-OVERVIEW] merged into divider=${fundidos}`);
+
   // Speaker notes LAST: every slide the deck will ship now exists, including
   // the backfills above, so each one gets matched to its source passage.
   const notes = attachSpeakerNotes(out, modules);
@@ -2326,4 +2339,128 @@ export async function buildDeck(
     plannedCount,
     fallbackCount,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A MOLDURA QUE SE REPETIA CINCO VEZES
+//
+// Medido no deck de estoque, 57 slides: 18 deles (32%) tinham papel estrutural
+// fixo — divisória, "Visão Geral do Módulo" e recapitulação, iguais nos cinco
+// módulos. O título "Visão Geral do Módulo" aparecia quatro vezes idêntico.
+// Quem folheia sente déjà-vu antes de chegar ao conteúdo.
+//
+// Isto não é excesso de repertório de formas: é a MOLDURA repetindo. E a
+// correção não pode ser cortar a visão geral, que tem função pedagógica — ela
+// anuncia os objetivos da lição. A informação vai para a divisória, que hoje é
+// só um número gigante e um título e tem página sobrando.
+//
+// Resultado: um slide a menos por módulo, a divisória deixa de ser decorativa,
+// e o par "divisória + visão geral" para de dizer duas vezes a mesma coisa.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Um slide que só anuncia o módulo: título genérico de visão geral e tópicos. */
+function ehVisaoGeral(s: SlideSpec | undefined, rotulo: string): boolean {
+  if (!s || !rotulo) return false;
+  const t = (s.title ?? "").trim().toLowerCase();
+  if (t !== rotulo.trim().toLowerCase()) return false;
+  return (s.bullets?.length ?? 0) >= 2;
+}
+
+/**
+ * Move os objetivos do slide de visão geral para a divisória do módulo e
+ * descarta o slide. Devolve quantos módulos foram fundidos.
+ */
+export function objetivosParaDivisoria(
+  out: DeckModule[],
+  language: string,
+): number {
+  const rotulo = moduleOverviewLabel(language);
+  if (!rotulo) return 0;
+  let fundidos = 0;
+  for (const m of out) {
+    // Só o PRIMEIRO slide do módulo: uma visão geral no meio do módulo é outra
+    // coisa, e mexer nela mudaria a ordem do que o professor vai apresentar.
+    const i = m.slides[0]?.kind === "section" ? 1 : 0;
+    const alvo = m.slides[i];
+    if (!ehVisaoGeral(alvo, rotulo)) continue;
+    m.objectives = (alvo.bullets ?? []).slice(0, 4);
+    m.slides.splice(i, 1);
+    fundidos++;
+  }
+  return fundidos;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DUAS GRADES SEGUIDAS SÃO A MESMA PÁGINA DUAS VEZES
+//
+// Dez das 57 páginas do deck de estoque eram tabela, e três vinham em sequência
+// (53, 54, 55). Uma grade não muda de aparência conforme o assunto: o olho lê
+// "planilha" e desliga.
+//
+// A conversão não é cosmética — é de significado. "Etapas do Plano Mestre"
+// (Etapa | Ferramentas | Ações) e "Fluxograma de Análise Crítica" (Situação |
+// Análise | Ação) são SEQUÊNCIAS que estavam vestidas de planilha. Como passos,
+// dizem melhor o que são e quebram a repetição no mesmo gesto.
+//
+// O que NÃO se converte, e é a maior parte delas: o modelo preenchível
+// "Campo | Orientação | Seu caso". Ali a grade é o ponto — o aluno escreve
+// dentro dela. Uma célula com linha de preencher (____) marca a tabela como
+// formulário, e formulário fica formulário.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const LINHA_DE_PREENCHER = /_{4,}/;
+
+/** A tabela é um formulário para o aluno preencher? Então continua tabela. */
+function ehFormulario(s: SlideSpec): boolean {
+  for (const r of s.rows ?? []) {
+    if (r.cells.some((c) => LINHA_DE_PREENCHER.test(String(c ?? "")))) return true;
+  }
+  return false;
+}
+
+/**
+ * Converte uma tabela em sequência de passos, quando ela é uma sequência
+ * disfarçada: 3 a 5 linhas, todas com rótulo, células curtas e nenhuma linha
+ * de preencher. Devolve null quando a tabela deve continuar tabela.
+ */
+export function tabelaViraPassos(s: SlideSpec): SlideSpec | null {
+  if (s.kind !== "table" || ehFormulario(s)) return null;
+  const rows = s.rows ?? [];
+  if (rows.length < 3 || rows.length > 5) return null;
+  if (rows.some((r) => !String(r.label ?? "").trim())) return null;
+  const passos: DeckStep[] = rows.map((r) => ({
+    heading: r.label,
+    body: r.cells.map((c) => String(c ?? "").trim()).filter(Boolean).join(" · "),
+  }));
+  // Corpo longo demais vira parede de texto na barra do passo; ali a grade
+  // ainda serve melhor.
+  if (passos.some((p) => !p.body || p.body.length > 130)) return null;
+  return {
+    ...s,
+    kind: "steps",
+    steps: passos,
+    columns: undefined,
+    rows: undefined,
+    rowHeader: undefined,
+  };
+}
+
+/**
+ * Quebra sequências do mesmo layout dentro do módulo. Hoje trata o caso que
+ * medimos — tabela atrás de tabela —, convertendo a SEGUNDA quando os dados
+ * dela suportam outra forma. Uma tabela que não pode virar outra coisa fica
+ * como está: variedade nunca vale uma página pior.
+ */
+export function quebrarSequenciaDeLayout(out: DeckModule[]): number {
+  let convertidos = 0;
+  for (const m of out) {
+    for (let i = 1; i < m.slides.length; i++) {
+      if (m.slides[i].kind !== "table" || m.slides[i - 1].kind !== "table") continue;
+      const alternativa = tabelaViraPassos(m.slides[i]);
+      if (!alternativa) continue;
+      m.slides[i] = alternativa;
+      convertidos++;
+    }
+  }
+  return convertidos;
 }
