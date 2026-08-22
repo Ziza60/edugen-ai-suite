@@ -2367,11 +2367,50 @@ export async function buildDeck(
  * frase só, sob o título genérico "Visão Geral do Módulo". Uma linha na
  * divisória é melhor que um slide inteiro para uma linha.
  */
-function ehVisaoGeral(s: SlideSpec | undefined, rotulo: string): boolean {
+function ehVisaoGeral(
+  s: SlideSpec | undefined,
+  rotulo: string,
+  tituloDoModulo: string,
+): boolean {
   if (!s || !rotulo) return false;
-  const t = (s.title ?? "").trim().toLowerCase();
-  if (t !== rotulo.trim().toLowerCase()) return false;
-  return (s.bullets ?? []).some((b) => String(b ?? "").trim());
+  const t = (s.title ?? "").trim();
+  if (!t) return false;
+  // Precisa ser uma lista de tópicos e nada mais. Cartões, passos, tabela ou
+  // imagem são conteúdo com forma própria — nada disso cabe numa coluna da
+  // divisória, e absorvê-lo seria engolir a página, não desentupi-la.
+  if (s.kind !== "bullets" || s.imageData) return false;
+  if (!(s.bullets ?? []).some((b) => String(b ?? "").trim())) return false;
+
+  // Dois nomes para a mesma coisa. O rótulo genérico ("Visão Geral do Módulo")
+  // é atribuído quando o planejador repete o nome do módulo no primeiro slide —
+  // mas essa renomeação nem sempre acontece, e aí o slide chega com o próprio
+  // nome do módulo no título. Foi o caso do módulo 2 no deck de 22/08 (4ª
+  // geração): "Avaliação Econômica do Estoque", com três objetivos e mais nada,
+  // logo abaixo de uma divisória que já dizia "Avaliação Econômica do Estoque:
+  // Custos de Pedido e Manutenção". A divisória e o slide diziam o mesmo nome,
+  // em sequência.
+  if (t.toLowerCase() === rotulo.trim().toLowerCase()) return true;
+  return repeteONomeDoModulo(t, tituloDoModulo);
+}
+
+/**
+ * O título do slide é o nome do módulo, ou o começo dele?
+ *
+ * `echoesTitle` não serve aqui: ele exige que o trecho cubra 60% do título, e
+ * "Avaliação Econômica do Estoque" (30 caracteres) cobre metade de "Avaliação
+ * Econômica do Estoque: Custos de Pedido e Manutenção" (60). Por um triz o
+ * slide escapava — e ele repetia o nome do módulo logo abaixo da divisória que
+ * já o exibia.
+ *
+ * Aqui a pergunta é outra e mais simples: o título ABRE com o nome do módulo?
+ * Se abre, não acrescenta nada ao que a divisória já disse. O piso de 12
+ * caracteres evita absorver por causa de um prefixo curto e casual.
+ */
+function repeteONomeDoModulo(titulo: string, tituloDoModulo: string): boolean {
+  const a = normKey(titulo);
+  const b = normKey(tituloDoModulo ?? "");
+  if (!a || !b || a.length < 12) return false;
+  return b === a || b.startsWith(a);
 }
 
 /**
@@ -2390,7 +2429,7 @@ export function objetivosParaDivisoria(
     // coisa, e mexer nela mudaria a ordem do que o professor vai apresentar.
     const i = m.slides[0]?.kind === "section" ? 1 : 0;
     const alvo = m.slides[i];
-    if (!ehVisaoGeral(alvo, rotulo)) continue;
+    if (!ehVisaoGeral(alvo, rotulo, m.title)) continue;
     m.objectives = (alvo.bullets ?? []).slice(0, 4);
     m.slides.splice(i, 1);
     fundidos++;

@@ -70,6 +70,48 @@ describe("a visão geral vira os objetivos da divisória", () => {
     expect(objetivosParaDivisoria(out, "Português")).toBe(0);
   });
 
+  it("abertura que só repete o NOME DO MÓDULO também é visão geral", () => {
+    // Deck de 22/08 (4ª geração), módulo 2: a divisória dizia "Avaliação
+    // Econômica do Estoque: Custos de Pedido e Manutenção" e o slide seguinte,
+    // "Avaliação Econômica do Estoque", com três objetivos e nada mais. Dois
+    // slides em sequência dizendo o mesmo nome.
+    const out: any = [{
+      title: "Avaliação Econômica do Estoque: Custos de Pedido e Manutenção",
+      slides: [
+        { kind: "bullets", title: "Avaliação Econômica do Estoque", bullets: objetivo(3) },
+        { kind: "bullets", title: "O Que é o Custo de Pedido?", bullets: ["Conteúdo."] },
+      ],
+    }];
+    expect(objetivosParaDivisoria(out, "Português")).toBe(1);
+    expect(out[0].objectives).toHaveLength(3);
+    expect(out[0].slides.map((s: any) => s.title)).toEqual(["O Que é o Custo de Pedido?"]);
+  });
+
+  it("abertura com CARTÕES não é absorvida, mesmo ecoando o nome", () => {
+    // Slide 35 do mesmo deck: título próprio e cartões com corpo. É conteúdo
+    // com forma própria — não cabe numa coluna da divisória.
+    const out: any = [{
+      title: "Gestão de Fornecedores e Negociação Estratégica",
+      slides: [{
+        kind: "cards",
+        title: "Gestão de Fornecedores",
+        cards: [{ heading: "Importância", body: "Vai além do preço unitário." }],
+      }],
+    }];
+    expect(objetivosParaDivisoria(out, "Português")).toBe(0);
+  });
+
+  it("abertura com imagem fica onde está", () => {
+    const out: any = [{
+      title: "Diagnóstico de Estoque",
+      slides: [
+        { kind: "bullets", title: "Diagnóstico de Estoque", bullets: objetivo(3), imageData: "data:image/png;base64,xx" },
+        { kind: "bullets", title: "Outro", bullets: ["x"] },
+      ],
+    }];
+    expect(objetivosParaDivisoria(out, "Português")).toBe(0);
+  });
+
   it("UM objetivo já vai para a divisória", () => {
     // O piso de dois produzia o oposto do pretendido: no deck de 22/08 (3ª
     // geração) o módulo 5 gastou uma página inteira com uma frase só, sob o
