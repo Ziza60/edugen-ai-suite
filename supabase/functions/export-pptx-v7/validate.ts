@@ -16,7 +16,15 @@ import type {
   PlannedDeck,
   SlideSpec,
 } from "./deck-plan.ts";
-import { proporcaoInformativa } from "./layout-fit.ts";
+import {
+  DANGLING_PREP_RE,
+  ELLIPSIS_RE,
+  esqueletoDeCaso,
+  proporcaoInformativa,
+  terminaEmClassificador,
+  TRAILING_JUNK_RE,
+  trimToWholeThought,
+} from "./layout-fit.ts";
 
 export const LIMITS = {
   MAX_BULLETS: 5,
@@ -42,61 +50,6 @@ export const LIMITS = {
   MAX_EYEBROW_CHARS: 90,
 } as const;
 
-const TRAILING_JUNK_RE = /[\s,;:\-–—]+$/;
-const ELLIPSIS_RE = /(\.{2,}|…)+\s*$/;
-// O artigo "o" faltava. A lista trazia "a", "as" e "os", e só o masculino
-// singular ficou de fora — uma omissão de um caractere com efeito visível:
-// "…e a" era aparado, "…e os" era aparado, e "Conclua com a fase de pagamento
-// e o" foi entregue assim mesmo, num slide de atividade.
-const DANGLING_PREP_RE =
-  /\s+(para|de|da|do|das|dos|com|e|ou|que|em|no|na|nos|nas|ao|à|aos|às|por|sobre|entre|sem|sob|a|o|as|os|um|uma|uns|umas)\s*$/i;
-
-// Words that CAN legitimately end an intact sentence ("a decisão é sua", "isso
-// depende de você") but never end an acceptable CUT one. They are stripped only
-// from text we know was truncated — applying them to prose the planner wrote in
-// full would mutilate it, which is why they are not in DANGLING_PREP_RE.
-const CUT_TAIL_RE =
-  /\s+(voc[êe]s?|ele|ela|eles|elas|n[óo]s|quem|qual|quais|onde|quando|cujos?|cujas?|algum|alguma|alguns|algumas|qualquer|quaisquer|seu|sua|seus|suas|este|esta|estes|estas|esse|essa|esses|essas|aquele|aquela|isso|isto|mesmo|mesma)\s*$/i;
-
-// An orphan subordinate clause: a connector followed by 1–2 words and nothing
-// else. "Revise sua proposta, garantindo que o controle" is not a short
-// sentence, it is a sentence cut in half — the clause promises a completion the
-// slide never delivers. Cutting at the connector restores a whole statement.
-const ORPHAN_CLAUSE_RE =
-  /[,;]?\s+\b(que|para|porque|quando|onde|se|caso|conforme|enquanto|embora|garantindo|assegurando|considerando|visando|buscando|permitindo)\b(\s+\S+){0,2}\s*$/i;
-
-/**
- * Make a truncated fragment end on a whole thought.
- *
- * Runs only on text capText actually had to cut. Two shapes of debris:
- * a trailing function word ("…problemas que você") and an orphan subordinate
- * clause ("…garantindo que o controle"). Removing one often exposes the other,
- * so it iterates; it stops before dissolving the fragment, since three words
- * that end badly still beat one word that ends nowhere.
- */
-function trimToWholeThought(raw: string): string {
-  let s = raw;
-  // Bounded loop rather than recursion: each rule can expose work for the
-  // others ("…garantindo que o controle" → "…proposta," → "…proposta"), and the
-  // string strictly shrinks, so a handful of passes always settles.
-  for (let i = 0; i < 6; i++) {
-    let next = s
-      .replace(CUT_TAIL_RE, "")
-      .replace(DANGLING_PREP_RE, "")
-      .replace(TRAILING_JUNK_RE, "")
-      .trim();
-    if (next === s) {
-      next = s.replace(ORPHAN_CLAUSE_RE, "").replace(TRAILING_JUNK_RE, "").trim();
-      if (next === s) break;
-    }
-    // Never strip past three words — below that we are deleting the point, not
-    // the debris, and the caller is better served by the longer ragged version.
-    if (next.split(/\s+/).filter(Boolean).length < 3) break;
-    s = next;
-  }
-  return s;
-}
-
 /** Clean a short text fragment: strip ellipsis, dangling words, trailing junk. */
 function cleanFragment(raw: string): string {
   let t = (raw ?? "").replace(/\s+/g, " ").trim();
@@ -110,8 +63,10 @@ function cleanFragment(raw: string): string {
     .replace(/\*\*/g, "")
     .trim();
   t = t.replace(ELLIPSIS_RE, "");
-  // Drop up to two dangling connector words left by truncation.
-  for (let i = 0; i < 2; i++) {
+  // Drop up to two dangling connector words left by truncation — mas nunca um
+  // classificador de uma letra: "Categoria A" é o nome da categoria, não um
+  // artigo pendurado. Foi assim que a legenda do gráfico virou "Categoria".
+  for (let i = 0; i < 2 && !terminaEmClassificador(t); i++) {
     const next = t.replace(DANGLING_PREP_RE, "");
     if (next === t) break;
     t = next.trim();
@@ -503,6 +458,20 @@ function normalizeSlide(slide: SlideSpec): SlideSpec[] {
   };
 
   if (!base.title) base.title = base.eyebrow || "Conceito";
+
+  // O ESQUELETO DE ESTUDO DE CASO SAI AQUI, E NÃO ANTES
+  //
+  // A triagem existia só na checagem de cobertura, que roda antes desta
+  // normalização — e por isso os slides 19 e 29 do deck de 22/08 escaparam com
+  // a proteção no ar. Lá os passos ainda tinham corpo; foi a limpeza logo
+  // abaixo (normSteps → capText → cleanFragment) que os esvaziou, quando o
+  // corpo era só reticências ou um resto de numeração. A checagem via o slide
+  // cheio e aprovava; o aluno recebia "1 Contexto · 2 Desafio · 3 Solução ·
+  // 4 Resultado" e mais nada.
+  //
+  // Aqui o conteúdo já é o que será desenhado. Não há etapa depois desta para
+  // esvaziar o que passou.
+  if (esqueletoDeCaso(base)) return [];
 
   // Bullets overflow → split into continuation slides.
   if (base.kind === "bullets" || base.kind === "closing") {

@@ -28,7 +28,7 @@ import { ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 // próprio, a resposta: veio de antes de 21/08.
 //
 // Bump this on every behavioural change to the engine.
-export const V7_BUILD = "2026-08-21-esqueleto-e-rubrica";
+export const V7_BUILD = "2026-08-22-corte-e-classificador";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
@@ -2724,17 +2724,40 @@ export function renderDeck(
                     renderBulletTimeline, renderSpiral,
                   );
                 }
-                variants.push(renderNetwork);
-                if (wordShort && k <= 4) variants.push(renderBento);
+                // NUMERAR TAMBÉM É AFIRMAR ORDEM
+                //
+                // A regra acima — forma que afirma estrutura só entra quando o
+                // conteúdo tem essa estrutura — valia para setas, espiral e
+                // linha do tempo, e deixava de fora justamente o sinal mais
+                // literal de todos: 1, 2, 3, 4. No deck de 22/08 o slide "O Que
+                // é a Curva ABC?" saiu numerado em quatro cartões. São quatro
+                // ATRIBUTOS de uma definição — ferramenta de gestão, baseada em
+                // importância, fundamentada em Pareto, divide em A/B/C —, não
+                // quatro etapas. Numerá-los promete uma ordem que ninguém
+                // escreveu e que o aluno vai procurar.
+                //
+                // Bento, ícones numerados e painéis assimétricos carregam
+                // número. Passam a ficar atrás do mesmo detector das setas.
+                // Para lista sem ordem sobram rede, linhas de conexão e
+                // marcadores — três formas, variedade preservada, sem afirmar
+                // o que o conteúdo não diz.
+                if (ehSequencia(s.title, its)) {
+                  variants.push(renderNumberedIcons, renderAsymPanels);
+                  if (wordShort && k <= 4) variants.push(renderBento);
+                }
                 variants.push(
-                  renderNumberedIcons, renderAsymPanels,
-                  renderConnectionLines, renderMarkers,
+                  renderNetwork, renderConnectionLines, renderMarkers,
                 );
               } else if (k === 2 && wordShort) {
+                // Com dois itens o bento não numera nada que possa enganar:
+                // "1" e "2" ao lado um do outro leem-se como duas colunas.
                 variants.push(renderBullets, renderBento, renderMarkers);
               } else {
                 variants.push(renderBullets, renderMarkers);
-                if (k <= 6) variants.push(renderNumberedIcons, renderConnectionLines);
+                if (k <= 6) variants.push(renderConnectionLines);
+                if (k <= 6 && ehSequencia(s.title, its)) {
+                  variants.push(renderNumberedIcons);
+                }
               }
               variants[bulletsVar++ % variants.length](slide, s, d, brand, num, m.title);
             }

@@ -20,6 +20,8 @@
 //   Python course, a History course, or a Sales course.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { esqueletoDeCaso, trimToWholeThought } from "./layout-fit.ts";
+
 export type SlideKind =
   | "cover" // course cover
   | "toc" // agenda / table of contents
@@ -1026,12 +1028,57 @@ const OBJECTIVE_RE = /objetivo|aprende|ao final|learning|goals?/i;
  * word. This is what prevents fallback bullets like "...operações sigam".
  */
 function toShortPoint(s: string, maxWords = 14): string {
-  const first = (splitSentences(s)[0] || s).trim();
+  let first = (splitSentences(s)[0] || s).trim();
+
+  // CHAMADA DE LISTA NÃO É FRASE
+  //
+  // "Sr. João organizou os dados da seguinte forma: 1." foi para o slide 11 do
+  // deck de 22/08 exatamente assim. A primeira frase termina anunciando uma
+  // lista que o slide não traz — e o "1." solto no fim parece defeito de
+  // renderização. Some o número órfão e os dois-pontos que o chamavam; o que
+  // sobra ("…organizou os dados da seguinte forma") já é uma afirmação inteira.
+  first = first.replace(/:\s*\d{1,2}[.)]?\s*$/, "").trim();
+
+  // O PARÊNTESE É O PRIMEIRO A SAIR
+  //
+  // Antes de cortar qualquer coisa, sacrifica-se o aparte. A frase do slide 11
+  // era "…classificou o Café Premium, Sabão em Pó e Arroz 5kg como itens da
+  // Categoria A (representando a maior parte do valor de vendas)": 28 palavras
+  // com o parêntese, 21 sem ele. Era o parêntese que estourava o orçamento e
+  // forçava um corte no meio da enumeração. Sem ele, a frase cabe inteira — e
+  // uma frase inteira é sempre melhor que uma cortada, por melhor que se corte.
+  if (first.split(/\s+/).length > maxWords) {
+    const semAparte = first.replace(/\s*\([^()]*\)\s*([.!?])?\s*$/, "$1").trim();
+    if (semAparte && semAparte.split(/\s+/).length <= maxWords) first = semAparte;
+  }
+
   const words = first.split(/\s+/);
   if (words.length <= maxWords) return first;
   const capped = words.slice(0, maxWords).join(" ");
-  const lastComma = capped.lastIndexOf(",");
-  return (lastComma > 20 ? capped.slice(0, lastComma) : capped).trim();
+
+  // CORTAR NO MEIO DE UMA ENUMERAÇÃO TROCA O FATO
+  //
+  // A vírgula é um bom lugar para cortar — a não ser quando ela separa itens de
+  // uma lista. O slide 11 do deck de 22/08 dizia "o Sr. João classificou o Café
+  // Premium", e a frase original era "classificou o Café Premium, Sabão em Pó e
+  // Arroz 5kg como itens da Categoria A". O corte não deixou a frase pela
+  // metade: deixou uma frase inteira e ERRADA, afirmando que só um produto foi
+  // classificado como A. É pior que truncar, porque não parece truncado.
+  //
+  // Quando o que vem depois da vírgula é continuação de lista — mais um item e
+  // um "e" logo adiante —, recua para a vírgula anterior, que está fora da
+  // enumeração.
+  const continuaLista = (resto: string) => /^\s*[^.,;:]{1,40}\s+e\s+/.test(resto);
+  let lastComma = capped.lastIndexOf(",");
+  while (lastComma > 20 && continuaLista(first.slice(lastComma + 1))) {
+    lastComma = capped.lastIndexOf(",", lastComma - 1);
+  }
+  const cortado = (lastComma > 20 ? capped.slice(0, lastComma) : capped).trim();
+  // Sem vírgula onde se apoiar, o corte cai no meio do pensamento
+  // ("…classificou o Café Premium"). capText, adiante, não vai limpar isto: ele
+  // só apara o que ELE MESMO cortou, e daqui em diante o texto já parece curto
+  // e inteiro. A limpeza tem de ser feita aqui, por quem cortou.
+  return trimToWholeThought(cortado);
 }
 
 /** Convert a markdown table block into a real slide (never raw `|---|` text). */
@@ -1851,45 +1898,8 @@ function pareceExemplo(b: MdBlock): boolean {
   return rotulos.size >= 3;
 }
 
-/**
- * Um estudo de caso que chegou só com os rótulos: Contexto, Desafio, Solução,
- * Resultado — e nenhuma frase.
- *
- * A primeira versão disto só olhava slides do tipo `steps`, e isso foi um erro
- * de escopo: o mesmo conteúdo vazio chega como `cards`, como `bullets` (quando
- * a normalização salva um slide sem conteúdo mínimo) ou como `matrix`,
- * conforme o que o planejador escolheu. O defeito não é do formato; é de não
- * haver texto.
- *
- * O critério é estrito de propósito — TODOS os itens têm de ser rótulo de caso,
- * e são precisos três no mínimo. Um slide legítimo como "Estágios da Despesa"
- * (Fixação · Empenho · Liquidação · Pagamento) não tem rótulo de caso nenhum e
- * não corre risco; um "Contexto · Desafio · Solução · Resultado" sem uma linha
- * de texto não é outra coisa senão um esqueleto.
- */
-function casoVazio(s: SlideSpec): boolean {
-  const rotulo = (t: unknown) => CASE_LABEL_RE.test(String(t ?? "").trim());
-  const semTexto = (t: unknown) => !String(t ?? "").trim();
-
-  if (s.kind === "steps") {
-    const ss = s.steps ?? [];
-    return ss.length >= 3 && ss.every((x) => rotulo(x.heading)) &&
-      ss.every((x) => semTexto(x.body));
-  }
-  if (s.kind === "cards" || s.kind === "matrix") {
-    const cs = s.cards ?? [];
-    return cs.length >= 3 && cs.every((x) => rotulo(x.heading)) &&
-      cs.every((x) => semTexto(x.body));
-  }
-  if (s.kind === "bullets" || s.kind === "tiles" || s.kind === "bento") {
-    // Aqui o rótulo é o item inteiro: "Contexto", e nada mais. Se vier
-    // "Contexto: a prefeitura...", há conteúdo e o slide fica.
-    const bs = s.bullets ?? [];
-    return bs.length >= 3 &&
-      bs.every((b) => rotulo(b) && String(b).trim().split(/\s+/).length <= 2);
-  }
-  return false;
-}
+/** Reexporta a triagem compartilhada (ver layout-fit.ts) sob o nome local. */
+const casoVazio = esqueletoDeCaso;
 
 export function ensurePedagogicalCoverage(
   out: DeckModule[],
