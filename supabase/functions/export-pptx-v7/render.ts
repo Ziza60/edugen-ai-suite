@@ -12,7 +12,7 @@ import { autoBodyFontSize } from "./validate.ts";
 import { coverBoxSize, imageSizeFromDataUri } from "../_shared/image-size.ts";
 import { categoricalColors } from "./chart-palette.ts";
 import { chevronNumberBox } from "./chevron-geometry.ts";
-import { ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
+import { chevronCabe, ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 
 // ── Carimbo de build ─────────────────────────────────────────────────────────
 // UM DECK TEM DE DIZER QUEM O FEZ
@@ -28,7 +28,7 @@ import { ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 // próprio, a resposta: veio de antes de 21/08.
 //
 // Bump this on every behavioural change to the engine.
-export const V7_BUILD = "2026-08-22-corte-e-classificador";
+export const V7_BUILD = "2026-08-22b-seta-nao-come-o-corpo";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
@@ -2646,8 +2646,10 @@ export function renderDeck(
             // longo ali vira duas linhas apertadas — o mesmo motivo pelo qual
             // renderSteps escolhe a linha do tempo apenas para passos curtos.
             const passos = s.steps ?? [];
-            const cabeRotulo = passos.length >= 3 && passos.length <= 5 &&
-              passos.every((st) => (st.heading?.length ?? 0) <= 26);
+            // Ver chevronCabe, em layout-fit.ts: além do rótulo curto e da
+            // contagem, exige que NENHUM passo tenha corpo — a seta desenha só
+            // o rótulo, e passar-lhe um passo com corpo apaga o corpo.
+            const cabeRotulo = chevronCabe(passos);
             const v = stepsVar++ % (cabeRotulo ? 3 : 2);
             if (v === 1) renderStairs(slide, s, d, brand, num, m.title);
             else if (v === 2) {

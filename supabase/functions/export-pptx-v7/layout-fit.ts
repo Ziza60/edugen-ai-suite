@@ -353,3 +353,45 @@ export function trimToWholeThought(raw: string): string {
   return s;
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A SETA SÓ DESENHA O RÓTULO — ENTÃO SÓ PODE RECEBER RÓTULOS
+//
+// Esta é a causa que eu procurei por três decks. Os slides que chegavam como
+// "1 Contexto · 2 Desafio · 3 Solução · 4 Resultado" e nada mais NUNCA
+// estiveram vazios: o texto existia, chegava inteiro à renderização, e a
+// variante de chevron o descartava — ela lê apenas os títulos dos passos,
+// porque é só o que cabe dentro da seta.
+//
+// Eu tinha diagnosticado como "estudo de caso sem conteúdo" e reforçado a
+// triagem três vezes, em lugares cada vez mais tardios do caminho. As três
+// mudanças eram defensáveis, mas nenhuma podia funcionar: o slide estava cheio
+// em todos os pontos onde eu olhava. A perda acontecia depois de todos eles,
+// no desenho.
+//
+// A regra correta é anterior a qualquer triagem: uma forma que não sabe
+// mostrar o corpo não recebe conteúdo que tem corpo. O chevron continua
+// disponível para sequências de rótulo puro — "Fixação · Empenho · Liquidação
+// · Pagamento" —, que é para o que ele foi feito.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** O passo, na forma mínima de que esta decisão precisa. */
+interface PassoParaSeta {
+  heading?: string;
+  body?: string;
+}
+
+/**
+ * O slide de passos pode ser desenhado como setas em sequência?
+ *
+ * Três condições, e a terceira é a que faltava: rótulo curto (a seta carrega o
+ * número dentro e a legenda embaixo, numa coluna estreita), entre 3 e 5 passos,
+ * e NENHUM passo com corpo — porque o corpo não seria desenhado.
+ */
+export function chevronCabe(passos: PassoParaSeta[]): boolean {
+  const ps = passos ?? [];
+  if (ps.length < 3 || ps.length > 5) return false;
+  if (ps.some((p) => (p.heading?.length ?? 0) > 26)) return false;
+  if (ps.some((p) => String(p.body ?? "").trim())) return false;
+  return true;
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  chevronCabe,
   esqueletoDeCaso,
   rotuloDoNucleo,
   terminaEmClassificador,
@@ -224,5 +225,65 @@ describe("o esqueleto é barrado na NORMALIZAÇÃO, que é o fim da linha", () =
     } as never);
     expect(deck.modules[0].slides).toHaveLength(1);
     expect(deck.modules[0].slides[0].kind).toBe("section");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A CAUSA QUE EU PROCUREI POR TRÊS DECKS
+//
+// Slides 20 e 30 do deck de 22/08 (2ª geração): "1 Contexto · 2 Desafio ·
+// 3 Solução · 4 Resultado" e nada mais — pela terceira vez, agora com o
+// carimbo confirmando que TODAS as proteções que eu havia escrito estavam no
+// ar. Elas não podiam funcionar.
+//
+// O slide nunca esteve vazio. O texto existia, chegava inteiro à renderização,
+// e a variante de chevron o descartava: ela lê apenas os títulos dos passos,
+// porque é só o que cabe dentro da seta. A perda acontecia DEPOIS de todo
+// ponto onde eu havia colocado triagem.
+//
+// A regra certa é anterior a qualquer triagem: uma forma que não sabe mostrar
+// o corpo não recebe conteúdo que tem corpo.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("a seta só desenha o rótulo, então só recebe rótulos", () => {
+  const passo = (heading: string, body?: string) => ({ heading, body });
+
+  it("passos COM corpo nunca vão para a seta — era aqui que o texto sumia", () => {
+    expect(chevronCabe([
+      passo("Contexto", "No Armazém da Esquina, o Sr. João compra de forma reativa."),
+      passo("Desafio", "Descobrir quanto custa cada pedido."),
+      passo("Solução", "Somar o tempo gasto e ratear pelos pedidos do mês."),
+      passo("Resultado", "Chegou a R$ 42,50 por pedido."),
+    ])).toBe(false);
+  });
+
+  it("basta UM passo com corpo para a seta estar fora", () => {
+    expect(chevronCabe([
+      passo("Contexto", "Só este tem texto."),
+      passo("Desafio"),
+      passo("Solução"),
+    ])).toBe(false);
+  });
+
+  it("sequência de rótulo puro continua ganhando a seta", () => {
+    expect(chevronCabe([
+      passo("Fixação"), passo("Empenho"), passo("Liquidação"), passo("Pagamento"),
+    ])).toBe(true);
+  });
+
+  it("corpo em branco não conta como corpo", () => {
+    expect(chevronCabe([passo("Previsão", "  "), passo("Lançamento", ""), passo("Arrecadação")]))
+      .toBe(true);
+  });
+
+  it("as condições antigas continuam valendo", () => {
+    const puro = (n: number) => Array.from({ length: n }, (_, i) => passo(`Etapa ${i + 1}`));
+    expect(chevronCabe(puro(2))).toBe(false); // poucos
+    expect(chevronCabe(puro(6))).toBe(false); // demais
+    expect(chevronCabe([
+      passo("Um rótulo bem mais longo do que caberia na seta"),
+      passo("Empenho"),
+      passo("Pagamento"),
+    ])).toBe(false);
   });
 });
