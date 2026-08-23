@@ -2429,6 +2429,142 @@ function buildCaseDossier(blueprint: CourseBlueprint): string {
   return `FIO CONDUTOR: ${blueprint.case_thread}\nDOSSIÊ CANÔNICO:\n${blueprint.case_facts.map((fact) => `- ${fact}`).join("\n")}`;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// OS NÚMEROS DO CASO CONDUTOR MUDAVAM DE MÓDULO PARA MÓDULO
+//
+// Curso de estoque, apostila de 23/08. O módulo 2 faz o aluno calcular, para o
+// Armazém da Esquina do Sr. João, um Custo de Pedido de R$185,00 — soma tempo do
+// dono, tempo do funcionário, frete e papelaria, e imprime o resultado em
+// destaque. Doze páginas depois, o módulo 3 usa o MESMO armazém e o MESMO dono
+// para calcular o Lote Econômico, e informa "CP = R$ 50,00/pedido". Sem uma
+// palavra de explicação. O aluno acabou de calcular 185.
+//
+// A CAUSA é estrutural, não um deslize do modelo. Duas coisas se somam:
+//
+//   1. O dossiê canônico é DELIBERADAMENTE sem números — o prompt da estrutura
+//      manda não atribuir resultados numéricos ao caso, para não inventar dado
+//      sem lastro. Então não há valor canônico nenhum para o módulo consultar.
+//   2. buildPriorLearningContext monta o "que veio antes" a partir do BLUEPRINT:
+//      títulos, objetivos, conceitos. Nunca do que foi de fato escrito. Cada
+//      módulo é gerado numa invocação separada e não enxerga uma linha do texto
+//      dos anteriores.
+//
+// Somadas, garantem que cada módulo invente os seus próprios números para o
+// mesmo caso. Isto aqui fecha a lacuna 2: lê o que os módulos anteriores já
+// imprimiram e devolve os valores encontrados para o prompt do módulo seguinte.
+//
+// POR QUE PROCURAR PELOS TERMOS DO GLOSSÁRIO
+//
+// Extrair "grandeza = valor" de prosa livre é ruído garantido, e um valor
+// extraído errado vira instrução errada — pior que não ter. Mas o curso já traz
+// uma lista canônica de termos (terminology_ledger). Procurar um valor perto de
+// um termo conhecido é preciso: ou acha "Custo de Pedido ... R$185,00", ou não
+// acha nada e o módulo segue como seguia antes.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ValorCanonico {
+  termo: string;
+  valor: string;
+  modulo: number;
+}
+
+/** R$ 1.234,56 | R$50 | 1200 unidades | 3 dias | 15,15% */
+const VALOR_MEDIVEL =
+  /(R\$\s?\d[\d.,]*|\d[\d.,]*\s?%|\d[\d.,]*\s+(?:unidades?|dias?|horas?|meses|itens|peças|caixas))/i;
+
+/** O termo vem do glossário do curso e pode ter parênteses, ponto, hífen. */
+function escapeRegExp(texto: string): string {
+  return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Até onde vale procurar o valor depois do termo: a frase, no máximo.
+ *
+ * A primeira versão cortava a janela em qualquer `\n`, e devolveu lista VAZIA
+ * quando rodei contra o módulo 2 de verdade. O texto real diz "o Custo de
+ * Pedido para cada compra no Armazém da Esquina é de\nR$185.00" — a quebra ali
+ * é do parágrafo dobrando de linha, não do fim da frase, e o corte jogava fora
+ * exatamente o número procurado. Por isso a busca agora roda parágrafo a
+ * parágrafo, com as linhas dobradas já juntadas.
+ */
+function janelaDepoisDoTermo(paragrafo: string, inicio: number): string {
+  const bruto = paragrafo.slice(inicio, inicio + 160);
+  const fim = bruto.search(/[.;]\s|$/);
+  return fim > 0 ? bruto.slice(0, fim) : bruto;
+}
+
+/** Um parágrafo por item, com as linhas dobradas juntadas. */
+function paragrafosDe(texto: string): string[] {
+  return texto
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean);
+}
+
+/**
+ * Valores que este módulo publicou para os termos canônicos do curso.
+ *
+ * Um valor por termo — o primeiro, que é o que o módulo apresentou. Termos sem
+ * valor por perto simplesmente não entram.
+ */
+export function extrairValoresCanonicos(
+  markdown: string,
+  termos: string[],
+  modulo: number,
+): ValorCanonico[] {
+  const texto = String(markdown ?? "");
+  if (!texto) return [];
+  const paragrafos = paragrafosDe(texto);
+  const achados: ValorCanonico[] = [];
+
+  for (const termo of termos) {
+    const limpo = termo.trim();
+    if (limpo.length < 4) continue; // "LEC" sozinho casa em qualquer lugar
+
+    // TODAS as ocorrências, não só a primeira. O termo estreia num título ou
+    // numa definição, onde não há número nenhum — o valor aparece páginas
+    // depois, no exemplo resolvido. Olhar só a estreia devolvia lista vazia
+    // justamente para os termos que o módulo mais quantificou.
+    const busca = new RegExp(escapeRegExp(limpo), "gi");
+    let encontrado = false;
+    for (const paragrafo of paragrafos) {
+      for (const ocorrencia of paragrafo.matchAll(busca)) {
+        const janela = janelaDepoisDoTermo(
+          paragrafo,
+          (ocorrencia.index ?? 0) + ocorrencia[0].length,
+        );
+        const valor = janela.match(VALOR_MEDIVEL);
+        if (!valor) continue;
+        achados.push({ termo: limpo, valor: valor[1].trim(), modulo });
+        encontrado = true;
+        break; // o primeiro valor que o módulo deu ao termo basta
+      }
+      if (encontrado) break;
+    }
+  }
+  return achados;
+}
+
+/**
+ * O bloco do prompt com os valores já impressos.
+ *
+ * O texto pede consistência, não obediência cega: se o módulo precisar de um
+ * valor diferente, ele pode — desde que diga por quê. Um curso pode legitimamente
+ * revisar um número; o que não pode é trocá-lo em silêncio.
+ */
+function buildLedgerDeValores(valores: ValorCanonico[]): string {
+  if (!valores.length) return "";
+  const linhas = valores
+    .map((v) => `- ${v.termo}: ${v.valor} (publicado no módulo ${v.modulo})`)
+    .join("\n");
+  return `VALORES JÁ PUBLICADOS PARA O CASO CONDUTOR
+${linhas}
+
+Estes números já estão impressos na apostila do aluno. Se este módulo usar uma
+dessas grandezas para o mesmo caso, use O MESMO VALOR. Se precisar de outro,
+diga no texto por que ele mudou — o aluno acabou de calcular o anterior.`;
+}
+
 function buildModulePrompt(params: {
   course: CourseBlueprint;
   module: ModuleBlueprint;
@@ -2444,6 +2580,8 @@ function buildModulePrompt(params: {
   numbersRule: string;
   part: "envelope" | "lesson";
   lessonPlan?: LessonBlueprint;
+  /** Valores que os módulos anteriores já imprimiram. Ver buildLedgerDeValores. */
+  valoresPublicados?: ValorCanonico[];
 }): string {
   const {
     course,
@@ -2460,9 +2598,11 @@ function buildModulePrompt(params: {
     numbersRule,
     part,
     lessonPlan,
+    valoresPublicados,
   } = params;
   const priorContext = buildPriorLearningContext(course, moduleIndex);
   const caseDossier = buildCaseDossier(course);
+  const ledgerDeValores = buildLedgerDeValores(valoresPublicados ?? []);
   const plannedLessons = module.lessons
     .map(
       (lesson) =>
@@ -2562,7 +2702,16 @@ ${numbersRule}
 - Não invente leis, normas, estatísticas, métricas, referências, estudos, empresas ou resultados.
 - Não crie siglas ou fórmulas inexistentes.
 - Se houver caso condutor, use apenas os fatos do dossiê.
-${caseDossier ? `\n${caseDossier}\n` : ""}
+${caseDossier ? `\n${caseDossier}\n` : ""}${ledgerDeValores ? `\n${ledgerDeValores}\n` : ""}
+
+COERÊNCIA INTERNA DO QUE VOCÊ ESCREVER
+- Todo exemplo resolvido tem de obedecer à regra que o próprio módulo enunciou.
+  Se o texto diz "os itens que somam os primeiros 80% do valor são A", um item
+  que leva o acumulado a 87,87% não pode sair classificado como A. Confira o
+  exemplo contra o critério antes de fechar o bloco; se o resultado divergir da
+  regra, corrija o exemplo — não a regra.
+- Verifique a aritmética de cada passo: o resultado de uma linha é a entrada da
+  seguinte.
 
 INTEGRIDADE DE DOMÍNIO
 - Todo exemplo, terminologia e código deve permanecer no domínio do curso.
@@ -4021,7 +4170,10 @@ function normalizeAssessment(raw: any): AssessmentDocument {
     multiple_choice: multipleChoice,
     open_ended: {
       question: asString(open?.question),
-      sample_answer: asString(open?.sample_answer),
+      // A rede contra o muro de texto da página 47. Ver restaurarQuebrasDePasso.
+      // Um ponto só serve os dois destinos: o Markdown da apostila e a linha
+      // gravada em course_open_questions.
+      sample_answer: restaurarQuebrasDePasso(asString(open?.sample_answer)),
       criteria: asStringArray(open?.criteria, 8),
       outcome_id: asString(open?.outcome_id),
     },
@@ -4153,6 +4305,13 @@ QUALIDADE DAS QUESTÕES OBJETIVAS
 QUESTÃO ABERTA
 - Deve exigir aplicação ao contexto profissional.
 - Inclua resposta-modelo e de 2 a 5 critérios observáveis de correção.
+- sample_answer é uma string com quebras de linha reais ("\\n"). Quando a resposta
+  tiver um cálculo, escreva UM PASSO POR LINHA, e a explicação em parágrafo
+  separado por linha em branco. Não emende os passos num parágrafo corrido: a
+  apostila imprime a string como ela chega, e um cálculo em linha única sai com
+  as palavras coladas ("...= 60 unidadesO Ponto de Pedido de 60 unidades...").
+  Exemplo do formato esperado:
+  "Cálculo do LEC:\\nLEC = √((2 × 3600 × 50) / 2)\\nLEC = √(180000)\\nLEC ≈ 424 unidades\\n\\nO resultado indica que..."
 
 FLASHCARDS
 - Use somente quando ativados.
@@ -4168,6 +4327,93 @@ ${markdown}
 </MODULE_CONTENT>
 
 Retorne somente o JSON do esquema, com todos os campos presentes. Campos desativados devem ser [] ou objeto com strings vazias e criteria [].`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O PASSO A PASSO QUE CHEGA NUMA LINHA SÓ
+//
+// Na apostila de estoque de 23/08, página 47, a resposta-modelo saiu assim:
+//
+//   ...LEC = √(180000)LEC ≈ 424 unidadesO LEC de aproximadamente 424 unidades
+//   indica que o Sr. João deve comprar...Ponto de Pedido = (10 unidades/dia ×
+//   3 dias) + 30 unidadesPonto de Pedido = 60 unidades...
+//
+// Um muro, com as palavras coladas em cada troca de passo. Os critérios de
+// correção logo acima saíam certinhos, um por linha — mas eles vêm de um array,
+// e `sample_answer` é uma string só. O modelo escreve um cálculo passo a passo
+// dentro de um campo que trata como prosa, sem `\n` nenhum, e o exportador não
+// tem onde quebrar.
+//
+// A prevenção está no prompt (ver QUESTÃO ABERTA em buildAssessmentPrompt).
+// Isto aqui é a rede: quando a string chega inteira sem uma quebra sequer,
+// devolvemos as quebras onde a colagem é INEQUÍVOCA.
+//
+// "Inequívoca" é o que dá segurança a esta função. Todas as regras exigem
+// ADJACÊNCIA — nenhum espaço entre o que terminou e a maiúscula que começa. Em
+// português, uma palavra nunca é seguida colada de outra com inicial maiúscula;
+// quando isso aparece, ou era uma quebra de linha, ou é um nome CamelCase. Por
+// isso o único falso positivo possível está na lista COMPOSTOS_CAMELCASE.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Nomes que legitimamente têm maiúscula no meio e não podem ser partidos. */
+const COMPOSTOS_CAMELCASE =
+  /(?:PowerPoint|WhatsApp|YouTube|LinkedIn|MercadoLivre|MercadoPago|PagSeguro|OneDrive|SharePoint|QuickBooks|MacBook|iFood|iPhone|eBook|eSocial|eCommerce|NotaFiscal)/gi;
+
+/** Início de linha de cálculo: um rótulo curto seguido de "=". */
+const LINHA_DE_CALCULO = /(?<=[a-zà-ÿ0-9)\]])(?=[A-ZÀ-Þ][A-Za-zÀ-ÿ ]{0,40}=)/g;
+// Pontuação que fecha alguma coisa, colada numa maiúscula.
+//
+// A aspa precisa de cuidado: `'Macarrão` é uma aspa ABRINDO um nome de produto,
+// e quebrar ali estraga texto correto — foi o primeiro falso positivo que este
+// teste pegou. Uma aspa só fecha quando vem depois de letra ou dígito. Para o
+// resto da pontuação basta não haver espaço antes, o que já exclui `("Café`.
+const PONTUACAO_COLADA =
+  /(?<=[A-Za-zÀ-ÿ0-9]['"]|[^\s][)\]%:.,;!?])(?=[A-ZÀ-Þ])/g;
+/** Artigo iniciando frase nova, colado na palavra anterior. */
+const ARTIGO_COLADO = /(?<=[a-zà-ÿ0-9)\]])(?=(?:O|A|Os|As)\s[A-Za-zÀ-ÿ])/g;
+
+/**
+ * Devolve as quebras de linha a um passo a passo que veio numa linha só.
+ *
+ * Não faz nada se o texto já tem quebra — quem formatou direito fica intacto —
+ * nem em textos curtos, onde um muro não chega a atrapalhar.
+ */
+export function restaurarQuebrasDePasso(texto: string): string {
+  const t = String(texto ?? "");
+  if (!t || t.includes("\n") || t.length < 120) return t;
+
+  // Os nomes CamelCase saem de cena por um marcador que nenhuma regra casa, e
+  // voltam no fim. E mais simples e mais seguro que tentar excluí-los em cada
+  // uma das três expressões.
+  //
+  // O marcador usa a área de uso privado do Unicode com um índice entre
+  // delimitadores. Um número cru não serviria: o texto é um cálculo, está cheio
+  // de números, e a volta trocaria "1200" pelo primeiro nome guardado.
+  const abre = String.fromCharCode(0xe000);
+  const fecha = String.fromCharCode(0xe001);
+  const guardados: string[] = [];
+  let corpo = t.replace(COMPOSTOS_CAMELCASE, (nome) => {
+    guardados.push(nome);
+    return `${abre}${guardados.length - 1}${fecha}`;
+  });
+
+  corpo = corpo
+    .replace(PONTUACAO_COLADA, "\n")
+    .replace(LINHA_DE_CALCULO, "\n")
+    .replace(ARTIGO_COLADO, "\n");
+
+  corpo = corpo.replace(
+    new RegExp(`${abre}(\\d+)${fecha}`, "g"),
+    (_m, i) => guardados[Number(i)],
+  );
+
+  if (corpo === t) return t;
+  console.log(
+    `[generate-course] resposta-modelo veio numa linha só; ${
+      corpo.split("\n").length - 1
+    } quebras restauradas`,
+  );
+  return corpo;
 }
 
 function renderOpenEndedAssessment(openEnded: OpenEndedQuestion): string {

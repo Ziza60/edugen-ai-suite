@@ -35,12 +35,14 @@ import {
   MODULE_ENVELOPE_SCHEMA,
   LESSON_DOCUMENT_SCHEMA,
   corsHeaders,
+  extrairValoresCanonicos,
 } from "../_shared/course-pipeline.ts";
 import type {
   CourseBlueprint,
   ModuleBlueprint,
   SourceChunk,
   SourceDoc,
+  ValorCanonico,
 } from "../_shared/course-pipeline.ts";
 import { repairTruncation } from "../_shared/markdown.ts";
 import { secretsMatch } from "../_shared/course-dispatch.ts";
@@ -133,6 +135,66 @@ function jsonResponse(status: number, payload: Record<string, unknown>): Respons
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// O QUE OS MÓDULOS ANTERIORES JÁ IMPRIMIRAM
+//
+// Cada módulo é gerado numa invocação separada desta função e não enxerga uma
+// linha do texto dos anteriores. Foi assim que a apostila de estoque de 23/08
+// calculou um Custo de Pedido de R$185,00 no módulo 2 e, doze páginas depois,
+// usou "CP = R$ 50,00" para o mesmo armazém do mesmo dono.
+//
+// A ponte é uma leitura só, do que já está gravado em course_modules. Nunca
+// lança: coerência é enriquecimento e não pode custar o módulo inteiro. Se a
+// consulta falhar, o módulo sai como saía antes.
+// ═══════════════════════════════════════════════════════════════════════════
+async function lerValoresJaPublicados(
+  serviceClient: any,
+  courseId: string,
+  blueprint: CourseBlueprint,
+  moduleIndex: number,
+): Promise<ValorCanonico[]> {
+  if (moduleIndex <= 0) return [];
+  const termos = (blueprint.terminology_ledger ?? []).map((item) => item.term);
+  if (!termos.length) return [];
+
+  try {
+    const { data, error } = await serviceClient
+      .from("course_modules")
+      .select("order_index, content")
+      .eq("course_id", courseId)
+      .lt("order_index", moduleIndex)
+      .order("order_index", { ascending: true });
+
+    if (error) {
+      console.log(`[generate-course-module] valores anteriores indisponíveis: ${error.message}`);
+      return [];
+    }
+
+    // Um valor por termo, o do módulo MAIS ANTIGO — foi o que o aluno viu
+    // primeiro, e é dele que os seguintes não podem divergir em silêncio.
+    const porTermo = new Map<string, ValorCanonico>();
+    for (const linha of data ?? []) {
+      for (const achado of extrairValoresCanonicos(
+        String(linha?.content ?? ""),
+        termos,
+        Number(linha?.order_index ?? 0) + 1,
+      )) {
+        if (!porTermo.has(achado.termo)) porTermo.set(achado.termo, achado);
+      }
+    }
+    const valores = [...porTermo.values()];
+    if (valores.length) {
+      console.log(
+        `[generate-course-module] módulo ${moduleIndex + 1}: ${valores.length} valores canônicos herdados`,
+      );
+    }
+    return valores;
+  } catch (err) {
+    console.log(`[generate-course-module] erro ao ler valores anteriores: ${err}`);
+    return [];
+  }
+}
+
 async function generateOneModule(params: {
   serviceClient: any;
   userId: string;
@@ -187,6 +249,13 @@ async function generateOneModule(params: {
   const allowedSourceIds = moduleChunks.map((chunk) => chunk.id);
   const allowedSourceIdSet = new Set(allowedSourceIds);
 
+  const valoresPublicados = await lerValoresJaPublicados(
+    serviceClient,
+    courseId,
+    blueprint,
+    moduleIndex,
+  );
+
   const modulePromptParams = {
     course: blueprint,
     module,
@@ -200,6 +269,7 @@ async function generateOneModule(params: {
     sourcePacket: moduleSourcePacket,
     allowedSourceIds,
     numbersRule,
+    valoresPublicados,
   };
 
   let rawDocument: any;
