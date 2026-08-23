@@ -1262,20 +1262,36 @@ class PdfRenderer {
     for (const row of rows) {
       const titulo = sanitizeText(stripMarkdown(row[0] || ""));
       // Pares a partir da 2ª coluna, ignorando células vazias.
-      const pares: Array<[string, string[]]> = [];
+      //
+      // O RÓTULO TAMBÉM É TEXTO, E TEXTO QUEBRA
+      //
+      // Isto guardava o rótulo como string e, na hora de desenhar, jogava fora
+      // tudo que não coubesse na primeira linha de 32 mm. Na apostila de estoque
+      // de 23/08, "Valor Total de Venda (R$)" saiu "Valor Total de" seis vezes —
+      // a tabela da Curva ABC inteira sem dizer de que valor estava falando.
+      // Agora o rótulo é quebrado junto com o valor e desenhado por inteiro.
+      const pares: Array<[string[], string[]]> = [];
       for (let c = 1; c < headers.length; c++) {
         const valor = sanitizeText(stripMarkdown(row[c] || ""));
         if (!valor) continue;
         this.doc.setFontSize(FONT.SMALL);
-        pares.push([
+        // O rótulo é medido em negrito porque é assim que vai ser desenhado.
+        this.doc.setFont(FAMILIA, "bold");
+        const rotulo = this.doc.splitTextToSize(
           sanitizeText(stripMarkdown(headers[c] || "")),
-          this.doc.splitTextToSize(valor, CONTENT_W - labelW - 10),
-        ]);
+          labelW - 2,
+        );
+        this.doc.setFont(FAMILIA, "normal");
+        pares.push([rotulo, this.doc.splitTextToSize(valor, CONTENT_W - labelW - 10)]);
       }
       if (!titulo && !pares.length) continue;
 
       const alturaBloco = 9 +
-        pares.reduce((a, [, ls]) => a + Math.max(5, ls.length * SP.LINE_HEIGHT) + 2, 0) + 5;
+        pares.reduce(
+          (a, [rot, ls]) =>
+            a + Math.max(5, Math.max(rot.length, ls.length) * SP.LINE_HEIGHT) + 2,
+          0,
+        ) + 5;
       // Um bloco nunca deve ser partido: é uma unidade de leitura.
       this.checkPage(Math.min(alturaBloco, MAX_Y - MARGIN_TOP));
 
@@ -1293,22 +1309,26 @@ class PdfRenderer {
       y += 1.5;
 
       for (const [rotulo, linhas] of pares) {
+        // Rótulo e valor descem em paralelo, cada um no seu ritmo; o par termina
+        // na altura do mais alto dos dois.
         this.doc.setFont(FAMILIA, "bold");
         this.doc.setFontSize(FONT.SMALL);
         this.doc.setTextColor(...COLOR.TEXT_MUTED);
-        this.doc.text(
-          this.doc.splitTextToSize(rotulo, labelW - 2)[0] || "",
-          startX + 7,
-          y,
-        );
+        let yRotulo = y;
+        for (const l of rotulo) {
+          this.doc.text(l, startX + 7, yRotulo);
+          yRotulo += SP.LINE_HEIGHT;
+        }
+
         this.doc.setFont(FAMILIA, "normal");
         this.doc.setTextColor(...COLOR.TEXT_BODY);
+        let yValor = y;
         for (const l of linhas) {
-          this.doc.text(l, startX + 7 + labelW, y);
-          y += SP.LINE_HEIGHT;
+          this.doc.text(l, startX + 7 + labelW, yValor);
+          yValor += SP.LINE_HEIGHT;
         }
-        if (!linhas.length) y += SP.LINE_HEIGHT;
-        y += 2;
+
+        y = Math.max(yRotulo, yValor, y + SP.LINE_HEIGHT) + 2;
       }
 
       // Faixa de destaque à esquerda, no lugar da grade.
