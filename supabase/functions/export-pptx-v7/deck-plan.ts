@@ -1644,13 +1644,17 @@ function buildTableSlide(b: MdBlock, moduleTitle: string): SlideSpec | null {
   // mesmo com a fórmula do LEC e com a pergunta que perdeu o ponto de
   // interrogação junto com o complemento.
   //
-  // A célula desenhada comporta MAX_TABLE_CELL_CHARS (80). Um teto de palavras
-  // mais restritivo que isso corta texto que caberia na página. Aqui e na
-  // normalização o teto de palavras passa a ser folgado, e quem manda é o
-  // limite de caracteres — que é o que a coluna de fato tem.
+  // DOIS CORTADORES EM SÉRIE SÃO UM SÓ CORTADOR: O PRIMEIRO
+  //
+  // Quem decide o tamanho da célula é a normalização, que mede a coluna
+  // (capacidadeDaCelula, em table-geometry.ts) e chega a 220 caracteres nas
+  // tabelas de três colunas. Mas ela só vê o que o planejador deixou passar: um
+  // teto de 18 palavras aqui equivale a ~110 caracteres e continuaria mandando,
+  // com a medição da coluna sem efeito nenhum. Este teto existe só para conter
+  // um parágrafo inteiro que tenha vindo como célula; o corte de verdade é lá.
   const trows: DeckTableRow[] = data.slice(0, 6).map((r) => ({
     label: toShortPoint(r[0], 6),
-    cells: columns.map((_, ci) => toShortPoint(r[ci + 1] ?? "", 18)),
+    cells: columns.map((_, ci) => toShortPoint(r[ci + 1] ?? "", 40)),
   }));
   return {
     kind: "table",

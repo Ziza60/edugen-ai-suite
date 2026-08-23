@@ -13,6 +13,12 @@ import { coverBoxSize, imageSizeFromDataUri } from "../_shared/image-size.ts";
 import { categoricalColors } from "./chart-palette.ts";
 import { chevronNumberBox } from "./chevron-geometry.ts";
 import { chevronCabe, ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
+import {
+  alturaDaLinha,
+  corpoDaCelula,
+  larguraDaColuna,
+  larguraDoRotulo,
+} from "./table-geometry.ts";
 
 // ── Carimbo de build ─────────────────────────────────────────────────────────
 // UM DECK TEM DE DIZER QUEM O FEZ
@@ -28,7 +34,7 @@ import { chevronCabe, ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 // próprio, a resposta: veio de antes de 21/08.
 //
 // Bump this on every behavioural change to the engine.
-export const V7_BUILD = "2026-08-23a-foto-que-fala-do-slide";
+export const V7_BUILD = "2026-08-23b-celula-medida-na-coluna";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;
@@ -1264,17 +1270,21 @@ function renderTable(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const columns = s.columns ?? [];
   const rows = s.rows ?? [];
   const ncol = columns.length;
-  const labelW = Math.min(3.0, Math.max(2.0, CW * 0.22));
-  const dataW = (CW - labelW) / ncol;
+  // A largura vem de table-geometry.ts, o mesmo módulo que a normalização
+  // consulta para saber quanto texto cabe na célula. Duas contas separadas para
+  // a mesma coluna divergiriam na primeira vez que alguém mexesse numa delas —
+  // e a divergência apareceria como texto estourando a célula, sem nada acusar.
+  const labelW = larguraDoRotulo();
+  const dataW = larguraDaColuna(ncol);
   const colW = [labelW, ...Array(ncol).fill(dataW)];
   // Cap row height so a 1–2 row table doesn't stretch to fill the whole content
   // area (which left huge vertical gaps and made the header float far above its
   // data, reading as a misaligned table). Few rows now render compact at the top;
   // a full 6-row table (CONTENT_H/7 ≈ 0.77) is unaffected.
   const nRows = rows.length + 1;
-  const rowH = Math.min(0.95, CONTENT_H / nRows);
+  const rowH = alturaDaLinha(nRows);
   const headFs = ncol >= 5 ? 11 : 12;
-  const bodyFs = ncol >= 5 ? 9 : ncol >= 4 ? 10 : 11;
+  const bodyFs = corpoDaCelula(ncol);
 
   // Modern table: NO vertical grid lines. The eye is guided by the accent header
   // and subtle horizontal hairlines only — it "breathes" through whitespace.

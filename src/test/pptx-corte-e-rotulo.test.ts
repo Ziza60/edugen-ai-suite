@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { capacidadeDaCelula } from "../../supabase/functions/export-pptx-v7/table-geometry";
 import {
   chevronCabe,
   esqueletoDeCaso,
@@ -299,9 +300,13 @@ describe("a seta só desenha o rótulo, então só recebe rótulos", () => {
 // orçamento, e ficou de fora.
 //
 // A causa é dois tetos em série, de novo: 10 palavras ao montar a tabela e 12
-// ao normalizar. O primeiro, mais apertado, decidia tudo — e a célula desenhada
-// comporta 80 caracteres. Um teto de palavras mais restritivo que o de
-// caracteres corta texto que caberia na página.
+// ao normalizar. O primeiro, mais apertado, decidia tudo. Um teto de palavras
+// mais restritivo que o de caracteres corta texto que caberia na página.
+//
+// Depois disto o teto de caracteres deixou de ser a constante 80 e passou a ser
+// medido na coluna (capacidadeDaCelula). Esta tabela tem duas colunas de dados e
+// três linhas: comporta bem mais que 80, e a instrução de 92 caracteres com o
+// exemplo entre parênteses agora chega inteira ao slide.
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("a célula da atividade cabe no que a coluna desenha", () => {
@@ -337,7 +342,15 @@ describe("a célula da atividade cabe no que a coluna desenha", () => {
   });
 
   it("nenhuma célula estoura o que a coluna desenha", () => {
-    for (const c of celulas) expect(c.length).toBeLessThanOrEqual(80);
+    // O teto vem da geometria da coluna, não de uma constante: 2 colunas de
+    // dados, 3 linhas de dados.
+    const teto = capacidadeDaCelula(2, 3);
+    for (const c of celulas) expect(c.length).toBeLessThanOrEqual(teto);
+  });
+
+  it("a instrução de 92 caracteres cabe — com o teto fixo de 80 não cabia", () => {
+    expect(celulas[0].length).toBeGreaterThan(80);
+    expect(celulas[0]).toContain("R$ 2,50");
   });
 });
 

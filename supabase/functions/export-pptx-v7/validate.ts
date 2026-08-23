@@ -16,6 +16,7 @@ import type {
   PlannedDeck,
   SlideSpec,
 } from "./deck-plan.ts";
+import { capacidadeDaCelula } from "./table-geometry.ts";
 import {
   DANGLING_PREP_RE,
   ELLIPSIS_RE,
@@ -38,6 +39,8 @@ export const LIMITS = {
   MAX_CARD_BODY_CHARS: 90,
   MAX_TABLE_COLS: 5,
   MAX_TABLE_ROWS: 6,
+  // Não é mais o teto das células: quem manda é capacidadeDaCelula, que mede a
+  // coluna. Fica como piso de segurança para quem ainda o consulte.
   MAX_TABLE_CELL_CHARS: 80,
   MAX_CHART_POINTS: 6,
   // The kicker is a LABEL (usually the module title), not prose. Cutting it
@@ -265,16 +268,30 @@ function normTable(slide: SlideSpec):
     .filter((c) => c.length > 0)
     .slice(0, LIMITS.MAX_TABLE_COLS);
   if (columns.length < 2) return null;
+  // O TETO DA CÉLULA VEM DA COLUNA, NÃO DE UMA CONSTANTE
+  //
+  // Era MAX_TABLE_CELL_CHARS = 80 para toda tabela. Medindo o deck de 23/08, a
+  // capacidade real ia de 78 caracteres (5 colunas estreitas) a 220 (3 colunas
+  // largas com linha alta): a constante fora calibrada para a tabela mais
+  // apertada e punia todas as outras. Na apostila isso virava frase pendurada —
+  // "Descreva o cenário atual do Armazém da Esquina e a importância de uma
+  // nova", cortada aos 74 caracteres numa célula que comportava 171.
+  //
+  // A contagem de linhas usada aqui é a das linhas CRUAS, antes de qualquer
+  // filtro. Superestimar linhas encolhe a altura de linha e portanto o teto:
+  // o erro cai para o lado de cortar cedo, que é o lado seguro.
+  const linhasCruas = Array.isArray(slide.rows) ? slide.rows.length : 0;
+  const tetoDaCelula = capacidadeDaCelula(columns.length, linhasCruas);
   const rawRows = (Array.isArray(slide.rows) ? slide.rows : [])
     .map((r) => ({
       label: capText(String(r?.label ?? ""), 8, 32),
       cells: (Array.isArray(r?.cells) ? r.cells : [])
-        // Teto de palavras folgado de propósito: quem limita a célula é
-        // MAX_TABLE_CELL_CHARS, que corresponde ao que a coluna desenha. Um
-        // teto de 12 palavras cortava frases de 13 que cabiam com sobra —
-        // "Qual é a quantidade ideal a ser comprada por pedido para este
-        // produto?" tem 69 caracteres e perdia o complemento e a interrogação.
-        .map((c) => capText(String(c ?? ""), 18, LIMITS.MAX_TABLE_CELL_CHARS)),
+        // Teto de palavras folgado de propósito: quem limita a célula é o teto
+        // de caracteres acima, que corresponde ao que a coluna desenha. Um teto
+        // de 12 palavras cortava frases de 13 que cabiam com sobra — "Qual é a
+        // quantidade ideal a ser comprada por pedido para este produto?" tem 69
+        // caracteres e perdia o complemento e a interrogação.
+        .map((c) => capText(String(c ?? ""), 40, tetoDaCelula)),
     }))
     .filter((r) => r.label.length > 0 || r.cells.some((c) => c.length > 0));
   if (rawRows.length < 1) return null;
