@@ -79,3 +79,50 @@ describe("transliterarSimbolos — a rede final", () => {
     expect(transliterarSimbolos(undefined as unknown as string)).toBe("");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A RAIZ QUADRADA QUE EU APAGUEI
+//
+// Curso de estoque, PDF de 23/08. A apostila imprimia, em sequência:
+//
+//     LEC = ((2 * 1200 * 50) / 3)
+//     LEC = ((120000) / 3)
+//     LEC = (40000)
+//     LEC = 200 unidades
+//
+// Sem o √, a última linha é falsa: 40000 não é 200. O PPTX mostrava a fórmula
+// certa — só o PDF perdia o símbolo, porque só ele passa por esta função.
+//
+// A culpa é da rede de segurança que eu mesmo escrevi: ela remove tudo acima do
+// Latin-1, e √ (U+221A) está acima. Remover é o certo, a fonte não desenha o que
+// não conhece. Errado era não ter equivalente no mapa — e apagar calado.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("símbolos de matemática", () => {
+  it("a raiz quadrada vira sqrt, e a conta volta a fechar", () => {
+    expect(transliterarSimbolos("LEC = √((2 * D * CP) / CM)"))
+      .toBe("LEC = sqrt((2 * D * CP) / CM)");
+    expect(transliterarSimbolos("LEC = √(40000) = 200"))
+      .toBe("LEC = sqrt(40000) = 200");
+  });
+
+  it("multiplicação e divisão do Latin-1 ficam intactas", () => {
+    // × e ÷ a fonte desenha; traduzi-los pioraria texto que já estava certo.
+    expect(transliterarSimbolos("3 × 4 ÷ 2")).toBe("3 × 4 ÷ 2");
+  });
+
+  it("expoentes fora do Latin-1 viram notação legível", () => {
+    expect(transliterarSimbolos("10⁶ unidades")).toBe("10^6 unidades");
+  });
+
+  it("os que o Latin-1 já desenha ficam como estão", () => {
+    // ², ³, °, ½ e µ são Latin-1: a fonte os desenha, não há o que traduzir.
+    expect(transliterarSimbolos("2 m² a 25 °C, ½ de µm")).toBe("2 m² a 25 °C, ½ de µm");
+  });
+
+  it("nenhum caractere fora do Latin-1 sobrevive", () => {
+    const r = transliterarSimbolos("√ ⨯ ∑ Δ π ⅓ ≫");
+    expect(r).toMatch(/^[ -ÿ]*$/);
+    expect(r).toContain("sqrt");
+  });
+});

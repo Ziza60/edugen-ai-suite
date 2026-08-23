@@ -218,6 +218,42 @@ const SIMBOLOS: Array<[RegExp, string]> = [
   [/[✗✘❌]/g, "X"],
   [/[     ]/g, " "],
   [/[‑]/g, "-"],
+
+  // ── MATEMÁTICA ────────────────────────────────────────────────────────────
+  // A rede de segurança abaixo apagava estes em silêncio, e com a raiz quadrada
+  // isso trocou matemática certa por errada. O PDF do curso de estoque imprimia:
+  //
+  //     LEC = ((2 * 1200 * 50) / 3)
+  //     LEC = (40000)
+  //     LEC = 200 unidades
+  //
+  // Sem o √, a última linha é falsa: 40000 não é 200. O PPTX mostrava a fórmula
+  // correta porque não passa por aqui — só o PDF perdia o símbolo. Um curso que
+  // ensina a calcular não pode imprimir a conta errada.
+  [/[√]/g, "sqrt"],
+  [/[∛]/g, "raiz cubica de "],
+  // × (U+00D7) e ÷ (U+00F7) NÃO entram: são Latin-1, a fonte os desenha, e
+  // traduzi-los seria piorar um texto que já estava certo. Só o gêmeo de cima
+  // da tabela é que precisa de equivalente.
+  [/[⨯]/g, "x"],
+  [/[∙⋅]/g, "*"],
+  [/[∑]/g, "soma de "],
+  [/[∏]/g, "produto de "],
+  [/[Δ∆]/g, "delta "],
+  [/[π]/g, "pi"],
+  [/[≫]/g, ">>"],
+  [/[≪]/g, "<<"],
+  [/[⅓]/g, "1/3"],
+  [/[⅔]/g, "2/3"],
+  [/[⅕]/g, "1/5"],
+  [/[⁰]/g, "^0"],
+  [/[⁴]/g, "^4"],
+  [/[⁵]/g, "^5"],
+  [/[⁶]/g, "^6"],
+  [/[⁷]/g, "^7"],
+  [/[⁸]/g, "^8"],
+  [/[⁹]/g, "^9"],
+  [/[ⁿ]/g, "^n"],
 ];
 
 /**
@@ -230,6 +266,22 @@ export function transliterarSimbolos(texto: string): string {
   if (!texto) return "";
   let t = String(texto);
   for (const [re, sub] of SIMBOLOS) t = t.replace(re, sub);
+  // A REDE DE SEGURANÇA PRECISA FAZER BARULHO
+  //
+  // Ela apagava caracteres sem deixar rastro, e foi assim que a raiz quadrada
+  // sumiu de um curso de cálculo de estoque sem ninguém perceber por semanas.
+  // Apagar continua sendo o certo — a fonte não desenha o que não conhece —,
+  // mas agora fica registrado o que foi apagado, para que a próxima lacuna do
+  // mapa apareça no log em vez de aparecer no material do cliente.
+  const perdidos = t.match(/[^\u0020-\u00FF]/g);
+  if (perdidos) {
+    const distintos = [...new Set(perdidos)];
+    console.warn(
+      `[PDF-SIMBOLOS] sem equivalente no mapa, removidos: ${
+        distintos.map((c) => `${c} (U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")})`).join(", ")
+      }`,
+    );
+  }
   // Rede final. O intervalo Latin-1 (até U+00FF) cobre todo o português; o que
   // passa disso e não foi traduzido acima a fonte não desenha.
   return t.replace(/[^ -ÿ]/g, "");
