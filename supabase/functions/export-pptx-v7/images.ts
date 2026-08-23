@@ -7,8 +7,17 @@
 // never a hard dependency.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import {
+  consultaUtil,
+  escolherFoto,
+  type FotoCandidata,
+} from "./image-relevance.ts";
+
 const PEXELS_SEARCH = "https://api.pexels.com/v1/search";
 const PIXABAY_SEARCH = "https://pixabay.com/api/";
+
+/** Quantas fotos pedir por consulta para ter de onde escolher a relevante. */
+const CANDIDATAS = 5;
 
 /** fetch with a hard timeout (images must never stall the export into a 504). */
 async function fetchWithTimeout(
@@ -47,33 +56,55 @@ export async function toDataUri(url: string): Promise<string | null> {
   }
 }
 
-/** Resolve a landscape photo URL from Pexels (≈940px "large"). null on any miss. */
+/**
+ * Resolve a landscape photo URL from Pexels (≈940px "large"). null on any miss.
+ *
+ * Pede CANDIDATAS, não uma foto. A versão anterior pedia `per_page=1` e usava o
+ * que viesse: o Pexels não erra quando a consulta é ruim, ele devolve uma foto
+ * qualquer, e ela ia para o slide sem ninguém olhar. O campo `alt` — que já
+ * vinha na resposta e era descartado — diz o que a foto mostra. Ver
+ * image-relevance.ts.
+ */
 async function pexelsPhoto(q: string, apiKey: string): Promise<string | null> {
   try {
     const url =
-      `${PEXELS_SEARCH}?query=${encodeURIComponent(q)}&per_page=1&orientation=landscape`;
+      `${PEXELS_SEARCH}?query=${encodeURIComponent(q)}&per_page=${CANDIDATAS}&orientation=landscape`;
     const res = await fetchWithTimeout(url, { headers: { Authorization: apiKey } }, 10000);
     if (!res.ok) return null;
     const data = await res.json();
-    const photo = data?.photos?.[0];
-    return photo?.src?.large || photo?.src?.medium || null;
+    const candidatas: FotoCandidata[] = (data?.photos ?? []).map((p: any) => ({
+      url: p?.src?.large || p?.src?.medium || "",
+      descricao: String(p?.alt ?? ""),
+    }));
+    const escolhida = escolherFoto(q, candidatas);
+    // O filtro pode estar apertado demais e isto é o que vai dizer: candidatas
+    // vieram, e nenhuma passou. Se aparecer com frequência nos logs, quem
+    // precisa afrouxar é a regra de relevância, não a busca.
+    if (!escolhida && candidatas.length) {
+      console.log(`[pptx-v7] pexels: ${candidatas.length} fotos para "${q}", nenhuma relacionada`);
+    }
+    return escolhida;
   } catch {
     return null;
   }
 }
 
 /** Resolve a landscape photo URL from Pixabay. null on any miss.
- *  (Pixabay requires per_page >= 3; we just take the first horizontal photo.) */
+ *  As `tags` do Pixabay fazem o papel do `alt` do Pexels: dizem o que a foto
+ *  mostra, e é por elas que a relevância é conferida. */
 async function pixabayPhoto(q: string, apiKey: string): Promise<string | null> {
   try {
     const url = `${PIXABAY_SEARCH}?key=${encodeURIComponent(apiKey)}` +
       `&q=${encodeURIComponent(q)}&image_type=photo&orientation=horizontal` +
-      `&safesearch=true&per_page=3`;
+      `&safesearch=true&per_page=${CANDIDATAS}`;
     const res = await fetchWithTimeout(url, {}, 10000);
     if (!res.ok) return null;
     const data = await res.json();
-    const hit = data?.hits?.[0];
-    return hit?.largeImageURL || hit?.webformatURL || null;
+    const candidatas: FotoCandidata[] = (data?.hits ?? []).map((h: any) => ({
+      url: h?.largeImageURL || h?.webformatURL || "",
+      descricao: String(h?.tags ?? ""),
+    }));
+    return escolherFoto(q, candidatas);
   } catch {
     return null;
   }
@@ -97,9 +128,18 @@ export async function resolveImages(
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   if (!pexelsKey && !pixabayKey) return out;
-  const unique = Array.from(
-    new Set(queries.map((q) => q.trim().toLowerCase()).filter(Boolean)),
-  ).slice(0, maxImages);
+  // Consulta que não é cena concreta em inglês nem chega a ser buscada. Dois
+  // pontos do planejador caem para o título do módulo em português quando ele
+  // não escreve imageQuery, e buscar um título devolve foto aleatória — que no
+  // slide não é neutra, desmente o assunto. Ver image-relevance.ts.
+  const limpas = queries.map((q) => q.trim().toLowerCase()).filter(Boolean);
+  const uteis = limpas.filter(consultaUtil);
+  if (uteis.length < limpas.length) {
+    console.log(
+      `[pptx-v7] ${limpas.length - uteis.length} consulta(s) de imagem descartadas por não descreverem uma cena buscável`,
+    );
+  }
+  const unique = Array.from(new Set(uteis)).slice(0, maxImages);
 
   await Promise.all(
     unique.map(async (q) => {
