@@ -144,6 +144,10 @@ const MODULE_DEADLINE_MS = Math.max(
   Number(Deno.env.get("COURSE_MODULE_DEADLINE_MS") || "125000") || 125000,
 );
 
+// Medidos nos logs de 24/08: reparo de 17,6 a 36,8 s, avaliação de 9,5 a 16,6 s.
+const REPARO_TIPICO_MS = 33000;
+const AVALIACAO_TIPICA_MS = 17000;
+
 interface WorkerPayload {
   jobId: string;
   courseId: string;
@@ -463,7 +467,17 @@ async function generateOneModule(params: {
     const lessonIssueEntries = [...issuesByLesson.entries()].filter(([k]) => k !== "__envelope__");
     repairsApplied = (envelopeIssues.length > 0 ? 1 : 0) + lessonIssueEntries.length;
     for (const [lessonNum, lessonIssues] of lessonIssueEntries) {
-      if (msLeft() < 18000) {
+      // O REPARO PRECISA CABER, E A AVALIAÇÃO PRECISA SOBREVIVER A ELE
+      //
+      // A guarda era 18 s, e os reparos medidos em 24/08 custaram de 17,6 a
+      // 36,8 s: ela autorizava um reparo com metade do que ele cobra. No módulo
+      // 5 do curso de precificação foram DOIS seguidos, 68,4 s somados, e o
+      // worker foi a 143,4 s contra os 125 s do orçamento.
+      //
+      // Agora exige o custo típico de um reparo MAIS o da avaliação, que vem
+      // depois e é o que o aluno vê como quiz. Melhor um reparo e um quiz do
+      // que dois reparos e nenhum quiz.
+      if (msLeft() < REPARO_TIPICO_MS + AVALIACAO_TIPICA_MS) {
         validation.warnings.push(`Reparo cancelado por timeout antes de lição ${lessonNum}.`);
         break;
       }

@@ -644,7 +644,19 @@ async function callAIInner(
   const endpoint =
     "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
   const maxTokens = options.maxTokens ?? 8000;
+  // O ORÇAMENTO É UM PRAZO, NÃO UMA DURAÇÃO POR TENTATIVA
+  //
+  // Este valor era passado inteiro a cada tentativa. E há duas retentativas
+  // internas — 429 e reasoning_effort recusado —, então uma chamada orçada em
+  // 19,4 s podia consumir 19,4 + 1,5 + 19,4 = 40,3 s. Foi o que aconteceu no
+  // módulo 5 do curso de precificação de 24/08: um reparo com orçamento de
+  // 19,4 s levou 36,8 s e levou o worker a 143,4 s, contra os 125 s do módulo e
+  // os 150 s da plataforma.
+  //
+  // Vira prazo absoluto: cada tentativa recebe o que sobrou dele.
   const timeoutMs = options.timeoutMs ?? 90000;
+  const prazoFinal = Date.now() + timeoutMs;
+  const restanteDoPrazo = () => Math.max(1000, prazoFinal - Date.now());
   const models = getModelFallbacks(model);
   let lastError = "Erro desconhecido";
 
@@ -702,7 +714,7 @@ async function callAIInner(
             },
             body: JSON.stringify(body),
           },
-          timeoutMs,
+          restanteDoPrazo(),
         );
 
         if (!response.ok) {
