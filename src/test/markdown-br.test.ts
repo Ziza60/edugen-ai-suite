@@ -60,6 +60,39 @@ describe("cleanModuleContent — <br>", () => {
     expect(cleanModuleContent(md)).toContain("`<br>`");
   });
 
+  it("tabela DENTRO DE CITAÇÃO não é partida em duas", () => {
+    // Linha real do curso de 09/07. A detecção era `^\s*\|` e não via o "> |",
+    // então punha uma quebra no meio e destruía a tabela.
+    const real =
+      "> | **Markup** | `(Preço de Venda - Custo) / Custo` <br> `(R$ 45 - R$ 18) / R$ 18 = 1,5 ou 150%` | Sobre o **Custo** |";
+    const out = cleanModuleContent(real);
+    expect(out.split("\n")).toHaveLength(1);
+    expect(out).not.toContain("<br>");
+    // O código de linha que o `<br>` separava continua inteiro dos dois lados.
+    expect(out).toContain("`(Preço de Venda - Custo) / Custo`");
+    expect(out).toContain("`(R$ 45 - R$ 18) / R$ 18 = 1,5 ou 150%`");
+  });
+
+  it("o <br> usado como espaçador entre tabelas não estraga nada", () => {
+    // Curso de programação, módulo 8: a tag está sozinha na linha, entre duas
+    // tabelas. Não é HTML sendo ensinado — é espaçamento.
+    const real = "| A | B |\n\n<br/>\n\n| C | D |";
+    const out = cleanModuleContent(real);
+    expect(out).not.toMatch(/<br/i);
+    expect(out).toContain("| A | B |");
+    expect(out).toContain("| C | D |");
+  });
+
+  it("célula com duas linhas vira lista legível, não texto grudado", () => {
+    // Curso de 19/06, módulo 9.
+    const real = "| Indicadores | - Redução do TMA.<br>- Custo por Transação.<br>- Taxa de Automação. |";
+    const out = cleanModuleContent(real);
+    expect(out.split("\n")).toHaveLength(1);
+    expect(out).toContain("Redução do TMA");
+    expect(out).toContain("Custo por Transação");
+    expect(out).not.toMatch(/\.-/); // não gruda o fim de um no começo do outro
+  });
+
   it("texto sem a tag passa intacto", () => {
     const md = "## Título\n\nUm parágrafo normal.\n\n| a | b |\n| - | - |";
     expect(cleanModuleContent(md)).toBe(md);

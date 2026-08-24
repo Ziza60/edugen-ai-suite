@@ -87,7 +87,11 @@ export function normalizeLineBreakTags(md: string): string {
       guardados.push(m);
       return `\u0000${guardados.length - 1}\u0000`;
     });
-    if (/^\s*\|/.test(l)) {
+    // `(?:>\s*)*` e não só `\s*\|`: uma tabela dentro de citação começa com
+    // "> |", e sem isso a quebra entrava no meio da linha e PARTIA a tabela em
+    // duas. Encontrado no curso de 09/07, numa linha real:
+    //   > | **Markup** | `(PV - Custo) / Custo` <br> `(R$ 45 - R$ 18) / R$ 18` |
+    if (/^\s*(?:>\s*)*\|/.test(l)) {
       // Numa linha de tabela a quebra não cabe: vira separador.
       l = l.replace(BR, " · ");
       // "· - Ingredientes" ficaria com o hífen órfão da lista que o `<br>`
