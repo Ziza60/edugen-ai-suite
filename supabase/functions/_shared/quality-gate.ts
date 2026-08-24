@@ -74,7 +74,7 @@ export interface CourseInspectionInput {
   lesson_max_words?: number;
 }
 
-export const QUALITY_GATE_VERSION = "2026-08-14";
+export const QUALITY_GATE_VERSION = "2026-08-24";
 
 const MAX_EVIDENCE = 5;
 
@@ -472,6 +472,270 @@ function checkDensity(course: CourseInspectionInput): CheckResult {
       foraDaFaixa);
 }
 
+// ── K. Coerência numérica do caso condutor entre módulos ─────────────────────
+//
+// O curso de precificação de 24/08 saiu deste portão com veredito `ready`,
+// escore 100 e zero bloqueadores. Dentro dele, o mesmo suco Detox Verde, da
+// mesma empresa, no mesmo lançamento, tinha custo variável de R$ 7,20 no
+// módulo 1, R$ 12,75 no módulo 2 e R$ 8,00 três páginas depois; os custos
+// fixos mensais eram R$ 25.000 num módulo e R$ 15.000 no outro. O portão não
+// mediu isso porque nada aqui olhava dois módulos ao mesmo tempo.
+//
+// A tentação era resolver por glossário: pegar os termos do `terminology_ledger`
+// e procurar o valor de cada um. Foi exatamente isso que quebrou a ponte de
+// valores do pipeline — ela achou "Custo Variável: R$ 0,80" numa tabela de
+// outro produto e propagou o número errado adiante.
+//
+// Aqui a leitura é invertida: não se tenta NOMEAR a grandeza a partir de uma
+// lista externa. Lê-se o rótulo que o próprio texto escreveu imediatamente
+// antes do valor, e acusa-se quando o MESMO rótulo, sobre o MESMO caso, carrega
+// valores diferentes em módulos diferentes. O modo de falha é silencioso por
+// construção: rótulo lido errado não casa com nada e não vira alarme. Erra para
+// menos, nunca para mais — que é o que um portão precisa fazer para não treinar
+// o operador a ignorá-lo.
+//
+// Medido contra cinco cursos reais: 2 divergências verdadeiras (as duas do
+// curso de precificação, com a evidência certa) e 0 falsos alarmes.
+
+/** Nome próprio do caso, como o texto o apresenta: entre aspas. */
+const NOME_CITADO_RE =
+  /['‘’"“”]([A-ZÀ-Ý][\wÀ-ÿ]*(?:\s+[\wÀ-ÿ]+){1,2})['‘’"“”]/g;
+
+// `\d+(?:\.\d{3})*` e não `\d[\d.]*`: sem isso, "custa R$ 25.000." no fim da
+// frase captura o ponto final, e "R$25.000." vira um valor diferente de
+// "R$25.000" no mesmo grupo.
+const MOEDA_RE = String.raw`(?:R\$|US\$|\$|€|£)\s?\d+(?:\.\d{3})*(?:,\d{2})?`;
+const PERCENTUAL_RE = String.raw`\d+(?:,\d+)?\s?%`;
+const VALOR_RE = `(?:${MOEDA_RE}|${PERCENTUAL_RE})`;
+const PRIMEIRO_VALOR_RE = new RegExp(VALOR_RE);
+
+/** O que liga um rótulo ao seu valor: dois-pontos, igual, ou o verbo. */
+const LIGACAO_RE = String.raw`(?:\s*[:=]\s*|\s+(?:é|de|são|sao|será|sera|foi|` +
+  String.raw`equivale\s+a|totalizam|totalizando|totaliza|somam|soma|custa|custam)\s+(?:de\s+)?)`;
+
+/** Parêntese explicativo entre os valores de uma soma: "R$8,00 (matéria-prima)". */
+const PARENTESE_RE = String.raw`(?:\s*\([^)]{0,60}\))?`;
+
+const ROTULO_E_VALOR_RE = new RegExp(
+  String.raw`(?<rotulo>.*?)` + LIGACAO_RE +
+    String.raw`(?<expressao>${VALOR_RE}${PARENTESE_RE}` +
+    String.raw`(?:\s*[+\-*/x×]\s*${VALOR_RE}${PARENTESE_RE})*` +
+    String.raw`(?:\s*=\s*(?<total>${VALOR_RE}))?)`,
+  "gi",
+);
+
+// Palavras que não distinguem uma grandeza de outra. Os qualificadores
+// ("total", "unitário", "sugerido") saem junto: o mesmo número aparece ora como
+// "custo variável total", ora como "custos variáveis unitários", e é o mesmo
+// custo variável.
+const PALAVRAS_VAZIAS = new Set(
+  ("de do da dos das o a os as um uma uns umas por para em no na nos nas e ou que " +
+    "se ao aos com sobre entre seu sua seus suas este esta esse essa aquele cada qual quais " +
+    "ser sao eh esta estao apos antes ja mais menos muito bem tambem entao assim isso " +
+    "total geral aproximado medio estimado previsto definido sugerido projetado proposto " +
+    "inicial final novo atual desejado necessario obtido calculado considerando primeiro")
+    .split(" "),
+);
+
+function semAcento(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+/** Reduz plural e flexão ao suficiente para "custos variáveis" casar com
+ *  "custo variável". Não é um lematizador: é só o bastante para agrupar. */
+function raizDaPalavra(t: string): string {
+  const s = semAcento(t);
+  if (s.endsWith("veis")) return `${s.slice(0, -4)}vel`;
+  if (s.endsWith("ais")) return `${s.slice(0, -3)}al`;
+  if (s.endsWith("oes")) return `${s.slice(0, -3)}ao`;
+  if (s.endsWith("ns")) return `${s.slice(0, -2)}m`;
+  if (s.endsWith("es") && s.length > 4) return s.slice(0, -2);
+  if (s.endsWith("s") && s.length > 3) return s.slice(0, -1);
+  return s;
+}
+
+/**
+ * A chave da grandeza: as duas primeiras palavras de conteúdo do rótulo.
+ *
+ * Duas, não três: "Total de Custos Variáveis Unitários" e "custo variável por
+ * garrafa" precisam cair na mesma chave, e a terceira palavra as separaria.
+ * Duas também é o que impede que o nome do caso entre na chave.
+ */
+function chaveDaGrandeza(
+  rotulo: string,
+  tokensDoCaso: Set<string>,
+): string | null {
+  const toks = (rotulo.match(/[\wÀ-ÿ]+/g) ?? [])
+    .map(raizDaPalavra)
+    .filter((t) =>
+      t.length > 2 && !PALAVRAS_VAZIAS.has(t) && !tokensDoCaso.has(t) &&
+      !/^\d/.test(t)
+    );
+  return toks.length >= 2 ? toks.slice(0, 2).join(" ") : null;
+}
+
+/** Um valor em número, para comparar ordens de grandeza. `null` quando o
+ *  formato não é o do pt-BR — aí o filtro de magnitude simplesmente não age. */
+function valorEmNumero(v: string): number | null {
+  const m = v.replace(/\s/g, "").match(/^(?:R\$|US\$|\$|€|£)([\d.]+)(?:,(\d{2}))?$/);
+  if (!m) return null;
+  const inteiro = Number(m[1].replace(/\./g, ""));
+  return Number.isFinite(inteiro) ? inteiro + Number(m[2] ?? 0) / 100 : null;
+}
+
+/** Recorta o parágrafo em orações. Uma oração carrega um rótulo e um valor;
+ *  sem o corte, o rótulo de uma frase gruda no valor da seguinte. */
+function oracoes(paragrafo: string): string[] {
+  return paragrafo.split(/(?<=[.;])\s+|\s+\d\.\s+/);
+}
+
+function paragrafosDoModulo(markdown: string): string[] {
+  return contentText(markdown)
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+interface Ocorrencia {
+  valor: string;
+  modulo: number;
+  trecho: string;
+}
+
+function checkCrossModuleCoherence(course: CourseInspectionInput): CheckResult {
+  const id = "coerencia.valores_entre_modulos";
+  const label = "Números do caso condutor coerentes entre módulos";
+
+  if (course.modules.length < 2) {
+    return ok(id, label, "blocker", "Curso de módulo único: nada a cruzar.");
+  }
+
+  const porModulo = course.modules.map((m) => ({
+    numero: m.module_number,
+    paragrafos: paragrafosDoModulo(m.markdown),
+  }));
+
+  // 1. As âncoras do caso: nomes próprios que o texto apresentou entre aspas e
+  //    que reaparecem em pelo menos dois módulos. Aspas são o sinal que separa
+  //    o NOME do caso ("Detox Verde") do CONCEITO ensinado ("Custo Variável"),
+  //    que também vem em maiúsculas e enganaria a detecção.
+  const frequencia = new Map<string, number>();
+  const modulosDoNome = new Map<string, Set<number>>();
+  const citados = new Set<string>();
+  for (const { paragrafos } of porModulo) {
+    for (const p of paragrafos) {
+      for (const m of p.matchAll(NOME_CITADO_RE)) citados.add(m[1].trim());
+    }
+  }
+  for (const { numero, paragrafos } of porModulo) {
+    for (const p of paragrafos) {
+      for (const nome of citados) {
+        if (!p.includes(nome)) continue;
+        frequencia.set(nome, (frequencia.get(nome) ?? 0) + 1);
+        if (!modulosDoNome.has(nome)) modulosDoNome.set(nome, new Set());
+        modulosDoNome.get(nome)!.add(numero);
+      }
+    }
+  }
+  const ancoras = [...citados].filter((n) =>
+    (modulosDoNome.get(n)?.size ?? 0) >= 2 && (frequencia.get(n) ?? 0) >= 3
+  );
+  if (!ancoras.length) {
+    return ok(id, label, "blocker",
+      "Nenhum caso condutor recorrente identificado: nada a cruzar.");
+  }
+  const tokensDoCaso = new Set(
+    ancoras.flatMap((n) => n.split(/\s+/).map(raizDaPalavra)),
+  );
+
+  // 2. Para cada parágrafo, atribuir a grandeza à âncora MAIS ESPECÍFICA
+  //    presente — a de menor frequência. Um parágrafo que fala do suco
+  //    'Imunidade' e cita a empresa pertence ao suco, não à empresa.
+  const grupos = new Map<string, Map<string, Ocorrencia[]>>();
+  for (const { numero, paragrafos } of porModulo) {
+    for (const p of paragrafos) {
+      const presentes = ancoras.filter((n) => p.includes(n));
+      if (!presentes.length) continue;
+      const alvo = presentes.reduce((a, b) =>
+        (frequencia.get(b) ?? 0) < (frequencia.get(a) ?? 0) ? b : a
+      );
+      for (const oracao of oracoes(p)) {
+        for (const m of oracao.matchAll(ROTULO_E_VALOR_RE)) {
+          const chave = chaveDaGrandeza(m.groups?.rotulo ?? "", tokensDoCaso);
+          if (!chave) continue;
+          const bruto = m.groups?.total ??
+            m.groups?.expressao?.match(PRIMEIRO_VALOR_RE)?.[0];
+          if (!bruto) continue;
+          // Agrupa pelo NÚMERO e exibe como o texto escreveu: "R$ 25.000" e
+          // "R$ 25.000,00" são o mesmo valor, e mostrá-los como divergência
+          // seria acusar o curso pela própria formatação.
+          const valor = bruto.replace(/\s/g, "");
+          const n = valorEmNumero(valor);
+          const chaveDoValor = n === null ? valor : `#${n}`;
+          const grupo = `${alvo} — ${chave}`;
+          if (!grupos.has(grupo)) grupos.set(grupo, new Map());
+          const porValor = grupos.get(grupo)!;
+          if (!porValor.has(chaveDoValor)) porValor.set(chaveDoValor, []);
+          porValor.get(chaveDoValor)!.push({ valor, modulo: numero, trecho: oracao });
+        }
+      }
+    }
+  }
+
+  // 3. Acusar só o que é contradição de fato.
+  const evidencias: string[] = [];
+  for (const [grupo, porValorBruto] of grupos) {
+    if (porValorBruto.size < 2) continue;
+
+    // Duas grandezas diferentes podem começar com as mesmas duas palavras:
+    // "custos fixos MENSAIS" (R$ 25.000) e "custos fixos RATEADOS POR UNIDADE"
+    // (R$ 3,50). Ordens de grandeza distantes denunciam isso — R$ 25.000 e
+    // R$ 3,50 não são o mesmo número escrito de dois jeitos, são dois números.
+    const numeros = [...porValorBruto.keys()].map((k) =>
+      k.startsWith("#") ? Number(k.slice(1)) : null
+    );
+    let porValor = porValorBruto;
+    if (numeros.every((n) => n !== null && n > 0)) {
+      const ordenados = (numeros as number[]).slice().sort((a, b) => a - b);
+      const mediana = ordenados[Math.floor(ordenados.length / 2)];
+      porValor = new Map(
+        [...porValorBruto].filter(([k]) => {
+          const n = Number(k.slice(1)) / mediana;
+          return n >= 0.05 && n <= 20;
+        }),
+      );
+    }
+    if (porValor.size < 2) continue;
+
+    // A contradição precisa CRUZAR módulos. Dentro de um módulo, dois valores
+    // para o mesmo rótulo costumam ser uma comparação legítima de cenários —
+    // medido: 3 falsos alarmes em 4 achados. É a serialização das lições que
+    // trata esse caso, na origem.
+    const modulosPorValor = [...porValor.values()].map((ocs) =>
+      new Set(ocs.map((o) => o.modulo))
+    );
+    const todosOsModulos = new Set(modulosPorValor.flatMap((s) => [...s]));
+    if (todosOsModulos.size < 2) continue;
+    const assinaturas = new Set(
+      modulosPorValor.map((s) => [...s].sort().join(",")),
+    );
+    if (assinaturas.size < 2) continue;
+
+    const detalhe = [...porValor.values()].map((ocs) =>
+      `${ocs[0].valor} (módulo ${[...new Set(ocs.map((o) => o.modulo))].sort((a, b) => a - b).join(", ")})`
+    ).join(" ≠ ");
+    evidencias.push(`${grupo}: ${detalhe}`);
+  }
+
+  return evidencias.length === 0
+    ? ok(id, label, "blocker",
+      `Nenhuma grandeza do caso condutor muda de valor entre módulos (${ancoras.length} caso(s) rastreado(s)).`)
+    : fail(id, label, "blocker",
+      `${evidencias.length} grandeza(s) do caso condutor com valores diferentes em módulos diferentes. ` +
+        `O aluno calcula um número num módulo e encontra outro no seguinte, sem explicação.`,
+      evidencias);
+}
+
 // ── J. Completude da geração ─────────────────────────────────────────────────
 
 function checkCompleteness(course: CourseInspectionInput): CheckResult {
@@ -528,6 +792,7 @@ export function inspectCourse(course: CourseInspectionInput): QualityReport {
   executar(() => checkScenario(course), "cenario");
   executar(() => checkDensity(course), "densidade");
   executar(() => checkTables(course), "tabelas");
+  executar(() => checkCrossModuleCoherence(course), "coerencia");
 
   const blockers = checks.filter((c) => !c.passed && c.severity === "blocker").length;
   const warnings = checks.filter((c) => !c.passed && c.severity === "warning").length;
