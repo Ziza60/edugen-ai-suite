@@ -1,6 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
+import { EDUSANS, registrarEduSans } from "../_shared/fontes/edusans.ts";
 import {
+  apenasDesenhaveis,
   detectImageFormat,
   fillImageBox,
   fitImageBox,
@@ -62,7 +64,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-06-21i";
+const EXPORT_PDF_BUILD = "2026-08-23-fonte-embutida";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,6 +76,25 @@ const corsHeaders = {
 
 // ── Emoji & encoding helpers ──────────────────────────────────────────
 
+// ═══════════════════════════════════════════════════════════════════════════
+// QUAL FONTE ESTÁ EM USO
+//
+// Decidido uma vez, quando o documento é criado. Com EduSans embutida, o PDF
+// desenha √ ≥ → • Δ π e o texto vai inteiro; sem ela — se o registro falhar —
+// caímos na Helvetica e no caminho antigo, que traduz o que dá e remove o
+// resto. Um PDF com "sqrt" é muito melhor que nenhum PDF.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let FAMILIA = "helvetica";
+let FONTE_AMPLA = false;
+
+/** Chamado pelo construtor do documento. Ver _shared/fontes/edusans.ts. */
+function escolherFonte(doc: unknown): void {
+  FONTE_AMPLA = registrarEduSans(doc as never);
+  FAMILIA = FONTE_AMPLA ? EDUSANS : "helvetica";
+  console.log(`[PDF-FONTE] família em uso: ${FAMILIA}`);
+}
+
 /** Remove emojis and other non-Latin1 symbols that jsPDF cannot render */
 function sanitizeText(text: string): string {
   let clean = text
@@ -82,7 +103,10 @@ function sanitizeText(text: string): string {
     .replace(/[\u{1F680}-\u{1F6FF}]/gu, "")
     .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, "")
     .replace(/[\u{2600}-\u{26FF}]/gu, "")
-    .replace(/[\u{2700}-\u{27BF}]/gu, "")
+    // 2713–2718 (✓ ✔ ✗ ✘) ficam de fora da varredura de emoji: numa lista de
+    // conferência eles são conteúdo, não enfeite, e a peneira abaixo os
+    // converte em "OK" e "X". Apagá-los aqui deixava a linha sem o veredito.
+    .replace(/[\u{2700}-\u{2712}\u{2719}-\u{27BF}]/gu, "")
     .replace(/[\u{FE00}-\u{FE0F}]/gu, "")
     .replace(/[\u{200D}]/gu, "")
     .replace(/[\u{20E3}]/gu, "")
@@ -96,16 +120,22 @@ function sanitizeText(text: string): string {
     .replace(/[\u{00AD}]/gu, "")
     .trim();
 
-  clean = clean
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014]/g, "-")
-    .replace(/[\u2026]/g, "...");
+  // Aspas, travessões e reticências só viram ASCII quando a fonte é a
+  // Helvetica. Com EduSans embutida elas são desenhadas como foram escritas,
+  // e rebaixá-las seria piorar de graça.
+  if (!FONTE_AMPLA) {
+    clean = clean
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/[\u2026]/g, "...");
+  }
 
   // Aspas, travess\u00F5es e retic\u00EAncias j\u00E1 estavam cobertos acima; o resto do que a
   // fonte WinAnsi n\u00E3o desenha n\u00E3o estava. Um \u2265 numa regra de confer\u00EAncia saiu
   // como `"e` \u2014 o texto errado, n\u00E3o faltando, que \u00E9 pior porque ningu\u00E9m nota.
-  clean = transliterarSimbolos(clean);
+  // Com a fonte embutida, preserva o que ela desenha; sem ela, traduz e apara.
+  clean = FONTE_AMPLA ? apenasDesenhaveis(clean) : transliterarSimbolos(clean);
 
   clean = clean.replace(/  +/g, " ").trim();
   return clean;
@@ -286,6 +316,7 @@ class PdfRenderer {
 
   constructor() {
     this.doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    escolherFonte(this.doc);
     this.y = MARGIN_TOP;
     this.pageNum = 1;
   }
@@ -322,12 +353,12 @@ class PdfRenderer {
     this.doc.rect(0, 290, PAGE_W, 0.8, "F");
     // Page number
     this.doc.setFontSize(7.5);
-    this.doc.setFont("helvetica", "bold");
+    this.doc.setFont(FAMILIA, "bold");
     this.doc.setTextColor(...COLOR.TEXT_WHITE);
     this.doc.text(`${this.pageNum}`, PAGE_W / 2, 294.5, { align: "center" });
     // CRITICAL: reset font to normal so estimation helpers after addPage()
     // use the correct font metrics (bold width ≠ normal width → wrong line counts → orphaning)
-    this.doc.setFont("helvetica", "normal");
+    this.doc.setFont(FAMILIA, "normal");
     this.doc.setFontSize(FONT.BODY);
     this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
@@ -459,7 +490,7 @@ class PdfRenderer {
 
     // Course title — white, large, left-aligned
     this.doc.setFontSize(28);
-    this.doc.setFont("helvetica", "bold");
+    this.doc.setFont(FAMILIA, "bold");
     this.doc.setTextColor(...COLOR.TEXT_WHITE);
     const titleLines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 20);
     const titleY = 82;
@@ -474,7 +505,7 @@ class PdfRenderer {
     let fimDaDescricao = underY + 14;
     if (description) {
       this.doc.setFontSize(10.5);
-      this.doc.setFont("helvetica", "normal");
+      this.doc.setFont(FAMILIA, "normal");
       this.doc.setTextColor(...COLOR.TEXT_LIGHT);
       const descLines = this.doc.splitTextToSize(sanitizeText(description), CONTENT_W - 14);
       this.doc.text(descLines, MARGIN_LEFT + 10, underY + 14);
@@ -492,7 +523,7 @@ class PdfRenderer {
     // esvaziá-la deixaria a página de rosto com um vão sem motivo.
     const dataHoje = new Date().toLocaleDateString("pt-BR");
     this.doc.setFontSize(9);
-    this.doc.setFont("helvetica", "normal");
+    this.doc.setFont(FAMILIA, "normal");
     if (capa) {
       // Ancorado perto da divisória dourada, e não colado na descrição: assim a
       // posição não dança conforme o tamanho do título e do resumo. O piso
@@ -563,7 +594,7 @@ class PdfRenderer {
 
     // Page number on cover
     this.doc.setFontSize(7.5);
-    this.doc.setFont("helvetica", "bold");
+    this.doc.setFont(FAMILIA, "bold");
     this.doc.setTextColor(...COLOR.TEXT_WHITE);
     this.doc.text("1", PAGE_W / 2, 293, { align: "center" });
     this.doc.setTextColor(...COLOR.TEXT_BODY);
@@ -586,7 +617,7 @@ class PdfRenderer {
     this.y = MARGIN_TOP + 4;
 
     this.doc.setFontSize(FONT.MODULE_TITLE);
-    this.doc.setFont("helvetica", "bold");
+    this.doc.setFont(FAMILIA, "bold");
     this.doc.setTextColor(...COLOR.PRIMARY);
     this.doc.text("Sumário", MARGIN_LEFT, this.y);
     this.y += FONT.MODULE_TITLE * 0.5 + 6;
@@ -613,12 +644,12 @@ class PdfRenderer {
       const label = sanitizeText(moduleTitles[i] || `Módulo ${i + 1}`);
 
       this.doc.setFontSize(FONT.SMALL);
-      this.doc.setFont("helvetica", "bold");
+      this.doc.setFont(FAMILIA, "bold");
       this.doc.setTextColor(...COLOR.ACCENT);
       this.doc.text(`${i + 1}.`, MARGIN_LEFT, this.y);
 
       this.doc.setFontSize(FONT.BODY);
-      this.doc.setFont("helvetica", "normal");
+      this.doc.setFont(FAMILIA, "normal");
       this.doc.setTextColor(...COLOR.TEXT_DARK);
       const titleLines = tocTitleLines(this.doc.splitTextToSize(label, MAX_TITLE_W));
       this.doc.text(titleLines, MARGIN_LEFT + 8, this.y);
@@ -635,7 +666,7 @@ class PdfRenderer {
       if (dotLine) this.doc.text(dotLine, DOT_FIXED_X, lastLineY);
 
       this.doc.setFontSize(FONT.BODY);
-      this.doc.setFont("helvetica", "bold");
+      this.doc.setFont(FAMILIA, "bold");
       this.doc.text("...", PAGE_NUM_X, lastLineY, { align: "right" });
 
       // O separador vai no meio do vão, calculado a partir da altura das
@@ -653,7 +684,7 @@ class PdfRenderer {
       this.checkPage(VAO + 6);
     }
 
-    this.doc.setFont("helvetica", "normal");
+    this.doc.setFont(FAMILIA, "normal");
     this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 
@@ -672,11 +703,11 @@ class PdfRenderer {
         this.doc.setFillColor(255, 255, 255);
         this.doc.rect(PAGE_NUM_X - 22, y - 5, 24, 6.5, "F");
         this.doc.setFontSize(FONT.BODY);
-        this.doc.setFont("helvetica", "bold");
+        this.doc.setFont(FAMILIA, "bold");
         this.doc.setTextColor(...COLOR.PRIMARY);
         this.doc.text(String(moduleStartPages[i]), PAGE_NUM_X, y, { align: "right" });
       }
-      this.doc.setFont("helvetica", "normal");
+      this.doc.setFont(FAMILIA, "normal");
       this.doc.setTextColor(...COLOR.TEXT_BODY);
     } finally {
       // Sem voltar para a última página, o output() sai truncado.
@@ -766,7 +797,7 @@ class PdfRenderer {
     // Module number badge (large, semi-transparent)
     if (this.moduleIndex > 0) {
       this.doc.setFontSize(48);
-      this.doc.setFont("helvetica", "bold");
+      this.doc.setFont(FAMILIA, "bold");
       this.doc.setTextColor(30, 38, 95); // dark overlay on navy
       const numStr = String(this.moduleIndex).padStart(2, "0");
       this.doc.text(numStr, PAGE_W - MARGIN_RIGHT, 46, { align: "right" });
@@ -774,7 +805,7 @@ class PdfRenderer {
 
     // "MÓDULO N" label — 9.5pt so it reads cleanly alongside 10.5pt body
     this.doc.setFontSize(9.5);
-    this.doc.setFont("helvetica", "bold");
+    this.doc.setFont(FAMILIA, "bold");
     this.doc.setTextColor(...COLOR.ACCENT);
     if (this.moduleIndex > 0) {
       this.doc.text(`MÓDULO ${this.moduleIndex}`, MARGIN_LEFT + 8, 16);
@@ -782,7 +813,7 @@ class PdfRenderer {
 
     // Module title — white, bold
     this.doc.setFontSize(FONT.MODULE_TITLE);
-    this.doc.setFont("helvetica", "bold");
+    this.doc.setFont(FAMILIA, "bold");
     this.doc.setTextColor(...COLOR.TEXT_WHITE);
     const lines = this.doc.splitTextToSize(sanitizeText(title), CONTENT_W - 22);
     this.doc.text(lines, MARGIN_LEFT + 8, this.moduleIndex > 0 ? 28 : 22);
@@ -810,7 +841,7 @@ class PdfRenderer {
     this.checkPage(headingH + extraNeeded);
     this.y += beforeSpace;
 
-    this.doc.setFont("helvetica", "bold");
+    this.doc.setFont(FAMILIA, "bold");
     this.doc.setTextColor(...COLOR.PRIMARY);
     this.doc.text(textLines, MARGIN_LEFT, this.y);
     this.y += textLines.length * (fontSize * 0.38) + afterSpace;
@@ -833,7 +864,7 @@ class PdfRenderer {
     if (!cleanText) return;
 
     this.doc.setFontSize(FONT.BODY);
-    this.doc.setFont("helvetica", "normal");
+    this.doc.setFont(FAMILIA, "normal");
     this.doc.setTextColor(...COLOR.TEXT_BODY);
 
     const lines = this.doc.splitTextToSize(cleanText, CONTENT_W);
@@ -892,7 +923,7 @@ class PdfRenderer {
     if (!cleanText) return;
 
     this.doc.setFontSize(FONT.BODY);
-    this.doc.setFont("helvetica", "normal");
+    this.doc.setFont(FAMILIA, "normal");
     this.doc.setTextColor(...COLOR.TEXT_BODY);
 
     const indentMm = indent * 5;
@@ -918,7 +949,7 @@ class PdfRenderer {
     if (!cleanText) return;
 
     this.doc.setFontSize(FONT.SMALL);
-    this.doc.setFont("helvetica", "italic");
+    this.doc.setFont(FAMILIA, "italic");
 
     const lines = this.doc.splitTextToSize(cleanText, CONTENT_W - 16);
     const blockH = lines.length * 4.5 + SP.BLOCK_PAD_V * 2;
@@ -963,14 +994,14 @@ class PdfRenderer {
 
     // Measure label
     this.doc.setFontSize(FONT.BLOCK_LABEL);
-    this.doc.setFont("helvetica", "bold");
+    this.doc.setFont(FAMILIA, "bold");
     const labelClean = sanitizeText(stripMarkdown(label));
     const labelLines = this.doc.splitTextToSize(labelClean, CONTENT_W - 18);
     const labelH = labelLines.length * 4.5;
 
     // Measure body
     this.doc.setFontSize(FONT.BODY);
-    this.doc.setFont("helvetica", "normal");
+    this.doc.setFont(FAMILIA, "normal");
     const bodyH = bodyLines.reduce((sum, line) => {
       const ls = this.doc.splitTextToSize(sanitizeText(stripMarkdown(line)), CONTENT_W - 18);
       return sum + ls.length * SP.LINE_HEIGHT + 2;
@@ -991,7 +1022,7 @@ class PdfRenderer {
 
     // Label
     this.doc.setFontSize(FONT.BLOCK_LABEL);
-    this.doc.setFont("helvetica", "bold");
+    this.doc.setFont(FAMILIA, "bold");
     this.doc.setTextColor(...(bar as [number, number, number]));
     const innerX = MARGIN_LEFT + SP.BLOCK_PAD_H + 2;
     let curY = boxY + SP.BLOCK_PAD_V + 3;
@@ -1000,7 +1031,7 @@ class PdfRenderer {
 
     // Body content
     this.doc.setFontSize(FONT.BODY);
-    this.doc.setFont("helvetica", "normal");
+    this.doc.setFont(FAMILIA, "normal");
     this.doc.setTextColor(...COLOR.TEXT_BODY);
     for (const line of bodyLines) {
       const clean = sanitizeText(stripMarkdown(line));
@@ -1115,7 +1146,7 @@ class PdfRenderer {
       this.doc.rect(startX, atY + headerH - 2, CONTENT_W, 2, "F");
 
       this.doc.setFontSize(numCols >= 4 ? FONT.TABLE_HEADER - 1.5 : FONT.TABLE_HEADER);
-      this.doc.setFont("helvetica", "bold");
+      this.doc.setFont(FAMILIA, "bold");
       this.doc.setTextColor(...COLOR.TEXT_WHITE);
 
       let hx = startX;
@@ -1171,10 +1202,10 @@ class PdfRenderer {
         this.doc.setFontSize(bodySize);
 
         if (c === 0) {
-          this.doc.setFont("helvetica", "bold");
+          this.doc.setFont(FAMILIA, "bold");
           this.doc.setTextColor(...COLOR.PRIMARY);
         } else {
-          this.doc.setFont("helvetica", "normal");
+          this.doc.setFont(FAMILIA, "normal");
           this.doc.setTextColor(...COLOR.TEXT_BODY);
         }
 
@@ -1231,20 +1262,36 @@ class PdfRenderer {
     for (const row of rows) {
       const titulo = sanitizeText(stripMarkdown(row[0] || ""));
       // Pares a partir da 2ª coluna, ignorando células vazias.
-      const pares: Array<[string, string[]]> = [];
+      //
+      // O RÓTULO TAMBÉM É TEXTO, E TEXTO QUEBRA
+      //
+      // Isto guardava o rótulo como string e, na hora de desenhar, jogava fora
+      // tudo que não coubesse na primeira linha de 32 mm. Na apostila de estoque
+      // de 23/08, "Valor Total de Venda (R$)" saiu "Valor Total de" seis vezes —
+      // a tabela da Curva ABC inteira sem dizer de que valor estava falando.
+      // Agora o rótulo é quebrado junto com o valor e desenhado por inteiro.
+      const pares: Array<[string[], string[]]> = [];
       for (let c = 1; c < headers.length; c++) {
         const valor = sanitizeText(stripMarkdown(row[c] || ""));
         if (!valor) continue;
         this.doc.setFontSize(FONT.SMALL);
-        pares.push([
+        // O rótulo é medido em negrito porque é assim que vai ser desenhado.
+        this.doc.setFont(FAMILIA, "bold");
+        const rotulo = this.doc.splitTextToSize(
           sanitizeText(stripMarkdown(headers[c] || "")),
-          this.doc.splitTextToSize(valor, CONTENT_W - labelW - 10),
-        ]);
+          labelW - 2,
+        );
+        this.doc.setFont(FAMILIA, "normal");
+        pares.push([rotulo, this.doc.splitTextToSize(valor, CONTENT_W - labelW - 10)]);
       }
       if (!titulo && !pares.length) continue;
 
       const alturaBloco = 9 +
-        pares.reduce((a, [, ls]) => a + Math.max(5, ls.length * SP.LINE_HEIGHT) + 2, 0) + 5;
+        pares.reduce(
+          (a, [rot, ls]) =>
+            a + Math.max(5, Math.max(rot.length, ls.length) * SP.LINE_HEIGHT) + 2,
+          0,
+        ) + 5;
       // Um bloco nunca deve ser partido: é uma unidade de leitura.
       this.checkPage(Math.min(alturaBloco, MAX_Y - MARGIN_TOP));
 
@@ -1252,7 +1299,7 @@ class PdfRenderer {
       let y = topo + 6;
 
       // Título do bloco (o critério, no caso da rubrica).
-      this.doc.setFont("helvetica", "bold");
+      this.doc.setFont(FAMILIA, "bold");
       this.doc.setFontSize(FONT.H4);
       this.doc.setTextColor(...COLOR.PRIMARY);
       for (const l of this.doc.splitTextToSize(titulo, CONTENT_W - 14)) {
@@ -1262,22 +1309,26 @@ class PdfRenderer {
       y += 1.5;
 
       for (const [rotulo, linhas] of pares) {
-        this.doc.setFont("helvetica", "bold");
+        // Rótulo e valor descem em paralelo, cada um no seu ritmo; o par termina
+        // na altura do mais alto dos dois.
+        this.doc.setFont(FAMILIA, "bold");
         this.doc.setFontSize(FONT.SMALL);
         this.doc.setTextColor(...COLOR.TEXT_MUTED);
-        this.doc.text(
-          this.doc.splitTextToSize(rotulo, labelW - 2)[0] || "",
-          startX + 7,
-          y,
-        );
-        this.doc.setFont("helvetica", "normal");
-        this.doc.setTextColor(...COLOR.TEXT_BODY);
-        for (const l of linhas) {
-          this.doc.text(l, startX + 7 + labelW, y);
-          y += SP.LINE_HEIGHT;
+        let yRotulo = y;
+        for (const l of rotulo) {
+          this.doc.text(l, startX + 7, yRotulo);
+          yRotulo += SP.LINE_HEIGHT;
         }
-        if (!linhas.length) y += SP.LINE_HEIGHT;
-        y += 2;
+
+        this.doc.setFont(FAMILIA, "normal");
+        this.doc.setTextColor(...COLOR.TEXT_BODY);
+        let yValor = y;
+        for (const l of linhas) {
+          this.doc.text(l, startX + 7 + labelW, yValor);
+          yValor += SP.LINE_HEIGHT;
+        }
+
+        y = Math.max(yRotulo, yValor, y + SP.LINE_HEIGHT) + 2;
       }
 
       // Faixa de destaque à esquerda, no lugar da grade.
@@ -1447,7 +1498,12 @@ class PdfRenderer {
     const innerW = CONTENT_W - padH * 2;
     const wrapped: string[] = [];
     for (const raw of codeLines) {
-      const safe = sanitizeText(raw.replace(/\t/g, "    "));
+      // O bloco de código é o único lugar que NÃO usa EduSans: precisa de
+      // monoespaçada, e a Courier é uma das fontes-padrão, presa ao Latin-1.
+      // Então aqui a transliteração continua obrigatória mesmo com a fonte
+      // ampla registrada — senão um "≥" dentro do código sairia como bytes
+      // soltos, que é o defeito original vestido de outra roupa.
+      const safe = transliterarSimbolos(sanitizeText(raw.replace(/\t/g, "    ")));
       const ws = this.doc.splitTextToSize(safe.length ? safe : " ", innerW);
       for (const ln of ws) wrapped.push(ln);
     }
@@ -1477,7 +1533,7 @@ class PdfRenderer {
       if (idx < wrapped.length) this.addPage();
     }
     this.y += SP.AFTER_PARAGRAPH;
-    this.doc.setFont("helvetica", "normal");
+    this.doc.setFont(FAMILIA, "normal");
     this.doc.setTextColor(...COLOR.TEXT_BODY);
   }
 

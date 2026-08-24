@@ -14,6 +14,8 @@
 // no sumário. O desenho em si continua no export-pdf, onde precisa do jsPDF.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { glifosDaFonte } from "./fontes/edusans.ts";
+
 /** Formatos que o addImage do jsPDF aceita. */
 export type ImageFormat = "PNG" | "JPEG";
 
@@ -218,7 +220,125 @@ const SIMBOLOS: Array<[RegExp, string]> = [
   [/[✗✘❌]/g, "X"],
   [/[     ]/g, " "],
   [/[‑]/g, "-"],
+
+  // ── MATEMÁTICA ────────────────────────────────────────────────────────────
+  // A rede de segurança abaixo apagava estes em silêncio, e com a raiz quadrada
+  // isso trocou matemática certa por errada. O PDF do curso de estoque imprimia:
+  //
+  //     LEC = ((2 * 1200 * 50) / 3)
+  //     LEC = (40000)
+  //     LEC = 200 unidades
+  //
+  // Sem o √, a última linha é falsa: 40000 não é 200. O PPTX mostrava a fórmula
+  // correta porque não passa por aqui — só o PDF perdia o símbolo. Um curso que
+  // ensina a calcular não pode imprimir a conta errada.
+  [/[√]/g, "sqrt"],
+  [/[∛]/g, "raiz cubica de "],
+  // × (U+00D7) e ÷ (U+00F7) NÃO entram: são Latin-1, a fonte os desenha, e
+  // traduzi-los seria piorar um texto que já estava certo. Só o gêmeo de cima
+  // da tabela é que precisa de equivalente.
+  [/[⨯]/g, "x"],
+  [/[∙⋅]/g, "*"],
+  [/[∑]/g, "soma de "],
+  [/[∏]/g, "produto de "],
+  [/[Δ∆]/g, "delta "],
+  [/[π]/g, "pi"],
+  [/[≫]/g, ">>"],
+  [/[≪]/g, "<<"],
+  [/[⅓]/g, "1/3"],
+  [/[⅔]/g, "2/3"],
+  [/[⅕]/g, "1/5"],
+  [/[⁰]/g, "^0"],
+  [/[⁴]/g, "^4"],
+  [/[⁵]/g, "^5"],
+  [/[⁶]/g, "^6"],
+  [/[⁷]/g, "^7"],
+  [/[⁸]/g, "^8"],
+  [/[⁹]/g, "^9"],
+  [/[ⁿ]/g, "^n"],
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O REPERTÓRIO DA FONTE EMBUTIDA
+//
+// Com EduSans embutida (ver _shared/fontes/edusans.ts), o PDF desenha muito
+// além do Latin-1: √, ≥, →, •, Δ, π, frações, expoentes. Traduzir esses
+// símbolos passou a ser perda gratuita — "≥" é melhor que ">=" quando a fonte
+// sabe desenhar os dois.
+//
+// A primeira versão disto era uma lista de intervalos escrita à mão. Ela
+// divergiu da fonte no primeiro teste: prometia ∛, ≪, ✓ e ➡, que a Liberation
+// Sans não tem, e prometia o bloco de controle C1, que ninguém tem. Pedir um
+// glifo inexistente imprime uma caixa vazia — pior que traduzir. Agora o
+// repertório é lido do cmap do próprio arquivo da fonte, e não há duas versões
+// da mesma verdade para divergirem.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** A fonte embutida sabe desenhar este caractere? */
+export function edusansDesenha(cp: number): boolean {
+  return glifosDaFonte().has(cp);
+}
+
+// QUEBRA DE LINHA NÃO É GLIFO, É ESTRUTURA
+//
+// `\n`, `\r` e `\t` não desenham nada, então nenhuma fonte os "conhece" — e uma
+// peneira que só deixa passar glifo os apagaria. Só que é olhando para o `\n`
+// que o `splitTextToSize` do jsPDF decide onde quebrar o parágrafo: apagá-lo
+// cola a última palavra de uma linha na primeira da seguinte. É exatamente o
+// defeito "PPAé" que já custou caro aqui, chegando por outra porta.
+const ESTRUTURAIS = new Set(["\n", "\r", "\t"]);
+
+// O QUE A FONTE NÃO DESENHA AINDA PODE SER DITO
+//
+// Sobrou pouco fora do repertório da EduSans, mas o que sobrou é justamente o
+// tipo de coisa que muda o sentido: ∛, ≪, ≫, ✓, ✗. Apagar o ∛ de uma fórmula
+// repete, em menor escala, o defeito da raiz quadrada. Então antes de remover,
+// tentamos o mesmo equivalente que o caminho da Helvetica usaria — só que
+// caractere a caractere, e só para quem precisa.
+//
+// O mapa é derivado de SIMBOLOS para não haver uma segunda tabela para manter.
+const TRADUCAO_AVULSA: Map<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const [re, sub] of SIMBOLOS) {
+    const classe = re.source.match(/^\[([^\]]+)\]$/);
+    if (!classe) continue;
+    for (const ch of classe[1]) m.set(ch, sub);
+  }
+  return m;
+})();
+
+/**
+ * Caminho da fonte EMBUTIDA: preserva tudo que EduSans desenha, traduz o pouco
+ * que ela não desenha e só remove o que não tem nem glifo nem equivalente.
+ * Sem tradução gratuita — "≥" continua "≥", "√" continua "√".
+ */
+export function apenasDesenhaveis(texto: string): string {
+  if (!texto) return "";
+  let removidos: string[] | null = null;
+  let saida = "";
+  for (const ch of String(texto)) {
+    if (ESTRUTURAIS.has(ch) || edusansDesenha(ch.codePointAt(0)!)) saida += ch;
+    else if (TRADUCAO_AVULSA.has(ch)) saida += TRADUCAO_AVULSA.get(ch);
+    else (removidos ??= []).push(ch);
+  }
+  if (removidos) avisarRemocao(removidos);
+  return saida;
+}
+
+/** Registra no log o que foi removido, com o code point. Ver o comentário em
+ *  transliterarSimbolos: apagar em silêncio foi o que escondeu a raiz quadrada. */
+function avisarRemocao(chars: string[]): void {
+  const distintos = [...new Set(chars)];
+  console.warn(
+    `[PDF-SIMBOLOS] sem equivalente, removidos: ${
+      distintos
+        .map((c) =>
+          `${c} (U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")})`
+        )
+        .join(", ")
+    }`,
+  );
+}
 
 /**
  * Deixa o texto com apenas caracteres que a fonte do PDF sabe desenhar.
@@ -230,9 +350,20 @@ export function transliterarSimbolos(texto: string): string {
   if (!texto) return "";
   let t = String(texto);
   for (const [re, sub] of SIMBOLOS) t = t.replace(re, sub);
+  // A REDE DE SEGURANÇA PRECISA FAZER BARULHO
+  //
+  // Ela apagava caracteres sem deixar rastro, e foi assim que a raiz quadrada
+  // sumiu de um curso de cálculo de estoque sem ninguém perceber por semanas.
+  // Apagar continua sendo o certo — a fonte não desenha o que não conhece —,
+  // mas agora fica registrado o que foi apagado, para que a próxima lacuna do
+  // mapa apareça no log em vez de aparecer no material do cliente.
+  // `\n`, `\r` e `\t` ficam de fora da conta: são
+  // estrutura, não glifo. Ver o comentário em ESTRUTURAIS, acima.
+  const perdidos = t.match(/[^\u0020-\u00FF\n\r\t]/g);
+  if (perdidos) avisarRemocao(perdidos);
   // Rede final. O intervalo Latin-1 (até U+00FF) cobre todo o português; o que
   // passa disso e não foi traduzido acima a fonte não desenha.
-  return t.replace(/[^ -ÿ]/g, "");
+  return t.replace(/[^\u0020-\u00FF\n\r\t]/g, "");
 }
 
 // ── Largura de palavra para justificação ────────────────────────────────────

@@ -21,6 +21,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { esqueletoDeCaso, trimToWholeThought } from "./layout-fit.ts";
+import { tetoDoCorpoDoPasso } from "./table-geometry.ts";
 
 export type SlideKind =
   | "cover" // course cover
@@ -1644,13 +1645,17 @@ function buildTableSlide(b: MdBlock, moduleTitle: string): SlideSpec | null {
   // mesmo com a fórmula do LEC e com a pergunta que perdeu o ponto de
   // interrogação junto com o complemento.
   //
-  // A célula desenhada comporta MAX_TABLE_CELL_CHARS (80). Um teto de palavras
-  // mais restritivo que isso corta texto que caberia na página. Aqui e na
-  // normalização o teto de palavras passa a ser folgado, e quem manda é o
-  // limite de caracteres — que é o que a coluna de fato tem.
+  // DOIS CORTADORES EM SÉRIE SÃO UM SÓ CORTADOR: O PRIMEIRO
+  //
+  // Quem decide o tamanho da célula é a normalização, que mede a coluna
+  // (capacidadeDaCelula, em table-geometry.ts) e chega a 220 caracteres nas
+  // tabelas de três colunas. Mas ela só vê o que o planejador deixou passar: um
+  // teto de 18 palavras aqui equivale a ~110 caracteres e continuaria mandando,
+  // com a medição da coluna sem efeito nenhum. Este teto existe só para conter
+  // um parágrafo inteiro que tenha vindo como célula; o corte de verdade é lá.
   const trows: DeckTableRow[] = data.slice(0, 6).map((r) => ({
     label: toShortPoint(r[0], 6),
-    cells: columns.map((_, ci) => toShortPoint(r[ci + 1] ?? "", 18)),
+    cells: columns.map((_, ci) => toShortPoint(r[ci + 1] ?? "", 40)),
   }));
   return {
     kind: "table",
@@ -2353,6 +2358,10 @@ export async function buildDeck(
   const fundidos = objetivosParaDivisoria(out, language);
   if (fundidos) console.log(`[V7-OVERVIEW] merged into divider=${fundidos}`);
 
+  // Rede para os módulos em que o planejador não escreveu visão geral nenhuma.
+  const reserva = objetivosDeReserva(out, modules);
+  if (reserva) console.log(`[V7-OVERVIEW] objectives from source=${reserva}`);
+
   // Speaker notes LAST: every slide the deck will ship now exists, including
   // the backfills above, so each one gets matched to its source passage.
   const notes = attachSpeakerNotes(out, modules);
@@ -2462,6 +2471,61 @@ export function objetivosParaDivisoria(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// OS OBJETIVOS DO MÓDULO NÃO PODEM DEPENDER DO HUMOR DO PLANEJADOR
+//
+// objetivosParaDivisoria só tem o que fundir quando o planejador escreveu um
+// slide de visão geral como primeiro do módulo. Ele escreve quando quer: dois
+// decks do MESMO curso, gerados com um dia de diferença, trouxeram 4 de 5 e 2 de
+// 5 divisórias com objetivos. O aluno abre o módulo 3 e não sabe o que vai
+// aprender ali, por acaso.
+//
+// Só que os objetivos não precisavam vir do planejador. O markdown do módulo
+// traz "> **Objetivo da lição:**" para TODA lição — renderModuleMarkdown emite
+// isso deterministicamente. A divisória passa a se servir da fonte quando o
+// planejador não deu nada.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** "> **Objetivo da lição:** ..." — uma por lição, sempre. */
+const OBJETIVO_DA_LICAO = /^>\s*\*\*Objetivo da li[çc]ão:\*\*\s*(.+)$/gim;
+
+/** Os objetivos das lições deste módulo, na ordem em que aparecem. */
+export function objetivosDoConteudo(markdown: string, max = 4): string[] {
+  const achados: string[] = [];
+  for (const m of String(markdown ?? "").matchAll(OBJETIVO_DA_LICAO)) {
+    const bruto = m[1].replace(/\*\*/g, "").trim();
+    if (bruto.length < 12) continue;
+    // A divisória tem espaço para uma linha por objetivo, não para um parágrafo.
+    const curto = bruto.length > 110
+      ? trimToWholeThought(bruto.slice(0, 110))
+      : bruto;
+    if (curto.length >= 12) achados.push(curto);
+    if (achados.length >= max) break;
+  }
+  return achados;
+}
+
+/**
+ * Preenche os objetivos da divisória a partir do conteúdo do módulo, para os
+ * módulos que ficaram sem. Nunca sobrescreve o que a visão geral já deu — ela
+ * foi escrita para ser lida ali, e é melhor que o objetivo da lição.
+ */
+export function objetivosDeReserva(
+  out: DeckModule[],
+  modules: Array<{ content?: string }>,
+  max = 4,
+): number {
+  let preenchidos = 0;
+  out.forEach((m, i) => {
+    if (m.objectives?.length) return;
+    const objetivos = objetivosDoConteudo(modules[i]?.content ?? "", max);
+    if (!objetivos.length) return;
+    m.objectives = objetivos;
+    preenchidos++;
+  });
+  return preenchidos;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DUAS GRADES SEGUIDAS SÃO A MESMA PÁGINA DUAS VEZES
 //
 // Dez das 57 páginas do deck de estoque eram tabela, e três vinham em sequência
@@ -2504,8 +2568,13 @@ export function tabelaViraPassos(s: SlideSpec): SlideSpec | null {
     body: r.cells.map((c) => String(c ?? "").trim()).filter(Boolean).join(" · "),
   }));
   // Corpo longo demais vira parede de texto na barra do passo; ali a grade
-  // ainda serve melhor.
-  if (passos.some((p) => !p.body || p.body.length > 130)) return null;
+  // ainda serve melhor. Quanto é "demais" vem da barra, não de uma constante:
+  // os 130 que estavam aqui foram calibrados quando a célula era de 80
+  // caracteres, e ficaram defasados no dia em que o teto da célula passou a ser
+  // medido — a conversão parou de acontecer e o deck perdeu variedade. Ver
+  // tetoDoCorpoDoPasso, em table-geometry.ts.
+  const teto = tetoDoCorpoDoPasso(passos.length);
+  if (passos.some((p) => !p.body || p.body.length > teto)) return null;
   return {
     ...s,
     kind: "steps",
