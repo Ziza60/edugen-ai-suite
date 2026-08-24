@@ -119,3 +119,66 @@ describe("objetivosDeReserva", () => {
     expect(() => objetivosDeReserva(out as never, [])).not.toThrow();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O QUE O PRIMEIRO DECK COM A CORREÇÃO MOSTROU
+//
+// 5 de 5 divisórias com objetivos — era o que se queria. Mas cinco dos onze
+// objetivos saíram cortados NO MEIO DA PALAVRA, todos com exatamente 110
+// caracteres: "...e os desafios inerent", "...para classificar o po",
+// "...tempo de ressu", "...levando em conta a in". Eu cortava em 110 e chamava
+// trimToWholeThought, que apara frase pendurada mas não desfaz palavra partida.
+//
+// E a divisória do módulo 4 saiu com o rótulo "NESTE MÓDULO" e NADA embaixo: a
+// visão geral daquele módulo tinha bullets em branco, o array chegou com três
+// strings vazias, e a guarda da reserva só olhava o tamanho do array.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("o corte do objetivo", () => {
+  const LONGO = "> **Objetivo da lição:** Diferenciar os principais tipos de " +
+    "estoque (matéria-prima, produto acabado, em trânsito) e os desafios " +
+    "inerentes a cada categoria dentro da operação.";
+
+  it("nunca parte uma palavra ao meio", () => {
+    const [o] = objetivosDoConteudo(LONGO);
+    expect(o.length).toBeLessThanOrEqual(110);
+    // O corte cru em 110 daria "...os desafios inerent".
+    expect(o).not.toMatch(/inerent$/);
+    // Toda palavra do resultado tem de existir no original.
+    for (const p of o.split(/\s+/)) expect(LONGO).toContain(p);
+  });
+
+  it("tira o preâmbulo da lição, que na divisória do módulo só ocupa espaço", () => {
+    const md = "> **Objetivo da lição:** Ao final desta lição, o aluno " +
+      "analisará os componentes do Ponto de Pedido.";
+    expect(objetivosDoConteudo(md)[0]).toBe(
+      "Analisará os componentes do Ponto de Pedido.",
+    );
+  });
+
+  it("preâmbulo com \"será capaz de\" também sai", () => {
+    const md = "> **Objetivo da lição:** Ao final desta lição o aluno será " +
+      "capaz de calcular o Estoque de Segurança.";
+    expect(objetivosDoConteudo(md)[0]).toBe("Calcular o Estoque de Segurança.");
+  });
+
+  it("objetivo sem preâmbulo fica exatamente como estava", () => {
+    const md = "> **Objetivo da lição:** Aplicar a Curva ABC ao portfólio.";
+    expect(objetivosDoConteudo(md)[0]).toBe("Aplicar a Curva ABC ao portfólio.");
+  });
+});
+
+describe("objetivos em branco não valem por objetivos", () => {
+  it("a reserva entra quando a visão geral só trouxe strings vazias", () => {
+    const out = [{ title: "M4", slides: [], objectives: ["", "  ", ""] }] as never as
+      Array<{ objectives?: string[] }>;
+    expect(objetivosDeReserva(out as never, [{ content: MODULO }])).toBe(1);
+    expect(out[0].objectives).toHaveLength(3);
+  });
+
+  it("a reserva entra quando os itens são curtos demais para dizer algo", () => {
+    const out = [{ title: "M4", slides: [], objectives: ["ok", "-"] }] as never as
+      Array<{ objectives?: string[] }>;
+    expect(objetivosDeReserva(out as never, [{ content: MODULO }])).toBe(1);
+  });
+});

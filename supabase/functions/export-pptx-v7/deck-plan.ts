@@ -2463,7 +2463,10 @@ export function objetivosParaDivisoria(
     const i = m.slides[0]?.kind === "section" ? 1 : 0;
     const alvo = m.slides[i];
     if (!ehVisaoGeral(alvo, rotulo, m.title)) continue;
-    m.objectives = (alvo.bullets ?? []).slice(0, 4);
+    m.objectives = (alvo.bullets ?? [])
+      .map((b) => String(b ?? "").trim())
+      .filter((b) => b.length >= 12)
+      .slice(0, 4);
     m.slides.splice(i, 1);
     fundidos++;
   }
@@ -2488,16 +2491,37 @@ export function objetivosParaDivisoria(
 /** "> **Objetivo da lição:** ..." — uma por lição, sempre. */
 const OBJETIVO_DA_LICAO = /^>\s*\*\*Objetivo da li[çc]ão:\*\*\s*(.+)$/gim;
 
+/** Espaço de uma linha da divisória, em caracteres. */
+const OBJETIVO_MAX = 110;
+
+// "Ao final desta lição, o aluno analisará os componentes..." — o preâmbulo é
+// da lição, e na divisória do MÓDULO só ocupa espaço. Sai, e o verbo que vem
+// depois vira o começo da frase.
+const PREAMBULO_DA_LICAO =
+  /^ao final (?:desta li[çc]ão|deste m[óo]dulo)[,:]?\s*(?:o|a)?\s*(?:aluno|participante|estudante)?\s*(?:ser[áa] capaz de\s*)?/i;
+
+/** Corta na fronteira de palavra e apara o que ficar pendurado. */
+function aparaObjetivo(bruto: string): string {
+  if (bruto.length <= OBJETIVO_MAX) return bruto;
+  const fatia = bruto.slice(0, OBJETIVO_MAX);
+  // Sem isto o corte cai no meio da palavra: a primeira versão desta função
+  // imprimiu "...e os desafios inerent", "...para classificar o po" e
+  // "...tempo de ressu" em cinco dos onze objetivos do deck de 24/08.
+  const ultimoEspaco = fatia.lastIndexOf(" ");
+  const naPalavra = ultimoEspaco > OBJETIVO_MAX * 0.5
+    ? fatia.slice(0, ultimoEspaco)
+    : fatia;
+  return trimToWholeThought(naPalavra.trim());
+}
+
 /** Os objetivos das lições deste módulo, na ordem em que aparecem. */
 export function objetivosDoConteudo(markdown: string, max = 4): string[] {
   const achados: string[] = [];
   for (const m of String(markdown ?? "").matchAll(OBJETIVO_DA_LICAO)) {
-    const bruto = m[1].replace(/\*\*/g, "").trim();
+    let bruto = m[1].replace(/\*\*/g, "").trim().replace(PREAMBULO_DA_LICAO, "");
     if (bruto.length < 12) continue;
-    // A divisória tem espaço para uma linha por objetivo, não para um parágrafo.
-    const curto = bruto.length > 110
-      ? trimToWholeThought(bruto.slice(0, 110))
-      : bruto;
+    bruto = bruto.charAt(0).toUpperCase() + bruto.slice(1);
+    const curto = aparaObjetivo(bruto);
     if (curto.length >= 12) achados.push(curto);
     if (achados.length >= max) break;
   }
@@ -2516,7 +2540,11 @@ export function objetivosDeReserva(
 ): number {
   let preenchidos = 0;
   out.forEach((m, i) => {
-    if (m.objectives?.length) return;
+    // Um array de strings vazias tem length > 0 e não diz nada. A divisória do
+    // módulo 4 de 24/08 saiu com o rótulo "NESTE MÓDULO" e nenhum item embaixo,
+    // porque a visão geral tinha bullets em branco e esta guarda só olhava o
+    // tamanho do array. Prometer e não entregar é pior que não prometer.
+    if (m.objectives?.some((o) => String(o ?? "").trim().length >= 12)) return;
     const objetivos = objetivosDoConteudo(modules[i]?.content ?? "", max);
     if (!objetivos.length) return;
     m.objectives = objetivos;
