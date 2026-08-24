@@ -21,6 +21,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { esqueletoDeCaso, trimToWholeThought } from "./layout-fit.ts";
+import { tetoDoCorpoDoPasso } from "./table-geometry.ts";
 
 export type SlideKind =
   | "cover" // course cover
@@ -2508,8 +2509,13 @@ export function tabelaViraPassos(s: SlideSpec): SlideSpec | null {
     body: r.cells.map((c) => String(c ?? "").trim()).filter(Boolean).join(" · "),
   }));
   // Corpo longo demais vira parede de texto na barra do passo; ali a grade
-  // ainda serve melhor.
-  if (passos.some((p) => !p.body || p.body.length > 130)) return null;
+  // ainda serve melhor. Quanto é "demais" vem da barra, não de uma constante:
+  // os 130 que estavam aqui foram calibrados quando a célula era de 80
+  // caracteres, e ficaram defasados no dia em que o teto da célula passou a ser
+  // medido — a conversão parou de acontecer e o deck perdeu variedade. Ver
+  // tetoDoCorpoDoPasso, em table-geometry.ts.
+  const teto = tetoDoCorpoDoPasso(passos.length);
+  if (passos.some((p) => !p.body || p.body.length > teto)) return null;
   return {
     ...s,
     kind: "steps",

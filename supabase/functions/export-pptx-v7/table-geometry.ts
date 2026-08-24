@@ -98,3 +98,54 @@ export function capacidadeDaCelula(
 
   return Math.max(60, porLinha * linhas);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A BARRA DO PASSO — E O ACOPLAMENTO QUE ME PEGOU
+//
+// quebrarSequenciaDeLayout converte a segunda de duas tabelas seguidas em
+// passos, para o módulo não repetir a mesma forma. A conversão era recusada
+// quando o corpo do passo passava de 130 caracteres.
+//
+// Esses 130 tinham sido calibrados contra células de 80 caracteres. Quando o
+// teto da célula passou a ser medido (capacidadeDaCelula, acima) e subiu para
+// até 228, o corpo do passo — que é a concatenação das células da linha —
+// passou de 130 em quase toda tabela, e a conversão parou de acontecer.
+//
+// O efeito apareceu no deck seguinte: formas distintas de 19 para 16, formas
+// iguais seguidas de 4 para 6, e três tabelas em sequência no fecho do módulo
+// 5. Medindo os corpos: no deck anterior iam de 64 a 94 caracteres; no novo,
+// de 92 a 282. Consertar o teto da célula desativou a quebra de sequência.
+//
+// A barra do passo comporta de 360 a 720 caracteres, conforme o número de
+// passos — muito mais que 130. Mas caber não é o critério: uma barra com 280
+// caracteres cabe e lê mal. Por isso o teto é METADE do que a barra desenha,
+// e nunca menos que os 130 originais.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Largura da faixa de texto do passo, descontado o ordinal gigante. */
+const PASSO_ORDINAL = 1.45;
+const PASSO_FOLGA = 0.4;
+const PASSO_CORPO_PT = 12.5;
+const PASSO_TITULO_PT = 17;
+
+/** Quantos caracteres a barra de um passo desenha, com N passos no slide. */
+export function capacidadeDoPasso(passos: number): number {
+  const alturaDaFaixa = CONTENT_H / Math.max(1, passos);
+  const largura = CW - PASSO_ORDINAL - PASSO_FOLGA;
+  const porLinha = Math.floor((largura * 72) / (PASSO_CORPO_PT * LARGURA_MEDIA));
+  // O título do passo ocupa a primeira linha da faixa.
+  const alturaUtilPt = alturaDaFaixa * 72 - PASSO_TITULO_PT * 1.25 - 6;
+  const linhas = Math.max(1, Math.floor(alturaUtilPt / (PASSO_CORPO_PT * ENTRELINHA)));
+  return Math.max(0, porLinha * linhas);
+}
+
+/**
+ * Até onde o corpo de um passo pode ir sem virar parede de texto.
+ *
+ * Metade do que a barra desenha: a outra metade é respiro, que é o que faz o
+ * passo ler como passo e não como parágrafo. Nunca abaixo de 130, o valor que
+ * vigorou enquanto as células eram de 80 caracteres.
+ */
+export function tetoDoCorpoDoPasso(passos: number): number {
+  return Math.max(130, Math.floor(capacidadeDoPasso(passos) * 0.5));
+}

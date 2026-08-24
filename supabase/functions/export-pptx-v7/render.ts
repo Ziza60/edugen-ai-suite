@@ -34,7 +34,7 @@ import {
 // próprio, a resposta: veio de antes de 21/08.
 //
 // Bump this on every behavioural change to the engine.
-export const V7_BUILD = "2026-08-23b-celula-medida-na-coluna";
+export const V7_BUILD = "2026-08-23c-passo-medido-na-barra";
 
 // ── Canvas (16:9 widescreen) ──
 const W = 13.333;

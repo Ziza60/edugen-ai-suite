@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tetoDoCorpoDoPasso } from "../../supabase/functions/export-pptx-v7/table-geometry";
 import {
   objetivosParaDivisoria,
   quebrarSequenciaDeLayout,
@@ -193,11 +194,28 @@ describe("tabela que é sequência disfarçada", () => {
   });
 
   it("célula longa continua grade — na barra do passo viraria parede", () => {
+    // O teto vem da barra do passo, não da constante 130 que vigorava quando a
+    // célula era de 80 caracteres. Ver tetoDoCorpoDoPasso, em
+    // table-geometry.ts: foi ao medir a célula que este limite ficou defasado e
+    // a quebra de sequência parou de acontecer.
+    const teto = tetoDoCorpoDoPasso(sequencia.rows.length);
     const longa = {
       ...sequencia,
-      rows: sequencia.rows.map((r) => ({ ...r, cells: ["x".repeat(140), "y"] })),
+      rows: sequencia.rows.map((r) => ({
+        ...r,
+        cells: ["x".repeat(teto + 20), "y"],
+      })),
     };
     expect(tabelaViraPassos(longa as never)).toBeNull();
+  });
+
+  it("célula que cabe na barra vira passos — era o que parou de acontecer", () => {
+    const teto = tetoDoCorpoDoPasso(sequencia.rows.length);
+    const cabe = {
+      ...sequencia,
+      rows: sequencia.rows.map((r) => ({ ...r, cells: ["x".repeat(teto - 40)] })),
+    };
+    expect(tabelaViraPassos(cabe as never)?.kind).toBe("steps");
   });
 
   it("linha sem rótulo continua grade", () => {
