@@ -2358,6 +2358,10 @@ export async function buildDeck(
   const fundidos = objetivosParaDivisoria(out, language);
   if (fundidos) console.log(`[V7-OVERVIEW] merged into divider=${fundidos}`);
 
+  // Rede para os módulos em que o planejador não escreveu visão geral nenhuma.
+  const reserva = objetivosDeReserva(out, modules);
+  if (reserva) console.log(`[V7-OVERVIEW] objectives from source=${reserva}`);
+
   // Speaker notes LAST: every slide the deck will ship now exists, including
   // the backfills above, so each one gets matched to its source passage.
   const notes = attachSpeakerNotes(out, modules);
@@ -2464,6 +2468,61 @@ export function objetivosParaDivisoria(
     fundidos++;
   }
   return fundidos;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OS OBJETIVOS DO MÓDULO NÃO PODEM DEPENDER DO HUMOR DO PLANEJADOR
+//
+// objetivosParaDivisoria só tem o que fundir quando o planejador escreveu um
+// slide de visão geral como primeiro do módulo. Ele escreve quando quer: dois
+// decks do MESMO curso, gerados com um dia de diferença, trouxeram 4 de 5 e 2 de
+// 5 divisórias com objetivos. O aluno abre o módulo 3 e não sabe o que vai
+// aprender ali, por acaso.
+//
+// Só que os objetivos não precisavam vir do planejador. O markdown do módulo
+// traz "> **Objetivo da lição:**" para TODA lição — renderModuleMarkdown emite
+// isso deterministicamente. A divisória passa a se servir da fonte quando o
+// planejador não deu nada.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** "> **Objetivo da lição:** ..." — uma por lição, sempre. */
+const OBJETIVO_DA_LICAO = /^>\s*\*\*Objetivo da li[çc]ão:\*\*\s*(.+)$/gim;
+
+/** Os objetivos das lições deste módulo, na ordem em que aparecem. */
+export function objetivosDoConteudo(markdown: string, max = 4): string[] {
+  const achados: string[] = [];
+  for (const m of String(markdown ?? "").matchAll(OBJETIVO_DA_LICAO)) {
+    const bruto = m[1].replace(/\*\*/g, "").trim();
+    if (bruto.length < 12) continue;
+    // A divisória tem espaço para uma linha por objetivo, não para um parágrafo.
+    const curto = bruto.length > 110
+      ? trimToWholeThought(bruto.slice(0, 110))
+      : bruto;
+    if (curto.length >= 12) achados.push(curto);
+    if (achados.length >= max) break;
+  }
+  return achados;
+}
+
+/**
+ * Preenche os objetivos da divisória a partir do conteúdo do módulo, para os
+ * módulos que ficaram sem. Nunca sobrescreve o que a visão geral já deu — ela
+ * foi escrita para ser lida ali, e é melhor que o objetivo da lição.
+ */
+export function objetivosDeReserva(
+  out: DeckModule[],
+  modules: Array<{ content?: string }>,
+  max = 4,
+): number {
+  let preenchidos = 0;
+  out.forEach((m, i) => {
+    if (m.objectives?.length) return;
+    const objetivos = objetivosDoConteudo(modules[i]?.content ?? "", max);
+    if (!objetivos.length) return;
+    m.objectives = objetivos;
+    preenchidos++;
+  });
+  return preenchidos;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
