@@ -4593,6 +4593,90 @@ No typography, letters, numerals, logos, signatures, watermarks, fake interface 
 // entregar nada — pior que não tentar.
 const LESSON_CALL_TYPICAL_MS = 32000;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AS LIÇÕES EM SÉRIE, ENQUANTO O RELÓGIO PERMITIR
+//
+// As lições de um módulo rodavam TODAS em paralelo, cada uma cega para o que as
+// irmãs estavam escrevendo. No curso de precificação de 24/08 isso apareceu na
+// página 27 contra a 30: o mesmo pão francês da mesma padaria, com custo
+// variável de R$ 0,35 numa lição e R$ 0,55 na outra. O aluno calcula 56,25% de
+// margem e três páginas depois lê 31,25%.
+//
+// Em série, cada lição recebe os valores que as anteriores fixaram — a mesma
+// ponte que já existia entre módulos, agora dentro deles.
+//
+// O QUE OS LOGS DE 24/08 MOSTRARAM (5 módulos, 15 lições)
+//
+//   lição      mín 12,5 s   p50 17,9 s   máx 26,7 s
+//   envelope   7,1 a 8,5 s
+//   pós-lições 10,0 a 49,2 s  — o topo é reparo (33,2 s) + avaliação (15,5 s)
+//   total hoje 32,5 a 79,5 s, em paralelo
+//
+// Serializado, o pior módulo medido dá 111,4 s: não cabia nos 110 s de antes,
+// por 1,4 s. O que estoura não são as lições — é o reparo, que apareceu em 2 dos
+// 5 módulos. Daí o orçamento ter subido para 125 s.
+//
+// A guarda existe para o módulo que vier pior que tudo isso: quando o relógio
+// não comporta mais uma lição em série E ainda há duas ou mais pela frente, o
+// resto vai em paralelo. Perde-se a coerência daquelas, não o módulo.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** p95 observado de uma lição, arredondado para cima. */
+const LICAO_LENTA_MS = 28000;
+
+/** O que precisa sobrar depois das lições: reparo, avaliação, gravação e o
+ *  portão de qualidade. O topo medido foi 49,2 s. */
+const RESERVA_POS_LICOES_MS = 55000;
+
+export async function gerarLicoesEmSerieQuandoCabe<P, R>(
+  planos: P[],
+  gerar: (plano: P) => Promise<R>,
+  msLeft: () => number,
+  aoConcluir: (resultado: R) => void,
+): Promise<R[]> {
+  const resultados: R[] = [];
+  let i = 0;
+  for (; i < planos.length; i++) {
+    const restantes = planos.length - i;
+    // Com uma só pela frente não há paralelismo a ganhar: roda em série de
+    // qualquer jeito, que ainda dá a coerência.
+    if (restantes > 1 && msLeft() < RESERVA_POS_LICOES_MS + LICAO_LENTA_MS) {
+      console.log(
+        `[generate-course-module] restam ${Math.round(msLeft() / 1000)}s: as ${restantes} lições finais vão em paralelo`,
+      );
+      break;
+    }
+    const r = await gerar(planos[i]);
+    resultados.push(r);
+    if (r) aoConcluir(r);
+  }
+  if (i < planos.length) {
+    const resto = await mapWithConcurrency(
+      planos.slice(i),
+      LESSON_CONCURRENCY,
+      (plano) => gerar(plano),
+    );
+    resultados.push(...resto);
+  }
+  return resultados;
+}
+
+/** Todo o texto de uma lição, um trecho por parágrafo.
+ *
+ *  extrairValoresCanonicos procura o valor na MESMA frase do termo, e trabalha
+ *  parágrafo a parágrafo. A lição chega como JSON aninhado; juntar as strings
+ *  com linha em branco entre elas dá a ela a forma que a extração espera. */
+export function textoDaLicao(licao: unknown): string {
+  const partes: string[] = [];
+  const visitar = (n: unknown) => {
+    if (typeof n === "string") partes.push(n);
+    else if (Array.isArray(n)) n.forEach(visitar);
+    else if (n && typeof n === "object") Object.values(n).forEach(visitar);
+  };
+  visitar(licao);
+  return partes.join("\n\n");
+}
+
 function lessonCallBudget(msLeft: number, reserveMs = 4000): number | null {
   const budget = msLeft - reserveMs;
   if (budget < LESSON_CALL_TYPICAL_MS) return null;

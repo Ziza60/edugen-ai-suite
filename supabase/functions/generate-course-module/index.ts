@@ -36,6 +36,8 @@ import {
   LESSON_DOCUMENT_SCHEMA,
   corsHeaders,
   extrairValoresCanonicos,
+  gerarLicoesEmSerieQuandoCabe,
+  textoDaLicao,
 } from "../_shared/course-pipeline.ts";
 import type {
   CourseBlueprint,
@@ -125,11 +127,21 @@ async function runQualityGate(courseId: string): Promise<void> {
 // claim_course_generation_job decide no banco, atomicamente, quem fica com ele.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Orçamento próprio desta invocação. Só precisa cobrir UM módulo, então é bem
-// mais folgado que o antigo prazo do curso inteiro.
+// Orçamento próprio desta invocação. Só precisa cobrir UM módulo.
+//
+// Era 110 s, escolhido sem medição. Os logs de 24/08 mostraram que o pior
+// módulo usava 79,5 s em paralelo — mas 111,4 s se as lições fossem em série,
+// que é o que a coerência de valores exige. Não cabia por 1,4 s.
+//
+// 125 s dá 13,6 s de folga sobre esse pior caso e fica dentro da faixa que a
+// própria Supabase recomenda para o plano gratuito. O teto da plataforma é a
+// duração do WORKER — 150 s no gratuito, 400 s nos pagos —, e não o tempo da
+// requisição: esta função responde 202 na hora e segue em EdgeRuntime.waitUntil,
+// então o idle timeout de 150 s não a alcança. No plano pago haveria espaço para
+// subir bem mais, e para isso basta a variável de ambiente.
 const MODULE_DEADLINE_MS = Math.max(
   60000,
-  Number(Deno.env.get("COURSE_MODULE_DEADLINE_MS") || "110000") || 110000,
+  Number(Deno.env.get("COURSE_MODULE_DEADLINE_MS") || "125000") || 125000,
 );
 
 interface WorkerPayload {
@@ -265,6 +277,7 @@ async function generateOneModule(params: {
   const allowedSourceIds = moduleChunks.map((chunk) => chunk.id);
   const allowedSourceIdSet = new Set(allowedSourceIds);
 
+  const termosCanonicos = (blueprint.terminology_ledger ?? []).map((i) => i.term);
   const valoresPublicados = await lerValoresJaPublicados(
     serviceClient,
     courseId,
@@ -303,40 +316,58 @@ async function generateOneModule(params: {
       Math.min(45000, Math.max(15000, msLeft() - 4000)),
     );
 
-    const lessonResults = await mapWithConcurrency(
-      module.lessons,
-      LESSON_CONCURRENCY,
-      async (lessonPlan) => {
-        // Um orçamento menor que o tempo típico da chamada só produz
-        // timeout: consome o que resta e não devolve nada. Nos logs
-        // anteriores as lições levavam de 17 a 39 s e recebiam o piso
-        // de 20 s, então morriam em série e ainda gastavam o tempo que
-        // faltava aos módulos seguintes. Melhor não começar.
-        const budget = lessonCallBudget(msLeft());
-        if (budget === null) {
-          console.warn(
-            `[generate-course] Lição ${lessonPlan.lesson_number} não iniciada: restam ${Math.round(msLeft() / 1000)}s, insuficiente.`,
-          );
-          return null;
-        }
-        const { value, meta } = await callAIJson<any>(
-          FAST_MODEL,
-          buildModulePrompt({
-            ...modulePromptParams,
-            part: "lesson",
-            lessonPlan,
-          }),
-          LESSON_DOCUMENT_SCHEMA,
-          `module_${module.module_number}_lesson_${lessonPlan.lesson_number}`,
-          // "low" em vez de "medium": nos modelos 2.5 o raciocínio sai
-          // do mesmo orçamento da resposta, e foi ele que truncou a
-          // lição 1.3 em 9.000 tokens. Menos raciocínio, mais teto.
-          depth.label === "aprofundado" ? 16000 : 12000,
-          "low",
-          budget,
+    // Cada lição recebe os valores que as anteriores já fixaram. Fora do laço
+    // porque a lista cresce a cada lição concluída.
+    const valoresDoModulo: ValorCanonico[] = [...valoresPublicados];
+
+    const gerarLicao = async (lessonPlan: any) => {
+      // Um orçamento menor que o tempo típico da chamada só produz
+      // timeout: consome o que resta e não devolve nada. Nos logs
+      // anteriores as lições levavam de 17 a 39 s e recebiam o piso
+      // de 20 s, então morriam em série e ainda gastavam o tempo que
+      // faltava aos módulos seguintes. Melhor não começar.
+      const budget = lessonCallBudget(msLeft());
+      if (budget === null) {
+        console.warn(
+          `[generate-course] Lição ${lessonPlan.lesson_number} não iniciada: restam ${Math.round(msLeft() / 1000)}s, insuficiente.`,
         );
-        if (meta.finishReason === "length") anyTruncated = true;
-        return value;
+        return null;
+      }
+      const { value, meta } = await callAIJson<any>(
+        FAST_MODEL,
+        buildModulePrompt({
+          ...modulePromptParams,
+          part: "lesson",
+          lessonPlan,
+          valoresPublicados: valoresDoModulo,
+        }),
+        LESSON_DOCUMENT_SCHEMA,
+        `module_${module.module_number}_lesson_${lessonPlan.lesson_number}`,
+        // "low" em vez de "medium": nos modelos 2.5 o raciocínio sai
+        // do mesmo orçamento da resposta, e foi ele que truncou a
+        // lição 1.3 em 9.000 tokens. Menos raciocínio, mais teto.
+        depth.label === "aprofundado" ? 16000 : 12000,
+        "low",
+        budget,
+      );
+      if (meta.finishReason === "length") anyTruncated = true;
+      return value;
+    };
+
+    const lessonResults = await gerarLicoesEmSerieQuandoCabe(
+      module.lessons,
+      gerarLicao,
+      msLeft,
+      (licao) => {
+        for (const achado of extrairValoresCanonicos(
+          textoDaLicao(licao),
+          termosCanonicos,
+          module.module_number,
+        )) {
+          if (!valoresDoModulo.some((v) => v.termo === achado.termo)) {
+            valoresDoModulo.push(achado);
+          }
+        }
       },
     );
 
