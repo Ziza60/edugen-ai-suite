@@ -35,7 +35,7 @@ import {
   MODULE_ENVELOPE_SCHEMA,
   LESSON_DOCUMENT_SCHEMA,
   corsHeaders,
-  extrairValoresCanonicos,
+  valoresDoCasoCondutor,
   gerarLicoesEmSerieQuandoCabe,
   textoDaLicao,
 } from "../_shared/course-pipeline.ts";
@@ -172,16 +172,19 @@ function jsonResponse(status: number, payload: Record<string, unknown>): Respons
 // A ponte é uma leitura só, do que já está gravado em course_modules. Nunca
 // lança: coerência é enriquecimento e não pode custar o módulo inteiro. Se a
 // consulta falhar, o módulo sai como saía antes.
+//
+// A leitura dos valores NÃO passa mais pelo glossário do curso. A versão que
+// passava propagou "Custo Variável: R$ 0,80" — um número de outro produto — para
+// os módulos seguintes do curso de precificação de 24/08. Agora a leitura é
+// ancorada no caso condutor e vive em `valores-do-caso.ts`, compartilhada com o
+// portão de qualidade. O `blueprint` deixou de ser necessário aqui.
 // ═══════════════════════════════════════════════════════════════════════════
 async function lerValoresJaPublicados(
   serviceClient: any,
   courseId: string,
-  blueprint: CourseBlueprint,
   moduleIndex: number,
 ): Promise<ValorCanonico[]> {
   if (moduleIndex <= 0) return [];
-  const termos = (blueprint.terminology_ledger ?? []).map((item) => item.term);
-  if (!termos.length) return [];
 
   try {
     const { data, error } = await serviceClient
@@ -196,19 +199,15 @@ async function lerValoresJaPublicados(
       return [];
     }
 
-    // Um valor por termo, o do módulo MAIS ANTIGO — foi o que o aluno viu
-    // primeiro, e é dele que os seguintes não podem divergir em silêncio.
-    const porTermo = new Map<string, ValorCanonico>();
-    for (const linha of data ?? []) {
-      for (const achado of extrairValoresCanonicos(
-        String(linha?.content ?? ""),
-        termos,
-        Number(linha?.order_index ?? 0) + 1,
-      )) {
-        if (!porTermo.has(achado.termo)) porTermo.set(achado.termo, achado);
-      }
-    }
-    const valores = [...porTermo.values()];
+    // Os módulos vão em ordem, e a leitura fica com o valor da fonte mais
+    // antiga — foi o que o aluno viu primeiro, e é dele que os seguintes não
+    // podem divergir em silêncio.
+    const valores = valoresDoCasoCondutor(
+      (data ?? []).map((linha: any) => ({
+        texto: String(linha?.content ?? ""),
+        modulo: Number(linha?.order_index ?? 0) + 1,
+      })),
+    );
     if (valores.length) {
       console.log(
         `[generate-course-module] módulo ${moduleIndex + 1}: ${valores.length} valores canônicos herdados`,
@@ -281,11 +280,9 @@ async function generateOneModule(params: {
   const allowedSourceIds = moduleChunks.map((chunk) => chunk.id);
   const allowedSourceIdSet = new Set(allowedSourceIds);
 
-  const termosCanonicos = (blueprint.terminology_ledger ?? []).map((i) => i.term);
   const valoresPublicados = await lerValoresJaPublicados(
     serviceClient,
     courseId,
-    blueprint,
     moduleIndex,
   );
 
@@ -321,8 +318,12 @@ async function generateOneModule(params: {
     );
 
     // Cada lição recebe os valores que as anteriores já fixaram. Fora do laço
-    // porque a lista cresce a cada lição concluída.
+    // porque a lista cresce a cada lição concluída. `textosDasLicoes` guarda o
+    // texto bruto: quem identifica o caso condutor precisa ver TODAS as lições
+    // juntas, não uma de cada vez — um nome citado numa lição só ainda não é o
+    // caso do curso.
     const valoresDoModulo: ValorCanonico[] = [...valoresPublicados];
+    const textosDasLicoes: Array<{ texto: string; modulo: number }> = [];
 
     const gerarLicao = async (lessonPlan: any) => {
       // Um orçamento menor que o tempo típico da chamada só produz
@@ -363,14 +364,22 @@ async function generateOneModule(params: {
       gerarLicao,
       msLeft,
       (licao) => {
-        for (const achado of extrairValoresCanonicos(
-          textoDaLicao(licao),
-          termosCanonicos,
-          module.module_number,
-        )) {
-          if (!valoresDoModulo.some((v) => v.termo === achado.termo)) {
-            valoresDoModulo.push(achado);
-          }
+        // Relê o módulo inteiro a cada lição concluída, em vez de só a lição
+        // nova: o caso condutor é identificado pelo nome que REAPARECE, e uma
+        // lição isolada não tem como provar que um nome é o caso do curso. São
+        // três ou quatro releituras de alguns milissegundos, contra uma lista
+        // vazia se cada lição fosse lida sozinha.
+        textosDasLicoes.push({
+          texto: textoDaLicao(licao),
+          modulo: module.module_number,
+        });
+        const jaTem = new Set(valoresPublicados.map((v) => v.termo));
+        valoresDoModulo.length = 0;
+        valoresDoModulo.push(...valoresPublicados);
+        for (const achado of valoresDoCasoCondutor(textosDasLicoes)) {
+          // O que os módulos anteriores publicaram tem precedência: o aluno já
+          // viu aquele número impresso.
+          if (!jaTem.has(achado.termo)) valoresDoModulo.push(achado);
         }
       },
     );

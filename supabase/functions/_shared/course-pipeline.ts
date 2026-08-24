@@ -18,6 +18,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { cleanModuleContent, repairTruncation } from "./markdown.ts";
+import {
+  type Grandeza,
+  grandezasDoTexto,
+  identificarCaso,
+  paragrafosDe,
+} from "./valores-do-caso.ts";
 import { descricaoDoTom } from "./course-tone.ts";
 
 const corsHeaders = {
@@ -2475,86 +2481,90 @@ function buildCaseDossier(blueprint: CourseBlueprint): string {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface ValorCanonico {
+  /** "Detox Verde — custo variável": o caso e a grandeza, como o curso escreveu. */
   termo: string;
   valor: string;
   modulo: number;
 }
 
-/** R$ 1.234,56 | R$50 | 1200 unidades | 3 dias | 15,15% */
-const VALOR_MEDIVEL =
-  /(R\$\s?\d[\d.,]*|\d[\d.,]*\s?%|\d[\d.,]*\s+(?:unidades?|dias?|horas?|meses|itens|peças|caixas))/i;
-
-/** O termo vem do glossário do curso e pode ter parênteses, ponto, hífen. */
-function escapeRegExp(texto: string): string {
-  return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /**
- * Até onde vale procurar o valor depois do termo: a frase, no máximo.
+ * Os valores que o caso condutor já teve fixados.
  *
- * A primeira versão cortava a janela em qualquer `\n`, e devolveu lista VAZIA
- * quando rodei contra o módulo 2 de verdade. O texto real diz "o Custo de
- * Pedido para cada compra no Armazém da Esquina é de\nR$185.00" — a quebra ali
- * é do parágrafo dobrando de linha, não do fim da frase, e o corte jogava fora
- * exatamente o número procurado. Por isso a busca agora roda parágrafo a
- * parágrafo, com as linhas dobradas já juntadas.
- */
-function janelaDepoisDoTermo(paragrafo: string, inicio: number): string {
-  const bruto = paragrafo.slice(inicio, inicio + 160);
-  const fim = bruto.search(/[.;]\s|$/);
-  return fim > 0 ? bruto.slice(0, fim) : bruto;
-}
-
-/** Um parágrafo por item, com as linhas dobradas juntadas. */
-function paragrafosDe(texto: string): string[] {
-  return texto
-    .split(/\n\s*\n/)
-    .map((p) => p.replace(/\s*\n\s*/g, " ").trim())
-    .filter(Boolean);
-}
-
-/**
- * Valores que este módulo publicou para os termos canônicos do curso.
+ * A PRIMEIRA versão desta função lia pelo glossário: pegava cada termo do
+ * `terminology_ledger` e procurava o primeiro valor depois dele. Passou nos
+ * nove testes que escrevi e falhou no curso de precificação de 24/08 — achou
+ * "Custo Variável: R$ 0,80" numa tabela de outro produto e injetou esse número
+ * nos módulos seguintes como se fosse fato estabelecido. Era exatamente o risco
+ * que o comentário desta função descrevia: um valor extraído errado vira
+ * instrução errada, e o modelo obedece.
  *
- * Um valor por termo — o primeiro, que é o que o módulo apresentou. Termos sem
- * valor por perto simplesmente não entram.
+ * A leitura agora é ancorada no caso condutor — quem é o caso, que grandeza o
+ * texto nomeou, qual valor ele ligou a ela. Está em `valores-do-caso.ts`, junto
+ * com o porquê de cada escolha, e é a MESMA leitura que o portão de qualidade
+ * usa para reprovar incoerência. Sem isso, um lado aprovaria o que o outro
+ * produziu.
+ *
+ * Sem caso condutor identificável, devolve lista vazia e nada é injetado. Não
+ * ter valor nenhum é um desfecho correto; ter o valor errado, não.
  */
-export function extrairValoresCanonicos(
-  markdown: string,
-  termos: string[],
-  modulo: number,
+export function valoresDoCasoCondutor(
+  fontes: Array<{ texto: string; modulo: number }>,
 ): ValorCanonico[] {
-  const texto = String(markdown ?? "");
-  if (!texto) return [];
-  const paragrafos = paragrafosDe(texto);
-  const achados: ValorCanonico[] = [];
+  const blocos = fontes.map((f) => ({ paragrafos: paragrafosDe(f.texto) }));
+  if (!blocos.length) return [];
+  // Duas fontes quando há duas: um nome que aparece em duas lições ou dois
+  // módulos é o caso do curso. Com uma fonte só — o módulo 2 herdando do
+  // módulo 1 — exigir duas não deixaria nada passar.
+  const caso = identificarCaso(blocos, Math.min(2, blocos.length));
+  if (!caso.nomes.length) return [];
 
-  for (const termo of termos) {
-    const limpo = termo.trim();
-    if (limpo.length < 4) continue; // "LEC" sozinho casa em qualquer lugar
-
-    // TODAS as ocorrências, não só a primeira. O termo estreia num título ou
-    // numa definição, onde não há número nenhum — o valor aparece páginas
-    // depois, no exemplo resolvido. Olhar só a estreia devolvia lista vazia
-    // justamente para os termos que o módulo mais quantificou.
-    const busca = new RegExp(escapeRegExp(limpo), "gi");
-    let encontrado = false;
-    for (const paragrafo of paragrafos) {
-      for (const ocorrencia of paragrafo.matchAll(busca)) {
-        const janela = janelaDepoisDoTermo(
-          paragrafo,
-          (ocorrencia.index ?? 0) + ocorrencia[0].length,
-        );
-        const valor = janela.match(VALOR_MEDIVEL);
-        if (!valor) continue;
-        achados.push({ termo: limpo, valor: valor[1].trim(), modulo });
-        encontrado = true;
-        break; // o primeiro valor que o módulo deu ao termo basta
-      }
-      if (encontrado) break;
+  // ── O filtro que o portão não precisa ter ────────────────────────────────
+  //
+  // O portão tolera leitura ruim: um rótulo falso não se agrupa com nada e
+  // nunca vira alarme. A ponte NÃO tolera — tudo que ela lê é injetado no
+  // prompt como fato estabelecido. Rodando a leitura ancorada contra os cursos
+  // reais, o módulo 1 de precificação entregaria treze "valores", entre eles:
+  //
+  //     Detox Verde — Eles precisam: 30%
+  //     Detox Verde — Além disso: R$ 0,20
+  //     Armazém da Esquina — Representam uma pequena: 10%
+  //
+  // São fragmentos de oração, não grandezas. Injetá-los é o mesmo defeito da
+  // versão por glossário, com outra roupa.
+  //
+  // O que separa uma grandeza de um fragmento, sem precisar de dicionário: a
+  // grandeza SE REPETE. O curso fixa o número e o reafirma no resultado —
+  // "o custo variável total por garrafa será R$ 7,20" e, dois parágrafos
+  // adiante, "o custo variável por garrafa é de R$ 7,20". "Além disso" aparece
+  // uma vez e não volta.
+  //
+  // Duas menções do MESMO valor, portanto. Isso derruba os treze a dois, e os
+  // dois são o custo variável e os custos fixos — exatamente os números que o
+  // módulo 2 contradisse.
+  const contagem = new Map<string, { g: Grandeza; modulo: number; n: number }>();
+  for (const { texto, modulo } of fontes) {
+    for (const g of grandezasDoTexto(texto, caso)) {
+      const chave = `${g.caso}\u0000${g.chave}\u0000${g.numero ?? g.valor}`;
+      const ja = contagem.get(chave);
+      // Fica com a fonte MAIS ANTIGA: foi o que o aluno viu primeiro, e é dela
+      // que os módulos seguintes não podem divergir em silêncio.
+      if (ja) ja.n += 1;
+      else contagem.set(chave, { g, modulo, n: 1 });
     }
   }
-  return achados;
+
+  const porGrandeza = new Map<string, ValorCanonico>();
+  for (const { g, modulo, n } of contagem.values()) {
+    if (n < 2) continue;
+    const chave = `${g.caso}\u0000${g.chave}`;
+    if (porGrandeza.has(chave)) continue;
+    porGrandeza.set(chave, {
+      termo: `${g.caso} — ${g.rotulo}`,
+      valor: g.valor,
+      modulo,
+    });
+  }
+  return [...porGrandeza.values()];
 }
 
 /**
@@ -4675,9 +4685,11 @@ export async function gerarLicoesEmSerieQuandoCabe<P, R>(
 
 /** Todo o texto de uma lição, um trecho por parágrafo.
  *
- *  extrairValoresCanonicos procura o valor na MESMA frase do termo, e trabalha
- *  parágrafo a parágrafo. A lição chega como JSON aninhado; juntar as strings
- *  com linha em branco entre elas dá a ela a forma que a extração espera. */
+ *  A leitura dos valores do caso procura o número na MESMA oração do rótulo, e
+ *  trabalha parágrafo a parágrafo. A lição chega como JSON aninhado; juntar as
+ *  strings com linha em branco entre elas dá a ela a forma que a leitura
+ *  espera — colar tudo numa linha só faria o rótulo de um bloco encostar no
+ *  número do bloco seguinte. */
 export function textoDaLicao(licao: unknown): string {
   const partes: string[] = [];
   const visitar = (n: unknown) => {

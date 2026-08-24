@@ -96,18 +96,25 @@ describe("coerência numérica entre módulos", () => {
     const c = coerencia(M1_REAL, M2_REAL);
     expect(c.passed).toBe(false);
     expect(c.severity).toBe("blocker");
-    const custo = c.evidence.find((e) => e.includes("custo variavel"));
+    const custo = c.evidence.find((e) => /custos? vari[áa]ve/i.test(e));
     expect(custo, `evidências: ${JSON.stringify(c.evidence)}`).toBeTruthy();
-    expect(custo).toContain("R$7,20");
+    expect(custo).toContain("R$ 7,20");
     expect(custo).toContain("R$12,75");
   });
 
   it("acusa os custos fixos que mudam de valor entre os módulos", () => {
     const c = coerencia(M1_REAL, M2_REAL);
-    const fixo = c.evidence.find((e) => e.includes("custo fixo"));
+    const fixo = c.evidence.find((e) => /custos? fixos?/i.test(e));
     expect(fixo, `evidências: ${JSON.stringify(c.evidence)}`).toBeTruthy();
-    expect(fixo).toContain("R$25.000");
-    expect(fixo).toContain("R$15.000,00");
+    expect(fixo).toContain("R$ 25.000");
+    expect(fixo).toContain("R$ 15.000,00");
+  });
+
+  it("a evidência nomeia o rótulo como o texto escreveu, não a chave interna", () => {
+    // "custos fixos", e não "custo fixo": quem lê o laudo procura a frase no
+    // PDF, e a chave normalizada não existe em lugar nenhum do curso.
+    const c = coerencia(M1_REAL, M2_REAL);
+    expect(c.evidence.join(" ")).toMatch(/Detox Verde — custos fixos/);
   });
 
   it("a evidência diz em que módulo cada valor foi impresso", () => {
