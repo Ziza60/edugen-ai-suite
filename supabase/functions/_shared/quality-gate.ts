@@ -83,7 +83,7 @@ export interface CourseInspectionInput {
   lesson_max_words?: number;
 }
 
-export const QUALITY_GATE_VERSION = "2026-08-24";
+export const QUALITY_GATE_VERSION = "2026-08-24b";
 
 const MAX_EVIDENCE = 5;
 
@@ -330,22 +330,91 @@ const ABBREV_END_RE =
   /\b(?:sr|sra|dr|dra|prof|profa|exm[oa]|ilm[oa]|av|ltda|jr|min|máx|aprox|ex|obs|fig|tab|art|p[áa]g|n[ºo]|cf|vs|s[ée]c|ed|org|coord|cap|vol)\.$/i;
 
 const CASE_FIELD_RE =
-  /^\s*(?:>\s*)?\*\*(Contexto|Desafio|Solu[çc][ãa]o|Resultado|Papel|Entreg[áa]vel)\b[^*]*\*\*:?\s*(.*)$/i;
+  /^\s*(?:>\s*)?\*\*(Contexto|Desafio|Solu[çc][ãa]o|Resultado|Papel|Entreg[áa]vel|Cen[áa]rio)\b[^*]*\*\*:?\s*(.*)$/i;
 
+/**
+ * O piso de cada campo, em palavras.
+ *
+ * A versão anterior exigia QUATRO PALAVRAS DE QUALQUER CAMPO, e foi ela que
+ * reprovou o curso de precificação de 24/08 com três achados — os três falsos:
+ *
+ *     M1 — Papel: "Consultor Financeiro" (2 palavras)
+ *     M5 — Papel: "Consultor de Precificação" (3 palavras)
+ *     M2 — Solução: "Dados Fornecidos:" (2 palavras)
+ *
+ * Um Papel é um cargo; uma Solução é um raciocínio. A mesma régua não serve
+ * para os dois. Medido em 193 campos de cinco cursos reais, um Papel desce
+ * legitimamente a duas palavras, enquanto Contexto e Resultado nunca ficaram
+ * abaixo de quarenta.
+ *
+ * O prompt do pipeline já declara um contrato — "Contexto (20+ palavras),
+ * Desafio (12+), Solução (30+) e Resultado (12+)" — mas ele é o que se PEDE, e
+ * o portão é o que se BLOQUEIA. Um Contexto de 18 palavras onde se pediram 20
+ * não é um curso quebrado. Os pisos abaixo ficam confortavelmente abaixo do
+ * menor valor observado em cada campo, para pegar amputação sem tocar em
+ * variação legítima:
+ *
+ *     campo        n    menor observado    piso
+ *     Contexto    40         42             10
+ *     Resultado   28         41              6
+ *     Desafio     33         21              6
+ *     Solução     28         12              8
+ *     Entregável  49          5              3
+ *     Papel       12          2              1
+ *
+ * A Solução é o caso que obrigou a escolher a medição em vez do contrato:
+ * metade de 30 daria 15, e há Solução completa de 12 palavras em curso real.
+ */
+const PISO_DO_CAMPO: Array<[RegExp, number]> = [
+  // Um cargo. "Consultor Financeiro" está completo.
+  [/^papel$/i, 1],
+  // Um substantivo: "Um plano de negociação preenchido."
+  [/^(?:entreg[áa]vel|cen[áa]rio)$/i, 3],
+  [/^contexto$/i, 10],
+  [/^solu[çc][ãa]o$/i, 8],
+  [/^(?:desafio|resultado)$/i, 6],
+];
+
+function pisoDoCampo(campo: string): number {
+  for (const [re, piso] of PISO_DO_CAMPO) if (re.test(campo)) return piso;
+  return 4;
+}
+
+/**
+ * Campos de estudo de caso vazios ou amputados.
+ *
+ * O campo é UM BLOCO, não uma linha. O renderizador emite `**Solução:** ` e o
+ * texto do modelo em seguida, e esse texto pode trazer quebras de linha dentro
+ * — foi assim que "Dados Fornecidos:" apareceu no laudo como um campo de duas
+ * palavras: era a primeira linha de um campo inteiro, e a verificação não
+ * olhava para as seguintes. O bloco vai até a linha em branco ou o próximo
+ * campo.
+ */
 function checkTruncatedFields(course: CourseInspectionInput): CheckResult {
   const achados: string[] = [];
   for (const mod of course.modules) {
-    for (const line of contentLines(mod.markdown)) {
-      const m = line.match(CASE_FIELD_RE);
+    const linhas = contentLines(mod.markdown);
+    for (let i = 0; i < linhas.length; i++) {
+      const m = linhas[i].match(CASE_FIELD_RE);
       if (!m) continue;
       const campo = m[1];
-      const valor = (m[2] || "").trim();
+      const partes = [(m[2] || "").trim()];
+      for (let j = i + 1; j < linhas.length; j++) {
+        const proxima = linhas[j];
+        if (!proxima.trim() || CASE_FIELD_RE.test(proxima)) break;
+        if (/^#{1,6}\s/.test(proxima) || HR_RE.test(proxima)) break;
+        partes.push(proxima.trim());
+      }
+      const valor = partes.filter(Boolean).join(" ").trim();
+      const piso = pisoDoCampo(campo);
       if (!valor) {
         achados.push(`M${mod.module_number} — ${campo}: vazio`);
       } else if (ABBREV_END_RE.test(valor)) {
-        achados.push(`M${mod.module_number} — ${campo}: "${valor}" (termina em abreviação)`);
-      } else if (wordCount(valor) < 4) {
-        achados.push(`M${mod.module_number} — ${campo}: "${valor}" (${wordCount(valor)} palavras)`);
+        achados.push(`M${mod.module_number} — ${campo}: "${snippet(valor, 80)}" (termina em abreviação)`);
+      } else if (wordCount(valor) < piso) {
+        achados.push(
+          `M${mod.module_number} — ${campo}: "${snippet(valor, 80)}" (${wordCount(valor)} palavras, piso ${piso})`,
+        );
       }
     }
   }

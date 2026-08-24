@@ -31,6 +31,8 @@ export function cleanModuleContent(content: string, title?: string): string {
     c = c.replace(/^```[a-zA-Z]*[ \t]*\n?/, "").replace(/\n?```[ \t]*$/, "").trim();
   }
 
+  c = normalizeLineBreakTags(c);
+
   if (title) {
     const lines = c.split("\n");
     let k = 0;
@@ -43,6 +45,65 @@ export function cleanModuleContent(content: string, title?: string): string {
     }
   }
   return c;
+}
+
+/**
+ * Turn the generator's `<br>` into something the renderers actually draw.
+ *
+ * The quality gate blocked the pricing course of 24/08 for two HTML tags, and
+ * it was right: no renderer in this codebase — PDF, PPTX or portal — knows what
+ * `<br>` is, so the module shipped a cell reading literally
+ * "Considere:<br>- Ingredientes: R$ 45,00<br>- Embalagem: R$ 5,00".
+ *
+ * The model reaches for `<br>` for one reason: it needs several lines inside a
+ * table cell, and a newline there would break the table. So the replacement
+ * depends on where the tag is — a middle dot inside a table row, a real line
+ * break anywhere else.
+ *
+ * Fenced and inline code are left untouched. A course that TEACHES HTML writes
+ * `<br>` on purpose, and rewriting the very thing it is teaching would be the
+ * same mistake the gate's own leak checks had to learn to avoid.
+ */
+export function normalizeLineBreakTags(md: string): string {
+  if (!/<br\b/i.test(md)) return md;
+  const BR = /<br\s*\/?>/gi;
+  const out: string[] = [];
+  let inFence = false;
+  for (const line of md.split("\n")) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      out.push(line);
+      continue;
+    }
+    if (inFence || !BR.test(line)) {
+      BR.lastIndex = 0;
+      out.push(line);
+      continue;
+    }
+    BR.lastIndex = 0;
+    // Protege trechos em código de linha antes de mexer no resto.
+    const guardados: string[] = [];
+    let l = line.replace(/`[^`]*`/g, (m) => {
+      guardados.push(m);
+      return `\u0000${guardados.length - 1}\u0000`;
+    });
+    if (/^\s*\|/.test(l)) {
+      // Numa linha de tabela a quebra não cabe: vira separador.
+      l = l.replace(BR, " · ");
+      // "· - Ingredientes" ficaria com o hífen órfão da lista que o `<br>`
+      // simulava; e um `<br>` no fim da célula deixaria o ponto solto.
+      l = l.replace(/·\s*[-*+]\s*/g, "· ")
+        .replace(/(?:·\s*){2,}/g, "· ")
+        .replace(/\s*·\s*(?=\|)/g, " ")
+        .replace(/(\|\s*)·\s*/g, "$1")
+        .replace(/[ \t]{2,}/g, " ");
+    } else {
+      l = l.replace(BR, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n");
+    }
+    l = l.replace(/\u0000(\d+)\u0000/g, (_, i) => guardados[Number(i)]);
+    out.push(l);
+  }
+  return out.join("\n");
 }
 
 /**

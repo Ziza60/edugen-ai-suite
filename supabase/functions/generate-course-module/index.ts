@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizeLineBreakTags } from "../_shared/markdown.ts";
 
 import {
   buildModulePrompt,
@@ -584,10 +585,13 @@ async function generateOneModule(params: {
     assessment && includeQuiz
       ? renderOpenEndedAssessment(assessment.open_ended)
       : "";
-  const finalContent = [markdown, openEndedMarkdown]
-    .filter(Boolean)
-    .join("\n\n")
-    .trim();
+  // `openEndedMarkdown` é texto do modelo e entra DEPOIS da limpeza que o
+  // renderizador faz — sem esta passada, um `<br>` na resposta-modelo chegaria
+  // ao banco e sairia impresso no PDF. Aplicar no conteúdo final cobre as duas
+  // metades; a função é idempotente.
+  const finalContent = normalizeLineBreakTags(
+    [markdown, openEndedMarkdown].filter(Boolean).join("\n\n").trim(),
+  );
   const { data: moduleData, error: moduleError } = await serviceClient
     .from("course_modules")
     .insert({
