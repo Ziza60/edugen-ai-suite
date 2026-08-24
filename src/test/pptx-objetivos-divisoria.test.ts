@@ -151,8 +151,9 @@ describe("o corte do objetivo", () => {
   it("tira o preâmbulo da lição, que na divisória do módulo só ocupa espaço", () => {
     const md = "> **Objetivo da lição:** Ao final desta lição, o aluno " +
       "analisará os componentes do Ponto de Pedido.";
+    // O verbo vem no infinitivo: ver "uniformidade dos verbos", abaixo.
     expect(objetivosDoConteudo(md)[0]).toBe(
-      "Analisará os componentes do Ponto de Pedido.",
+      "Analisar os componentes do Ponto de Pedido.",
     );
   });
 
@@ -180,5 +181,60 @@ describe("objetivos em branco não valem por objetivos", () => {
     const out = [{ title: "M4", slides: [], objectives: ["ok", "-"] }] as never as
       Array<{ objectives?: string[] }>;
     expect(objetivosDeReserva(out as never, [{ content: MODULO }])).toBe(1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TIRAR O PREÂMBULO DEIXAVA O VERBO NA PESSOA ERRADA
+//
+// No deck de 24/08, o módulo 4 saiu com "Identificar critérios...",
+// "Elaborará estratégias..." e "Estabelecer métricas...". Três verbos, duas
+// conjugações. O "Elaborará" é o que sobrou de "Ao final desta lição, o aluno
+// elaborará": correto isolado, destoante ao lado dos infinitivos.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("uniformidade dos verbos", () => {
+  const comPreambulo = (t: string) =>
+    objetivosDoConteudo(`> **Objetivo da lição:** Ao final desta lição, o aluno ${t}`)[0];
+
+  it("o caso do módulo 4, exatamente como saiu", () => {
+    expect(comPreambulo("elaborará estratégias de compras eficientes"))
+      .toBe("Elaborar estratégias de compras eficientes");
+  });
+
+  it("as três conjugações regulares viram infinitivo", () => {
+    expect(comPreambulo("analisará os componentes do pedido")).toMatch(/^Analisar /);
+    expect(comPreambulo("compreenderá o papel do estoque")).toMatch(/^Compreender /);
+    expect(comPreambulo("reduzirá as rupturas de estoque")).toMatch(/^Reduzir /);
+  });
+
+  it("o verbo coordenado depois de \"e\" acompanha", () => {
+    // Sem isto sairia "Elaborar estratégias e desenvolverá um plano" — a
+    // incoerência sai da lista e entra na frase, que é pior.
+    expect(comPreambulo("elaborará estratégias e desenvolverá um plano de compras"))
+      .toBe("Elaborar estratégias e desenvolver um plano de compras");
+  });
+
+  it("os irregulares não viram \"far\", \"dir\" nem \"trar\"", () => {
+    expect(comPreambulo("fará o levantamento do estoque")).toMatch(/^Fazer /);
+    expect(comPreambulo("trará os dados de venda do período")).toMatch(/^Trazer /);
+    expect(comPreambulo("refará o cálculo do ponto de pedido")).toMatch(/^Refazer /);
+  });
+
+  it("objetivo já no infinitivo não é tocado", () => {
+    expect(comPreambulo("identificar critérios de seleção de fornecedores"))
+      .toBe("Identificar critérios de seleção de fornecedores");
+  });
+
+  it("futuro escrito SEM preâmbulo fica como o autor escreveu", () => {
+    // Não havia preâmbulo para remover: a escolha foi deliberada.
+    const md = "> **Objetivo da lição:** O gestor elaborará o plano de compras.";
+    expect(objetivosDoConteudo(md)[0]).toBe("O gestor elaborará o plano de compras.");
+  });
+
+  it("substantivo terminado em -ará não é convertido", () => {
+    // "Ceará" vem capitalizado no meio da frase; a coordenação só pega minúsculas.
+    expect(comPreambulo("mapeará fornecedores do Ceará e de Pernambuco"))
+      .toBe("Mapear fornecedores do Ceará e de Pernambuco");
   });
 });

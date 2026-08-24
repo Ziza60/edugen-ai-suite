@@ -2500,6 +2500,68 @@ const OBJETIVO_MAX = 110;
 const PREAMBULO_DA_LICAO =
   /^ao final (?:desta li[çc]ão|deste m[óo]dulo)[,:]?\s*(?:o|a)?\s*(?:aluno|participante|estudante)?\s*(?:ser[áa] capaz de\s*)?/i;
 
+// TIRAR O PREÂMBULO DEIXA O VERBO NA PESSOA ERRADA
+//
+// "Ao final desta lição, o aluno elaborará estratégias" vira "Elaborará
+// estratégias" — correto isolado, mas na divisória ele fica ao lado de
+// "Identificar" e "Estabelecer", que vêm de objetivos escritos no infinitivo.
+// A lista sai com três verbos em duas conjugações, e a mistura aparece.
+//
+// Só entra aqui o que o preâmbulo deixou para trás: futuro do indicativo na
+// terceira pessoa, que em português regular é o infinitivo mais "á".
+const FUTURO_IRREGULAR: Record<string, string> = {
+  fará: "fazer",
+  dirá: "dizer",
+  trará: "trazer",
+  porá: "pôr",
+};
+
+/** "elaborará" → "elaborar". null quando a palavra não é futuro de 3ª pessoa. */
+function paraInfinitivo(palavra: string): string | null {
+  const base = palavra.toLowerCase();
+  for (const [futuro, infinitivo] of Object.entries(FUTURO_IRREGULAR)) {
+    if (base === futuro) return infinitivo;
+    // Compostos: "refará" → "refazer", "contradirá" → "contradizer".
+    if (base.endsWith(futuro)) {
+      return base.slice(0, -futuro.length) + infinitivo;
+    }
+  }
+  // Curto demais para ser um verbo de objetivo, e o risco de falso positivo
+  // ("Ceará") não compensa.
+  if (base.length < 6) return null;
+  return /[aei]rá$/.test(base) ? base.slice(0, -1) : null;
+}
+
+// Verbo coordenado depois de "e": "...e desenvolverá um plano".
+//
+// O fecho é um lookahead, não um \b. Em JavaScript sem a flag unicode, \b só
+// conhece [A-Za-z0-9_]: entre o "á" de "desenvolverá" e o espaço seguinte não
+// há fronteira nenhuma, e a expressão com \b não casava com nada.
+const VERBO_COORDENADO = /(^|\s)(e|ou)\s+([a-zà-ÿ]{5,}(?:ará|erá|irá))(?![a-zà-ÿ])/g;
+
+/**
+ * Deixa o objetivo no infinitivo, como os que já vinham escritos assim.
+ *
+ * Só é chamado quando o preâmbulo foi removido: um objetivo que o autor
+ * escreveu no futuro DE PROPÓSITO, sem preâmbulo, fica como está.
+ */
+function uniformizarVerbos(texto: string): string {
+  const palavras = texto.split(" ");
+  const primeira = paraInfinitivo(palavras[0] ?? "");
+  if (primeira) {
+    palavras[0] = primeira.charAt(0).toUpperCase() + primeira.slice(1);
+  }
+  // Sem isto, "Elaborar estratégias e desenvolverá um plano" — pior que a
+  // mistura original, porque a incoerência passa a estar DENTRO da frase.
+  return palavras.join(" ").replace(
+    VERBO_COORDENADO,
+    (todo, antes, conj, verbo) => {
+      const inf = paraInfinitivo(verbo);
+      return inf ? `${antes}${conj} ${inf}` : todo;
+    },
+  );
+}
+
 /** Corta na fronteira de palavra e apara o que ficar pendurado. */
 function aparaObjetivo(bruto: string): string {
   if (bruto.length <= OBJETIVO_MAX) return bruto;
@@ -2518,9 +2580,12 @@ function aparaObjetivo(bruto: string): string {
 export function objetivosDoConteudo(markdown: string, max = 4): string[] {
   const achados: string[] = [];
   for (const m of String(markdown ?? "").matchAll(OBJETIVO_DA_LICAO)) {
-    let bruto = m[1].replace(/\*\*/g, "").trim().replace(PREAMBULO_DA_LICAO, "");
+    const original = m[1].replace(/\*\*/g, "").trim();
+    let bruto = original.replace(PREAMBULO_DA_LICAO, "");
     if (bruto.length < 12) continue;
     bruto = bruto.charAt(0).toUpperCase() + bruto.slice(1);
+    // Só quando o preâmbulo saiu: quem escreveu no futuro sem preâmbulo quis.
+    if (bruto !== original) bruto = uniformizarVerbos(bruto);
     const curto = aparaObjetivo(bruto);
     if (curto.length >= 12) achados.push(curto);
     if (achados.length >= max) break;
