@@ -106,9 +106,19 @@ async function runQualityGate(courseId: string): Promise<void> {
 // Fase 2 — gera UM módulo por invocação.
 //
 // Esta função existe para que o tamanho do curso deixe de disputar espaço com o
-// teto de wall clock. Uma invocação = um envelope (~8 s) + as lições do módulo
-// em paralelo (~25 s cada). Fica em torno de 50 s no pior caso observado, bem
-// abaixo dos 150 s do plano gratuito, e não cresce com o número de módulos.
+// teto de wall clock. Uma invocação = um envelope + as lições do módulo em
+// paralelo, e não cresce com o número de módulos.
+//
+// Os tempos que estavam escritos aqui — "~8 s" para o envelope, "~25 s" por
+// lição, "~50 s no pior caso" — nunca foram medidos, e não batiam com a
+// constante LESSON_CALL_TYPICAL_MS (32 s) usada logo abaixo para decidir se vale
+// começar uma lição. O log de conclusão passou a trazer claim_ms, licoes_ms e
+// total_ms para que o próximo ajuste venha de número real.
+//
+// Sobre o teto da plataforma: o que conta é a duração do WORKER — 150 s no plano
+// gratuito, 400 s nos pagos —, e existe um limite separado de CPU (2 s no
+// gratuito) que mede só computação ativa, sem I/O. Este worker fica quase todo
+// em espera de rede, então o gargalo é o relógio de parede, não a CPU.
 //
 // Ela é chamada máquina-a-máquina: pela fase 1 logo após enfileirar, e pela
 // rede de segurança quando um job fica parado. Chamar duas vezes é seguro —
@@ -205,7 +215,13 @@ async function generateOneModule(params: {
   sourceChunks: SourceChunk[];
   settings: Record<string, any>;
   msLeft: () => number;
-}): Promise<{ warnings: string[]; repairsApplied: number; words: number }> {
+}): Promise<{
+  warnings: string[];
+  repairsApplied: number;
+  words: number;
+  /** Tempo do bloco das lições, para calibrar o orçamento com dado. */
+  licoesMs: number;
+}> {
   const {
     serviceClient,
     userId,
@@ -274,6 +290,8 @@ async function generateOneModule(params: {
 
   let rawDocument: any;
   let anyTruncated = false;
+  let licoesMs = 0;
+  const tAntesDoEnvelope = Date.now();
   try {
     const envelope = await callAIJson<any>(
       FAST_MODEL,
@@ -322,6 +340,7 @@ async function generateOneModule(params: {
       },
     );
 
+    licoesMs = Date.now() - tAntesDoEnvelope;
     rawDocument = { ...envelope.value, lessons: lessonResults };
   } catch (error: any) {
     throw new Error(
@@ -625,6 +644,7 @@ async function generateOneModule(params: {
     warnings: result.warnings,
     repairsApplied: result.repairsApplied,
     words: wordCount(result.markdown),
+    licoesMs,
   };
 }
 
@@ -656,8 +676,25 @@ Deno.serve(async (req: Request) => {
 
   const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
-  // Reivindicação ANTES de responder: é isto que impede dois despachos de
-  // gerarem o mesmo módulo duas vezes.
+  // ═══════════════════════════════════════════════════════════════════════
+  // OS MARCOS DE TEMPO
+  //
+  // O orçamento desta função (MODULE_DEADLINE_MS) foi calibrado por hábito,
+  // não por medição — e as duas estimativas que existiam no código para o
+  // tempo de uma lição não batiam entre si: um comentário dizia ~25 s e a
+  // constante LESSON_CALL_TYPICAL_MS diz 32 s.
+  //
+  // A dúvida prática é se dá para SERIALIZAR as lições do módulo (cada uma
+  // vendo os valores que as anteriores fixaram, para o curso parar de se
+  // contradizer) sem estourar o teto de wall clock. Com 25 s por lição cabe;
+  // com 32 s não cabe. Nenhum dos dois números foi medido.
+  //
+  // Estes marcos existem para responder isso com dado. Também separam o que
+  // acontece ANTES do relógio de orçamento começar — o claim no Postgres — do
+  // que ele já cobre, porque o teto da plataforma conta a vida do worker, e o
+  // claim está dentro dela.
+  // ═══════════════════════════════════════════════════════════════════════
+  const tEntrada = Date.now();
   const { data: claimed, error: claimError } = await serviceClient
     .rpc("claim_course_generation_job", { p_job_id: payload.jobId })
     .maybeSingle();
@@ -752,6 +789,14 @@ Deno.serve(async (req: Request) => {
           warnings: outcome.warnings.length,
           repairs: outcome.repairsApplied,
           elapsed_ms: Date.now() - startedAt,
+          // Os marcos, em ms desde a entrada do handler. `claim_ms` é o tempo
+          // que o RPC de reivindicação consome antes de o orçamento começar a
+          // contar; `total_ms` é a vida do worker, que é o que o teto da
+          // plataforma mede.
+          claim_ms: startedAt - tEntrada,
+          licoes_ms: outcome.licoesMs,
+          total_ms: Date.now() - tEntrada,
+          orcamento_ms: MODULE_DEADLINE_MS,
         }),
       );
     } catch (error: any) {
