@@ -237,6 +237,70 @@ export function identificarCaso(
   };
 }
 
+/**
+ * O caso condutor quando NINGUÉM o pôs entre aspas.
+ *
+ * O curso "Transformação Digital", de 8 módulos, mostrou o limite da regra das
+ * aspas: ali quem aparece entre aspas são os CONCEITOS — 'última milha' (30
+ * vezes), "Gestão da Mudança", 'Cultura Digital' — enquanto o caso condutor,
+ * Logística Eficiente S.A., aparece em 284 linhas e nunca entre aspas. A regra
+ * ficou exatamente invertida, e a verificação passou cega no curso inteiro.
+ *
+ * Medido nos três cursos que tenho, contando nomes próprios de 2–3 palavras:
+ *
+ *     Transformação Digital  Logística Eficiente 288  x  Transf. Digital 56  = 5,1x
+ *     Precificação           Delícias Saudáveis   89  x  Detox Verde     49  = 1,8x
+ *     Estoque                Curva ABC            49  x  Custo Total     34  = 1,4x
+ *
+ * Só o caso que precisa de resgate é DOMINANTE. Nos outros dois o topo da lista
+ * é conceito (ou empata com um), e adotá-lo como caso seria trocar cegueira por
+ * alarme falso — nos dois, aliás, as aspas já resolvem.
+ *
+ * Daí a regra: nome próprio que aparece na maioria dos blocos, ao menos dez
+ * vezes, e com o DOBRO da frequência do segundo colocado. Quem chama só recorre
+ * a isto quando o caminho das aspas não encontrou nada — a escalada não pode
+ * atrapalhar quem já estava sendo bem servido.
+ */
+const NOME_PROPRIO_RE =
+  /\b(?:[A-ZÀ-Ý][\wÀ-ÿ]{2,}\s+){1,2}[A-ZÀ-Ý][\wÀ-ÿ]{2,}\b/g;
+
+const DOMINANCIA_MINIMA = 2;
+
+export function casoPorDominancia(
+  blocos: Array<{ paragrafos: string[] }>,
+): Caso {
+  const vazio: Caso = { nomes: [], frequencia: new Map(), tokens: new Set() };
+  if (blocos.length < 2) return vazio;
+
+  const freq = new Map<string, number>();
+  const blocosDoNome = new Map<string, Set<number>>();
+  blocos.forEach((b, i) => {
+    for (const p of b.paragrafos) {
+      for (const m of p.matchAll(NOME_PROPRIO_RE)) {
+        const n = m[0].trim();
+        freq.set(n, (freq.get(n) ?? 0) + 1);
+        if (!blocosDoNome.has(n)) blocosDoNome.set(n, new Set());
+        blocosDoNome.get(n)!.add(i);
+      }
+    }
+  });
+
+  const candidatos = [...freq.entries()]
+    .filter(([n]) => (blocosDoNome.get(n)?.size ?? 0) > blocos.length / 2)
+    .sort((a, b) => b[1] - a[1]);
+  if (!candidatos.length || candidatos[0][1] < 10) return vazio;
+
+  const [nome, top] = candidatos[0];
+  const segundo = candidatos[1]?.[1] ?? 0;
+  if (segundo && top < segundo * DOMINANCIA_MINIMA) return vazio;
+
+  return {
+    nomes: [nome],
+    frequencia: new Map([[nome, top]]),
+    tokens: new Set(nome.split(/\s+/).map(raizDaPalavra)),
+  };
+}
+
 export interface Grandeza {
   /** Chave normalizada, para agrupar: "custo variavel". */
   chave: string;

@@ -205,3 +205,72 @@ O 'Detox Verde' da 'Delícias Saudáveis' continua em análise de mercado. A
     expect(() => inspectCourse(curso("", ""))).not.toThrow();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUANDO O CASO NÃO ESTÁ ENTRE ASPAS
+//
+// A regra das aspas veio de cinco cursos em que o texto apresentava o caso
+// assim: 'Detox Verde', 'Armazém da Esquina'. O sexto curso — "Transformação
+// Digital e Inovação nas Empresas", 8 módulos — inverteu tudo: entre aspas
+// estão os CONCEITOS ('última milha' 30 vezes, "Gestão da Mudança", 'Cultura
+// Digital'), enquanto o caso condutor, Logística Eficiente S.A., aparece em 284
+// linhas e nunca entre aspas.
+//
+// Frequência sozinha não resolve: no curso de estoque os nomes mais frequentes
+// são todos conceitos (Curva ABC 49, Custo Total 34), e adotá-los como caso
+// trocaria cegueira por alarme falso. O que separa os dois é a DOMINÂNCIA:
+//
+//     Transformação Digital   Logística Eficiente 288 x Transf. Digital 56 = 5,1x
+//     Precificação            Delícias Saudáveis   89 x Detox Verde     49 = 1,8x
+//     Estoque                 Curva ABC            49 x Custo Total     34 = 1,4x
+//
+// Só quem precisa de resgate é dominante. E a escalada é condicional: só age
+// quando a leitura pelas aspas não encontrou UMA GRANDEZA SEQUER atravessando
+// módulos, e só substitui se a alternativa encontrar. Ficar mudo não é o mesmo
+// que aprovar.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("caso condutor sem aspas", () => {
+  // O nome precisa recorrer de verdade: a regra exige dez menções e o dobro da
+  // frequência do segundo colocado. Um caso citado de passagem não é o caso.
+  const eco = (n: number, frase: string) =>
+    Array.from({ length: n }, (_, i) => `${frase} (${i + 1})`).join("\n\n");
+
+  const CONCEITO = `A jornada começa pela 'Cultura Digital' e pela 'Gestão da Mudança'.
+
+Na Logística Eficiente, o custo por entrega é de R$ 12,00.
+
+${eco(7, "A Logística Eficiente acompanha seus indicadores de perto.")}`;
+
+  const CONTRADIZ = `A Logística Eficiente revisou seus números neste trimestre.
+
+Na Logística Eficiente, o custo por entrega é de R$ 30,00.
+
+${eco(7, "A Logística Eficiente publica os resultados todo mês.")}`;
+
+  it("a dominância resgata o caso que as aspas não veem", () => {
+    const c = coerencia(CONCEITO, CONTRADIZ);
+    expect(c.passed, `evidências: ${JSON.stringify(c.evidence)}`).toBe(false);
+    expect(c.evidence.join(" ")).toContain("Logística Eficiente");
+    expect(c.evidence.join(" ")).toContain("R$ 12,00");
+    expect(c.evidence.join(" ")).toContain("R$ 30,00");
+  });
+
+  it("a escalada não age quando as aspas já mediram alguma coisa", () => {
+    // Aqui o caso citado rende grandeza que atravessa módulos. A leitura por
+    // dominância não pode substituir uma que estava funcionando.
+    const m1 = `A 'Delícias Saudáveis' produz sucos.
+
+No 'Detox Verde', o custo variável é de R$ 7,20 por garrafa.
+
+O 'Detox Verde' da 'Delícias Saudáveis' lidera a linha.`;
+    const m2 = `A 'Delícias Saudáveis' revisou os números.
+
+No 'Detox Verde', o custo variável é de R$ 9,90 por garrafa.
+
+O 'Detox Verde' da 'Delícias Saudáveis' segue em campanha.`;
+    const c = coerencia(m1, m2);
+    expect(c.passed).toBe(false);
+    expect(c.evidence.join(" ")).toContain("Detox Verde");
+  });
+});

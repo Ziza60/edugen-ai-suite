@@ -33,11 +33,13 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import {
+  type Caso,
   type Grandeza,
   grandezasDoTexto,
   identificarCaso,
   mesmaOrdemDeGrandeza,
   mesmoObjeto,
+  casoPorDominancia,
   paragrafosDe,
 } from "./valores-do-caso.ts";
 
@@ -83,7 +85,7 @@ export interface CourseInspectionInput {
   lesson_max_words?: number;
 }
 
-export const QUALITY_GATE_VERSION = "2026-08-24b";
+export const QUALITY_GATE_VERSION = "2026-08-25";
 
 const MAX_EVIDENCE = 5;
 
@@ -564,6 +566,47 @@ function checkDensity(course: CourseInspectionInput): CheckResult {
 // de valores do pipeline — o portão e a ponte precisam ler o curso do mesmo
 // jeito, senão um aprova o que o outro produziu.
 
+type GrandezaComModulo = Grandeza & { modulo: number };
+
+/**
+ * Agrupa pelo NÚMERO e guarda como o texto escreveu: "R$ 25.000" e
+ * "R$ 25.000,00" são o mesmo valor, e mostrá-los como divergência seria acusar
+ * o curso pela própria formatação. A chave do grupo é a CHAVE normalizada da
+ * grandeza, não o rótulo exibido: o mesmo custo aparece como "custos variáveis
+ * unitários" numa lição e "Custos Variáveis" na outra.
+ */
+function agruparGrandezas(
+  porModulo: Array<{ numero: number; texto: string }>,
+  caso: Caso,
+): Map<string, Map<string, GrandezaComModulo[]>> {
+  const grupos = new Map<string, Map<string, GrandezaComModulo[]>>();
+  if (!caso.nomes.length) return grupos;
+  for (const { numero, texto } of porModulo) {
+    for (const g of grandezasDoTexto(texto, caso)) {
+      const grupo = `${g.caso}\u0000${g.chave}`;
+      const chaveDoValor = g.numero === null ? g.valor : `#${g.numero}`;
+      if (!grupos.has(grupo)) grupos.set(grupo, new Map());
+      const porValor = grupos.get(grupo)!;
+      if (!porValor.has(chaveDoValor)) porValor.set(chaveDoValor, []);
+      porValor.get(chaveDoValor)!.push({ ...g, modulo: numero });
+    }
+  }
+  return grupos;
+}
+
+/** Alguma grandeza foi vista em mais de um módulo? Se não, esta leitura não
+ *  mediu coerência nenhuma — ficou muda, que é diferente de aprovar. */
+function atravessaModulos(
+  grupos: Map<string, Map<string, GrandezaComModulo[]>>,
+): boolean {
+  for (const porValor of grupos.values()) {
+    const modulos = new Set<number>();
+    for (const ocs of porValor.values()) for (const o of ocs) modulos.add(o.modulo);
+    if (modulos.size >= 2) return true;
+  }
+  return false;
+}
+
 function checkCrossModuleCoherence(course: CourseInspectionInput): CheckResult {
   const id = "coerencia.valores_entre_modulos";
   const label = "Números do caso condutor coerentes entre módulos";
@@ -578,30 +621,26 @@ function checkCrossModuleCoherence(course: CourseInspectionInput): CheckResult {
     paragrafos: paragrafosDe(contentText(m.markdown)),
   }));
 
-  const caso = identificarCaso(porModulo);
+  // Primeiro pelas aspas, que é como a maioria dos cursos apresenta o caso.
+  // Se essa leitura não render NENHUMA grandeza que atravesse módulos, tenta a
+  // dominância — porque "não achei nada" pode significar que a âncora estava
+  // errada, e não que o curso é coerente. A escalada nunca substitui uma
+  // leitura que funcionou: ela só age onde a primeira ficou muda.
+  let caso = identificarCaso(porModulo);
+  let grupos = agruparGrandezas(porModulo, caso);
+  if (!atravessaModulos(grupos)) {
+    const porDominancia = casoPorDominancia(porModulo);
+    if (porDominancia.nomes.length) {
+      const alternativos = agruparGrandezas(porModulo, porDominancia);
+      if (atravessaModulos(alternativos)) {
+        caso = porDominancia;
+        grupos = alternativos;
+      }
+    }
+  }
   if (!caso.nomes.length) {
     return ok(id, label, "blocker",
       "Nenhum caso condutor recorrente identificado: nada a cruzar.");
-  }
-
-  // Agrupa pelo NÚMERO e exibe como o texto escreveu: "R$ 25.000" e
-  // "R$ 25.000,00" são o mesmo valor, e mostrá-los como divergência seria
-  // acusar o curso pela própria formatação.
-  const grupos = new Map<string, Map<string, Grandeza[]>>();
-  for (const { numero, texto } of porModulo) {
-    for (const g of grandezasDoTexto(texto, caso)) {
-      // Agrupa pela CHAVE normalizada, não pelo rótulo exibido: o mesmo custo
-      // aparece como "custos variáveis unitários" numa lição e "Custos
-      // Variáveis" na outra, e agrupar pelo texto separaria os dois.
-      const grupo = `${g.caso}\u0000${g.chave}`;
-      const chaveDoValor = g.numero === null ? g.valor : `#${g.numero}`;
-      if (!grupos.has(grupo)) grupos.set(grupo, new Map());
-      const porValor = grupos.get(grupo)!;
-      if (!porValor.has(chaveDoValor)) porValor.set(chaveDoValor, []);
-      porValor.get(chaveDoValor)!.push({ ...g, modulo: numero } as Grandeza & {
-        modulo: number;
-      });
-    }
   }
 
   const evidencias: string[] = [];
