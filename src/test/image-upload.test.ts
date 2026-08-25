@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  altDoUpload,
-  caminhoDoUpload,
-  LARGURA_MAXIMA,
-  medidaReduzida,
-  TAMANHO_MAXIMO_MB,
-  validarArquivo,
-} from "../lib/image-upload";
+import { CORES_MINIMAS_DE_FOTO, LARGURA_MAXIMA, TAMANHO_MAXIMO_MB, altDoUpload, caminhoDoUpload, extensaoDoBlob, medidaReduzida, pareceFotografia, validarArquivo } from "../lib/image-upload";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Envio de imagem do computador do autor, ao lado do Pexels e da geração por
@@ -137,5 +130,100 @@ describe("altDoUpload", () => {
 
   it("descrição muito longa é limitada", () => {
     expect(altDoUpload("a".repeat(400), "M").length).toBeLessThanOrEqual(180);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FOTOGRAFIA EM PNG É DESPERDÍCIO QUE SE PAGA EM TODA EXPORTAÇÃO
+//
+// A foto do módulo 2 do curso de precificação — moedas sobre um catálogo, 940
+// por 627 — chegou por upload em PNG e ficou PNG: 1105 KB, e 54 ms de CPU em
+// CADA exportação, contra 2 ms se fosse JPEG. Nos logs de um curso de 8 módulos
+// as imagens comeram 78% da CPU do export.
+//
+// Converter tudo seria pior. JPEG não tem canal alfa — um logotipo com fundo
+// transparente sairia com fundo preto — e borra bordas duras, deixando ilegível
+// a captura de uma planilha.
+//
+// A separação medida nas seis imagens reais dos cursos e num gráfico de barras,
+// contando cores distintas em 4000 pixels amostrados:
+//
+//     fotografias .............. 509, 533, 651, 673, 813, 976
+//     gráfico de barras ........ 3
+//
+// O piso de 200 fica com 2,5x de folga abaixo da foto mais pobre e 66x acima do
+// gráfico. É ALTO de propósito: errar para cima mantém o PNG, que é o
+// comportamento de hoje; errar para baixo borra texto, que é dano visível.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** RGBA cru, como `ctx.getImageData().data` devolve. */
+function pixels(n: number, cor: (i: number) => [number, number, number, number]) {
+  const d = new Uint8ClampedArray(n * 4);
+  for (let i = 0; i < n; i++) {
+    const [r, g, b, a] = cor(i);
+    d.set([r, g, b, a], i * 4);
+  }
+  return d;
+}
+
+describe("pareceFotografia", () => {
+  // Gerador determinístico com Math.imul: a multiplicação direta estoura a
+  // precisão do número em JavaScript e degenera a sequência — o primeiro
+  // "ruído" que escrevi aqui produzia poucas cores e reprovava uma foto.
+  function ruido(semente: number) {
+    let s = semente >>> 0;
+    return () => {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+      return (s >>> 16) & 0xff;
+    };
+  }
+
+  it("fotografia: muitas cores, sem transparência", () => {
+    const r = ruido(1);
+    expect(pareceFotografia(pixels(6000, () => [r(), r(), r(), 255]))).toBe(true);
+  });
+
+  it("gráfico de barras: poucas cores, fica PNG", () => {
+    const paleta: Array<[number, number, number, number]> = [
+      [255, 255, 255, 255], [30, 90, 160, 255], [0, 0, 0, 255],
+    ];
+    expect(pareceFotografia(pixels(6000, (i) => paleta[i % 3]))).toBe(false);
+  });
+
+  it("logotipo com transparência fica PNG mesmo com muitas cores", () => {
+    // Sem esta guarda o fundo transparente viraria preto no JPEG.
+    const r = ruido(7);
+    const d = pixels(6000, () => [r(), r(), r(), 255]);
+    d[3] = 0; // um único pixel transparente basta
+    expect(pareceFotografia(d)).toBe(false);
+  });
+
+  it("amostra pequena demais não decide, e na dúvida fica PNG", () => {
+    expect(pareceFotografia(pixels(10, () => [1, 2, 3, 255]))).toBe(false);
+    expect(pareceFotografia(new Uint8ClampedArray(0))).toBe(false);
+  });
+
+  it("o piso é o medido, não um número redondo qualquer", () => {
+    // Exatamente CORES_MINIMAS_DE_FOTO cores distintas passa; uma a menos, não.
+    const comNCores = (n: number) =>
+      pixels(6000, (i) => {
+        const c = i % n;
+        return [(c % 32) << 3, ((c >> 5) % 32) << 3, ((c >> 10) % 32) << 3, 255];
+      });
+    expect(pareceFotografia(comNCores(CORES_MINIMAS_DE_FOTO))).toBe(true);
+    expect(pareceFotografia(comNCores(CORES_MINIMAS_DE_FOTO - 1))).toBe(false);
+  });
+});
+
+describe("extensaoDoBlob", () => {
+  it("segue o RESULTADO da redução, não o arquivo de entrada", () => {
+    // A redução converte foto PNG em JPEG. Derivar do original gravaria bytes
+    // de JPEG num caminho terminado em `.png`.
+    expect(extensaoDoBlob(new Blob([], { type: "image/jpeg" }), "png")).toBe("jpg");
+    expect(extensaoDoBlob(new Blob([], { type: "image/png" }), "jpg")).toBe("png");
+  });
+
+  it("tipo desconhecido cai no padrão de quem chamou", () => {
+    expect(extensaoDoBlob(new Blob([], { type: "" }), "png")).toBe("png");
   });
 });

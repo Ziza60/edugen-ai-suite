@@ -38,6 +38,86 @@ export const TAMANHO_MAXIMO_MB = 20;
 /** Largura máxima depois da redução. Suficiente para slide 16:9 e para A4. */
 export const LARGURA_MAXIMA = 1600;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FOTOGRAFIA EM PNG É DESPERDÍCIO QUE SE PAGA EM TODA EXPORTAÇÃO
+//
+// O upload guardava PNG como PNG. Parece inofensivo até se medir o que isso
+// cobra na apostila: o jsPDF não sabe embutir PNG sem decodificar e recomprimir
+// em JavaScript. Numa foto real de curso, 940x627:
+//
+//     PNG,  1105 KB  →  54 ms para embutir, e 1107 KB dentro do PDF
+//     JPEG,  163 KB  →   2 ms para embutir, e  166 KB dentro do PDF
+//
+// Nos logs de um curso de 8 módulos, as imagens consumiram 78% da CPU do
+// export — 1165 ms contra 312 ms de TODO o texto. Era isso que limitava o
+// produto a nove ou dez módulos, contra o teto de CPU da edge function.
+//
+// Mas converter tudo seria pior do que não converter. JPEG não tem canal alfa
+// (um logotipo com fundo transparente sairia com fundo preto) e borra bordas
+// duras (a captura de uma planilha ficaria ilegível). PNG existe para esses
+// dois casos, e é neles que ele ganha.
+//
+// A separação é medível. Contando cores distintas em 4000 pixels amostrados,
+// nas seis imagens reais dos cursos e num gráfico de barras:
+//
+//     fotografias .............. 509, 533, 651, 673, 813, 976
+//     gráfico de barras ........ 3
+//
+// Duas ordens de grandeza. O piso fica em 200 — bem acima de qualquer gráfico e
+// com folga de 2,5x abaixo da foto mais pobre que eu medi. O piso é ALTO de
+// propósito: errar para cima mantém o PNG, que é o comportamento de hoje;
+// errar para baixo borraria o texto de um gráfico, que é dano visível.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A extensão do que SAIU da redução, não do que entrou.
+ *
+ * `reduzirImagem` pode devolver JPEG onde entrou PNG. Quem grava precisa
+ * perguntar ao resultado: derivar do arquivo original faria o caminho terminar
+ * em `.png` com bytes de JPEG dentro, e o `contentType` mentiria junto.
+ */
+export function extensaoDoBlob(blob: Blob, padrao: "jpg" | "png" = "jpg"): "jpg" | "png" {
+  if (blob?.type === "image/png") return "png";
+  if (blob?.type === "image/jpeg") return "jpg";
+  return padrao;
+}
+
+/** Cores distintas, em 4000 pixels, abaixo das quais não é fotografia. */
+export const CORES_MINIMAS_DE_FOTO = 200;
+
+/** Alfa abaixo disto conta como transparência de verdade, não arredondamento. */
+const ALFA_OPACO = 250;
+
+/**
+ * Estes pixels são de uma fotografia?
+ *
+ * Recebe RGBA cru — a mesma coisa que `ctx.getImageData().data` devolve — para
+ * poder ser testada sem navegador. Devolve false na dúvida: transparência,
+ * poucas cores, ou amostra pequena demais para decidir.
+ */
+export function pareceFotografia(
+  rgba: Uint8ClampedArray | Uint8Array | number[],
+  amostrasDesejadas = 4000,
+): boolean {
+  const pixels = Math.floor(rgba.length / 4);
+  if (pixels < 64) return false;
+
+  // Passo primo para varrer a imagem inteira em vez de uma faixa dela: com um
+  // passo par, uma imagem listrada poderia cair sempre na mesma coluna.
+  const passo = Math.max(1, Math.floor(pixels / amostrasDesejadas)) || 1;
+  const cores = new Set<number>();
+  for (let i = 0; i < pixels; i += passo) {
+    const p = i * 4;
+    if (rgba[p + 3] < ALFA_OPACO) return false; // tem transparência: PNG fica
+    // Quantiza em 32 níveis por canal: duas fotos do mesmo objeto não precisam
+    // ter exatamente os mesmos bytes para contarem como "muitas cores".
+    cores.add(
+      ((rgba[p] >> 3) << 10) | ((rgba[p + 1] >> 3) << 5) | (rgba[p + 2] >> 3),
+    );
+  }
+  return cores.size >= CORES_MINIMAS_DE_FOTO;
+}
+
 /**
  * Um campo `ok` e os dois complementos opcionais, em vez de união discriminada.
  *
@@ -162,9 +242,11 @@ export async function reduzirImagem(
       el.src = url;
     });
     const alvo = medidaReduzida(img.naturalWidth, img.naturalHeight, tetoLargura);
-    // Já cabe: envia o original, sem recomprimir. Recomprimir um JPEG que já
-    // está no tamanho só degrada a imagem para economizar quase nada.
-    if (alvo.largura === img.naturalWidth) return arquivo;
+    const cabe = alvo.largura === img.naturalWidth;
+    // Um JPEG que já cabe sai como veio: recomprimir só degrada a imagem para
+    // economizar quase nada. Um PNG precisa ser OLHADO mesmo cabendo — a foto
+    // que custava 54 ms por exportação tinha 940 px e passava direto por aqui.
+    if (cabe && arquivo.type !== "image/png") return arquivo;
 
     const canvas = document.createElement("canvas");
     canvas.width = alvo.largura;
@@ -173,7 +255,18 @@ export async function reduzirImagem(
     if (!ctx) return arquivo;
     ctx.drawImage(img, 0, 0, alvo.largura, alvo.altura);
 
-    const tipo = arquivo.type === "image/png" ? "image/png" : "image/jpeg";
+    let tipo = arquivo.type === "image/png" ? "image/png" : "image/jpeg";
+    if (tipo === "image/png") {
+      try {
+        const { data } = ctx.getImageData(0, 0, alvo.largura, alvo.altura);
+        if (pareceFotografia(data)) tipo = "image/jpeg";
+      } catch {
+        // Sem leitura de pixels não há decisão: fica o PNG, como antes.
+      }
+    }
+    // O PNG que cabia e continua PNG não tem por que ser reescrito.
+    if (cabe && tipo === "image/png") return arquivo;
+
     const blob = await new Promise<Blob | null>((ok) =>
       canvas.toBlob(ok, tipo, tipo === "image/jpeg" ? 0.85 : undefined)
     );

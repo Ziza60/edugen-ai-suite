@@ -9,6 +9,7 @@ import {
   ACCEPT_UPLOAD,
   altDoUpload,
   caminhoDoUpload,
+  extensaoDoBlob,
   reduzirImagem,
   validarArquivo,
 } from "@/lib/image-upload";
@@ -101,18 +102,22 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
       if (!userId) throw new Error("Faça login novamente para enviar a imagem.");
 
       const reduzida = await reduzirImagem(envArquivo);
+      // A extensão e o contentType vêm do RESULTADO: a redução converte foto em
+      // PNG para JPEG, e derivar do arquivo original gravaria bytes de JPEG num
+      // caminho terminado em `.png`, com o contentType mentindo junto.
+      const extensaoFinal = extensaoDoBlob(reduzida, v.extensao);
       const caminho = caminhoDoUpload(
         userId,
         scope,
         (scope === "cover" ? courseId : moduleId) ?? "sem-id",
-        v.extensao,
+        extensaoFinal,
       );
 
       // upsert: reenviar substitui a imagem anterior em vez de acumular lixo.
       const { error: upErr } = await supabase.storage
         .from("course-exports")
         .upload(caminho, reduzida, {
-          contentType: envArquivo.type,
+          contentType: reduzida.type || envArquivo.type,
           upsert: true,
         });
       if (upErr) throw upErr;

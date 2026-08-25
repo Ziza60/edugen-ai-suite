@@ -10,6 +10,63 @@ const corsHeaders = {
 // Monthly AI image credits per plan
 const CREDITS = { free: 3, starter: 10, pro: 50 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// O PNG QUE O GEMINI DEVOLVE CUSTA CARO PARA SEMPRE
+//
+// A imagem chegava em PNG e era gravada como veio. Isso não parece grave até se
+// medir o que ela cobra em CADA exportação, porque o jsPDF não sabe embutir PNG
+// sem antes decodificá-lo e recomprimi-lo em JavaScript puro.
+//
+// Medido com uma imagem real de curso (940x627):
+//
+//     PNG,  1105 KB  →  54 ms para embutir, e 1107 KB dentro do PDF
+//     JPEG,  163 KB  →   2 ms para embutir, e  166 KB dentro do PDF
+//
+// Vinte e sete vezes mais CPU, para ocupar o mesmo espaço na página. Nos logs
+// de um curso de 8 módulos, as seis imagens consumiram 1165 ms dos 1477 ms de
+// renderização — 78% da CPU do export, contra 312 ms de TODO o texto. Com um
+// teto de ~2 s de CPU por invocação, era isso que limitava o produto a nove ou
+// dez módulos.
+//
+// Duas tentativas de resolver sem converter, ambas descartadas por medição:
+// a transformação de imagem do Storage só aceita `format: 'origin'` (sem ele
+// devolve WebP, que o jsPDF não lê), e a bandeira de compressão do jsPDF, no
+// melhor caso, leva o PNG de 54 ms a 31 ms sem mudar o tamanho.
+//
+// Converter na GERAÇÃO é uma vez por imagem; converter no export seria toda vez.
+//
+// Se a conversão falhar por qualquer motivo, grava o PNG como antes. O pior
+// caso desta função passa a ser exatamente o comportamento que ela tinha.
+// ═══════════════════════════════════════════════════════════════════════════
+const QUALIDADE_JPEG = 85;
+
+async function paraJpeg(
+  png: Uint8Array,
+): Promise<{ bytes: Uint8Array; ext: string; mime: string }> {
+  const comoEstava = { bytes: png, ext: "png", mime: "image/png" };
+  try {
+    // Import dinâmico: se o módulo não carregar, a função continua entregando a
+    // imagem — perder a otimização é aceitável, perder a ilustração não.
+    const { decode } = await import(
+      "https://deno.land/x/imagescript@1.3.0/mod.ts"
+    );
+    const img: any = await decode(png);
+    if (typeof img?.encodeJPEG !== "function") return comoEstava;
+    const jpeg: Uint8Array = await img.encodeJPEG(QUALIDADE_JPEG);
+    // Um JPEG maior que o PNG de origem seria uma troca ruim; acontece com
+    // imagens muito chapadas, em que o PNG já é ótimo.
+    if (!jpeg?.length || jpeg.length >= png.length) return comoEstava;
+    return { bytes: jpeg, ext: "jpg", mime: "image/jpeg" };
+  } catch (err) {
+    console.warn(
+      `[generate-module-image] conversão para JPEG falhou, mantendo PNG: ${
+        (err as Error)?.message ?? err
+      }`,
+    );
+    return comoEstava;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -157,15 +214,26 @@ serve(async (req) => {
     // ── Upload to Storage ────────────────────────────────────────────────────
     const base64Data = imgPart.inlineData.data;
     const mimeType: string = imgPart.inlineData.mimeType || "image/png";
-    const ext = mimeType.includes("png") ? "png" : "jpg";
-    const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+    const original = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+
+    const t0 = Date.now();
+    const { bytes: binaryData, ext, mime } = mimeType.includes("png")
+      ? await paraJpeg(original)
+      : { bytes: original, ext: "jpg", mime: "image/jpeg" };
+    if (ext === "jpg" && mimeType.includes("png")) {
+      console.log(
+        `[generate-module-image] PNG ${Math.round(original.length / 1024)}KB → ` +
+          `JPEG ${Math.round(binaryData.length / 1024)}KB em ${Date.now() - t0}ms`,
+      );
+    }
+
     const storagePath = isCover
       ? `${user.id}/course-cover-ai-${course_id}.${ext}`
       : `${user.id}/module-ai-${module_id}.${ext}`;
 
     const { error: uploadErr } = await serviceClient.storage
       .from("course-exports")
-      .upload(storagePath, binaryData, { contentType: `image/${ext}`, upsert: true });
+      .upload(storagePath, binaryData, { contentType: mime, upsert: true });
     if (uploadErr) throw uploadErr;
 
     const { data: signed } = await serviceClient.storage
