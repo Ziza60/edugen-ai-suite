@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  LIMIAR,
-  MAXIMO_POR_MODULO,
-  removerRepeticoes,
-  semelhanca,
-  type ModuloTexto,
-} from "../../supabase/functions/_shared/dedupe-licoes";
+import { LIMIAR, MAXIMO_POR_MODULO, removerRepeticoes, semelhanca, type ModuloTexto } from "../../supabase/functions/_shared/dedupe-licoes";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // "O trio PPA/LDO/LOA é explicado por extenso umas quatro vezes entre os
@@ -153,5 +147,75 @@ describe("bordas", () => {
     const { remocoes } = removerRepeticoes([mod("A", PPA_M1), mod("B", PPA_M2_QUASE_IGUAL)]);
     expect(remocoes[0].semelhanca).toBeGreaterThan(LIMIAR);
     expect(remocoes[0].trecho.length).toBeGreaterThan(10);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A PODA QUE NÃO PODE PODAR DE MAIS
+//
+// O dedupe compara cada parágrafo contra todos os já vistos. Medido com módulos
+// distintos — o caso real, em que a maioria dos parágrafos NÃO acha par e o laço
+// roda inteiro — o custo é o quadrado do tamanho do curso:
+//
+//     5 módulos, 235 parágrafos ......   440 ms
+//     8 módulos, 376 parágrafos .....  1 139 ms   (2,6x)
+//    16 módulos, 752 parágrafos .....  5 018 ms  (11,4x)
+//    20 módulos, 940 parágrafos .....  7 715 ms  (17,5x)
+//
+// Contra um teto de ~2 s de CPU na edge function, um curso de 8 módulos já
+// gastava metade do orçamento só aqui. O produto quebrava por tamanho de curso,
+// não por defeito de conteúdo.
+//
+// Duas mudanças, nenhuma no resultado: o vocabulário passa a ser extraído uma
+// vez por parágrafo (era uma vez por PAR), e pares que não podem alcançar o
+// limiar são descartados por tamanho, sem contar palavra nenhuma.
+//
+// A poda vale porque Dice = 2c/(|A|+|B|) e c nunca passa do menor conjunto:
+//
+//     menor/maior < LIMIAR/(2 − LIMIAR)  ⟹  Dice < LIMIAR, sempre
+//
+// Este teste é o que garante isso: se algum par de tamanhos desproporcionais
+// conseguisse alcançar o limiar, a poda estaria escondendo uma repetição real.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("a poda por tamanho é exata", () => {
+  const RAZAO = LIMIAR / (2 - LIMIAR);
+
+  it("nenhum par podado conseguiria alcançar o limiar", () => {
+    // Varre pares de tamanhos e, para cada um, monta o MELHOR caso possível:
+    // o menor vocabulário inteiramente contido no maior. Se nem assim alcança
+    // o limiar, podar era seguro.
+    let podados = 0;
+    for (let menor = 1; menor <= 60; menor++) {
+      for (let maior = menor; maior <= 120; maior++) {
+        if (menor / maior >= RAZAO) continue;
+        podados++;
+        const diceMaximo = (2 * menor) / (menor + maior);
+        expect(
+          diceMaximo,
+          `menor=${menor} maior=${maior} alcançaria ${diceMaximo.toFixed(3)}`,
+        ).toBeLessThan(LIMIAR);
+      }
+    }
+    expect(podados).toBeGreaterThan(1000);
+  });
+
+  it("o par que alcança o limiar não é podado", () => {
+    // Textos de tamanhos diferentes, mas próximos o bastante para passar.
+    const a = "margem contribuicao unitaria preco venda custo variavel produto lucro";
+    const b = "margem contribuicao unitaria preco venda custo variavel produto";
+    const s = semelhanca(a, b);
+    expect(s).toBeGreaterThanOrEqual(LIMIAR);
+    // Se a poda rejeitasse este par, a repetição escaparia.
+    const vocA = a.split(" ").length, vocB = b.split(" ").length;
+    expect(Math.min(vocA, vocB) / Math.max(vocA, vocB)).toBeGreaterThanOrEqual(RAZAO);
+  });
+
+  it("parágrafo muito menor que o outro não é considerado repetição", () => {
+    const curto = "o custo variavel unitario";
+    const longo = "o custo variavel unitario do produto considerando materia prima " +
+      "embalagem mao de obra direta comissoes sobre vendas e energia eletrica " +
+      "aplicada ao volume mensal estimado pela empresa";
+    expect(semelhanca(curto, longo)).toBeLessThan(LIMIAR);
   });
 });

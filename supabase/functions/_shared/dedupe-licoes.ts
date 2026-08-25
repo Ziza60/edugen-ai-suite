@@ -84,12 +84,43 @@ function contarPalavras(t: string): number {
  * cada um não aparece no outro.
  */
 export function semelhanca(a: string, b: string): number {
-  const A = new Set(palavras(a));
-  const B = new Set(palavras(b));
+  return semelhancaDeVocabulario(new Set(palavras(a)), new Set(palavras(b)));
+}
+
+/**
+ * O mesmo Dice, sobre vocabulários JÁ EXTRAÍDOS.
+ *
+ * A versão que recebia strings tokenizava os dois lados a cada chamada, e a
+ * comparação é toda-contra-todos: o vocabulário de um parágrafo já visto era
+ * reconstruído uma vez para cada parágrafo novo do curso.
+ */
+function semelhancaDeVocabulario(A: Set<string>, B: Set<string>): number {
   if (!A.size || !B.size) return 0;
+  // Percorre o MENOR: o resultado é o mesmo e o laço é mais curto.
+  const [menor, maior] = A.size <= B.size ? [A, B] : [B, A];
   let comuns = 0;
-  for (const w of A) if (B.has(w)) comuns++;
+  for (const w of menor) if (maior.has(w)) comuns++;
   return (2 * comuns) / (A.size + B.size);
+}
+
+/**
+ * Este par PODE alcançar o limiar? Um "não" aqui dispensa contar as palavras.
+ *
+ * Dice = 2c/(|A|+|B|), e c nunca passa do tamanho do menor conjunto. Impondo
+ * Dice ≥ L e substituindo c pelo seu teto:
+ *
+ *     menor ≥ L·(menor + maior)/2   ⟹   menor/maior ≥ L/(2 − L)
+ *
+ * Com L = 0,72 isso dá 0,5625: um parágrafo com menos de 56% do vocabulário do
+ * outro não tem como atingir o limiar, por mais que as palavras coincidam. A
+ * poda é EXATA — descarta só o que já estava descartado —, e num curso real a
+ * maioria dos pares morre aqui, em duas comparações de inteiros.
+ */
+const RAZAO_MINIMA = LIMIAR / (2 - LIMIAR);
+
+function podeAlcancarLimiar(a: number, b: number): boolean {
+  if (!a || !b) return false;
+  return (a <= b ? a / b : b / a) >= RAZAO_MINIMA;
 }
 
 /** Um parágrafo de prosa: nada de título, lista, tabela, citação ou código. */
@@ -125,7 +156,7 @@ export function removerRepeticoes(
   // Parágrafos já vistos, com o módulo de origem. Só os longos entram, porque
   // só eles podem ser removidos — comparar contra os curtos seria gastar tempo
   // à toa.
-  const vistos: Array<{ texto: string; modulo: number }> = [];
+  const vistos: Array<{ vocabulario: Set<string>; modulo: number }> = [];
 
   const saida = modulos.map((m, mi) => {
     const linhas = (m.conteudo || "").split("\n");
@@ -136,12 +167,17 @@ export function removerRepeticoes(
       if (!ehProsa(linha)) return linha;
       if (contarPalavras(linha) < MINIMO_PALAVRAS) return linha;
 
+      // Uma vez por parágrafo NOVO, não uma vez por par: era isto que fazia o
+      // custo do dedupe crescer com o quadrado do tamanho do curso.
+      const vocabulario = new Set(palavras(linha));
+
       let melhor = { i: -1, s: 0 };
       for (let k = 0; k < vistos.length; k++) {
         // Só entre módulos diferentes: dentro do mesmo módulo, retomar um ponto
         // é recurso didático legítimo, não descuido.
         if (vistos[k].modulo === mi) continue;
-        const s = semelhanca(linha, vistos[k].texto);
+        if (!podeAlcancarLimiar(vocabulario.size, vistos[k].vocabulario.size)) continue;
+        const s = semelhancaDeVocabulario(vocabulario, vistos[k].vocabulario);
         if (s > melhor.s) melhor = { i: k, s };
       }
 
@@ -164,7 +200,7 @@ export function removerRepeticoes(
     // é contra o que ele de fato ensinou que os próximos serão comparados.
     for (const linha of linhas) {
       if (ehProsa(linha) && contarPalavras(linha) >= MINIMO_PALAVRAS) {
-        vistos.push({ texto: linha, modulo: mi });
+        vistos.push({ vocabulario: new Set(palavras(linha)), modulo: mi });
       }
     }
 
