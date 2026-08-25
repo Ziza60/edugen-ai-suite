@@ -64,7 +64,49 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-08-23-fonte-embutida";
+const EXPORT_PDF_BUILD = "2026-08-25-imagens-com-prazo";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TODA BUSCA DE IMAGEM TEM PRAZO
+//
+// A exportação tinha dois `await fetch(...)` sem timeout: a capa, e a imagem de
+// cada módulo dentro do laço de renderização. O try/catch em volta protegia
+// contra ERRO, não contra DEMORA — uma URL que pendura em vez de responder 404
+// simplesmente espera, e o laço serial somava uma espera por módulo.
+//
+// Isso importa mais aqui do que na geração: o `export-pdf` responde no FIM, com
+// o arquivo, então ele está sujeito ao teto de requisição ociosa da plataforma.
+// Estourar esse teto é o "export-pdf failed" que chega ao navegador.
+//
+// Oito segundos por imagem: uma ilustração de apostila que não chegou em oito
+// segundos não vai chegar, e a apostila sai melhor sem ela do que não saindo.
+// ═══════════════════════════════════════════════════════════════════════════
+const IMAGEM_TIMEOUT_MS = 8000;
+
+async function baixarImagem(
+  url: string,
+  rotulo: string,
+): Promise<Uint8Array | undefined> {
+  const t0 = Date.now();
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(IMAGEM_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      console.error(`[export-pdf] ${rotulo} respondeu ${res.status}`);
+      return undefined;
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  } catch (err) {
+    // O nome do erro distingue "demorou demais" de "não existe" — sem isso, um
+    // CDN lento e uma URL morta viram a mesma linha de log.
+    const nome = (err as Error)?.name === "TimeoutError"
+      ? `não respondeu em ${IMAGEM_TIMEOUT_MS}ms`
+      : String((err as Error)?.message ?? err);
+    console.error(`[export-pdf] ${rotulo}: ${nome} (${Date.now() - t0}ms)`);
+    return undefined;
+  }
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1655,18 +1697,9 @@ Deno.serve(async (req: Request) => {
     }
 
     // Capa escolhida pelo autor. Falhar aqui não pode custar a apostila.
-    let capaBytes: Uint8Array | undefined;
-    if (course.cover_image_url) {
-      try {
-        const capaRes = await fetch(course.cover_image_url);
-        if (capaRes.ok) capaBytes = new Uint8Array(await capaRes.arrayBuffer());
-        else console.error(`[export-pdf] capa respondeu ${capaRes.status}`);
-      } catch (capaErr) {
-        console.error("[export-pdf] erro ao buscar a capa:", capaErr);
-      }
-    }
-
-    pdf.renderTitlePage(course.title, course.description, course.language, capaBytes);
+    const capaPromessa = course.cover_image_url
+      ? baixarImagem(course.cover_image_url, "capa")
+      : Promise.resolve(undefined);
 
     // Ilustrações dos módulos — a mesma tabela que o portal do aluno e o editor
     // já leem. Nenhuma exportação a lia: o autor gerava (e pagava) a imagem,
@@ -1685,6 +1718,27 @@ Deno.serve(async (req: Request) => {
         if (img.module_id && img.url) imageByModuleId[img.module_id] = img;
       }
     }
+
+    // As buscas de imagem saem do laço de renderização e vão TODAS JUNTAS.
+    // Dentro do laço elas eram seriais: a do módulo 2 só começava quando a do
+    // módulo 1 terminasse, e o desenho da página só começava depois de todas.
+    // Cinco módulos com imagem viravam cinco esperas somadas, cada uma sem
+    // teto. Em paralelo e com prazo, o pior caso deixa de crescer com o número
+    // de módulos.
+    const tImagens = Date.now();
+    const bytesPorModulo = new Map<string, Uint8Array>();
+    const pendentes = Object.entries(imageByModuleId).map(async ([id, img]) => {
+      const bytes = await baixarImagem(img.url, `imagem do módulo ${id}`);
+      if (bytes) bytesPorModulo.set(id, bytes);
+    });
+    const capaBytes = await capaPromessa;
+    await Promise.all(pendentes);
+    console.log(
+      `[export-pdf] imagens: ${bytesPorModulo.size}/${Object.keys(imageByModuleId).length}` +
+        `${capaBytes ? " + capa" : ""} em ${Date.now() - tImagens}ms`,
+    );
+
+    pdf.renderTitlePage(course.title, course.description, course.language, capaBytes);
 
     // Cada módulo com o conteúdo já limpo, para que o sumário e o laço adiante
     // enxerguem exatamente a mesma lista.
@@ -1754,23 +1808,9 @@ Deno.serve(async (req: Request) => {
       pdf.renderModuleTitle(mod.title);
       moduleStartPages.push(pdf.pageNum);
 
-      const img = imageByModuleId[mod.id];
-      if (img?.url) {
-        try {
-          const imgRes = await fetch(img.url);
-          if (imgRes.ok) {
-            pdf.renderModuleImage(
-              new Uint8Array(await imgRes.arrayBuffer()),
-              img.alt_text || undefined,
-            );
-          } else {
-            console.error(
-              `[export-pdf] imagem do módulo ${mod.id} respondeu ${imgRes.status}`,
-            );
-          }
-        } catch (imgFetchErr) {
-          console.error(`[export-pdf] erro ao buscar imagem do módulo ${mod.id}:`, imgFetchErr);
-        }
+      const bytes = bytesPorModulo.get(mod.id);
+      if (bytes) {
+        pdf.renderModuleImage(bytes, imageByModuleId[mod.id]?.alt_text || undefined);
       }
 
       if (content) {
