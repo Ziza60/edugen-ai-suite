@@ -64,7 +64,7 @@ const TESTING_MODE = true;
 
 // Build marker — surfaced on EVERY response header (x-export-pdf-build) so you
 // can confirm in F12 → Network which code is actually live after a deploy.
-const EXPORT_PDF_BUILD = "2026-08-25-imagens-com-prazo";
+const EXPORT_PDF_BUILD = "2026-08-25-marcos";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TODA BUSCA DE IMAGEM TEM PRAZO
@@ -1595,6 +1595,28 @@ Deno.serve(async (req: Request) => {
   // confirm WHICH code is actually live after a deploy (the 403 fix included).
   console.log(`[export-pdf] BUILD=${EXPORT_PDF_BUILD} TESTING_MODE=${TESTING_MODE}`);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // MARCOS, PORQUE "CPU Time exceeded" SEM MARCOS NÃO DIZ ONDE
+  //
+  // Em 25/08 uma exportação morreu com "CPU Time exceeded" depois de 20,1 s. O
+  // último registro antes do silêncio era "[PDF-FONTE] família em uso" — daí
+  // até o fim, nada. Vinte segundos sem uma linha, e cinco hipóteses erradas
+  // tentando deduzir o que aconteceu ali dentro.
+  //
+  // Os marcos saem A CADA FASE, não num resumo no fim: uma função morta pela
+  // plataforma nunca chega ao fim, e um resumo que não é impresso não serve de
+  // nada. Cada linha que sai é uma fase que já passou.
+  // ═══════════════════════════════════════════════════════════════════════
+  const tInicio = Date.now();
+  let tFase = tInicio;
+  const marco = (fase: string, extra = "") => {
+    const agora = Date.now();
+    console.log(
+      `[export-pdf] ${fase}=${agora - tFase}ms total=${agora - tInicio}ms${extra ? ` ${extra}` : ""}`,
+    );
+    tFase = agora;
+  };
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -1738,7 +1760,9 @@ Deno.serve(async (req: Request) => {
         `${capaBytes ? " + capa" : ""} em ${Date.now() - tImagens}ms`,
     );
 
+    marco("imagens");
     pdf.renderTitlePage(course.title, course.description, course.language, capaBytes);
+    marco("capa");
 
     // Cada módulo com o conteúdo já limpo, para que o sumário e o laço adiante
     // enxerguem exatamente a mesma lista.
@@ -1816,11 +1840,22 @@ Deno.serve(async (req: Request) => {
       if (content) {
         pdf.renderModuleContent(content);
       }
+      // Por módulo, e não só o total: se o custo depende do conteúdo, saber EM
+      // QUAL módulo o tempo foi embora é o que separa uma investigação de um
+      // palpite. `chars` dá a régua para comparar módulos de tamanhos
+      // diferentes sem precisar abrir o curso.
+      marco(`modulo${moduleNum}`, `chars=${content.length} paginas=${pdf.pageNum}`);
     }
 
+    marco("modulos", `n=${renderableModules.length} paginas=${pdf.pageNum}`);
     pdf.finalizeTOC(moduleStartPages);
+    marco("sumario");
 
+    // `output()` é onde o jsPDF monta o arquivo e faz o subset da fonte
+    // embutida. Medido localmente, é a fase que mais cresceu com a EduSans:
+    // 11ms com Helvetica, 64ms com a fonte embutida no mesmo curso.
     const pdfBytes = pdf.output();
+    marco("output", `kb=${Math.round(pdfBytes.byteLength / 1024)}`);
     const dateStr = new Date().toISOString().slice(0, 10);
     const safeName = (course.title || "curso").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s\-]/g, "").replace(/\s+/g, "-").trim().substring(0, 80);
     const fileName = `${userId}/${safeName} - PDF - ${dateStr}.pdf`;
@@ -1839,6 +1874,7 @@ Deno.serve(async (req: Request) => {
     const { data: signedUrl, error: signErr } = await serviceClient.storage
       .from("course-exports")
       .createSignedUrl(fileName, 3600);
+    marco("upload");
 
     if (signErr) throw signErr;
 
