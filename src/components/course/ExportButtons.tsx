@@ -11,6 +11,7 @@ import {
   Download, FileText, Loader2, Package, StickyNote, GraduationCap, FileType,
   ChevronDown, BarChart3,
 } from "lucide-react";
+import { montarMarkdownDoCurso } from "@/lib/export-markdown";
 import { PptxExportDialog, type PptxExportOptions } from "./PptxExportDialog";
 import { PptxQualityReport, type QualityReport } from "./PptxQualityReport";
 import {
@@ -93,10 +94,16 @@ interface ExportButtonsProps {
   courseTitle: string;
   courseStatus: string;
   isPro: boolean;
-  modules: { title: string; content: string | null }[];
+  modules: { id?: string | null; title: string; content: string | null }[];
+  /** Linhas de `course_images`, já carregadas pela página. */
+  images?: { module_id?: string | null; url?: string | null; alt_text?: string | null }[];
+  /** `courses.cover_image_url`. */
+  coverImageUrl?: string | null;
 }
 
-export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modules }: ExportButtonsProps) {
+export function ExportButtons({
+  courseId, courseTitle, courseStatus, isPro, modules, images, coverImageUrl,
+}: ExportButtonsProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -255,7 +262,13 @@ export function ExportButtons({ courseId, courseTitle, courseStatus, isPro, modu
 
   const handleExportMarkdown = () => {
     const branding = isPro ? "" : "\n\n---\n\n*Gerado com CourseAI — plataforma de cursos com IA*\n";
-    const md = modules.map((m) => `# ${m.title}\n\n${m.content || ""}`).join("\n\n---\n\n") + branding;
+    const md = montarMarkdownDoCurso({
+      modulos: modules,
+      imagens: images,
+      capaUrl: coverImageUrl,
+      tituloDoCurso: courseTitle,
+      rodape: branding,
+    });
     const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

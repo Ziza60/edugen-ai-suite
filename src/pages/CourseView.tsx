@@ -541,6 +541,8 @@ export default function CourseView() {
                 courseStatus={course.status}
                 isPro={isPro}
                 modules={modules}
+                images={courseImages}
+                coverImageUrl={(course as any)?.cover_image_url ?? null}
               />
               <Button
                 variant="outline"
