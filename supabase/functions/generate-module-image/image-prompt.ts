@@ -58,6 +58,35 @@ function comoTema(texto: string): string {
   return String(texto ?? "").replace(/["'\u2018\u2019\u201c\u201d]/g, "").trim();
 }
 
+/**
+ * O QUE FALTA QUANDO NÃO HÁ DESCRIÇÃO: UMA CENA.
+ *
+ * Tirar as aspas do título ajudou, mas não era a causa principal. O relato que
+ * a encontrou foi um teste do autor: "as imagens que eu não pedi ajuda da IA
+ * para escrever o prompt ela gerou imagem com textos. Quando gerei imagens com
+ * sugestão de prompt ela gerou imagens sem texto."
+ *
+ * A correlação é com a DESCRIÇÃO, não com as aspas. E olhando os dois prompts
+ * lado a lado, o motivo salta:
+ *
+ *   com descrição .... "Uma balança de pratos metálica centraliza a cena. Um
+ *                       dos pratos contém cubos cinzas empilhados…"
+ *   sem descrição .... "an educational module about Análise Fundamentada de
+ *                       Custos e Ponto de Equilíbrio"
+ *
+ * No segundo caso, a única coisa concreta que o modelo recebe é um título em
+ * português. Não há objeto, não há composição, não há material — não há o que
+ * desenhar. Então ele desenha o que tem: as palavras. E erra a ortografia,
+ * porque desenhar letra não é escrever.
+ *
+ * A proibição já existia em SEM_TEXTO, três linhas abaixo, e não bastava: ela é
+ * genérica e distante, enquanto o título é concreto e imediato. Entre as duas,
+ * o modelo segue a concreta. A correção então faz as duas coisas que faltavam —
+ * PEDIR uma cena, e negar o título ALI, colado nele, em vez de no rodapé.
+ */
+const COMO_SEM_DESCRICAO =
+  "No description was given, so build the scene yourself: choose concrete objects, symbols and spatial metaphor that stand for that theme — the kind of scene a designer would draw to represent it. The theme words above are a TOPIC TO INTERPRET, never content to display: they must not appear drawn, lettered or spelled anywhere in the image.";
+
 const ESTILO_BASE =
   "premium and minimalist — flat vector / soft 3D, geometric shapes, smooth matte surfaces, soft gradient colors, modern and elegant, 16:9 aspect";
 
@@ -110,8 +139,12 @@ Context — ${
         : `educational module about ${tituloDoModulo}, from a course about ${tituloDoCurso}`
     }.`
     : ehCapa
-    ? `Generate a conceptual cover illustration for a course about ${tituloDoCurso || tituloDoModulo}.`
-    : `Generate a conceptual illustration for an educational module about ${tituloDoModulo}, from a course about ${tituloDoCurso}.`;
+    ? `Generate a conceptual cover illustration for a course about ${tituloDoCurso || tituloDoModulo}.
+
+${COMO_SEM_DESCRICAO}`
+    : `Generate a conceptual illustration for an educational module about ${tituloDoModulo}, from a course about ${tituloDoCurso}.
+
+${COMO_SEM_DESCRICAO}`;
 
   return `${assunto}
 

@@ -170,3 +170,53 @@ describe("o título não pode parecer um letreiro a desenhar", () => {
     expect(montarPromptDeImagem(entrada).trim().endsWith(SEM_TEXTO)).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEM DESCRIÇÃO, O TÍTULO VIRAVA O DESENHO
+//
+// O teste do autor: "as imagens que eu não pedi ajuda da IA para escrever o
+// prompt ela gerou imagem com textos. Quando gerei imagens com sugestão de
+// prompt ela gerou imagens sem texto." A correlação é com a DESCRIÇÃO — sem
+// ela, a única coisa concreta no prompt é um título em português, e o modelo
+// desenha a única coisa que recebeu.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("prompt SEM descrição do autor", () => {
+  it("pede uma cena construída com objetos e símbolos", () => {
+    const p = modulo();
+    expect(p).toMatch(/build the scene yourself/i);
+    expect(p).toMatch(/concrete objects, symbols and spatial metaphor/i);
+  });
+
+  it("diz que o tema é assunto a interpretar, não conteúdo a exibir", () => {
+    expect(modulo()).toMatch(/TOPIC TO INTERPRET/);
+    expect(modulo()).toMatch(/never content to display/i);
+  });
+
+  it("nega o título COLADO nele, e não só no rodapé genérico", () => {
+    const p = modulo();
+    const ondeOTitulo = p.indexOf("Mapeamento de Riscos");
+    const ondeANegacao = p.indexOf("must not appear drawn");
+    const ondeORodape = p.indexOf(SEM_TEXTO);
+    expect(ondeOTitulo).toBeGreaterThanOrEqual(0);
+    expect(ondeANegacao).toBeGreaterThan(ondeOTitulo);
+    // A negação específica vem ANTES da proibição genérica do rodapé: entre uma
+    // instrução concreta e uma distante, o modelo segue a concreta.
+    expect(ondeANegacao).toBeLessThan(ondeORodape);
+  });
+
+  it("vale também para a capa", () => {
+    expect(capa()).toMatch(/build the scene yourself/i);
+    expect(capa()).toMatch(/TOPIC TO INTERPRET/);
+  });
+
+  it("NÃO entra quando o autor escreveu a descrição — ela já é a cena", () => {
+    const p = modulo("Uma balança de pratos metálica centraliza a cena.");
+    expect(p).not.toMatch(/build the scene yourself/i);
+    expect(p).toMatch(/USER'S DESCRIPTION/);
+  });
+
+  it("o rodapé SEM_TEXTO continua fechando os dois caminhos", () => {
+    expect(modulo()).toContain(SEM_TEXTO);
+    expect(modulo("uma balança")).toContain(SEM_TEXTO);
+  });
+});
