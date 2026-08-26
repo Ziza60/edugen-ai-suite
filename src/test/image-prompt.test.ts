@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  montarPromptDeImagem,
-  SEM_TEXTO,
-} from "../../supabase/functions/generate-module-image/image-prompt";
+import { SEM_TEXTO, montarPromptDeImagem } from "../../supabase/functions/generate-module-image/image-prompt";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // A capa não é exibida inteira: no PDF ela é ampliada e recortada para caber
@@ -92,7 +89,7 @@ describe("a descrição do autor", () => {
   it("entra como ASSUNTO e vence o título", () => {
     const p = capa("mesa de reunião vista de cima");
     expect(p).toContain("mesa de reunião vista de cima");
-    expect(p).toMatch(/takes priority over the title/i);
+    expect(p).toMatch(/takes priority over the theme/i);
   });
 
   it("não desliga as regras de enquadramento da capa", () => {
@@ -104,11 +101,11 @@ describe("a descrição do autor", () => {
   });
 
   it("sem descrição, a capa é pedida pelo nome do curso", () => {
-    expect(capa()).toMatch(/cover illustration for the course "Gestão de Controles Internos"/);
+    expect(capa()).toMatch(/cover illustration for a course about Gest[ãa]o de Controles Internos/);
   });
 
   it("sem descrição, o módulo é pedido pelo nome do módulo", () => {
-    expect(modulo()).toMatch(/module "Mapeamento de Riscos"/);
+    expect(modulo()).toMatch(/module about Mapeamento de Riscos/);
   });
 
   it("curso sem título não quebra o texto", () => {
@@ -119,5 +116,57 @@ describe("a descrição do autor", () => {
     });
     expect(p).toContain("Curso sem nome");
     expect(p).not.toContain('""');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ASPAS EM VOLTA DO TÍTULO SÃO UM PEDIDO DE ESCRITA
+//
+// As imagens de módulo vinham com palavras deformadas em português, e o prompt
+// já terminava com a diretiva SEM_TEXTO — em inglês, e estrita. A contradição
+// estava três linhas acima: o título do módulo e o do curso iam entre aspas.
+//
+// Delimitar texto com aspas é o idioma que modelos de imagem leem como
+// "renderize isto" — é assim que se pede um letreiro. Entre uma instrução
+// concreta e uma proibição genérica, o modelo segue a concreta, e erra a
+// ortografia, porque desenhar letra não é escrever.
+//
+// Estes testes existem para a forma antiga não voltar sem que alguém perceba.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("o título não pode parecer um letreiro a desenhar", () => {
+  const entrada = {
+    escopo: "module" as const,
+    moduleTitle: 'Gestão "Ágil" e Experimentação',
+    courseTitle: "Transformação Digital nas Empresas",
+  };
+
+  it("nenhum título vai entre aspas", () => {
+    const p = montarPromptDeImagem(entrada);
+    const depoisDaDiretiva = p.indexOf(SEM_TEXTO);
+    const assunto = p.slice(0, depoisDaDiretiva);
+    expect(assunto).not.toMatch(/["'‘’“”]/);
+  });
+
+  it("aspas vindas do próprio título são removidas, não repassadas", () => {
+    // Um título que já contém aspas reintroduziria o idioma pela porta dos
+    // fundos.
+    const p = montarPromptDeImagem(entrada);
+    expect(p).toContain("Gestão Ágil e Experimentação");
+    expect(p).not.toContain('"Ágil"');
+  });
+
+  it("a descrição do autor também perde as aspas", () => {
+    const p = montarPromptDeImagem({
+      ...entrada,
+      brief: 'uma "mesa" de reunião vista de cima',
+    });
+    expect(p).toContain("uma mesa de reunião vista de cima");
+    expect(p).not.toContain('"mesa"');
+  });
+
+  it("a diretiva de não escrever continua sendo a última linha", () => {
+    // Posição importa: a restrição final é a que o modelo pesa mais.
+    expect(montarPromptDeImagem(entrada).trim().endsWith(SEM_TEXTO)).toBe(true);
   });
 });

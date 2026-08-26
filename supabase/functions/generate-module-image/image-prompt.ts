@@ -29,6 +29,35 @@ export type EscopoImagem = "cover" | "module";
 export const SEM_TEXTO =
   "Strict directive: purely visual — no text, no typography, no letters, no numbers, no logos, no watermarks. Any surface that would carry writing must be blank and smooth.";
 
+/**
+ * Aspas em volta de um título são um PEDIDO DE ESCRITA, não um rótulo.
+ *
+ * As imagens de módulo vinham com palavras deformadas em português, e o prompt
+ * já terminava com SEM_TEXTO — em inglês, e estrito. A contradição estava três
+ * linhas acima: o título do módulo e o do curso iam entre aspas.
+ *
+ *     Generate a conceptual illustration for the educational module
+ *     "Gestão Ágil e Experimentação na Transformação" (course: "…").
+ *     …
+ *     Strict directive: purely visual — no text…
+ *
+ * Aspas delimitando texto são o idioma que modelos de imagem leem como "renderize
+ * isto"; é assim que se pede um letreiro. Entregávamos duas frases longas em
+ * português nessa forma e, em seguida, mandávamos não escrever nada. Entre uma
+ * instrução concreta e uma proibição genérica, o modelo segue a concreta — e
+ * erra a ortografia, porque desenhar letra não é escrever.
+ *
+ * O tema passa a ir como tema, sem delimitador. Perde-se a marcação visual de
+ * onde o título começa e termina, e é uma troca que vale: o título é a última
+ * coisa que deve aparecer desenhada numa ilustração cuja legenda já está na
+ * página, e que ainda precisa servir ao curso traduzido para outro idioma.
+ */
+function comoTema(texto: string): string {
+  // Aspas de qualquer família viram vírgula: o modelo continua lendo a frase
+  // inteira como um assunto só, sem o convite a desenhá-la.
+  return String(texto ?? "").replace(/["'\u2018\u2019\u201c\u201d]/g, "").trim();
+}
+
 const ESTILO_BASE =
   "premium and minimalist — flat vector / soft 3D, geometric shapes, smooth matte surfaces, soft gradient colors, modern and elegant, 16:9 aspect";
 
@@ -67,15 +96,22 @@ export function montarPromptDeImagem(e: EntradaPrompt): string {
   const ehCapa = e.escopo === "cover";
   const curso = e.courseTitle ?? "";
 
+  const tituloDoModulo = comoTema(e.moduleTitle);
+  const tituloDoCurso = comoTema(curso);
+
   const assunto = e.brief
-    ? `The user has described the image they want. Follow this description as the subject — it takes priority over the title, which is context only:
+    ? `The user has described the image they want. Follow this description as the subject — it takes priority over the theme, which is context only:
 
-USER'S DESCRIPTION: "${e.brief}"
+USER'S DESCRIPTION — ${comoTema(e.brief)}
 
-Context — ${ehCapa ? `course cover for "${curso || e.moduleTitle}"` : `educational module "${e.moduleTitle}" (course: "${curso}")`}.`
+Context — ${
+      ehCapa
+        ? `course cover about ${tituloDoCurso || tituloDoModulo}`
+        : `educational module about ${tituloDoModulo}, from a course about ${tituloDoCurso}`
+    }.`
     : ehCapa
-    ? `Generate a conceptual cover illustration for the course "${curso || e.moduleTitle}".`
-    : `Generate a conceptual illustration for the educational module "${e.moduleTitle}" (course: "${curso}").`;
+    ? `Generate a conceptual cover illustration for a course about ${tituloDoCurso || tituloDoModulo}.`
+    : `Generate a conceptual illustration for an educational module about ${tituloDoModulo}, from a course about ${tituloDoCurso}.`;
 
   return `${assunto}
 
