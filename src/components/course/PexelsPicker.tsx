@@ -170,34 +170,38 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
    *
    * Não gasta crédito de imagem: é chamada de texto, curta.
    */
+  const pedirSugestao = useCallback(async (): Promise<string> => {
+    const { data, error } = await supabase.functions.invoke("suggest-image-brief", {
+      body: {
+        scope: scope === "cover" ? "cover" : "module",
+        title: scope === "cover" ? (courseTitle ?? moduleTitle) : moduleTitle,
+        course_title: courseTitle ?? "",
+      },
+    });
+    if (error) {
+      let body: any = null;
+      try { body = await (error as any).context?.json?.(); } catch { /* sem corpo */ }
+      // O `detail` do servidor traz o motivo real — nome de modelo recusado,
+      // cota, chave. Sem ele na tela, "não foi possível sugerir" é um beco
+      // sem saída: nem o autor nem eu sabemos o que tentar em seguida.
+      const base = body?.error ?? (error as Error).message;
+      throw new Error(body?.detail ? `${base} (${body.detail})` : base);
+    }
+    if (!data?.brief) throw new Error("A IA não retornou uma descrição.");
+    return String(data.brief).slice(0, 500);
+  }, [scope, moduleTitle, courseTitle]);
+
   const sugerirDescricao = useCallback(async () => {
     setSugerindo(true);
     setAiError(null);
     try {
-      const { data, error } = await supabase.functions.invoke("suggest-image-brief", {
-        body: {
-          scope: scope === "cover" ? "cover" : "module",
-          title: scope === "cover" ? (courseTitle ?? moduleTitle) : moduleTitle,
-          course_title: courseTitle ?? "",
-        },
-      });
-      if (error) {
-        let body: any = null;
-        try { body = await (error as any).context?.json?.(); } catch { /* sem corpo */ }
-        // O `detail` do servidor traz o motivo real — nome de modelo recusado,
-        // cota, chave. Sem ele na tela, "não foi possível sugerir" é um beco
-        // sem saída: nem o autor nem eu sabemos o que tentar em seguida.
-        const base = body?.error ?? (error as Error).message;
-        throw new Error(body?.detail ? `${base} (${body.detail})` : base);
-      }
-      if (!data?.brief) throw new Error("A IA não retornou uma descrição.");
-      setAiBrief(String(data.brief).slice(0, 500));
+      setAiBrief(await pedirSugestao());
     } catch (err: any) {
       setAiError(err?.message ?? "Não foi possível sugerir agora.");
     } finally {
       setSugerindo(false);
     }
-  }, [scope, moduleTitle, courseTitle]);
+  }, [pedirSugestao]);
 
   /**
    * Busca no Pexels.
@@ -267,10 +271,51 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
     setSelected(null);
   };
 
+  /**
+   * DESCRIÇÃO VAZIA DEIXOU DE SER UMA OPÇÃO.
+   *
+   * O teste do autor: as imagens geradas SEM descrição vinham com texto — e com
+   * o português errado —, e as geradas COM sugestão vinham limpas. O motivo está
+   * no prompt: sem descrição, a única coisa concreta que o modelo de imagem
+   * recebe é um título em português. Não há objeto nem composição, não há o que
+   * desenhar, e ele desenha o que tem: as palavras.
+   *
+   * O prompt do servidor já foi endurecido para esse caso, mas endurecer texto
+   * não substitui ter uma cena. Então a sugestão passa a ser buscada sozinha
+   * quando o campo está em branco.
+   *
+   * POR QUE ELA APARECE NO CAMPO, E NÃO SÓ NO SERVIDOR
+   *
+   * Fazer isso calado dentro da edge function seria mais simples e seria pior:
+   * o autor veria imagens mudarem de comportamento sem saber por quê, e não
+   * teria como corrigir uma sugestão ruim. Escrita no campo, ela fica visível
+   * depois de gerar, editável, e "Gerar" de novo usa o texto corrigido.
+   *
+   * SE A SUGESTÃO FALHAR, A IMAGEM SAI ASSIM MESMO
+   *
+   * Bloquear seria transformar a falha de uma chamada de TEXTO — que não gasta
+   * crédito de imagem — em recusa de fazer o que foi pedido. Gera-se sem
+   * descrição, com o aviso na tela.
+   */
   const handleGenerateAI = async () => {
     setAiLoading(true);
     setAiError(null);
     setAiPreview(null);
+    let brief = aiBrief.trim();
+    if (!brief) {
+      setSugerindo(true);
+      try {
+        brief = await pedirSugestao();
+        setAiBrief(brief);
+      } catch (err: any) {
+        setAiError(
+          `Não consegui sugerir uma descrição (${err?.message ?? "erro"}). ` +
+            "Gerando a partir do título — se vier com texto na imagem, escreva a descrição e gere de novo.",
+        );
+      } finally {
+        setSugerindo(false);
+      }
+    }
     try {
       const { data, error } = await supabase.functions.invoke("generate-module-image", {
         body: {
@@ -281,7 +326,7 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
             : { module_id: moduleId }),
           module_title: moduleTitle,
           course_title: courseTitle ?? "",
-          user_prompt: aiBrief.trim(),
+          user_prompt: brief,
         },
       });
 
@@ -638,9 +683,9 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
               />
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[10px] text-muted-foreground leading-snug">
-                  Diga o que deve aparecer na cena. Em branco, a IA decide sozinha a
-                  partir do título — que é o que produz resultados fora do tema. Use
-                  “Sugerir” para começar de um rascunho e ajustar.
+                  Diga o que deve aparecer na cena. Se deixar em branco, a descrição é
+                  sugerida automaticamente antes de gerar e aparece aqui — sem custo de
+                  crédito de imagem. Não gostou do resultado? Edite o texto e gere de novo.
                 </p>
                 <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
                   {aiBrief.length}/500
@@ -659,7 +704,13 @@ export function PexelsPicker({ moduleTitle, moduleId, courseId, scope = "module"
                   {aiLoading ? (
                     <>
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                      <p className="text-sm text-muted-foreground">Gerando imagem com IA…</p>
+                      {/* Duas etapas, dois rótulos: a espera pela sugestão é
+                          curta e barata, e dizer "Gerando imagem" durante ela
+                          faria o autor achar que a imagem demora mais do que
+                          demora. */}
+                      <p className="text-sm text-muted-foreground">
+                        {sugerindo ? "Escrevendo a descrição da cena…" : "Gerando imagem com IA…"}
+                      </p>
                       <p className="text-xs text-muted-foreground">Isso pode levar alguns segundos</p>
                     </>
                   ) : (
