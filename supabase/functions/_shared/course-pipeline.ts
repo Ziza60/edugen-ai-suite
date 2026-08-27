@@ -25,6 +25,7 @@ import {
   paragrafosDe,
 } from "./valores-do-caso.ts";
 import { descricaoDoTom } from "./course-tone.ts";
+import { paraJpeg } from "./imagem-jpeg.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -4573,13 +4574,27 @@ No typography, letters, numerals, logos, signatures, watermarks, fake interface 
     const binary = Uint8Array.from(atob(inline.data), (char) =>
       char.charCodeAt(0),
     );
-    const mimeType = asString(inline.mimeType || inline.mime_type, "image/png");
-    const extension =
-      mimeType.includes("jpeg") || mimeType.includes("jpg") ? "jpg" : "png";
-    const storagePath = `${userId}/module-${moduleId}.${extension}`;
+    // ESTE CAMINHO GRAVAVA O PNG CRU, e é o que mais custa.
+    //
+    // A conversão foi escrita no `generate-module-image`, o caminho MANUAL, e
+    // não chegou aqui — o toggle "Imagens com IA" do formulário completo não
+    // passa por aquela função, tem este código próprio. Só que é por aqui que
+    // nascem os cursos de oito, dez módulos: exatamente os que apertam o
+    // orçamento de CPU da exportação, onde as imagens já respondem por 78% do
+    // tempo de render.
+    //
+    // A extensão também deixou de sair do `mimeType` declarado: `paraJpeg` lê
+    // os bytes. Cabeçalho e conteúdo discordam de vez em quando, e gravar pela
+    // declaração põe a extensão errada no arquivo — defeito que só aparece na
+    // hora em que o jsPDF recusa a imagem, exportações depois.
+    const convertida = await paraJpeg(binary, "generate-course");
+    const storagePath = `${userId}/module-${moduleId}.${convertida.ext}`;
     const { error: uploadError } = await serviceClient.storage
       .from("course-exports")
-      .upload(storagePath, binary, { contentType: mimeType, upsert: true });
+      .upload(storagePath, convertida.bytes, {
+        contentType: convertida.mime,
+        upsert: true,
+      });
     if (uploadError) {
       console.warn(
         `[generate-course] Image upload failed: ${uploadError.message}`,
