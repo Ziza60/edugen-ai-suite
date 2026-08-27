@@ -9,6 +9,7 @@ import {
   valorEmNumero,
   pareceEntidade,
   ehNomeProprio,
+  recorteDoRotulo,
 } from "../../supabase/functions/_shared/valores-do-caso";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -373,5 +374,96 @@ Do 'Armazém da Esquina' saem 40 pedidos por mês.
 Para o 'Armazém da Esquina', esse número pesa.`;
     expect(identificarCaso([{ paragrafos: paragrafosDe(so) }], 1).nomes)
       .toContain("Armazém da Esquina");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O RÓTULO EM PROSA
+//
+// A regra lia as duas primeiras palavras de conteúdo de TUDO o que precede o
+// valor. Em linha estruturada isso acerta; em prosa devolvia "João decidiu",
+// "Ele sabe" e "resposta assuma" como nomes de grandeza. O recorte corta o
+// prefixo na última fronteira de oração antes de aplicar a mesma regra.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("recorteDoRotulo", () => {
+  it("descarta a oração e fica com o sintagma que nomeia a grandeza", () => {
+    expect(recorteDoRotulo("a empresa mantém um estoque de segurança").trim())
+      .toBe("um estoque de segurança");
+  });
+
+  it("não corta o sintagma nominal puro — o objeto tem de sobreviver", () => {
+    const r = "Estoque de segurança para leite condensado";
+    expect(recorteDoRotulo(r)).toBe(r);
+  });
+
+  it("o parêntese de sigla não é fronteira", () => {
+    expect(recorteDoRotulo("Custo de Pedido (S)")).toBe("Custo de Pedido (S)");
+  });
+
+  it("vírgula DENTRO de parêntese não é fronteira", () => {
+    const r = "O custo variável por usuário (hospedagem, licenças)";
+    expect(recorteDoRotulo(r)).toBe(r);
+  });
+
+  it("o negrito de fechamento não zera o rótulo", () => {
+    // O dois-pontos final não chega aqui: é ele a ligação, e o regex o consome.
+    expect(recorteDoRotulo("**Solução:** 1. **Calcular Custos Variáveis por Usuário").trim())
+      .toBe("Custos Variáveis por Usuário");
+  });
+
+  it("corta no infinitivo que abre o passo da solução", () => {
+    expect(recorteDoRotulo("2. Calcular Custos Fixos Mensais").trim())
+      .toBe("Custos Fixos Mensais");
+  });
+});
+
+describe("o recorte só pode melhorar a leitura", () => {
+  const caso = (t: string) => identificarCaso([{ paragrafos: paragrafosDe(t) }], 1);
+  const ler = (t: string) => grandezasDoTexto(t, caso(t));
+
+  it("lê a grandeza no meio da prosa, onde antes lia o verbo", () => {
+    const t = `A padaria 'Delícias da Vovó' produz doces artesanais.
+
+A 'Delícias da Vovó' compra leite condensado todo mês.
+
+Na 'Delícias da Vovó', para o leite condensado, a empresa mantém um estoque de segurança de 15 unidades.`;
+    const g = ler(t).find((x) => x.numero === 15);
+    expect(g, JSON.stringify(ler(t))).toBeDefined();
+    expect(g!.chave).toBe("estoque seguranca");
+  });
+
+  it("continua lendo a linha estruturada, com o objeto no complemento", () => {
+    const t = `A padaria 'Delícias da Vovó' produz doces artesanais.
+
+A 'Delícias da Vovó' compra leite condensado todo mês.
+
+Na 'Delícias da Vovó': Estoque de segurança para leite condensado: 20 unidades.`;
+    const g = ler(t).find((x) => x.numero === 20)!;
+    expect(g.chave).toBe("estoque seguranca");
+    expect([...g.complemento].sort()).toEqual(["condensado", "leite"]);
+  });
+
+  it("rótulo que abre a frase sobrevive à enumeração que o separa do valor", () => {
+    // A última fronteira encosta no fim ("salários fixos,") e o corte devolveria
+    // vazio; a leitura então volta ao prefixo inteiro.
+    const t = `A 'Delícias Saudáveis' produz sucos prensados a frio.
+
+A 'Delícias Saudáveis' vende em toda a região.
+
+Na 'Delícias Saudáveis', os custos fixos mensais são o aluguel, depreciação e salários fixos, totalizando R$ 25.000.`;
+    const g = ler(t).find((x) => x.numero === 25000)!;
+    expect(g.chave).toBe("custo fixo");
+  });
+
+  it("palavra que é verbo E substantivo não custa a leitura", () => {
+    // "compra" fecha a oração em "a empresa compra 500 kg" e é substantivo em
+    // "cada compra". Nenhuma lista resolve isso; o retorno ao prefixo resolve.
+    const t = `O 'Armazém da Esquina' vende de tudo.
+
+O 'Armazém da Esquina' compra de vinte fornecedores.
+
+Resultado: O Custo de Pedido para cada compra no 'Armazém da Esquina' é de R$185.00.`;
+    const g = ler(t).find((x) => x.valor === "R$185.00")!;
+    expect(g.chave).toBe("custo pedido");
   });
 });

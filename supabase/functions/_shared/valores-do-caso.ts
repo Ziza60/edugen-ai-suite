@@ -487,7 +487,120 @@ const PREPOSICAO = new Set(
  * valor. `null` quando não sobram duas palavras de conteúdo — e não sobrar é
  * um desfecho legítimo, que apenas não produz leitura nenhuma.
  */
+/**
+ * Verbos que encerram o que veio antes deles. Não é conjugação completa: é a
+ * lista das formas que os cursos gerados de fato usam para narrar um dado.
+ */
+const VERBO_QUE_FECHA = new Set(
+  ("mantem manteve tem tinha utiliza usa aplica aplicando calcula calculou " +
+    "identificou identifica estima estimou levanta levantou decide decidiu " +
+    "considera considerando precisa precisou quer deseja compra vende produz " +
+    "custa paga gasta informa informou percebeu monitora reune reuniu assume " +
+    "assuma inclui incluem representa sabe sabendo definiu define fixa fixou " +
+    "sao era foram foi observou registrou apurou chegou obteve " +
+    // Infinitivos: os cursos abrem os passos da solução com eles — "1. Calcular
+    // Custos Variáveis por Usuário: …" —, e sem eles o rótulo saía "calcular
+    // custos" em vez de "custos variáveis".
+    "calcular determinar definir obter aplicar considerar estimar apurar " +
+    "encontrar verificar somar dividir multiplicar subtrair projetar")
+    .split(" "),
+);
+
+/**
+ * O RÓTULO COMEÇA PERTO DO VALOR, NÃO NO COMEÇO DA FRASE.
+ *
+ * A regra anterior tomava as duas primeiras palavras de conteúdo de TUDO o que
+ * precede o valor. Em linha estruturada isso acerta —
+ *
+ *     "Custo de Pedido (S): R$ 80,00"      →  custo, pedido      ✓
+ *
+ * — e em prosa erra inteiro, porque o prefixo é a frase toda:
+ *
+ *     "a empresa mantém um estoque de segurança de 15 latas"
+ *                                          →  empresa, mantém    ✗
+ *
+ * No curso de estoques de 27/08 isso devolveu "João decidiu", "Ele sabe" e
+ * "resposta assuma" como nomes de grandeza, e a contradição do estoque de
+ * segurança do leite condensado — 15 e 45 latas no módulo 4, 20 no módulo 8 —
+ * nunca chegou a ser comparada.
+ *
+ * POR QUE NÃO BASTA PEGAR AS DUAS ÚLTIMAS
+ *
+ * Seria o espelho do mesmo erro:
+ *
+ *     "Estoque de segurança para leite condensado: 20 unidades"
+ *                                          →  leite, condensado  ✗
+ *
+ * Aí o objeto ("leite condensado") tomaria o lugar da grandeza, e grandezas
+ * diferentes do mesmo item passariam a se comparar entre si.
+ *
+ * O QUE SEPARA OS DOIS CASOS
+ *
+ * O primeiro prefixo é uma ORAÇÃO — tem verbo, tem sujeito. O segundo é um
+ * sintagma nominal puro. Então corta-se o prefixo na última fronteira de
+ * oração — verbo, vírgula, dois-pontos, conectivo, marcador de lista — e a
+ * regra das duas primeiras palavras de conteúdo é aplicada ao que sobrou. Ela
+ * continua valendo onde já valia, e passa a valer na prosa.
+ *
+ * DELIMITADOR DE FECHAMENTO NUNCA É FRONTEIRA
+ *
+ * Foi o erro que cometi duas vezes ao escrever isto. Cortar no parêntese de
+ * sigla esvazia "Custo de Pedido (S)", que é como os cursos nomeiam as
+ * grandezas. Cortar na vírgula DENTRO do parêntese deixa "licenças)" de
+ * "o custo variável por usuário (hospedagem, licenças)". E cortar no `**` de
+ * fechamento esvazia "**Calcular Custos Variáveis por Usuário:**".
+ *
+ * Daí o conteúdo entre parênteses ser mascarado antes da busca, e o negrito ser
+ * removido em vez de servir de marco.
+ */
+export function recorteDoRotulo(bruto: string): string {
+  // Máscara do mesmo tamanho: as posições encontradas valem no texto original.
+  const mascarado = bruto
+    .replace(/\*\*/g, "  ")
+    .replace(/\([^)]*\)/g, (t) => " ".repeat(t.length));
+
+  const fronteiras: number[] = [];
+  const marque = (re: RegExp) => {
+    for (const m of mascarado.matchAll(re)) fronteiras.push(m.index! + m[0].length);
+  };
+  marque(/[:;,–—•]/g);
+  marque(/\b(?:e|ou|mas|por[ée]m|que|quando|se|pois|onde|cujo|cuja)\b/gi);
+  marque(/^\s*[-*+]\s+/g);
+  for (const m of mascarado.matchAll(/[\wÀ-ÿ]+/g)) {
+    if (VERBO_QUE_FECHA.has(semAcento(m[0]))) fronteiras.push(m.index! + m[0].length);
+  }
+  return fronteiras.length ? bruto.slice(Math.max(...fronteiras)) : bruto;
+}
+
+/**
+ * O RECORTE NUNCA PODE DESTRUIR UM RÓTULO QUE O PREFIXO INTEIRO DARIA.
+ *
+ * É a regra que faltava, e ela cobre de uma vez as três formas em que o corte
+ * errou enquanto eu o escrevia:
+ *
+ *   fronteira colada no fim ..... "Os custos fixos mensais são o aluguel,
+ *                                  depreciação e salários fixos," → ""
+ *   palavra que é verbo E nome ... "para cada compra no 'Armazém da Esquina'"
+ *                                  → sobra só o nome do caso, que é filtrado
+ *   delimitador de fechamento .... resolvido antes, mascarando parênteses e
+ *                                  removendo o negrito
+ *
+ * As duas primeiras não têm cura no recorte: "compra" é verbo em "a empresa
+ * compra 500 kg" e substantivo em "cada compra", e nenhuma lista resolve isso.
+ * O que resolve é tentar o corte e, se ele não produzir rótulo, ler o prefixo
+ * inteiro — que é exatamente o comportamento anterior. O recorte passa a só
+ * poder MELHORAR a leitura.
+ */
 function lerRotulo(
+  bruto: string,
+  tokensDoCaso: Set<string>,
+): { chave: string; rotulo: string; complemento: Set<string> } | null {
+  const curto = recorteDoRotulo(bruto);
+  return lerRotuloDe(curto, tokensDoCaso) ??
+    (curto === bruto ? null : lerRotuloDe(bruto, tokensDoCaso));
+}
+
+function lerRotuloDe(
   bruto: string,
   tokensDoCaso: Set<string>,
 ): { chave: string; rotulo: string; complemento: Set<string> } | null {
@@ -548,6 +661,31 @@ export function mesmoObjeto(a: Set<string>, b: Set<string>): boolean {
 export function grandezasDoTexto(texto: string, caso: Caso): Grandeza[] {
   if (!caso.nomes.length) return [];
   const out: Grandeza[] = [];
+  // POR QUE A LEITURA CONTINUA PRESA AO PARÁGRAFO QUE CITA O CASO
+  //
+  // Ela descarta parágrafos onde há número. No curso de estoques o exercício é
+  // escrito em dois parágrafos, e o do número não repete o nome da empresa:
+  //
+  //   Contexto: A 'Delícias da Vovó' está com falta de leite condensado.
+  //   Desafio:  Calcular o Ponto de Pedido …, a empresa mantém um estoque de
+  //             segurança de 15 latas.
+  //
+  // Herdar o caso do parágrafo anterior foi tentado e MEDIDO. Ele encontra as
+  // contradições que faltavam e, junto, dois alarmes falsos no mesmo curso:
+  //
+  //   Custo de Pedido     R$ 80,00 (M4) ≠ R$ 50,00 (M7, M8)
+  //   Custo de Manutenção R$ 0,50  (M4) ≠ R$ 2,00  (M8)
+  //
+  // Os dois são legítimos: R$ 80,00 é o custo de pedido do AÇÚCAR, com o frete
+  // daquele fornecedor, e R$ 50,00 é o da farinha e o do leite condensado.
+  // R$ 0,50 é por quilo de açúcar e R$ 2,00 por lata de leite.
+  //
+  // Sem saber de QUE ITEM o número fala, mais alcance é mais alarme falso, e um
+  // bloqueador que grita à toa deixa de ser lido. Identificar o item exigiria
+  // um vocabulário de objetos do curso; a colheita que testei devolve "venda",
+  // "negócio", "produção" e "demanda" na frente de "leite condensado", e
+  // "açúcar" nem aparece. Enquanto o item não for lido de forma confiável, o
+  // alcance fica onde está.
   for (const p of paragrafosDe(texto)) {
     const presentes = caso.nomes.filter((n) => p.includes(n));
     if (!presentes.length) continue;
