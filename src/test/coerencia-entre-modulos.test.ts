@@ -261,12 +261,12 @@ ${eco(7, "A Logística Eficiente publica os resultados todo mês.")}`;
     // dominância não pode substituir uma que estava funcionando.
     const m1 = `A 'Delícias Saudáveis' produz sucos.
 
-No 'Detox Verde', o custo variável é de R$ 7,20 por garrafa.
+No suco 'Detox Verde', o custo variável é de R$ 7,20 por garrafa.
 
 O 'Detox Verde' da 'Delícias Saudáveis' lidera a linha.`;
     const m2 = `A 'Delícias Saudáveis' revisou os números.
 
-No 'Detox Verde', o custo variável é de R$ 9,90 por garrafa.
+No suco 'Detox Verde', o custo variável é de R$ 9,90 por garrafa.
 
 O 'Detox Verde' da 'Delícias Saudáveis' segue em campanha.`;
     const c = coerencia(m1, m2);

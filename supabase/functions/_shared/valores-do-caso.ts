@@ -193,14 +193,135 @@ export interface Caso {
   tokens: Set<string>;
 }
 
+/** Palavras que um nome próprio pode ter em minúscula sem deixar de ser nome. */
+const LIGACAO_DE_NOME = new Set(["de", "da", "do", "das", "dos", "e", "em", "no", "na"]);
+
+/**
+ * Substantivos que APRESENTAM uma entidade: "o aplicativo 'Finanças
+ * Inteligentes'", "o suco Detox Verde", "a empresa 'Delícias Saudáveis'".
+ *
+ * É lista fechada, e essa é a lição de uma tentativa anterior: eu havia medido
+ * com uma lista assim e, no código, generalizei para "qualquer palavra
+ * minúscula que não seja artigo". Com isso entrou adjetivo — uma boa "Gestão de
+ * Fornecedores" — e entrou aposto explicativo — "tempo de ressuprimento (Lead
+ * Time)" —, que é DEFINIÇÃO, exatamente o oposto do que se procura. Os seis
+ * jargões do curso de estoques voltaram todos.
+ */
+const SUBSTANTIVO_QUE_APRESENTA = new Set(
+  ("empresa empresas startup loja lojas fabrica padaria confeitaria doceria " +
+    "restaurante mercado mercearia armazem oficina ateliê atelie clinica " +
+    "escritorio agencia cooperativa industria distribuidora transportadora " +
+    "aplicativo app sistema plataforma software site portal " +
+    "negocio comercio varejo marca produto produtos servico projeto linha " +
+    "suco bolo doce refrigerante bebida plano pacote assinatura modelo")
+    .split(" "),
+);
+
+/**
+ * Verbos que revelam um sujeito que AGE. Lista pequena e medida, não exaustiva.
+ *
+ * Aqui um lexicon é aceitável porque ele é evidência POSITIVA: verbo que falta
+ * não acusa nada, apenas deixa o nome de fora, e ficar de fora devolve o
+ * silêncio — o mesmo desfecho de um curso sem caso condutor.
+ *
+ * DUAS AUSÊNCIAS DELIBERADAS
+ *
+ * "é" e "são" NÃO entram, embora sejam os verbos mais comuns depois de um nome.
+ * "O Lead Time é o tempo entre…" é uma DEFINIÇÃO, e definição é evidência de
+ * conceito, exatamente o oposto do que se procura aqui.
+ *
+ * E a comparação é feita com acento, sem passar por `semAcento`: sem acento,
+ * "é" colapsa em "e", e a conjunção passaria a valer por verbo. Foi o que
+ * aconteceu na primeira versão desta regra — "Ponto de Pedido e LEC" entrou
+ * como sujeito que age, e os seis jargões do curso de estoques voltaram todos.
+ */
+const VERBO_DE_AGENCIA = new Set(
+  ("está tem utiliza usa vende produz compra fabrica precisa deseja quer " +
+    "decidiu decide enfrenta enfrentou possui mantém manteve aplica aplicou " +
+    "calculou calcula definiu define lançou lança opera atende contratou " +
+    "registrou registra apresenta apresentou pretende busca buscou " +
+    "identificou identifica adotou adota investiu investe revisou revisa " +
+    "publica acompanha monitora percebeu estimou levantou conquistou projeta")
+    .split(" "),
+);
+
+/**
+ * Este nome é de um caso, ou é jargão do próprio curso?
+ *
+ * O QUE ESTAVA ERRADO
+ *
+ * A âncora aceitava qualquer coisa entre aspas. No curso de estoques de 27/08,
+ * que escreve 'Lead Time' e 'Ponto de Pedido' assim, ela devolveu oito "casos",
+ * seis dos quais eram conceitos da própria disciplina. Os dados do leite
+ * condensado do módulo 4 foram arquivados sob o caso "Ponto de Pedido" e os do
+ * módulo 8 sob "Lead Time" — nunca caíram no mesmo grupo, nunca foram
+ * comparados, e a contradição (estoque de segurança de 15, 45 e 20 latas para o
+ * mesmo item) passou com veredito `ready` e score 100.
+ *
+ * O cabeçalho deste arquivo já avisava do risco na forma MAIÚSCULA — "Custo
+ * Variável também vem capitalizado" — e eu me protegi só dela. Entre aspas o
+ * mesmo problema entrou inteiro.
+ *
+ * A REGRA QUE NÃO FUNCIONOU, E POR QUE ESTÁ REGISTRADA
+ *
+ * A primeira tentativa foi contar a fração de vezes em que o nome aparece entre
+ * aspas: nos três cursos medidos, os casos ficavam em 76-100% e o jargão em
+ * 4-50%. O vão parecia limpo. Mas o suco 'Detox Verde' — o produto cujo custo
+ * variável se contradiz, o defeito que originou tudo isto — é citado 2 vezes em
+ * 6: o texto o apresenta uma vez entre aspas e depois escreve "o suco Detox
+ * Verde" solto. O limiar ajustado a três cursos morreu no quarto.
+ *
+ * O SINAL QUE FUNCIONA É OUTRO, E É POSITIVO
+ *
+ * Um caso AGE ou é APRESENTADO. "A 'Delícias da Vovó' utiliza…", "o aplicativo
+ * 'Finanças Inteligentes'", "o suco Detox Verde". Um conceito não faz nem um nem
+ * outro: ele é definido, não age, e vem depois de artigo, não de substantivo.
+ * Medido nos três cursos, sobre os dez candidatos com três ou mais aparições:
+ *
+ *   'Delícias da Vovó' ........ 18 verbos de ação
+ *   'Finanças Inteligentes' ... 68 apresentações por substantivo
+ *   'Doces da Ana' ............ 1 verbo de ação
+ *   os seis jargões ........... ZERO de ambos
+ */
+export function ehNomeProprio(nome: string): boolean {
+  const palavras = nome.split(/\s+/).filter(Boolean);
+  if (palavras.length < 2) return false;
+  for (const p of palavras) {
+    if (LIGACAO_DE_NOME.has(semAcento(p))) continue;
+    if (!/^[A-ZÀ-Ý]/.test(p)) return false;
+  }
+  return true;
+}
+
+/** O parágrafo trata `nome` como entidade — algo que age ou é apresentado? */
+export function pareceEntidade(paragrafo: string, nome: string): boolean {
+  let i = paragrafo.indexOf(nome);
+  while (i !== -1) {
+    // O parêntese antes do nome marca aposto — "ressuprimento (Lead Time)" —,
+    // que apresenta um TERMO, não uma entidade. Não conta como apresentação.
+    const antes = paragrafo.slice(0, i).replace(/['‘’"“”]\s*$/, "");
+    const palavraAntes = antes.match(/([\wÀ-ÿ]+)\s*$/)?.[1] ?? "";
+    if (palavraAntes && SUBSTANTIVO_QUE_APRESENTA.has(semAcento(palavraAntes))) {
+      return true;
+    }
+
+    const depois = paragrafo.slice(i + nome.length).replace(/^\s*['‘’"“”]/, "");
+    const palavraDepois = depois.match(/^\W*([\wÀ-ÿ]+)/)?.[1] ?? "";
+    if (palavraDepois && VERBO_DE_AGENCIA.has(palavraDepois.toLowerCase())) return true;
+
+    i = paragrafo.indexOf(nome, i + nome.length);
+  }
+  return false;
+}
+
 /**
  * Quem é o caso condutor do curso.
  *
- * Um nome só entra se o texto o apresentou entre aspas, se ele reaparece em
- * pelo menos `minFontes` blocos distintos (módulos, ou lições) e se aparece em
- * três parágrafos ou mais. Um curso sem caso condutor devolve lista vazia, e
- * quem chama não injeta nada — que é o comportamento certo: sem âncora, todo
- * valor lido é um palpite.
+ * Um nome só entra se o texto o apresentou entre aspas, se ele passa no teste
+ * de nome próprio acima, se reaparece em pelo menos `minFontes` blocos
+ * distintos (módulos, ou lições) e se aparece em três parágrafos ou mais. Um
+ * curso sem caso condutor devolve lista vazia, e quem chama não injeta nada —
+ * que é o comportamento certo: sem âncora, todo valor lido é um palpite.
  */
 export function identificarCaso(
   blocos: Array<{ paragrafos: string[] }>,
@@ -209,9 +330,36 @@ export function identificarCaso(
   const citados = new Set<string>();
   for (const b of blocos) {
     for (const p of b.paragrafos) {
-      for (const m of p.matchAll(NOME_CITADO_RE)) citados.add(m[1].trim());
+      for (const m of p.matchAll(NOME_CITADO_RE)) {
+        const n = m[1].trim();
+        if (ehNomeProprio(n)) citados.add(n);
+      }
     }
   }
+  // A evidência de entidade é buscada no texto INTEIRO, e não só onde o nome
+  // aparece entre aspas: é justamente fora das aspas que ele age ("a 'Delícias
+  // da Vovó' utiliza…", "o suco Detox Verde").
+  const comEvidencia = new Set<string>();
+  for (const b of blocos) {
+    for (const p of b.paragrafos) {
+      for (const n of citados) {
+        if (!comEvidencia.has(n) && pareceEntidade(p, n)) comEvidencia.add(n);
+      }
+    }
+  }
+  // A evidência SELECIONA, e não exclui. Se algum candidato age ou é
+  // apresentado, os que não fazem nem um nem outro são jargão ao lado dele. Se
+  // NENHUM faz, não há o que comparar: o texto analisado é curto demais para
+  // decidir, e tirar todos trocaria a leitura errada pelo silêncio total.
+  //
+  // Foi um trecho real que impôs isto: um módulo do curso de estoque de 23/08
+  // menciona o 'Armazém da Esquina' oito vezes, sempre depois de preposição —
+  // "no 'Armazém da Esquina'", "do 'Armazém da Esquina'". A loja é o caso, e
+  // naquele módulo ela não age uma vez sequer.
+  if (comEvidencia.size) {
+    for (const n of [...citados]) if (!comEvidencia.has(n)) citados.delete(n);
+  }
+
   const frequencia = new Map<string, number>();
   const fontesDoNome = new Map<string, number>();
   for (const b of blocos) {

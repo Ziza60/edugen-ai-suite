@@ -7,6 +7,8 @@ import {
   oracoes,
   paragrafosDe,
   valorEmNumero,
+  pareceEntidade,
+  ehNomeProprio,
 } from "../../supabase/functions/_shared/valores-do-caso";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -230,7 +232,7 @@ describe("mesmoObjeto", () => {
 });
 
 describe("identificarCaso", () => {
-  const texto = `A 'Delícias Saudáveis' lança o 'Detox Verde'.
+  const texto = `A 'Delícias Saudáveis' lança o suco 'Detox Verde'.
 
 O Custo Variável e a Margem de Contribuição são conceitos centrais.
 
@@ -266,7 +268,7 @@ A 'Delícias Saudáveis' tem fábrica própria.
 
 A 'Delícias Saudáveis' exporta para três países.
 
-A 'Delícias Saudáveis' lança o 'Detox Verde' neste trimestre.
+A 'Delícias Saudáveis' lança o suco 'Detox Verde' neste trimestre.
 
 O 'Detox Verde' da 'Delícias Saudáveis' tem boa aceitação.
 
@@ -290,5 +292,86 @@ O custo variável do 'Detox Verde' da 'Delícias Saudáveis' é de R$ 7,20.`;
       caso,
     );
     expect(new Set(g.map((x) => x.caso)).size).toBe(1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JARGÃO ENTRE ASPAS NÃO É CASO
+//
+// O curso de estoques de 27/08 escreve 'Lead Time' e 'Ponto de Pedido' assim, e
+// a âncora devolvia oito "casos", seis deles conceitos da própria disciplina.
+// Os dados do leite condensado do módulo 4 foram arquivados sob o caso "Ponto
+// de Pedido" e os do módulo 8 sob "Lead Time": nunca caíram no mesmo grupo,
+// nunca foram comparados, e a contradição passou com veredito `ready`.
+//
+// O que separa os dois é evidência POSITIVA — o caso AGE ou é APRESENTADO.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("caso x jargão do curso", () => {
+  const comAmbos = `A padaria 'Delícias da Vovó' produz doces artesanais.
+
+O 'Lead Time' do fornecedor é o tempo entre o pedido e a entrega.
+
+A 'Delícias da Vovó' utiliza leite condensado em quase tudo.
+
+O 'Ponto de Pedido' é o nível de estoque que dispara uma nova compra.
+
+A 'Delícias da Vovó' compra açúcar todo mês.
+
+Reduzir o 'Lead Time' diminui o 'Ponto de Pedido' necessário.`;
+
+  const caso = () => identificarCaso([{ paragrafos: paragrafosDe(comAmbos) }], 1).nomes;
+
+  it("fica com o nome que age ou é apresentado", () => {
+    expect(caso()).toContain("Delícias da Vovó");
+  });
+
+  it("descarta o conceito que o próprio curso define", () => {
+    expect(caso()).not.toContain("Lead Time");
+    expect(caso()).not.toContain("Ponto de Pedido");
+  });
+
+  it("'X é ...' não conta como agir — é definição, e definição é de conceito", () => {
+    expect(pareceEntidade("O 'Lead Time' é o tempo de espera.", "Lead Time")).toBe(false);
+  });
+
+  it("a conjunção 'e' não vale por verbo", () => {
+    // Sem acento "é" vira "e": foi assim que "Ponto de Pedido e LEC" entrou como
+    // sujeito que age, e os seis jargões voltaram todos de uma vez.
+    expect(pareceEntidade("Aplique Ponto de Pedido e Lote Econômico.", "Ponto de Pedido"))
+      .toBe(false);
+  });
+
+  it("aposto entre parênteses apresenta um TERMO, não uma entidade", () => {
+    expect(pareceEntidade("O tempo de ressuprimento (Lead Time) do fornecedor.", "Lead Time"))
+      .toBe(false);
+  });
+
+  it("adjetivo antes do nome não apresenta", () => {
+    expect(pareceEntidade('Uma boa "Gestão de Fornecedores" vai além do preço.', "Gestão de Fornecedores"))
+      .toBe(false);
+  });
+
+  it("substantivo que apresenta conta: 'o suco Detox Verde'", () => {
+    expect(pareceEntidade("Para o suco Detox Verde, a estimativa é de 5.000 garrafas.", "Detox Verde"))
+      .toBe(true);
+  });
+
+  it("nome com palavra de conteúdo em minúscula não é nome próprio", () => {
+    expect(ehNomeProprio("Homologação de fornecedores")).toBe(false);
+    expect(ehNomeProprio("Delícias da Vovó")).toBe(true);
+    expect(ehNomeProprio("Vovó")).toBe(false);
+  });
+
+  it("sem evidência para NINGUÉM, a evidência não exclui ninguém", () => {
+    // Um módulo do curso de estoque de 23/08 menciona o 'Armazém da Esquina'
+    // oito vezes, sempre depois de preposição. A loja é o caso, e ali ela não
+    // age nenhuma vez: tirar todos trocaria leitura errada por silêncio total.
+    const so = `No 'Armazém da Esquina', o custo de pedido é de R$185.00.
+
+Do 'Armazém da Esquina' saem 40 pedidos por mês.
+
+Para o 'Armazém da Esquina', esse número pesa.`;
+    expect(identificarCaso([{ paragrafos: paragrafosDe(so) }], 1).nomes)
+      .toContain("Armazém da Esquina");
   });
 });

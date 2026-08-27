@@ -28,3 +28,12 @@ declare module "https://esm.sh/@supabase/supabase-js@2" {
 }
 
 declare module "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
+// Import DINÂMICO, e mesmo assim o `tsc` quer resolvê-lo: a conversão de PNG
+// para JPEG em `_shared/imagem-jpeg.ts`. O módulo é buscado em tempo de
+// execução, no Deno; não conseguir carregá-lo é um desfecho previsto lá (grava
+// o PNG como estava), e aqui só o tipo interessa.
+declare module "https://deno.land/x/imagescript@1.3.0/mod.ts" {
+  // deno-lint-ignore no-explicit-any
+  export function decode(bytes: Uint8Array): Promise<any>;
+}
