@@ -96,7 +96,8 @@ describe("coerência numérica entre módulos", () => {
   it("acusa o custo variável que muda de valor entre os módulos", () => {
     const c = coerencia(M1_REAL, M2_REAL);
     expect(c.passed).toBe(false);
-    expect(c.severity).toBe("blocker");
+    // Aviso, e não bloqueador: ver o teste "atribuição direta acusa" abaixo.
+    expect(c.severity).toBe("warning");
     const custo = c.evidence.find((e) => /custos? vari[áa]ve/i.test(e));
     expect(custo, `evidências: ${JSON.stringify(c.evidence)}`).toBeTruthy();
     expect(custo).toContain("R$ 7,20");
@@ -292,7 +293,7 @@ O 'Detox Verde' da 'Delícias Saudáveis' segue em campanha.`;
 // O que separa é uma frase em prosa. Então o portão não decide: atribuição
 // direta bloqueia, atribuição herdada avisa.
 // ═══════════════════════════════════════════════════════════════════════════
-describe("bloqueador x aviso", () => {
+describe("alta confiança x atribuição inferida", () => {
   const laudo = (...modulos: string[]) =>
     inspectCourse({
       course_title: "curso",
@@ -315,11 +316,15 @@ Na 'Pão Doce', o custo de pedido é de R$ 250,00 por compra.
 
 A 'Pão Doce' vende para toda a vizinhança.`;
 
-  it("atribuição direta sustenta um BLOQUEADOR", () => {
+  it("atribuição direta acusa, com alta confiança — mas como AVISO", () => {
+    // Foi bloqueador por dois dias. Medido em cinco cursos: dois achados
+    // verdadeiros e um falso (três "Lead Time" que eram de itens diferentes).
+    // Um bloqueador rebaixa o curso; errar assim em um curso a cada dois ensina
+    // o autor a ignorar o portão, e aí ele perde também os verdadeiros.
     const r = laudo(DIRETO_1, DIRETO_2);
     const c = check(r, "coerencia.valores_entre_modulos");
     expect(c.passed, JSON.stringify(c.evidence)).toBe(false);
-    expect(c.severity).toBe("blocker");
+    expect(c.severity).toBe("warning");
     expect(c.evidence.join(" ")).toContain("R$ 100,00");
     expect(c.evidence.join(" ")).toContain("R$ 250,00");
   });
@@ -361,7 +366,6 @@ Solução: o custo de pedido é de R$ 250,00 por compra.`;
 Solução: o custo de pedido é de R$ 900,00 por compra.`;
     const c = check(laudo(DIRETO_1, comHerdado), "coerencia.valores_entre_modulos");
     expect(c.passed, JSON.stringify(c.evidence)).toBe(false);
-    expect(c.severity).toBe("blocker");
   });
 });
 

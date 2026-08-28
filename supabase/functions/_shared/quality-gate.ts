@@ -86,7 +86,7 @@ export interface CourseInspectionInput {
   lesson_max_words?: number;
 }
 
-export const QUALITY_GATE_VERSION = "2026-08-28";
+export const QUALITY_GATE_VERSION = "2026-08-28b";
 
 const MAX_EVIDENCE = 5;
 
@@ -735,26 +735,50 @@ const ID_COERENCIA = "coerencia.valores_entre_modulos";
 const ID_COERENCIA_INFERIDA = "coerencia.valores_entre_modulos_inferidos";
 
 /**
- * Contradição em que TODOS os valores vieram de parágrafos que nomeiam o caso.
+ * Divergência em que TODOS os valores vieram de parágrafos que nomeiam o caso.
  *
  * O agrupamento é refeito só com as atribuições diretas, e não filtrado depois:
- * um grupo com quatro valores, um deles herdado, ainda contradiz se os três
+ * um grupo com quatro valores, um deles herdado, ainda diverge se os três
  * diretos discordarem entre si. Rebaixar o achado inteiro por causa do quarto
  * custou, na medição, o verdadeiro positivo do curso de precificação.
+ *
+ * POR QUE ISTO É AVISO, E NÃO BLOQUEADOR
+ *
+ * Foi bloqueador por dois dias, e a medição em cinco cursos reais não sustenta:
+ *
+ *   precificação ....... "custos variáveis R$5,00 (M1) ≠ R$2,50 (M5)"  verdadeiro
+ *                        "preço de venda R$19,90 (M1) ≠ R$111,33 (M3)" verdadeiro
+ *   estoques 28/08 (2) . "Lead Time 4 dias (M6) ≠ 15 dias (M8) ≠ 7 dias (M8)"
+ *                        FALSO: 4 dias é dos ovos, 15 do chocolate belga, e o
+ *                        terceiro é um exercício em branco. Numa padaria com
+ *                        vários fornecedores, prazo diferente por item é o normal.
+ *   os outros três ..... nenhum achado direto
+ *
+ * Dois verdadeiros e um falso, e o falso não tem conserto à vista: a grandeza
+ * pertence a um ITEM, e o portão não consegue ler de que item o número fala —
+ * medi a colheita de objetos e ela devolve "venda" e "negócio" na frente de
+ * "leite condensado".
+ *
+ * Um bloqueador rebaixa o curso a `needs_review`. Errar assim em um curso a
+ * cada dois ensina o autor a ignorar o portão, e aí ele perde também os
+ * verdadeiros. Aviso erra barato: aparece no laudo, com a evidência, e quem
+ * escreveu decide. É a mesma escolha de ontem, aplicada onde eu ainda não a
+ * tinha aplicado por achar que ali havia certeza.
  */
 function checkCrossModuleCoherence(course: CourseInspectionInput): CheckResult {
-  const label = "Números do caso condutor coerentes entre módulos";
+  const label = "Números do caso condutor que mudam entre módulos";
   const r = lerCoerencia(course);
-  if (typeof r === "string") return ok(ID_COERENCIA, label, "blocker", r);
+  if (typeof r === "string") return ok(ID_COERENCIA, label, "warning", r);
 
   const diretas = divergencias(agruparGrandezas(porModuloDe(course), casoDe(r), true));
   const evidencias = [...diretas.values()];
   return evidencias.length === 0
-    ? ok(ID_COERENCIA, label, "blocker",
+    ? ok(ID_COERENCIA, label, "warning",
       `Nenhuma grandeza do caso condutor muda de valor entre módulos (${r.casos.length} caso(s) rastreado(s)).`)
-    : fail(ID_COERENCIA, label, "blocker",
-      `${evidencias.length} grandeza(s) do caso condutor com valores diferentes em módulos diferentes. ` +
-        `O aluno calcula um número num módulo e encontra outro no seguinte, sem explicação.`,
+    : fail(ID_COERENCIA, label, "warning",
+      `${evidencias.length} grandeza(s) do caso condutor aparecem com valores diferentes em módulos diferentes, ` +
+        `todas em parágrafos que nomeiam o caso. Se for a mesma coisa, o aluno calcula um número num módulo e ` +
+        `encontra outro no seguinte; se for item diferente, o curso deveria dizer qual.`,
       evidencias);
 }
 
