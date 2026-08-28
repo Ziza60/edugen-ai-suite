@@ -4204,75 +4204,125 @@ function normalizeAssessment(raw: any): AssessmentDocument {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// NEM TODO DEFEITO DA AVALIAÇÃO É FATAL
+//
+// A regra tratava tudo como fatal e devolvia `null` — o módulo saía SEM quiz,
+// sem flashcards e sem questão aberta. Os logs de 27/08 mostram o preço disso
+// no módulo 4 do curso de estoques:
+//
+//   AI ok    module_assessment  effort=low     elapsed=15323ms   ← funcionou
+//   AI call  module_assessment  effort=medium                    ← tentou de novo
+//   Timeout após 17138ms
+//   Assessment rejected for module 4
+//
+// A primeira tentativa produziu uma avaliação. Ela foi descartada por não ser
+// perfeita, a segunda estourou o prazo, e o aluno ficou sem avaliação nenhuma.
+// Uma avaliação com quatro flashcards em vez de cinco é melhor que nenhuma.
+//
+// A SEPARAÇÃO
+//
+// ERRO é o que quebra o produto ou engana o aluno: índice de resposta correta
+// fora da faixa (nada fica certo), menos de quatro opções (a tela espera
+// quatro), opções repetidas (a "correta" fica ambígua), enunciado vazio, e
+// evidência que não existe no conteúdo — essa última porque perguntar o que o
+// módulo não ensinou é pior do que não perguntar.
+//
+// RESSALVA é o que empobrece sem quebrar: duas questões em vez de três, quatro
+// flashcards em vez de cinco, flashcard sem pergunta explícita, questão não
+// vinculada a um objetivo do módulo. O vínculo alimenta a matriz de objetivos;
+// sem ele a matriz fica incompleta, e o quiz funciona igual.
+// ═══════════════════════════════════════════════════════════════════════════
+export interface LaudoDaAvaliacao {
+  /** Impedem a entrega: quebram a tela ou enganam quem estuda. */
+  erros: string[];
+  /** Empobrecem, e não impedem. Viram aviso no módulo. */
+  ressalvas: string[];
+}
+
 function validateAssessment(params: {
   assessment: AssessmentDocument;
   module: ModuleBlueprint;
   markdown: string;
   includeQuiz: boolean;
   includeFlashcards: boolean;
-}): string[] {
+}): LaudoDaAvaliacao {
   const { assessment, module, markdown, includeQuiz, includeFlashcards } =
     params;
-  const errors: string[] = [];
+  const erros: string[] = [];
+  const ressalvas: string[] = [];
   if (includeQuiz) {
-    if (assessment.multiple_choice.length !== 3)
-      errors.push("A avaliação deve conter exatamente 3 questões objetivas.");
+    // Zero questões não é "menos que três": é não ter avaliação objetiva.
+    if (!assessment.multiple_choice.length) {
+      erros.push("A avaliação não trouxe nenhuma questão objetiva.");
+    } else if (assessment.multiple_choice.length !== 3) {
+      ressalvas.push(
+        `A avaliação trouxe ${assessment.multiple_choice.length} questões objetivas em vez de 3.`,
+      );
+    }
     assessment.multiple_choice.forEach((question, index) => {
       if (!question.question || question.question.length < 20)
-        errors.push(`Questão ${index + 1} é curta ou vazia.`);
+        erros.push(`Questão ${index + 1} é curta ou vazia.`);
       if (question.options.length !== 4)
-        errors.push(`Questão ${index + 1} deve ter 4 opções.`);
+        erros.push(`Questão ${index + 1} deve ter 4 opções.`);
       if (
         new Set(question.options.map((option) => normalizeForMatch(option)))
           .size !== 4
       )
-        errors.push(`Questão ${index + 1} possui opções repetidas.`);
+        erros.push(`Questão ${index + 1} possui opções repetidas.`);
       if (question.correct < 0 || question.correct >= 4)
-        errors.push(`Questão ${index + 1} possui índice correto inválido.`);
+        erros.push(`Questão ${index + 1} possui índice correto inválido.`);
       if (!question.explanation)
-        errors.push(`Questão ${index + 1} não possui explicação.`);
-      if (!module.outcome_ids.includes(question.outcome_id))
-        errors.push(
-          `Questão ${index + 1} não está vinculada a objetivo do módulo.`,
-        );
+        erros.push(`Questão ${index + 1} não possui explicação.`);
       if (!evidenceSupported(question.evidence_excerpt, markdown))
-        errors.push(
+        erros.push(
           `Questão ${index + 1} não possui evidência verificável no conteúdo final.`,
         );
+      if (!module.outcome_ids.includes(question.outcome_id))
+        ressalvas.push(
+          `Questão ${index + 1} não está vinculada a objetivo do módulo.`,
+        );
     });
-    if (
-      !assessment.open_ended.question ||
-      assessment.open_ended.criteria.length < 2
-    ) {
-      errors.push(
-        "A questão aberta deve conter enunciado e pelo menos 2 critérios de correção.",
+    if (!assessment.open_ended.question) {
+      erros.push("A questão aberta não tem enunciado.");
+    } else if (assessment.open_ended.criteria.length < 2) {
+      ressalvas.push(
+        "A questão aberta tem menos de 2 critérios de correção.",
       );
     }
     if (!module.outcome_ids.includes(assessment.open_ended.outcome_id)) {
-      errors.push("A questão aberta não está vinculada a objetivo do módulo.");
+      ressalvas.push("A questão aberta não está vinculada a objetivo do módulo.");
     }
   } else if (
     assessment.multiple_choice.length ||
     assessment.open_ended.question
   ) {
-    errors.push("Foram geradas questões embora o quiz esteja desativado.");
+    erros.push("Foram geradas questões embora o quiz esteja desativado.");
   }
 
   if (includeFlashcards) {
-    if (assessment.flashcards.length !== 5)
-      errors.push("Devem existir exatamente 5 flashcards.");
+    if (!assessment.flashcards.length) {
+      erros.push("A avaliação não trouxe nenhum flashcard.");
+    } else if (assessment.flashcards.length !== 5) {
+      ressalvas.push(
+        `A avaliação trouxe ${assessment.flashcards.length} flashcards em vez de 5.`,
+      );
+    }
     assessment.flashcards.forEach((card, index) => {
       if (!card.front.endsWith("?"))
-        errors.push(
-          `Flashcard ${index + 1} deve ter pergunta explícita na frente.`,
+        ressalvas.push(
+          `Flashcard ${index + 1} não tem pergunta explícita na frente.`,
         );
       if (card.back.length < 20)
-        errors.push(`Flashcard ${index + 1} possui resposta superficial.`);
+        ressalvas.push(`Flashcard ${index + 1} tem resposta superficial.`);
     });
   } else if (assessment.flashcards.length) {
-    errors.push("Foram gerados flashcards embora estejam desativados.");
+    erros.push("Foram gerados flashcards embora estejam desativados.");
   }
-  return uniqueStrings(errors, 50);
+  return {
+    erros: uniqueStrings(erros, 50),
+    ressalvas: uniqueStrings(ressalvas, 50),
+  };
 }
 
 function buildAssessmentPrompt(params: {
@@ -4466,8 +4516,20 @@ async function generateAssessment(params: {
   } = params;
   if (!includeQuiz && !includeFlashcards) return null;
   let priorErrors: string[] = [];
+  // A melhor avaliação vista até agora: sem erro estrutural, com ressalvas.
+  // Ela é a rede — o que se entrega quando a segunda tentativa não vem.
+  let melhor: { assessment: AssessmentDocument; ressalvas: string[] } | null = null;
+
   for (let attempt = 0; attempt < 2; attempt++) {
-    if (msLeft() < 14000) return null;
+    // NÃO ARRISCAR O QUE JÁ SE TEM POR UMA MELHORA MARGINAL.
+    //
+    // A segunda tentativa é opcional e, no módulo 4 do curso de estoques, ela
+    // custou tudo: começou com ~20 s no relógio e estourou em 17,1 s. As oito
+    // chamadas de avaliação daquele curso levaram de 11,1 s a 17,2 s, então
+    // 20 s era cara ou coroa. Com uma avaliação boa-o-bastante na mão, só vale
+    // tentar de novo com folga sobre o PIOR tempo observado, não sobre o médio.
+    const minimo = melhor ? 25000 : 14000;
+    if (msLeft() < minimo) break;
     const prompt = buildAssessmentPrompt({
       course,
       module,
@@ -4488,17 +4550,30 @@ async function generateAssessment(params: {
         Math.min(70000, Math.max(12000, msLeft() - 3000)),
       );
       const assessment = normalizeAssessment(value);
-      priorErrors = validateAssessment({
+      const laudo = validateAssessment({
         assessment,
         module,
         markdown,
         includeQuiz,
         includeFlashcards,
       });
-      if (!priorErrors.length) return assessment;
+      if (!laudo.erros.length && !laudo.ressalvas.length) return assessment;
+      // Sem erro estrutural, ela já serve. Guarda-se a primeira que chega neste
+      // estado: a segunda tentativa pode melhorá-la, e pode não voltar.
+      if (!laudo.erros.length && !melhor) {
+        melhor = { assessment, ressalvas: laudo.ressalvas };
+      }
+      priorErrors = [...laudo.erros, ...laudo.ressalvas];
     } catch (error: any) {
       priorErrors = [error?.message || String(error)];
     }
+  }
+
+  if (melhor) {
+    console.warn(
+      `[generate-course] Avaliação do módulo ${module.module_number} entregue com ressalvas: ${melhor.ressalvas.join(" | ")}`,
+    );
+    return melhor.assessment;
   }
   console.warn(
     `[generate-course] Assessment rejected for module ${module.module_number}: ${priorErrors.join(" | ")}`,
