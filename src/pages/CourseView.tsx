@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { ExportButtons } from "@/components/course/ExportButtons";
+import { CourseQualityReport } from "@/components/course/CourseQualityReport";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -535,6 +536,7 @@ export default function CourseView() {
                 <Eye className="h-4 w-4 mr-1.5" />
                 {isPublished ? "Despublicar" : "Publicar"}
               </Button>
+              <CourseQualityReport courseId={id!} />
               <ExportButtons
                 courseId={id!}
                 courseTitle={course.title}
