@@ -4506,22 +4506,52 @@ async function generateAssessment(params: {
   return null;
 }
 
-async function generateModuleImage(params: {
-  serviceClient: any;
-  userId: string;
-  moduleId: string;
+// ═══════════════════════════════════════════════════════════════════════════
+// A IMAGEM NÃO PRECISA ESPERAR AS LIÇÕES
+//
+// No curso de estoques de 27/08, dois módulos de oito saíram sem ilustração:
+//
+//   [generate-course-module] Módulo 4 entregue sem imagem: restam 3s.
+//   [generate-course-module] Módulo 6 entregue sem imagem: restam 11s.
+//
+// Não foi falha da API. A imagem era a ÚLTIMA coisa da fila e só é tentada se
+// sobrarem mais de 20 s do orçamento de 125 s. Os dois módulos são justamente
+// os que precisaram de reparo de lição — 20,5 s no módulo 4 e 35 s no módulo 6
+// —, e o 4 ainda perdeu 17,1 s numa avaliação que estourou. A imagem perdia
+// por um problema que não era dela.
+//
+// Só que ela nunca dependeu das lições. Tudo de que precisa é o `media_brief`,
+// e ele vem no ENVELOPE, pronto em cerca de 8 s. Então a chamada cara sai da
+// frente: começa logo depois do envelope e é esperada no fim, quando o id do
+// módulo existe para gravar. Passa a ter ~110 s de folga em vez de disputar os
+// últimos 3.
+//
+// Daí a divisão em duas funções. `gerarImagemDoModulo` fala com o Gemini e
+// converte; `gravarImagemDoModulo` sobe ao Storage e registra em course_images.
+// A primeira não conhece moduleId — é isso que a deixa começar antes de existir
+// linha no banco.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ImagemGerada {
+  bytes: Uint8Array;
+  ext: "jpg" | "png";
+  mime: string;
+  alt: string;
+}
+
+export async function gerarImagemDoModulo(params: {
   course: CourseBlueprint;
   module: ModuleBlueprint;
-  document: ModuleDocument;
-}): Promise<void> {
-  const { serviceClient, userId, moduleId, course, module, document } = params;
+  mediaBrief: ModuleDocument["media_brief"];
+}): Promise<ImagemGerada | null> {
+  const { course, module, mediaBrief } = params;
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!geminiKey) return;
+  if (!geminiKey) return null;
 
-  const prompt = `${document.media_brief.generation_prompt}
+  const prompt = `${mediaBrief.generation_prompt}
 
-Educational purpose: ${document.media_brief.purpose}
-Core concept: ${document.media_brief.concept}
+Educational purpose: ${mediaBrief.purpose}
+Core concept: ${mediaBrief.concept}
 Course: ${course.course_title}
 Module: ${module.title}
 
@@ -4533,7 +4563,7 @@ No typography, letters, numerals, logos, signatures, watermarks, fake interface 
   const imageModelResolved = safeModel(IMAGE_MODEL, "gemini-2.5-flash-image");
   if (!imageModelResolved.includes("image") && !Deno.env.get("COURSE_IMAGE_MODEL")) {
     console.warn("[generate-course] Image model not configured; skipping image generation.");
-    return;
+    return null;
   }
   const endpoint = `https://generativelanguage.googleapis.com/v1/models/${imageModelResolved}:generateContent`;
   try {
@@ -4561,7 +4591,7 @@ No typography, letters, numerals, logos, signatures, watermarks, fake interface 
       console.warn(
         `[generate-course] Image API failed for module ${module.module_number}: ${response.status} ${await response.text()}`,
       );
-      return;
+      return null;
     }
     const data = await response.json();
     const parts = data.candidates?.[0]?.content?.parts ?? [];
@@ -4569,7 +4599,7 @@ No typography, letters, numerals, logos, signatures, watermarks, fake interface 
       (part: any) => part?.inlineData?.data || part?.inline_data?.data,
     );
     const inline = imagePart?.inlineData || imagePart?.inline_data;
-    if (!inline?.data) return;
+    if (!inline?.data) return null;
 
     const binary = Uint8Array.from(atob(inline.data), (char) =>
       char.charCodeAt(0),
@@ -4580,47 +4610,53 @@ No typography, letters, numerals, logos, signatures, watermarks, fake interface 
     // não chegou aqui — o toggle "Imagens com IA" do formulário completo não
     // passa por aquela função, tem este código próprio. Só que é por aqui que
     // nascem os cursos de oito, dez módulos: exatamente os que apertam o
-    // orçamento de CPU da exportação, onde as imagens já respondem por 78% do
-    // tempo de render.
+    // orçamento de CPU da exportação.
     //
     // A extensão também deixou de sair do `mimeType` declarado: `paraJpeg` lê
     // os bytes. Cabeçalho e conteúdo discordam de vez em quando, e gravar pela
     // declaração põe a extensão errada no arquivo — defeito que só aparece na
     // hora em que o jsPDF recusa a imagem, exportações depois.
     const convertida = await paraJpeg(binary, "generate-course");
-    const storagePath = `${userId}/module-${moduleId}.${convertida.ext}`;
-    const { error: uploadError } = await serviceClient.storage
-      .from("course-exports")
-      .upload(storagePath, convertida.bytes, {
-        contentType: convertida.mime,
-        upsert: true,
-      });
-    if (uploadError) {
-      console.warn(
-        `[generate-course] Image upload failed: ${uploadError.message}`,
-      );
-      return;
-    }
-    const { data: signedData, error: signedError } = await serviceClient.storage
-      .from("course-exports")
-      .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
-    if (signedError || !signedData?.signedUrl) return;
-    const { error: insertError } = await serviceClient
-      .from("course_images")
-      .insert({
-        module_id: moduleId,
-        url: signedData.signedUrl,
-        alt_text:
-          document.media_brief.alt_text ||
-          `Ilustração educacional: ${module.title}`,
-      });
-    if (insertError)
-      console.warn(
-        `[generate-course] course_images insert failed: ${insertError.message}`,
-      );
+    return {
+      ...convertida,
+      alt: mediaBrief.alt_text || `Ilustração educacional: ${module.title}`,
+    };
   } catch (error: any) {
     console.warn(
       `[generate-course] Image generation failed for module ${module.module_number}: ${error?.message || error}`,
+    );
+    return null;
+  }
+}
+
+export async function gravarImagemDoModulo(params: {
+  serviceClient: any;
+  userId: string;
+  moduleId: string;
+  imagem: ImagemGerada;
+}): Promise<void> {
+  const { serviceClient, userId, moduleId, imagem } = params;
+  const storagePath = `${userId}/module-${moduleId}.${imagem.ext}`;
+  const { error: uploadError } = await serviceClient.storage
+    .from("course-exports")
+    .upload(storagePath, imagem.bytes, {
+      contentType: imagem.mime,
+      upsert: true,
+    });
+  if (uploadError) {
+    console.warn(`[generate-course] Image upload failed: ${uploadError.message}`);
+    return;
+  }
+  const { data: signedData, error: signedError } = await serviceClient.storage
+    .from("course-exports")
+    .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+  if (signedError || !signedData?.signedUrl) return;
+  const { error: insertError } = await serviceClient
+    .from("course_images")
+    .insert({ module_id: moduleId, url: signedData.signedUrl, alt_text: imagem.alt });
+  if (insertError) {
+    console.warn(
+      `[generate-course] course_images insert failed: ${insertError.message}`,
     );
   }
 }
@@ -5110,7 +5146,6 @@ export {
   evidenceSupported,
   fetchWithTimeout,
   generateAssessment,
-  generateModuleImage,
   getModelFallbacks,
   inferModuleRole,
   isPlaceholderText,

@@ -11,7 +11,9 @@ import {
   chunkSourceDocuments,
   deterministicModuleRepair,
   generateAssessment,
-  generateModuleImage,
+  gerarImagemDoModulo,
+  gravarImagemDoModulo,
+  type ImagemGerada,
   mapWithConcurrency,
   normalizeModuleDocument,
   renderModuleMarkdown,
@@ -263,7 +265,9 @@ async function generateOneModule(params: {
   // O curso já existe: o worker escreve nele.
   const course = { id: courseId };
   const allSourceIndex = buildSourceIndex(sourceChunks);
-  const imageTasks: Promise<void>[] = [];
+  // A promessa da imagem, disparada logo após o envelope e esperada no fim.
+  // `null` quando o curso não pede imagem ou quando o envelope não trouxe brief.
+  let imagemEmVoo: Promise<ImagemGerada | null> | null = null;
 
 
   
@@ -317,6 +321,26 @@ async function generateOneModule(params: {
       "low",
       Math.min(45000, Math.max(15000, msLeft() - 4000)),
     );
+
+    // A IMAGEM COMEÇA AQUI, E NÃO NO FIM.
+    //
+    // Ela nunca dependeu das lições: tudo de que precisa é o `media_brief`, e
+    // ele vem neste envelope, pronto em cerca de 8 s. Enquanto era a última
+    // coisa da fila, perdia para o reparo de lição — no curso de estoques de
+    // 27/08, os módulos 4 e 6 saíram sem ilustração com 3 s e 11 s restantes,
+    // e são exatamente os dois que precisaram de reparo (20,5 s e 35 s).
+    //
+    // Disparada aqui, ela corre em paralelo com as lições e tem ~110 s de
+    // folga. Nenhum `await` agora: o que se guarda é a promessa, esperada lá no
+    // fim, quando existe id de módulo para gravar.
+    const briefDaImagem = envelope.value?.media_brief;
+    if (includeImages && briefDaImagem?.generation_prompt) {
+      imagemEmVoo = gerarImagemDoModulo({
+        course: blueprint,
+        module,
+        mediaBrief: briefDaImagem,
+      });
+    }
 
     // Cada lição recebe os valores que as anteriores já fixaram. Fora do laço
     // porque a lista cresce a cada lição concluída. `textosDasLicoes` guarda o
@@ -649,19 +673,6 @@ async function generateOneModule(params: {
     }
   }
 
-  if (includeImages) {
-    const task = generateModuleImage({
-      serviceClient,
-      userId,
-      moduleId: moduleData.id,
-      course: blueprint,
-      module,
-      document,
-    });
-    imageTasks.push(task);
-  }
-
-  
   const result = {
     moduleData,
     document,
@@ -670,7 +681,7 @@ async function generateOneModule(params: {
     warnings: validation.warnings,
     repairsApplied,
   };
-  // As imagens são AGUARDADAS aqui, não empurradas para outro waitUntil.
+  // A imagem é AGUARDADA aqui, não empurrada para outro waitUntil.
   //
   // Antes esta função registrava um segundo EdgeRuntime.waitUntil de dentro de
   // um trabalho que JÁ rodava sob waitUntil — aninhamento que o runtime não
@@ -678,17 +689,27 @@ async function generateOneModule(params: {
   // geração de imagem ainda em voo. Num curso de 5 módulos, só 1 imagem
   // sobreviveu.
   //
-  // Esperar aqui é seguro: o orçamento do worker cobre um módulo só (~50 s de
-  // ~110 s) e a chamada de imagem tem timeout próprio de 65 s. Sem folga, o
-  // módulo é entregue sem imagem — perder a ilustração é muito melhor que
+  // O que mudou é QUANDO ela começa: a chamada ao Gemini foi disparada logo
+  // depois do envelope e a esta altura já está pronta ou quase. O que sobra
+  // aqui é o upload e o insert, que custam segundos, não dezenas deles — por
+  // isso a folga exigida caiu de 20 s para 8 s. Sem folga nem para isso, o
+  // módulo é entregue sem imagem: perder a ilustração é muito melhor que
   // perder o módulo.
-  if (imageTasks.length) {
-    if (msLeft() > 20000) {
-      const settled = await Promise.allSettled(imageTasks);
-      const falhas = settled.filter((r) => r.status === "rejected").length;
-      if (falhas) {
+  if (imagemEmVoo) {
+    if (msLeft() > 8000) {
+      try {
+        const imagem = await imagemEmVoo;
+        if (imagem) {
+          await gravarImagemDoModulo({
+            serviceClient,
+            userId,
+            moduleId: moduleData.id,
+            imagem,
+          });
+        }
+      } catch (err: any) {
         console.warn(
-          `[generate-course-module] ${falhas}/${imageTasks.length} imagem(ns) falharam no módulo ${module.module_number}.`,
+          `[generate-course-module] Imagem do módulo ${module.module_number} falhou: ${err?.message ?? err}`,
         );
       }
     } else {
