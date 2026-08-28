@@ -1,3 +1,4 @@
+import { especieDoValor } from "../../supabase/functions/_shared/valores-do-caso";
 import { describe, expect, it } from "vitest";
 import { inspectCourse } from "../../supabase/functions/_shared/quality-gate";
 
@@ -272,5 +273,105 @@ O 'Detox Verde' da 'Delícias Saudáveis' segue em campanha.`;
     const c = coerencia(m1, m2);
     expect(c.passed).toBe(false);
     expect(c.evidence.join(" ")).toContain("Detox Verde");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DUAS SEVERIDADES, POR CONFIANÇA DA ATRIBUIÇÃO
+//
+// Os números que interessam moram em parágrafos que não repetem o nome do caso
+// — a "Solução" de um exercício raramente o repete. Herdar o caso do parágrafo
+// anterior os alcança, e traz junto comparações que podem ser legítimas. Os
+// dois cursos de estoque mostram o MESMO padrão com veredito oposto:
+//
+//   27/08  custo de pedido R$ 80 (açúcar, "inclui frete fixo do fornecedor")
+//          contra R$ 50 (farinha) — legítimo
+//   28/08  custo de pedido R$ 152,50 (módulo 2, que afirma ser "fixo por
+//          transação") contra R$ 75 e R$ 50 (módulo 4) — contradição
+//
+// O que separa é uma frase em prosa. Então o portão não decide: atribuição
+// direta bloqueia, atribuição herdada avisa.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("bloqueador x aviso", () => {
+  const laudo = (...modulos: string[]) =>
+    inspectCourse({
+      course_title: "curso",
+      modules: modulos.map((markdown, i) => ({
+        module_number: i + 1, title: `M${i + 1}`, markdown, is_capstone: i === modulos.length - 1,
+      })),
+    });
+  const check = (r: ReturnType<typeof laudo>, id: string) =>
+    r.checks.find((c) => c.id === id)!;
+
+  // O caso é nomeado NO parágrafo do número: atribuição direta.
+  const DIRETO_1 = `A padaria 'Pão Doce' faz pães todo dia.
+
+Na 'Pão Doce', o custo de pedido é de R$ 100,00 por compra.
+
+A 'Pão Doce' compra farinha toda semana.`;
+  const DIRETO_2 = `A 'Pão Doce' revisou seus números.
+
+Na 'Pão Doce', o custo de pedido é de R$ 250,00 por compra.
+
+A 'Pão Doce' vende para toda a vizinhança.`;
+
+  it("atribuição direta sustenta um BLOQUEADOR", () => {
+    const r = laudo(DIRETO_1, DIRETO_2);
+    const c = check(r, "coerencia.valores_entre_modulos");
+    expect(c.passed, JSON.stringify(c.evidence)).toBe(false);
+    expect(c.severity).toBe("blocker");
+    expect(c.evidence.join(" ")).toContain("R$ 100,00");
+    expect(c.evidence.join(" ")).toContain("R$ 250,00");
+  });
+
+  // O mesmo, mas o número mora num parágrafo que NÃO nomeia o caso.
+  const HERDADO_1 = `A padaria 'Pão Doce' faz pães todo dia.
+
+A 'Pão Doce' compra farinha toda semana.
+
+Solução: o custo de pedido é de R$ 100,00 por compra.`;
+  const HERDADO_2 = `A 'Pão Doce' revisou seus números.
+
+A 'Pão Doce' vende para toda a vizinhança.
+
+Solução: o custo de pedido é de R$ 250,00 por compra.`;
+
+  it("atribuição herdada vira AVISO, e não reprova o curso", () => {
+    const r = laudo(HERDADO_1, HERDADO_2);
+    expect(check(r, "coerencia.valores_entre_modulos").passed).toBe(true);
+    const aviso = check(r, "coerencia.valores_entre_modulos_inferidos");
+    expect(aviso.passed, JSON.stringify(aviso.evidence)).toBe(false);
+    expect(aviso.severity).toBe("warning");
+    expect(aviso.evidence.join(" ")).toContain("R$ 100,00");
+  });
+
+  it("o que já é bloqueador não se repete como aviso", () => {
+    const r = laudo(DIRETO_1, DIRETO_2);
+    const bloq = check(r, "coerencia.valores_entre_modulos").evidence.join(" ");
+    const aviso = check(r, "coerencia.valores_entre_modulos_inferidos").evidence.join(" ");
+    expect(bloq).toContain("custo de pedido");
+    expect(aviso).not.toContain("custo de pedido");
+  });
+
+  it("um valor herdado no meio não rebaixa o achado: os diretos bastam", () => {
+    // Foi o que a medição pegou: rebaixar o grupo inteiro por causa de um
+    // membro herdado custou o verdadeiro positivo do curso de precificação.
+    const comHerdado = `${DIRETO_2}
+
+Solução: o custo de pedido é de R$ 900,00 por compra.`;
+    const c = check(laudo(DIRETO_1, comHerdado), "coerencia.valores_entre_modulos");
+    expect(c.passed, JSON.stringify(c.evidence)).toBe(false);
+    expect(c.severity).toBe("blocker");
+  });
+});
+
+describe("espécie do valor", () => {
+  it("dinheiro não se compara com prazo", () => {
+    // O cruzamento chegou a acusar "R$30,00 (módulo 3) ≠ 12 meses (módulo 5)".
+    expect(especieDoValor("R$ 30,00")).toBe("moeda");
+    expect(especieDoValor("12 meses")).not.toBe("moeda");
+    expect(especieDoValor("15%")).toBe("percentual");
+    expect(especieDoValor("60 unidades")).toBe(especieDoValor("40 unidades"));
+    expect(especieDoValor("5 dias")).not.toBe(especieDoValor("5 unidades"));
   });
 });

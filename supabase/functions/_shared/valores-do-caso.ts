@@ -463,6 +463,14 @@ export interface Grandeza {
   /** A oração de onde saiu, para servir de evidência. */
   trecho: string;
   /**
+   * O parágrafo NÃO nomeava o caso; ele foi herdado do parágrafo anterior.
+   *
+   * É a medida de confiança da atribuição, e quem consome decide o que fazer
+   * com ela. O portão de qualidade usa isto para escolher entre bloquear e
+   * avisar: atribuição direta acusa, atribuição inferida levanta a mão.
+   */
+  herdado: boolean;
+  /**
    * A quem a oração prendeu a grandeza: as palavras de conteúdo que vêm depois
    * de uma preposição dentro do rótulo — "do Pão Tradicional", "para o bolo
    * artesanal", "por garrafa".
@@ -645,6 +653,22 @@ function lerRotuloDe(
  * prende a grandeza a um objeto diferente: aí são duas medidas, não uma
  * divergência.
  */
+/**
+ * A espécie do valor: dinheiro, porcentagem, ou uma contagem com sua unidade.
+ *
+ * Sem isto, o cruzamento comparou "R$30,00 (módulo 3) ≠ 12 meses (módulo 5)" —
+ * reais contra meses, sob um rótulo que era fragmento de oração ("InovaTech
+ * pode"). Rótulo ruim acontece; comparar dinheiro com prazo é indefensável em
+ * qualquer nível de severidade, e some com uma checagem de três linhas.
+ */
+export function especieDoValor(v: string): string {
+  const t = v.trim();
+  if (/^(?:R\$|US\$|\$|€|£)/.test(t)) return "moeda";
+  if (/%\s*$/.test(t)) return "percentual";
+  const unidade = t.match(/([a-zà-ÿ]+)\s*$/i)?.[1];
+  return unidade ? `contagem:${raizDaPalavra(unidade)}` : "numero";
+}
+
 export function mesmoObjeto(a: Set<string>, b: Set<string>): boolean {
   if (!a.size || !b.size) return true;
   for (const t of a) if (b.has(t)) return true;
@@ -661,37 +685,43 @@ export function mesmoObjeto(a: Set<string>, b: Set<string>): boolean {
 export function grandezasDoTexto(texto: string, caso: Caso): Grandeza[] {
   if (!caso.nomes.length) return [];
   const out: Grandeza[] = [];
-  // POR QUE A LEITURA CONTINUA PRESA AO PARÁGRAFO QUE CITA O CASO
+  // O CASO VALE ATÉ QUE OUTRO O SUBSTITUA — MAS A HERANÇA FICA MARCADA.
   //
-  // Ela descarta parágrafos onde há número. No curso de estoques o exercício é
-  // escrito em dois parágrafos, e o do número não repete o nome da empresa:
+  // Ler só o parágrafo que cita o nome descarta justamente onde moram os
+  // números. Os dois cursos de estoque escrevem o exercício em blocos, e o
+  // parágrafo do número não repete o nome da empresa:
   //
-  //   Contexto: A 'Delícias da Vovó' está com falta de leite condensado.
-  //   Desafio:  Calcular o Ponto de Pedido …, a empresa mantém um estoque de
-  //             segurança de 15 latas.
+  //   Contexto: A Padaria 'Pão Quente' faz 4 pedidos por mês.
+  //   Solução:  Custo de Pedido por Ordem = R$ 610,00 / 4 = R$ 152,50.
   //
-  // Herdar o caso do parágrafo anterior foi tentado e MEDIDO. Ele encontra as
-  // contradições que faltavam e, junto, dois alarmes falsos no mesmo curso:
+  // Herdar o caso do parágrafo anterior recupera esse número. Só que herdar
+  // também traz alarme falso: no curso de 27/08, o custo de pedido do açúcar
+  // (R$ 80, com o frete daquele fornecedor) foi comparado ao da farinha
+  // (R$ 50), e a diferença é legítima.
   //
-  //   Custo de Pedido     R$ 80,00 (M4) ≠ R$ 50,00 (M7, M8)
-  //   Custo de Manutenção R$ 0,50  (M4) ≠ R$ 2,00  (M8)
+  // POR QUE A SAÍDA NÃO É DETECTAR O OBJETO
   //
-  // Os dois são legítimos: R$ 80,00 é o custo de pedido do AÇÚCAR, com o frete
-  // daquele fornecedor, e R$ 50,00 é o da farinha e o do leite condensado.
-  // R$ 0,50 é por quilo de açúcar e R$ 2,00 por lata de leite.
+  // Foi o que eu ia fazer, e os dois cursos mostram que não resolveria: nos
+  // dois, os itens são DIFERENTES. O que separa defeito de diferença legítima
+  // é o que o curso AFIRMA sobre a grandeza —
   //
-  // Sem saber de QUE ITEM o número fala, mais alcance é mais alarme falso, e um
-  // bloqueador que grita à toa deixa de ser lido. Identificar o item exigiria
-  // um vocabulário de objetos do curso; a colheita que testei devolve "venda",
-  // "negócio", "produção" e "demanda" na frente de "leite condensado", e
-  // "açúcar" nem aparece. Enquanto o item não for lido de forma confiável, o
-  // alcance fica onde está.
+  //   27/08: "R$ 80,00 por pedido (inclui frete fixo do fornecedor)"  → varia
+  //   28/08: "O Custo de Pedido é fixo por transação"                 → não varia
+  //
+  // — e isso é prosa, não um campo. Então a leitura para de tentar decidir:
+  // marca a herança e entrega a informação a quem consome. Atribuição direta
+  // sustenta um bloqueador; atribuição herdada vira aviso.
+  let ultimoCaso: string | null = null;
   for (const p of paragrafosDe(texto)) {
     const presentes = caso.nomes.filter((n) => p.includes(n));
-    if (!presentes.length) continue;
-    const alvo = presentes.reduce((a, b) =>
-      (caso.frequencia.get(b) ?? 0) < (caso.frequencia.get(a) ?? 0) ? b : a
-    );
+    const alvo = presentes.length
+      ? presentes.reduce((a, b) =>
+        (caso.frequencia.get(b) ?? 0) < (caso.frequencia.get(a) ?? 0) ? b : a
+      )
+      : ultimoCaso;
+    if (!alvo) continue;
+    const herdado = !presentes.length;
+    ultimoCaso = alvo;
     for (const oracao of oracoes(p)) {
       for (const m of oracao.matchAll(ROTULO_E_VALOR_RE)) {
         const lido = lerRotulo(m.groups?.rotulo ?? "", caso.tokens);
@@ -710,6 +740,7 @@ export function grandezasDoTexto(texto: string, caso: Caso): Grandeza[] {
           numero: valorEmNumero(valor),
           trecho: oracao.trim(),
           complemento: lido.complemento,
+          herdado,
         });
       }
     }

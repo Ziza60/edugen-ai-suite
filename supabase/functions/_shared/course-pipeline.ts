@@ -2545,6 +2545,15 @@ export function valoresDoCasoCondutor(
   const contagem = new Map<string, { g: Grandeza; modulo: number; n: number }>();
   for (const { texto, modulo } of fontes) {
     for (const g of grandezasDoTexto(texto, caso)) {
+      // ATRIBUIÇÃO HERDADA NÃO ENTRA NA PONTE.
+      //
+      // A leitura passou a atribuir o caso ao parágrafo seguinte quando ele não
+      // o nomeia — é assim que ela alcança a "Solução" de um exercício, que
+      // raramente repete o nome da empresa. Serve ao portão, que na dúvida
+      // apenas avisa. NÃO serve aqui: o que esta função devolve é injetado no
+      // prompt do próximo módulo como fato estabelecido, e o modelo obedece.
+      // Entre não ter o número e ter o número de outra coisa, não ter é melhor.
+      if (g.herdado) continue;
       const chave = `${g.caso}\u0000${g.chave}\u0000${g.numero ?? g.valor}`;
       const ja = contagem.get(chave);
       // Fica com a fonte MAIS ANTIGA: foi o que o aluno viu primeiro, e é dela

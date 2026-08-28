@@ -39,6 +39,7 @@ import {
   identificarCaso,
   mesmaOrdemDeGrandeza,
   mesmoObjeto,
+  especieDoValor,
   casoPorDominancia,
   paragrafosDe,
 } from "./valores-do-caso.ts";
@@ -85,7 +86,7 @@ export interface CourseInspectionInput {
   lesson_max_words?: number;
 }
 
-export const QUALITY_GATE_VERSION = "2026-08-25";
+export const QUALITY_GATE_VERSION = "2026-08-28";
 
 const MAX_EVIDENCE = 5;
 
@@ -578,11 +579,13 @@ type GrandezaComModulo = Grandeza & { modulo: number };
 function agruparGrandezas(
   porModulo: Array<{ numero: number; texto: string }>,
   caso: Caso,
+  somenteDiretas = false,
 ): Map<string, Map<string, GrandezaComModulo[]>> {
   const grupos = new Map<string, Map<string, GrandezaComModulo[]>>();
   if (!caso.nomes.length) return grupos;
   for (const { numero, texto } of porModulo) {
     for (const g of grandezasDoTexto(texto, caso)) {
+      if (somenteDiretas && g.herdado) continue;
       const grupo = `${g.caso}\u0000${g.chave}`;
       const chaveDoValor = g.numero === null ? g.valor : `#${g.numero}`;
       if (!grupos.has(grupo)) grupos.set(grupo, new Map());
@@ -607,12 +610,23 @@ function atravessaModulos(
   return false;
 }
 
-function checkCrossModuleCoherence(course: CourseInspectionInput): CheckResult {
-  const id = "coerencia.valores_entre_modulos";
-  const label = "Números do caso condutor coerentes entre módulos";
+interface LeituraDeCoerencia {
+  /** O agrupamento completo, com atribuições diretas e herdadas. */
+  grupos: Map<string, Map<string, GrandezaComModulo[]>>;
+  casos: string[];
+}
 
+/**
+ * A leitura, compartilhada pelos dois checks. String = não houve o que cruzar.
+ *
+ * Ela devolve o AGRUPAMENTO, e não o veredito: quem decide o que é bloqueador e
+ * o que é aviso são os dois checks, cada um filtrando o que lhe interessa.
+ */
+function lerCoerencia(
+  course: CourseInspectionInput,
+): LeituraDeCoerencia | string {
   if (course.modules.length < 2) {
-    return ok(id, label, "blocker", "Curso de módulo único: nada a cruzar.");
+    return "Curso de módulo único: nada a cruzar.";
   }
 
   const porModulo = course.modules.map((m) => ({
@@ -639,17 +653,35 @@ function checkCrossModuleCoherence(course: CourseInspectionInput): CheckResult {
     }
   }
   if (!caso.nomes.length) {
-    return ok(id, label, "blocker",
-      "Nenhum caso condutor recorrente identificado: nada a cruzar.");
+    return "Nenhum caso condutor recorrente identificado: nada a cruzar.";
   }
 
-  const evidencias: string[] = [];
+  return { grupos, casos: caso.nomes };
+}
+
+/** As divergências de um agrupamento, por chave de grupo. */
+function divergencias(
+  grupos: Map<string, Map<string, GrandezaComModulo[]>>,
+): Map<string, string> {
+  const achados = new Map<string, string>();
   for (const [grupo, porValorBruto] of grupos) {
     if (porValorBruto.size < 2) continue;
 
     const entradas = [...porValorBruto.values()];
-    const manter = mesmaOrdemDeGrandeza(entradas.map((ocs) => ocs[0].numero));
-    const porValor = entradas.filter((_, i) => manter[i]);
+    // Só se comparam valores da MESMA espécie: dinheiro com dinheiro, dias com
+    // dias. A espécie majoritária do grupo manda; o resto sai.
+    const especies = entradas.map((ocs) => especieDoValor(ocs[0].valor));
+    const contagemDeEspecie = new Map<string, number>();
+    for (const e of especies) {
+      contagemDeEspecie.set(e, (contagemDeEspecie.get(e) ?? 0) + 1);
+    }
+    const dominante = [...contagemDeEspecie.entries()]
+      .sort((a, b) => b[1] - a[1])[0][0];
+    const daEspecie = entradas.filter((_, i) => especies[i] === dominante);
+    if (daEspecie.length < 2) continue;
+
+    const manter = mesmaOrdemDeGrandeza(daEspecie.map((ocs) => ocs[0].numero));
+    const porValor = daEspecie.filter((_, i) => manter[i]);
     if (porValor.length < 2) continue;
 
     // A contradição precisa CRUZAR módulos. Dentro de um módulo, dois valores
@@ -694,16 +726,97 @@ function checkCrossModuleCoherence(course: CourseInspectionInput): CheckResult {
     // O laudo mostra o rótulo como o curso escreveu: quem for conferir procura
     // a frase no PDF, e a chave normalizada não existe em lugar nenhum lá.
     const [caso_, _] = grupo.split("\u0000");
-    evidencias.push(`${caso_} — ${porValor[0][0].rotulo}: ${detalhe}`);
+    achados.set(grupo, `${caso_} — ${porValor[0][0].rotulo}: ${detalhe}`);
   }
+  return achados;
+}
 
+const ID_COERENCIA = "coerencia.valores_entre_modulos";
+const ID_COERENCIA_INFERIDA = "coerencia.valores_entre_modulos_inferidos";
+
+/**
+ * Contradição em que TODOS os valores vieram de parágrafos que nomeiam o caso.
+ *
+ * O agrupamento é refeito só com as atribuições diretas, e não filtrado depois:
+ * um grupo com quatro valores, um deles herdado, ainda contradiz se os três
+ * diretos discordarem entre si. Rebaixar o achado inteiro por causa do quarto
+ * custou, na medição, o verdadeiro positivo do curso de precificação.
+ */
+function checkCrossModuleCoherence(course: CourseInspectionInput): CheckResult {
+  const label = "Números do caso condutor coerentes entre módulos";
+  const r = lerCoerencia(course);
+  if (typeof r === "string") return ok(ID_COERENCIA, label, "blocker", r);
+
+  const diretas = divergencias(agruparGrandezas(porModuloDe(course), casoDe(r), true));
+  const evidencias = [...diretas.values()];
   return evidencias.length === 0
-    ? ok(id, label, "blocker",
-      `Nenhuma grandeza do caso condutor muda de valor entre módulos (${caso.nomes.length} caso(s) rastreado(s)).`)
-    : fail(id, label, "blocker",
+    ? ok(ID_COERENCIA, label, "blocker",
+      `Nenhuma grandeza do caso condutor muda de valor entre módulos (${r.casos.length} caso(s) rastreado(s)).`)
+    : fail(ID_COERENCIA, label, "blocker",
       `${evidencias.length} grandeza(s) do caso condutor com valores diferentes em módulos diferentes. ` +
         `O aluno calcula um número num módulo e encontra outro no seguinte, sem explicação.`,
       evidencias);
+}
+
+/**
+ * O MESMO CRUZAMENTO, QUANDO A ATRIBUIÇÃO FOI INFERIDA.
+ *
+ * Os números que interessam moram em parágrafos que não repetem o nome do caso
+ * — a "Solução" de um exercício raramente o repete. Herdar o caso do parágrafo
+ * anterior os alcança, e traz junto comparações que podem ser legítimas:
+ *
+ *   27/08  custo de pedido R$ 80 (açúcar, "inclui frete fixo do fornecedor")
+ *          contra R$ 50 (farinha) — diferença legítima
+ *   28/08  custo de pedido R$ 152,50 (calculado no módulo 2, que afirma ser
+ *          "fixo por transação") contra R$ 75 e R$ 50 no módulo 4 —
+ *          contradição de verdade
+ *
+ * O mesmo padrão, veredito oposto, e o que separa é uma frase em prosa sobre a
+ * natureza da grandeza. Detectar o objeto não resolveria: nos dois casos os
+ * itens são diferentes.
+ *
+ * Então o portão para de tentar decidir. Ele não reprova o curso por uma
+ * atribuição que inferiu — levanta a mão, e quem lê o laudo decide. O que já
+ * foi acusado como bloqueador não se repete aqui.
+ */
+function checkCrossModuleCoherenceInferida(
+  course: CourseInspectionInput,
+): CheckResult {
+  const label = "Números que PODEM se contradizer entre módulos";
+  const r = lerCoerencia(course);
+  if (typeof r === "string") {
+    return ok(ID_COERENCIA_INFERIDA, label, "warning", r);
+  }
+  const diretas = divergencias(agruparGrandezas(porModuloDe(course), casoDe(r), true));
+  const todas = divergencias(r.grupos);
+  const evidencias = [...todas.entries()]
+    .filter(([grupo]) => !diretas.has(grupo))
+    .map(([, texto]) => texto);
+
+  return evidencias.length === 0
+    ? ok(ID_COERENCIA_INFERIDA, label, "warning",
+      "Nenhuma divergência adicional nas atribuições inferidas.")
+    : fail(ID_COERENCIA_INFERIDA, label, "warning",
+      `${evidencias.length} grandeza(s) aparecem com valores diferentes em módulos diferentes, ` +
+        `atribuídas ao caso pelo parágrafo anterior. Pode ser contradição, pode ser item diferente — ` +
+        `confira antes de publicar.`,
+      evidencias);
+}
+
+function porModuloDe(course: CourseInspectionInput) {
+  return course.modules.map((m) => ({
+    numero: m.module_number,
+    texto: contentText(m.markdown),
+    paragrafos: paragrafosDe(contentText(m.markdown)),
+  }));
+}
+
+function casoDe(r: LeituraDeCoerencia): Caso {
+  return {
+    nomes: r.casos,
+    frequencia: new Map(r.casos.map((n) => [n, 1])),
+    tokens: new Set(r.casos.flatMap((n) => n.split(/\s+/).map((w) => w.toLowerCase()))),
+  };
 }
 
 // ── J. Completude da geração ─────────────────────────────────────────────────
@@ -763,6 +876,7 @@ export function inspectCourse(course: CourseInspectionInput): QualityReport {
   executar(() => checkDensity(course), "densidade");
   executar(() => checkTables(course), "tabelas");
   executar(() => checkCrossModuleCoherence(course), "coerencia");
+  executar(() => checkCrossModuleCoherenceInferida(course), "coerencia-inferida");
 
   const blockers = checks.filter((c) => !c.passed && c.severity === "blocker").length;
   const warnings = checks.filter((c) => !c.passed && c.severity === "warning").length;
