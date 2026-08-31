@@ -23,6 +23,8 @@ import {
   grandezasDoTexto,
   identificarCaso,
   paragrafosDe,
+  raizDaPalavra,
+  semAcento,
 } from "./valores-do-caso.ts";
 import { descricaoDoTom } from "./course-tone.ts";
 import { paraJpeg } from "./imagem-jpeg.ts";
@@ -2508,6 +2510,10 @@ export interface ValorCanonico {
  * Sem caso condutor identificável, devolve lista vazia e nada é injetado. Não
  * ter valor nenhum é um desfecho correto; ter o valor errado, não.
  */
+/** Quantas vezes o rótulo precisa recorrer no curso para valer sem repetição
+ *  do valor. Medido: fragmentos aparecem 1 a 2 vezes, termos reais 5 ou mais. */
+const RECORRENCIA_MINIMA = 5;
+
 export function valoresDoCasoCondutor(
   fontes: Array<{ texto: string; modulo: number }>,
 ): ValorCanonico[] {
@@ -2602,9 +2608,52 @@ export function valoresDoCasoCondutor(
     }
   }
 
+  // O SEGUNDO CAMINHO: O RÓTULO É UM TERMO DO CURSO.
+  //
+  // Exigir que o VALOR apareça duas vezes é evidência forte e tem um custo alto:
+  // há cursos que enunciam cada número uma vez só. O de 'Doces da Vovó', gerado
+  // em 31/08, tem 18 grandezas lidas, 12 diretas, e NENHUMA repetida — a ponte
+  // saiu muda mesmo com os módulos já em ordem.
+  //
+  // O que separa uma grandeza de um fragmento de oração, quando o número não se
+  // repete, é o RÓTULO recorrer. Medido nos quatro cursos com caso numérico,
+  // contando as duas palavras da chave juntas no texto inteiro:
+  //
+  //     custos variáveis .......... 121      ele faz ................. 1
+  //     custo total de manutenção .. 88      João poderia ............ 1
+  //     preço de venda ............. 60      teve um impacto ......... 1
+  //     Cobertura de Estoque ....... 23      Após análises ........... 1
+  //     capital empatado ........... 33      totalizando cerca ....... 1
+  //
+  // O lixo aparece uma vez; o termo do curso aparece dezenas. O piso fica em 5,
+  // acima do aglomerado de fragmentos (1 a 2) e com folga até o primeiro termo
+  // legítimo. Ele erra para CIMA de propósito: perder um valor devolve o
+  // silêncio de hoje, e injetar um fragmento no prompt é o defeito que este
+  // arquivo inteiro existe para evitar.
+  const raizesDoCurso = fontes
+    .flatMap((f) => semAcento(f.texto).split(/[^a-z0-9]+/))
+    .map(raizDaPalavra);
+
+  function recorrencia(chave: string): number {
+    const [a, b] = chave.split(" ");
+    if (!a || !b) return 0;
+    let n = 0;
+    // Janela de três: "custo de pedido" e "custo unitário de pedido" contam
+    // como o mesmo termo, que é como o texto de fato varia.
+    for (let i = 0; i + 3 < raizesDoCurso.length; i++) {
+      if (
+        raizesDoCurso[i] === a &&
+        (raizesDoCurso[i + 1] === b || raizesDoCurso[i + 2] === b ||
+          raizesDoCurso[i + 3] === b)
+      ) n++;
+    }
+    return n;
+  }
+
   const porGrandeza = new Map<string, ValorCanonico>();
   for (const { g, modulo, oracoes, temDireta } of contagem.values()) {
-    if (oracoes.size < 2 || !temDireta) continue;
+    if (!temDireta) continue;
+    if (oracoes.size < 2 && recorrencia(g.chave) < RECORRENCIA_MINIMA) continue;
     const chave = `${g.caso}\u0000${g.chave}`;
     if (porGrandeza.has(chave)) continue;
     porGrandeza.set(chave, {

@@ -167,19 +167,19 @@ describe("a âncora não confunde jargão com caso", () => {
 // nunca repete o nome da empresa. A segunda menção saía como herdada, e a
 // repetição que o outro filtro exige nunca acontecia.
 // ═══════════════════════════════════════════════════════════════════════════
-describe("a ponte carrega os números que depois se contradizem", () => {
-  const doisPrimeiros = (arquivo: string) => {
-    const linhas = readFileSync(
-      resolve(process.cwd(), "src/test/cursos-reais", arquivo), "utf8",
-    ).split("\n");
-    const ini: number[] = [];
-    linhas.forEach((l, i) => { if (l.startsWith("# ")) ini.push(i); });
-    return [0, 1].map((k) => ({
-      texto: linhas.slice(ini[k] + 1, ini[k + 1] ?? linhas.length).join("\n"),
-      modulo: k + 1,
-    }));
-  };
+const doisPrimeiros = (arquivo: string) => {
+  const linhas = readFileSync(
+    resolve(process.cwd(), "src/test/cursos-reais", arquivo), "utf8",
+  ).split("\n");
+  const ini: number[] = [];
+  linhas.forEach((l, i) => { if (l.startsWith("# ")) ini.push(i); });
+  return [0, 1].map((k) => ({
+    texto: linhas.slice(ini[k] + 1, ini[k + 1] ?? linhas.length).join("\n"),
+    modulo: k + 1,
+  }));
+};
 
+describe("a ponte carrega os números que depois se contradizem", () => {
   it("preço: leva o preço de venda e o custo variável do módulo 1", () => {
     // São exatamente os dois que depois se contradizem — R$19,90 vira R$111,33
     // no módulo 3, e R$5,00 vira R$2,50 no módulo 5. Antes, a ponte levava
@@ -228,19 +228,39 @@ describe("o curso gerado com encadeamento", () => {
     expect(evidencias(laudo("estoques-doces-da-vovo-encadeado.md"))).toBe("");
   });
 
-  it("a ponte não carrega nada dele, e isso está medido", () => {
-    // 18 grandezas lidas, 12 diretas, NENHUMA enunciada em duas orações
-    // distintas. O curso diz cada número uma vez só.
-    const linhas = readFileSync(
-      resolve(process.cwd(), "src/test/cursos-reais/estoques-doces-da-vovo-encadeado.md"),
-      "utf8",
-    ).split("\n");
-    const ini: number[] = [];
-    linhas.forEach((l, i) => { if (l.startsWith("# ")) ini.push(i); });
-    const dois = [0, 1].map((k) => ({
-      texto: linhas.slice(ini[k] + 1, ini[k + 1] ?? linhas.length).join("\n"),
-      modulo: k + 1,
-    }));
-    expect(valoresDoCasoCondutor(dois)).toEqual([]);
+  it("a ponte carrega os números dele pelo RÓTULO, não pela repetição", () => {
+    // Este curso enuncia cada número uma vez só: 18 grandezas lidas, 12
+    // diretas, NENHUMA repetida em duas orações. Com a exigência de repetição
+    // sozinha, a ponte saía muda mesmo com os módulos já em ordem.
+    //
+    // O que salva é o rótulo recorrer no curso — "Cobertura de Estoque" aparece
+    // 23 vezes, "valor de estoque" 19. Fragmento de oração aparece uma.
+    const termos = valoresDoCasoCondutor(doisPrimeiros("estoques-doces-da-vovo-encadeado.md"))
+      .map((x) => x.termo).join(" | ");
+    expect(termos).toMatch(/cobertura de estoque/i);
+  });
+});
+
+describe("o rótulo precisa ser um termo do curso", () => {
+  it("fragmento de oração não entra, por mais que o número seja real", () => {
+    // "totalizando cerca", "ele faz", "Após análises", "teve um impacto":
+    // aparecem UMA vez no curso. Sem o piso de recorrência, entrariam todos, e
+    // o prompt do módulo seguinte receberia fragmento como fato estabelecido.
+    const todos = [
+      "estoques-delicias-da-vovo.md", "estoques-pao-quente.md",
+      "estoques-sabor-da-vovo.md", "preco-financas-inteligentes.md",
+      "estoques-doces-da-vovo-encadeado.md",
+    ].flatMap((a) => valoresDoCasoCondutor(doisPrimeiros(a)).map((v) => v.termo))
+      .join(" | ");
+    for (const lixo of [
+      /totalizando cerca/i, /ele faz/i, /após análises/i, /teve um impacto/i,
+      /perdeu uma venda/i, /buscam otimização/i, /possui um estoque/i,
+    ]) {
+      expect(todos, todos).not.toMatch(lixo);
+    }
+  });
+
+  it("o curso sem caso numérico continua sem injetar nada", () => {
+    expect(valoresDoCasoCondutor(doisPrimeiros("transformacao-digital.md"))).toEqual([]);
   });
 });
