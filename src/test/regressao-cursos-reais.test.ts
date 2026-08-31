@@ -53,6 +53,7 @@ describe("nenhum curso real é bloqueado pelo cruzamento de valores", () => {
     "estoques-sabor-da-vovo.md",
     "preco-financas-inteligentes.md",
     "transformacao-digital.md",
+    "estoques-doces-da-vovo-encadeado.md",
   ]) {
     it(arquivo, () => {
       const bloqueadores = laudo(arquivo).checks
@@ -209,5 +210,37 @@ describe("a ponte carrega os números que depois se contradizem", () => {
       .map((x) => x.termo).join(" | ");
     expect(termos).not.toMatch(/exigirá um aumento/i);
     expect(termos).not.toMatch(/obsolescência para esses/i);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O PRIMEIRO CURSO GERADO COM OS DOIS PRIMEIROS MÓDULOS EM ORDEM
+//
+// Levou 5min23s contra os ~2 min do paralelo total — a previsão era ~5 min.
+// Saiu sem nenhum achado de coerência, o primeiro curso de estoque a conseguir.
+//
+// E o crédito NÃO é da ponte: ela carregou zero valores aqui, porque este curso
+// não enuncia nenhum número duas vezes. É registro de um curso limpo, não prova
+// de que o encadeamento funcionou.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("o curso gerado com encadeamento", () => {
+  it("sai sem achado de coerência", () => {
+    expect(evidencias(laudo("estoques-doces-da-vovo-encadeado.md"))).toBe("");
+  });
+
+  it("a ponte não carrega nada dele, e isso está medido", () => {
+    // 18 grandezas lidas, 12 diretas, NENHUMA enunciada em duas orações
+    // distintas. O curso diz cada número uma vez só.
+    const linhas = readFileSync(
+      resolve(process.cwd(), "src/test/cursos-reais/estoques-doces-da-vovo-encadeado.md"),
+      "utf8",
+    ).split("\n");
+    const ini: number[] = [];
+    linhas.forEach((l, i) => { if (l.startsWith("# ")) ini.push(i); });
+    const dois = [0, 1].map((k) => ({
+      texto: linhas.slice(ini[k] + 1, ini[k + 1] ?? linhas.length).join("\n"),
+      modulo: k + 1,
+    }));
+    expect(valoresDoCasoCondutor(dois)).toEqual([]);
   });
 });

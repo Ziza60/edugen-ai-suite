@@ -32,8 +32,15 @@ Nenhuma delas teria sido descartada sem estes arquivos.
 | `estoques-sabor-da-vovo.md` | padaria 'Sabor da Vovó' | 8 | alarme falso do Lead Time, itens diferentes |
 | `preco-financas-inteligentes.md` | app 'Finanças Inteligentes' | 5 | as duas contradições verdadeiras mais claras do acervo |
 | `transformacao-digital.md` | — (sem caso numérico) | 8 | **o curso limpo**: prova que a regra não acusa quem não tem defeito |
+| `estoques-doces-da-vovo-encadeado.md` | padaria 'Doces da Vovó' | 8 | o primeiro gerado com os dois primeiros módulos EM ORDEM |
 
-O último é o mais importante e o que menos parece. Sem ele, toda medição seria
+O de `Doces da Vovó` é o primeiro gerado depois de os dois primeiros módulos
+passarem a rodar em ordem. Levou 5min23s contra os ~2 min do paralelo total, e
+saiu sem nenhum achado. O crédito não é da ponte: ela carregou ZERO valores
+dele, porque o curso não enuncia nenhum número duas vezes. É registro de um
+curso limpo, não prova de que o encadeamento resolveu.
+
+O de transformação digital é o mais importante e o que menos parece. Sem ele, toda medição seria
 feita só contra cursos problemáticos — que é a forma clássica de uma regra
 parecer boa e não ser.
 
