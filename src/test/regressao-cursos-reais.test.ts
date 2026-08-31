@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { inspectCourse } from "../../supabase/functions/_shared/quality-gate";
+import { valoresDoCasoCondutor } from "../../supabase/functions/_shared/course-pipeline";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // O PORTÃO, MEDIDO CONTRA CINCO CURSOS REAIS
@@ -150,5 +151,63 @@ describe("a âncora não confunde jargão com caso", () => {
         expect(linha, `${arquivo}: ${linha}`).not.toMatch(jargao);
       }
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A PONTE DE VALORES, MEDIDA NOS DOIS PRIMEIROS MÓDULOS
+//
+// A ponte lê o que os módulos anteriores já publicaram e injeta no prompt do
+// seguinte. Ela é a única PREVENÇÃO contra o curso se contradizer — todo o
+// resto é detecção. E ela carregava um valor em cinco cursos.
+//
+// Os dois filtros se destruíam mutuamente: o curso enuncia o número na
+// "Solução" e o repete no "Resultado", mas o parágrafo do "Resultado" quase
+// nunca repete o nome da empresa. A segunda menção saía como herdada, e a
+// repetição que o outro filtro exige nunca acontecia.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("a ponte carrega os números que depois se contradizem", () => {
+  const doisPrimeiros = (arquivo: string) => {
+    const linhas = readFileSync(
+      resolve(process.cwd(), "src/test/cursos-reais", arquivo), "utf8",
+    ).split("\n");
+    const ini: number[] = [];
+    linhas.forEach((l, i) => { if (l.startsWith("# ")) ini.push(i); });
+    return [0, 1].map((k) => ({
+      texto: linhas.slice(ini[k] + 1, ini[k + 1] ?? linhas.length).join("\n"),
+      modulo: k + 1,
+    }));
+  };
+
+  it("preço: leva o preço de venda e o custo variável do módulo 1", () => {
+    // São exatamente os dois que depois se contradizem — R$19,90 vira R$111,33
+    // no módulo 3, e R$5,00 vira R$2,50 no módulo 5. Antes, a ponte levava
+    // apenas o custo variável; o preço de venda se perdia.
+    const v = valoresDoCasoCondutor(doisPrimeiros("preco-financas-inteligentes.md"));
+    const texto = v.map((x) => `${x.termo}=${x.valor}`).join(" | ");
+    expect(texto).toContain("R$19,90");
+    expect(texto).toContain("R$5,00");
+  });
+
+  it("estoques: leva a margem de lucro, que antes não saía", () => {
+    for (const arquivo of ["estoques-delicias-da-vovo.md", "estoques-pao-quente.md"]) {
+      const v = valoresDoCasoCondutor(doisPrimeiros(arquivo));
+      expect(v.map((x) => x.termo).join(" | "), arquivo).toMatch(/margem de lucro/i);
+    }
+  });
+
+  it("o curso sem caso numérico não injeta nada", () => {
+    expect(valoresDoCasoCondutor(doisPrimeiros("transformacao-digital.md"))).toEqual([]);
+  });
+
+  it("frase copiada duas vezes não conta como repetição", () => {
+    // O curso 'Sabor da Vovó' repete o enunciado de uma atividade palavra por
+    // palavra. Contando MENÇÕES, isso valia por corroboração e injetava dois
+    // fragmentos de oração: "exigirá um aumento = R$ 100,00" e
+    // "obsolescência para esses = 0,8%". Contando ORAÇÕES DISTINTAS, saem.
+    const termos = valoresDoCasoCondutor(doisPrimeiros("estoques-sabor-da-vovo.md"))
+      .map((x) => x.termo).join(" | ");
+    expect(termos).not.toMatch(/exigirá um aumento/i);
+    expect(termos).not.toMatch(/obsolescência para esses/i);
   });
 });

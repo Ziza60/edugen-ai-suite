@@ -2542,30 +2542,69 @@ export function valoresDoCasoCondutor(
   // Duas menções do MESMO valor, portanto. Isso derruba os treze a dois, e os
   // dois são o custo variável e os custos fixos — exatamente os números que o
   // módulo 2 contradisse.
-  const contagem = new Map<string, { g: Grandeza; modulo: number; n: number }>();
+  // A HERDADA CORROBORA; A DIRETA É QUE PODE SER FONTE.
+  //
+  // Antes a herdada era descartada antes de contar, e os dois filtros se
+  // destruíam mutuamente. O curso enuncia o número na "Solução" e o repete no
+  // "Resultado" — e o parágrafo do "Resultado" quase nunca repete o nome da
+  // empresa. A segunda menção saía como herdada, e a repetição que o filtro
+  // seguinte exige nunca acontecia. MEDIDO nos cinco cursos, sobre os dois
+  // primeiros módulos de cada um:
+  //
+  //     lidas   após tirar herdadas   após exigir repetição
+  //      35            6                      0
+  //      52           17                      0
+  //      36           12                      0
+  //      45           10                      1
+  //
+  // Um valor em cinco cursos: a ponte existia e não carregava nada.
+  //
+  // Contando as duas e exigindo que ao menos UMA seja direta, o número sobe
+  // para oito — e entre eles os dois do curso de precificação que depois se
+  // contradizem, R$19,90 e R$5,00. A cautela que importa fica de pé: nenhum
+  // valor entra sem ter sido escrito ao menos uma vez num parágrafo que nomeia
+  // o caso, então continua valendo que valor de outra coisa não é injetado.
+  // REPETIR NÃO É COPIAR.
+  //
+  // A contagem era de menções, e uma frase de enunciado copiada literalmente em
+  // dois lugares valia por duas. Foi assim que "João planeja = R$ 5.000,00" e
+  // "exigirá um aumento = R$ 100,00" — fragmentos de oração, não grandezas —
+  // entraram: a mesma frase aparece na atividade do módulo 2 e é repetida na
+  // seção seguinte, palavra por palavra.
+  //
+  // Corroborar é o curso dizer o número OUTRA VEZ, com outras palavras: "o
+  // custo variável total por garrafa será R$ 7,20" e, adiante, "o custo
+  // variável por garrafa é de R$ 7,20". Então o que se conta são orações
+  // DISTINTAS, e não menções.
+  const contagem = new Map<
+    string,
+    { g: Grandeza; modulo: number; oracoes: Set<string>; temDireta: boolean }
+  >();
   for (const { texto, modulo } of fontes) {
     for (const g of grandezasDoTexto(texto, caso)) {
-      // ATRIBUIÇÃO HERDADA NÃO ENTRA NA PONTE.
-      //
-      // A leitura passou a atribuir o caso ao parágrafo seguinte quando ele não
-      // o nomeia — é assim que ela alcança a "Solução" de um exercício, que
-      // raramente repete o nome da empresa. Serve ao portão, que na dúvida
-      // apenas avisa. NÃO serve aqui: o que esta função devolve é injetado no
-      // prompt do próximo módulo como fato estabelecido, e o modelo obedece.
-      // Entre não ter o número e ter o número de outra coisa, não ter é melhor.
-      if (g.herdado) continue;
       const chave = `${g.caso}\u0000${g.chave}\u0000${g.numero ?? g.valor}`;
       const ja = contagem.get(chave);
       // Fica com a fonte MAIS ANTIGA: foi o que o aluno viu primeiro, e é dela
-      // que os módulos seguintes não podem divergir em silêncio.
-      if (ja) ja.n += 1;
-      else contagem.set(chave, { g, modulo, n: 1 });
+      // que os módulos seguintes não podem divergir em silêncio. Uma menção
+      // herdada não vira fonte nem quando chega primeiro.
+      if (ja) {
+        ja.oracoes.add(g.trecho);
+        if (!g.herdado && !ja.temDireta) {
+          ja.temDireta = true;
+          ja.g = g;
+          ja.modulo = modulo;
+        }
+      } else {
+        contagem.set(chave, {
+          g, modulo, oracoes: new Set([g.trecho]), temDireta: !g.herdado,
+        });
+      }
     }
   }
 
   const porGrandeza = new Map<string, ValorCanonico>();
-  for (const { g, modulo, n } of contagem.values()) {
-    if (n < 2) continue;
+  for (const { g, modulo, oracoes, temDireta } of contagem.values()) {
+    if (oracoes.size < 2 || !temDireta) continue;
     const chave = `${g.caso}\u0000${g.chave}`;
     if (porGrandeza.has(chave)) continue;
     porGrandeza.set(chave, {
