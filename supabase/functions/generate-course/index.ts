@@ -31,7 +31,7 @@ import {
   TESTING_MODE,
 } from "../_shared/course-pipeline.ts";
 import type { CourseBlueprint, Plan, SourceChunk, SourceDoc } from "../_shared/course-pipeline.ts";
-import { dispatchAll } from "../_shared/course-dispatch.ts";
+import { dispatchAll, elegiveis } from "../_shared/course-dispatch.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fase 1 — planeja o curso e enfileira os módulos.
@@ -506,10 +506,22 @@ Deno.serve(async (req: Request) => {
       // Cada worker responde na hora e trabalha em waitUntil, então isto leva
       // milissegundos por job. Se algum despacho falhar, o job continua
       // 'pending' e generate-course-dispatch o repesca — nada se perde.
+      //
+      // Só o que a ORDEM permite: no começo, apenas o módulo 1. Quem despacha o
+      // seguinte é o worker que acabou de fechar o anterior, e a varredura de
+      // jobs parados chega à mesma conclusão se essa corrente se romper. Ver
+      // MODULOS_EM_SERIE em course-dispatch.ts.
+      const filaInicial = (jobs as any[]).map((j) => ({
+        module_index: j.module_index,
+        status: "pending",
+      }));
       const dispatch = await dispatchAll({
         supabaseUrl,
         serviceRoleKey,
-        jobs: jobs as Array<{ id: string; course_id: string; module_index: number }>,
+        jobs: elegiveis(
+          jobs as Array<{ id: string; course_id: string; module_index: number; status?: string }>,
+          filaInicial,
+        ).map((j) => ({ id: j.id, course_id: j.course_id, module_index: j.module_index })),
       });
 
       // O limite mensal do plano é contado a partir destes eventos, então eles

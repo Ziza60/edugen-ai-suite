@@ -50,7 +50,7 @@ import type {
   ValorCanonico,
 } from "../_shared/course-pipeline.ts";
 import { repairTruncation } from "../_shared/markdown.ts";
-import { secretsMatch } from "../_shared/course-dispatch.ts";
+import { dispatchAll, elegiveis, secretsMatch } from "../_shared/course-dispatch.ts";
 
 /**
  * Dispara o portão de qualidade para um curso recém-concluído.
@@ -904,6 +904,45 @@ Deno.serve(async (req: Request) => {
       await serviceClient.rpc("refresh_course_generation_progress", {
         p_course_id: payload.courseId,
       });
+
+      // QUEM ABRE A PORTA PARA O PRÓXIMO É QUEM ACABOU DE FECHAR A SUA.
+      //
+      // Os dois primeiros módulos vão em ordem para que a ponte de valores
+      // encontre o que procura — ela lê `order_index < meu` no banco, e só há o
+      // que ler se o anterior já gravou. Ver MODULOS_EM_SERIE.
+      //
+      // Best-effort: se este despacho falhar, a varredura de jobs parados chega
+      // à mesma conclusão pela fila. Por isso um erro aqui é registrado e
+      // engolido — deixar a exceção subir mascararia o resultado do módulo.
+      try {
+        const { data: fila } = await serviceClient
+          .from("course_generation_jobs")
+          .select("id, course_id, module_index, status, attempts")
+          .eq("course_id", payload.courseId);
+        const pendentes = (fila ?? []).filter(
+          (j: any) => j.status === "pending" && (j.attempts ?? 0) < 3,
+        );
+        const liberados = elegiveis(
+          pendentes as Array<{ id: string; course_id: string; module_index: number; status: string }>,
+          (fila ?? []) as Array<{ module_index: number; status: string }>,
+        );
+        if (liberados.length) {
+          const r = await dispatchAll({
+            supabaseUrl,
+            serviceRoleKey,
+            jobs: liberados.map((j: any) => ({
+              id: j.id, course_id: j.course_id, module_index: j.module_index,
+            })),
+          });
+          console.log(
+            `[generate-course-module] Módulo ${payload.moduleIndex} liberou ${r.dispatched} módulo(s).`,
+          );
+        }
+      } catch (err: any) {
+        console.warn(
+          `[generate-course-module] Despacho seguinte falhou (a varredura retoma): ${err?.message ?? err}`,
+        );
+      }
       // Portão de qualidade: roda uma única vez, quando o último módulo fecha.
       //
       // A checagem de "sou o último?" é feita no banco, e não por contagem

@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders } from "../_shared/course-pipeline.ts";
-import { dispatchAll, secretsMatch } from "../_shared/course-dispatch.ts";
+import { dispatchAll, elegiveis, secretsMatch } from "../_shared/course-dispatch.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rede de segurança da fila.
@@ -83,10 +83,27 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  // A varredura respeita a mesma ordem da fase 1 — e é ela que retoma uma
+  // cadeia rompida, sem precisar saber que houve rompimento. Para decidir, a
+  // fila INTEIRA de cada curso é consultada: os jobs já concluídos não vêm na
+  // busca acima, e sem eles a barreira nunca seria considerada vencida.
+  const filaPorCurso = new Map<string, Array<{ module_index: number; status: string }>>();
+  for (const courseId of new Set(jobs.map((j: any) => j.course_id))) {
+    const { data: fila } = await serviceClient
+      .from("course_generation_jobs")
+      .select("module_index, status")
+      .eq("course_id", courseId);
+    filaPorCurso.set(courseId, (fila ?? []) as Array<{ module_index: number; status: string }>);
+  }
+  const liberados = (jobs as any[]).filter((j) =>
+    elegiveis([{ module_index: j.module_index, status: j.status }],
+      filaPorCurso.get(j.course_id) ?? []).length > 0
+  );
+
   const result = await dispatchAll({
     supabaseUrl,
     serviceRoleKey,
-    jobs: jobs as Array<{ id: string; course_id: string; module_index: number }>,
+    jobs: liberados as Array<{ id: string; course_id: string; module_index: number }>,
   });
 
   // Cursos cujos jobs terminaram enquanto ninguém olhava: recalcula o status
