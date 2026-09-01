@@ -228,11 +228,28 @@ async function lerValoresJaPublicados(
         modulo: Number(linha?.order_index ?? 0) + 1,
       })),
     );
-    if (valores.length) {
-      console.log(
-        `[generate-course-module] módulo ${moduleIndex + 1}: ${valores.length} valores canônicos herdados`,
-      );
-    }
+    // O QUE A PONTE INJETOU, E NÃO SÓ QUANTOS
+    //
+    // Esta linha só imprimia a contagem, e só quando havia pelo menos um valor.
+    // As duas coisas custaram caro ao tentar auditar o curso 5ef3f2c1: sem os
+    // rótulos não dava para dizer QUAIS números atravessaram, e o silêncio no
+    // módulo 2 era ambíguo — podia ser ponte vazia ou linha fora da janela do
+    // log exportado. Nenhum dos dois é verificável depois; o prompt não é
+    // gravado em lugar nenhum.
+    //
+    // Agora imprime sempre, inclusive o zero, com rótulo, valor e módulo de
+    // origem. O corte em 40 itens é para não estourar a linha de log num curso
+    // com caso muito numérico — o total continua explícito antes dele.
+    const LIMITE_NO_LOG = 40;
+    const lista = valores
+      .slice(0, LIMITE_NO_LOG)
+      .map((v) => `${v.termo}=${v.valor} (m${v.modulo})`)
+      .join(" | ");
+    console.log(
+      `[generate-course-module] módulo ${moduleIndex + 1}: ${valores.length} valores canônicos herdados` +
+        (valores.length ? `: ${lista}` : "") +
+        (valores.length > LIMITE_NO_LOG ? ` | … +${valores.length - LIMITE_NO_LOG}` : ""),
+    );
     return valores;
   } catch (err) {
     console.log(`[generate-course-module] erro ao ler valores anteriores: ${err}`);
