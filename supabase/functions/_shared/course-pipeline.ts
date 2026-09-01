@@ -3410,6 +3410,164 @@ function validateScenario(block: LearningBlock): string[] {
   return errors;
 }
 
+// A MESMA RÉGUA PARA VALIDAR E PARA ACEITAR UM REPARO
+//
+// Estas verificações viviam dentro do laço de `validateModuleDocument`, e por
+// isso o reparo não tinha como saber se tinha melhorado alguma coisa: ele só
+// olhava `validateLearningBlock`, bloco a bloco, e devolvia o candidato de
+// qualquer jeito. No curso de 31/08 isso custou caro — `lesson_repair_7_3`
+// gastou 36 s, voltou truncado, e a lição terminou com 353 palavras contra o
+// mínimo de 450 que o próprio reparo fora chamado para corrigir.
+//
+// Extrair daqui é o que permite comparar a lição atual com a candidata pela
+// régua que o módulo vai usar depois. Uma segunda régua, escrita só para o
+// reparo, seria o defeito de sempre neste projeto: um critério que não olha
+// aquilo que ele afirma medir.
+export type ProblemasDaLicao = {
+  repairable: string[];
+  warnings: string[];
+  blocosValidos: number;
+  blocosAtivos: number;
+  incompleta: boolean;
+  palavras: number;
+};
+
+export function problemasDaLicao(params: {
+  lesson: LessonDocument;
+  planned: LessonBlueprint;
+  lessonIndex: number;
+  useSources: boolean;
+  allowedSourceIds: Set<string>;
+  lessonMinWords: number;
+  lessonMaxWords: number;
+}): ProblemasDaLicao {
+  const {
+    lesson,
+    planned,
+    lessonIndex,
+    useSources,
+    allowedSourceIds,
+    lessonMinWords,
+    lessonMaxWords,
+  } = params;
+  const repairable: string[] = [];
+  const warnings: string[] = [];
+  let blocosAtivos = 0;
+  let incompleta = false;
+
+  if (lesson.lesson_number !== planned.lesson_number) {
+    repairable.push(`Numeração da lição ${lessonIndex + 1} divergente.`);
+  }
+  if (isPlaceholderText(lesson.objective)) {
+    repairable.push(`Lição ${lesson.lesson_number}: objetivo é placeholder.`);
+  }
+  if (GENERIC_HEADINGS.has(lesson.title.trim().toLowerCase())) {
+    warnings.push(`Título genérico de lição: "${lesson.title}".`);
+  }
+
+  const validBlocks: LearningBlock[] = [];
+  for (const block of lesson.blocks) {
+    if (ACTIVE_BLOCK_TYPES.has(block.type)) blocosAtivos += 1;
+    const { usable, issues: bIssues } = validateLearningBlock(block);
+    if (!usable) {
+      repairable.push(...bIssues.map((i) => `Lição ${lesson.lesson_number}: ${i}`));
+    } else {
+      validBlocks.push(block);
+    }
+    if (block.heading && GENERIC_HEADINGS.has(block.heading.trim().toLowerCase())) {
+      warnings.push(`Título de bloco genérico: "${block.heading}".`);
+    }
+    if (useSources) {
+      if (!block.source_ids.length && ["explanation", "table", "worked_example", "callout"].includes(block.type)) {
+        warnings.push(`Bloco substantivo ${block.id} não registra fonte.`);
+      }
+      for (const sourceId of block.source_ids) {
+        if (!allowedSourceIds.has(sourceId)) {
+          repairable.push(`Bloco ${block.id} cita fonte inválida: ${sourceId}.`);
+        }
+      }
+    } else if (block.source_ids.length) {
+      warnings.push(`Bloco ${block.id} registra fontes em curso sem fontes; IDs serão removidos.`);
+    }
+  }
+
+  // Required block types → repairable
+  const actualTypes = new Set(lesson.blocks.map((b) => b.type));
+  for (const requiredType of planned.required_block_types) {
+    if (!actualTypes.has(requiredType)) {
+      repairable.push(`Lição ${lesson.lesson_number}: bloco obrigatório ${requiredType} ausente.`);
+    }
+  }
+
+  // Contagem de blocos: era minItems/maxItems no schema, agora é verificada aqui.
+  if (lesson.blocks.length > 6) {
+    warnings.push(`Lição ${lesson.lesson_number}: ${lesson.blocks.length} blocos (planejado no máximo 6).`);
+  }
+
+  // Uma lição vazia é a perda de UMA lição, não do módulo. Antes, qualquer
+  // lição falha reprovava o módulo inteiro — e como cada lição é uma chamada
+  // de rede independente, bastava um timeout entre quinze para derrubar tudo.
+  // Agora a lição entra em reparo e, se não houver tempo, é descartada: o
+  // módulo é entregue com o que funcionou e o curso vai para needs_review.
+  if (validBlocks.length === 0) {
+    repairable.push(`Lição ${lesson.lesson_number}: nenhum bloco válido.`);
+    incompleta = true;
+  } else if (validBlocks.length < 2) {
+    repairable.push(`Lição ${lesson.lesson_number}: menos de 2 blocos válidos.`);
+    incompleta = true;
+  } else if (validBlocks.length < 3) {
+    repairable.push(`Lição ${lesson.lesson_number}: apenas ${validBlocks.length} blocos válidos.`);
+  }
+
+  // Densidade POR LIÇÃO. Medir só o módulo inteiro escondia o desequilíbrio:
+  // num curso real, um módulo com 514 + 1.922 + 1.309 palavras passava folgado
+  // na soma, mas a primeira lição — justamente a que abre o curso — tinha
+  // metade do que deveria.
+  let palavras = 0;
+  if (validBlocks.length > 0) {
+    palavras = validBlocks.reduce(
+      (sum, block) =>
+        sum +
+        wordCount(
+          [
+            ...block.paragraphs,
+            ...block.bullets,
+            ...block.items.map((item) => `${item.title} ${item.content}`),
+            ...block.steps.map((step) => `${step.title} ${step.description}`),
+            ...block.cards.map((card) => `${card.front} ${card.back}`),
+            block.example.context,
+            block.example.challenge,
+            block.example.solution,
+            block.example.result,
+            block.scenario.context,
+            ...block.scenario.turns.map((turn) => turn.situation),
+            block.activity.objective,
+            ...block.activity.steps,
+          ].join(" "),
+        ),
+      0,
+    );
+    if (palavras < lessonMinWords) {
+      repairable.push(
+        `Lição ${lesson.lesson_number}: ${palavras} palavras; mínimo ${lessonMinWords}.`,
+      );
+    } else if (palavras > lessonMaxWords) {
+      warnings.push(
+        `Lição ${lesson.lesson_number}: ${palavras} palavras (acima de ${lessonMaxWords}); tende a diluir o objetivo.`,
+      );
+    }
+  }
+
+  return {
+    repairable,
+    warnings,
+    blocosValidos: validBlocks.length,
+    blocosAtivos,
+    incompleta,
+    palavras,
+  };
+}
+
 function validateModuleDocument(params: {
   course: CourseBlueprint;
   blueprint: ModuleBlueprint;
@@ -3464,108 +3622,20 @@ function validateModuleDocument(params: {
     const planned = blueprint.lessons[lessonIndex];
     if (!planned) return;
 
-    if (lesson.lesson_number !== planned.lesson_number) {
-      repairable.push(`Numeração da lição ${lessonIndex + 1} divergente.`);
-    }
-    if (isPlaceholderText(lesson.objective)) {
-      repairable.push(`Lição ${lesson.lesson_number}: objetivo é placeholder.`);
-    }
-    if (GENERIC_HEADINGS.has(lesson.title.trim().toLowerCase())) {
-      warnings.push(`Título genérico de lição: "${lesson.title}".`);
-    }
-
-    const validBlocks: LearningBlock[] = [];
-    for (const block of lesson.blocks) {
-      if (ACTIVE_BLOCK_TYPES.has(block.type)) activeBlocks += 1;
-      const { usable, issues: bIssues } = validateLearningBlock(block);
-      if (!usable) {
-        repairable.push(...bIssues.map((i) => `Lição ${lesson.lesson_number}: ${i}`));
-      } else {
-        validBlocks.push(block);
-        totalValidBlocks += 1;
-      }
-      if (block.heading && GENERIC_HEADINGS.has(block.heading.trim().toLowerCase())) {
-        warnings.push(`Título de bloco genérico: "${block.heading}".`);
-      }
-      if (useSources) {
-        if (!block.source_ids.length && ["explanation", "table", "worked_example", "callout"].includes(block.type)) {
-          warnings.push(`Bloco substantivo ${block.id} não registra fonte.`);
-        }
-        for (const sourceId of block.source_ids) {
-          if (!allowedSourceIds.has(sourceId)) {
-            repairable.push(`Bloco ${block.id} cita fonte inválida: ${sourceId}.`);
-          }
-        }
-      } else if (block.source_ids.length) {
-        warnings.push(`Bloco ${block.id} registra fontes em curso sem fontes; IDs serão removidos.`);
-      }
-    }
-
-    // Required block types → repairable
-    const actualTypes = new Set(lesson.blocks.map((b) => b.type));
-    for (const requiredType of planned.required_block_types) {
-      if (!actualTypes.has(requiredType)) {
-        repairable.push(`Lição ${lesson.lesson_number}: bloco obrigatório ${requiredType} ausente.`);
-      }
-    }
-
-    // Contagem de blocos: era minItems/maxItems no schema, agora é verificada aqui.
-    if (lesson.blocks.length > 6) {
-      warnings.push(`Lição ${lesson.lesson_number}: ${lesson.blocks.length} blocos (planejado no máximo 6).`);
-    }
-
-    // Uma lição vazia é a perda de UMA lição, não do módulo. Antes, qualquer
-    // lição falha reprovava o módulo inteiro — e como cada lição é uma chamada
-    // de rede independente, bastava um timeout entre quinze para derrubar tudo.
-    // Agora a lição entra em reparo e, se não houver tempo, é descartada: o
-    // módulo é entregue com o que funcionou e o curso vai para needs_review.
-    if (validBlocks.length === 0) {
-      repairable.push(`Lição ${lesson.lesson_number}: nenhum bloco válido.`);
-      incompleteCount += 1;
-    } else if (validBlocks.length < 2) {
-      repairable.push(`Lição ${lesson.lesson_number}: menos de 2 blocos válidos.`);
-      incompleteCount += 1;
-    } else if (validBlocks.length < 3) {
-      repairable.push(`Lição ${lesson.lesson_number}: apenas ${validBlocks.length} blocos válidos.`);
-    }
-
-    // Densidade POR LIÇÃO. Medir só o módulo inteiro escondia o desequilíbrio:
-    // num curso real, um módulo com 514 + 1.922 + 1.309 palavras passava folgado
-    // na soma, mas a primeira lição — justamente a que abre o curso — tinha
-    // metade do que deveria.
-    if (validBlocks.length > 0) {
-      const lessonWordCount = validBlocks.reduce(
-        (sum, block) =>
-          sum +
-          wordCount(
-            [
-              ...block.paragraphs,
-              ...block.bullets,
-              ...block.items.map((item) => `${item.title} ${item.content}`),
-              ...block.steps.map((step) => `${step.title} ${step.description}`),
-              ...block.cards.map((card) => `${card.front} ${card.back}`),
-              block.example.context,
-              block.example.challenge,
-              block.example.solution,
-              block.example.result,
-              block.scenario.context,
-              ...block.scenario.turns.map((turn) => turn.situation),
-              block.activity.objective,
-              ...block.activity.steps,
-            ].join(" "),
-          ),
-        0,
-      );
-      if (lessonWordCount < lessonMinWords) {
-        repairable.push(
-          `Lição ${lesson.lesson_number}: ${lessonWordCount} palavras; mínimo ${lessonMinWords}.`,
-        );
-      } else if (lessonWordCount > lessonMaxWords) {
-        warnings.push(
-          `Lição ${lesson.lesson_number}: ${lessonWordCount} palavras (acima de ${lessonMaxWords}); tende a diluir o objetivo.`,
-        );
-      }
-    }
+    const p = problemasDaLicao({
+      lesson,
+      planned,
+      lessonIndex,
+      useSources,
+      allowedSourceIds,
+      lessonMinWords,
+      lessonMaxWords,
+    });
+    repairable.push(...p.repairable);
+    warnings.push(...p.warnings);
+    activeBlocks += p.blocosAtivos;
+    totalValidBlocks += p.blocosValidos;
+    if (p.incompleta) incompleteCount += 1;
   });
 
   // Só é impossível entregar quando NENHUMA lição sobrou.
@@ -4056,10 +4126,46 @@ function validateBlueprintSemantics(
 
 // ─── Per-lesson repair ───────────────────────────────────────────────────────
 
+export type ResultadoDoReparo = {
+  lesson: LessonDocument;
+  aceito: boolean;
+  motivo: string;
+  antes: number;
+  depois: number;
+};
+
+// QUANDO UM REPARO PODE SUBSTITUIR A LIÇÃO
+//
+// Três reparos rodaram no curso de 31/08, custaram 89,3 s somados, e os três
+// foram aceitos sem corrigir nada. Dois deles são verificáveis lição a lição:
+// a 8.2 voltou com a mesma tabela sem colunas e sem linhas, e a 7.3 voltou
+// truncada, com 353 palavras contra o mínimo de 450 que era o motivo da
+// chamada. Os módulos 6 e 7 foram os únicos dois do curso a perder o quiz E a
+// imagem — os únicos dois em que um reparo rodou até o fim.
+//
+// A regra é simples e não tem limiar para calibrar: o reparo entra se, e
+// somente se, tiver reduzido a contagem de problemas medida pela mesma régua
+// do módulo. Empate mantém o que já existe.
+export function decidirReparo(p: {
+  antes: number;
+  depois: number;
+  truncado: boolean;
+}): { aceito: boolean; motivo: string } {
+  if (p.truncado) {
+    return { aceito: false, motivo: "resposta truncada pelo limite de tokens" };
+  }
+  if (p.depois < p.antes) return { aceito: true, motivo: "corrigido" };
+  return {
+    aceito: false,
+    motivo: `não melhorou (${p.antes} problemas antes, ${p.depois} depois)`,
+  };
+}
+
 async function repairLesson(params: {
   course: CourseBlueprint;
   module: ModuleBlueprint;
   lessonPlan: LessonBlueprint;
+  lessonIndex: number;
   currentLesson: LessonDocument;
   issues: string[];
   sourcePacket: string;
@@ -4068,12 +4174,31 @@ async function repairLesson(params: {
   useSources: boolean;
   numbersRule: string;
   maxTokens: number;
+  lessonMinWords: number;
+  lessonMaxWords: number;
   msLeft: () => number;
-}): Promise<LessonDocument> {
+}): Promise<ResultadoDoReparo> {
   const {
-    course, module, lessonPlan, currentLesson, issues,
-    sourcePacket, allowedSourceIds, language, useSources, numbersRule, maxTokens, msLeft,
+    course, module, lessonPlan, lessonIndex, currentLesson, issues,
+    sourcePacket, allowedSourceIds, language, useSources, numbersRule, maxTokens,
+    lessonMinWords, lessonMaxWords, msLeft,
   } = params;
+
+  const allowedSet = new Set(allowedSourceIds);
+  const medir = (lesson: LessonDocument) =>
+    problemasDaLicao({
+      lesson,
+      planned: lessonPlan,
+      lessonIndex,
+      useSources,
+      allowedSourceIds: allowedSet,
+      lessonMinWords,
+      lessonMaxWords,
+    }).repairable.length;
+  const antes = medir(currentLesson);
+  const manter = (motivo: string, depois = antes): ResultadoDoReparo => ({
+    lesson: currentLesson, aceito: false, motivo, antes, depois,
+  });
 
   const prompt = `Você é revisor de qualidade de e-learning corporativo.
 
@@ -4096,6 +4221,7 @@ BLUEPRINT DA LIÇÃO
 REGRAS
 - Preserve lesson_number e title exatamente como indicados.
 - Produza no mínimo 3 e no máximo 6 blocos, incluindo obrigatoriamente os tipos acima.
+- A lição inteira deve ter entre ${lessonMinWords} e ${lessonMaxWords} palavras somando todos os blocos. Nunca devolva uma lição mais curta do que a atual.
 - Conteúdo técnico específico; nunca use frases genéricas ou placeholders.
 - Não invente números nem fatos. ${numbersRule}
 - source_ids: ${useSources ? `use apenas ${allowedSourceIds.join(", ")}` : "sempre []"}.
@@ -4110,10 +4236,28 @@ ${useSources ? `<SOURCES>\n${sourcePacket}\n</SOURCES>` : ""}`;
   const schemaName = `lesson_repair_${lessonPlan.lesson_number.replace(/\./g, "_")}`;
   const timeoutBudget = Math.min(70000, Math.max(15000, msLeft() - 3000));
 
-  const { value } = await callAIJson<any>(
+  // O REPARO PEDIA MENOS ORÇAMENTO DO QUE A GERAÇÃO QUE ELE REFAZ
+  //
+  // A lição original é gerada com 12.000 tokens e `effort: "low"`, e nunca
+  // truncou. O reparo, que precisa devolver a MESMA lição inteira, recebia
+  // 9.000 e `effort: "medium"` — 25% menos orçamento, e ainda dividido com o
+  // raciocínio, que nos modelos 2.5 sai do mesmo bolso. Em 31/08 o
+  // `lesson_repair_7_3` levou 36 s e voltou `finish=length`: o JSON foi cortado
+  // no meio, `parseJsonLoose` fechou as chaves, e a lição chegou ao aluno com
+  // 353 palavras — mais curta do que a que o reparo fora chamado para alongar.
+  //
+  // O orçamento agora é o mesmo da geração, e o esforço é o mesmo da geração.
+  const { value, meta } = await callAIJson<any>(
     FAST_MODEL, prompt, LESSON_DOCUMENT_SCHEMA, schemaName,
-    maxTokens, "medium", timeoutBudget,
+    maxTokens, "low", timeoutBudget,
   );
+
+  // Resposta truncada não é reparo: é a lição atual com o fim cortado.
+  // `parseJsonLoose` fecha as chaves que faltam e devolve um objeto válido, o
+  // que faz a truncagem passar despercebida — foi assim que a lição 7.3 encolheu.
+  if (meta.finishReason === "length") {
+    return manter(decidirReparo({ antes, depois: antes, truncado: true }).motivo);
+  }
 
   // Inline normalization (no full-module context needed for a single lesson)
   function normalizeSingleLesson(raw: any): LessonDocument {
@@ -4129,32 +4273,41 @@ ${useSources ? `<SOURCES>\n${sourcePacket}\n</SOURCES>` : ""}`;
     };
   }
 
+  // A verificação anterior era `validateLearningBlock` bloco a bloco, que não
+  // olha contagem de palavras, bloco obrigatório ausente nem numeração —
+  // justamente os defeitos que mais disparam reparo. Agora é a régua do módulo.
   const candidate = normalizeSingleLesson(value);
-  const remainingIssues = candidate.blocks.flatMap((b) => {
-    const r = validateLearningBlock(b);
-    return r.usable ? [] : r.issues;
-  });
+  const depoisFlash = medir(candidate);
+  const flash = decidirReparo({ antes, depois: depoisFlash, truncado: false });
 
   // Upgrade to Pro only when conditions from the spec are met
   if (
-    remainingIssues.length > 0 &&
+    !flash.aceito &&
     ENABLE_PRO_REPAIR &&
     msLeft() > 35000 &&
     issues.length <= 3 // don't send Pro for noisy lists
   ) {
-    console.warn(`[generate-course] repairLesson → Pro: lição ${lessonPlan.lesson_number} (${remainingIssues.length} issues restantes)`);
+    console.warn(`[generate-course] repairLesson → Pro: lição ${lessonPlan.lesson_number} (${depoisFlash} problemas restantes, ${antes} antes)`);
     try {
-      const { value: proValue } = await callAIJson<any>(
+      const { value: proValue, meta: proMeta } = await callAIJson<any>(
         QUALITY_MODEL, prompt, LESSON_DOCUMENT_SCHEMA, `${schemaName}_pro`,
-        maxTokens, "high", Math.min(70000, Math.max(15000, msLeft() - 4000)),
+        maxTokens, "low", Math.min(70000, Math.max(15000, msLeft() - 4000)),
       );
-      return normalizeSingleLesson(proValue);
+      const pro = normalizeSingleLesson(proValue);
+      const depoisPro = medir(pro);
+      const decisaoPro = decidirReparo({
+        antes, depois: depoisPro, truncado: proMeta.finishReason === "length",
+      });
+      if (decisaoPro.aceito) {
+        return { lesson: pro, aceito: true, motivo: "corrigido pelo modelo Pro", antes, depois: depoisPro };
+      }
     } catch {
-      // Pro attempt failed — use Flash result
+      // Pro attempt failed — cai para a decisão sobre o resultado do Flash
     }
   }
 
-  return candidate;
+  if (!flash.aceito) return manter(flash.motivo, depoisFlash);
+  return { lesson: candidate, aceito: true, motivo: flash.motivo, antes, depois: depoisFlash };
 }
 
 // ─── Publication gate ─────────────────────────────────────────────────────────

@@ -451,8 +451,16 @@ async function generateOneModule(params: {
   // ── Per-lesson repair (spec item 6) ───────────────────────────────────
   // Only attempt if there are repairable issues and enough time remains.
   let repairsApplied = 0;
+  // As notas do reparo precisam sobreviver à revalidação. Antes não sobreviviam:
+  // "Reparo cancelado por timeout", "Reparo da lição X falhou" e "Reparo de
+  // envelope falhou" eram empilhadas em `validation.warnings` e apagadas na
+  // linha em que `validation` é reatribuída logo abaixo. Foi por isso que o
+  // curso de 31/08 registrou `repairs:1` no módulo 4 e `repairs:2` no módulo 8
+  // sem que nenhum desses reparos tivesse acontecido: os dois foram cancelados
+  // pela guarda de tempo e o cancelamento não deixou rastro em lugar nenhum.
+  const notasDoReparo: string[] = [];
   if (validation.repairable.length > 0 && msLeft() > 25000) {
-    
+
 
     // Group repairable issues by lesson_number
     const issuesByLesson = new Map<string, string[]>();
@@ -492,14 +500,14 @@ async function generateOneModule(params: {
             ? uniqueStrings(asStringArray(envRepaired.value.key_takeaways, 6), 6)
             : document.key_takeaways,
         };
+        repairsApplied += 1;
       } catch (envErr: any) {
-        validation.warnings.push(`Reparo de envelope falhou: ${envErr?.message || envErr}`);
+        notasDoReparo.push(`Reparo de envelope falhou: ${envErr?.message || envErr}`);
       }
     }
 
     // Repair each lesson that has issues (max 1 repair per lesson)
     const lessonIssueEntries = [...issuesByLesson.entries()].filter(([k]) => k !== "__envelope__");
-    repairsApplied = (envelopeIssues.length > 0 ? 1 : 0) + lessonIssueEntries.length;
     for (const [lessonNum, lessonIssues] of lessonIssueEntries) {
       // O REPARO PRECISA CABER, E A AVALIAÇÃO PRECISA SOBREVIVER A ELE
       //
@@ -512,7 +520,7 @@ async function generateOneModule(params: {
       // depois e é o que o aluno vê como quiz. Melhor um reparo e um quiz do
       // que dois reparos e nenhum quiz.
       if (msLeft() < REPARO_TIPICO_MS + AVALIACAO_TIPICA_MS) {
-        validation.warnings.push(`Reparo cancelado por timeout antes de lição ${lessonNum}.`);
+        notasDoReparo.push(`Reparo cancelado por timeout antes de lição ${lessonNum}.`);
         break;
       }
       const lessonIndex2 = document.lessons.findIndex((l) => l.lesson_number === lessonNum);
@@ -524,6 +532,7 @@ async function generateOneModule(params: {
           course: blueprint,
           module,
           lessonPlan,
+          lessonIndex: lessonIndex2,
           currentLesson: document.lessons[lessonIndex2],
           issues: lessonIssues,
           sourcePacket: moduleSourcePacket,
@@ -531,15 +540,29 @@ async function generateOneModule(params: {
           language,
           useSources,
           numbersRule,
-          maxTokens: depth.label === "aprofundado" ? 12000 : 9000,
+          // Mesmo orçamento da geração original da lição (linha 379). Pedir a
+          // lição inteira de volta com menos tokens do que custou escrevê-la é
+          // o que truncava o reparo.
+          maxTokens: depth.label === "aprofundado" ? 16000 : 12000,
+          lessonMinWords: depth.lessonMinWords,
+          lessonMaxWords: depth.lessonMaxWords,
           msLeft,
         });
-        document = {
-          ...document,
-          lessons: document.lessons.map((l, i) => i === lessonIndex2 ? repaired : l),
-        };
+        repairsApplied += 1;
+        if (repaired.aceito) {
+          document = {
+            ...document,
+            lessons: document.lessons.map((l, i) => i === lessonIndex2 ? repaired.lesson : l),
+          };
+        }
+        console.log(
+          `[generate-course] Reparo da lição ${lessonNum}: ${repaired.aceito ? "aceito" : "recusado"} — ${repaired.motivo} (${repaired.antes}→${repaired.depois}).`,
+        );
+        if (!repaired.aceito) {
+          notasDoReparo.push(`Reparo da lição ${lessonNum} recusado: ${repaired.motivo}.`);
+        }
       } catch (lessonErr: any) {
-        validation.warnings.push(`Reparo da lição ${lessonNum} falhou: ${lessonErr?.message || lessonErr}`);
+        notasDoReparo.push(`Reparo da lição ${lessonNum} falhou: ${lessonErr?.message || lessonErr}`);
       }
     }
 
@@ -567,6 +590,7 @@ async function generateOneModule(params: {
             lessonMinWords: depth.lessonMinWords,
             lessonMaxWords: depth.lessonMaxWords,
     });
+    validation.warnings.push(...notasDoReparo);
   }
 
   if (validation.blocking.length) {
