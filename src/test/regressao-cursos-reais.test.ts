@@ -54,6 +54,7 @@ describe("nenhum curso real é bloqueado pelo cruzamento de valores", () => {
     "preco-financas-inteligentes.md",
     "transformacao-digital.md",
     "estoques-doces-da-vovo-encadeado.md",
+    "estoques-sabor-caseiro.md",
   ]) {
     it(arquivo, () => {
       const bloqueadores = laudo(arquivo).checks
@@ -118,6 +119,28 @@ describe("as diferenças legítimas não podem virar bloqueador", () => {
     for (const c of r.checks.filter((c) => !c.passed && c.id.startsWith("coerencia"))) {
       expect(c.severity, c.id).toBe("warning");
     }
+  });
+
+  it("Sabor Caseiro: três prazos de entrega, três itens diferentes", () => {
+    // Único achado do curso de 01/09, e é alarme falso. Os três trechos:
+    //
+    // M3: "A Sabor Caseiro utiliza em média 10 kg de AÇÚCAR por dia… O prazo
+    //      de entrega do fornecedor é geralmente de 3 dias"
+    // M5: "você descobre que o FORNECEDOR B tem um prazo de entrega fixo de
+    //      2 dias úteis"
+    // M5: "conseguiu reduzir o prazo de entrega para 4 dias" — é a FARINHA DE
+    //      TRIGO, depois de uma negociação que partiu de 7 dias.
+    //
+    // Item, fornecedor e momento diferentes. Tem de aparecer no laudo — quem
+    // escreveu o curso decide —, mas jamais como bloqueador, e jamais pelo
+    // teste de atribuição DIRETA: nenhum dos três parágrafos nomeia a padaria
+    // junto do número. É atribuição inferida, e é por isso que a severidade
+    // graduada existe.
+    const r = laudo("estoques-sabor-caseiro.md");
+    const reprovados = r.checks.filter((c) => !c.passed && c.id.startsWith("coerencia"));
+    expect(reprovados.map((c) => c.id)).toEqual(["coerencia.valores_entre_modulos_inferidos"]);
+    expect(reprovados[0].severity).toBe("warning");
+    expect(reprovados[0].evidence.join(" ")).toMatch(/prazo de entrega/i);
   });
 
   it("Sabor: Lead Time de ovos ≠ de chocolate belga, e isso é normal", () => {

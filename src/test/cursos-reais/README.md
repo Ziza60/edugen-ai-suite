@@ -33,6 +33,16 @@ Nenhuma delas teria sido descartada sem estes arquivos.
 | `preco-financas-inteligentes.md` | app 'Finanças Inteligentes' | 5 | as duas contradições verdadeiras mais claras do acervo |
 | `transformacao-digital.md` | — (sem caso numérico) | 8 | **o curso limpo**: prova que a regra não acusa quem não tem defeito |
 | `estoques-doces-da-vovo-encadeado.md` | padaria 'Doces da Vovó' | 8 | o primeiro gerado com os dois primeiros módulos EM ORDEM |
+| `estoques-sabor-caseiro.md` | padaria 'Sabor Caseiro' | 8 | alarme falso do prazo de entrega; **a bancada do reparo** |
+
+O de `Sabor Caseiro` é o primeiro gerado com o reparo de lição corrigido, e o
+único do acervo cujo log foi lido reparo a reparo. Cinco rodaram, de 14,5 a
+22,2 s, nenhum truncado; quatro foram aceitos (a lição 8.2 saiu de 3 problemas
+para 0) e um foi recusado por voltar PIOR — 1 problema antes, 2 depois. Contra
+o curso de 31/08, no mesmo tema e com a mesma configuração: lá foram três
+reparos, de 17,9 a 36,0 s, um truncado, nenhum consertando nada, e os dois
+módulos que repararam perderam quiz e imagem. Aqui saíram 8/8 imagens, 8/8
+avaliações e nenhuma lição abaixo do mínimo de palavras.
 
 O de `Doces da Vovó` é o primeiro gerado depois de os dois primeiros módulos
 passarem a rodar em ordem. Levou 5min23s contra os ~2 min do paralelo total, e

@@ -4176,12 +4176,15 @@ async function repairLesson(params: {
   maxTokens: number;
   lessonMinWords: number;
   lessonMaxWords: number;
+  /** Teto de tempo do reparo. A guarda do chamador reserva exatamente isto
+   *  mais o custo da avaliação; sem o teto, a reserva era só um palpite. */
+  tempoMaximoMs: number;
   msLeft: () => number;
 }): Promise<ResultadoDoReparo> {
   const {
     course, module, lessonPlan, lessonIndex, currentLesson, issues,
     sourcePacket, allowedSourceIds, language, useSources, numbersRule, maxTokens,
-    lessonMinWords, lessonMaxWords, msLeft,
+    lessonMinWords, lessonMaxWords, tempoMaximoMs, msLeft,
   } = params;
 
   const allowedSet = new Set(allowedSourceIds);
@@ -4234,7 +4237,7 @@ ${useSources ? `<SOURCES>\n${sourcePacket}\n</SOURCES>` : ""}`;
 
   // First attempt: Flash
   const schemaName = `lesson_repair_${lessonPlan.lesson_number.replace(/\./g, "_")}`;
-  const timeoutBudget = Math.min(70000, Math.max(15000, msLeft() - 3000));
+  const timeoutBudget = Math.min(tempoMaximoMs, Math.max(15000, msLeft() - 3000));
 
   // O REPARO PEDIA MENOS ORÇAMENTO DO QUE A GERAÇÃO QUE ELE REFAZ
   //
@@ -4291,7 +4294,7 @@ ${useSources ? `<SOURCES>\n${sourcePacket}\n</SOURCES>` : ""}`;
     try {
       const { value: proValue, meta: proMeta } = await callAIJson<any>(
         QUALITY_MODEL, prompt, LESSON_DOCUMENT_SCHEMA, `${schemaName}_pro`,
-        maxTokens, "low", Math.min(70000, Math.max(15000, msLeft() - 4000)),
+        maxTokens, "low", Math.min(tempoMaximoMs, Math.max(15000, msLeft() - 4000)),
       );
       const pro = normalizeSingleLesson(proValue);
       const depoisPro = medir(pro);

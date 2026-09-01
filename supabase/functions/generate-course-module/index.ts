@@ -147,8 +147,25 @@ const MODULE_DEADLINE_MS = Math.max(
   Number(Deno.env.get("COURSE_MODULE_DEADLINE_MS") || "125000") || 125000,
 );
 
-// Medidos nos logs de 24/08: reparo de 17,6 a 36,8 s, avaliação de 9,5 a 16,6 s.
-const REPARO_TIPICO_MS = 33000;
+// TETO DO REPARO, NÃO PREVISÃO DO REPARO
+//
+// Os 33 s vinham de reparos com effort=medium e 9.000 tokens, medidos em 24/08
+// (17,6 a 36,8 s). Com effort=low e 12.000 tokens, os cinco reparos de 01/09
+// custaram 14,5 / 16,1 / 16,9 / 21,8 / 22,2 s — máximo de 22,2 s, nenhum
+// truncado. A guarda exigia 50 s de folga para um trabalho que custa 39 s, e no
+// módulo 4 cancelou um reparo com 41,7 s disponíveis; o módulo saiu com dois
+// headings placeholder que cabiam ser corrigidos.
+//
+// A mudança que importa não é o número: é que REPARO_TIPICO_MS agora também é
+// passado como TIMEOUT do reparo. Antes ele só previa o custo, enquanto o
+// reparo podia consumir msLeft()-3000 — até 70 s. Foi assim que o reparo de
+// 36 s de 31/08 devorou a avaliação e a imagem do módulo 7. Uma constante que
+// estima sem obrigar é a mesma classe de defeito que já apareceu tantas vezes
+// aqui: um número que não olha aquilo que afirma medir.
+//
+// AVALIACAO_TIPICA_MS segue em 17 s: as seis avaliações de 01/09 custaram de
+// 12,7 a 16,8 s.
+const REPARO_TIPICO_MS = 25000;
 const AVALIACAO_TIPICA_MS = 17000;
 
 interface WorkerPayload {
@@ -516,9 +533,12 @@ async function generateOneModule(params: {
       // 5 do curso de precificação foram DOIS seguidos, 68,4 s somados, e o
       // worker foi a 143,4 s contra os 125 s do orçamento.
       //
-      // Agora exige o custo típico de um reparo MAIS o da avaliação, que vem
-      // depois e é o que o aluno vê como quiz. Melhor um reparo e um quiz do
-      // que dois reparos e nenhum quiz.
+      // Exige o custo de um reparo MAIS o da avaliação, que vem depois e é o
+      // que o aluno vê como quiz. Melhor um reparo e um quiz do que dois
+      // reparos e nenhum quiz. Em 01/09 os dois cancelamentos foram lidos no
+      // log: o módulo 7, com 33,6 s restantes, não tinha mesmo como pagar os
+      // dois; o módulo 4, com 41,7 s, tinha — e é por isso que a reserva caiu
+      // de 50 s para 42 s, agora que REPARO_TIPICO_MS é teto e não previsão.
       if (msLeft() < REPARO_TIPICO_MS + AVALIACAO_TIPICA_MS) {
         notasDoReparo.push(`Reparo cancelado por timeout antes de lição ${lessonNum}.`);
         break;
@@ -546,6 +566,7 @@ async function generateOneModule(params: {
           maxTokens: depth.label === "aprofundado" ? 16000 : 12000,
           lessonMinWords: depth.lessonMinWords,
           lessonMaxWords: depth.lessonMaxWords,
+          tempoMaximoMs: REPARO_TIPICO_MS,
           msLeft,
         });
         repairsApplied += 1;
