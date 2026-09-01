@@ -696,25 +696,43 @@ async function generateOneModule(params: {
   // módulo é entregue sem imagem: perder a ilustração é muito melhor que
   // perder o módulo.
   if (imagemEmVoo) {
-    if (msLeft() > 8000) {
-      try {
-        const imagem = await imagemEmVoo;
-        if (imagem) {
-          await gravarImagemDoModulo({
-            serviceClient,
-            userId,
-            moduleId: moduleData.id,
-            imagem,
-          });
-        }
-      } catch (err: any) {
+    // IMAGEM PRONTA NÃO SE JOGA FORA.
+    //
+    // O piso de 8 s no orçamento descartava imagem JÁ GERADA. Nos logs de
+    // 31/08, os módulos 6 e 7 fecharam com 3 s restantes e perderam a
+    // ilustração — só que, com a geração disparada logo após o envelope, ela
+    // estava pronta na memória havia mais de um minuto. Gastou crédito de
+    // imagem e não gravou nada.
+    //
+    // O que resta ali é upload e insert, um a dois segundos. E o orçamento de
+    // 125 s é NOSSO, não da plataforma: o worker tem 150 s no plano gratuito,
+    // então `msLeft() === 3000` ainda significa mais de 20 s de folga real.
+    //
+    // Então a espera passa a ser pela imagem, e não pela gravação: espera-se
+    // enquanto houver orçamento; se ela chegou, grava-se sempre. O que se
+    // recusa é ficar parado esperando uma imagem que ainda não veio.
+    const margemParaGravar = 5000;
+    const esperaMaxima = Math.max(0, msLeft() - margemParaGravar);
+    try {
+      const imagem = await Promise.race([
+        imagemEmVoo,
+        new Promise<null>((r) => setTimeout(() => r(null), esperaMaxima)),
+      ]);
+      if (imagem) {
+        await gravarImagemDoModulo({
+          serviceClient,
+          userId,
+          moduleId: moduleData.id,
+          imagem,
+        });
+      } else {
         console.warn(
-          `[generate-course-module] Imagem do módulo ${module.module_number} falhou: ${err?.message ?? err}`,
+          `[generate-course-module] Módulo ${module.module_number} entregue sem imagem: ela não ficou pronta em ${Math.round(esperaMaxima / 1000)}s.`,
         );
       }
-    } else {
+    } catch (err: any) {
       console.warn(
-        `[generate-course-module] Módulo ${module.module_number} entregue sem imagem: restam ${Math.round(msLeft() / 1000)}s.`,
+        `[generate-course-module] Imagem do módulo ${module.module_number} falhou: ${err?.message ?? err}`,
       );
     }
   }
