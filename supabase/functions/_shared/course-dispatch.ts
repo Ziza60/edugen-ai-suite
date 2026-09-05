@@ -10,7 +10,7 @@
 // claim_course_generation_job, no banco, de forma atômica.
 
 // ═══════════════════════════════════════════════════════════════════════════
-// OS DOIS PRIMEIROS MÓDULOS VÃO EM ORDEM; O RESTO VAI JUNTO
+// OS DOIS PRIMEIROS MÓDULOS VÃO JUNTOS; O RESTO ESPERA OS DOIS
 //
 // A ponte de valores lê o que os módulos anteriores JÁ GRAVARAM
 // (`order_index < meu`) e injeta no prompt do módulo seguinte. É a única
@@ -25,26 +25,41 @@
 //
 // POR QUE DOIS, E NÃO TODOS
 //
-// MEDIDO nas dez divergências dos cinco cursos da bancada, pela posição em que
-// o PRIMEIRO valor de cada uma é fixado:
+// MEDIDO nas divergências dos cursos da bancada, pela posição em que o PRIMEIRO
+// valor de cada uma é fixado: encadear os 2 primeiros cobre 6 de 10; os 3
+// primeiros, 7. As três que exigiriam encadeamento completo são exatamente os
+// três alarmes FALSOS do acervo. Todo defeito verdadeiro está ancorado nos dois
+// primeiros módulos, e encadear tudo levaria o curso a ~13 min.
 //
-//     encadear os 2 primeiros cobre ..... 6
-//     encadear os 3 primeiros cobre ..... 7
-//     só encadeamento completo .......... 3
+// POR QUE O MÓDULO 1 NÃO PRECISA RODAR SOZINHO
 //
-// E as três que exigiriam encadeamento completo são exatamente os três alarmes
-// FALSOS do acervo — o custo de pedido do açúcar contra o da farinha, o custo
-// de manutenção por quilo contra por lata, e o lead time dos ovos contra o do
-// chocolate. Todo defeito verdadeiro está ancorado nos dois primeiros módulos.
+// A regra antiga era uma rampa: o índice 1 esperava o 0, e os demais esperavam
+// 0 e 1. Isso serializava TRÊS ondas, e a primeira não paga o que custa. Medido
+// nos sete cursos da bancada, o que a ponte extrai do módulo 1 SOZINHO — que é
+// tudo o que o módulo 2 chega a receber:
 //
-// O preço é tempo de espera. Módulo medido entre 78 e 116 s:
+//     Finanças Inteligentes ..... 2      Sabor da Vovó ......... 0
+//     Delícias da Vovó .......... 1      Doces da Vovó ......... 0
+//     Pão Quente ................ 0      Sabor Caseiro ......... 0
+//                                        Transformação Digital . 0
 //
-//     hoje, tudo em paralelo ......... ~2 min
-//     dois em série, resto junto ..... ~5 min
-//     tudo em série .................. ~13 min
+// Três valores em sete cursos. O módulo 1 é diagnóstico e fala em prosa; os
+// números do caso nascem no módulo 2, o primeiro analítico — 8 dos 8 valores do
+// Sabor Caseiro, 5 dos 5 do Pão Quente.
 //
-// Treze minutos para cobrir só o que não é defeito seria o pior negócio dos
-// três.
+// E os módulos 3+ não perdem nada: eles esperam os DOIS, que a essa altura já
+// gravaram. O único prejuízo é o módulo 2 deixar de herdar do 1 — e nos sete
+// cursos NENHUM tem contradição numérica entre 1 e 2. No Finanças, o único com
+// valores relevantes no módulo 1, o módulo 2 reenuncia R$19,90 três vezes, as
+// três iguais; as duas contradições verdadeiras estão nos módulos 3 e 5, que
+// continuam recebendo tudo.
+//
+// O preço em tempo, medido no curso 5ef3f2c1 (01/09):
+//
+//     três ondas (1 | 2 | resto) ..... 73,5 + 82,9 + 108,5 = 265,7 s
+//     duas ondas (1+2 | resto) ....... max(73,5; 82,9) + 108,5 = 191,9 s
+//
+// 74 s a menos, mesma ponte.
 //
 // COMO A ORDEM É IMPOSTA SEM QUEBRAR A REDE DE SEGURANÇA
 //
@@ -54,8 +69,11 @@
 // sozinha pela varredura, sem código especial.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Quantos módulos rodam em ordem antes de o paralelo voltar. Ver acima. */
-export const MODULOS_EM_SERIE = 2;
+/**
+ * Quantos módulos iniciais precisam estar gravados antes de o resto sair.
+ * Eles rodam ENTRE SI em paralelo; a barreira é para quem vem depois.
+ */
+export const MODULOS_DA_PONTE = 2;
 
 /** Estados em que um job não vai mais mudar, e portanto não bloqueia ninguém. */
 const TERMINAL = new Set(["done", "failed"]);
@@ -68,9 +86,10 @@ export interface JobParaOrdenar {
 /**
  * Este job pode ser despachado agora?
  *
- * Um módulo só espera pelos que vêm antes dele ATÉ o limite da série: o de
- * índice 5 espera pelos módulos 1 e 2, não pelo 4. Escrito de uma vez:
- * esperam-se os índices menores que `min(meuIndice, MODULOS_EM_SERIE)`.
+ * A barreira é FIXA, não uma rampa: os módulos da ponte (índices menores que
+ * `MODULOS_DA_PONTE`) saem na hora, juntos; todos os outros esperam que os da
+ * ponte estejam terminais. O de índice 5 espera pelos módulos 1 e 2, não pelo 4
+ * — e o de índice 1 não espera pelo 0.
  *
  * `failed` conta como terminal de propósito. Se o módulo 1 esgotar as
  * tentativas, o curso sai capenga — mas sai. Um módulo que falha travando os
@@ -80,9 +99,9 @@ export function podeDespachar(
   job: JobParaOrdenar,
   fila: JobParaOrdenar[],
 ): boolean {
-  const barreira = Math.min(job.module_index, MODULOS_EM_SERIE);
+  if (job.module_index < MODULOS_DA_PONTE) return true;
   return fila.every((outro) =>
-    outro.module_index >= barreira || TERMINAL.has(outro.status)
+    outro.module_index >= MODULOS_DA_PONTE || TERMINAL.has(outro.status)
   );
 }
 

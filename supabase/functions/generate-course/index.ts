@@ -507,10 +507,10 @@ Deno.serve(async (req: Request) => {
       // milissegundos por job. Se algum despacho falhar, o job continua
       // 'pending' e generate-course-dispatch o repesca — nada se perde.
       //
-      // Só o que a ORDEM permite: no começo, apenas o módulo 1. Quem despacha o
-      // seguinte é o worker que acabou de fechar o anterior, e a varredura de
-      // jobs parados chega à mesma conclusão se essa corrente se romper. Ver
-      // MODULOS_EM_SERIE em course-dispatch.ts.
+      // Só o que a ORDEM permite: no começo, os dois primeiros módulos, que vão
+      // juntos. Quem despacha o resto é o worker que fecha o último dos dois, e
+      // a varredura de jobs parados chega à mesma conclusão se essa corrente se
+      // romper. Ver MODULOS_DA_PONTE em course-dispatch.ts.
       const filaInicial = (jobs as any[]).map((j) => ({
         module_index: j.module_index,
         status: "pending",

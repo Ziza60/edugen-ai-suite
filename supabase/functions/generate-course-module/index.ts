@@ -987,9 +987,9 @@ Deno.serve(async (req: Request) => {
 
       // QUEM ABRE A PORTA PARA O PRÓXIMO É QUEM ACABOU DE FECHAR A SUA.
       //
-      // Os dois primeiros módulos vão em ordem para que a ponte de valores
-      // encontre o que procura — ela lê `order_index < meu` no banco, e só há o
-      // que ler se o anterior já gravou. Ver MODULOS_EM_SERIE.
+      // Os dois primeiros módulos gravam antes dos demais para que a ponte de
+      // valores encontre o que procura — ela lê `order_index < meu` no banco, e
+      // só há o que ler se os anteriores já gravaram. Ver MODULOS_DA_PONTE.
       //
       // Best-effort: se este despacho falhar, a varredura de jobs parados chega
       // à mesma conclusão pela fila. Por isso um erro aqui é registrado e
