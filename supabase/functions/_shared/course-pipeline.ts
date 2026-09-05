@@ -2824,6 +2824,18 @@ ${numbersRule}
 - Se houver caso condutor, use apenas os fatos do dossiê.
 ${caseDossier ? `\n${caseDossier}\n` : ""}${ledgerDeValores ? `\n${ledgerDeValores}\n` : ""}
 
+TODO NÚMERO DO CASO CARREGA O SEU OBJETO
+- Sempre que escrever um número do caso condutor, nomeie na MESMA FRASE a que
+  ele se refere: o item, o produto, o fornecedor ou o período.
+  Escreva "previsão de demanda de 93 unidades/mês do notebook Modelo Y".
+  NUNCA escreva "a previsão de demanda é de 93 unidades" sem dizer de quê.
+- Se dois itens do mesmo caso têm valores diferentes para a mesma grandeza,
+  diga o nome dos dois: "o Lead Time é de 5 dias para o Mouse Gamer e de 15
+  dias para o Smartphone X". Valores diferentes para itens diferentes são
+  normais; o que não pode é o leitor não saber de qual item se fala.
+- Use o MESMO nome para o mesmo item do começo ao fim. Se o produto foi
+  batizado 'Smartphone Z' uma vez, ele não vira 'Smartphone X' depois.
+
 COERÊNCIA INTERNA DO QUE VOCÊ ESCREVER
 - Todo exemplo resolvido tem de obedecer à regra que o próprio módulo enunciou.
   Se o texto diz "os itens que somam os primeiros 80% do valor são A", um item
@@ -4284,6 +4296,9 @@ REGRAS
 - Produza no mínimo 3 e no máximo 6 blocos, incluindo obrigatoriamente os tipos acima.
 - A lição inteira deve ter entre ${lessonMinWords} e ${lessonMaxWords} palavras somando todos os blocos. Nunca devolva uma lição mais curta do que a atual.
 - Conteúdo técnico específico; nunca use frases genéricas ou placeholders.
+- Todo número do caso carrega o seu objeto na MESMA FRASE: o item, o produto,
+  o fornecedor ou o período a que ele se refere. "93 unidades do notebook
+  Modelo Y", nunca "93 unidades" solto. O reparo não pode desfazer isso.
 - Não invente números nem fatos. ${numbersRule}
 - source_ids: ${useSources ? `use apenas ${allowedSourceIds.join(", ")}` : "sempre []"}.
 - Todos os campos do esquema são obrigatórios; campos não usados pelo tipo do bloco devem ser string vazia ou [].

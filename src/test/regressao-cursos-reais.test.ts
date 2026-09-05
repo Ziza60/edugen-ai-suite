@@ -287,3 +287,65 @@ describe("o rótulo precisa ser um termo do curso", () => {
     expect(valoresDoCasoCondutor(doisPrimeiros("transformacao-digital.md"))).toEqual([]);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A ÂNCORA, MEDIDA NA SAÍDA DA PONTE
+//
+// O teste acima mede a âncora no que o PORTÃO acusa, e só em três cursos. Foi
+// por esse flanco que ela voltou a falhar: no curso 'TechInov' (05/09) a ponte
+// injetou, verificado no log de produção,
+//
+//     Lead Time — média móvel = 3 meses
+//     Lead Time — previsão de demanda = 93 unidades
+//
+// com o conceito da disciplina no lugar da empresa. Duas causas somadas:
+// `NOME_CITADO_RE` exigia de duas a três palavras, então 'TechInov' — 56
+// parágrafos, entre aspas 3 vezes, agindo em 4 — nunca foi candidato; e o
+// filtro que elimina jargão só age quando ALGUM candidato tem evidência de
+// entidade, então virou no-op e o jargão venceu por frequência.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CASO_DE_CADA_CURSO: Record<string, string | null> = {
+  "preco-financas-inteligentes.md": "Finanças Inteligentes",
+  "estoques-delicias-da-vovo.md": "Delícias da Vovó",
+  "estoques-pao-quente.md": "Pão Quente",
+  "estoques-sabor-da-vovo.md": "Sabor da Vovó",
+  "estoques-doces-da-vovo-encadeado.md": "Doces da Vovó",
+  "estoques-sabor-caseiro.md": "Sabor Caseiro",
+  "estoques-techinov.md": "TechInov",
+  "transformacao-digital.md": null, // não tem caso numérico: a ponte fica vazia
+};
+
+describe("a ponte ancora na empresa do caso, nunca no jargão", () => {
+  for (const [arquivo, esperado] of Object.entries(CASO_DE_CADA_CURSO)) {
+    it(arquivo, () => {
+      const valores = valoresDoCasoCondutor(doisPrimeiros(arquivo));
+      const ancorados = [...new Set(valores.map((v) => v.termo.split(" — ")[0]))];
+      if (esperado === null) {
+        expect(ancorados).toEqual([]);
+        return;
+      }
+      // Vazio é resultado legítimo — o curso pode não repetir número nenhum nos
+      // dois primeiros módulos. O que não pode é ancorar em OUTRA coisa.
+      for (const nome of ancorados) {
+        expect(nome, `${arquivo}: ancorou em "${nome}"`).toBe(esperado);
+      }
+    });
+  }
+
+  it("o caso de UMA palavra é encontrado — foi o defeito do TechInov", () => {
+    const valores = valoresDoCasoCondutor(doisPrimeiros("estoques-techinov.md"));
+    expect(valores.length).toBeGreaterThan(0);
+    expect(valores.every((v) => v.termo.startsWith("TechInov — "))).toBe(true);
+  });
+
+  it("substantivo comum de uma palavra NÃO vira caso, mesmo entre aspas", () => {
+    // 'Estoque' aparece em 184 parágrafos do 'Sabor Caseiro' e chegou a entrar
+    // como caso quando a regra pedia só evidência de entidade — uma evidência
+    // em 184 é ruído. Quem o barra é a caixa: o texto escreve "do estoque" o
+    // tempo todo, e nunca escreve "techinov".
+    const nomes = valoresDoCasoCondutor(doisPrimeiros("estoques-sabor-caseiro.md"))
+      .map((v) => v.termo.split(" — ")[0]);
+    expect(nomes).not.toContain("Estoque");
+  });
+});

@@ -44,9 +44,18 @@
 // zero falsos alarmes nos outros quatro.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Nome próprio do caso, como o texto o apresenta: entre aspas. */
+/**
+ * Nome próprio do caso, como o texto o apresenta: entre aspas.
+ *
+ * O `{0,2}` — e não `{1,2}` — é o que deixa passar nome de UMA palavra. Com
+ * `{1,2}` o regex exigia de duas a três palavras, e 'TechInov' nunca chegava a
+ * ser candidato: no curso de 05/09 ele aparece em 56 parágrafos dos dois
+ * primeiros módulos, entre aspas 3 vezes, AGE em 4 — e o caso condutor saiu
+ * como 'Lead Time'. Quem filtra nome de uma palavra é a evidência de entidade,
+ * em `identificarCaso`, não a contagem de palavras.
+ */
 const NOME_CITADO_RE =
-  /['‘’"“”]([A-ZÀ-Ý][\wÀ-ÿ]*(?:\s+[\wÀ-ÿ]+){1,2})['‘’"“”]/g;
+  /['‘’"“”]([A-ZÀ-Ý][\wÀ-ÿ]*(?:\s+[\wÀ-ÿ]+){0,2})['‘’"“”]/g;
 
 // O número precisa PARAR onde acaba. Um `\d[\d.,]*` frouxo engole o ponto final
 // da frase — "custa R$ 25.000." vira "R$25.000.", um valor diferente de
@@ -328,11 +337,56 @@ export function identificarCaso(
   minFontes = 2,
 ): Caso {
   const citados = new Set<string>();
+  // NOME DE UMA PALAVRA SÓ ENTRA COM EVIDÊNCIA DE ENTIDADE
+  //
+  // `ehNomeProprio` exige duas palavras, e por isso TODO caso de nome único era
+  // invisível — TechInov, e por extensão Nubank, Ambev, Petrobras. No curso de
+  // 05/09 'TechInov' aparece em 56 parágrafos dos módulos 1 e 2, entre aspas 3
+  // vezes, e AGE em 4 deles; mesmo assim não chegou a ser candidato, e o caso
+  // condutor saiu como 'Lead Time' — o conceito da disciplina, 19 parágrafos,
+  // ZERO evidência de entidade.
+  //
+  // Os dois efeitos se somaram: sem TechInov na lista, nenhum candidato tinha
+  // evidência, e o filtro que elimina jargão só age quando ALGUÉM tem. Ele
+  // virou no-op e o jargão venceu por frequência.
+  //
+  // A exigência de duas palavras existia para barrar maiúscula de início de
+  // frase. A evidência de entidade barra melhor: um nome de uma palavra entra
+  // se, e somente se, o texto o fizer agir ou o apresentar.
+  const umaPalavra = new Set<string>();
   for (const b of blocos) {
     for (const p of b.paragrafos) {
       for (const m of p.matchAll(NOME_CITADO_RE)) {
         const n = m[1].trim();
         if (ehNomeProprio(n)) citados.add(n);
+        else if (/^[A-ZÀ-Ý][\wÀ-ÿ]{2,}$/.test(n)) umaPalavra.add(n);
+      }
+    }
+  }
+  // NOME PRÓPRIO DE UMA PALAVRA NUNCA APARECE EM MINÚSCULA
+  //
+  // A primeira versão desta regra pedia só evidência de entidade, e o curso
+  // 'Sabor Caseiro' mostrou por que não basta: 'Estoque' entrou como caso
+  // condutor com UMA evidência em 184 parágrafos — ruído, e justamente o
+  // substantivo central da disciplina.
+  //
+  // O que separa TechInov de Estoque não é quantidade de nada: é que o texto
+  // escreve "o estoque", "do estoque", "gestão de estoque" o tempo todo, e
+  // nunca escreve "techinov". Substantivo comum aparece em minúscula no meio
+  // da frase; nome próprio, não. É evidência positiva de que a palavra é um
+  // nome, sem limiar para calibrar — e limiar ajustado a um curso é o que já
+  // matou quatro regras neste projeto.
+  // O texto ORIGINAL, sem normalizar caixa — é a caixa que carrega a evidência.
+  const todoOTexto = blocos.flatMap((b) => b.paragrafos).join("\n");
+  for (const n of umaPalavra) {
+    const minusculo = new RegExp(
+      `(?<![\\wÀ-ÿ])${n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\wÀ-ÿ])`,
+    );
+    if (minusculo.test(todoOTexto)) continue;
+    for (const b of blocos) {
+      if (b.paragrafos.some((p) => pareceEntidade(p, n))) {
+        citados.add(n);
+        break;
       }
     }
   }
