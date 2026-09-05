@@ -147,26 +147,44 @@ const MODULE_DEADLINE_MS = Math.max(
   Number(Deno.env.get("COURSE_MODULE_DEADLINE_MS") || "125000") || 125000,
 );
 
-// TETO DO REPARO, NÃO PREVISÃO DO REPARO
+// O TETO DO REPARO É DERIVADO, NÃO ADIVINHADO
 //
-// Os 33 s vinham de reparos com effort=medium e 9.000 tokens, medidos em 24/08
-// (17,6 a 36,8 s). Com effort=low e 12.000 tokens, os cinco reparos de 01/09
-// custaram 14,5 / 16,1 / 16,9 / 21,8 / 22,2 s — máximo de 22,2 s, nenhum
-// truncado. A guarda exigia 50 s de folga para um trabalho que custa 39 s, e no
-// módulo 4 cancelou um reparo com 41,7 s disponíveis; o módulo saiu com dois
-// headings placeholder que cabiam ser corrigidos.
+// Histórico curto: 33 s vinham de reparos com effort=medium e 9.000 tokens
+// (24/08, 17,6 a 36,8 s). Com effort=low e 12.000 tokens, os dez reparos
+// medidos em 01/09 e 05/09 custaram de 13,8 a 22,2 s, nenhum truncado.
 //
-// A mudança que importa não é o número: é que REPARO_TIPICO_MS agora também é
-// passado como TIMEOUT do reparo. Antes ele só previa o custo, enquanto o
-// reparo podia consumir msLeft()-3000 — até 70 s. Foi assim que o reparo de
-// 36 s de 31/08 devorou a avaliação e a imagem do módulo 7. Uma constante que
-// estima sem obrigar é a mesma classe de defeito que já apareceu tantas vezes
-// aqui: um número que não olha aquilo que afirma medir.
+// A primeira correção fixou o teto em 25 s. Isso era margem de 13% sobre um
+// máximo de 5 amostras, e um reparo de 26 s seria descartado inteiro — 25 s
+// gastos, nada obtido. Fixar a cauda de uma distribuição com 5 pontos é
+// exatamente o tipo de número inventado com cara de medido que este projeto já
+// pagou caro três vezes.
 //
-// AVALIACAO_TIPICA_MS segue em 17 s: as seis avaliações de 01/09 custaram de
-// 12,7 a 16,8 s.
+// O teto agora é derivado do que sobra: o reparo pode usar tudo, MENOS o que a
+// avaliação precisa. Assim a cauda do reparo deixa de importar — o único número
+// que precisa estar certo é a reserva da avaliação, e dessa há 12 amostras
+// entre 12,3 e 16,8 s. Com 42 s restantes o reparo recebe ~22 s; com 70 s,
+// recebe ~50 s; e em nenhum caso ele come o quiz.
+//
+// REPARO_TIPICO_MS continua existindo, mas só no que sempre foi: a RESERVA que
+// a guarda exige antes de começar um reparo. Não é mais promessa de teto.
 const REPARO_TIPICO_MS = 25000;
 const AVALIACAO_TIPICA_MS = 17000;
+/** Piso do teto: abaixo disto o reparo não tem chance e é melhor não começar. */
+const REPARO_MINIMO_MS = 15000;
+/** Folga entre o fim do reparo e o começo da avaliação. */
+const MARGEM_ENTRE_ETAPAS_MS = 3000;
+
+/**
+ * Quanto tempo o reparo pode gastar agora: tudo o que sobra menos a reserva da
+ * avaliação. A guarda de entrada já garante `msLeft >= REPARO_TIPICO_MS +
+ * AVALIACAO_TIPICA_MS`, então na prática isto devolve pelo menos ~22 s.
+ */
+function tetoDoReparo(msLeft: number): number {
+  return Math.max(
+    REPARO_MINIMO_MS,
+    msLeft - AVALIACAO_TIPICA_MS - MARGEM_ENTRE_ETAPAS_MS,
+  );
+}
 
 interface WorkerPayload {
   jobId: string;
@@ -552,10 +570,15 @@ async function generateOneModule(params: {
       //
       // Exige o custo de um reparo MAIS o da avaliação, que vem depois e é o
       // que o aluno vê como quiz. Melhor um reparo e um quiz do que dois
-      // reparos e nenhum quiz. Em 01/09 os dois cancelamentos foram lidos no
-      // log: o módulo 7, com 33,6 s restantes, não tinha mesmo como pagar os
-      // dois; o módulo 4, com 41,7 s, tinha — e é por isso que a reserva caiu
-      // de 50 s para 42 s, agora que REPARO_TIPICO_MS é teto e não previsão.
+      // reparos e nenhum quiz.
+      //
+      // A reserva caiu de 50 s para 42 s com a medição de 01/09. CORREÇÃO DE
+      // UMA AFIRMAÇÃO ANTERIOR: a mensagem do commit df058c2 sugere que isso
+      // resolve o caso do módulo 4 daquele curso. Não resolve. Ele tinha
+      // 41,668 s, e 41,668 < 42,000 — continuaria cancelado. A reserva foi
+      // ajustada porque 50 s era grande demais para um trabalho de ~39 s, não
+      // para fazer aquele caso específico passar; calibrar constante em cima de
+      // uma amostra é o defeito que este arquivo inteiro tenta não repetir.
       if (msLeft() < REPARO_TIPICO_MS + AVALIACAO_TIPICA_MS) {
         notasDoReparo.push(`Reparo cancelado por timeout antes de lição ${lessonNum}.`);
         break;
@@ -583,7 +606,7 @@ async function generateOneModule(params: {
           maxTokens: depth.label === "aprofundado" ? 16000 : 12000,
           lessonMinWords: depth.lessonMinWords,
           lessonMaxWords: depth.lessonMaxWords,
-          tempoMaximoMs: REPARO_TIPICO_MS,
+          tempoMaximoMs: tetoDoReparo(msLeft()),
           msLeft,
         });
         repairsApplied += 1;
@@ -593,8 +616,14 @@ async function generateOneModule(params: {
             lessons: document.lessons.map((l, i) => i === lessonIndex2 ? repaired.lesson : l),
           };
         }
+        // Problemas E tamanho. Só o primeiro par diz se o alarme sumiu; o
+        // segundo é o que permite perguntar depois se o texto melhorou para
+        // quem lê, ou se o reparo apenas encolheu a lição até calar o portão.
         console.log(
-          `[generate-course] Reparo da lição ${lessonNum}: ${repaired.aceito ? "aceito" : "recusado"} — ${repaired.motivo} (${repaired.antes}→${repaired.depois}).`,
+          `[generate-course] Reparo da lição ${lessonNum}: ${repaired.aceito ? "aceito" : "recusado"} — ${repaired.motivo}` +
+            ` (problemas ${repaired.antes}→${repaired.depois};` +
+            ` palavras ${repaired.tamanhoAntes.palavras}→${repaired.tamanhoDepois.palavras};` +
+            ` blocos ${repaired.tamanhoAntes.blocos}→${repaired.tamanhoDepois.blocos}).`,
         );
         if (!repaired.aceito) {
           notasDoReparo.push(`Reparo da lição ${lessonNum} recusado: ${repaired.motivo}.`);

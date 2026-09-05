@@ -73,8 +73,51 @@ em exatamente uma de três:
   distintos. Não é defeito. É o caso do `prazo de entrega` do Sabor Caseiro:
   3 dias do açúcar, 2 dias do Fornecedor B, 4 dias da farinha negociada.
 
+- **COLADO NO ITEM ERRADO** — mesmo número, item diferente, e o texto afirma
+  continuidade que não existe. **Conta como defeito, e conta contra a ponte.**
+
 A terceira classe existe porque, sem ela, o alarme falso vira evidência contra a
 ponte — e três das minhas próprias regras já morreram por não distinguir isso.
+
+### Por que a quarta classe existe (curso TechInov, 05/09)
+
+Sem ela, a métrica contaria um defeito **como sucesso da ponte**. O caso:
+
+O módulo 2 calcula uma previsão de demanda de **93 unidades** — resposta-modelo
+de um exercício de média móvel ponderada. A frase não nomeia produto nenhum, e
+'notebooks Modelo Y' aparece uma única vez no módulo inteiro, longe do número.
+
+A ponte injetou, verificado no log de produção:
+
+    Lead Time — previsão de demanda = 93 unidades (m2)
+
+Rótulo sem produto. E o número reapareceu:
+
+- módulo 3: *"A previsão de demanda para o **'Smartphone Z'** é de 93 unidades
+  por mês"*
+- módulo 8: *"revisamos a previsão de demanda para o **'Smartphone X'**, que
+  **no Módulo 2** foi de 93 unidades por mês"*
+
+O número é o mesmo nos três lugares — pela métrica das três classes, isso seria
+**CONSISTENTE**, três vezes, e entraria a favor da ponte. Mas o objeto mudou em
+cada aparição, e o módulo 8 ainda inventa uma procedência que confere com o
+marcador `(m2)` do rótulo injetado e não confere com o texto do módulo 2.
+
+O 93 é calculado dentro do módulo 2 e não pode estar no blueprint, escrito antes
+dele. O único caminho do módulo 2 para os módulos 3 e 8 é a ponte. A atribuição
+causal não é certa — o modelo poderia ter chegado ao mesmo número por acaso —,
+mas é a explicação mais direta, e a citação "no Módulo 2" é difícil de explicar
+de outro jeito.
+
+**Consequência para o experimento:** consistência numérica não é o bem que se
+quer. O bem é o curso não mentir. Uma ponte que preserva o número e troca o dono
+dele piora o texto, e a métrica tem de conseguir dizer isso.
+
+**Consequência para o produto, fora do experimento:** o rótulo injetado precisa
+carregar a entidade — produto, item, fornecedor —, não só o nome da métrica. E
+um valor cujo objeto não é identificável no texto de origem talvez não deva ser
+injetado. As duas coisas são mudanças no extrator e serão medidas contra os oito
+cursos da bancada antes de entrar.
 
 ## Como as observações são levantadas
 
@@ -115,6 +158,11 @@ Escrito antes de ver qualquer dado:
   divergências **nos valores que a ponte comprovadamente injetou** (a linha de
   log diz quais). Uma divergência num valor injetado é a refutação mais direta
   possível: o número estava no prompt e o modelo escreveu outro.
+- **A ponte piora** se o braço B tiver mais `COLADO NO ITEM ERRADO` que o A.
+  Esse resultado é possível por construção — a injeção leva o número sem levar
+  o dono dele — e já há um caso observado fora do experimento (TechInov, 93
+  unidades). Se aparecer, o veredito não é "inconclusivo": é que a ponte, como
+  está, troca um defeito por outro.
 - **Inconclusivo** em qualquer outro caso — inclusive se o braço A não produzir
   divergência nenhuma, porque aí não há o que prevenir e o experimento não
   testou nada.

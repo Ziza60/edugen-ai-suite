@@ -3058,8 +3058,24 @@ function renderBlock(block: LearningBlock): string {
       const criteria = renderBullets(activity.success_criteria);
       return `${marker}\n${heading}> **Objetivo:** ${activity.objective}\n\n${template}${steps ? `\n\n**Passos**\n\n${steps}` : ""}\n\n**Entregável:** ${activity.deliverable}${criteria ? `\n\n**Critérios de sucesso**\n\n${criteria}` : ""}`.trim();
     }
-    case "callout":
-      return `${semanticMarker("callout", { id: block.id })}\n${heading}> ${[paragraphs, bullets].filter(Boolean).join("\n> \n> ")}`.trim();
+    case "callout": {
+      // CITAÇÃO PRECISA DE '>' EM TODA LINHA, NÃO SÓ NAS EMENDAS
+      //
+      // Era `> ${[paragraphs, bullets].join("\n> \n> ")}`: o '>' entrava no
+      // início e nas duas emendas, e nada mais. `paragraphs` já vem com vários
+      // parágrafos separados por linha em branco e `bullets` com uma linha por
+      // item, então o segundo parágrafo e todos os bullets a partir do segundo
+      // saíam FORA da citação. No módulo 8 do curso 'Sabor Caseiro' o bloco
+      // "A Importância da Revisão Contínua do Plano" chegou ao aluno partido
+      // ao meio, e o portão deu zero problema naquela lição — o alarme sumiu e
+      // o texto tinha defeito.
+      const corpo = [paragraphs, bullets].filter(Boolean).join("\n\n");
+      const citado = corpo
+        .split("\n")
+        .map((linha) => (linha.trim() ? `> ${linha}` : ">"))
+        .join("\n");
+      return `${semanticMarker("callout", { id: block.id })}\n${heading}${citado}`.trim();
+    }
     case "explanation":
     default:
       return `${heading}${basicTail}`.trim();
@@ -4132,7 +4148,47 @@ export type ResultadoDoReparo = {
   motivo: string;
   antes: number;
   depois: number;
+  /** Tamanho da lição antes e depois, para julgar se o texto melhorou de
+   *  verdade e não só se o alarme sumiu. Ver `tamanhoDaLicao`. */
+  tamanhoAntes: TamanhoDaLicao;
+  tamanhoDepois: TamanhoDaLicao;
 };
+
+export type TamanhoDaLicao = { palavras: number; blocos: number };
+
+// O QUE "(3→0)" NÃO DIZ
+//
+// A contagem de problemas mede o que o portão enxerga. Um reparo pode zerar o
+// alarme e entregar um texto pior para quem lê, e não havia como saber: a
+// versão pré-reparo não é gravada em lugar nenhum, nem em log nem em banco.
+// Para a lição 8.2 do curso 'Sabor Caseiro' essa comparação ficou impossível
+// para sempre.
+//
+// Guardar o texto inteiro exigiria migração — e há uma migração deste projeto
+// que nunca rodou. Palavras e blocos custam nada, ficam no log e respondem a
+// pergunta prática: o reparo encolheu a lição? Sumiu com blocos?
+export function tamanhoDaLicao(licao: LessonDocument): TamanhoDaLicao {
+  const palavras = licao.blocks.reduce(
+    (soma, b) =>
+      soma +
+      wordCount(
+        [
+          ...b.paragraphs,
+          ...b.bullets,
+          ...b.items.map((i) => `${i.title} ${i.content}`),
+          ...b.steps.map((s) => `${s.title} ${s.description}`),
+          ...b.cards.map((c) => `${c.front} ${c.back}`),
+          b.example.context, b.example.challenge, b.example.solution, b.example.result,
+          b.scenario.context,
+          ...b.scenario.turns.map((t) => t.situation),
+          b.activity.objective,
+          ...b.activity.steps,
+        ].join(" "),
+      ),
+    0,
+  );
+  return { palavras, blocos: licao.blocks.length };
+}
 
 // QUANDO UM REPARO PODE SUBSTITUIR A LIÇÃO
 //
@@ -4199,8 +4255,10 @@ async function repairLesson(params: {
       lessonMaxWords,
     }).repairable.length;
   const antes = medir(currentLesson);
+  const tamanhoAntes = tamanhoDaLicao(currentLesson);
   const manter = (motivo: string, depois = antes): ResultadoDoReparo => ({
     lesson: currentLesson, aceito: false, motivo, antes, depois,
+    tamanhoAntes, tamanhoDepois: tamanhoAntes,
   });
 
   const prompt = `Você é revisor de qualidade de e-learning corporativo.
@@ -4302,7 +4360,10 @@ ${useSources ? `<SOURCES>\n${sourcePacket}\n</SOURCES>` : ""}`;
         antes, depois: depoisPro, truncado: proMeta.finishReason === "length",
       });
       if (decisaoPro.aceito) {
-        return { lesson: pro, aceito: true, motivo: "corrigido pelo modelo Pro", antes, depois: depoisPro };
+        return {
+          lesson: pro, aceito: true, motivo: "corrigido pelo modelo Pro",
+          antes, depois: depoisPro, tamanhoAntes, tamanhoDepois: tamanhoDaLicao(pro),
+        };
       }
     } catch {
       // Pro attempt failed — cai para a decisão sobre o resultado do Flash
@@ -4310,7 +4371,10 @@ ${useSources ? `<SOURCES>\n${sourcePacket}\n</SOURCES>` : ""}`;
   }
 
   if (!flash.aceito) return manter(flash.motivo, depoisFlash);
-  return { lesson: candidate, aceito: true, motivo: flash.motivo, antes, depois: depoisFlash };
+  return {
+    lesson: candidate, aceito: true, motivo: flash.motivo,
+    antes, depois: depoisFlash, tamanhoAntes, tamanhoDepois: tamanhoDaLicao(candidate),
+  };
 }
 
 // ─── Publication gate ─────────────────────────────────────────────────────────
