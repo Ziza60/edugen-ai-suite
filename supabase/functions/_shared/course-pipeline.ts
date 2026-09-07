@@ -2488,6 +2488,14 @@ export interface ValorCanonico {
   termo: string;
   valor: string;
   modulo: number;
+  /**
+   * A oração de onde o número saiu.
+   *
+   * É ela que diz A QUE o número se refere — o rótulo não diz. Ver
+   * `buildLedgerDeValores`: sem esta frase, "perda direta = R$ 150,00" foi
+   * reusado em dois módulos para eventos diferentes do que a origem descreve.
+   */
+  trecho: string;
 }
 
 /**
@@ -2660,6 +2668,7 @@ export function valoresDoCasoCondutor(
       termo: `${g.caso} — ${g.rotulo}`,
       valor: g.valor,
       modulo,
+      trecho: g.trecho,
     });
   }
   return [...porGrandeza.values()];
@@ -2672,17 +2681,56 @@ export function valoresDoCasoCondutor(
  * valor diferente, ele pode — desde que diga por quê. Um curso pode legitimamente
  * revisar um número; o que não pode é trocá-lo em silêncio.
  */
-function buildLedgerDeValores(valores: ValorCanonico[]): string {
+/** Corte do trecho no ledger. Medido nos 25 valores dos oito cursos da
+ *  bancada: média de 139 caracteres, máximo de 292; só um passa de 240. */
+const TRECHO_NO_LEDGER = 240;
+
+// O NÚMERO VIAJA COM A FRASE DE ONDE SAIU
+//
+// O ledger levava só `caso — grandeza: valor`, e o rótulo não diz A QUE o
+// número se refere. Dois cursos seguidos mostraram o estrago:
+//
+//   TechInov (05/09): "Lead Time — previsão de demanda = 93 unidades" saiu de
+//   uma resposta-modelo que não nomeia produto. O número reapareceu como
+//   previsão do 'Smartphone Z' (m3) e do 'Smartphone X' (m8), este último
+//   citando "no Módulo 2" — procedência que confere com o marcador do rótulo e
+//   não com o texto.
+//
+//   Sabores da Vovó (06/09): "perda direta = R$ 150,00" é, no módulo 2, margem
+//   perdida por FALTA DE FARINHA. O módulo 5 a reusou em contexto de produtos
+//   vencidos e o módulo 7 escreveu "R$ 150,00 de perda direta POR AVARIA" — que
+//   é o caso do módulo 1, onde a perda é R$120.
+//
+// Extrair o objeto do rótulo exigiria regra nova no extrator. Não precisa: a
+// `Grandeza` já carrega a oração de origem, e nos 25 valores da bancada é ela
+// que nomeia o objeto — "perdas por produtos estragados no último trimestre",
+// "estoque de matéria-prima da 'Pão Quente'", "1 hora do seu tempo". A frase
+// também conserta rótulo ruim sem tocar em regra nenhuma: "João planeja =
+// R$ 5.000,00" viaja com "O Sr. João planeja ter um novo estoque de insumos no
+// valor médio de R$ 5.000,00".
+export function buildLedgerDeValores(valores: ValorCanonico[]): string {
   if (!valores.length) return "";
   const linhas = valores
-    .map((v) => `- ${v.termo}: ${v.valor} (publicado no módulo ${v.modulo})`)
+    .map((v) => {
+      const cabeca = `- ${v.termo}: ${v.valor} (publicado no módulo ${v.modulo})`;
+      const t = (v.trecho ?? "").trim();
+      if (!t) return cabeca;
+      const corte = t.length > TRECHO_NO_LEDGER
+        ? `${t.slice(0, TRECHO_NO_LEDGER).replace(/\s+\S*$/, "")}…`
+        : t;
+      return `${cabeca}\n  no texto: "${corte}"`;
+    })
     .join("\n");
   return `VALORES JÁ PUBLICADOS PARA O CASO CONDUTOR
 ${linhas}
 
 Estes números já estão impressos na apostila do aluno. Se este módulo usar uma
 dessas grandezas para o mesmo caso, use O MESMO VALOR. Se precisar de outro,
-diga no texto por que ele mudou — o aluno acabou de calcular o anterior.`;
+diga no texto por que ele mudou — o aluno acabou de calcular o anterior.
+
+A frase em "no texto" diz A QUE cada número se refere. Um número só pode ser
+reusado para O MESMO objeto: se lá ele é a perda por falta de um insumo, não o
+use aqui como perda por avaria. Para outro objeto, calcule outro número.`;
 }
 
 function buildModulePrompt(params: {
@@ -4904,6 +4952,29 @@ function renderOpenEndedAssessment(openEnded: OpenEndedQuestion): string {
   return `${marker}\n### Questão de aplicação\n\n${openEnded.question}${criteria ? `\n\n**Critérios de correção**\n\n${criteria}` : ""}\n\n---\n\n**Resposta-modelo**\n\n${openEnded.sample_answer}`.trim();
 }
 
+// O PISO DO QUIZ
+//
+// A poda entrega o que sobra, mas "o que sobra" precisa continuar sendo um
+// quiz. Uma questão só não é avaliação: o módulo tem três lições e o quiz
+// nasce com três questões, uma por lição — com uma, duas lições ficam sem
+// verificação nenhuma, e o aluno recebe algo que PARECE avaliação e não é.
+// Melhor a ausência declarada no laudo.
+//
+// Dois é o menor número que ainda cobre a maior parte do módulo. Não é medido:
+// não tenho dado que separe 1 de 2 em aprendizagem, e é honesto dizer. O que
+// mudaria isto é observar, em produção, quantas vezes a poda para em 1 e o que
+// o segundo tento devolve nesses casos.
+const MINIMO_DE_QUESTOES = 2;
+
+/** A poda produziu algo que ainda é um quiz? Pura, para poder ser travada. */
+export function podaSuficiente(
+  podado: AssessmentDocument,
+  includeQuiz: boolean,
+): boolean {
+  if (!includeQuiz) return true;
+  return podado.multiple_choice.length >= MINIMO_DE_QUESTOES;
+}
+
 async function generateAssessment(params: {
   course: CourseBlueprint;
   module: ModuleBlueprint;
@@ -4980,11 +5051,22 @@ async function generateAssessment(params: {
         melhor = { assessment, ressalvas: laudo.ressalvas };
       }
       // Com erro estrutural, poda o item defeituoso e vê se o que sobra serve.
-      // Um quiz de duas questões vale mais do que nenhum.
+      // Um quiz de duas questões vale mais do que nenhum — de UMA, não.
       if (laudo.erros.length && !melhor) {
         const { assessment: podado, podas } = podarAvaliacao({
           assessment, module, markdown, includeQuiz, includeFlashcards,
         });
+        const sobrou = podado.multiple_choice.length;
+        if (sobrou > 0 && !podaSuficiente(podado, includeQuiz)) {
+          // Abaixo do piso a poda não vira rede: uma retentativa, se couber no
+          // tempo, é preferível; se não couber, o módulo sai sem avaliação e o
+          // laudo diz por quê. Quiz de uma questão é pior que quiz ausente.
+          priorErrors = [
+            ...laudo.erros,
+            `Só ${sobrou} de ${assessment.multiple_choice.length} questões sobreviveram à poda; o mínimo é ${MINIMO_DE_QUESTOES}.`,
+          ];
+          continue;
+        }
         const laudoPodado = validateAssessment({
           assessment: podado, module, markdown, includeQuiz, includeFlashcards,
         });

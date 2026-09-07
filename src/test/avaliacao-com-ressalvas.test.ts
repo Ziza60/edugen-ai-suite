@@ -200,3 +200,36 @@ describe("poda da avaliação", () => {
     expect(laudo.erros.length).toBeGreaterThan(0);
   });
 });
+
+// ── O piso do quiz ─────────────────────────────────────────────────────────
+//
+// A poda entrega o que sobra, mas o que sobra precisa continuar sendo um quiz.
+// O módulo tem três lições e o quiz nasce com três questões, uma por lição:
+// com uma, duas lições ficam sem verificação e o aluno recebe algo que PARECE
+// avaliação. Melhor a ausência declarada no laudo.
+
+import { podaSuficiente } from "../../supabase/functions/_shared/course-pipeline";
+
+const comQuestoes = (n: number) =>
+  ({ ...base(), multiple_choice: [1, 2, 3].slice(0, n).map(questaoBoa) }) as any;
+
+describe("piso do quiz", () => {
+  it("uma questão não é avaliação", () => {
+    expect(podaSuficiente(comQuestoes(1), true)).toBe(false);
+  });
+
+  it("duas já são", () => {
+    expect(podaSuficiente(comQuestoes(2), true)).toBe(true);
+    expect(podaSuficiente(comQuestoes(3), true)).toBe(true);
+  });
+
+  it("zero também não passa — mas aí quem barra é a validação", () => {
+    expect(podaSuficiente(comQuestoes(0), true)).toBe(false);
+  });
+
+  it("curso sem quiz não é medido pelo piso", () => {
+    // Só flashcards: exigir questões objetivas ali reprovaria o que nem foi
+    // pedido.
+    expect(podaSuficiente(comQuestoes(0), false)).toBe(true);
+  });
+});
