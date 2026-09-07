@@ -112,3 +112,91 @@ describe("o que empobrece sem impedir", () => {
     expect(l.ressalvas.join(" ")).toMatch(/menos de 2 critérios/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A PODA: UMA QUESTÃO RUIM NÃO CONDENA O QUIZ INTEIRO
+//
+// O conserto de 27/08 separou ERRO de RESSALVA, mas a unidade continuou sendo
+// a avaliação inteira — e quase todo `erro` é de UMA questão. Curso de 06/09,
+// módulo 8: a primeira avaliação voltou em 13,2 s, tinha erro estrutural em
+// alguma questão, foi descartada inteira, e a segunda tentativa (effort=medium)
+// gastou 25 s e estourou:
+//
+//   +97,0s   AI ok   module_assessment  elapsed=13156ms  finish=stop
+//   +97,0s   AI call module_assessment  effort=medium
+//   +122,1s  Assessment rejected for module 8: Timeout após 25069ms
+//
+// O aluno ficou sem quiz, sem questão aberta e sem os cinco flashcards — e o
+// módulo foi a 122,4 s dos 125 s, atrasando o curso inteiro em ~12 s.
+// ═══════════════════════════════════════════════════════════════════════════
+
+import { podarAvaliacao } from "../../supabase/functions/_shared/course-pipeline";
+
+const podar = (a: any) =>
+  podarAvaliacao({
+    assessment: a, module: modulo, markdown: CONTEUDO,
+    includeQuiz: true, includeFlashcards: true,
+  });
+
+describe("poda da avaliação", () => {
+  it("descarta só a questão sem evidência e mantém as outras duas", () => {
+    const a = base();
+    a.multiple_choice[1].evidence_excerpt = "Frase que não existe no conteúdo do módulo.";
+    const { assessment, podas } = podar(a);
+    expect(assessment.multiple_choice).toHaveLength(2);
+    expect(podas.join(" ")).toMatch(/Questão 2 descartada.*evidência/i);
+    // O que sobrou continua íntegro: nada mais foi perdido junto.
+    expect(assessment.open_ended.question).toBe(base().open_ended.question);
+    expect(assessment.flashcards).toHaveLength(5);
+  });
+
+  it("descarta a questão com opção repetida", () => {
+    const a = base();
+    a.multiple_choice[0].options[2] = a.multiple_choice[0].options[0];
+    const { assessment, podas } = podar(a);
+    expect(assessment.multiple_choice).toHaveLength(2);
+    expect(podas.join(" ")).toMatch(/opções repetidas/i);
+  });
+
+  it("a questão aberta sem enunciado cai sozinha, o quiz sobrevive", () => {
+    const a = base();
+    a.open_ended.question = "";
+    const { assessment, podas } = podar(a);
+    expect(assessment.multiple_choice).toHaveLength(3);
+    expect(assessment.flashcards).toHaveLength(5);
+    expect(podas.join(" ")).toMatch(/Questão aberta descartada/i);
+  });
+
+  it("avaliação perfeita atravessa a poda sem perder nada", () => {
+    const { assessment, podas } = podar(base());
+    expect(podas).toEqual([]);
+    expect(assessment.multiple_choice).toHaveLength(3);
+    expect(assessment.flashcards).toHaveLength(5);
+  });
+
+  it("o que sobra da poda passa na validação — é o que a torna entregável", () => {
+    // Sem isto a poda seria enfeite: ela só serve se o resultado for aceito.
+    const a = base();
+    a.multiple_choice[2].explanation = "";
+    const { assessment } = podar(a);
+    const laudo = validateAssessment({
+      assessment, module: modulo, markdown: CONTEUDO,
+      includeQuiz: true, includeFlashcards: true,
+    });
+    expect(laudo.erros).toEqual([]);
+  });
+
+  it("quando NADA sobra, a poda não inventa avaliação", () => {
+    // Três questões ruins não viram um quiz. Aqui a segunda tentativa é
+    // legítima, e é para ela que a guarda de tempo existe.
+    const a = base();
+    for (const q of a.multiple_choice) q.explanation = "";
+    const { assessment } = podar(a);
+    expect(assessment.multiple_choice).toHaveLength(0);
+    const laudo = validateAssessment({
+      assessment, module: modulo, markdown: CONTEUDO,
+      includeQuiz: true, includeFlashcards: true,
+    });
+    expect(laudo.erros.length).toBeGreaterThan(0);
+  });
+});

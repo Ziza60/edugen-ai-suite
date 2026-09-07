@@ -4657,6 +4657,82 @@ function validateAssessment(params: {
   };
 }
 
+// UMA QUESTÃO RUIM NÃO CONDENA O QUIZ INTEIRO
+//
+// Em 27/08 a avaliação era tudo-ou-nada: qualquer defeito devolvia `null` e o
+// módulo saía sem quiz, sem flashcards e sem questão aberta. O conserto de lá
+// separou ERRO de RESSALVA — mas a unidade continuou sendo a avaliação inteira,
+// e quase todo `erro` é de UMA questão: "Questão 2 não possui evidência
+// verificável", "Questão 3 deve ter 4 opções".
+//
+// Curso de 06/09, módulo 8: a primeira avaliação voltou em 13,2 s, tinha erro
+// estrutural em alguma questão, foi descartada inteira, e a segunda tentativa
+// gastou 25 s e estourou. O aluno ficou sem nada — inclusive sem as questões
+// que estavam boas, sem a questão aberta e sem os cinco flashcards. É o mesmo
+// defeito de 27/08 um nível abaixo.
+//
+// A poda aplica o mesmo princípio na unidade certa: retira o item defeituoso e
+// entrega o que sobrou. Um quiz de duas questões vale mais do que nenhum.
+export function podarAvaliacao(params: {
+  assessment: AssessmentDocument;
+  module: ModuleBlueprint;
+  markdown: string;
+  includeQuiz: boolean;
+  includeFlashcards: boolean;
+}): { assessment: AssessmentDocument; podas: string[] } {
+  const { assessment, module, markdown, includeQuiz, includeFlashcards } = params;
+  const podas: string[] = [];
+
+  const questoes = assessment.multiple_choice.filter((q, i) => {
+    const motivo = motivoParaDescartarQuestao(q, markdown);
+    if (motivo) podas.push(`Questão ${i + 1} descartada: ${motivo}`);
+    return !motivo;
+  });
+
+  // A questão aberta some sozinha quando não tem enunciado; o resto do módulo
+  // não tem por que ir junto.
+  let aberta = assessment.open_ended;
+  if (!aberta.question) {
+    podas.push("Questão aberta descartada: sem enunciado.");
+    aberta = { ...aberta, question: "", criteria: [], sample_answer: "" };
+  }
+
+  // Item desativado que veio mesmo assim é ruído, não motivo para descartar o
+  // resto: basta apagá-lo.
+  const podado: AssessmentDocument = {
+    multiple_choice: includeQuiz ? questoes : [],
+    open_ended: includeQuiz
+      ? aberta
+      : { question: "", criteria: [], sample_answer: "", outcome_id: "" },
+    flashcards: includeFlashcards ? assessment.flashcards : [],
+  };
+  if (!includeQuiz && assessment.multiple_choice.length) {
+    podas.push("Questões descartadas: o quiz está desativado neste curso.");
+  }
+  if (!includeFlashcards && assessment.flashcards.length) {
+    podas.push("Flashcards descartados: estão desativados neste curso.");
+  }
+  return { assessment: podado, podas };
+}
+
+/** Por que esta questão não pode ir para o aluno — ou `null` se ela serve. */
+function motivoParaDescartarQuestao(
+  q: MultipleChoiceQuestion,
+  markdown: string,
+): string | null {
+  if (!q.question || q.question.length < 20) return "enunciado curto ou vazio.";
+  if (q.options.length !== 4) return "não tem 4 opções.";
+  if (new Set(q.options.map((o) => normalizeForMatch(o))).size !== 4) {
+    return "tem opções repetidas.";
+  }
+  if (q.correct < 0 || q.correct >= 4) return "índice da resposta correta é inválido.";
+  if (!q.explanation) return "não tem explicação.";
+  if (!evidenceSupported(q.evidence_excerpt, markdown)) {
+    return "não tem evidência verificável no conteúdo final.";
+  }
+  return null;
+}
+
 function buildAssessmentPrompt(params: {
   course: CourseBlueprint;
   module: ModuleBlueprint;
@@ -4860,7 +4936,11 @@ async function generateAssessment(params: {
     // chamadas de avaliação daquele curso levaram de 11,1 s a 17,2 s, então
     // 20 s era cara ou coroa. Com uma avaliação boa-o-bastante na mão, só vale
     // tentar de novo com folga sobre o PIOR tempo observado, não sobre o médio.
-    const minimo = melhor ? 25000 : 14000;
+    // O piso de 14 s, para quando não há nada na mão, era menor do que uma
+    // avaliação BEM-SUCEDIDA custa: as medidas de 01/09 e 06/09 vão de 12,4 a
+    // 16,8 s. Autorizar uma tentativa com 14 s é apostar no melhor caso, e no
+    // módulo 8 de 06/09 a aposta custou 25 s e não devolveu nada.
+    const minimo = melhor ? 25000 : 20000;
     if (msLeft() < minimo) break;
     const prompt = buildAssessmentPrompt({
       course,
@@ -4878,7 +4958,11 @@ async function generateAssessment(params: {
         ASSESSMENT_SCHEMA,
         "module_assessment",
         7000,
-        attempt === 0 ? "low" : "medium",
+        // SEMPRE `low`. A segunda tentativa usava `medium`, e isso contorna a
+        // calibração que a primeira respeita: as seis avaliações em `low` de
+        // 06/09 custaram de 12,4 a 14,8 s, e a única em `medium` estourou em
+        // 25 s. É o mesmo `medium` que fazia o reparo truncar e custar 36 s.
+        "low",
         Math.min(70000, Math.max(12000, msLeft() - 3000)),
       );
       const assessment = normalizeAssessment(value);
@@ -4894,6 +4978,19 @@ async function generateAssessment(params: {
       // estado: a segunda tentativa pode melhorá-la, e pode não voltar.
       if (!laudo.erros.length && !melhor) {
         melhor = { assessment, ressalvas: laudo.ressalvas };
+      }
+      // Com erro estrutural, poda o item defeituoso e vê se o que sobra serve.
+      // Um quiz de duas questões vale mais do que nenhum.
+      if (laudo.erros.length && !melhor) {
+        const { assessment: podado, podas } = podarAvaliacao({
+          assessment, module, markdown, includeQuiz, includeFlashcards,
+        });
+        const laudoPodado = validateAssessment({
+          assessment: podado, module, markdown, includeQuiz, includeFlashcards,
+        });
+        if (!laudoPodado.erros.length) {
+          melhor = { assessment: podado, ressalvas: [...podas, ...laudoPodado.ressalvas] };
+        }
       }
       priorErrors = [...laudo.erros, ...laudo.ressalvas];
     } catch (error: any) {
