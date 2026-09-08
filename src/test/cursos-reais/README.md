@@ -35,6 +35,19 @@ Nenhuma delas teria sido descartada sem estes arquivos.
 | `estoques-doces-da-vovo-encadeado.md` | padaria 'Doces da Vovó' | 8 | o primeiro gerado com os dois primeiros módulos EM ORDEM |
 | `estoques-sabor-caseiro.md` | padaria 'Sabor Caseiro' | 8 | alarme falso do prazo de entrega; **a bancada do reparo** |
 | `estoques-techinov.md` | varejo 'TechInov' | 8 | **a âncora pegando jargão como caso**, do lado da ponte |
+| `preco-doceria-sabor-de-infancia.md` | 'Doceria Sabor de Infância' | 5 | arredondamento LIMÍTROFE e `≈`; amostra do `<br>` antigo |
+| `estoques-padaria-delicias-do-bairro.md` | 'Padaria Delícias do Bairro' | 8 | **caso de QUATRO palavras**, que o reconhecedor não via |
+
+O de `Padaria Delícias do Bairro` é o curso que expôs o teto de palavras do
+reconhecedor. O nome aparece citado 141 vezes — 41 nos dois primeiros módulos —
+e `NOME_CITADO_RE` aceitava no máximo três palavras, então devolvia lista vazia
+e a ponte levava ZERO num curso que cita o caso em toda página.
+
+Ele também é o caso em que eu errei o diagnóstico: procurei 'Padaria Delícias'
+no texto, não achei entre aspas, e conclui que o modelo tinha ignorado a
+instrução do prompt. O modelo obedeceu; quem falhou foi o reconhecedor — e o
+script com que eu medi usava o MESMO regex do código, então confirmou o erro em
+vez de expô-lo.
 
 O de `TechInov` é o primeiro gerado com os módulos 1 e 2 rodando juntos (185,5 s
 contra 265,7 s do 'Sabor Caseiro'), mas não é por isso que ele está aqui. Ele
@@ -91,3 +104,24 @@ corrigir é lá, com a citação nova junto.
 Rode a suíte. `regressao-cursos-reais.test.ts` avalia os cinco a cada mudança e
 falha se uma regra passar a acusar o curso limpo, parar de achar uma contradição
 verdadeira, ou promover a bloqueador uma diferença que é legítima.
+
+## Dívidas anotadas contra estes cursos
+
+**`decision_map ausente` — o reparo não conserta.** Três recusas seguidas na
+mesma classe, em três cursos diferentes:
+
+| curso | lição | resultado |
+|---|---|---|
+| 06/09 Sabores da Vovó | 3.3 | recusado — 3 → 4 (351 → 351 palavras) |
+| 08/09 Doces da Vovó | 8.1 | recusado — 1 → 2 (582 → 582 palavras) |
+| 09/09 Padaria Delícias | 8.1 | recusado — 1 → 2 (589 → 589 palavras) |
+
+O padrão é sempre o mesmo: pede-se um `decision_map`, o modelo devolve a lição
+com o MESMO número de palavras e de blocos, e a régua conta MAIS problemas do
+que antes. Três vezes é padrão, não azar — o reparo não sabe acrescentar um
+bloco de tipo específico, só reescrever o que existe.
+
+A recusa está certa: sem ela essas três lições teriam ficado piores. Mas o
+defeito que a disparou continua no curso, e nenhuma das três foi corrigida. Não
+está consertado nem investigado; fica registrado para quando a frente do reparo
+reabrir.

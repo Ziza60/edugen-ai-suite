@@ -53,9 +53,28 @@
  * primeiros módulos, entre aspas 3 vezes, AGE em 4 — e o caso condutor saiu
  * como 'Lead Time'. Quem filtra nome de uma palavra é a evidência de entidade,
  * em `identificarCaso`, não a contagem de palavras.
+ *
+ * E o TETO de palavras cortava o outro lado. Com `{0,2}` o máximo eram TRÊS
+ * palavras, e o curso de 09/09 chama o caso de 'Padaria Delícias do Bairro' —
+ * quatro. O nome aparece citado 141 vezes no curso, 41 nos dois primeiros
+ * módulos, e o reconhecedor devolvia lista vazia: a ponte levou ZERO valores
+ * num curso que cita o caso em toda página.
+ *
+ * MEDIDO nos onze cursos da bancada, variando o teto:
+ *
+ *     {0,2}  máx 3 palavras   Padaria Delícias: —, ponte 0
+ *     {0,3}  máx 4 palavras   'Padaria Delícias do Bairro', ponte 2
+ *     {0,4}  máx 5 palavras   idêntico a {0,3}
+ *     {0,5}  máx 6 palavras   idêntico a {0,3}
+ *
+ * Nada mais muda em curso nenhum — 'Doces da Vovó' e 'TechInov' continuam
+ * ganhando pela via das aspas. Quatro é o mínimo que conserta; a quinta palavra
+ * é folga que a bancada não distingue de quatro, e existe porque quem barra
+ * frase longa é `ehNomeProprio` — toda palavra em maiúscula, salvo conectivo —,
+ * não este teto.
  */
 const NOME_CITADO_RE =
-  /['‘’"“”]([A-ZÀ-Ý][\wÀ-ÿ]*(?:\s+[\wÀ-ÿ]+){0,2})['‘’"“”]/g;
+  /['‘’"“”]([A-ZÀ-Ý][\wÀ-ÿ]*(?:\s+[\wÀ-ÿ]+){0,4})['‘’"“”]/g;
 
 // O número precisa PARAR onde acaba. Um `\d[\d.,]*` frouxo engole o ponto final
 // da frase — "custa R$ 25.000." vira "R$25.000.", um valor diferente de

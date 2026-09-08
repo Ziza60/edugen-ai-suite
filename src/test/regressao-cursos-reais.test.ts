@@ -55,6 +55,7 @@ describe("nenhum curso real é bloqueado pelo cruzamento de valores", () => {
     "transformacao-digital.md",
     "estoques-doces-da-vovo-encadeado.md",
     "estoques-sabor-caseiro.md",
+    "estoques-padaria-delicias-do-bairro.md",
   ]) {
     it(arquivo, () => {
       const bloqueadores = laudo(arquivo).checks
@@ -313,6 +314,7 @@ const CASO_DE_CADA_CURSO: Record<string, string | null> = {
   "estoques-doces-da-vovo-encadeado.md": "Doces da Vovó",
   "estoques-sabor-caseiro.md": "Sabor Caseiro",
   "estoques-techinov.md": "TechInov",
+  "estoques-padaria-delicias-do-bairro.md": "Padaria Delícias do Bairro",
   "transformacao-digital.md": null, // não tem caso numérico: a ponte fica vazia
 };
 
@@ -337,6 +339,16 @@ describe("a ponte ancora na empresa do caso, nunca no jargão", () => {
     const valores = valoresDoCasoCondutor(doisPrimeiros("estoques-techinov.md"));
     expect(valores.length).toBeGreaterThan(0);
     expect(valores.every((v) => v.termo.startsWith("TechInov — "))).toBe(true);
+  });
+
+  it("o caso de QUATRO palavras é encontrado — foi o defeito do 09/09", () => {
+    // `NOME_CITADO_RE` tinha teto de três palavras. 'Padaria Delícias do
+    // Bairro' aparece citado 141 vezes no curso, 41 nos dois primeiros
+    // módulos, e o reconhecedor devolvia lista vazia: a ponte levou ZERO num
+    // curso que cita o caso em toda página.
+    const v = valoresDoCasoCondutor(doisPrimeiros("estoques-padaria-delicias-do-bairro.md"));
+    expect(v.length).toBeGreaterThan(0);
+    expect(v.every((x) => x.termo.startsWith("Padaria Delícias do Bairro — "))).toBe(true);
   });
 
   it("substantivo comum de uma palavra NÃO vira caso, mesmo entre aspas", () => {
