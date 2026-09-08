@@ -42,6 +42,7 @@ import { ReviewPanel } from "@/components/course/ReviewPanel";
 import { ModuleSidebar } from "@/components/course/ModuleSidebar";
 import { RestructureDiffDialog } from "@/components/course/RestructureDiffDialog";
 import { StudentPortalView, type PortalData } from "@/components/course/StudentPortalView";
+import { normalizeLineBreakTags } from "../../supabase/functions/_shared/markdown";
 
 export default function CourseView() {
   const markdownTableComponents = useMarkdownTableComponents();
@@ -118,7 +119,23 @@ export default function CourseView() {
       const { data, error } = await supabase
         .from("course_modules").select("*").eq("course_id", id!).order("order_index");
       if (error) throw error;
-      return data;
+      // A LIMPEZA TAMBÉM PRECISA ACONTECER NA LEITURA
+      //
+      // `normalizeLineBreakTags` roda na GERAÇÃO, e por isso todo curso gerado
+      // antes dela guarda `<br>` no banco para sempre. O curso de precificação
+      // da 'Doceria Sabor de Infância' tem 31 deles e sai com BLOQUEADOR no
+      // laudo — "2 ocorrência(s) de tag HTML" —, embora o normalizador de hoje
+      // limpe as duas linhas reais sem sobrar nenhuma.
+      //
+      // Aqui é o ponto único por onde os módulos entram na tela: exportadores,
+      // editor e portal do aluno consomem daqui. Limpar na leitura conserta o
+      // acervo inteiro sem tocar no banco, e como o editor grava o que leu, o
+      // conteúdo antigo vai sendo curado a cada edição.
+      return (data ?? []).map((m: any) =>
+        typeof m?.content === "string"
+          ? { ...m, content: normalizeLineBreakTags(m.content) }
+          : m,
+      );
     },
     enabled: !!id,
   });
