@@ -1044,7 +1044,11 @@ Deno.serve(async (req: Request) => {
             })),
           });
           console.log(
-            `[generate-course-module] Módulo ${payload.moduleIndex} liberou ${r.dispatched} módulo(s).`,
+            // `moduleIndex` é 0-based e todas as outras linhas somam 1. Esta
+            // não somava, e o log dizia "Módulo 1 liberou" quando quem liberou
+            // era o módulo 2 — me levou a conclusões erradas duas vezes ao ler
+            // os logs de 01/09 e 08/09.
+            `[generate-course-module] Módulo ${payload.moduleIndex + 1} liberou ${r.dispatched} módulo(s).`,
           );
         }
       } catch (err: any) {

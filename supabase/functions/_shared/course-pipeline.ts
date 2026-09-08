@@ -2872,6 +2872,14 @@ ${numbersRule}
 - Se houver caso condutor, use apenas os fatos do dossiê.
 ${caseDossier ? `\n${caseDossier}\n` : ""}${ledgerDeValores ? `\n${ledgerDeValores}\n` : ""}
 
+O NOME DO CASO VEM ENTRE ASPAS
+- Na PRIMEIRA vez que este módulo citar a empresa, a loja, o cliente ou a
+  organização do caso condutor, escreva o nome entre aspas simples: a 'Doces da
+  Vovó', a 'TechInov'. Depois da primeira menção pode escrever sem aspas.
+- Vale só para o nome do CASO. NUNCA ponha entre aspas conceito da disciplina —
+  Ponto de Pedido, Lead Time, Curva ABC, Estoque de Segurança. As aspas são o
+  que distingue quem protagoniza o caso do que é vocabulário da matéria.
+
 TODO NÚMERO DO CASO CARREGA O SEU OBJETO
 - Sempre que escrever um número do caso condutor, nomeie na MESMA FRASE a que
   ele se refere: o item, o produto, o fornecedor ou o período.

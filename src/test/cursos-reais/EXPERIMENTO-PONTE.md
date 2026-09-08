@@ -178,3 +178,61 @@ Causalidade com 2 cursos por braço. Se a diferença aparecer, ela é compatíve
 com a ponte funcionando e também com variação entre gerações. O resultado
 positivo justifica continuar medindo; não justifica declarar o problema
 resolvido.
+
+---
+
+## Primeiro dado: uma observação natural, não o experimento
+
+Dois cursos de gestão de estoques, mesma configuração, gerados com dois dias de
+diferença, um com a ponte carregada e outro com ela vazia. Não foi planejado —
+o segundo veio vazio por acidente — e é por isso que entra aqui como
+**observação**, não como braço.
+
+| | 06/09 'Sabores da Vovó' | 08/09 'Doces da Vovó' |
+|---|---|---|
+| ponte | **7 valores**, todos do m2 | **0 valores** |
+| contradições de valor do caso | **nenhuma** | **duas, reais** |
+
+As duas do curso de 08/09, verificadas no texto:
+
+- **Demanda diária: 500 ≠ 100.** O curso estabelece "cerca de 500 doces
+  produzidos por dia" no módulo 1 e repete o número em m2, m3, m5, m6, m7 e
+  m8 — 31 menções em sete dos oito módulos. No exercício de Estoque de
+  Segurança do módulo 3, porém, usa "demanda média diária de 100 unidades de
+  doce". O achado do portão (`Estoque de Segurança: 450 ≠ 1.750`) é a
+  consequência visível disso, não premissas locais divergentes.
+- **Lead Time das frutas frescas: 3 ≠ 2 dias.** m3: "Para as frutas frescas da
+  Doces da Vovó, o Lead Time médio pode ser de 3 dias". m6: "O Lead Time
+  esperado para as frutas é de 2 dias". Mesmo insumo, sem explicação. (No mesmo
+  achado, os 7→5 dias das embalagens são diferença LEGÍTIMA: outro item, e a
+  redução é negociada no texto.)
+
+### O que isto não prova
+
+1. **Casos e dias diferentes.** São confeitarias distintas, prompts distintos,
+   e o modelo pode ter mudado entre 06 e 08/09. Nada controla isso.
+2. **n = 1 por lado.** Um curso limpo e um sujo não distinguem efeito de sorte.
+3. **A contradição da demanda é INTRA-MÓDULO.** O módulo 3 escreve 500 no
+   contexto e 100 no exercício, no mesmo texto. A ponte injeta o que os módulos
+   ANTERIORES publicaram; ela não tem como impedir um módulo de se contradizer
+   consigo mesmo. Para esse defeito específico, injeção nenhuma é garantia.
+
+### O que ele sugere, e é testável
+
+O valor de 500/dia nasce no módulo 1 e é central ao caso. Se a âncora tivesse
+funcionado nos dois primeiros módulos, "produção = 500 unidades/dia" estaria no
+prompt dos módulos 3 a 8 — inclusive no módulo 3, que é onde a contradição
+aparece. É argumento a favor de a ponte importar, e é exatamente o que o
+experimento com braços controlados existe para decidir.
+
+### Por que a ponte veio vazia em 08/09
+
+Medido, não suposto: 'Doces da Vovó' aparece nos oito módulos e **nunca entre
+aspas** nos dois primeiros. `identificarCaso` só considera nome citado entre
+aspas, então devolveu `[]`, e sem âncora não há valor. `casoPorDominancia`, a
+saída de emergência, também devolve `[]` com apenas dois módulos.
+
+O conserto entrou na geração, não no extrator: o prompt passa a exigir o nome do
+caso entre aspas na primeira menção de cada módulo, e proíbe aspas em conceito
+da disciplina — que é o outro lado do mesmo defeito, com 'Ponto de Pedido'
+virando caso condutor no laudo deste curso.
