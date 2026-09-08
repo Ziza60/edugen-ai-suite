@@ -50,7 +50,7 @@ import type {
   ValorCanonico,
 } from "../_shared/course-pipeline.ts";
 import { repairTruncation } from "../_shared/markdown.ts";
-import { dispatchAll, elegiveis, secretsMatch } from "../_shared/course-dispatch.ts";
+import { dispatchAll, elegiveis, reivindicou, secretsMatch } from "../_shared/course-dispatch.ts";
 
 /**
  * Dispara o portão de qualidade para um curso recém-concluído.
@@ -890,9 +890,18 @@ Deno.serve(async (req: Request) => {
     console.error(`[generate-course-module] claim falhou: ${claimError.message}`);
     return jsonResponse(500, { error: claimError.message });
   }
-  if (!claimed) {
+  // A resposta é lida pelo CONTEÚDO. Um claim perdido volta como um registro de
+  // colunas nulas, que é truthy — `if (!claimed)` nunca disparou, e por isso o
+  // curso 4f278899 saiu com 10 módulos para 8 pedidos. Ver `reivindicou`.
+  if (!reivindicou(claimed)) {
     // Já reivindicado por outro despacho, já concluído, ou sem tentativas
     // restantes. Nada a fazer — e não é erro.
+    //
+    // O log existe porque a recusa era invisível: sem ele, a única evidência de
+    // que dois workers disputaram o mesmo job era o curso vir duplicado.
+    console.log(
+      `[generate-course-module] Módulo ${payload.moduleIndex + 1}: job já reivindicado por outro worker, nada a fazer.`,
+    );
     return jsonResponse(409, { skipped: true, jobId: payload.jobId });
   }
 

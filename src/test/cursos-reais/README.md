@@ -37,6 +37,43 @@ Nenhuma delas teria sido descartada sem estes arquivos.
 | `estoques-techinov.md` | varejo 'TechInov' | 8 | **a âncora pegando jargão como caso**, do lado da ponte |
 | `preco-doceria-sabor-de-infancia.md` | 'Doceria Sabor de Infância' | 5 | arredondamento LIMÍTROFE e `≈`; amostra do `<br>` antigo |
 | `estoques-padaria-delicias-do-bairro.md` | 'Padaria Delícias do Bairro' | 8 | **caso de QUATRO palavras**, que o reconhecedor não via |
+| `financas-clinica-sorriso-perfeito.md` | 'Clínica Sorriso Perfeito' | 8 pedidos, 10 gravados | **fora do domínio**; o curso que saiu DUPLICADO, e o caso RENOMEADO entre os módulos 1 e 2 |
+
+O da `Clínica Sorriso Perfeito` é o primeiro curso da bancada fora de estoque e
+preço, e o único gravado com defeito de infraestrutura. Ele está aqui verbatim,
+com os dois módulos repetidos, porque é a evidência.
+
+**O que ele expôs, primeiro: o claim que nunca recusava ninguém.**
+`claim_course_generation_job` era `returns course_generation_jobs` — um
+registro, não `setof`. Sem linha casada, uma função SQL assim devolve UMA linha
+de colunas nulas, que o PostgREST entrega como `{"id": null, …}` — truthy em
+JavaScript. O `if (!claimed)` do worker nunca disparou. Com `MODULOS_DA_PONTE =
+2`, os módulos 1 e 2 terminam quase juntos e cada um abre a porta para os seis
+seguintes: 12 workers para 6 jobs, todos iniciados dentro de 145 ms, todos
+rodando até o fim. Medido no log: 12 `course-module-done` para os índices 2 a 7,
+11 execution_ids (um isolate serviu duas requisições), 5 execuções do portão, e
+`claim_ms` de 613, 679 e 722 ms em três dos seis pares — a espera de lock que
+prova que os dois miravam a MESMA linha. Reproduzido em Postgres 16.13 e
+consertado em `reivindicou` (`_shared/course-dispatch.ts`) e na migração
+`20260908220000`.
+
+**O que ele expôs, segundo: o caso muda de nome entre um módulo e o outro.**
+Contagem crua no texto, por bloco:
+
+    módulo 1 ... 'Clínica Odontológica Sorriso Perfeito' 18 | 'Clínica Sorriso Perfeito'  0
+    módulo 2 ... 'Clínica Odontológica Sorriso Perfeito'  0 | 'Clínica Sorriso Perfeito' 30
+
+Nenhuma das duas formas aparece nos DOIS blocos, e `identificarCaso` exige
+`minFontes = 2`. Sobra 'Custo Variável' (4 e 7), que está nos dois. A âncora que
+a ponte usa quando o módulo 3 começa é **'Custo Variável'** — jargão da
+disciplina de novo, pela terceira vez, e desta vez sem culpa do teto de palavras:
+o nome de quatro palavras foi reconhecido, só não em dois blocos.
+
+No curso inteiro o reconhecedor acerta (`'Clínica Odontológica Sorriso
+Perfeito'` em primeiro), o que confirma que o problema é a janela de dois
+módulos, não o extrator não enxergar o nome. `'Sorriso Perfeito'`, a forma curta
+que está em TODOS os dez blocos, resolveria — mas ela nunca aparece sozinha
+entre aspas nos módulos 1 e 2, então não chega a ser candidata.
 
 O de `Padaria Delícias do Bairro` é o curso que expôs o teto de palavras do
 reconhecedor. O nome aparece citado 141 vezes — 41 nos dois primeiros módulos —

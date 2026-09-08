@@ -8,6 +8,9 @@
 // Rede de segurança: generate-course-dispatch varre jobs parados e chama isto
 // de novo. Duplicar o despacho é inofensivo porque quem decide é
 // claim_course_generation_job, no banco, de forma atômica.
+//
+// Esse "inofensivo" foi falso por um mês: o banco decidia certo e o código
+// não sabia ler a resposta. Ver `reivindicou`, no fim deste arquivo.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OS DOIS PRIMEIROS MÓDULOS VÃO JUNTOS; O RESTO ESPERA OS DOIS
@@ -111,6 +114,53 @@ export function elegiveis<T extends JobParaOrdenar>(
   fila: JobParaOrdenar[],
 ): T[] {
   return candidatos.filter((j) => podeDespachar(j, fila));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A RESPOSTA DO CLAIM PRECISA SER LIDA PELO CONTEÚDO, NÃO PELA EXISTÊNCIA
+//
+// `claim_course_generation_job` é declarada `returns course_generation_jobs` —
+// um registro, não `setof`. Quando o UPDATE não casa nenhuma linha, a função
+// SQL não devolve zero linhas: devolve UMA linha com todas as colunas nulas. O
+// PostgREST executa `select * from fn(...)`, encontra essa linha, e entrega um
+// objeto JSON `{"id": null, "status": null, ...}`.
+//
+// Em JavaScript esse objeto é TRUTHY. O worker checava `if (!claimed)` para
+// devolver 409, e a checagem nunca disparou — nenhuma vez, desde que existe. O
+// perdedor da disputa gerava o módulo inteiro assim como o vencedor.
+//
+// MEDIDO em Postgres 16.13, reproduzindo a tabela e a função deste projeto:
+//
+//   1a chamada .................. id preenchido, status running, attempts 1
+//   2a chamada .................. 1 LINHA, todas as colunas nulas, attempts 1
+//   duas transações simultâneas . a 2a espera o lock da 1a (2,0 s no teste) e
+//                                 sai com o mesmo registro todo nulo
+//
+// O banco serializa certo: `attempts` fica em 1, nunca 2. Quem não sabia ler
+// era este lado.
+//
+// O QUE ISSO CUSTOU, no curso 4f278899 de 08/09
+//
+// Os módulos 1 e 2 passaram a terminar quase juntos (MODULOS_DA_PONTE = 2), e
+// cada um abriu a porta para os seis seguintes: 12 despachos para 6 jobs, todos
+// os 12 iniciados dentro de 145 ms. Os 12 workers rodaram até o fim. O curso
+// pedido com 8 módulos foi entregue com 10 — dois gravados duas vezes — e o
+// portão de qualidade rodou 5 vezes.
+//
+// A assinatura do bug é a de sempre neste projeto: uma régua que não olha o que
+// afirma medir. `!claimed` media se veio um objeto, não se o job foi
+// reivindicado.
+//
+// A migração 20260908220000 troca a função para `setof`, e aí zero linhas passa
+// a ser zero linhas. Esta função continua valendo depois disso: ela é a única
+// que responde à pergunta certa, e não depende de qual banco está do outro lado.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** A resposta do claim significa que ESTE worker ficou com o job? */
+export function reivindicou(resposta: unknown): boolean {
+  if (!resposta || typeof resposta !== "object") return false;
+  const linha = resposta as Record<string, unknown>;
+  return typeof linha.id === "string" && linha.id.length > 0;
 }
 
 export interface ModuleJobRef {
