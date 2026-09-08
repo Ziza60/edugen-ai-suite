@@ -91,6 +91,16 @@ O de transformação digital é o mais importante e o que menos parece. Sem ele,
 feita só contra cursos problemáticos — que é a forma clássica de uma regra
 parecer boa e não ser.
 
+## Duas contagens, sempre
+
+Ver `CLAUDE.md`, na raiz. Toda medição feita aqui produz duas contagens: a do
+instrumento e uma contagem crua independente (`grep`, `str.count`). Se
+divergirem, o instrumento está sob suspeita.
+
+A regra nasceu de um erro: um script de diagnóstico copiou o regex do próprio
+código que estava sendo avaliado, herdou a mesma cegueira e confirmou uma
+conclusão errada sobre o curso da 'Padaria Delícias do Bairro'.
+
 ## A verdade de referência
 
 O que é defeito e o que é diferença legítima está em
