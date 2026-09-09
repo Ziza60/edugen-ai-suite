@@ -63,4 +63,19 @@ as $$
   returning *;
 $$;
 
+-- ─── PERMISSÃO ──────────────────────────────────────────────────────────────
+-- O `drop` leva TODOS os grants da função junto. A recriação só devolveria o
+-- EXECUTE ao service_role por conta das default privileges do projeto — que é
+-- uma dependência invisível, e é justamente o tipo de coisa que este projeto já
+-- pagou caro por supor.
+--
+-- MEDIDO em Postgres 16.13, criando os papéis anon/authenticated/service_role:
+--
+--   sem default privileges + revoke from public ... service_role SEM execute
+--   com default privileges + revoke from public ... service_role com execute
+--   grant explícito ............................... com execute nos dois casos
+--
+-- O grant explícito é idempotente e custa uma linha. O erro de permissão no
+-- primeiro curso de cliente custaria o curso.
 revoke all on function public.claim_course_generation_job(uuid, interval) from public, anon, authenticated;
+grant execute on function public.claim_course_generation_job(uuid, interval) to service_role;

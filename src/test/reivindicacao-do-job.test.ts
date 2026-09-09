@@ -157,11 +157,19 @@ describe("moduloJaGravado", () => {
 // banco. Entre uma e outra cabe outro worker fazendo o mesmo.
 //
 // `try_claim_quality_gate` junta as duas num UPDATE condicional. MEDIDO em
-// Postgres 16.13:
+// Postgres 16.13, rodando o arquivo da migração sem edição:
 //
 //   com um job ainda 'running' ......... false
 //   duas transações simultâneas ........ A true, B false (B esperou o lock)
-//   terceira chamada depois ............ false
+//   3o, 4o e 5o workers ................ false
+//   fila volta a se mexer (regeração) .. TRUE — o portão reabre sozinho
+//   e fecha de novo .................... false
+//   coluna zerada à mão ................ true
+//
+// A reabertura existe porque "reivindicado uma vez, para sempre" bloquearia em
+// silêncio qualquer reavaliação futura. A condição compara `claimed_at` com o
+// último `updated_at` da fila: dentro de um mesmo fechamento a marca é sempre
+// mais recente que a fila, e um fechamento novo a ultrapassa.
 //
 // O app já mostra o laudo mais recente (`order by created_at desc limit 1`, em
 // CourseQualityReport.tsx), então "a última vence" sempre foi verdade do lado
