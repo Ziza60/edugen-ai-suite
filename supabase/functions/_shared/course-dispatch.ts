@@ -163,6 +163,37 @@ export function reivindicou(resposta: unknown): boolean {
   return typeof linha.id === "string" && linha.id.length > 0;
 }
 
+/** unique_violation no Postgres. O módulo já está gravado nesta posição. */
+const UNIQUE_VIOLATION = "23505";
+
+/**
+ * Este erro de insert é "o módulo já existe nesta posição do curso"?
+ *
+ * Depende do índice `course_modules_curso_ordem_uniq` (migração
+ * 20260909090000). Sem ele o insert do perdedor passa, e o curso ganha um
+ * gêmeo — foi assim que um curso de 8 módulos foi gravado com 10.
+ *
+ * MEDIDO em Postgres 16.13: com o índice no lugar, o segundo insert na mesma
+ * posição devolve 23505; a criação do índice com duplicata já presente falha
+ * antes, o que é o comportamento desejado (a migração para e avisa em vez de
+ * apagar dado do usuário em silêncio).
+ */
+export function moduloJaGravado(erro: unknown): boolean {
+  if (!erro || typeof erro !== "object") return false;
+  return (erro as Record<string, unknown>).code === UNIQUE_VIOLATION;
+}
+
+/**
+ * A resposta de `try_claim_quality_gate` autoriza rodar o portão?
+ *
+ * A comparação é com o VALOR, não com a veracidade. `null` — que é o que um
+ * `returns boolean` devolve quando nada casa — é falsy por acidente, e este
+ * arquivo já tem uma cicatriz de confiar em acidente desses (ver `reivindicou`).
+ */
+export function ganhouOPortao(resposta: unknown): boolean {
+  return resposta === true;
+}
+
 export interface ModuleJobRef {
   id: string;
   course_id: string;

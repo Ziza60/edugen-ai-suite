@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { reivindicou } from "../../supabase/functions/_shared/course-dispatch";
+import {
+  ganhouOPortao, moduloJaGravado, reivindicou,
+} from "../../supabase/functions/_shared/course-dispatch";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // O CURSO DE 8 MÓDULOS QUE SAIU COM 10
@@ -109,5 +111,78 @@ describe("reivindicou", () => {
       CLAIM_PERDIDO,
     ]);
     expect(respostas.filter(reivindicou)).toHaveLength(6);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A CAMADA QUE NÃO DEPENDE DE NINGUÉM ACERTAR
+//
+// O claim e o portão de execução única reduzem desperdício: eles evitam que
+// dois workers façam o mesmo trabalho. Só o índice único
+// `course_modules (course_id, order_index)` evita que o trabalho duplicado
+// CHEGUE ao curso — é a única garantia que sobrevive a um erro de leitura como
+// o de cima.
+//
+// MEDIDO em Postgres 16.13:
+//
+//   índice com duplicata já na tabela ... falha, e nomeia a chave duplicada
+//   segundo insert na mesma posição .... 23505, duplicate key value
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("moduloJaGravado", () => {
+  it("reconhece o 23505 do índice de posição", () => {
+    // A forma real que o supabase-js entrega.
+    expect(moduloJaGravado({
+      code: "23505",
+      details: 'Key (course_id, order_index)=(4f278899…, 3) already exists.',
+      hint: null,
+      message: 'duplicate key value violates unique constraint "course_modules_curso_ordem_uniq"',
+    })).toBe(true);
+  });
+
+  it("não confunde com outros erros do banco", () => {
+    expect(moduloJaGravado({ code: "23503", message: "foreign key" })).toBe(false);
+    expect(moduloJaGravado({ code: "PGRST116", message: "no rows" })).toBe(false);
+    expect(moduloJaGravado({ message: 'duplicate key value violates unique constraint' })).toBe(false);
+    expect(moduloJaGravado(null)).toBe(false);
+    expect(moduloJaGravado(undefined)).toBe(false);
+    expect(moduloJaGravado("23505")).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O PORTÃO RODOU 5 VEZES PARA UM CURSO SÓ
+//
+// A checagem antiga era uma CONTAGEM seguida de uma decisão, em duas idas ao
+// banco. Entre uma e outra cabe outro worker fazendo o mesmo.
+//
+// `try_claim_quality_gate` junta as duas num UPDATE condicional. MEDIDO em
+// Postgres 16.13:
+//
+//   com um job ainda 'running' ......... false
+//   duas transações simultâneas ........ A true, B false (B esperou o lock)
+//   terceira chamada depois ............ false
+//
+// O app já mostra o laudo mais recente (`order by created_at desc limit 1`, em
+// CourseQualityReport.tsx), então "a última vence" sempre foi verdade do lado
+// da leitura. O que faltava era a última ser a única — sem isso, um worker que
+// fecha enquanto outro ainda escreve grava um laudo sobre um curso incompleto,
+// e basta ele ser o último a gravar para o usuário ver esse veredito.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("ganhouOPortao", () => {
+  it("só o true do banco autoriza rodar o portão", () => {
+    expect(ganhouOPortao(true)).toBe(true);
+  });
+
+  it("recusa tudo que não é true — inclusive o que 'parece' sim", () => {
+    expect(ganhouOPortao(false)).toBe(false);
+    expect(ganhouOPortao(null)).toBe(false);
+    expect(ganhouOPortao(undefined)).toBe(false);
+    // As formas que uma leitura por veracidade trataria como sim.
+    expect(ganhouOPortao("false")).toBe(false);
+    expect(ganhouOPortao(1)).toBe(false);
+    expect(ganhouOPortao({})).toBe(false);
+    expect(ganhouOPortao([])).toBe(false);
   });
 });

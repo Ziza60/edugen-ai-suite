@@ -50,7 +50,9 @@ import type {
   ValorCanonico,
 } from "../_shared/course-pipeline.ts";
 import { repairTruncation } from "../_shared/markdown.ts";
-import { dispatchAll, elegiveis, reivindicou, secretsMatch } from "../_shared/course-dispatch.ts";
+import {
+  dispatchAll, elegiveis, ganhouOPortao, moduloJaGravado, reivindicou, secretsMatch,
+} from "../_shared/course-dispatch.ts";
 
 /**
  * Dispara o portão de qualidade para um curso recém-concluído.
@@ -291,6 +293,8 @@ async function generateOneModule(params: {
   words: number;
   /** Tempo do bloco das lições, para calibrar o orçamento com dado. */
   licoesMs: number;
+  /** O módulo já estava gravado: este worker perdeu a corrida e descartou. */
+  descartado?: boolean;
 }> {
   const {
     serviceClient,
@@ -717,6 +721,35 @@ async function generateOneModule(params: {
     })
     .select()
     .single();
+  // ═══════════════════════════════════════════════════════════════════════
+  // O ÍNDICE ÚNICO É A ÚNICA GARANTIA REAL. AQUI ELE É OBEDECIDO.
+  //
+  // 23505 = unique_violation em (course_id, order_index). Só chega aqui quem
+  // perdeu a corrida: o módulo já está gravado por outro worker. Descartar é a
+  // resposta certa — gravar de novo é exatamente o defeito que o índice existe
+  // para impedir, e foi ele que entregou 10 módulos num curso de 8.
+  //
+  // O trabalho perdido não é reaproveitável: o gêmeo tem números próprios,
+  // gerados em outra chamada ao modelo. Mesclar as duas versões seria juntar
+  // dois casos diferentes com o mesmo nome — a fábrica de contradição que o
+  // resto do projeto tenta desmontar.
+  //
+  // Também cobre o caso legítimo do claim obsoleto: worker que gravou o módulo
+  // e morreu antes de fechar o job é repescado 3 minutos depois; o repescado
+  // encontra o módulo no lugar e fecha o job em vez de duplicá-lo.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (moduloJaGravado(moduleError)) {
+    console.log(
+      `[generate-course-module] Módulo ${module.module_number} já gravado por outro worker; este descarta o que gerou.`,
+    );
+    return {
+      warnings: [...validation.warnings, "Módulo descartado: já gravado por outro worker."],
+      repairsApplied,
+      words: wordCount(finalContent),
+      licoesMs,
+      descartado: true,
+    };
+  }
   if (moduleError) throw moduleError;
 
   await bestEffortStructuredHierarchy(
@@ -833,6 +866,7 @@ async function generateOneModule(params: {
     repairsApplied: result.repairsApplied,
     words: wordCount(result.markdown),
     licoesMs,
+    descartado: false,
   };
 }
 
@@ -985,6 +1019,8 @@ Deno.serve(async (req: Request) => {
           words: outcome.words,
           warnings: outcome.warnings.length,
           repairs: outcome.repairsApplied,
+          // Sem este campo, um curso duplicado e um curso são do lado do log.
+          descartado: outcome.descartado === true,
           elapsed_ms: Date.now() - startedAt,
           // Os marcos, em ms desde a entrada do handler. `claim_ms` é o tempo
           // que o RPC de reivindicação consome antes de o orçamento começar a
@@ -1076,13 +1112,42 @@ Deno.serve(async (req: Request) => {
       // qualidade que bloqueia a entrega quando ele mesmo falha é pior que
       // nenhum.
       try {
-        const { count: restantes } = await serviceClient
-          .from("course_generation_jobs")
-          .select("id", { count: "exact", head: true })
-          .eq("course_id", payload.courseId)
-          .in("status", ["pending", "running"]);
-        if ((restantes ?? 0) === 0) {
-          await runQualityGate(payload.courseId);
+        // ═══════════════════════════════════════════════════════════════
+        // QUEM DECIDE "SOU O ÚLTIMO?" É O BANCO, NUMA INSTRUÇÃO SÓ
+        //
+        // A checagem antiga era uma CONTAGEM seguida de uma decisão: contar os
+        // jobs pendentes e, se der zero, rodar o portão. Entre a contagem e a
+        // decisão cabe outro worker fazendo a mesma coisa — e no curso
+        // 4f278899 o portão rodou 5 VEZES para o mesmo curso.
+        //
+        // `try_claim_quality_gate` faz as duas coisas num UPDATE condicional:
+        // marca `quality_gate_claimed_at` se e somente se ainda estiver nulo E
+        // não houver job pendente ou rodando. Exatamente um worker recebe true.
+        //
+        // O `=== true` é literal de propósito. A resposta de um claim já me
+        // enganou uma vez neste arquivo (ver `reivindicou`): comparar com o
+        // valor, e não com a veracidade, é o que impede a repetição.
+        //
+        // Se a migração ainda não foi rodada, o RPC não existe e a contagem
+        // antiga assume. O portão rodando duas vezes é desperdício; o portão
+        // não rodando é um curso entregue sem laudo — e o segundo é pior.
+        // ═══════════════════════════════════════════════════════════════
+        const { data: souOUltimo, error: erroDoClaim } = await serviceClient
+          .rpc("try_claim_quality_gate", { p_course_id: payload.courseId });
+        if (!erroDoClaim) {
+          if (ganhouOPortao(souOUltimo)) await runQualityGate(payload.courseId);
+        } else {
+          console.warn(
+            `[generate-course-module] try_claim_quality_gate indisponível (${erroDoClaim.message}); usando a contagem antiga.`,
+          );
+          const { count: restantes } = await serviceClient
+            .from("course_generation_jobs")
+            .select("id", { count: "exact", head: true })
+            .eq("course_id", payload.courseId)
+            .in("status", ["pending", "running"]);
+          if ((restantes ?? 0) === 0) {
+            await runQualityGate(payload.courseId);
+          }
         }
       } catch (err: any) {
         console.warn(
