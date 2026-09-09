@@ -38,6 +38,47 @@ Nenhuma delas teria sido descartada sem estes arquivos.
 | `preco-doceria-sabor-de-infancia.md` | 'Doceria Sabor de Infância' | 5 | arredondamento LIMÍTROFE e `≈`; amostra do `<br>` antigo |
 | `estoques-padaria-delicias-do-bairro.md` | 'Padaria Delícias do Bairro' | 8 | **caso de QUATRO palavras**, que o reconhecedor não via |
 | `financas-clinica-sorriso-perfeito.md` | 'Clínica Sorriso Perfeito' | 8 pedidos, 10 gravados | **fora do domínio**; o curso que saiu DUPLICADO, e o caso RENOMEADO entre os módulos 1 e 2 |
+| `financas-clinica-sorriso-perfeito-2.md` | 'Sorriso Perfeito' | 8 | o MESMO pedido depois do conserto: 8 módulos, 1 portão; e **o rótulo sem objeto, duas vezes** |
+
+O `...-2.md` é o mesmo pedido — clínica odontológica, 8 módulos, Treinamento
+Completo, Profissional — rodado depois do conserto da duplicação, e serve de
+par controlado com o primeiro. O que mudou, medido nos dois logs:
+
+    módulos gravados ........... 10  →  8      (8 títulos distintos)
+    course-module-done ......... 12  →  7 na janela, 7 execution_ids distintos
+    course-quality-gate-done ....  5  →  1
+    descartado ................. campo não existia  →  false em 7/7
+    effort=medium ...............  0  →  0
+    âncora da ponte ............ 'Custo Variável'  →  'Sorriso Perfeito'
+
+A âncora acertar aqui NÃO é crédito do conserto: este curso cita
+`'Sorriso Perfeito'` 166 vezes, na mesma forma de duas palavras, presente nos
+dois primeiros módulos. O defeito da renomeação (ver o curso anterior) não
+reapareceu porque o modelo não renomeou, não porque alguém tenha consertado.
+Pela mesma razão, a corrida de despacho não foi exercitada: só o módulo 2
+liberou os seis seguintes (uma linha `liberou`, não duas), então nenhum worker
+precisou descartar. A garantia aqui é o índice único, medido em Postgres — não
+este curso.
+
+**O rótulo sem objeto, duas vezes no mesmo laudo.** Das três grandezas que o
+portão apontou, uma é verdadeira e duas são a mesma falha de rótulo:
+
+| apontado | veredito |
+|---|---|
+| Custos Fixos: R$ 12.000 (m3) ≠ R$ 10.000 (m4) | **VERDADEIRA** — Dra. Ana Paula, 'Sorriso Perfeito', custo fixo mensal, dois valores |
+| ... ≠ R$ 126.000 (m4) | falso — é 10.500 × 12, a projeção ANUAL |
+| 'Dra Ana': 7% (m4) ≠ 50% (m7) | falso — 7% é crescimento de receita, 50% é ROI; o rótulo é o NOME DA PESSOA |
+| 'Payback Investimento': R$ 70.000 (m7) ≠ R$ 35.000 (m8) | falso — digitalização de prontuário vs. equipamento odontológico |
+
+Um acerto em três, e as duas falhas têm causa única: **o rótulo não carrega o
+objeto**. `'Dra Ana'` como grandeza é o caso extremo — o extrator pegou o nome
+de quem age no caso e o usou como nome do que é medido. O módulo 7 sozinho tem
+três investimentos diferentes (R$ 80.000 em aparelho de imagem, R$ 70.000 em
+digitalização, R$ 35.000 em curso e marketing), e nenhum rótulo os distingue.
+
+A regra do prompt que pede o objeto junto do número ("TODO NÚMERO DO CASO
+CARREGA O SEU OBJETO") está no lado da geração; do lado do rótulo, o extrator
+ainda não olha para isso.
 
 O da `Clínica Sorriso Perfeito` é o primeiro curso da bancada fora de estoque e
 preço, e o único gravado com defeito de infraestrutura. Ele está aqui verbatim,
@@ -162,13 +203,20 @@ mesma classe, em três cursos diferentes:
 | 06/09 Sabores da Vovó | 3.3 | recusado — 3 → 4 (351 → 351 palavras) |
 | 08/09 Doces da Vovó | 8.1 | recusado — 1 → 2 (582 → 582 palavras) |
 | 09/09 Padaria Delícias | 8.1 | recusado — 1 → 2 (589 → 589 palavras) |
+| 09/09 Clínica Sorriso Perfeito | 2.3 | recusado — 3 → 3 (392 → 392 palavras, 2 → 2 blocos) |
 
 O padrão é sempre o mesmo: pede-se um `decision_map`, o modelo devolve a lição
-com o MESMO número de palavras e de blocos, e a régua conta MAIS problemas do
-que antes. Três vezes é padrão, não azar — o reparo não sabe acrescentar um
-bloco de tipo específico, só reescrever o que existe.
+com o MESMO número de palavras e de blocos, e a régua conta o mesmo número de
+problemas ou MAIS. Quatro vezes em quatro cursos diferentes é padrão, não azar —
+o reparo não sabe acrescentar um bloco de tipo específico, só reescrever o que
+existe.
 
-A recusa está certa: sem ela essas três lições teriam ficado piores. Mas o
+O quarto caso é o mais limpo dos quatro: 392 palavras antes, 392 depois; 2
+blocos antes, 2 depois; 3 problemas antes, 3 depois. O modelo gastou 23,8 s para
+devolver a mesma lição.
+
+A recusa está certa: sem ela essas quatro lições teriam ficado piores ou iguais.
+Mas o
 defeito que a disparou continua no curso, e nenhuma das três foi corrigida. Não
 está consertado nem investigado; fica registrado para quando a frente do reparo
 reabrir.
