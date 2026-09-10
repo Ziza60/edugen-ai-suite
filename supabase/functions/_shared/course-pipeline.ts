@@ -2242,7 +2242,35 @@ INTEGRIDADE DE DOMÍNIO
 CASO CONDUTOR
 ${
   wantsCase
-    ? `Crie um único caso condutor realista e estritamente fictício. Preencha case_thread e 8 a 12 case_facts canônicos. Não atribua resultados numéricos ao caso sem base permitida pela regra de números.`
+    ? `Crie um único caso condutor realista e estritamente fictício. Preencha case_thread e 10 a 16 case_facts canônicos.
+
+OS NÚMEROS-BASE DO CASO SÃO DECIDIDOS AQUI
+- case_facts é onde os números do caso ficam FIXADOS. Todo valor que mais de um
+  módulo vai precisar entra aqui COM O VALOR ESCRITO: faturamento, custos fixos,
+  custos variáveis, preços dos serviços ou produtos, prazos, percentuais,
+  investimentos pretendidos, quadro de pessoal, capital disponível.
+- Onde o valor tiver partes, escreva a composição e confira que ela fecha:
+  "Custos fixos mensais: R$ 12.000,00 = aluguel R$ 4.000,00 + salários
+  R$ 8.000,00". Composição que não soma é defeito.
+- NOMEAR A GRANDEZA SEM DAR O VALOR É O PIOR RESULTADO POSSÍVEL. Frases como
+  "faturamento mensal estável", "não há controle detalhado de custos" ou
+  "pretende adquirir um equipamento" obrigam CADA módulo a inventar o número por
+  conta própria — e eles inventam diferente, inclusive dentro do mesmo módulo.
+  Se a grandeza importa para o curso, dê o número; se não importa, não a cite.
+- ${
+      useSources
+        ? `Com fontes anexadas, os números do caso saem das FONTES: use os valores que aparecem literalmente nelas e não preencha lacuna com palpite. Se a fonte não fixa um valor de que o curso precisa, descreva a grandeza sem número e não a trate como premissa.`
+        : `O caso é fictício e declarado como tal, então fixar os números dele não é inventar dado: é escolher as premissas do exercício. Escolha valores plausíveis para o porte descrito em case_thread e mantenha-os.`
+    }
+
+ISTO NÃO AUTORIZA INVENTAR FATO DO MUNDO
+- Continua proibido inventar alíquota, limite legal, prazo normativo,
+  estatística, resultado de pesquisa, índice econômico, preço de mercado ou
+  referência bibliográfica. Esses têm valor verdadeiro fora do curso, e errá-los
+  é grave.
+- A diferença é de natureza, não de grau: a premissa de um caso fictício não tem
+  valor verdadeiro a ser errado — ela É a escolha. O fato do mundo tem. Nenhuma
+  das duas regras dispensa a outra.`
     : `case_thread deve ser "" e case_facts deve ser []. Não invente empresa, personagem ou história para carregar o curso.`
 }
 

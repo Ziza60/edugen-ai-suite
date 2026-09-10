@@ -170,6 +170,45 @@ Segundo risco: `buildModuleRepairPrompt` (`:4095`) **não recebe o dossiê**. Um
 reparo pode reintroduzir um número fora da ficha. É uma linha de conserto, mas
 só depois de a ficha existir.
 
+## A decisão
+
+**Passo 2 aprovado em 10/09/2026.** Os fundamentos, como foram dados:
+
+- **pelo teste das contradições**: 6 de 6 contradições verdadeiras do acervo
+  seriam prevenidas pela ficha;
+- **pelo custo reversível**: a mudança é uma frase no prompt de planejamento;
+- **com o critério de cobertura reprovando pela letra (58%) e passando com os
+  derivados (72%)**. Os dois números ficam registrados. A trave não foi movida.
+
+O que entrou no passo 2, e só isto:
+
+1. a frase de `CASO CONDUTOR` em `buildStructurePrompt` passa a exigir os
+   números-base do caso em `case_facts`, com composição onde couber, e a dizer em
+   separado que fato do mundo continua proibido de inventar — as duas metades
+   explícitas, para a confusão não voltar invertida;
+2. a faixa pedida subiu de **8–12 para 10–16 fatos**. Justificativa medida: os
+   valores compartilhados por curso vão de 6 a 35, mediana 12, e a ficha escrita
+   à mão para a clínica precisou de 13. O teto do código (`asStringArray(..., 20)`)
+   já é 20, então nada mais muda;
+3. com fontes anexadas, os números do caso têm de sair das fontes — a regra de
+   números antiga continua valendo nesse caminho, e a ficha não autoriza palpite
+   sobre o negócio de quem anexou o documento.
+
+Ponte, serialização, âncora, portão e despacho: intocados.
+
+### Um segundo olho no prompt de módulo, sem mexer nele
+
+O prompt de módulo já declara o dossiê como vinculante, em `INTEGRIDADE FACTUAL`:
+*"Se houver caso condutor, use apenas os fatos do dossiê."* Hoje essa frase é
+inobedecível — um dossiê sem números não permite obedecer — e o modelo a lê
+frouxo, inventando 83% dos valores localmente.
+
+Com a ficha numerada, ela passa a ser obedecível para as premissas. O risco é ela
+ser lida ao pé da letra e **empobrecer os exercícios**, que legitimamente precisam
+de cenários novos. Nada foi mudado ali de propósito: se o curso de teste voltar
+com exercícios pobres, a causa é esta frase, e o conserto é de uma linha no
+passo 2.5.
+
 ## Métrica pré-registrada do curso de teste
 
 Mesmo tema e parâmetros dos dois cursos de clínica — o terceiro gêmeo.
@@ -188,6 +227,12 @@ Mesmo tema e parâmetros dos dois cursos de clínica — o terceiro gêmeo.
    categoria que hoje não existe: número que um módulo tardio reusa sem
    autorização;
 8. o laudo do portão: quantos achados, quantos verdadeiros.
+9. **algum reparo reintroduziu número fora da ficha?** `buildModuleRepairPrompt`
+   (`:4095`) não recebe o dossiê, então um reparo reescreve a lição sem saber as
+   premissas. As lições reparadas são nomeadas no log (`Reparo da lição X.Y:
+   aceito`); a medição é conferir, nessas lições e só nessas, se apareceu valor do
+   caso divergente da ficha. O conserto fica para o passo 2.5 — a medição começa
+   neste curso, para o conserto entrar com número e não com suposição.
 
 **Comparação:** contra `financas-clinica-sorriso-perfeito-2.md`, que é o gêmeo
 sem ficha, gerado no mesmo dia em que a métrica acima foi escrita.
