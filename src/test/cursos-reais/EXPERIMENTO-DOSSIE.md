@@ -349,6 +349,32 @@ a que o número pertence.
 Isso tem consequência para o passo 3: parte da dívida do rótulo pode se resolver
 a montante, na geração, e não no extrator.
 
+**E é um padrão, não um caso.** É a SEGUNDA regra de prompt deste projeto que só
+passou a funcionar quando algo a montante forneceu o material de que ela
+precisava:
+
+| regra | quando entrou | por que não funcionava | o que a destravou |
+|---|---|---|---|
+| `O NOME DO CASO VEM ENTRE ASPAS` | 08/09 | funcionava desde o início; quem falhava era o reconhecedor, com teto de três palavras | o conserto do `NOME_CITADO_RE` (`dd13d83`) |
+| `TODO NÚMERO DO CASO CARREGA O SEU OBJETO` | 09/09 | o modelo não tem como nomear o dono de um número que ele mesmo acabou de inventar | a ficha, que dá o objeto junto do valor |
+
+A lição que as duas compartilham: **uma instrução de prompt que depende de
+informação que o modelo não tem não é desobedecida — é inexecutável.** Medir sua
+obediência antes de verificar se o insumo existe gasta medição e produz a
+conclusão errada, que foi exatamente o que aconteceu no caso das aspas.
+
+## Nota: o curso de 5 módulos no log
+
+O log do deploy da ficha mostra um segundo curso, de 5 módulos, gerado ~4 minutos
+antes. **Era do autor**: gerado sem intenção pelo modo simplificado da tela
+inicial, que fixa 5 módulos, e refeito no modo completo com 8 para comparar com
+os anteriores. Não há outra conta gerando curso no projeto. Item de segurança
+encerrado.
+
+O curso de 5 módulos fica guardado: é o único espécime do modo simplificado
+gerado DEPOIS da ficha, e pode servir para medir se o dossiê numérico se comporta
+igual num curso curto.
+
 ## MEDIDO: o estado do portão na bancada inteira, antes do passo 3
 
 `inspectCourse` rodado nos 12 cursos (`__gabarito`, descartado depois de medir):
@@ -385,19 +411,95 @@ não o modo de falha dominante. O dominante é o rótulo que nomeia a grandeza e
 não o objeto — 26 dos 29 —, e é exatamente ele que o gabarito dispensa, porque a
 ficha nomeia o objeto e a comparação passa a ser contra a ficha.
 
-### O que ainda falta para decidir pares-como-segunda-camada
+### MEDIDO: os 20 achados lidos, um a um
 
-Dos 29, **9 já têm julgamento apurado**: 3 contradições verdadeiras e 3
-diferenças legítimas na verdade de referência do
-`regressao-cursos-reais.test.ts`, mais os 3 falsos positivos da clínica-2
-conferidos neste round. **Os outros 20 eu não li**, e classificá-los por
-dedução a partir do rótulo é precisamente o erro que esta bancada existe para
-impedir.
+Leitura autorizada e feita. Para cada um: o trecho que decide, o veredito, e se
+um gabarito de ficha também o acharia.
 
-A decisão sobre manter a comparação entre pares como segunda camada depende
-desses 20: se a maioria for alarme falso, a segunda camada sai; se houver
-contradição verdadeira que só o par acha, ela fica. **Esse é o próximo passo, e
-ele é leitura de texto, não código.**
+| curso | achado | o que o texto diz | veredito | gabarito pega? |
+|---|---|---|---|---|
+| Delícias | Custo de Manutenção 0,50 ≠ 2,00 | 0,50/kg é do **açúcar cristal** ("10% do custo do kg"); 2,00 é "por unidade por ano" em exercício do m8 | falso | não |
+| Padaria do Bairro | demanda média 100 ≠ 10 un | 100 é **bolo de Páscoa**; 10 é exemplo didático ("se a demanda mensal é 300 e o mês tem 30 dias") | falso | não |
+| Padaria do Bairro | ressuprimento 3 ≠ 5 dias | **a mesma frase explica**: "normalmente de 3 dias, mas já houve casos de atraso, estendendo-se para 5" — média e máximo, usados como tal na fórmula | falso | não, se a ficha trouxer a faixa |
+| Sabor da Vovó | nível de serviço 95% ≠ 100% | ambos em **alternativa de quiz e explicação de gabarito**: "próximo de 100%, a qualquer custo" / "100% é praticamente impossível" | falso | não |
+| TechInov | Lead Time 15 ≠ 20 ≠ 5 dias | 15 é do fornecedor do 'Modelo X'; 20 é hipótese de procedimento ("**Se** o Lead Time for de 20 dias"); 5 é outro exercício no m3 | falso | não |
+| TechInov | estoque de segurança 8 ≠ 55 un | 8 é **derivado** (1,645 × 1,5 × √10 ≈ 7,79) para o 'Smartphone Z'; 55 é outro cenário no m8 | falso | não |
+| clínica-1 | Receita Bruta 300.000 ≠ 350.000 | 300.000 é o DRE atual; 350.000 é o **orçamento do próximo ano** | falso | não |
+| clínica-1 | Serviços Prestados 90.000 ≠ 144.000 ≠ 200.000 | o m7 enuncia **dois "último DRE"** da mesma clínica: 144.000 e 200.000 | **VERDADEIRA** | sim |
+| clínica-1 | "____ Saldo" 10.000 ≠ 25.000 | blocos 4 e 5 são **o mesmo módulo gravado duas vezes** — o portão comparou um módulo com a própria cópia | **artefato de gêmeo** | — |
+| clínica-1 | Receita Líquida 285.000 ≠ 360.000 ≠ 500.000 | mesmos dois "último DRE" do m7 | **VERDADEIRA** | sim |
+| clínica-1 | Lucro Líquido 95.000 ≠ 72.000 ≠ 100.000 | mesmos dois "último DRE" do m7 | **VERDADEIRA** | sim |
+| clínica-1 | Ativo Circulante 130.000 ≠ 90.000 | 130.000 é calculado no m6; 90.000 vem com "**valores hipotéticos para fins deste exemplo**" | falso | não |
+| Doceria | CTU 6,07 ≠ 1,50 ≠ 8,00 ≠ 12,00 | m2 calcula **6,075 para o brigadeiro**; m3 diz "**com base nos cálculos do módulo anterior**, o CTU de cada brigadeiro é de **R$ 1,50**" — e 1,50 é o **leite condensado** do m2. 8,00 (cupcake) e 12,00 (pudim) são outros produtos | **VERDADEIRA**, a mais grave do acervo | só com objeto |
+| Doceria | Margem de Contribuição 4,11 ≠ 22,40 | 4,11 = 9,00 − 4,89 (brigadeiro); 22,40 = 40,00 − 17,60 (outro produto). Ambas derivadas e corretas | falso | não |
+| Doceria | Custo Variável 9,00 ≠ 12,00 ≠ 4,00 | o 9,00 é o **Preço de Venda Sugerido**, que no texto vem imediatamente antes de "Custo Variável Unitário Total" — o extrator pegou o número do vizinho | falso | não |
+| Doceria | Taxa Cartão 9,00 ≠ 40,00 ≠ 15,00 | 40,00 é o **PVU do bolo de cenoura**; 15,00 é a base em "Taxa de cartão = R$ 15,00 × 0,02 = R$ 0,30" — o extrator pegou o operando, não o resultado | falso | não |
+| Doceria | Despesas Fixas 4.000 ≠ 3.200 | 3.200 vem como "**(ex: R$ 3.200,00)**", valor ilustrativo de um template de preenchimento | falso | não |
+| Finanças | Margem de Contribuição 14,90 ≠ 15,00 | ambos no m1: 19,90 − **5,00** = 14,90 e 19,90 − **4,90** = 15,00. O CVU se contradiz, e as duas MCU são consequência | **VERDADEIRA** | sim |
+| Finanças | custos fixos 25.000 ≠ 28.000 | **o texto soma na mesma frase**: "R$25.000 (salários) + R$3.000 (administrativos) = R$28.000" — parte e total | falso | não, com composição |
+| Finanças | "equipe de marketing" 24,90 ≠ 29,90 | 24,90 é cenário de aumento no m2; 29,90 é o plano premium no m4 e a versão Family no m5 | falso | não |
+
+### O placar que decide o desenho
+
+Somando com os 9 que já tinham julgamento:
+
+```
+29 achados de coerência na bancada
+ 8 contradições VERDADEIRAS  (3 já apuradas + 5 achadas nesta leitura)
+20 falsos positivos / diferenças legítimas
+ 1 artefato de gêmeo (classe extinta pelo índice único)
+
+precisão da comparação entre pares: 8 em 29 = 28%
+```
+
+**Das 8 verdadeiras, o gabarito de ficha acha 7 sozinho.** A única que ele
+perderia é a do brigadeiro — e por um motivo que importa: o valor errado
+(R$ 1,50) **está na ficha**, como custo do leite condensado. Um gabarito que
+pergunte apenas "este número está na ficha?" aprova a frase que chama o
+componente de total. Ele precisa do **objeto**, não só do valor.
+
+Isso é o requisito mais forte que esta leitura produziu, e nenhuma das análises
+anteriores o tinha: **gabarito só de valor é fraco; gabarito de objeto+valor é o
+que pega a contradição mais grave do acervo.**
+
+### Os falsos positivos têm classes, e sete delas são mecânicas
+
+| classe | achados | detectável sem ler? |
+|---|---|---|
+| valor ilustrativo de template — `(ex: …)` | 2 | sim |
+| alternativa de quiz ou explicação de gabarito | 1 | sim |
+| declarado hipotético ("valores hipotéticos para fins deste exemplo") | 1 | sim |
+| parte × total, com a soma no próprio texto | 1 | sim |
+| média × máximo, explicados na mesma frase | 1 | sim |
+| período diferente (atual × orçamento do próximo ano) | 1 | sim |
+| valor derivado, resultado de conta exibida | 2 | sim |
+| peso de rubrica (achado na clínica-3) | 1 | sim |
+| item, produto ou plano diferente | 6 | **precisa do objeto** |
+| extrator pegou o número do vizinho ou o operando | 2 | **precisa do objeto** |
+
+**9 dos 20 falsos positivos saem com guarda mecânica, sem perder nenhuma
+verdadeira.** Os outros 11 precisam do objeto — que é exatamente o que a ficha
+passou a fornecer e que o curso com ficha passou a nomear ("equipamento de
+raio-x panorâmico").
+
+### A decisão, com dado
+
+**A comparação entre pares não sobrevive como está: 28% de precisão é o que
+torna o laudo ilegível.** Mas ela também não deve morrer, por uma razão medida:
+ela é o único caminho que achou a contradição do brigadeiro quando o gabarito
+não existia, e três das cinco verdadeiras novas são **intra-módulo** (os dois
+"último DRE" do m7), onde a comparação entre módulos chegou por acidente.
+
+O desenho que a medição sustenta:
+
+1. **gabarito de objeto+valor** como camada principal — acha 7 das 8;
+2. **as sete guardas mecânicas** aplicadas antes de qualquer comparação — tiram
+   9 dos 20 falsos sem custo;
+3. **comparação entre pares como terceira camada, nunca bloqueador e rotulada
+   como tal** — fica pelo caso do brigadeiro, com a precisão declarada no laudo.
+
+O que eu NÃO recomendo é o que parecia óbvio antes de ler: desligar os pares. A
+leitura mostrou que eles acham o que o gabarito de valor perde.
 
 ## O positivo limpo da aritmética
 
