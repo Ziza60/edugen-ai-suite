@@ -4149,7 +4149,15 @@ Corrija o envelope do módulo abaixo sem mudar a arquitetura pedagógica. Retorn
 CURSO: ${course.course_title}
 MÓDULO: ${blueprint.title}
 IDIOMA: ${language}
+${
+    buildCaseDossier(course)
+      ? `
+${buildCaseDossier(course)}
 
+Os valores da ficha são intocáveis: um número do caso em key_takeaways ou no opening_bridge tem de ser o da ficha.
+`
+      : ""
+  }
 PROBLEMAS OBJETIVOS ENCONTRADOS
 ${issues.map((issue) => `- ${issue}`).join("\n")}
 
@@ -4357,6 +4365,18 @@ async function repairLesson(params: {
     tamanhoAntes, tamanhoDepois: tamanhoAntes,
   });
 
+  // O REPARO REESCREVIA A LIÇÃO SEM SABER AS PREMISSAS DO CASO
+  //
+  // A ficha de valores (`case_facts`) entra nos 8 envelopes e nas 24 lições,
+  // mas NÃO entrava aqui. O reparo reescreve a lição inteira, números
+  // incluídos, então ele era o único caminho capaz de desfazer o que a ficha
+  // fixou — e ele roda justamente nas lições que já tinham defeito.
+  //
+  // MEDIDO nos cursos de 08 e 09/09: de 19 reparos executados, 13 foram
+  // aceitos e reescreveram o texto. Cada um era uma chance de reintroduzir
+  // número fora da ficha, sem nada no prompt dizendo qual é o valor certo.
+  const dossieDoCaso = buildCaseDossier(course);
+
   const prompt = `Você é revisor de qualidade de e-learning corporativo.
 
 Corrija SOMENTE a lição indicada abaixo. Retorne o JSON completo da lição no esquema.
@@ -4364,7 +4384,18 @@ Corrija SOMENTE a lição indicada abaixo. Retorne o JSON completo da lição no
 CURSO: ${course.course_title}
 MÓDULO: ${module.title}
 IDIOMA: ${language}
+${
+    dossieDoCaso
+      ? `
+${dossieDoCaso}
 
+OS VALORES DA FICHA SÃO INTOCÁVEIS NO REPARO
+- Todo número do caso que aparecer na lição corrigida tem de ser o da ficha acima, ou o resultado de uma conta explícita a partir dela.
+- Se a lição atual contradiz a ficha, o reparo CORRIGE para o valor da ficha. Não preserve o valor só porque ele já estava na lição.
+- Número de cenário local — um exercício com outra empresa, outro produto, outra hipótese — pode existir, mas nomeie o objeto a que ele pertence e não o apresente como premissa do caso.
+`
+      : ""
+  }
 PROBLEMAS IDENTIFICADOS
 ${issues.map((i) => `- ${i}`).join("\n")}
 

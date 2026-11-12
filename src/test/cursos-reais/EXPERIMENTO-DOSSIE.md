@@ -237,6 +237,144 @@ Mesmo tema e parâmetros dos dois cursos de clínica — o terceiro gêmeo.
 **Comparação:** contra `financas-clinica-sorriso-perfeito-2.md`, que é o gêmeo
 sem ficha, gerado no mesmo dia em que a métrica acima foi escrita.
 
+## RESULTADO: o passo 2 passou nos três itens
+
+Curso de teste gerado depois do deploy do `4c02bad`, mesmo tema e mesmos
+parâmetros dos dois anteriores. **A verificação foi feita pelo autor do projeto**,
+sobre o `SELECT` do blueprint, o log e o PDF do curso — texto extraído e cada
+aviso do laudo conferido no lugar onde aparece. Os números abaixo são dessa
+verificação; a contagem crua independente deste lado está pendente do arquivo do
+curso, que ainda não entrou na bancada.
+
+| item pré-registrado | gêmeo sem ficha | com ficha |
+|---|---|---|
+| 1. fatos com valor | **0 de 10** | **12 de 12** |
+| 2. blueprint truncou? | — | não: `finish=stop`, 41,1 s, "restam 79s para 8 módulos" |
+| 3. um valor por grandeza | faturamento 35.000 **e** 40.000 (mesmo módulo) | faturamento **R$ 60.000** em 45 menções |
+| | custo fixo 12.000 **e** 10.000 | custos fixos **R$ 30.000** em 5 módulos |
+| | equipamento 20.000, 45.000 **e** 80.000 | equipamento **R$ 80.000** em 48 menções, sem variante |
+
+A ficha não veio só numerada: veio **internamente coerente**. A composição fecha
+(5.000 + 15.000 + 8.000 + 2.000 = 30.000) e o faturamento é consistente com os
+próprios fatos (ticket R$ 300 × 200 atendimentos = R$ 60.000). A instrução
+"composição que não soma é defeito" foi obedecida.
+
+O risco de truncamento com 10–16 fatos **não se materializou**.
+
+### E o modelo não só repetiu a ficha — derivou dela
+
+O aviso "Entradas R$ 73.500 ≠ R$ 60.000" é, no texto,
+`73.500 = 60.000 + 13.500`, com `13.500 = 15.000 × 90%` — e os 90% saem da
+ficha, que fixa 10% de atraso nos recebimentos. O curso fez aritmética a partir
+das premissas em vez de inventar um número novo. É o comportamento que a ficha
+pretendia produzir, e não estava entre os itens pré-registrados.
+
+## RESULTADO: os sete avisos do laudo são TODOS falsos positivos
+
+Conferidos um a um no texto, pelo autor:
+
+| aviso | o que é no texto |
+|---|---|
+| custos variáveis 35% ≠ 40% | 40% = "Novos Custos Variáveis: 40% do faturamento adicional" — cenário de expansão (harmonização orofacial), rotulado como novo |
+| custos fixos 30.000 ≠ 4.000 | 4.000 = "Novo Custo Fixo (Contratação Dentista)", mesmo cenário |
+| "como o aumento" 20% ≠ 15% | 20% é a meta da ficha; 15% são "radiografias aumentaram 15%" e "aumento de 15% no custo dos materiais" — grandezas diferentes, e o rótulo é lixo de extração |
+| faturamento 60.000 ≠ 25.200 | 25.200 = 35% × 72.000, custo variável do cenário projetado: conta certa, grandeza errada |
+| Entradas 73.500 ≠ 60.000 | 73.500 = 60.000 + 13.500, com 13.500 = 15.000 × 90% derivado da ficha |
+| Saídas | cenário de exercício distinto |
+| Fluxo de Caixa | payback com fluxos anuais projetados; local por desenho |
+
+**Zero contradição de premissa do caso.** O gêmeo sem ficha, no mesmo tema e com
+o mesmo prompt, tinha dois faturamentos no mesmo módulo, dois custos fixos e três
+preços de equipamento. A cadeia causal fechou nas duas direções: **sem número na
+ficha, cada módulo inventa; com número, todos repetem e derivam.**
+
+O que isso faz com o laudo é o argumento medido do passo 3. O portão agora
+produz **só falso positivo** neste curso, porque compara valor contra valor sem
+saber o que é premissa, o que é derivado e o que é cenário. Com a ficha como
+gabarito, os sete se resolvem mecanicamente: 60.000 está na ficha; 25.200 é
+35% × 72.000; 40% é valor novo nomeado como novo. O gabarito não é melhoria do
+portão — é o que falta para o laudo voltar a ser legível.
+
+## MEDIDO: o estado do portão na bancada inteira, antes do passo 3
+
+`inspectCourse` rodado nos 12 cursos (`__gabarito`, descartado depois de medir):
+
+```
+29 achados de coerência em 12 cursos
+ 0 nos dois cursos limpos (transformação digital, Doces da Vovó encadeado)
+```
+
+Por curso: Delícias 2 · Padaria do Bairro 2 · Pão Quente 1 · Sabor Caseiro 1 ·
+Sabor da Vovó 2 · TechInov 2 · clínica-1 6 · clínica-2 3 · Doceria 5 ·
+Finanças Inteligentes 5.
+
+### Os rótulos dos 29 achados, lidos à mão
+
+**Zero dos 29 nomeia o objeto a que o número se refere.** Nenhum diz de qual
+item, produto, fornecedor ou investimento se trata:
+
+```
+Custo de Pedido · Custo de Manutenção · demanda média · tempo de ressuprimento
+prazo de entrega · Lead Time · nível de serviço · estoque de segurança
+Custos Fixos · Payback Investimento · Receita Bruta · Serviços Prestados
+Receita Líquida · Lucro Líquido · Ativo Circulante · Custo Total Unitário
+Margem de Contribuição · Custo Variável · Taxa Cartão · Despesas Fixas
+preço de venda · custos variáveis · custos fixos
+```
+
+E **3 dos 29 (10%) não são nem grandeza**: `'Dra Ana'` (nome da pessoa),
+`'________________ Saldo'` (campo em branco de formulário) e
+`'equipe de marketing'` (quem sugeriu o preço, não o que foi medido).
+
+Isso dimensiona a dívida do rótulo-pessoa com número: ela é real e é **10%**,
+não o modo de falha dominante. O dominante é o rótulo que nomeia a grandeza e
+não o objeto — 26 dos 29 —, e é exatamente ele que o gabarito dispensa, porque a
+ficha nomeia o objeto e a comparação passa a ser contra a ficha.
+
+### O que ainda falta para decidir pares-como-segunda-camada
+
+Dos 29, **9 já têm julgamento apurado**: 3 contradições verdadeiras e 3
+diferenças legítimas na verdade de referência do
+`regressao-cursos-reais.test.ts`, mais os 3 falsos positivos da clínica-2
+conferidos neste round. **Os outros 20 eu não li**, e classificá-los por
+dedução a partir do rótulo é precisamente o erro que esta bancada existe para
+impedir.
+
+A decisão sobre manter a comparação entre pares como segunda camada depende
+desses 20: se a maioria for alarme falso, a segunda camada sai; se houver
+contradição verdadeira que só o par acha, ela fica. **Esse é o próximo passo, e
+ele é leitura de texto, não código.**
+
+## O positivo limpo da aritmética
+
+As cadeias do curso de teste, conferidas pelo autor, fecham todas:
+
+```
+72.000 − 25.200 = 46.800
+46.800 − 30.000 − 2.500 = 14.300
+34.000 + 25.000 + 2.500 + 10.000 = 71.500
+```
+
+É o espécime de **não-acusar** que faltava para calibrar a verificação de
+aritmética fora do domínio de estoque e preço: um curso de serviços, denso em
+conta, com todas as cadeias corretas. Entra na medição silenciosa da aritmética
+como controle negativo.
+
+## Passo 2.5: o dossiê no reparo
+
+Aprovado e feito junto com este registro, antes do próximo curso de teste.
+
+`repairLesson` reescreve a lição inteira, números incluídos, e **não recebia a
+ficha** — era o único caminho capaz de desfazer o que a ficha fixou, e roda
+justamente nas lições que já tinham defeito. MEDIDO nos cursos de 08 e 09/09: de
+19 reparos executados, 13 foram aceitos e reescreveram texto.
+
+A ficha passa a entrar no prompt do reparo de lição e no do reparo de envelope
+(onde `key_takeaways` também carrega número), com três regras: o número do caso
+na lição corrigida é o da ficha ou conta explícita a partir dela; se a lição
+atual contradiz a ficha, o reparo corrige **para a ficha** em vez de preservar o
+que estava lá; e cenário local continua permitido, mas nomeando o objeto.
+
 ## O que NÃO se mexe até a medição mandar
 
 A ponte, a serialização (`MODULOS_DA_PONTE = 2`), a âncora e o portão. O passo 2
