@@ -240,11 +240,24 @@ sem ficha, gerado no mesmo dia em que a métrica acima foi escrita.
 ## RESULTADO: o passo 2 passou nos três itens
 
 Curso de teste gerado depois do deploy do `4c02bad`, mesmo tema e mesmos
-parâmetros dos dois anteriores. **A verificação foi feita pelo autor do projeto**,
-sobre o `SELECT` do blueprint, o log e o PDF do curso — texto extraído e cada
-aviso do laudo conferido no lugar onde aparece. Os números abaixo são dessa
-verificação; a contagem crua independente deste lado está pendente do arquivo do
-curso, que ainda não entrou na bancada.
+parâmetros dos dois anteriores. Está na bancada como
+`financas-clinica-sorriso-saudavel-ficha.md`. O caso mudou de nome entre as
+gerações — agora é `'Clínica Sorriso Saudável'`.
+
+A primeira verificação foi feita pelo autor do projeto, sobre o `SELECT` do
+blueprint, o log e o PDF. **A segunda opinião, exigida pelo `CLAUDE.md`, foi
+feita depois, sobre o arquivo do curso, com regex escrita do zero e lendo as
+frases onde cada grandeza é definida.** As duas concordam no essencial e
+divergem na contagem bruta, por unidade de contagem:
+
+| | autor (PDF) | contagem crua (arquivo) |
+|---|---|---|
+| faturamento R$ 60.000,00 | 45 menções | 44 ocorrências, 14 frases definidoras |
+| custos fixos R$ 30.000,00 | 5 módulos | 65 ocorrências, 16 frases definidoras |
+| equipamento R$ 80.000,00 | 48 menções | 51 ocorrências, 16 frases definidoras |
+
+A divergência é de método, não de achado: o que importa não é quantas vezes o
+número aparece, é se **algum** valor concorrente aparece. Nenhum aparece.
 
 | item pré-registrado | gêmeo sem ficha | com ficha |
 |---|---|---|
@@ -294,6 +307,47 @@ saber o que é premissa, o que é derivado e o que é cenário. Com a ficha como
 gabarito, os sete se resolvem mecanicamente: 60.000 está na ficha; 25.200 é
 35% × 72.000; 40% é valor novo nomeado como novo. O gabarito não é melhoria do
 portão — é o que falta para o laudo voltar a ser legível.
+
+### Os sete, reconferidos linha a linha no arquivo
+
+Rodei `inspectCourse` no curso: ele reproduz os sete avisos exatamente, escore
+94, zero bloqueador e **zero check reprovado fora de coerência**. Cada um,
+conferido no texto por este lado:
+
+| aviso | a frase no curso | veredito |
+|---|---|---|
+| custos variáveis 35% ≠ 40% | "Novos Custos Variáveis (**40% do faturamento adicional**)" | falso — rotulado como novo |
+| Custos fixos 30.000 ≠ 4.000 | "**Novo Custo Fixo (Contratação Dentista)** \| R$ 4.000,00", e o curso soma: "34.000 = 30.000 + 4.000" | falso — e a conta está certa |
+| "como o aumento" 20% ≠ 15% | m3 "radiografias externas aumentaram em 15%"; m8 "aumento inesperado de 15% no custo dos materiais"; m8 "\| Análise de Viabilidade \| **15%** \|" (peso de rubrica) | falso — três grandezas, e o rótulo é lixo |
+| faturamento 60.000 ≠ 25.200 | "35% do novo faturamento projetado (R$ 72.000,00) = R$ 25.200,00" | falso — derivação explícita |
+| Entradas 73.500 ≠ 60.000 | "Entradas de Caixa = R$ 60.000,00 + R$ 13.500,00 = R$ 73.500,00" | falso — derivação |
+| Saídas 63.500 ≠ 61.000 | "Saídas = 30.000 + 21.000 + 2.500 + 10.000 = 63.500" e, sem financiamento, "= 61.000" | falso — dois cenários |
+| Fluxo de Caixa (4 valores) | payback com fluxos anuais projetados | falso — cenários locais |
+
+**7 de 7 falsos positivos, confirmados por duas leituras independentes.**
+
+E a âncora da ponte, medida nos dois primeiros módulos: `'Clínica Sorriso
+Saudável'` — o caso, com nome de três palavras. Terceira geração seguida em que
+a âncora acerta.
+
+### Uma classe nova de falso positivo: peso de rubrica
+
+Um dos três "15%" é `| Análise de Viabilidade de Investimentos | 15% |` — **o
+peso de um critério na rubrica de avaliação**, não um dado do caso. Tabela de
+rubrica não é informação do negócio, e a exclusão é mecânica e de alta precisão.
+Entra na lista de guardas do passo 3.
+
+### O objeto passou a ser nomeado — e isso ninguém pediu neste passo
+
+No gêmeo sem ficha, o equipamento era "um novo equipamento de diagnóstico por
+imagem", sem nome e com três preços. Aqui ele é **"equipamento de raio-x
+panorâmico"** em praticamente toda menção, com um preço só. A regra
+`TODO NÚMERO DO CASO CARREGA O SEU OBJETO`, que estava no prompt desde 09/09 e
+era medida como desobedecida, passou a ser obedecida quando a ficha deu o objeto
+a que o número pertence.
+
+Isso tem consequência para o passo 3: parte da dívida do rótulo pode se resolver
+a montante, na geração, e não no extrator.
 
 ## MEDIDO: o estado do portão na bancada inteira, antes do passo 3
 
@@ -349,11 +403,28 @@ ele é leitura de texto, não código.**
 
 As cadeias do curso de teste, conferidas pelo autor, fecham todas:
 
+Conferidas de novo deste lado, sobre o arquivo, **14 de 14 fecham**:
+
 ```
-72.000 − 25.200 = 46.800
-46.800 − 30.000 − 2.500 = 14.300
-34.000 + 25.000 + 2.500 + 10.000 = 71.500
+ficha: 5.000 + 15.000 + 8.000 + 2.000 .......... 30.000   (composição)
+ficha: 300 x 200 ............................... 60.000   (ticket x atendimentos)
+m1: 60.000 + 13.500 ............................ 73.500   (entradas)
+m1: 15.000 x 90% ............................... 13.500   (os 90% saem da ficha)
+m1: 30.000 + 21.000 + 2.500 + 10.000 ........... 63.500   (saídas)
+m1: 73.500 − 63.500 ............................ 10.000   (saldo)
+m2: 30.000 + 21.000 + 10.000 ................... 61.000   (cenário sem financiamento)
+m2: 21.000 + 4.000 ............................. 25.000   (novos variáveis)
+m2: 30.000 + 4.000 ............................. 34.000   (novos fixos)
+m2: 60.000 x 35% ............................... 21.000
+m6: 60.000 x 1,20 .............................. 72.000   (meta da ficha)
+m6: 72.000 x 35% ............................... 25.200
+m6: 72.000 − 25.200 ............................ 46.800
+m6: 46.800 − 30.000 − 2.500 .................... 14.300
 ```
+
+Note o que isso diz sobre a ficha: **dez das quatorze cadeias partem de um valor
+da ficha.** A verificação de aritmética, com gabarito, deixa de conferir só a
+conta e passa a conferir o insumo.
 
 É o espécime de **não-acusar** que faltava para calibrar a verificação de
 aritmética fora do domínio de estoque e preço: um curso de serviços, denso em

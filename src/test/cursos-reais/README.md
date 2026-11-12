@@ -39,6 +39,7 @@ Nenhuma delas teria sido descartada sem estes arquivos.
 | `estoques-padaria-delicias-do-bairro.md` | 'Padaria Delícias do Bairro' | 8 | **caso de QUATRO palavras**, que o reconhecedor não via |
 | `financas-clinica-sorriso-perfeito.md` | 'Clínica Sorriso Perfeito' | 8 pedidos, 10 gravados | **fora do domínio**; o curso que saiu DUPLICADO, e o caso RENOMEADO entre os módulos 1 e 2 |
 | `financas-clinica-sorriso-perfeito-2.md` | 'Sorriso Perfeito' | 8 | o MESMO pedido depois do conserto: 8 módulos, 1 portão; e **o rótulo sem objeto, duas vezes** |
+| `financas-clinica-sorriso-saudavel-ficha.md` | 'Clínica Sorriso Saudável' | 8 | **o primeiro curso com ficha numérica**: um valor por premissa, e 7 avisos do portão, todos falsos |
 
 O `...-2.md` é o mesmo pedido — clínica odontológica, 8 módulos, Treinamento
 Completo, Profissional — rodado depois do conserto da duplicação, e serve de
