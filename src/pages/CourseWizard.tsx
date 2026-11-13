@@ -423,10 +423,12 @@ export default function CourseWizard() {
           };
 
           const check = async () => {
-            const { data } = await supabase
+            const { data } = (await supabase
               .from("course_generation_jobs")
               .select("module_index, status")
-              .eq("course_id", id);
+              .eq("course_id", id)) as {
+              data: Array<{ module_index: number; status: string }> | null;
+            };
             if (!data) return;
             const done = data.filter((j: any) => j.status === "done");
             const failed = data.filter((j: any) => j.status === "failed");

@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -19,11 +19,11 @@ const DEMO_VIDEO_ID = ""; // ex: "dQw4w9WgXcQ"
 const ACCENT = "#DF7C3A";
 const GOLD = "#C9A96E";
 
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 32 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 };
-const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
+const stagger: Variants = { visible: { transition: { staggerChildren: 0.1 } } };
 
 const features = [
   { icon: Brain, title: "Geração por IA", desc: "Tema → curso completo em menos de 2 minutos. Módulos, quizzes e flashcards automáticos.", cat: "Criação", pro: false },
