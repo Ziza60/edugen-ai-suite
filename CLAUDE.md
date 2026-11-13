@@ -43,6 +43,37 @@ Um `grep` por `'Padaria Delícias do Bairro'` teria mostrado 141 ocorrências em
 dois segundos e apontado para o lugar certo. A conclusão errada quase virou uma
 mudança grande no extrator para resolver um problema inexistente.
 
+## Antes de medir obediência, verifique se o insumo existe
+
+**Regra permanente, criada em 13/11/2026 depois do segundo erro da mesma
+família.**
+
+Uma instrução de prompt que depende de informação que o modelo não tem **não
+está sendo desobedecida — ela é inexecutável**. A pergunta certa, e primeiro, é
+*"o modelo tem como obedecer isto?"*. Só depois vem *"por que não obedeceu?"*.
+
+Inverter as duas gastou duas investigações inteiras neste projeto, e as duas
+terminaram em conclusão errada assinada por mim:
+
+| regra | o que eu concluí | o que era |
+|---|---|---|
+| `O NOME DO CASO VEM ENTRE ASPAS` (08/09) | "o modelo ignorou a instrução" | o modelo obedeceu 141 vezes; o reconhecedor tinha teto de três palavras |
+| `TODO NÚMERO DO CASO CARREGA O SEU OBJETO` (09/09) | "medida como desobedecida" | o modelo não tem como nomear o dono de um número que ele mesmo acabou de inventar; passou a obedecer quando a ficha deu o objeto |
+
+Nos dois casos o conserto estava **a montante**, e não no prompt nem no modelo.
+Nos dois casos a verificação de insumo custava minutos e teria evitado dias.
+
+Na prática, antes de escrever "o modelo não está seguindo a regra X":
+
+1. a informação que a regra exige está no prompt, de fato? (leia o prompt
+   montado, não o template);
+2. se está no texto gerado, o instrumento que afirma não encontrá-la a enxerga?
+   (ver a regra das duas contagens, acima);
+3. a regra pede algo que só existe depois de outra etapa? Se pede, a etapa é que
+   está faltando.
+
+Vale para qualquer prompt escrito daqui em diante, nos dois produtos.
+
 ## Números no código carregam a medição que os justifica
 
 Constante, limiar ou orçamento entra com o número medido no comentário, e com o

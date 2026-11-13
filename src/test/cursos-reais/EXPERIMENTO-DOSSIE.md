@@ -501,6 +501,121 @@ O desenho que a medição sustenta:
 O que eu NÃO recomendo é o que parecia óbvio antes de ler: desligar os pares. A
 leitura mostrou que eles acham o que o gabarito de valor perde.
 
+## Passo 3, primeira metade: as guardas, medidas
+
+Implementadas em `_shared/guardas-do-caso.ts`, aplicadas **antes** do
+agrupamento (excluir depois não serve: o valor guardado continuaria criando o
+segundo grupo que faz o achado existir). Travadas em
+`src/test/guardas-do-portao.test.ts`.
+
+### O placar
+
+```
+                        antes      depois
+achados de coerência       36          26
+contradições verdadeiras    9           9
+falsos positivos           26          16
+artefato de gêmeo           1           0
+precisão                  25%         35%
+```
+
+**10 falsos positivos removidos, nenhuma verdadeira perdida.** A previsão
+registrada antes de medir era "remove 9, perde 0"; errou por um, para baixo.
+
+Por curso, o que saiu: Custo de Manutenção (Delícias), tempo de ressuprimento
+(Padaria do Bairro), nível de serviço (Sabor da Vovó), Receita Bruta + Saldo do
+gêmeo + Ativo Circulante (clínica-1), Custo Variável + Taxa Cartão + Despesas
+Fixas (Doceria), "como o aumento" (clínica-3).
+
+Exclusões por guarda, em 1.519 grandezas da bancada: 215 (14%).
+`periodo-projetado` 91 → 22 depois do aperto, `valor-de-exemplo` 42,
+`faixa-declarada` 32, `alternativa-de-quiz` 20, `declarado-hipotetico` 13,
+`condicional-hipotetica` 9, `operando-de-soma` 7, `peso-de-rubrica` 1.
+
+### Três coisas que a medição consertou no caminho
+
+**1. A guarda de "valor derivado" foi testada e REJEITADA.** Parecia a mais
+obvia das nove — e apagaria a melhor evidência do acervo: a contradição
+verdadeira do 'Pão Quente' tem `R$ 610,00 / 4 = R$ 152,50` de um lado. Nos dois
+casos em que "derivado" parecia explicar o falso positivo (estoque de segurança
+8 ≠ 55; MCU 4,11 ≠ 22,40), o que separava era o **objeto**, não a derivação.
+
+**2. `periodo-projetado` nasceu cega.** A primeira versão aceitava `estima\w*`
+e `projet\w*` soltos e disparou **91 vezes** — 43 só no curso com ficha, onde
+"estimar" aparece em toda instrução de orçamento. Uma guarda que exclui 6% das
+grandezas de um curso não é guarda, é cegueira. Apertada para marcador de
+período explícito.
+
+**3. `peso-de-rubrica` nasceu inerte, e eu quase a registrei como funcionando.**
+A primeira versão exigia "rubrica", "critério" ou "peso" na própria linha — e
+numa tabela de rubrica essas palavras estão no **cabeçalho**, que a oração não
+carrega. Disparou UMA vez na bancada inteira. Agora detecta a *forma* da linha:
+percentual sozinho numa célula, entre células de prosa.
+
+### E uma reclassificação: eu errei o veredito do Finanças
+
+Na tabela dos 20 eu classifiquei **"custos fixos R$25.000 ≠ R$28.000"** como
+falso positivo, parte contra total, citando a frase do m1:
+
+> "Os Custos Fixos Totais (CFT) são R$25.000 (salários) + R$3.000
+> (administrativos) = R$28.000."
+
+A guarda `operando-de-soma` **não disparou ali**, e foi investigar o porquê que
+mostrou o erro: o R$25.000 do achado não vem dessa frase. Vem de outras duas,
+assertivas, e o curso afirma o custo fixo mensal da MESMA empresa três vezes,
+com três valores:
+
+| módulo | frase | total |
+|---|---|---|
+| m1 | "salários dos 5 engenheiros (R$5.000 cada), totalizando R$25.000, e outras despesas administrativas fixas de R$3.000" | **R$ 28.000** |
+| m3 | "salários dos 5 engenheiros (R$ 8.000 cada) … Salários (5 × R$ 8.000 = R$ 40.000) + Marketing Fixo (R$ 10.000)" | **R$ 50.000** |
+| m5 | "Os custos fixos mensais (salários, aluguel) são de R$25.000" | **R$ 25.000** |
+
+É **contradição verdadeira**, da mesma classe que a do custo variável que a
+verdade de referência já registrava para este curso (5,00 ≠ 2,50 ≠ 4,90). E o
+salário do engenheiro também muda: R$5.000 no m1, R$8.000 no m3.
+
+Eu classifiquei lendo **uma** oração e parando. É exatamente o que a convenção
+nova do `CLAUDE.md` manda não fazer — verificar o insumo antes de concluir —
+aplicada a mim mesmo. As verdadeiras do acervo passam de 8 para **9**, e o
+portão continua achando esta (o par 25.000 ≠ 28.000 sobrevive às guardas), ainda
+que pelo ângulo errado: ele não cita os R$ 50.000 do m3.
+
+### Um achado melhorou sozinho
+
+O Lead Time da TechInov era `15 ≠ 20 ≠ 5 dias`; com as guardas virou
+`15 ≠ 10 ≠ 20 ≠ 5 dias`. Os **10 dias** entraram porque as exclusões mudaram a
+espécie dominante do grupo. O README registra desde 05/09 que a contradição
+verdadeira daquele curso é 20/10/15 para o mesmo produto e que o portão **não
+citava os 10**. Agora cita. Não foi projetado; foi efeito colateral, e está
+registrado como tal.
+
+## O gabarito: o que falta para medi-lo, e é bloqueante
+
+O desenho aprovado é **objeto+valor**, e o caso de teste é o brigadeiro: o
+R$ 1,50 existe na ficha como custo do leite condensado e tem de ser acusado
+quando rotulado de Custo Total Unitário.
+
+**O gabarito não pode ser medido na bancada hoje, por falta de ficha.** De 13
+cursos, só um foi gerado com ficha numérica (`...-saudavel-ficha.md`), e o
+`case_facts` dele não está no repositório — ele vive em
+`courses.generation_blueprint`, no banco. Os outros 12 foram gerados antes do
+passo 2 e não têm ficha nenhuma.
+
+Sem ficha, o gabarito não tem com o que comparar e o placar
+achados/perdidos/falsos dele é vazio. As três saídas, com o custo de cada uma:
+
+1. **`SELECT` do `case_facts` do curso com ficha** — barato, e dá a medição do
+   gabarito em 1 curso, incluindo se o pareamento erra contra uma ficha real;
+2. **fichas escritas à mão para os cursos da bancada** — é o que permite medir o
+   brigadeiro, e custa uma ficha por curso. A da clínica já está escrita neste
+   documento; a da Doceria é a que o caso de teste exige;
+3. **gerar 2–3 cursos novos com ficha** nos temas da bancada — mede de verdade,
+   custa geração e tempo.
+
+A 1 e a 2 juntas dão o caso de teste do brigadeiro e uma ficha real. Nenhuma das
+três é decisão minha.
+
 ## O positivo limpo da aritmética
 
 As cadeias do curso de teste, conferidas pelo autor, fecham todas:

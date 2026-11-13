@@ -43,6 +43,7 @@ import {
   casoPorDominancia,
   paragrafosDe,
 } from "./valores-do-caso.ts";
+import { aplicarGuardas } from "./guardas-do-caso.ts";
 
 export type Severity = "blocker" | "warning";
 export type Verdict = "ready" | "ready_with_warnings" | "needs_review";
@@ -576,6 +577,19 @@ type GrandezaComModulo = Grandeza & { modulo: number };
  * grandeza, não o rótulo exibido: o mesmo custo aparece como "custos variáveis
  * unitários" numa lição e "Custos Variáveis" na outra.
  */
+/**
+ * Quantas ocorrências cada guarda excluiu na última leitura.
+ *
+ * Existe para o laudo poder dizer o que NÃO foi comparado. Uma guarda silenciosa
+ * é a próxima régua que não olha o que afirma medir — o defeito assinado deste
+ * projeto, e não vou assiná-lo de novo num lugar novo.
+ */
+const guardasQueAgiram = new Map<string, number>();
+
+export function guardasDaUltimaLeitura(): Array<[string, number]> {
+  return [...guardasQueAgiram.entries()].sort((a, b) => b[1] - a[1]);
+}
+
 function agruparGrandezas(
   porModulo: Array<{ numero: number; texto: string }>,
   caso: Caso,
@@ -584,7 +598,18 @@ function agruparGrandezas(
   const grupos = new Map<string, Map<string, GrandezaComModulo[]>>();
   if (!caso.nomes.length) return grupos;
   for (const { numero, texto } of porModulo) {
-    for (const g of grandezasDoTexto(texto, caso)) {
+    // AS GUARDAS AGEM ANTES DO AGRUPAMENTO.
+    //
+    // Excluir depois de agrupar não serve: um valor guardado continuaria
+    // criando o segundo grupo que faz o achado existir. Ver guardas-do-caso.ts
+    // para a medição que justifica cada uma, e `guardasQueAgiram` para a
+    // contagem que vai ao laudo.
+    for (const o of aplicarGuardas(grandezasDoTexto(texto, caso))) {
+      if (o.guarda) {
+        guardasQueAgiram.set(o.guarda, (guardasQueAgiram.get(o.guarda) ?? 0) + 1);
+        continue;
+      }
+      const g = o.grandeza;
       if (somenteDiretas && g.herdado) continue;
       const grupo = `${g.caso}\u0000${g.chave}`;
       const chaveDoValor = g.numero === null ? g.valor : `#${g.numero}`;
