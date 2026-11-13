@@ -55,7 +55,7 @@ function markdownDoCallout(over: Record<string, unknown>) {
       checkpoint: "y".repeat(40), key_takeaways: ["a", "b", "c"],
       media_brief: { purpose: "", concept: "", alt_text: "", generation_prompt: "" },
     } as any,
-    moduleIndex: 0, sourceIndex: [], includeOverview: false, includeCapstoneExtras: false,
+    moduleIndex: 0, sourceIndex: new Map(), includeOverview: false, includeCapstoneExtras: false,
   });
 }
 

@@ -170,7 +170,7 @@ async function renderPdfToMiniPdf(pdfFile: File): Promise<File> {
     canvas.width  = Math.round(vp.width);
     canvas.height = Math.round(vp.height);
     const ctx = canvas.getContext("2d")!;
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    await page.render({ canvas, canvasContext: ctx, viewport: vp }).promise;
 
     const blob = await new Promise<Blob>((res) =>
       canvas.toBlob((b) => res(b!), "image/jpeg", 0.2),
@@ -186,7 +186,7 @@ async function renderPdfToMiniPdf(pdfFile: File): Promise<File> {
   const totalKB = (pdfBytes.length / 1024).toFixed(1);
   console.log(`[PdfImport] mini-PDF size: ${totalKB} KB for ${numPages} pages`);
 
-  return new File([pdfBytes], pdfFile.name, { type: "application/pdf" });
+  return new File([pdfBytes as unknown as BlobPart], pdfFile.name, { type: "application/pdf" });
 }
 
 export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportScreenProps) {

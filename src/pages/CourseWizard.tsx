@@ -423,10 +423,14 @@ export default function CourseWizard() {
           };
 
           const check = async () => {
-            const { data } = await supabase
+            // Cast no client: a instanciação de tipos desta query é profunda
+            // demais para o compilador (TS2589); o formato retornado é estável.
+            const { data } = (await (supabase as any)
               .from("course_generation_jobs")
               .select("module_index, status")
-              .eq("course_id", id);
+              .eq("course_id", id)) as {
+              data: Array<{ module_index: number; status: string }> | null;
+            };
             if (!data) return;
             const done = data.filter((j: any) => j.status === "done");
             const failed = data.filter((j: any) => j.status === "failed");
