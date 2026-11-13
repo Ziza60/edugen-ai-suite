@@ -41,7 +41,7 @@ import { TranslateDialog } from "@/components/course/TranslateDialog";
 import { ReviewPanel } from "@/components/course/ReviewPanel";
 import { ModuleSidebar } from "@/components/course/ModuleSidebar";
 import { RestructureDiffDialog } from "@/components/course/RestructureDiffDialog";
-import { StudentPortalView, type PortalData } from "@/components/course/StudentPortalView";
+import { StudentPortalView, type PortalData, type PortalModule } from "@/components/course/StudentPortalView";
 import { normalizeLineBreakTags } from "../../supabase/functions/_shared/markdown";
 
 export default function CourseView() {
@@ -454,7 +454,7 @@ export default function CourseView() {
         image_url: img?.url ?? null,
         image_alt: img?.alt_text ?? null,
       };
-    }),
+    }) as PortalModule[],
   };
 
   if (previewMode) {
