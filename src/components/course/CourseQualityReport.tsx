@@ -35,6 +35,7 @@ import {
 import { ShieldX, AlertTriangle } from "lucide-react";
 import {
   APARENCIA_DO_VEREDITO,
+  contagemNaTela,
   oQueFalhou,
   type LaudoDoCurso,
 } from "@/lib/laudo-do-curso";
@@ -66,6 +67,9 @@ export function CourseQualityReport({ courseId }: { courseId: string }) {
   const { texto, classe, Icone } = APARENCIA_DO_VEREDITO[laudo.verdict] ??
     APARENCIA_DO_VEREDITO.ready;
   const falhas = oQueFalhou(laudo.checks);
+  // Os números contados sobre o que a tela mostra, não sobre o que o portão
+  // achou: a coerência entre módulos roda e é gravada, mas não vem para cá.
+  const contagem = contagemNaTela(laudo.checks);
 
   return (
     <>
@@ -101,8 +105,8 @@ export function CourseQualityReport({ courseId }: { courseId: string }) {
 
           <div className="flex flex-wrap gap-4 text-sm border-y border-border py-3">
             <span><strong>{laudo.structural_score}</strong>/100 estrutural</span>
-            <span><strong>{laudo.blockers}</strong> bloqueador(es)</span>
-            <span><strong>{laudo.warnings}</strong> aviso(s)</span>
+            <span><strong>{contagem.bloqueadores}</strong> bloqueador(es)</span>
+            <span><strong>{contagem.avisos}</strong> aviso(s)</span>
             <span className="text-muted-foreground ml-auto">
               critérios {laudo.criteria_version}
             </span>

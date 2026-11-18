@@ -254,18 +254,29 @@ describe("o placar da bancada não piora em silêncio", () => {
     expect(fracao).toBeLessThan(0.20);
   }, 60000);
 
-  it("o total de achados de coerência na bancada fica em 25", () => {
+  it("o total de achados de coerência na bancada fica em 32", () => {
     // Trava o placar medido. Se cair, uma verdadeira pode ter sumido; se subir,
     // uma guarda deixou de agir. Nos dois casos a pergunta é qual achado mudou,
     // e a resposta vai no EXPERIMENTO-DOSSIE.md antes de o número aqui mudar.
     const arqs = readdirSync(DIR).filter((f) => f.endsWith(".md") && !/^README|^EXPERIMENTO/.test(f));
-    // 26 na primeira medição (13/11). Passou a 25 em 18/11, com o conserto do
-    // divisor de orações e o alargamento da guarda de exemplo: saiu a "demanda
-    // média 100 ≠ 10 unidades" da Padaria do Bairro, que era falso positivo
-    // (bolo de Páscoa contra exemplo didático de 300/30). As 9 verdadeiras
-    // continuam todas lá, cada uma travada por asserção nominal acima.
+    // A história deste número, porque ele muda por três razões diferentes e
+    // confundi-las é fácil:
+    //
+    //   13 cursos, sem guardas ......... 36
+    //   13 cursos, com guardas ......... 26   (-10 falsos, 0 verdadeira)
+    //   13 cursos, + conserto do divisor 25   (saiu a "demanda média 100 ≠ 10"
+    //                                          da Padaria do Bairro, falsa)
+    //   14 cursos ...................... 32   (entrou o 4o gêmeo da clínica,
+    //                                          com 7 achados, TODOS falsos)
+    //
+    // Os 7 do curso novo são o motivo de a seção de coerência ter saído da tela
+    // em 18/11: ver src/test/laudo-na-tela.test.ts. Eles continuam contados
+    // aqui de propósito — a bancada mede o portão, a tela é outra decisão.
+    //
+    // As 9 contradições verdadeiras continuam todas lá, cada uma travada por
+    // asserção nominal acima.
     const total = arqs.reduce((n, f) => n + achados(f).length, 0);
-    expect(total).toBe(25);
+    expect(total).toBe(32);
   }, 60000);
 
   it("toda guarda tem nome e a medição que a justifica", () => {
