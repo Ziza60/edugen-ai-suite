@@ -30,15 +30,22 @@ export interface Guarda {
   nome: string;
   /** O achado da bancada que a justifica. */
   origem: string;
-  /** A oração exclui este valor da comparação? */
-  exclui(trecho: string, valor: string): boolean;
+  /**
+   * A oração exclui este valor da comparação?
+   *
+   * `caso` é o nome do caso condutor a que a grandeza foi atribuída. Entrou
+   * porque a guarda de exemplo precisa distinguir "por exemplo, se o custo é
+   * R$ 100" de "a 'Clínica X', por exemplo, tem custo de R$ 32.000,00" — a
+   * segunda apresenta O CASO como exemplo do conceito, e o número é premissa.
+   */
+  exclui(trecho: string, valor: string, caso?: string): boolean;
 }
 
 const semAcento = (s: string) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /** O valor aparece dentro de um parêntese que começa por "ex:" ou "exemplo"? */
-function dentroDeExemplo(trecho: string, valor: string): boolean {
+function dentroDeExemplo(trecho: string, valor: string, caso?: string): boolean {
   const t = semAcento(trecho);
   const v = semAcento(valor);
   // Varre os parênteses da oração e pergunta se o valor está num deles.
@@ -47,7 +54,40 @@ function dentroDeExemplo(trecho: string, valor: string): boolean {
     if (!dentro.includes(v)) continue;
     if (/^\s*(ex|exemplo|p\.?\s*ex|por exemplo)\b/.test(dentro)) return true;
   }
-  return false;
+  // E EM PROSA, NÃO SÓ EM PARÊNTESE.
+  //
+  // MEDIDO no curso de 18/11, módulo 4: "Por exemplo, se o custo de um
+  // procedimento é R$ 100 e você deseja um markup de 50%, o preço de venda será
+  // R$ 150." O portão comparou esses R$ 150 com o preço de R$ 300,00 de um
+  // serviço real do caso. A primeira versão desta guarda só olhava parêntese e
+  // deixou passar — um dos sete avisos daquele laudo.
+  //
+  // É seguro por construção: um valor que SÓ aparece numa frase de "por
+  // exemplo" é didático. Premissa do caso é reenunciada em outras frases, e
+  // sobrevive por elas.
+  if (!/\bpor exemplo\b|\bp\.\s?ex\.|\bpor ex\.\b|\bsuponhamos\b|\bdigamos\b/.test(t)) {
+    return false;
+  }
+  // SÓ EXEMPLO GENÉRICO, QUE NÃO NOMEIA O CASO.
+  //
+  // CORREÇÃO DE UM ERRO MEU, medido no mesmo curso: a primeira versão desta
+  // metade excluía qualquer valor numa frase com "por exemplo", e tirou da
+  // comparação as premissas do caso —
+  //
+  //   "No caso da 'Clínica Sorriso Perfeito', por exemplo, o faturamento bruto
+  //    médio mensal é de R$ 60.000,00."
+  //   "A 'Clínica Sorriso Perfeito', por exemplo, possui custos fixos mensais
+  //    de R$ 32.000,00"
+  //
+  // Em português "por exemplo" muitas vezes apresenta O CASO como exemplo do
+  // conceito, e aí o número é premissa, não ilustração. Foi o mesmo erro que eu
+  // critiquei no `periodo-projetado` duas horas antes: guarda larga é cegueira.
+  //
+  // O discriminador é se a oração NOMEIA o caso. "Por exemplo, se o custo de um
+  // procedimento é R$ 100 e o markup é 50%, o preço será R$ 150" não nomeia;
+  // é aritmética didática e sai. As duas frases acima nomeiam, e ficam.
+  if (caso && t.includes(semAcento(caso))) return false;
+  return t.includes(v);
 }
 
 /** O valor é um dos operandos de uma soma cujo total está na mesma oração? */
@@ -95,7 +135,7 @@ export const GUARDAS: Guarda[] = [
     nome: "valor-de-exemplo",
     origem:
       "Doceria m5 '(ex: R$ 3.200,00)' e clínica-1 m4 '(ex: R$ 10.000)' — valor ilustrativo de template de preenchimento",
-    exclui: (t, v) => dentroDeExemplo(t, v),
+    exclui: (t, v, caso) => dentroDeExemplo(t, v, caso),
   },
   {
     nome: "alternativa-de-quiz",
@@ -206,7 +246,9 @@ export interface OcorrenciaGuardada {
 export function aplicarGuardas(grandezas: Grandeza[]): OcorrenciaGuardada[] {
   return grandezas.map((g) => {
     for (const guarda of GUARDAS) {
-      if (guarda.exclui(g.trecho, g.valor)) return { grandeza: g, guarda: guarda.nome };
+      if (guarda.exclui(g.trecho, g.valor, g.caso)) {
+        return { grandeza: g, guarda: guarda.nome };
+      }
     }
     return { grandeza: g, guarda: null };
   });

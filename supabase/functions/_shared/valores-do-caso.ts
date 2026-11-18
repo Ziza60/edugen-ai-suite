@@ -200,7 +200,28 @@ export function oracoes(paragrafo: string): string[] {
   if (inicio < paragrafo.length) out.push(paragrafo.slice(inicio));
   // O enumerador " 1. " de uma solução em passos também separa orações, e não
   // é ponto final de nada.
-  return out.flatMap((o) => o.split(/\s+\d\.\s+/)).filter((o) => o.trim());
+  //
+  // E ELE VEM COLADO QUANDO O PASSO ANTERIOR ACABA EM NÚMERO.
+  //
+  // MEDIDO no curso de 18/11, módulo 6, tudo numa linha só:
+  //
+  //   … = R$ 475.200,00.7. **Cálculo do Lucro Operacional (EBITDA)…** = R$ 91.200,00
+  //
+  // O corte no ponto exige espaço DEPOIS — aqui vem "7". O corte do enumerador
+  // exigia espaço ANTES — aqui vem ",00". Nenhum dos dois agia: a solução
+  // numerada inteira virava UMA oração, e o rótulo de um passo era pareado com
+  // o número de outro. "Receita Líquida" recebeu o Lucro Bruto (R$ 475.200,00)
+  // e "Lucro Bruto" recebeu o EBITDA (R$ 91.200,00). Dois dos sete avisos
+  // daquele laudo nasceram daqui, e nenhuma guarda podia salvá-los: o defeito
+  // está no pareamento, antes de qualquer comparação.
+  //
+  // O que torna o corte seguro dentro de um valor é exigir ponto-dígitos-ponto
+  // -espaço: em "R$ 475.200,00" o ".200" é seguido de vírgula, não de ponto.
+  return out
+    .flatMap((o) => o.split(/\s+\d{1,2}\.\s+/))
+    .flatMap((o) => o.split(/(?<=\d)\.(?=\d{1,2}\.\s)/))
+    .flatMap((o) => o.split(/^\d{1,2}\.\s+/))
+    .filter((o) => o.trim());
 }
 
 /** Parágrafos numa linha só cada, que é a forma que a leitura espera. */
