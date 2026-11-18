@@ -3500,7 +3500,7 @@ export interface NumerosSemFonte {
   examinados: number;
 }
 
-export function numerosSemFonte(
+function numerosSemFonte(
   text: string,
   allowedCorpus: string,
 ): NumerosSemFonte {
@@ -3523,8 +3523,14 @@ export function numerosSemFonte(
   return { semFonte: uniqueStrings(found, 20), examinados };
 }
 
+// Sem `export` na declaração: o nome JÁ está no bloco `export { }` no fim do
+// arquivo. Declarar `export function` aqui além dele é exportar o mesmo nome
+// duas vezes — o Deno recusa o módulo, a função não sobe, e toda requisição
+// falha no nível da rede. Foi o que tirou o app do ar em 18/11, e nada pegou:
+// `npx tsc --noEmit` não enxerga um único arquivo de supabase/functions, e o
+// esbuild do Vitest tolera a duplicata em silêncio.
 /** Compatibilidade: só a lista, como antes. */
-export function containsLikelyUnsupportedNumber(
+function containsLikelyUnsupportedNumber(
   text: string,
   allowedCorpus: string,
 ): string[] {
@@ -5884,6 +5890,7 @@ export {
   chunkSourceDocuments,
   clampInt,
   containsLikelyUnsupportedNumber,
+  numerosSemFonte,
   corsHeaders,
   courseQualitySummary,
   deriveBlockTypes,
