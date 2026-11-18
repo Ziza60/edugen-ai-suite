@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // O QUE TIROU O APP DO AR EM 18/11/2026
@@ -116,6 +116,41 @@ describe("as Edge Functions não têm nome exportado duas vezes", () => {
     ].join("\n");
     const inline = new Set(exportsInline(quebrado));
     expect(exportsEmBloco(quebrado).filter((n) => inline.has(n))).toEqual(["alvo"]);
+  });
+
+  it("todo import relativo resolve para um arquivo que existe", () => {
+    // Import que não resolve é a MESMA falha de boot: o Deno recusa o módulo, a
+    // função não sobe, e o navegador vê "failed to fetch". Barato de checar,
+    // impossível de ver lendo o diff.
+    //
+    // MEDIDO em 18/11: 73 imports relativos nas Edge Functions, todos resolvem.
+    const problemas: string[] = [];
+    let total = 0;
+    for (const arq of ARQUIVOS) {
+      const dir = dirname(arq);
+      for (const m of readFileSync(arq, "utf8").matchAll(/from\s+"(\.[^"]+)"/g)) {
+        total += 1;
+        if (!existsSync(resolve(dir, m[1]))) {
+          problemas.push(`${arq.replace(DIR, "supabase/functions")} → ${m[1]}`);
+        }
+      }
+    }
+    expect(total).toBeGreaterThan(40);
+    expect(problemas, `import que não resolve:\n${problemas.join("\n")}`).toEqual([]);
+  });
+
+  it("todo import relativo traz a extensão .ts, que o Deno exige", () => {
+    // O bundler do Vitest resolve sem extensão; o Deno não. É outra divergência
+    // entre o que a suíte aceita aqui e o que a produção aceita lá.
+    const problemas: string[] = [];
+    for (const arq of ARQUIVOS) {
+      for (const m of readFileSync(arq, "utf8").matchAll(/from\s+"(\.[^"]+)"/g)) {
+        if (!m[1].endsWith(".ts")) {
+          problemas.push(`${arq.replace(DIR, "supabase/functions")} → ${m[1]}`);
+        }
+      }
+    }
+    expect(problemas, `import sem .ts:\n${problemas.join("\n")}`).toEqual([]);
   });
 
   it("re-export com `from` não é confundido com duplicata", () => {
