@@ -3299,8 +3299,33 @@ function renderModuleMarkdown(params: {
       ids.push(id);
       grouped.set(chunk.filename, ids);
     }
+    // A REFERÊNCIA É PARA O ALUNO, NÃO PARA O GERADOR.
+    //
+    // Antes esta seção imprimia o nome do arquivo com extensão e os IDs internos
+    // dos pedaços:
+    //
+    //   - **Manual_auditoria_operacional_4_edicao.docx:** trechos S1:C0, S1:C1…
+    //
+    // MEDIDO no curso de 18/11, gerado a partir de um PDF: 98 ocorrências de
+    // `S1:Cnn` no markdown entregue. Os códigos não significam nada para quem
+    // faz o curso, e a extensão era `.docx` porque o navegador converte o PDF
+    // antes de enviar — o aluno via um nome de arquivo que o autor nunca criou.
+    //
+    // O que fica é o documento, com o nome legível, e quantos trechos dele
+    // sustentaram o módulo. Rastreabilidade ao TRECHO exigiria página ou seção,
+    // e `SourceChunk` não guarda nenhuma das duas — só `filename` e
+    // `chunkIndex`, que é posição no corte, não no documento. Prometer mais que
+    // isso seria inventar precisão.
     const references = [...grouped.entries()]
-      .map(([filename, ids]) => `- **${filename}:** trechos ${ids.join(", ")}.`)
+      .map(([filename, ids]) => {
+        const legivel = filename
+          .replace(/\.(pdf|docx?|txt|md|rtf|odt)$/i, "")
+          .replace(/[_-]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim() || filename;
+        const n = ids.length;
+        return `- **${legivel}** — ${n} ${n === 1 ? "trecho" : "trechos"} utilizado${n === 1 ? "" : "s"} neste módulo.`;
+      })
       .join("\n");
     sections.push(`### Referências utilizadas neste módulo\n\n${references}`);
   }

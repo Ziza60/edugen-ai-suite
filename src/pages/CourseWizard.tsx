@@ -276,6 +276,56 @@ export default function CourseWizard() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  /**
+   * Vários arquivos numa seleção só, processados EM SÉRIE.
+   *
+   * O app sempre aceitou mais de uma fonte — 3 no plano free, 20 no pro, 150
+   * mil caracteres no total —, mas o input lia `files?.[0]` e exigia um clique
+   * por documento. Quem anexou o capítulo 4 de um manual e quis juntar o
+   * capítulo das definições concluiu que o campo aceitava um documento, e o
+   * curso saiu sem os conceitos que faltavam naquele capítulo.
+   *
+   * Em série, e não em paralelo, por dois motivos: `handleFileUpload` lê
+   * `uploadedSources.length` para decidir se ainda cabe, e três uploads
+   * simultâneos leriam todos o mesmo valor antigo e furariam o limite; e o
+   * indicador de progresso é um só.
+   */
+  const handleFilesUpload = async (lista: FileList | null) => {
+    if (!lista?.length) return;
+    const arquivos = Array.from(lista);
+
+    // O LIMITE É CONTADO AQUI, E NÃO DENTRO DO LAÇO.
+    //
+    // `handleFileUpload` checa `uploadedSources.length`, que é estado do React:
+    // ele NÃO muda entre as iterações de um laço, porque a closure guarda o
+    // valor da renderização. Com maxFiles = 3, cinco arquivos numa seleção
+    // passariam todos pela checagem interna. Eu escrevi o laço primeiro e caí
+    // exatamente nisso — a checagem que eu citei como razão para ir em série é
+    // a que não funciona em série.
+    const vagas = Math.max(0, maxFiles - uploadedSources.length);
+    if (vagas === 0) {
+      toast({
+        title: "Limite atingido",
+        description: `Máximo de ${maxFiles} fontes por curso.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (arquivos.length > vagas) {
+      toast({
+        title: `Só cabem ${vagas} ${vagas === 1 ? "fonte" : "fontes"}`,
+        description: `Enviando ${vagas} de ${arquivos.length}. O limite é ${maxFiles} por curso.`,
+      });
+    }
+
+    // Em série: o indicador de progresso é um só, e o upload de cada arquivo
+    // precisa terminar antes de o próximo começar para o contador na tela
+    // acompanhar.
+    for (const file of arquivos.slice(0, vagas)) {
+      await handleFileUpload(file);
+    }
+  };
+
   const handleFileUpload = async (file: File) => {
     if (uploadedSources.length >= maxFiles) {
       toast({ title: "Limite atingido", description: `Máximo de ${maxFiles} fontes por curso.`, variant: "destructive" });
@@ -1129,8 +1179,7 @@ export default function CourseWizard() {
                                   onDrop={(e) => {
                                     e.preventDefault();
                                     setDragging(false);
-                                    const file = e.dataTransfer.files[0];
-                                    if (file) handleFileUpload(file);
+                                    void handleFilesUpload(e.dataTransfer.files);
                                   }}
                                   onClick={() => fileInputRef.current?.click()}
                                   className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
@@ -1151,8 +1200,8 @@ export default function CourseWizard() {
                                   <Progress value={uploadProgress} className="h-1.5" />
                                 )}
                                 <input
-                                  ref={fileInputRef} type="file" accept=".pdf,.txt,.md" className="hidden"
-                                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ""; }}
+                                  ref={fileInputRef} type="file" accept=".pdf,.txt,.md" multiple className="hidden"
+                                  onChange={(e) => { void handleFilesUpload(e.target.files); e.target.value = ""; }}
                                 />
 
                                 {/* URL Import */}
