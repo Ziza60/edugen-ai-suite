@@ -616,6 +616,89 @@ achados/perdidos/falsos dele é vazio. As três saídas, com o custo de cada uma
 A 1 e a 2 juntas dão o caso de teste do brigadeiro e uma ficha real. Nenhuma das
 três é decisão minha.
 
+## RESULTADO: o item 9, medido na terceira tentativa
+
+O item 9 da métrica — *"algum reparo reintroduziu número fora da ficha?"* — ficou
+duas vezes sem medição: na primeira o passo 2.5 não estava no ar, na segunda os
+logs enviados eram de `generate-course`. Com os logs de
+`generate-course-module` do curso de 18/11, ele fecha.
+
+**Nenhum reparo contradisse a ficha.** Seis reparos executados, quatro aceitos:
+
+| lição | resultado | palavras |
+|---|---|---|
+| 3.1 | aceito — 4 problemas → 0 | 873 → **1.260** |
+| 5.1 | aceito — 1 → 0 | 1.339 → 1.248 |
+| 7.2 | aceito — 1 → 0 | 1.379 → 1.535 |
+| 8.2 | aceito — 2 → 0 | 453 → **747** |
+| 6.3 | recusado — 1 → 1 | 541 → 541 |
+| 5.3 | cancelado por timeout | — |
+
+Nas quatro lições reescritas, **todo valor da ficha aparece com o valor da
+ficha**: faturamento bruto R$ 60.000,00, custos fixos R$ 32.000,00, saldo inicial
+R$ 5.000,00, lucro R$ 4.000,00. Zero divergência.
+
+E o caso mais forte é a lição 3.1, a mais reescrita das quatro — 4 problemas
+resolvidos e **387 palavras novas**. Ela contém a composição inteira dos custos
+fixos, e a composição fecha:
+
+```
+aluguel ............................  7.000,00
+salários administrativos ...........  6.000,00
+salários fixos dos dentistas ....... 12.000,00
+depreciação de equipamentos ........  1.500,00
+software de gestão .................    500,00
+contas de consumo (parcela fixa) ...  3.000,00
+outros fixos .......................  2.000,00
+                                     ─────────
+                                     32.000,00  = a ficha
+```
+
+O reparo reescreveu um terço da lição e manteve as premissas **e a aritmética da
+composição**. É o resultado que o passo 2.5 pretendia e que não tinha como ser
+afirmado antes.
+
+## RESULTADO: a ponte saiu de 1 valor para 9
+
+No curso com ficha anterior a ponte herdava **um** valor. Neste, nove:
+
+```
+faturamento bruto .......... R$ 60.000,00 (m2)
+custos fixos ............... R$ 32.000,00 (m2)
+custos variáveis ........... 35%          (m2)
+'análise do DRE' ........... R$  4.000,00 (m2)   ← rótulo lixo
+'base nos dados' ........... R$ 60.000,00 (m2)   ← rótulo lixo
+Receita Bruta .............. R$ 60.000,00 (m2)
+Fluxo de Caixa ............. R$  4.000,00 (m2)
+Saldo Inicial de Caixa ..... R$  5.000,00 (m2)
+'despesas operacionais' .... R$ 32.000,00 (m2)   ← é o custo fixo relabelado
+```
+
+Honestamente: são 9 entradas, mas **5 números distintos** — 60.000 sob três
+rótulos, 32.000 sob dois. A cobertura real passou de 1 para 5 premissas
+carregadas, o que é o ganho, e três dos nove rótulos são lixo, o que é o MESMO
+defeito do portão aparecendo agora também na ponte.
+
+Isso reforça o que a leitura dos 20 já indicava: o rótulo é o gargalo, e ele é um
+só, em dois consumidores.
+
+## O resto do curso de 18/11
+
+```
+course-module-done ......... 6 (índices 3–8; os módulos 1–2 ficaram fora da janela)
+descartado ................. false em 6/6
+course-quality-gate-done ... 1
+liberou .................... 1 (módulo 2) — a corrida não voltou a acontecer
+já reivindicado ............ 0
+effort=medium .............. 0
+```
+
+A recusa do reparo da lição 6.3 (1 → 1 problema, 541 → 541 palavras) é o
+**quinto** caso da família "o reparo não sabe consertar um defeito de bloco
+específico" — aqui um heading de callout que é placeholder, não um
+`decision_map` ausente. Mesmo padrão: mesmo número de palavras, mesmo número de
+problemas.
+
 ## O positivo limpo da aritmética
 
 As cadeias do curso de teste, conferidas pelo autor, fecham todas:
