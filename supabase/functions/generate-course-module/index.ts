@@ -338,6 +338,10 @@ async function generateOneModule(params: {
       )
     : [];
   const moduleSourcePacket = renderSourcePacket(moduleChunks);
+  // O corpus de TODAS as fontes, para a checagem de números. O prompt recebe só
+  // os chunks deste módulo (é o que cabe no orçamento), mas um número pode
+  // legitimamente vir de outra parte do documento. Ver `numerosSemFonte`.
+  const corpusCompleto = useSources ? renderSourcePacket(sourceChunks) : "";
   const allowedSourceIds = moduleChunks.map((chunk) => chunk.id);
   const allowedSourceIdSet = new Set(allowedSourceIds);
 
@@ -497,6 +501,7 @@ async function generateOneModule(params: {
     document,
     markdown,
     sourcePacket: moduleSourcePacket,
+    corpusCompleto,
     allowedSourceIds: allowedSourceIdSet,
     useSources,
     targetMinWords: depth.lessonMinWords * module.lessons.length,
@@ -655,6 +660,7 @@ async function generateOneModule(params: {
       document,
       markdown,
       sourcePacket: moduleSourcePacket,
+      corpusCompleto,
       allowedSourceIds: allowedSourceIdSet,
       useSources,
       targetMinWords: depth.lessonMinWords * module.lessons.length,

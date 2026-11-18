@@ -2242,7 +2242,22 @@ INTEGRIDADE DE DOMÍNIO
 CASO CONDUTOR
 ${
   wantsCase
-    ? `Crie um único caso condutor realista e estritamente fictício. Preencha case_thread e 10 a 16 case_facts canônicos.
+    ? useSources
+      ? `Crie um único caso condutor realista e estritamente fictício, preenchendo case_thread e 8 a 12 case_facts QUALITATIVOS.
+
+COM FONTES ANEXADAS, A FICHA NÃO CARREGA NÚMERO
+- Os case_facts descrevem a situação, o porte e o problema do caso SEM valores:
+  quem é, o que faz, o que não controla, o que quer decidir.
+- Não fixe faturamento, custo, preço, prazo ou percentual na ficha. Os números
+  do curso saem das FONTES, e só os que aparecem literalmente nelas.
+- Se a fonte não trouxer um valor de que o exercício precisaria, descreva a
+  grandeza sem número. Omitir é correto aqui; inventar reprova o módulo.
+
+ISTO É DIFERENTE DO CURSO SEM FONTES, de propósito. Sem fontes, o caso é
+declaradamente fictício e fixar suas premissas é escolher o exercício. Com
+fontes, o curso ensina a partir de um documento real, e um número que não está
+nele é afirmação falsa sobre o material de quem anexou.`
+      : `Crie um único caso condutor realista e estritamente fictício. Preencha case_thread e 10 a 16 case_facts canônicos.
 
 OS NÚMEROS-BASE DO CASO SÃO DECIDIDOS AQUI
 - case_facts é onde os números do caso ficam FIXADOS. Todo valor que mais de um
@@ -2257,11 +2272,7 @@ OS NÚMEROS-BASE DO CASO SÃO DECIDIDOS AQUI
   "pretende adquirir um equipamento" obrigam CADA módulo a inventar o número por
   conta própria — e eles inventam diferente, inclusive dentro do mesmo módulo.
   Se a grandeza importa para o curso, dê o número; se não importa, não a cite.
-- ${
-      useSources
-        ? `Com fontes anexadas, os números do caso saem das FONTES: use os valores que aparecem literalmente nelas e não preencha lacuna com palpite. Se a fonte não fixa um valor de que o curso precisa, descreva a grandeza sem número e não a trate como premissa.`
-        : `O caso é fictício e declarado como tal, então fixar os números dele não é inventar dado: é escolher as premissas do exercício. Escolha valores plausíveis para o porte descrito em case_thread e mantenha-os.`
-    }
+- O caso é fictício e declarado como tal, então fixar os números dele não é inventar dado: é escolher as premissas do exercício. Escolha valores plausíveis para o porte descrito em case_thread e mantenha-os.
 
 ISTO NÃO AUTORIZA INVENTAR FATO DO MUNDO
 - Continua proibido inventar alíquota, limite legal, prazo normativo,
@@ -3447,25 +3458,77 @@ function validateLearningBlock(block: LearningBlock): { usable: boolean; issues:
   return { usable: issues.length === 0, issues };
 }
 
-function containsLikelyUnsupportedNumber(
+// ═══════════════════════════════════════════════════════════════════════════
+// O BLOQUEADOR DE NÚMEROS SEM FONTE ACUSAVA A CONTA CERTA
+//
+// Ele existe por um motivo bom: num curso feito a partir de documento do
+// usuário, inventar estatística é o pior defeito possível, porque o número é
+// verificável fora do curso. Mas o teste era "este número aparece LITERALMENTE
+// no trecho?", e um único acerto bloqueava o módulo inteiro.
+//
+// MEDIDO (src/test/numeros-sem-fonte.test.ts), com a fonte dizendo
+// "faturou R$ 60.000,00 e tem 35% de custos variáveis":
+//
+//     R$ 60.000,00 (literal da fonte) ........... passa
+//     35% (literal da fonte) .................... passa
+//     35% de R$ 60.000,00 = R$ 21.000,00 ........ BLOQUEAVA  ← a conta certa
+//     "Em 2024 o setor cresceu" ................. BLOQUEAVA  ← ano
+//     "leva 1500 minutos" ....................... BLOQUEAVA  ← 4 dígitos nus
+//     R$ 7.000,00 (inventado) ................... bloqueia   ← correto
+//
+// Três dos quatro bloqueios eram legítimos no texto. Um curso que ensine
+// qualquer coisa quantitativa faz conta em todo módulo, então a reprovação era
+// praticamente garantida: foi o que aconteceu na tentativa de 18/11 a partir de
+// um PDF, em que o módulo 3 falhou três vezes e o curso não saiu.
+//
+// DUAS MUDANÇAS, pelo que a medição mostrou:
+//
+// 1. O padrão de 4 dígitos nus (`\b\d{4}\b`) SAI. Ele pega ano e qualquer
+//    número acima de mil escrito sem separador, e não distingue estatística
+//    inventada de "1500 minutos". Dinheiro, percentual e data continuam — são
+//    as formas em que uma estatística inventada se apresenta.
+//
+// 2. A função passa a devolver TAMBÉM o total examinado, para quem chama poder
+//    decidir por proporção em vez de por presença. Um módulo com 2 números sem
+//    fonte em 30 está fazendo conta; um com 20 em 20 está inventando.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface NumerosSemFonte {
+  /** Os que não foram encontrados no corpus, para a mensagem. */
+  semFonte: string[];
+  /** Quantos números das formas examinadas havia no texto. */
+  examinados: number;
+}
+
+export function numerosSemFonte(
   text: string,
   allowedCorpus: string,
-): string[] {
+): NumerosSemFonte {
   const patterns = [
     /(?:R\$|US\$|€|£)\s?\d[\d.,]*/gi,
     /\b\d+(?:[.,]\d+)?\s?%/g,
     /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g,
-    /\b\d{4}\b/g,
   ];
   const allowed = normalizeForMatch(allowedCorpus);
   const found: string[] = [];
+  let examinados = 0;
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
       const token = normalizeForMatch(match[0]);
-      if (token && !allowed.includes(token)) found.push(match[0]);
+      if (!token) continue;
+      examinados += 1;
+      if (!allowed.includes(token)) found.push(match[0]);
     }
   }
-  return uniqueStrings(found, 20);
+  return { semFonte: uniqueStrings(found, 20), examinados };
+}
+
+/** Compatibilidade: só a lista, como antes. */
+export function containsLikelyUnsupportedNumber(
+  text: string,
+  allowedCorpus: string,
+): string[] {
+  return numerosSemFonte(text, allowedCorpus).semFonte;
 }
 
 function detectDomainLeak(
@@ -3691,6 +3754,8 @@ function validateModuleDocument(params: {
   targetMinWords: number;
   lessonMinWords: number;
   lessonMaxWords: number;
+  /** O texto de TODAS as fontes do curso. Ver o bloco de números sem fonte. */
+  corpusCompleto?: string;
 }): ModuleValidationResult {
   const {
     course,
@@ -3703,6 +3768,7 @@ function validateModuleDocument(params: {
     targetMinWords,
     lessonMinWords,
     lessonMaxWords,
+    corpusCompleto,
   } = params;
   const blocking: string[] = [];
   const repairable: string[] = [];
@@ -3776,9 +3842,38 @@ function validateModuleDocument(params: {
 
   // ── Blocking: factual integrity ──────────────────────────────────────────────
   if (useSources) {
-    const unsupported = containsLikelyUnsupportedNumber(markdown, sourcePacket);
-    if (unsupported.length) {
-      blocking.push(`Números não localizados nas fontes: ${unsupported.join(", ")}.`);
+    // O CORPUS É O DOCUMENTO INTEIRO, NÃO O TRECHO DESTE MÓDULO.
+    //
+    // Antes comparava com `sourcePacket`, que são os até 14 chunks escolhidos
+    // para ESTE módulo. Um número que está na página 50 do PDF, usado num
+    // módulo cujos chunks são das páginas 1 a 10, era acusado de não existir na
+    // fonte. `corpusCompleto` é o texto todo; quando quem chama não o passa, cai
+    // no trecho, que é o comportamento antigo.
+    const corpus = corpusCompleto || sourcePacket;
+    const { semFonte, examinados } = numerosSemFonte(markdown, corpus);
+    if (semFonte.length) {
+      // SEVERIDADE POR PROPORÇÃO, E ESTE LIMIAR É JULGAMENTO, NÃO MEDIÇÃO.
+      //
+      // Não há curso COM FONTES na bancada — os catorze são todos sem fonte —,
+      // então eu não tenho como medir a proporção que separa "fez conta" de
+      // "inventou". Escolhi metade porque o modo de falhar do outro lado é
+      // conhecido e grave: um único número sem fonte reprovava o módulo, que
+      // era retentado três vezes e falhava, e o usuário ficava sem curso
+      // nenhum. Entregar com aviso é estritamente melhor que não entregar.
+      //
+      // Quando houver curso com fontes na bancada, este 0,5 é o primeiro número
+      // a ser medido e corrigido.
+      const proporcao = examinados ? semFonte.length / examinados : 1;
+      const lista = `${semFonte.join(", ")}`;
+      if (proporcao > 0.5) {
+        blocking.push(
+          `Números não localizados nas fontes: ${lista} (${semFonte.length} de ${examinados}).`,
+        );
+      } else {
+        warnings.push(
+          `Números não localizados nas fontes: ${lista} (${semFonte.length} de ${examinados}); confira se são contas derivadas das fontes.`,
+        );
+      }
     }
   }
   blocking.push(...detectDomainLeak(markdown, course.course_title, course.description));
