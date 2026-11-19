@@ -8,6 +8,10 @@ import {
   FileText, Upload, X, BookOpen, Users, Layers, Globe2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  motivoDasRecusas, selecionarArquivos,
+  type ArquivoRecusado, type RegrasDeSelecao,
+} from "@/lib/selecao-de-arquivos";
 import { motion, AnimatePresence } from "framer-motion";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -30,6 +34,12 @@ const LOADING_STEPS = [
   "Estruturando os módulos…",
 ];
 
+export interface FonteAnalisada {
+  id: string;
+  filename: string;
+  char_count: number;
+}
+
 export interface PdfAnalysis {
   source_id: string;
   filename: string;
@@ -40,10 +50,19 @@ export interface PdfAnalysis {
   suggestedModules: number;
   detectedLanguage: string;
   summary: string;
+  /**
+   * Todas as fontes analisadas nesta tela, na ordem em que foram escolhidas.
+   * O PRIMEIRO documento é o que preenche título, tema, público e número de
+   * módulos; os demais entram como fonte adicional do mesmo curso. Um manual
+   * dividido em capítulos só ensina o que está em todos eles.
+   */
+  sources: FonteAnalisada[];
 }
 
 interface PdfImportScreenProps {
   tempCourseId: string;
+  /** Teto de fontes do plano do usuário — quem conhece o plano é o wizard. */
+  maxFiles: number;
   onBack: () => void;
   onComplete: (analysis: PdfAnalysis) => void;
 }
@@ -189,39 +208,129 @@ async function renderPdfToMiniPdf(pdfFile: File): Promise<File> {
   return new File([pdfBytes as unknown as BlobPart], pdfFile.name, { type: "application/pdf" });
 }
 
-export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportScreenProps) {
-  const [file, setFile] = useState<File | null>(null);
+type RespostaDaAnalise = Omit<PdfAnalysis, "sources">;
+
+const TAMANHO_MAX_BYTES = 50 * 1024 * 1024;
+const EXTENSOES = ["pdf", "docx"];
+
+class FalhaDeAnalise extends Error {
+  constructor(message: string, readonly limiteHorario = false) {
+    super(message);
+  }
+}
+
+/**
+ * PDF de texto vira DOCX (a edge function não tem `btoa` para binário grande);
+ * PDF escaneado vira um PDF mínimo de imagens. DOCX segue como está.
+ */
+async function prepararParaEnvio(
+  arquivo: File, avisarPasso: (passo: number) => void,
+): Promise<File> {
+  const ext = arquivo.name.split(".").pop()?.toLowerCase();
+  if (ext !== "pdf") return arquivo;
+
+  avisarPasso(1);
+
+  let textoExtraido = "";
+  try {
+    const ab = await arquivo.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+    const partes: string[] = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      partes.push(
+        content.items.map((item: any) => ("str" in item ? item.str : "")).join(" "),
+      );
+    }
+    textoExtraido = partes.join("\n\n").trim();
+  } catch (e) {
+    console.warn("[PdfImport] text extraction failed:", e);
+  }
+
+  if (textoExtraido.length >= 100) {
+    console.log(`[PdfImport] ${arquivo.name}: texto → DOCX (${textoExtraido.length} chars)`);
+    return textToDocxFile(textoExtraido, arquivo.name);
+  }
+  console.log(`[PdfImport] ${arquivo.name}: PDF de imagem, renderizando páginas…`);
+  return renderPdfToMiniPdf(arquivo);
+}
+
+async function enviarParaAnalise(
+  arquivo: File, courseId: string, accessToken: string,
+): Promise<RespostaDaAnalise> {
+  const formData = new FormData();
+  formData.append("file", arquivo);
+  formData.append("course_id", courseId);
+
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-pdf-source`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: formData,
+    },
+  );
+
+  const result = await res.json().catch(() => ({} as any));
+  if (res.status === 429) {
+    throw new FalhaDeAnalise(
+      result.error || "Limite de análises por hora atingido.", true,
+    );
+  }
+  if (!res.ok) throw new FalhaDeAnalise(result.error || "Erro ao processar o arquivo.");
+  return result as RespostaDaAnalise;
+}
+
+export function PdfImportScreen({
+  tempCourseId, maxFiles, onBack, onComplete,
+}: PdfImportScreenProps) {
+  const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [emAnalise, setEmAnalise] = useState<{ indice: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [falhas, setFalhas] = useState<ArquivoRecusado[]>([]);
   const [analysis, setAnalysis] = useState<PdfAnalysis | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState("pt-BR");
 
-  const acceptFile = useCallback((f: File) => {
-    const ext = f.name.split(".").pop()?.toLowerCase();
-    if (!["pdf", "docx"].includes(ext || "")) {
-      setError("Apenas arquivos PDF e DOCX são aceitos.");
-      return;
-    }
-    if (f.size > 50 * 1024 * 1024) {
-      setError("Arquivo muito grande. Limite: 50 MB.");
-      return;
-    }
-    setError(null);
-    setFile(f);
-  }, []);
+  const regras: RegrasDeSelecao = {
+    extensoes: EXTENSOES,
+    tamanhoMaxBytes: TAMANHO_MAX_BYTES,
+    maxArquivos: maxFiles,
+  };
+
+  /**
+   * Um caminho só para o clique e para o arrastar. Antes eram dois, e os dois
+   * liam `files[0]`: o segundo documento era descartado sem dizer nada.
+   */
+  const receberArquivos = useCallback((escolhidos: FileList | File[] | null) => {
+    const lista = escolhidos ? Array.from(escolhidos) : [];
+    if (lista.length === 0) return;
+
+    setFiles((atuais) => {
+      const { aceitos, recusados } = selecionarArquivos(lista, atuais, regras);
+      setError(motivoDasRecusas(recusados));
+      return [...atuais, ...aceitos];
+    });
+  }, [maxFiles]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) acceptFile(dropped);
-  }, [acceptFile]);
+    receberArquivos(e.dataTransfer.files);
+  }, [receberArquivos]);
+
+  const removerArquivo = (nome: string) => {
+    setFiles((atuais) => atuais.filter((f) => f.name !== nome));
+    setError(null);
+  };
 
   const handleAnalyze = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setError(null);
+    setFalhas([]);
     setLoading(true);
     setLoadingStep(0);
 
@@ -229,69 +338,51 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Sessão expirada. Faça login novamente.");
 
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      let fileToSend: File = file;
+      const analises: RespostaDaAnalise[] = [];
+      const naoAnalisados: ArquivoRecusado[] = [];
 
-      if (ext === "pdf") {
-        setLoadingStep(1);
-
-        // Try text extraction first (works for text-based PDFs)
-        let extractedText = "";
+      // EM SÉRIE, de propósito: a análise é cara e o limite por hora é pequeno
+      // (3 no plano free). Em paralelo, um 429 queimaria os outros documentos.
+      for (let i = 0; i < files.length; i++) {
+        setEmAnalise({ indice: i + 1, total: files.length });
+        setLoadingStep(0);
         try {
-          const ab = await file.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
-          const textParts: string[] = [];
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const content = await page.getTextContent();
-            textParts.push(
-              content.items.map((item: any) => ("str" in item ? item.str : "")).join(" "),
-            );
-          }
-          extractedText = textParts.join("\n\n").trim();
-        } catch (e) {
-          console.warn("[PdfImport] text extraction failed:", e);
-        }
-
-        if (extractedText.length >= 100) {
-          // Text-based PDF: convert to DOCX and send (no btoa in edge fn)
-          fileToSend = await textToDocxFile(extractedText, file.name);
-          console.log(`[PdfImport] text PDF → DOCX (${extractedText.length} chars)`);
-        } else {
-          // Scanned/image PDF: render pages and build a tiny PDF (< 40KB)
-          console.log("[PdfImport] image PDF detected, rendering pages…");
-          fileToSend = await renderPdfToMiniPdf(file);
+          const paraEnviar = await prepararParaEnvio(files[i], setLoadingStep);
+          setLoadingStep(2);
+          analises.push(await enviarParaAnalise(paraEnviar, tempCourseId, session.access_token));
+          setLoadingStep(3);
+        } catch (err: any) {
+          naoAnalisados.push({
+            nome: files[i].name,
+            motivo: err?.message || "não foi possível processar",
+          });
+          // Limite por hora atingido: insistir só queima os que faltam.
+          if (err instanceof FalhaDeAnalise && err.limiteHorario) break;
         }
       }
 
-      setLoadingStep(2);
-
-      const formData = new FormData();
-      formData.append("file", fileToSend);
-      formData.append("course_id", tempCourseId);
-
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-pdf-source`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
-          body: formData,
-        },
-      );
-
-      setLoadingStep(3);
-      const result = await res.json();
-      if (res.status === 429) {
-        throw new Error(result.error || "Limite de análises por hora atingido. Tente novamente mais tarde.");
+      if (analises.length === 0) {
+        setError(
+          naoAnalisados[0]?.motivo || "Não foi possível processar os arquivos.",
+        );
+        return;
       }
-      if (!res.ok) throw new Error(result.error || "Erro ao processar o arquivo.");
 
-      setAnalysis(result as PdfAnalysis);
-      const lang = LANGUAGE_OPTIONS.find((l) => l.value === result.detectedLanguage);
-      setSelectedLanguage(lang ? result.detectedLanguage : "pt-BR");
+      const principal = analises[0];
+      setAnalysis({
+        ...principal,
+        sources: analises.map((a) => ({
+          id: a.source_id, filename: a.filename, char_count: a.char_count,
+        })),
+      });
+      setFalhas(naoAnalisados);
+
+      const lang = LANGUAGE_OPTIONS.find((l) => l.value === principal.detectedLanguage);
+      setSelectedLanguage(lang ? principal.detectedLanguage : "pt-BR");
     } catch (err: any) {
       setError(err.message || "Não foi possível processar o arquivo.");
     } finally {
+      setEmAnalise(null);
       setLoading(false);
     }
   };
@@ -299,6 +390,8 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
   const handleContinue = () => {
     if (analysis) onComplete({ ...analysis, detectedLanguage: selectedLanguage });
   };
+
+  const totalChars = analysis?.sources.reduce((s, f) => s + f.char_count, 0) ?? 0;
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -336,7 +429,9 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                   Transforme seu documento em curso
                 </h2>
                 <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                  Faça upload de um PDF ou DOCX — apostila, manual, treinamento corporativo — e a IA cria a estrutura do curso automaticamente.
+                  Faça upload de um ou mais PDF/DOCX — apostila, manual, treinamento
+                  corporativo — e a IA cria a estrutura do curso automaticamente. Um
+                  manual dividido em capítulos pode entrar inteiro: anexe todos.
                 </p>
               </div>
 
@@ -348,47 +443,80 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
                   isDragging
                     ? "border-blue-500 bg-blue-500/5"
-                    : file
+                    : files.length > 0
                     ? "border-green-500/50 bg-green-500/5"
                     : "border-border hover:border-blue-400 hover:bg-blue-500/5"
                 }`}
               >
-                {file ? (
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-                      <FileText className="h-6 w-6 text-blue-500" />
-                    </div>
-                    <div className="text-left flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">{file.name}</p>
-                      <p className="text-sm text-muted-foreground">{formatBytes(file.size)}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0"
-                      onClick={() => { setFile(null); setError(null); }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                {files.length > 0 ? (
+                  <div className="space-y-2">
+                    {files.map((f, i) => (
+                      <div key={f.name} className="flex items-center gap-3 text-left">
+                        <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                          <FileText className="h-5 w-5 text-blue-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-foreground truncate text-sm">{f.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatBytes(f.size)}
+                            {files.length > 1 && i === 0 && " · documento principal"}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                          aria-label={`Remover ${f.name}`}
+                          onClick={() => removerArquivo(f.name)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+
+                    {files.length < maxFiles ? (
+                      <label className="flex items-center justify-center gap-2 cursor-pointer select-none pt-3 mt-1 border-t border-border/60 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                        <input
+                          type="file"
+                          accept=".pdf,.docx"
+                          multiple
+                          className="hidden"
+                          data-testid="pdf-file-input-mais"
+                          onChange={(e) => { receberArquivos(e.target.files); e.target.value = ""; }}
+                        />
+                        <Upload className="h-3.5 w-3.5" />
+                        Adicionar outro documento · {files.length}/{maxFiles}
+                      </label>
+                    ) : (
+                      <p className="text-xs text-muted-foreground pt-3 mt-1 border-t border-border/60">
+                        Limite do seu plano: {maxFiles} documento{maxFiles > 1 ? "s" : ""}.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <label className="flex flex-col items-center gap-3 cursor-pointer select-none">
                     <input
                       type="file"
                       accept=".pdf,.docx"
+                      multiple
                       className="hidden"
                       data-testid="pdf-file-input"
-                      onChange={(e) => { const f = e.target.files?.[0]; if (f) acceptFile(f); e.target.value = ""; }}
+                      onChange={(e) => { receberArquivos(e.target.files); e.target.value = ""; }}
                     />
                     <Upload className="h-8 w-8 text-muted-foreground/50" />
                     <div>
-                      <p className="font-medium text-foreground">Arraste o arquivo aqui</p>
-                      <p className="text-sm text-muted-foreground mt-1">ou clique para selecionar</p>
+                      <p className="font-medium text-foreground">Arraste os arquivos aqui</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        ou clique para selecionar — pode marcar vários de uma vez
+                      </p>
                     </div>
                     <div className="flex items-center justify-center gap-2">
                       <Badge variant="outline" className="text-[11px]">PDF</Badge>
                       <Badge variant="outline" className="text-[11px]">DOCX</Badge>
-                      <Badge variant="outline" className="text-[11px]">Até 50 MB</Badge>
+                      <Badge variant="outline" className="text-[11px]">Até 50 MB cada</Badge>
+                      <Badge variant="outline" className="text-[11px]">
+                        Até {maxFiles} {maxFiles > 1 ? "documentos" : "documento"}
+                      </Badge>
                     </div>
                   </label>
                 )}
@@ -397,6 +525,12 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
               {loading && (
                 <Card className="border-blue-500/20 bg-blue-500/5">
                   <CardContent className="p-5 space-y-3">
+                    {emAnalise && emAnalise.total > 1 && (
+                      <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">
+                        Documento {emAnalise.indice} de {emAnalise.total}
+                        {files[emAnalise.indice - 1] && ` — ${files[emAnalise.indice - 1].name}`}
+                      </p>
+                    )}
                     {LOADING_STEPS.map((step, i) => (
                       <div key={i} className="flex items-center gap-3">
                         {i < loadingStep ? (
@@ -424,14 +558,19 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
 
               <Button
                 className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
-                disabled={!file || loading}
+                disabled={files.length === 0 || loading}
                 onClick={handleAnalyze}
                 data-testid="pdf-analyze-btn"
               >
                 {loading ? (
                   <><Loader2 className="h-4 w-4 animate-spin mr-2" />Processando…</>
                 ) : (
-                  <>Analisar com IA <ArrowRight className="h-4 w-4 ml-2" /></>
+                  <>
+                    {files.length > 1
+                      ? `Analisar ${files.length} documentos com IA`
+                      : "Analisar com IA"}
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </>
                 )}
               </Button>
 
@@ -455,12 +594,49 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
               animate={{ opacity: 1, y: 0 }}
               className="space-y-5"
             >
-              <div className="flex items-center gap-2 text-green-600 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-2.5">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span className="text-sm font-medium">
-                  Arquivo analisado — {analysis.char_count.toLocaleString("pt-BR")} caracteres extraídos
-                </span>
+              <div className="text-green-600 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-2.5 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span className="text-sm font-medium">
+                    {analysis.sources.length === 1
+                      ? "Arquivo analisado"
+                      : `${analysis.sources.length} documentos analisados`}
+                    {" — "}
+                    {totalChars.toLocaleString("pt-BR")} caracteres extraídos
+                  </span>
+                </div>
+                {analysis.sources.length > 1 && (
+                  <ul className="text-xs text-green-700/90 pl-6 space-y-0.5">
+                    {analysis.sources.map((s) => (
+                      <li key={s.id} className="truncate">
+                        {s.filename} · {s.char_count.toLocaleString("pt-BR")} chars
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
+
+              {falhas.length > 0 && (
+                <div className="flex items-start gap-2 text-amber-700 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div className="text-sm space-y-0.5">
+                    <p className="font-medium">
+                      {falhas.length === 1
+                        ? "Um documento não entrou:"
+                        : `${falhas.length} documentos não entraram:`}
+                    </p>
+                    <ul className="text-xs space-y-0.5">
+                      {falhas.map((f) => (
+                        <li key={f.nome}>{f.nome} — {f.motivo}</li>
+                      ))}
+                    </ul>
+                    <p className="text-xs pt-1">
+                      O curso será gerado só com o que foi analisado. Para incluir o
+                      resto, volte e tente de novo.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <Card>
                 <CardContent className="p-6 space-y-5">
@@ -514,10 +690,15 @@ export function PdfImportScreen({ tempCourseId, onBack, onComplete }: PdfImportS
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => { setAnalysis(null); setFile(null); }}
+                  onClick={() => {
+                    setAnalysis(null);
+                    setFiles([]);
+                    setFalhas([]);
+                    setError(null);
+                  }}
                 >
                   <ArrowLeft className="h-4 w-4 mr-1.5" />
-                  Usar outro arquivo
+                  {analysis.sources.length > 1 ? "Trocar documentos" : "Usar outro arquivo"}
                 </Button>
                 <Button
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold"

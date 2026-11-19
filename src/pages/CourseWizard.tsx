@@ -213,7 +213,13 @@ export default function CourseWizard() {
       numModules: Math.min(analysis.suggestedModules, limits.maxModules),
       language: analysis.detectedLanguage === "en" ? "en" : analysis.detectedLanguage === "es" ? "es" : "pt-BR",
     }));
-    setUploadedSources([{ id: analysis.source_id, filename: analysis.filename, char_count: analysis.char_count }]);
+    // A tela de PDF aceita vários documentos: todos entram como fonte do curso.
+    // O primeiro é o que preencheu título, tema e público acima.
+    setUploadedSources(
+      analysis.sources.length > 0
+        ? analysis.sources
+        : [{ id: analysis.source_id, filename: analysis.filename, char_count: analysis.char_count }],
+    );
     setUseSources(true);
     setShowPdf(false);
   };
@@ -266,6 +272,7 @@ export default function CourseWizard() {
     return (
       <PdfImportScreen
         tempCourseId={tempCourseId}
+        maxFiles={maxFiles}
         onBack={() => { setShowPdf(false); setShowTemplates(true); }}
         onComplete={handlePdfComplete}
       />

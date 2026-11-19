@@ -43,6 +43,41 @@ Um `grep` por `'Padaria Delícias do Bairro'` teria mostrado 141 ocorrências em
 dois segundos e apontado para o lugar certo. A conclusão errada quase virou uma
 mudança grande no extrator para resolver um problema inexistente.
 
+## Um verificador que não olha arquivo nenhum devolve "limpo"
+
+**Regra permanente, criada em 19/11/2026 depois do terceiro erro da mesma
+família — este no meu próprio instrumento.**
+
+Antes de reportar que uma verificação passou, **confirme quantos arquivos ela
+examinou.** Zero arquivos e nenhum problema produzem exatamente a mesma saída:
+código 0 e silêncio.
+
+### O caso que criou a regra
+
+```
+npx tsc --noEmit                      →    0 arquivos   (exit 0, "limpo")
+tsc --noEmit -p tsconfig.app.json     → 1430 arquivos
+tsc --noEmit -p tsconfig.node.json    →  228 arquivos
+```
+
+O `tsconfig.json` da raiz tem `"files": []` e só `references`. O `tsc --noEmit`
+**não segue references** — isso é trabalho do `tsc --build`. Ele abre o projeto,
+não acha o que compilar e sai com sucesso.
+
+Todo "tsc limpo" que eu reportei neste projeto veio desse comando. Depois do boot
+quebrado de 18/11 eu corrigi a conclusão para "ele cobre `src/` mas não as Edge
+Functions" — **e essa correção também estava errada: ele não cobria nada.** No
+dia em que medi isto, o comando devolveu limpo com um `Cannot find name 'file'`
+real em `PdfImportScreen.tsx`, que apareceu na primeira invocação com `-p`.
+
+**O comando é `npm run typecheck`**, que nomeia os dois projetos explicitamente.
+`src/test/verificacao-de-tipos.test.ts` trava o script contra os `references` da
+raiz e recusa um `tsc --noEmit` solto.
+
+Ainda em aberto, de propósito: `supabase/functions` segue fora dos dois projetos
+(~6 mil linhas sem verificação de tipos). O que cobre a classe de falha que
+derrubou o app está em `src/test/exports-das-edge-functions.test.ts`.
+
 ## Antes de medir obediência, verifique se o insumo existe
 
 **Regra permanente, criada em 13/11/2026 depois do segundo erro da mesma
