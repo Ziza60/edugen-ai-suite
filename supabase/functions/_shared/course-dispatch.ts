@@ -163,6 +163,51 @@ export function reivindicou(resposta: unknown): boolean {
   return typeof linha.id === "string" && linha.id.length > 0;
 }
 
+/**
+ * Quantas vezes um job pode ser reivindicado. É o mesmo 3 do `attempts < 3`
+ * dentro de `claim_course_generation_job` — e são dois números que precisam
+ * continuar iguais.
+ */
+export const MAX_TENTATIVAS = 3;
+
+/**
+ * Esta é a ÚLTIMA tentativa que este job terá?
+ *
+ * ─── POR QUE A PERGUNTA IMPORTA ──────────────────────────────────────────────
+ *
+ * MEDIDO no curso 30305a65, de 19/11/2026: 7 módulos pedidos, 7 planejados, 7
+ * gerados, 3 gravados. O módulo de índice 3 queimou as três tentativas no mesmo
+ * bloqueio — "Placeholder detectado no Markdown final" — e o usuário recebeu os
+ * módulos 1, 2 e 7, sem nada na tela explicando o buraco.
+ *
+ * A retentativa repete o MESMO prompt. Quando o bloqueio nasce de uma frase que
+ * o modelo considera correta, as três tentativas falham igual: a segunda e a
+ * terceira são desperdício garantido, não nova chance. Na última, o worker
+ * rebaixa o bloqueio a ressalva e grava o módulo, porque um módulo com aviso é
+ * editável e um módulo que não existe não é.
+ *
+ * ─── POR QUE A CONTA MORA AQUI ───────────────────────────────────────────────
+ *
+ * `claim_course_generation_job` faz `attempts = attempts + 1 ... where attempts
+ * < 3 returning *`. O claim devolve a linha com o contador JÁ incrementado, e
+ * um quarto claim não acontece — então `attempts === 3` é a última chamada.
+ *
+ * Escrevi este teste primeiro como uma cópia da conta dentro do próprio arquivo
+ * de teste. Isso mediria meu raciocínio, não o código — a régua que não olha o
+ * que afirma medir, que é o defeito assinado deste projeto. Aqui, worker e
+ * teste leem a mesma função.
+ *
+ * `attempts` ausente devolve `false` de propósito: na dúvida, retentar. O
+ * caminho antigo devolve o job para 'pending' e a rede de segurança o repesca,
+ * enquanto tratar o desconhecido como última tentativa entregaria conteúdo
+ * ruim já na primeira passada.
+ */
+export function eUltimaTentativa(resposta: unknown): boolean {
+  if (!resposta || typeof resposta !== "object") return false;
+  const attempts = (resposta as Record<string, unknown>).attempts;
+  return typeof attempts === "number" && attempts >= MAX_TENTATIVAS;
+}
+
 /** unique_violation no Postgres. O módulo já está gravado nesta posição. */
 const UNIQUE_VIOLATION = "23505";
 

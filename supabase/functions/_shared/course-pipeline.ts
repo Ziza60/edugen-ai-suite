@@ -557,10 +557,55 @@ const MARKDOWN_PLACEHOLDER_PATTERNS = PLACEHOLDER_PATTERNS.filter(
   (pattern) => !/objetivo da licao|descricao do modulo/.test(pattern.source),
 );
 
-function markdownHasPlaceholder(markdown: string): boolean {
-  const withoutChrome = markdown.replace(RENDERER_LABEL_PATTERN, " ");
+/** Um placeholder achado no Markdown: qual padrão casou e em que texto. */
+interface PlaceholderEncontrado {
+  padrao: string;
+  trecho: string;
+}
+
+/**
+ * ─── POR QUE O ACHADO PRECISA DIZER QUAL E ONDE ──────────────────────────────
+ *
+ * A mensagem era `"Placeholder detectado no Markdown final."` e nada mais.
+ *
+ * MEDIDO no curso 30305a65, de 19/11/2026: pedidos 7 módulos, a estrutura
+ * planejou 7, as sete foram geradas, e só três foram gravadas — índices 0, 1 e
+ * 6. O módulo de índice 3 falhou TRÊS vezes, sempre com essa frase, e perdeu as
+ * três tentativas. O usuário recebeu um curso com 3 de 7 módulos.
+ *
+ * Com a frase sem detalhe, não há como saber qual dos treze padrões casou. Eu
+ * levantei a hipótese de que fossem `resposta esperada` ou
+ * `criterio de avaliacao \d+`, legítimos num curso que ensina critérios de
+ * auditoria, e fui medir: rodei o detector contra os 15 cursos reais do acervo
+ * e NENHUM reprova. A medição não serviu de nada, porque os 15 são justamente
+ * os que passaram — população errada, viés de sobrevivência. O markdown do
+ * módulo reprovado é exatamente o que não existe em lugar nenhum.
+ *
+ * Um bloqueio que destrói o conteúdo precisa dizer o que viu. Sem isso o
+ * próximo caso é tão cego quanto este.
+ */
+function placeholdersNoMarkdown(markdown: string): PlaceholderEncontrado[] {
+  const withoutChrome = (markdown || "").replace(RENDERER_LABEL_PATTERN, " ");
   const normalized = normalizePlaceholderCheck(withoutChrome);
-  return MARKDOWN_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(normalized));
+  const achados: PlaceholderEncontrado[] = [];
+
+  for (const pattern of MARKDOWN_PLACEHOLDER_PATTERNS) {
+    const m = normalized.match(pattern);
+    if (!m || m.index === undefined) continue;
+    const ini = Math.max(0, m.index - 55);
+    const fim = Math.min(normalized.length, m.index + m[0].length + 55);
+    achados.push({
+      padrao: pattern.source,
+      trecho: `${ini > 0 ? "…" : ""}${normalized.slice(ini, fim)}${fim < normalized.length ? "…" : ""}`,
+    });
+  }
+
+  return achados;
+}
+
+function markdownHasPlaceholder(markdown: string): boolean {
+  // Uma fonte de verdade só: o booleano é a lista vazia ou não.
+  return placeholdersNoMarkdown(markdown).length > 0;
 }
 
 function normalizePlaceholderCheck(value: string): string {
@@ -3910,8 +3955,13 @@ function validateModuleDocument(params: {
   blocking.push(...detectDomainLeak(markdown, course.course_title, course.description));
 
   // Placeholder in final markdown is always blocking
-  if (markdownHasPlaceholder(markdown)) {
-    blocking.push("Placeholder detectado no Markdown final.");
+  const placeholders = placeholdersNoMarkdown(markdown);
+  if (placeholders.length) {
+    blocking.push(
+      `Placeholder detectado no Markdown final: ${
+        placeholders.map((p) => `/${p.padrao}/ em "${p.trecho}"`).join(" ; ")
+      }`,
+    );
   }
 
   // Zero valid blocks anywhere → blocking
@@ -5932,6 +5982,7 @@ export {
   lessonCallBudget,
   mapWithConcurrency,
   markdownHasPlaceholder,
+  placeholdersNoMarkdown,
   normalizeAssessment,
   normalizeBlockType,
   normalizeBlueprint,

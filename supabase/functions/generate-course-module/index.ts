@@ -51,7 +51,8 @@ import type {
 } from "../_shared/course-pipeline.ts";
 import { repairTruncation } from "../_shared/markdown.ts";
 import {
-  dispatchAll, elegiveis, ganhouOPortao, moduloJaGravado, reivindicou, secretsMatch,
+  dispatchAll, elegiveis, eUltimaTentativa, ganhouOPortao, moduloJaGravado,
+  reivindicou, secretsMatch,
 } from "../_shared/course-dispatch.ts";
 
 /**
@@ -287,6 +288,12 @@ async function generateOneModule(params: {
   sourceChunks: SourceChunk[];
   settings: Record<string, any>;
   msLeft: () => number;
+  /**
+   * Esta é a 3a e última tentativa deste job. Na última, um bloqueio vira
+   * ressalva e o módulo é gravado: o custo de um módulo com aviso é menor que o
+   * de um buraco silencioso no curso.
+   */
+  ultimaTentativa: boolean;
 }): Promise<{
   warnings: string[];
   repairsApplied: number;
@@ -306,6 +313,7 @@ async function generateOneModule(params: {
     sourceChunks,
     settings,
     msLeft,
+    ultimaTentativa,
   } = params;
 
   const language = asString(settings.language, "pt-BR");
@@ -671,9 +679,43 @@ async function generateOneModule(params: {
   }
 
   if (validation.blocking.length) {
-    throw new Error(
-      `Módulo ${module.module_number} sem conteúdo entregável: ${validation.blocking.join(" | ")}`,
-    );
+    // ─── NA ÚLTIMA TENTATIVA, ENTREGAR COM RESSALVA VENCE NÃO ENTREGAR ───────
+    //
+    // Este arquivo já aprendeu isto uma vez, e está escrito em
+    // `validateModuleDocument`, sobre números sem fonte: "um único número sem
+    // fonte reprovava o módulo, que era retentado três vezes e falhava, e o
+    // usuário ficava sem curso nenhum. Entregar com aviso é estritamente melhor
+    // que não entregar."
+    //
+    // MEDIDO no curso 30305a65, de 19/11/2026: 7 módulos pedidos, 7 planejados,
+    // 7 gerados, 3 gravados. O módulo de índice 3 queimou as três tentativas no
+    // mesmo bloqueio, e o que o usuário recebeu foi um curso com os módulos 1,
+    // 2 e 7 — sem nada na tela explicando o buraco.
+    //
+    // A retentativa repete o MESMO prompt. Se o bloqueio nasce de uma frase que
+    // o modelo considera correta, as três tentativas falham igual: o segundo e o
+    // terceiro gasto de tokens são certeza de desperdício, não chance de acerto.
+    //
+    // Então, na última: o bloqueio desce para ressalva, o módulo é gravado e o
+    // laudo diz o que foi tolerado. Um módulo com aviso é editável; um módulo
+    // que não existe não é. E o curso deixa de ter buraco silencioso.
+    if (ultimaTentativa) {
+      console.warn(
+        `[generate-course-module] Módulo ${module.module_number}: última tentativa, ` +
+        `entregando com ressalva em vez de perder o módulo — ` +
+        `${validation.blocking.join(" | ")}`,
+      );
+      validation.warnings.push(
+        ...validation.blocking.map(
+          (b) => `Entregue apesar de: ${b} (última das 3 tentativas; revise este módulo)`,
+        ),
+      );
+      validation.blocking = [];
+    } else {
+      throw new Error(
+        `Módulo ${module.module_number} sem conteúdo entregável: ${validation.blocking.join(" | ")}`,
+      );
+    }
   }
   const qualityNotes = [
     ...validation.repairable,
@@ -1004,6 +1046,9 @@ Deno.serve(async (req: Request) => {
         sourceChunks,
         settings,
         msLeft,
+        // A conta mora em `eUltimaTentativa`, junto de `reivindicou`, para que
+        // worker e teste leiam a MESMA função em vez de duas cópias.
+        ultimaTentativa: eUltimaTentativa(claimed),
       });
 
       await serviceClient
@@ -1040,8 +1085,21 @@ Deno.serve(async (req: Request) => {
       );
     } catch (error: any) {
       const message = error?.message || String(error);
+      // DOIS SISTEMAS DE NUMERAÇÃO NA MESMA FRASE.
+      //
+      // Esta linha imprimia `moduleIndex`, base 0, e a mensagem que ela carrega
+      // vem de `generateOneModule`, que usa `module_number`, base 1. No curso
+      // 30305a65 o log dizia:
+      //
+      //   "Módulo 3 falhou: Módulo 4 sem conteúdo entregável: ..."
+      //
+      // É o MESMO módulo. Perdi tempo, no meio da diagnose de uma perda de
+      // conteúdo, tentando saber se eram dois módulos ou um. Agora a linha diz
+      // os dois números e qual é qual.
       console.error(
-        `[generate-course-module] Módulo ${payload.moduleIndex} falhou: ${message}`,
+        `[generate-course-module] Módulo ${payload.moduleIndex + 1} ` +
+        `(índice ${payload.moduleIndex}, tentativa ${claimed?.attempts ?? "?"}/3) ` +
+        `falhou: ${message}`,
       );
       // Volta para 'pending' enquanto houver tentativa sobrando, para que a rede
       // de segurança repesque; só vira 'failed' quando esgotam.

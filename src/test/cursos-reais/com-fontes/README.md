@@ -12,8 +12,45 @@ sem fontes (`useSources: false`), o que deixou duas mudanças sem como medir:
 | arquivo | o que é |
 |---|---|
 | `auditoria-planejamento-issai.md` | curso de 7 módulos gerado em 19/11/2026 |
+| `auditoria-3-de-7-modulos.md` | o curso 30305a65: 7 pedidos, **3 entregues** |
+| `auditoria-3-de-7-modulos-log.csv` | o log da função para esse curso |
 | `fonte-1-introducao.txt` | 1ª fonte anexada — 38.605 caracteres |
 | `fonte-2-manual-cap4.txt` | 2ª fonte anexada — 93.537 caracteres |
+
+O par curso + log é o primeiro registro em que os dois existem lado a lado, e é
+o que permitiu separar "a estrutura planejou menos" de "os módulos foram
+descartados depois".
+
+## O terceiro defeito: 7 módulos pedidos, 3 entregues
+
+MEDIDO no log de `auditoria-3-de-7-modulos-log.csv`:
+
+```
+course-module-done ..... índices 0, 1 e 6, descartado=false
+"Módulo 3 falhou: Módulo 4 sem conteúdo entregável:
+ Placeholder detectado no Markdown final."   ← 17:26:56, 17:28:41, 17:30:06
+```
+
+Os sete objetivos do curso (CO1..CO7, na visão geral) provam que o blueprint
+tinha 7 módulos, e as sete séries de lições aparecem no log. Entregues: 1, 2 e
+7. Perdidos: 3, 4, 5 e 6. O módulo de índice 3 queimou as três tentativas no
+mesmo bloqueio.
+
+**O que o log NÃO diz:** o que aconteceu com os índices 2, 4 e 5. A janela
+exportada vai de 17:25:32 a 17:30:06 e a geração começou antes — não há `done`
+nem `falhou` para eles. Fica em aberto até alguém exportar a janela inteira.
+
+**O que não dá para medir com este arquivo:** qual dos treze padrões de
+placeholder casou. O markdown do módulo reprovado não existe em lugar nenhum —
+só os três que passaram estão aqui. Eu levantei a hipótese de `resposta
+esperada` ou `criterio de avaliacao \d+`, legítimos num curso que ensina
+critérios de auditoria, rodei o detector contra os 15 cursos reais do acervo e
+nenhum reprova. A medição não valeu nada: os 15 são justamente os que passaram.
+Viés de sobrevivência.
+
+Daí os três consertos de 19/11: a mensagem passa a dizer qual padrão e o trecho
+em volta; o log passa a dizer o número do módulo nas duas bases e a tentativa;
+e na última tentativa o bloqueio desce para ressalva e o módulo é gravado.
 
 As fontes são os dois capítulos do *Manual de auditoria operacional, 4ª edição*
 (TCU), extraídos com `pdftotext -layout` dos mesmos PDFs enviados ao app. O
