@@ -280,7 +280,7 @@ Deno.serve(async (req: Request) => {
       filename:        file.name,
       char_count:      extractedText.length,
       termos_fora_das_fontes: foraDasFontes,
-      aviso_vocabulario:      avisoDeVocabulario(foraDasFontes),
+      aviso_vocabulario:      avisoDeVocabulario(foraDasFontes, corpus),
       title:           titulo,
       theme:           analysis.theme           || "",
       targetAudience:  analysis.targetAudience  || "",

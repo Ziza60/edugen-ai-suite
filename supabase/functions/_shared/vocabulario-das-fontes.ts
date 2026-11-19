@@ -137,11 +137,112 @@ export function expressoesForaDasFontes(titulo: string, corpus: string): string[
   return fora;
 }
 
-/** A frase do aviso, ou `null` quando não há nada a avisar. */
-export function avisoDeVocabulario(fora: readonly string[]): string | null {
+/** Uma expressão que a fonte realmente usa, com quantas vezes aparece. */
+export interface ExpressaoDaFonte {
+  expressao: string;
+  ocorrencias: number;
+}
+
+/**
+ * Quantas vezes a palavra aparece no corpus já normalizado, como palavra
+ * inteira.
+ */
+function frequencia(palavra: string, palavras: readonly string[]): number {
+  let n = 0;
+  for (const p of palavras) if (p === palavra) n += 1;
+  return n;
+}
+
+/**
+ * Um achado só diz o que NÃO é. Isto diz o que a fonte usa no lugar.
+ *
+ * ─── POR QUE EXISTE UM PISO DE OCORRÊNCIAS ───────────────────────────────────
+ *
+ * MEDIDO nas fontes reais, pedindo sugestões para cada palavra dos dois pares
+ * acusados:
+ *
+ *   "planejamento" → 29x "matriz de planejamento"
+ *                    12x "fase de planejamento"
+ *                     5x "planejamento da auditoria"
+ *
+ *   "estrategico"  →  1x "grupo estrategico"
+ *                     1x "estrategico da orga"      ← palavra cortada pelo PDF
+ *   "detalhado"    →  1x "detalhado de modo"
+ *                     1x "suficientemente detalhado de modo"
+ *
+ * As do primeiro grupo são os termos de ofício do manual. As dos outros dois
+ * são ruído, e uma delas é um pedaço de "organização" partido pela extração do
+ * PDF. A diferença entre as duas situações é frequência, e só isso.
+ *
+ * Então: a âncora é a palavra MAIS FREQUENTE do par — a palavra do domínio, não
+ * o adjetivo que o modelo grudou nela — e nada abaixo de `MIN_OCORRENCIAS`
+ * entra. Sem sugestão boa, o aviso continua dizendo apenas que a expressão não
+ * está nos documentos, que já é verdade útil.
+ */
+const MIN_OCORRENCIAS = 3;
+
+export function comoAFonteChama(
+  expressao: string,
+  corpus: string,
+  max = 3,
+): ExpressaoDaFonte[] {
+  const palavras = normalizar(corpus).split(" ").filter(Boolean);
+  if (!palavras.length) return [];
+
+  const doPar = normalizar(expressao).split(" ").filter(Boolean);
+  if (!doPar.length) return [];
+
+  // A âncora é a palavra do domínio: a que a fonte usa mais.
+  const ancora = doPar
+    .map((p) => ({ p, n: frequencia(p, palavras) }))
+    .sort((a, b) => b.n - a.n)[0];
+  if (!ancora || ancora.n < MIN_OCORRENCIAS) return [];
+
+  const contagem = new Map<string, number>();
+  for (let n = 2; n <= 4; n++) {
+    for (let i = 0; i + n <= palavras.length; i++) {
+      const janela = palavras.slice(i, i + n);
+      if (!janela.includes(ancora.p)) continue;
+      if (SEM_CARGA.has(janela[0]) || SEM_CARGA.has(janela[n - 1])) continue;
+      // Pelo menos duas palavras com carga, senão é costura de frase.
+      if (janela.filter((w) => !SEM_CARGA.has(w) && w.length >= MIN_LETRAS).length < 2) continue;
+      const e = janela.join(" ");
+      if (e === normalizar(expressao)) continue;
+      contagem.set(e, (contagem.get(e) || 0) + 1);
+    }
+  }
+
+  return [...contagem.entries()]
+    .filter(([, n]) => n >= MIN_OCORRENCIAS)
+    .sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)
+    .slice(0, max)
+    .map(([expressao, ocorrencias]) => ({ expressao, ocorrencias }));
+}
+
+/**
+ * A frase do aviso, ou `null` quando não há nada a avisar. Com o corpus, ela
+ * também diz como a fonte chama a coisa.
+ */
+export function avisoDeVocabulario(
+  fora: readonly string[],
+  corpus = "",
+): string | null {
   if (fora.length === 0) return null;
+
   const lista = fora.map((e) => `"${e}"`).join(", ");
-  return fora.length === 1
+  const abertura = fora.length === 1
     ? `A expressão ${lista} não aparece nos documentos enviados.`
     : `As expressões ${lista} não aparecem nos documentos enviados.`;
+
+  if (!corpus) return abertura;
+
+  // A sugestão sai da primeira expressão acusada: duas listas de sinônimos num
+  // aviso de três linhas não ajudam ninguém a decidir.
+  const usadas = comoAFonteChama(fora[0], corpus);
+  if (!usadas.length) return abertura;
+
+  const comoChama = usadas
+    .map((u) => `"${u.expressao}" (${u.ocorrencias}x)`)
+    .join(", ");
+  return `${abertura} A sua fonte usa: ${comoChama}.`;
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  avisoDeVocabulario, expressoesForaDasFontes, normalizar,
+  avisoDeVocabulario, comoAFonteChama, expressoesForaDasFontes, normalizar,
 } from "../../supabase/functions/_shared/vocabulario-das-fontes.ts";
 import { promptDeAnalise } from "../../supabase/functions/_shared/analise-de-documento.ts";
 
@@ -201,6 +201,68 @@ describe("a frase do aviso", () => {
 
   it("duas ou mais, plural", () => {
     expect(avisoDeVocabulario(["a bbbb", "c dddd"])).toMatch(/^As expressões/);
+  });
+
+  it("sem corpus, o aviso diz só que a expressão não está nos documentos", () => {
+    expect(avisoDeVocabulario(["planejamento estrategico"])).not.toContain("sua fonte usa");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DIZER O QUE A FONTE USA, E NÃO SÓ O QUE ELA NÃO USA
+//
+// Depois do primeiro conserto, o título veio "Auditoria Operacional:
+// Fundamentos e Planejamento Detalhado" — o modelo saiu de "estratégico", que
+// era o termo errado de ofício, e cunhou outro par. O aviso disparou certo, mas
+// dizia apenas que a expressão não existe, sem dizer qual existe.
+//
+// MEDIDO: "planejamento detalhado" 0 ocorrências, "detalhado" 1.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("como a fonte chama a coisa", () => {
+  it("para 'planejamento estrategico', devolve os termos de ofício do manual", () => {
+    const u = comoAFonteChama("planejamento estrategico", CORPUS);
+    const exprs = u.map((x) => x.expressao);
+    expect(exprs).toContain("fase de planejamento");
+    expect(exprs).toContain("matriz de planejamento");
+  });
+
+  it("para 'planejamento detalhado', devolve os mesmos — a âncora é a palavra do domínio", () => {
+    // "detalhado" aparece 1x e "planejamento" 73x: a âncora tem de ser a
+    // segunda, senão a sugestão vira ruído.
+    const exprs = comoAFonteChama("planejamento detalhado", CORPUS).map((x) => x.expressao);
+    expect(exprs).toContain("fase de planejamento");
+  });
+
+  it("vem ordenado por frequência, com a contagem", () => {
+    const u = comoAFonteChama("planejamento estrategico", CORPUS);
+    expect(u[0].ocorrencias).toBeGreaterThanOrEqual(u[1].ocorrencias);
+    expect(u[0].ocorrencias).toBeGreaterThanOrEqual(3);
+  });
+
+  it("NÃO sugere nada quando a âncora é rara — o piso que tira o ruído", () => {
+    // MEDIDO sem piso: "estrategico" devolvia "grupo estrategico" (1x) e
+    // "estrategico da orga" (1x), que é um pedaço de "organização" partido
+    // pela extração do PDF. Sugestão ruim é pior que nenhuma.
+    expect(comoAFonteChama("detalhado suficientemente", CORPUS)).toEqual([]);
+  });
+
+  it("não sugere a própria expressão acusada", () => {
+    const c = "fase de planejamento. fase de planejamento. fase de planejamento.";
+    expect(comoAFonteChama("fase planejamento", c).map((x) => x.expressao))
+      .not.toContain("fase planejamento");
+  });
+
+  it("corpus vazio não sugere nada", () => {
+    expect(comoAFonteChama("planejamento estrategico", "")).toEqual([]);
+  });
+
+  it("o aviso completo diz as duas coisas", () => {
+    const a = avisoDeVocabulario(["planejamento detalhado"], CORPUS)!;
+    expect(a).toContain('"planejamento detalhado" não aparece');
+    expect(a).toContain("A sua fonte usa:");
+    expect(a).toContain("fase de planejamento");
+    expect(a).toMatch(/\(\d+x\)/);
   });
 });
 
