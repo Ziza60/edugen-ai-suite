@@ -13,6 +13,93 @@ function headingKey(s: string): string {
     .trim().toLowerCase();
 }
 
+// ─── IDENTIFICADORES INTERNOS DE TRECHO NO TEXTO DO ALUNO ────────────────────
+//
+// O modelo recebe cada pedaço da fonte assim:
+//
+//   <SOURCE id="S2:C34" file="Introdução.pdf"> … </SOURCE>
+//
+// e devolve o id como se fosse citação acadêmica, no meio da lição:
+//
+//   "O Plano de Auditoria integra a Estratégia Global … em ações (S2:C34)."
+//
+// MEDIDO: 98 ocorrências no curso de 18/11. Eu consertei a seção de
+// referências, que era onde o PIPELINE imprimia os códigos, e dei o caso por
+// encerrado sem verificar se o MODELO também os escrevia. No curso de 19/11,
+// com o conserto no ar, sobraram 22 em 18 trechos — todos no corpo das lições.
+//
+// `S2:C34` não significa nada para quem faz o curso: `S2` é a ordem do arquivo
+// no upload e `C34` a posição no corte em pedaços, que não corresponde a página
+// nem a seção do documento. É ruído que parece precisão.
+//
+// A limpeza é determinística de propósito. Pedir ao modelo que não escreva o id
+// depende de obediência; isto não. A instrução no prompt existe também, como
+// segunda camada, mas a garantia é esta.
+const CODIGO_DE_TRECHO = String.raw`S\d{1,3}:C\d{1,4}`;
+
+// O código quase nunca vem sozinho no parêntese. MEDIDO nas 22 ocorrências do
+// curso de 19/11: 5 delas dividem o parêntese com uma citação NORMATIVA real —
+//
+//   "...quais são as causas e os efeitos? (ISSAI 3000/35, S2:C15)"
+//   "...comprometimento com a auditoria (ISSAI 3000/49; S2:C33)"
+//
+// Apagar só o código deixaria `(ISSAI 3000/35,)`, com a vírgula órfã, e apagar
+// o parêntese inteiro levaria embora a referência à ISSAI, que é justamente o
+// que o aluno precisa ver. Então o parêntese é desmontado item por item: sai o
+// que é código interno, fica o que é citação, e o parêntese só desaparece
+// quando nada sobra.
+//
+// Esta distinção não apareceu em nenhuma regex escrita no vazio. Apareceu ao
+// rodar a limpeza contra o markdown realmente entregue.
+const GRUPO_COM_CODIGO = new RegExp(
+  String.raw`([ \t]*)([([])([^)\]]*${CODIGO_DE_TRECHO}[^)\]]*)([)\]])`,
+  "g",
+);
+
+const SO_CODIGO = new RegExp(
+  String.raw`^(?:(?:ver|cf\.?|conforme|segundo|fonte|fontes|trecho|trechos)\s*:?\s*)?` +
+    String.raw`${CODIGO_DE_TRECHO}$`,
+  "i",
+);
+
+/** O código solto, fora de qualquer parêntese. */
+const CODIGO_SOLTO = new RegExp(String.raw`[ \t]*\b${CODIGO_DE_TRECHO}\b`, "g");
+
+/**
+ * Tira do markdown entregue os identificadores internos de trecho, preservando
+ * as citações normativas que compartilham o mesmo parêntese.
+ *
+ * Blocos cercados (```) ficam intactos, pela mesma razão do `<br>`: um curso
+ * que ENSINA uma notação escreve essa notação de propósito, e reescrever o que
+ * ele ensina é o erro que as checagens de vazamento do portão já tiveram de
+ * aprender a não cometer.
+ */
+export function semCodigosDeTrecho(md: string): string {
+  if (!md || !new RegExp(CODIGO_DE_TRECHO).test(md)) return md;
+
+  const limpar = (texto: string): string =>
+    texto
+      .replace(
+        GRUPO_COM_CODIGO,
+        (_todo, espaco: string, abre: string, dentro: string, fecha: string) => {
+          const sobrou = dentro
+            .split(/[;,]/)
+            .map((item) => item.trim())
+            .filter((item) => item && !SO_CODIGO.test(item));
+          // O espaço que vinha antes do parêntese volta só se o parêntese ficar.
+          return sobrou.length ? `${espaco}${abre}${sobrou.join(", ")}${fecha}` : "";
+        },
+      )
+      .replace(CODIGO_SOLTO, "")
+      // a remoção pode deixar um espaço órfão antes da pontuação
+      .replace(/[ \t]+([.,;:!?])/g, "$1");
+
+  return md
+    .split(/(```[\s\S]*?```)/g)
+    .map((parte, i) => (i % 2 === 1 ? parte : limpar(parte)))
+    .join("");
+}
+
 /**
  * Normalize stored module markdown for display/export:
  *  - strips a stray ```markdown / ``` code fence the generator sometimes leaves
@@ -32,6 +119,7 @@ export function cleanModuleContent(content: string, title?: string): string {
   }
 
   c = normalizeLineBreakTags(c);
+  c = semCodigosDeTrecho(c);
 
   if (title) {
     const lines = c.split("\n");

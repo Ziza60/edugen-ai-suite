@@ -1,0 +1,1581 @@
+                                       4 PLANEJAMENTO
+
+
+
+     Requisitos
+
+     O auditor deve planejar a auditoria de forma a contribuir para uma auditoria de
+     alta qualidade, que será realizada de maneira econômica, eficiente, eficaz e opor-
+     tuna e de acordo com os princípios da boa gestão de projetos (ISSAI 3000/96).
+
+     Durante o planejamento, o auditor deve desenvolver os procedimentos a se-
+     rem usados para coletar evidências de auditoria suficientes e apropriadas,
+     que respondam ao(s) objetivos(s) e questões de auditoria (ISSAI 3000/101).
+
+               180. Para realizar uma auditoria de alta qualidade dentro do
+60
+        prazo definido, o auditor deve considerar a auditoria operacional como
+        um projeto, que requer (entre outras características) planejamento, or-
+        ganização, gerenciamento, método e estratégias de gestão de projetos
+        (ISSAI 3000/97). Por constituir-se fase fundamental para o sucesso da
+        auditoria, é imprescindível que se disponibilize o tempo necessário ao
+        planejamento e que este atenda aos requisitos de qualidade (NAT, 95).
+
+
+
+                            4.1 ATIVIDADES DO PLANEJAMENTO
+               181. A primeira atividade da auditoria deve ser a de refletir sobre o
+        propósito de se realizar aquele determinado trabalho, o porquê de aquela
+        ação ser importante para o país e para a organização auditada. A partir
+        disso, cabe definir os princípios norteadores do trabalho e os produtos
+        esperados ao final da auditoria. Tais alinhamentos, envolvendo tanto a
+        equipe de auditoria quanto representantes do grupo estratégico da orga-
+        nização e demandantes do trabalho, são necessários para que a auditoria
+        permaneça no foco delineado e produza os resultados almejados.
+
+               182. Considerando que as auditorias operacionais devem ser geren-
+        ciadas como projetos, na fase inicial do desenho da auditoria, a equipe deve
+        elaborar cronograma contendo as tarefas a executar, os responsáveis e o
+        prazo final para execução das atividades de planejamento. Esse instrumen-
+        to permite que a equipe organize suas atividades, facilitando a alocação de
+        seus membros de acordo com as tarefas necessárias e o tempo disponível.
+      183. Concluído o desenho da auditoria, elabora-se o cronogra-
+ma contendo as tarefas e procedimentos a executar na fase de exe-
+cução. Os cronogramas devem ser acordados entre os membros da
+equipe e submetidos ao supervisor, que os usará no acompanhamento
+dos trabalhos. Para facilitar essa tarefa, também podem ser usados
+softwares específicos de acompanhamento de projetos.
+
+       184. Compete ao coordenador da equipe assegurar que o traba-
+lho seja planejado corretamente e que os demais membros e os gesto-
+res do objeto da auditoria estejam suficientemente informados acerca
+do propósito do planejamento. É importante que o coordenador reavalie
+os prazos estimados inicialmente. Se houver necessidade de readequa-
+ção, o coordenador deve submeter o novo cronograma de atividades
+ao supervisor. Essa proposta deve ser feita logo que a necessidade for
+identificada, para que providências sejam adotadas em tempo hábil.
+
+        185. Para que a equipe forme entendimento comum sobre o
+trabalho, é importante que todos os membros acompanhem o seu de-
+                                                                           61
+senvolvimento e compartilhem as informações levantadas. Para isso,
+recomenda-se a realização de reuniões periódicas, que mantenham
+todos informados sobre o andamento dos trabalhos e busquem so-
+lucionar impasses ou conflitos, quando necessário. Outra boa prática
+é manter o registro visual das informações obtidas ou produzidas du-
+rante todo o trabalho com acesso imediato para a equipe, utilizando,
+assim, o princípio do pensamento visual. Utilizar o pensamento visual
+significa tirar proveito da capacidade inata que as pessoas têm de ver
+tanto com os olhos quanto com a mente, de forma a revelar ideias
+que, de outra forma, seriam imperceptíveis, desenvolvê-las de maneira
+rápida e intuitiva e depois compartilhá-las com outras pessoas de uma
+maneira que elas a absorvam de maneira simples (ROAM, 2010).
+
+       186. A sala da equipe ou o ambiente de trabalho virtual passa a
+funcionar, então, como o cérebro da equipe, propiciando a organização
+e a sistematização das informações, o estabelecimento de inter-rela-
+cionamentos (“sinapses”) entre elas, a identificação de padrões e os
+insights da equipe. Essa prática facilita a gestão de conhecimento entre
+os membros da equipe, por meio do compartilhamento e do consumo
+dos dados e seu referenciamento, permitindo, assim, que todos tenham
+o mesmo nível de compreensão a respeito do objeto tratado pela audi-
+toria. A visibilidade simultânea do material permite-nos identificar pa-
+drões e faz com que a síntese criativa ocorra muito mais rápido do que
+quando os recursos estão escondidos em pastas, arquivos, cadernos ou
+apresentações (BROWN, 2009). Esses resultados podem ser obtidos
+     por meio do emprego de softwares específicos que utilizam um sistema
+     de quadro virtual para gerenciamento de tarefas, úteis para equipes
+     que trabalham remotamente e que se comunicam por meio da Internet.
+
+            187. A equipe deve repassar ao supervisor, nos prazos acorda-
+     dos, informações a respeito das atividades concluídas e do seu impac-
+     to sobre os rumos da auditoria, tendo em vista os dados obtidos até
+     aquele ponto do planejamento. As limitações ou entraves ao cumpri-
+     mento dos prazos e tarefas acordados inicialmente também devem ser
+     informados ao supervisor dos trabalhos.
+
+            188. O estabelecimento de boas relações com os gestores, des-
+     de o início do trabalho, é de suma importância para o sucesso da au-
+     ditoria. Especial atenção deve ser dada à cuidadosa organização dos
+     contatos com os gestores, desde a fase de planejamento. No início des-
+     sa etapa, é importante uma reunião de abertura em que a equipe de
+     auditoria, acompanhada do supervisor, apresente os objetivos do tra-
+     balho para o gestor e sua equipe (NAT, 85). Se algum convidado dessa
+62
+     reunião não puder comparecer, sua participação poderá ser virtual.
+
+            189. O objetivo desta reunião inicial, além da apresentação da
+     equipe de auditoria, é esclarecer sobre o tipo de auditoria que será
+     realizado e sua finalidade, as principais dimensões de análise (econo-
+     micidade, eficiência, eficácia e/ou efetividade), as etapas e os prazos
+     previstos para a realização do trabalho. É fundamental destacar a im-
+     portância da colaboração do gestor e a garantia de sua participação
+     em todas as fases do trabalho, assegurando-se o envio do relatório
+     preliminar para sua análise e comentários.
+
+            190. A atitude da equipe de auditoria deve favorecer a confian-
+     ça mútua e a interação produtiva ao longo de todo o trabalho, sem, en-
+     tretanto, descuidar da observância de limites necessários à salvaguarda
+     de sua independência na condução da auditoria (NAT, 54-55).
+
+           191. As principais atividades realizadas durante o planejamento
+     da auditoria operacional, apresentadas na Figura 5, serão tratadas nas
+     seções seguintes.
+          Figura 5 - Atividades de planejamento de auditoria operacional
+
+
+Análise           Abordagem orientada a problema, resultado, sistema ou uma combinação delas
+preliminar
+
+                    Definir objetivo e
+Revisão de                                      Elaborar questões          Definir critérios de
+                       escopo da
+documentos                                         de auditoria                 auditoria
+                        auditoria
+
+
+Entrevistas                                 Matriz de planejamento
+                                                                                                   Plano de
+                                                                                                   auditoria
+Análise            Critérios      Informação       Procedi-         Limitações        O que a
+stakeholder                       requerida e     mentos de                          análise vai
+                                     fontes        coleta e                           permiir
+                                                  análise de                           dizer
+Avaliação de                                        dados
+riscos ou
+análise de          Instrumento de coleta                             Testar instrumentos
+problemas             e análise de dados                                  e revisá-los
+                                                                                                               63
+Fonte: Adaptado de IDI Performance Audit Handbook (IDI, 2017).
+
+
+
+
+ 4.2 ANÁLISE PRELIMINAR DO OBJETO DE AUDITORIA
+    Requisito
+
+    O auditor deve adquirir conhecimento substantivo e metodológico durante a
+    fase de planejamento (ISSAI 3000/98).
+
+                 192. A análise preliminar objetiva a aquisição de conhecimen-
+          to substantivo sobre o objeto auditado. Consiste no levantamento de
+          informações relevantes sobre o objeto e permite analisar diferentes
+          desenhos de auditoria e verificar se há critérios e dados necessários
+          disponíveis. Também deve-se verificar se as informações ou evidências
+          requeridas poderão ser obtidas de forma eficiente. Vale ressaltar que
+          a falta de dados e informações pode ser um achado significativo e não
+          deve necessariamente impedir o auditor de continuar o trabalho.
+
+                 193. A compreensão do objeto da auditoria permite identificar
+          riscos e pontos críticos existentes e é indispensável à definição do objeti-
+          vo, do escopo e da abordagem da auditoria. É importante assegurar que
+          os aspectos centrais do objeto auditado tenham sido investigados, docu-
+          mentados e compreendidos. A extensão e o nível de detalhamento dos
+          dados que serão coletados devem levar em consideração a natureza do
+          objeto investigado, o tempo e os recursos disponíveis para a auditoria.
+            194. De início, cuidadosa revisão dos documentos relacionados
+     ao objeto auditado deve ser realizada pela equipe de auditoria. Essa
+     revisão pode ser estruturada em uma parte sobre o objeto e seu con-
+     texto e em outra sobre o funcionamento do objeto.
+
+           195. Sobre o objeto e seu contexto:
+
+           a. objetivos (gerais ou parciais, dependendo da extensão do
+              trabalho);
+           b. política e legislação pertinentes;
+           c. estratégia de atuação (ações desenvolvidas, metas fixadas,
+              clientes atendidos, procedimentos e recursos empregados,
+              bens e serviços ofertados e benefícios proporcionados);
+           d. estrutura organizacional (linhas de subordinação e de
+              assessoramento e relação com as atividades desenvolvidas);
+           e. fontes de financiamento e principais itens de custo e despesa
+              (histórico da execução orçamentária);
+           f. situação no contexto das prioridades governamentais;
+64
+           g. histórico (a partir da data de criação, as denominações
+              anteriores do objeto e mudanças na sua concepção lógica em
+              relação a objetivos, público-alvo e formas de implementação);
+           h. grupos de interesse e características do ambiente externo e
+              interno;
+           i. natureza da atuação de outros órgãos ou programas
+              governamentais que atuam na mesma área (linhas de
+              coordenação).
+
+           196. Sobre o funcionamento do objeto auditado:
+
+           a. processos gerenciais;
+           b. sistemas de informação e bases de dados existentes;
+           c. ambiente de controle;
+           d. restrições enfrentadas (imposições legais e limitações impostas
+              pela concorrência, pela tecnologia, pela escassez de recursos
+              ou pela necessidade de cooperar com outras entidades).
+
+            197. A equipe deve realizar investigação preliminar dos sistemas
+     de informação e dos controles internos e, assim como dos aspectos
+     legais considerados significativos no contexto da auditoria. Nas audi-
+     torias operacionais, o exame da confiabilidade da base informativa e
+     dos controles internos deve enfatizar os aspectos que possam compro-
+     meter a medição do desempenho do objeto de auditoria. Testes com
+     indicadores quantitativos (construídos pela equipe ou pré-existentes)
+     podem ser realizados com essa finalidade já nesse momento.
+           198. A avaliação dos controles internos deve ser considerada no
+     processo de avaliação de riscos (NAT, 72). O resultado dessa avaliação
+     deve ser registrado no plano de auditoria.
+
+            199. A equipe deverá realizar também levantamento de trabalhos
+     relevantes sobre o objeto de auditoria, identificando aspectos avaliados e
+     principais conclusões de relatórios de auditoria do TCU e da auditoria in-
+     terna, além de estudos e pesquisas de iniciativa do auditado ou de institui-
+     ção acadêmica conceituada, de institutos de pesquisa ou de consultorias
+     especializadas e devidamente reconhecidas como de excelência.
+
+             200. Entrevistas com gestores e técnicos do objeto auditado aju-
+     dam a clarear muitas das informações obtidas com a revisão documen-
+     tal. A consulta a especialistas é altamente recomendável nesta fase da
+     auditoria. Geralmente, esse contato possibilita a obtenção de informa-
+     ções relevantes, auxiliando a equipe a entender o objeto da auditoria.
+
+             201. Ainda na análise preliminar, é importante aplicar técnicas com
+                                                                                              65
+     a finalidade de traçar diagnóstico a partir da interpretação sistemática das
+     informações coletadas e da identificação dos principais problemas relati-
+     vos ao desempenho do objeto selecionado. Uma das principais técnicas
+     de diagnóstico aplicadas em auditoria operacional é a análise stakeholder
+     (BRASIL, 2002b). O Quadro 4 lista essa e outras técnicas mais usadas e
+     os objetivos a que se propõem. O TCU disponibiliza em seu Portal docu-
+     mentos técnicos e vídeos sobre as principais ferramentas de diagnóstico
+     e análise de problemas usadas em auditoria operacional.
+
+       Quadro 4 - Técnicas mais usadas na etapa de planejamento
+
+   TÉCNICA DE                                        Objetivo
+  DIAGNÓSTICO
+                      • Identificar as forças e fraquezas do ambiente interno do objeto da
+                         auditoria e as oportunidades e ameaças do ambiente externo.
+SWOT e Diagrama
+de Verificação de     • Identificar possíveis áreas a investigar.
+Risco (DVR)
+                      • Identificar fatores de risco e conhecer a capacidade organizacional
+                         (controles) para o seu gerenciamento.
+                      • Identificar principais grupos de interesse (atores interessados).
+Análise stakeholder
+                      • Identificar opiniões e interesses conflitantes.
+                      • Conhecer os principais objetivos de uma entidade ou
+                         programa.
+
+Mapa de produtos
+                      • Representar as relações de dependência entre os produtos.
+                      • Identificar os responsáveis pelos produtos críticos.
+                      • Desenvolver indicadores de desempenho.
+          TÉCNICA DE                                       Objetivo
+         DIAGNÓSTICO
+                            • Conhecer o funcionamento de processos de trabalho.
+                            • Identificar boas práticas.
+      Mapeamento de         • Identificar oportunidades para racionalização e
+      processos                aperfeiçoamento de processos de trabalho.
+                            • Contribuir para a identificação de eventos de risco e atividades
+                               de controle.
+
+      Diagrama de
+      Ishikawa (Diagrama • Identificar as possíveis causas que levam a um determinado
+      de Causa-Efeito ou   problema.
+      Diagrama Espinha
+      de Peixe)
+                            • Compreender os fatores que dificultam o alcance dos objetivos
+      Árvore de                de políticas, programas ou órgãos públicos.
+      problemas
+                            • Identificar causas e consequências de um problema central.
+                            • Identificar quem é responsável pelasatividades desenvolvidas,
+                               quem as executa, quem é consultado e quem é informado, seja
+      Análise RECI             noâmbito limitado de uma equipe de trabalho, seja em relação
+66                             a um órgão, entidade ou programa.
+                            • Orientar a formulação, a execução, o acompanhamento e a
+      Marco lógico             avaliação de programas ou de projetos governamentais.
+                            • Avaliar a eficiência relativa de um conjunto de unidades, como
+                               organizações e programas (constrói uma fronteira de eficiência,
+      Análise envoltória       identificando as unidades mais eficientes na transformação de
+      de dados (Data           determinados insumos em certos produtos)
+      Envelopment
+      Analysis – DEA)       • Identificar boas práticas, normalmente associadas às unidades
+                               mais eficientes, que podem ser usadas como benchmark para
+                               a melhoria do desempenho das demais.
+                            • Identificar e ponderar os riscos inerentes às atividades
+                               auditadas.
+
+      Matriz de             • Identificar e ponderar os riscos de controle incidentes sobre a
+      análise de risco         atividade.
+                            • Identificar os riscos residuais mais críticos e merecedores da
+                               atenção da auditoria.
+
+     Fonte: Elaboração própria, com base nos documentos técnicos do TCU.
+
+
+                   202. Após a realização das atividades anteriores, um ponto im-
+            portante da fase de planejamento é a decisão entre realizar uma ava-
+            liação de risco ou uma análise de problema, conforme estabelecido
+            pela ISSAI 100/46.
+
+                  203. No caso da avaliação de risco, as equipes de auditoria
+            operacional devem seguir as orientações do documento técnico perti-
+            nente, disponível na biblioteca digital, que também inclui modelos de
+            papeis de trabalho a serem elaborados (TCE, 2013c). Em linhas gerais,
+o modelo considera que, ao planejar uma auditoria, a equipe deve
+analisar a importância relativa dos riscos, indicando as probabilidades
+de ocorrência e o possível impacto tanto quantitativo como qualitativo.
+O modelo está dividido em 4 etapas:
+
+      Etapa 1: Entendimento preliminar do objeto auditado;
+      Etapa 2: Identificação dos riscos;
+      Etapa 3: Análise dos riscos;
+      Etapa 4: Definição do escopo e das questões de auditoria.
+
+       204. A equipe de auditoria deve considerar e avaliar o risco
+de diferentes tipos de deficiências, desvios ou distorções que possam
+ocorrer em relação ao objeto da auditoria. Isso é feito por meio da
+realização de procedimentos que servem para entender o objeto e
+seu ambiente, o que inclui os controles internos relevantes. Deve ainda
+avaliar as respostas adotadas para os riscos identificados, o que inclui
+avaliar o desenho e a implementação desses controles internos.
+
+                                                                           67
+       205. O objetivo principal desse modelo de avaliação de risco em
+auditoria operacional é auxiliar na definição do escopo e das questões
+de auditoria, enquanto na auditoria financeira faz-se a vinculação entre
+essa avaliação de risco e os procedimentos adicionais de auditoria, isto
+é, a definição da natureza e da extensão dos exames. Para realização
+da avaliação de risco, o modelo preconiza que algumas técnicas sejam
+empregadas, como modelo lógico, mapeamento de processos e matriz
+de análise de risco.
+
+      206. Caso a equipe decida realizar análise de problema, deve
+considerar as indicações existentes de problemas ou desvios em re-
+lação àquilo que deveria ser. Esse processo envolve examinar vários
+indicadores de problemas a fim de definir os objetivos da auditoria.
+
+       207. Técnicas de análise de problemas são ferramentas que au-
+xiliam o estudo em profundidade e de forma estruturada de problemas,
+fornecendo subsídios para a identificação de suas causas, suas conse-
+quências, suas inter-relações, assim como possíveis soluções. No TCU, as
+duas principais técnicas que estão utilizadas são o Diagrama de Ishikawa
+e a Árvore de Problemas. Além dessas, podem ser usados o brainstor-
+ming, a Matriz GUT (gravidade, urgência e tendência) e os Cinco Porquês.
+Orientações para aplicação dessas técnicas estão disponíveis no docu-
+mento Técnicas de análise de problemas para auditorias (BRASIL, 2013b).
+
+       208. O principal requisito para a aplicação das técnicas de aná-
+lise de problema é a realização de uma consistente análise preliminar
+     do objeto de auditoria, para só em seguida definir exatamente o pro-
+     blema. Assim, não é possível iniciar a fase de planejamento pela apli-
+     cação da técnica de análise de problema, exceção feita para aquelas
+     precedidas de um levantamento suficientemente detalhado de modo
+     a problematizar o objeto de auditoria.
+
+            209. A análise de problema deve ser complementada por uma
+     análise que permita à equipe priorizar aqueles que podem impactar
+     negativamente o desempenho do objeto e o alcance de seus objetivos.
+     No TCU, usam-se a análise SWOT e o diagrama de verificação de riscos
+     para identificar as áreas de investigação na auditoria (BRASIL, 2010f).
+
+             210. Além das técnicas acima apontadas, é possível usar outras
+     ferramentas (algumas do Design thinking) que também auxiliam a co-
+     nhecer o objeto auditado e a definir o problema e as questões de audi-
+     toria. As fases do Design Thinking e suas ferramentas estão disponíveis
+     no Design Thinking Toolkit para Governo (BRASIL, 2017f).
+
+68
+           211. Sempre que houver necessidade de ampliar o conheci-
+     mento sobre os aspectos operacionais do objeto de auditoria, reco-
+     menda-se a realização de visitas exploratórias, isto é, o deslocamento
+     da equipe de auditoria para o local (ou locais) onde as atividades se
+     desenvolvem, com o objetivo de colher informações preliminares. A
+     ausência de um claro arcabouço legal, a insuficiência de informações,
+     o desconhecimento sobre como se presta o serviço ou, ainda, a diver-
+     sidade na forma de implementação das ações são exemplos de razões
+     que justificam a visita exploratória na fase de planejamento.
+
+           212. Essas visitas são essenciais para o entendimento da situa-
+     ção social objeto da intervenção e sobre como a ação governamental
+     que será auditada trata as necessidades que tem por objetivo atender.
+     Somente conhecendo o contexto do problema é possível captar suas
+     causas e inteirar-se sobre variáveis que podem impactar no sucesso ou
+     insucesso da ação governamental examinada.
+
+           213. A visita exploratória também é útil para prevenir problemas
+     no decorrer da execução da auditoria, reduzir incertezas, auxiliar na defini-
+     ção dos critérios de auditoria, bem como permitir a obtenção de informa-
+     ções que subsidiarão a elaboração dos instrumentos de coleta de dados.
+
+           214. Os custos da visita exploratória devem ser considerados no
+     custo estimado da auditoria.
+             4.3 ESTRATÉGIA GLOBAL DE AUDITORIA
+       215. O planejamento de uma auditoria específica envolve as-
+pectos estratégicos e operacionais (ISSAI 100/48), sendo os primeiros
+documentados em uma estratégia de auditoria e os últimos em um
+plano de auditoria (ISSAI 100/42; NAT, 94). A documentação da es-
+tratégia de auditoria é uma boa prática já consolidada em auditoria
+financeira (ISSAI 2300), mas ainda em desenvolvimento em auditoria
+operacional. Exemplo de aplicação de prática semelhante é o Plano
+Global de Auditoria do Tribunal de Contas Europeu (TCE, 2017, 3.3)
+
+        216. A estratégia global de auditoria (EGA) é o compromisso da
+unidade técnica, da supervisão e da equipe com a execução da audi-
+toria, seguindo o plano geral nela especificado. A EGA define o escopo,
+a época e a direção da auditoria a fim de guiar os esforços da equipe
+no desenvolvimento do plano de auditoria (ISSAI 2300/7). Para tanto,
+a estratégia global de auditoria deve conter, no mínimo:
+
+                                                                                69
+      a. objetivos, escopo e abordagem de auditoria (ISSAI 100/48;
+         NAT, 68);
+      b. período de abrangência e período de realização da auditoria
+         (ISSAI 100/48; ISSAI 2300/8);
+      c. usuários previstos e partes responsáveis, seus interesses e
+         necessidades (ISSAI 3000/25);
+      d. critérios (TCE, 2017);
+      e. metodologia (GUID 3920/50);
+      f. recursos necessários (ISSAI 2300; TCE, 2017; NAT, 70);
+      g. riscos significativos e medidas para mitigá-los (GUID 3920/62;
+         NAT, 71);
+      h. os benefícios esperados da auditoria (TCE, 2017);
+      i. a determinação da materialidade (ISSAI 3000/83).
+
+        217. Ao elaborar a estratégia global de auditoria, o auditor deve ve-
+rificar os objetivos de comunicação de resultados da auditoria para definir
+os prazos da auditoria e a natureza das comunicações requeridas; conside-
+rar fatores que sejam significativos para direcionar os esforços da equipe
+na auditoria; considerar resultados de atividades preliminares para obter
+conhecimento sobre o objeto; e estimar os recursos necessários para reali-
+zar a auditoria, tais como os membros da equipe, competências requeridas
+e a necessidade da participação de especialistas (ISSAI 2300/8).
+             218. É importante que a estratégia estabelecida para a auditoria
+       combine estratégia metodológica, métodos e técnicas de auditoria que
+       se adequem ao contexto, ao(s) objetivos(s), às questões, aos critérios,
+       às habilidades e aos recursos da equipe de auditoria, bem como à
+       disponibilidade de dados (GUID 3920/50).
+
+              219. Quando houver riscos significativos que afetem a auditoria,
+       a estratégia estabelecida deve ser capaz de mitigá-los. Para responder
+       adequadamente a esses riscos, o auditor pode considerar, por exem-
+       plo, incluir membros mais experientes na equipe; usar especialistas adi-
+       cionais internos e externos; ajustar a estratégia e os métodos de coleta
+       e análise de dados; estabelecer acordos de comunicação específicos
+       com a entidade auditada; estabelecer medidas específicas de controle
+       de qualidade (GUID 3920/62).
+
+               220. A estratégia global e o plano de auditoria são estreitamen-
+       te relacionados. Uma diferença entre esses dois documentos é o grau
+       de detalhamento. A EGA pode sofrer alterações ao longo do plane-
+70
+       jamento, principalmente em razão da realização dos procedimentos
+       de avaliação de riscos ou de análise de problema, de imprevistos, de
+       mudanças nas condições, ou da obtenção de informação que difere
+       significativamente da informação disponível quando a estratégia global
+       foi definida inicialmente (ISSAI 2300/A15).
+
+              221. Em auditoria operacional, os critérios e objetivos passam por
+       processo de desenvolvimento ao longo do planejamento, em fase pos-
+       terior à definição da EGA. Dessa forma, para incentivar a eficiência do
+       planejamento, bem como a criatividade e a flexibilidade na realização da
+       auditoria operacional, a equipe de auditoria deve, regra geral, evitar ela-
+       borar a EGA excessivamente pormenorizada ou sofisticada (TCE, 2017).
+
+             222. Para saber mais sobre a aplicação da estratégia global de
+       auditoria, consulte o documento técnico Orientações para a definição
+       da estratégia global de auditoria (BRASIL, 2020b).
+
+
+
+          4.4 DEFINIÇÃO DA ABORDAGEM DE AUDITORIA
+     Requisito
+
+     O auditor deve escolher uma abordagem de auditoria orientada a resultado,
+     problema ou sistema, ou uma combinação destas (ISSAI 3000/40).
+       223. A abordagem de auditoria determina a natureza do exame
+a ser realizado e é uma conexão importante entre os objetivos e as
+questões de auditoria, os critérios e os procedimentos desenvolvidos
+para a coleta de evidências (ISSAI 3000/41).
+
+        224. A abordagem orientada a resultado avalia se os objetivos do
+tema auditado, em termos de produtos ou impacto, foram atingidos como
+planejado ou se os programas e serviços estão funcionando como espe-
+rado. Este tipo de abordagem envolve questões como: Qual é o desempe-
+nho do objeto auditado? Que resultados foram atingidos? Que requisitos
+foram cumpridos? Na abordagem orientada a resultados, o auditor veri-
+fica o desempenho real, os resultados e impactos obtidos e os relaciona
+aos critérios. Os achados, muitas vezes, assumem a forma de desvio dos
+critérios e a perspectiva é, basicamente, normativa (GUID 3910/50-51).
+
+       225. A abordagem orientada a problema examina, verifica e
+analisa as causas de problemas específicos ou de desvios dos crité-
+rios de auditoria. Tem como ponto de partida um problema ou desvio
+                                                                             71
+já conhecido. Neste tipo de abordagem, os critérios de auditoria têm
+papel menos significativo. A tarefa principal da auditoria, neste caso, é
+analisar as causas dos problemas existentes a partir de diferentes pers-
+pectivas. A abordagem orientada a problema trata de questões como:
+Qual é o problema? Quais são suas causas? Em que medida o gover-
+no pode resolver o problema identificado? A perspectiva é analítica e
+instrumental e o objetivo é fornecer informações atualizadas sobre os
+problemas identificados e como lidar com eles (GUID 3910/50, 52-53).
+
+       226. A abordagem orientada a sistema examina o funciona-
+mento dos sistemas de gestão, como os de gestão financeira, de ava-
+liação, de controle ou de TI. Não foca diretamente na política ou nas
+metas, mas no funcionamento dos sistemas como condição para o al-
+cance da eficiência e efetividade das políticas. Essa abordagem pode
+responder a questões como: Qual é o objetivo do sistema? Quem são
+os atores responsáveis e quais as responsabilidades de cada um? Em
+que medida existe um plano consistente? Os processos são avaliados
+periodicamente de forma apropriada? (GUID 3910/50, 54).
+
+      227. É importante acrescentar que as auditorias operacionais tam-
+bém podem ser direcionadas para o exame de atividades conduzidas de
+forma coordenada por um grupo de órgãos e entidades governamentais
+ou por um conjunto de programas que se interligam formando uma deter-
+minada política pública, extrapolando as barreiras funcionais de uma única
+     organização. O Referencial para Avaliação de Governança em Políticas Pú-
+     blicas (TCU, 2014a) fornece subsídios para a realização de avaliações de
+     políticas públicas implementadas com essas características.
+
+           228. Além disso, nesses casos, pode ser necessária a aplicação
+     de técnicas específicas, como o enfoque integrado de governo, que
+     procura lidar com a crescente fragmentação dos serviços públicos, con-
+     forme apresentado a seguir.
+
+
+
+                              4.4.1. ENFOQUE INTEGRADO DE GOVERNO
+
+            229. O enfoque integrado de governo (whole of government
+     approach - WoG, na sigla em inglês) é um termo usado para designar
+     uma forma de responder ao problema da crescente fragmentação no
+     setor público e nos serviços públicos e um reconhecimento de que é
+     necessário aumentar a integração, a coordenação e a coerência das
+     políticas públicas para obter maiores benefícios para a sociedade. O
+72
+     enfoque integrado de governo pode ser usado em problemas comple-
+     xos ou persistentes (como pobreza, saúde deficiente, população desa-
+     brigada); em crises e desafios estratégicos (como mudanças climáticas,
+     terrorismo e epidemias); em prestação de serviços integrados a toda
+     a população ou a um grupo específico, como idosos, jovens (COLGAN;
+     KENNEDY; DOHERTY, 2014).
+
+             230. O uso do enfoque integrado de governo para analisar te-
+     mas ligados a políticas públicas tem sido associado a diversos benefí-
+     cios, tais como (COLGAN; KENNEDY; DOHERTY, 2014):
+
+           a. foco no resultado: busca permitir que departamentos e
+              agências governamentais alcancem resultados que não
+              seriam possíveis trabalhando de forma isolada;
+           b. expansão de limites: a implementação de políticas públicas
+              geralmente vai além de um único ministério, departamento
+              ou agência;
+           c. catalisador: o enfoque integrado de governo é visto como um
+              facilitador para que o governo lide com desafios complexos, use
+              conhecimento e expertise – de dentro e de fora do governo –
+              de forma mais efetiva e integre níveis de governo para apoiar a
+              prestação de serviços de forma mais eficiente e efetiva;
+           d. fortalecimento da prevenção: esse enfoque pode fortalecer
+              uma visão preventiva, fazendo com que os problemas sejam
+              enfrentados de maneira sistêmica, logo que aparecem, antes
+              que se incorporem à política pública.
+       231. Nas auditorias operacionais, o enfoque integrado de governo
+ajuda a entender melhor as complexidades do objeto auditado e a definir
+os objetivos da auditoria, especialmente nas auditorias em políticas multi-
+setoriais ou nas descentralizadas em diferentes níveis de governo.
+
+       232. Para a adoção do WoG, a equipe de auditoria deve se apro-
+priar do conceito de centro de governo (CG), que é uma instituição ou
+grupo de instituições que presta apoio ao chefe do Poder Executivo, exa-
+minando a totalidade da ação governamental com o objetivo de assegurar
+coerência e coesão às diversas iniciativas governamentais (BRASIL, 2016b).
+
+      233. No atual desenho institucional do governo brasileiro, o
+centro de governo não é composto por uma única estrutura, mas um
+conjunto de organizações da Presidência da República, do Ministério
+da Economia e o Conselho de Desenvolvimento Econômico e Social. A
+multiplicidade de atores cria a necessidade de haver coordenação não
+só do CG para os demais ministérios, mas entre seus componentes.
+
+                                                                              73
+       234. Sendo assim, propostas de deliberações para o CG devem
+ser discutidas entre a unidade técnica detentora da clientela e a propo-
+nente, para avaliação da oportunidade e conveniência de tratá-las no
+processo de auditoria em discussão ou em outro processo da respon-
+sabilidade daquela unidade (BRASIL, 2020c).
+
+       235. O Referencial do TCU para Avaliação da Governança do
+Centro de Governo (BRASIL, 2016b) é importante subsídio para audi-
+torias que usem o enfoque integrado de governo.
+
+      236. Outra ferramenta útil para apoiar equipes de auditoria que
+examinam temas amplos onde se considera o enfoque integrado de
+governo é a análise de fragmentações, sobreposições e duplicidades
+nas ações de governo (GAO, 2015).
+
+       237. Fragmentação ocorre quando mais de uma entidade go-
+vernamental (ou mais de uma unidade dentro da entidade) está envol-
+vida na mesma área e há oportunidade de melhoria na prestação de
+serviços. Sobreposição ocorre quando várias entidades governamentais
+ou programas têm objetivos semelhantes, desenvolvem atividades ou
+estratégias similares para alcançar esses objetivos ou têm o mesmo
+público-alvo. Duplicação acontece quando duas ou mais entidades ou
+programas de governo realizam as mesmas atividades ou prestam os
+mesmos serviços para os mesmos beneficiários (GAO, 2015).
+                    238. Os principais passos para ajudar auditores e criadores de
+             políticas a identificar e avaliar instâncias de fragmentação, sobreposi-
+             ção e duplicação nas políticas são os seguintes (GAO, 2015):
+
+                     a. identificar fragmentação, sobreposição ou duplicidade;
+                     b. identificar os efeitos potenciais da fragmentação,
+                        sobreposição e duplicidade;
+                     c. validar os efeitos, avaliar e comparar os programas;
+                     d. identificar opções para aumentar a eficiência e reduzir (ou
+                        gerenciar melhor) a fragmentação, sobreposição e duplicidade.
+
+                     239. Auditores do TCU que já aplicaram essa ferramenta iden-
+             tificaram outro tipo de situação, além das três descritas. Seria a lacu-
+             na, que se caracteriza pela ausência de uma parte importante em um
+             processo, que pode ser a ausência de políticas, programas, atuação de
+             atores, mecanismos institucionais, atividades, benefícios, cobertura de
+             beneficiários (TCU, 2017a).
+
+74
+                         4.5 DEFINIÇÃO DO ESCOPO DA AUDITORIA
+                    240. Escopo é a delimitação estabelecida para o trabalho e é ex-
+             presso pelo objetivo, pelas questões e pelos procedimentos de auditoria,
+             no seu conjunto (NAT, 92). O objetivo, as questões e os procedimentos
+             estão inter-relacionados e devem ser considerados de forma conjunta.
+             O escopo define os limites da auditoria. Para definir o escopo, a equipe
+             precisa identificar quais entidades ou qual programa em particular ou
+             aspecto de um programa serão incluídos na auditoria. A equipe também
+             deve identificar o período a ser coberto pela auditoria e, se pertinente,
+             os locais a serem incluídos (GUID 3920/35; 36). O escopo deve explicitar
+             a amplitude e a profundidade do trabalho para alcançar o objetivo da
+             auditoria (NAT, 133). Assim, para definir o escopo de auditoria, a equipe
+             deve responder às quatro perguntas da Figura 6 (IDI, 2016).
+
+            Figura 6 - Perguntas que ajudam a definir o escopo da auditoria
+
+                         • Qual é o tema examinado?
+           O que
+                         • Qual o tipo mais apropriado de auditoria?
+           Quem          • Quais são as organizações auditadas?
+                         • Quais são os locais cobertos pela auditoria?
+            Onde
+                         • Qual é a amostra definida?
+          Quando         • Qual é o período coberto pela auditoria?
+     Fonte: IDI, 2016.
+              241. De acordo com a GUID 3920/37, é boa prática discutir o
+       escopo da auditoria com o auditado o mais cedo possível. Em alguns
+       casos, também é importante explicitar o não-escopo do trabalho. Isso
+       pode ajudar a reduzir mal-entendidos e falsas expectativas, não só por
+       parte da entidade auditada, mas também de outros stakeholders, in-
+       ternos e externos ao TCU.
+
+
+
+                              4.6 DEFINIÇÃO DO OBJETIVO E DAS
+                                                 QUESTÕES DE AUDITORIA
+    Requisitos
+
+    O auditor deve estabelecer uma definição clara do(s) objetivo(s), que se
+    relacione com os princípios da economicidade, eficiência e/ou efetividade
+    (ISSAI 3000/35).
+
+    O auditor deve definir o(s) objetivo(s) de auditoria de maneira suficiente-
+    mente detalhada para não deixar dúvidas sobre as questões que deverão                        75
+    ser respondidas e para permitir o desenvolvimento lógico do desenho de
+    auditoria (ISSAI 3000/36).
+
+    Caso o(s) objetivo(s) de auditoria seja(m) formulado(s) como questões de au-
+    ditoria divididas em subquestões, o auditor deve garantir que estas sejam te-
+    maticamente relacionadas, complementares, não sobrepostas e coletivamen-
+    te exaustivas no tratamento da questão geral de auditoria (ISSAI 3000/37).
+
+
+              242. A portaria de fiscalização define o objetivo da auditoria,
+       a equipe responsável pelo trabalho e o período de sua realização. A
+       partir do objetivo inicialmente definido, e do conhecimento construído
+       durante a análise preliminar do objeto de auditoria, a equipe deverá
+       refinar o objetivo (ou objetivos) da auditoria, que se relacione com os
+       princípios de economicidade, eficiência, eficácia e efetividade (ISSAI
+       3000/35). O objetivo deve ser acompanhado de breve contextualiza-
+       ção do tema, esclarecimento sobre a situação-problema9 identificada
+       e as razões que levaram a equipe a sugerir um determinado tema e
+       enfoque, caso estes não tenham sido previamente definidos na delibe-
+       ração que determinou a realização da auditoria (BRASIL, 2016a).
+
+
+
+
+9
+ Nas Orientações para Seleção de Objetos e Ações de Controle (BRASIL, 2016a), situação-proble-
+ma é definida como um conjunto de condições ou circunstâncias que produzem ou podem vir a
+produzir consequências de natureza econômica, social e ambiental que afetam a sociedade e que
+se encontra no âmbito da atuação governamental.
+                    243. O objetivo da auditoria (ou objetivos) deve ser definido de
+             maneira suficientemente detalhada para não deixar dúvidas sobre as
+             questões que deverão ser respondidas (ISSAI 3000/36). O objetivo do
+             trabalho deve dar informação suficiente sobre o foco da auditoria, ser
+             elaborado de forma a maximizar os benefícios e impactos da fiscaliza-
+             ção e conter termos claros e simples. A conclusão do relatório deve ser
+             direta e explicitamente relacionada ao objetivo de auditoria (IDI, 2016).
+
+                    244. Na elaboração do objetivo, a equipe deve levar em conta
+             o mandato do TCU, tendo cuidado de não o exceder, e considerar as
+             razões de realização da auditoria, estabelecidas no planejamento es-
+             tratégico (PASAI, 2011, 3.15).
+
+                    245. O Quadro 5 mostra alguns exemplos de objetivos de audi-
+             toria operacional, adaptados de auditorias realizadas pelo TCU.
+
+                       Quadro 5 - Exemplos de objetivos de auditoria
+
+76          Exemplo 1
+
+            Avaliar se está havendo pleno uso dos espaços nas unidades do Progra-
+            ma Proinfância, com ênfase na análise da adequação do projeto padrão
+            às diversidades regionais e no nível de utilização das salas de leitura e
+            dos laboratórios de informática. Adicionalmente, avaliar a assistência
+            técnica e o apoio prestados pela Secretaria de Educação Básica do MEC
+            aos municípios participantes.
+
+            Exemplo 2
+
+            Avaliar as atividades de preparação para a implementação da Agenda
+            203010, desenvolvidas pelo Centro de Governo, entre setembro de 2015
+            e março de 2018.
+
+            Exemplo 3
+
+            Avaliar a qualidade das construções e a infraestrutura no entorno dos
+            empreendimentos financiados pelo Programa Minha Casa Minha Vida,
+            a eficácia no alcance das metas do programa e o desenvolvimento do
+            trabalho técnico social junto aos beneficiários, abrangendo as ativida-
+            des realizadas em 2016 e 2017, nos níveis federal, estadual e municipal.
+
+            Observação: o objetivo de auditoria também pode ser formulado em for-
+            ma de pergunta. A questão fundamental da auditoria (NAT, 133 e 156).
+
+     Fonte: Elaboração própria a partir de auditorias do TCU.
+
+
+     10
+        A Agenda 2030 contém os dezessete Objetivos de Desenvolvimento Sustentável (ODS), que es-
+     tabelecem objetivos quantitativos e qualitativos nas dimensões sociais, econômicas e ambientais,
+     a serem atingidos pelos países-membros da ONU até 2030.
+     246. O objetivo de auditoria deve ser desdobrado em questões,
+que podem ser divididas em subquestões.
+
+       247. A questão de auditoria é o elemento central na determina-
+ção do direcionamento dos trabalhos de auditoria, das metodologias e
+técnicas a adotar e dos resultados que se pretende alcançar. O auditor
+deve garantir que as questões e as subquestões sejam tematicamen-
+te relacionadas, complementares, não sobrepostas e coletivamente
+exaustivas, de forma que esse conjunto responda ao objetivo geral da
+auditoria (ISSAI 3000/37).
+
+      248. É comum que a equipe de auditoria e/ou as partes inte-
+ressadas na auditoria proponham, durante a fase de planejamento, um
+escopo muito extenso que dê origem a muitas questões de auditoria.
+Isso pode comprometer ou até mesmo inviabilizar o trabalho. Não há
+uma quantidade pré-definida de questões, depende de cada auditoria,
+mas é preciso ser realista para que o trabalho seja exequível e, ao mes-
+mo tempo, útil para os usuários previstos.
+                                                                           77
+       249. Ao formular as questões e, quando necessário, as subques-
+tões de auditoria, a equipe está, ao mesmo tempo, estabelecendo com
+clareza o foco de sua investigação, as dimensões de análise, o alcance
+e os limites que deverão ser observados durante a execução dos tra-
+balhos. As questões de auditoria devem ser escritas usando linguagem
+imparcial, mesmo que já sejam esperados problemas relacionados ao
+que se vai investigar.
+
+       250. Nesse sentido, a adequada formulação das questões é
+fundamental para o sucesso da auditoria, uma vez que terá implicações
+nas decisões sobre os tipos de dados que serão coletados, a forma de
+coleta que será empregada, as análises que serão efetuadas e as con-
+clusões que serão obtidas.
+
+     251. Na elaboração das questões de auditoria, devem-se levar
+em conta os seguintes aspectos:
+
+      a. clareza e especificidade;
+      b. uso de termos que possam ser definidos e mensurados;
+      c. viabilidade investigativa (possibilidade de ser respondida);
+      d. articulação e coerência (o conjunto das questões elaboradas
+         deve ser capaz de satisfazer o objetivo de auditoria
+         previamente definido, isto é, de responder à questão
+         fundamental de auditoria).
+                                4.6.1. TIPOS DE QUESTÃO DE AUDITORIA
+
+           252. O tipo de questão formulada terá uma relação direta com
+     a natureza da resposta e a metodologia a adotar.
+
+            253. Questões normativas: são aquelas que tratam de
+     comparações entre a situação existente e aquela estabelecida
+     em norma, padrão ou meta, tanto de caráter qualitativo quanto
+     quantitativo. A abordagem metodológica empregada nesses
+     casos é a comparação com critérios previamente identificados e o
+     desempenho observado. Aborda-se o que deveria ser e, usualmente,
+     são questões do tipo: O programa tem alcançado as metas previstas?
+     Os sistemas instalados atendem às especificações do programa?
+
+            254. Questões descritivas: são formuladas de maneira a
+     fornecer informações detalhadas sobre, por exemplo, condições
+     de implementação ou de operação de determinado programa ou
+     atividade, mudanças ocorridas, problemas e áreas com potencial de
+78
+     aperfeiçoamento. São questões que buscam aprofundar aspectos
+     tratados de forma preliminar durante a etapa de planejamento.
+     Exemplo de questão descritiva: Como os executores locais estão
+     operacionalizando os requisitos de acesso estabelecidos pelo
+     programa Minha Casa Minha Vida?
+
+            255. Questões avaliativas: buscam avaliar a efetividade do objeto
+     de auditoria e vão além das questões descritivas e normativas para enfo-
+     car o que teria ocorrido caso o programa ou a atividade não tivesse sido
+     executada. Em outras palavras, uma questão avaliativa quer saber que
+     diferença fez a intervenção governamental para a solução do problema
+     identificado. O escopo da questão abrange também os efeitos não es-
+     perados, positivos ou negativos, provocados pelo programa. Exemplo
+     de questão avaliativa: Em que medida os efeitos observados podem ser
+     atribuídos ao programa? As questões avaliativas quase sempre requerem
+     estratégias metodológicas complexas para sua investigação, envolvendo
+     modelos experimentais com grupos de controle, análises estatísticas e
+     modelagem. Esse tipo de trabalho pode trazer resultados reveladores,
+     mas, em função da complexidade envolvida, exige conhecimento espe-
+     cializado, pode ser caro e de execução demorada.
+
+            256. Questões exploratórias: destinadas a explicar eventos, es-
+     clarecer os desvios em relação ao desempenho padrão ou as razões de
+     ocorrência de um determinado resultado. São questões do tipo: Que
+     fatores explicam o aumento expressivo nos gastos com pagamento dos
+     benefícios de auxílio-doença ao longo da última década? Nesse tipo de
+       questão, nem sempre são definidos critérios11 a priori, pois o objetivo
+       pode ser a investigação de causas e não de desvios do critério. Embora
+       não esteja prevista nas ISSAI, esse tipo de questão é usado em audito-
+       rias operacionais realizadas pelo TCU e por outras EFS.
+
+              257. Mesmo que seja aconselhável em uma auditoria operacio-
+       nal formular, preferencialmente, questões normativas ou avaliativas, in-
+       cluir questões descritivas pode ser útil, especialmente quando se está
+       planejando a auditoria em áreas em que falta informação sobre econo-
+       micidade, eficiência, eficácia ou efetividade (GUID 3920/33).
+
+               258. A formulação da questão de auditoria é um processo inte-
+       rativo, o qual depende, fundamentalmente, das informações obtidas na
+       fase de planejamento e daquilo que se quer investigar. Existem diver-
+       sas técnicas que podem ser utilizadas para a definição das questões de
+       auditoria, como as técnicas de análise de risco, diagrama de verificação
+       de risco e inventário de riscos; e as técnicas de análise de problemas,
+       como a árvore de problemas e o diagrama de Ishikawa (Quadro 4).
+                                                                                                  79
+             259. Tendo em vista o caráter interativo do processo de for-
+       mulação das questões de auditoria, é recomendável que se empregue
+       técnicas e procedimentos que permitam o registro e a análise das in-
+       formações de forma visual, de modo a permitir o envolvimento de toda
+       a equipe na atividade, a produção de insights e a desejável construção
+       colaborativa das questões de auditoria.
+
+              260. À medida que a equipe de auditoria adquire mais conhe-
+       cimento sobre o objeto auditado, pode ser necessário ajustar as ques-
+       tões, sempre documentando as modificações. Porém, isso não deve
+       ser feito com frequência, até porque é recomendável que as questões
+       sejam comunicadas à entidade auditada e mudar as questões durante
+       a fase de execução da auditoria pode gerar dúvidas sobre o profissio-
+       nalismo e a objetividade da equipe (GUID 3920/34).
+
+             261. Embora não exista um método único para se chegar às
+       questões de auditoria, pode-se utilizar, ainda uma abordagem estrutu-
+       rada para sua formulação, inspirada no método cartesiano de solução
+       de problemas, como descrito a seguir:
+
+
+
+
+11
+  NAT 139. Manuais, padrões e normas mais específicos podem restringir ou estabelecer que ou-
+tros elementos sejam relatados na apresentação dos achados, conforme a natureza das auditorias,
+os seus objetos e as suas finalidades mais comuns.
+     1º passo - Descreva o objetivo da auditoria.
+                     262. Com base no entendimento do objeto, propiciado pela
+              análise preliminar do objeto de auditoria, expresse, de forma clara e
+              objetiva, aquilo que a auditoria se propõe a realizar, a questão funda-
+              mental de auditoria a ser esclarecida (NAT, 133). A descrição do ob-
+              jetivo deve ser suficiente para nortear a concepção da auditoria. O
+              essencial é que o tópico mais importante seja buscado, com base na
+              avaliação prévia dos riscos mais significativos.
+
+     2º passo – Desdobre o objetivo em questões.
+
+                     263. A equipe deve estar segura de que será possível chegar a
+              conclusões que respondam à questão fundamental da auditoria, cons-
+              tante do enunciado do seu objetivo (NAT, 156) e que o tópico escolhido
+              é relevante e oportuno. Também é relevante considerar se a auditoria
+              está focada em economicidade, eficiência ou eficácia. Em muitos casos, o
+              foco da auditoria pode ser um ou uma combinação de quaisquer desses
+              dois princípios, mas é improvável que inclua todos os três (TCE, 2017).
+80
+                     264. O objetivo deve ser desdobrado em questões que se-
+              jam mutuamente exclusivas e coletivamente exaustivas. Por meio de
+              brainstorming identifique possíveis questões que, uma vez respondidas
+              e consideradas no conjunto, permitam alcançar o objetivo formulado. A
+              seguir, estabeleça uma hierarquia de questões, como na Figura 7. Iden-
+              tifique o tipo de questão formulada, pois a natureza da questão terá
+              relação direta com a natureza da resposta e a metodologia a adotar.
+
+                         Figura 7 - Hierarquia de questões e subquestões
+
+
+
+                      Nível 1
+         Questão de auditoria
+                      Nível 2
+     Subquestões de auditoria
+                      Nível 3
+     Subquestões de auditoria
+                      Nível 4
+
+
+                                                        Procedimentos de auditoria
+
+                                                           Fontes de evidência
+
+
+
+
+     Fonte: Tribunal de Contas Europeu (2013a, 2017).
+       265. Na Figura 7, o nível 1 refere-se à questão fundamental de
+auditoria; o seu objetivo. A equipe precisa identificar quais são os as-
+pectos relevantes (materialidade) a serem investigados para responder
+essa questão fundamental com segurança razoável. O nível 2 corres-
+ponde a esses aspectos relevantes, identificados por meio de avaliação
+de risco ou análise de problema. Formam o escopo da auditoria.
+
+       266. O nível 3, por sua vez, trata das hipóteses de auditoria,
+que precisam ser aceitas ou rejeitadas mediante procedimentos de
+auditoria que levarão aos achados da auditoria. São os objetivos dos
+procedimentos de auditoria que, uma vez desenvolvidos e executados
+(nível 4) permitirão a obtenção de evidências apropriadas e suficientes
+para fundamentar as conclusões da auditoria, ou seja, as respostas às
+questões de auditoria dos níveis hierárquicos acima.
+
+       267. Não há regras rígidas sobre a conveniência de formular
+subquestões de auditoria e sobre a quantidade de seus níveis. Contu-
+do, as questões devem ser focadas, específicas e tratar de apenas um
+                                                                            81
+tema. Se for necessário, subquestões devem ser formuladas para que
+cada uma delas seja o mais simples possível e, no conjunto, abranjam o
+que se deseja investigar por meio da questão de auditoria. É necessário
+considerar que o excesso de subquestões pode tornar a matriz exten-
+sa, repetitiva e confusa. Sendo assim, deve ser adotada a solução mais
+adequada a cada auditoria. Também é importante ressaltar que nem
+todas as questões são desdobradas com o mesmo número de níveis.
+Várias situações são possíveis. Por exemplo, se a auditoria tiver 4 ques-
+tões, a questão 1 poderia ser subdividida até o nível 3, a questão 2 até
+o nível 2, a questão 3 até o nível 4 e a questão 4 não ter subquestões.
+
+       268. As subquestões facilitam a organização das informações
+do plano de auditoria por linha da matriz de planejamento, permitindo
+ao leitor acompanhar a lógica do desenho da auditoria. No nível mais
+baixo, as questões devem ser específicas, de forma que seja possível
+estabelecer procedimentos de auditoria. Esse propósito também pode
+ser alcançado por meio da última coluna da matriz de planejamento (o
+que a análise vai permitir dizer).
+
+       269. Para assegurar que as subquestões sejam mutuamente ex-
+clusivas e coletivamente exaustivas, é preciso seguir uma estrutura lógi-
+ca que pode ser, por exemplo, decompor a questão de acordo com um
+dos três princípios: por ordem, estrutura ou classe (TCE, 2013a, 2017).
+O Quadro 6 apresenta os princípios que podem ser considerados na
+divisão das questões.
+              Quadro 6 - Princípios para decompor a questão de auditoria
+
+       Por ordem
+
+       Cronológica           Ordem do tempo: primeiro a ocorrer, segundo a ocorrer etc.
+                             desempenho por diferentes anos, ou sequencial (um evento tem
+                             que vir antes do outro).
+
+       Entradas, pro-        Ordenação considerando causa e efeito, com entradas, proces-
+       cessos, saídas        sos e saídas.
+
+       Pela estrutura
+
+       Nível Organiza-       Por divisão, unidade, níveis, instituições, serviços.
+       cional ou função
+
+       Geográfica            Ordenação por localização, como países, regiões.
+
+       Demográfica           Divisão da população em subconjuntos, como idade gênero,
+                             tipos de empregados, nível de escolaridade.
+
+82     Estrutura finan-      Por componentes de estrutura financeira.
+       ceira
+
+       Pela classe
+
+       Indicadores de        Os indicadores de desempenho relevantes, como custos, calen-
+       desempenho            dário, desempenho técnico.
+
+       Fatores de su-        Os fatores de sucesso relevantes para o programa.
+       cesso
+
+       Prioridades           As principais prioridades da política pública ou programa, como
+                             objetivo primário da política, objetivo secundário da política,
+                             objetivo terciário da política.
+
+
+     Fonte: Tribunal de Contas Europeu (2013a).
+
+
+     3º passo – Teste as questões.
+
+                   270. Revise as questões e verifique se elas são mutuamente ex-
+            clusivas e coletivamente exaustivas. Identifique as questões de difícil
+            resposta e considere como as dificuldades podem ser contornadas.
+            Confronte as questões com os recursos disponíveis para a realização
+            da auditoria, definidos em termos de custo, prazos de execução e de
+            pessoal. Avalie ainda as competências da equipe, vis-à-vis às necessá-
+            rias para execução da auditoria.
+4º passo – Elimine as questões não essenciais.
+            271. Descarte questões desprovidas de potencial para melhorar
+      o desempenho ou que não tenham solução viável. Os critérios para a
+      escolha de determinada questão são a relevância das conclusões que
+      poderão ser alcançadas e a viabilidade da estratégia metodológica re-
+      querida para respondê-la de forma satisfatória. Priorize as questões
+      e decida quais devem ser estudadas. Lembre-se de que as questões
+      devem ser sucintas e sem ambiguidades.
+
+5º passo – Elabore a matriz de planejamento.
+
+            272. Quando a equipe de auditoria chega a um conjunto de
+      questões e subquestões totalmente desenvolvido, o próximo passo é
+      pensar nos elementos seguintes do plano da auditoria, que levarão à
+      elaboração da matriz de planejamento:
+
+            a. Que critérios são aplicáveis?
+            b. Que evidências devem ser coletadas? Como serão coletadas?
+                                                                                  83
+            c. Quais são boas fontes de evidência?
+            d. Como essas evidências serão analisadas?
+            e. Quais as possíveis conclusões da análise das evidências
+               obtidas?
+
+             273. Após essas considerações, ainda pode ser necessário des-
+      cartar questões ou subquestões que foram consideradas essenciais.
+      Isso pode ocorrer, por exemplo, se a equipe concluir que a obtenção
+      de evidências é inviável com o prazo e os recursos disponíveis. Nesse
+      caso, descarta-se a questão (ou subquestão), ou muda-se o prazo e os
+      recursos para adequar ao escopo da auditoria.
+
+
+
+          4.7 DEFINIÇÃO DOS CRITÉRIOS DE AUDITORIA
+
+  Requisitos
+
+  O auditor deve estabelecer critérios apropriados, que correspondam ao(s)
+  objetivo(s) e questões de auditoria e sejam relacionados com os princípios de
+  economicidade, eficiência e/ou efetividade (ISSAI 3000/45).
+
+  O auditor deve, como parte do planejamento e/ou da condução da auditoria,
+  discutir os critérios de auditoria com a entidade auditada (ISSAI 3000/49).
+           274. Após definir o objetivo e as questões de auditoria, a equi-
+     pe deverá especificar os critérios de auditoria e elaborar a matriz de
+     planejamento.
+
+            275. Ainda na fase de planejamento, a equipe deve definir os
+     critérios de auditoria, que são as referências usadas para avaliar o
+     objeto de auditoria (ISSAI 3000/46), de acordo com os princípios de
+     economicidade, eficiência, eficácia e efetividade. Representam o esta-
+     do ideal ou desejável daquilo que se examina e oferecem o contexto
+     para avaliar as evidências e compreender os achados. Da comparação
+     entre o critério e a situação encontrada (condição) são derivados os
+     achados de auditoria. Portanto, o critério representa a expectativa ra-
+     zoável e fundamentada do que “deveria ser”, as melhores práticas e
+     benchmarks com os quais o desempenho pode ser comparado.
+
+            276. Os critérios de auditoria precisam fornecer uma base apro-
+     priada e razoável para a avaliação dos objetivos da auditoria e devem
+     ser relevantes, compreensíveis, completos, confiáveis e objetivos no
+84
+     contexto do objeto, do (s) objetivo (s) e/ou das questões de auditoria
+     (GUID 3910/56).
+
+            277. Os critérios de auditoria podem ser qualitativos ou quanti-
+     tativos, gerais ou específicos, focando naquilo que é esperado ou na-
+     quilo que poderia ser (dadas melhores condições) ou que deveria ser
+     em conformidade com leis, regulamentos ou objetivos (GUID 3910/57).
+
+            278. Em algumas auditorias, nem sempre é possível definir e
+     explicitar os critérios a priori. A escolha do critério é mais flexível e fre-
+     quentemente contém elementos de julgamento profissional. Diversas
+     fontes, além da legislação, podem ser usadas para identificar critérios
+     de auditoria, incluindo regulamentações, normas, princípios e melhores
+     práticas, referenciais de mensuração de desempenho e políticas e pro-
+     cedimentos organizacionais (GUID 3910/57). Algumas possíveis fontes
+     de critérios de auditoria são:
+
+            a. leis e regulamentos que regem o funcionamento do objeto
+               auditado;
+            b. decisões tomadas pelo Poder Legislativo ou Executivo;
+            c. referências a comparações históricas e comparações com a
+               melhor prática;
+            d. normas e valores profissionais;
+            e. indicadores-chave de desempenho estabelecidos pela
+               entidade auditada ou pela Administração;
+      f. opinião predominante entre especialistas independentes;
+      g. critérios usados em auditorias similares ou por outras EFS;
+      h. organizações que realizem atividades semelhantes ou tenham
+         programas similares;
+      i. bibliografia especializada.
+
+       279. Critérios podem ser mais facilmente definidos sempre que
+os objetivos estabelecidos pelo legislador ou pelo Poder Executivo se-
+jam claros, precisos e relevantes. Quando estes forem vagos ou con-
+flitantes, a equipe de auditoria deve interpretá-los ou reelaborá-los,
+tornando-os mais operacionais e mensuráveis.
+
+       280. Os critérios de auditoria são estabelecidos pela equipe de
+auditoria. Porém, eles devem ser discutidos com a entidade auditada (e
+possivelmente com outras partes interessadas), durante a fase de pla-
+nejamento da auditoria. Discutir os critérios de auditoria com a entidade
+auditada serve para garantir que haja uma compreensão comum e com-
+partilhada de quais critérios serão usados como referências na avaliação
+                                                                              85
+da entidade auditada. A aceitação dos critérios por parte da entidade
+auditada facilitará a implementação das recomendações propostas no
+relatório de auditoria. Por isso, é importante definir claramente os crité-
+rios em relação aos quais a entidade será avaliada (GUID 3910/60).
+
+
+
+                         4.8 MATRIZ DE PLANEJAMENTO
+       281. Uma vez definidos o objetivo e as questões de auditoria, a
+equipe deverá elaborar a matriz de planejamento (NAT, 94). Trata-se de
+quadro-resumo das informações relevantes do planejamento de uma
+auditoria. O propósito da matriz de planejamento é auxiliar a elaboração
+conceitual do trabalho e orientar a equipe na fase de execução. É uma
+ferramenta de auditoria que torna o planejamento mais sistemático e
+dirigido, facilitando a comunicação de decisões sobre metodologia e au-
+xiliando a condução dos trabalhos de campo. A matriz de planejamento
+é um instrumento flexível e seu conteúdo pode ser atualizado ou modifi-
+cado pela equipe à medida que o trabalho de auditoria progride.
+
+      282. A matriz é também o principal instrumento de apoio à ela-
+boração do plano de auditoria, pois contém as informações essenciais
+que o definem. Daí a importância da discussão amadurecida da matriz
+antes de elaborar o plano de auditoria.
+                         283. O Quadro 7 apresenta o modelo de matriz de planejamen-
+                   to para auditorias operacionais adotado pelo TCU.
+
+                            Quadro 7 - Modelo de matriz de planejamento
+     Objeto da auditoria: Escrever qual é o objeto auditado - entidades, programas, atividades
+     Objetivo geral da auditoria: Expressar, de forma clara e objetiva, aquilo que motivou a auditoria.
+     Questões e subquestões de auditoria: A matriz de planejamento deve ser preenchida para cada
+     questão de auditoria (ou subquestão, se houver).
+
+                                                                                                      O que a
+                                                Procedimentos    Procedimentos
+                   Informações Fontes de                                                             análise vai
+      Critérios                                  de coleta de     de análise de     Limitações
+                    requeridas informação                                                             permitir
+                                                    dados            dados
+                                                                                                       dizer
+
+     Padrão        Informações       Fontes       Técnicas de     Técnicas que    Limitações         Conclu-
+     usado para     necessárias     de cada        coleta de      serão usadas    quanto:            sões,
+     determinar        para         item de       dados que         na análise    - à estratégia     novas
+     se o objeto   responder à    informação.   serão usadas e     de dados e     metodológica       informa-
+     auditado       questão de                   descriçao dos    descrição dos   adotada;           ções ou
+     atinge,         auditoria.                   respectivos      respectivos                       achados
+     excede ou                                  procedimentos.   procedimentos.   - ao acesso a      que po-
+     está aquém                                                                   pessoas e infor-   dem ser
+86   do desem-                                                                    mações;            obtidos a
+     penho es-                                                                    - às condições     partir da
+     perado.                                                                      operacionais de    análise
+     Inclui as                                                                    realização do      das infor-
+     fontes dos                                                                   trabalho.          mações
+     critérios.                                                                   - à qualidade      coletadas
+                                                                                  das informações    para res-
+                                                                                                     ponder a
+                                                                                                     questão.
+
+
+          Fonte: adaptado de GAO (2012).
+
+
+                           284. Embora os elementos da matriz de planejamento sejam apre-
+                   sentados sequencialmente, a definição das questões de auditoria, a esco-
+                   lha das estratégias metodológicas apropriadas, assim como os resultados
+                   a que se quer chegar com a análise proposta (o que a análise vai permi-
+                   tir dizer) não precisa, necessariamente, seguir uma ordem pré-definida e
+                   pode acontecer simultaneamente, confrontando-se essas informações de
+                   maneira a assegurar a consistência lógica do planejamento da auditoria.
+
+                          285. As estratégias metodológicas escolhidas definem a for-
+                   ma geral do desenho investigativo a ser empregado na auditoria. Es-
+                   sas estratégias não são necessariamente identificadas explicitamente
+                   na matriz de planejamento, mas se revelam a partir do preenchimento
+                   das diversas colunas da matriz. Entre as estratégias metodológicas mais
+                   empregadas em auditoria operacional estão a pesquisa documental, o
+                   estudo de caso e a pesquisa (survey). O Apêndice A apresenta uma des-
+                   crição resumida de estratégias metodológicas que podem ser adotadas.
+       286. Uma boa prática que pode ser utilizada é elaborar a ma-
+triz de planejamento em duas etapas: na primeira, deve-se definir tão
+somente as questões e subquestões de auditoria e preencher a coluna
+“o que a análise vai permitir dizer”, de modo a dar suporte à discussão
+com o supervisor quanto à suficiência do escopo. Na segunda etapa, a
+partir dos resultados das discussões e das orientações do supervisor,
+deve-se complementar a matriz, definindo as demais colunas. É im-
+portante considerar que são as hipóteses inseridas na coluna “o que a
+análise vai permitir dizer” que determinam as informações requeridas,
+as fontes de informação e assim sucessivamente (BRASIL, 2019a).
+
+        287. Outra boa prática no preenchimento da matriz de planeja-
+mento é relacionar as diversas colunas entre si, por meio da utilização de
+códigos, que podem ser letras ou números. Por exemplo, atribui-se um
+código a cada informação na coluna “Informações requeridas”, que será
+repetido na coluna seguinte no item correspondente à fonte daquela
+informação, no procedimento de coleta da informação requerida e assim
+sucessivamente até a coluna “O que a análise vai permitir dizer”. A rela-
+                                                                             87
+ção entre os itens da matriz por meio de código deve ser realizada para
+facilitar sua leitura e permitir que se trace o caminho desde a informação
+a ser coletada até a conclusão que essa informação respaldará.
+
+       288. A matriz de planejamento sistematiza e detalha os proce-
+dimentos previstos para a execução do trabalho, portanto, auxilia na
+identificação de falhas e lapsos no planejamento das atividades. Na
+medida em que organiza os elementos da metodologia em colunas
+específicas, evidencia se as informações requeridas são suficientes para
+responder à questão proposta. Permite verificar, ainda, se essas infor-
+mações podem ser supridas pelas fontes de informação listadas e se
+estão coerentes com a estratégia metodológica e com os métodos de
+coleta e de análise de dados definidos. A matriz de planejamento deve
+ser revisada nos seguintes pontos:
+
+      a. O objetivo da auditoria foi devidamente explicitado?
+      b. As questões de auditoria estão claramente formuladas?
+      c. Existe uma relação clara e satisfatória entre as questões de
+         auditoria e o problema a ser investigado?
+      d. A estratégia metodológica, os métodos de coleta e análise
+         de dados são adequados para responder às questões
+         formuladas?
+      e. As limitações foram identificadas?
+      f. As conclusões esperadas do trabalho de auditoria (“o
+         que a análise vai permitir dizer”) são consistentes com a
+         metodologia proposta e respondem à questão de auditoria?
+           289. As seções seguintes discorrem sobre as colunas da matriz
+     de planejamento as quais ainda não foram tratadas anteriormente.
+
+                          Informações Requeridas
+
+            290. Essa coluna da matriz de planejamento deverá conter as
+     informações necessárias para responder à questão de auditoria. Infor-
+     mação requerida e fonte de informação são dois elementos distintos.
+     Por exemplo, se a equipe de auditoria quer saber a frequência de reu-
+     niões de um determinado conselho, as fontes de informações poderão
+     ser as atas de reuniões. As informações requeridas poderão ser as da-
+     tas em que as reuniões ocorreram.
+
+            291. Em alguns casos, pode ser necessário, para determinar a
+     informação necessária, definir os termos-chave usados na questão. Por
+     exemplo, ao formular uma questão envolvendo o impacto de uma inicia-
+     tiva governamental voltada para a melhoria do nível de ensino, deve-se
+     definir o que se entende por “melhoria do nível de ensino”. Traduzir
+88
+     conceitos abstratos em variáveis mensuráveis é importante para que se
+     possa especificar com clareza o tipo de informação a ser coletada.
+
+            292. É importante considerar que as informações requeridas co-
+     letadasou o resultado de sua análiseirão se constituir nas evidências que
+     deverão sustentar os achados de auditoria. Por isso, ao definir as informa-
+     ções requeridase planejar os procedimentos de análise, o auditor deverá
+     ter em mente os requisitos que as evidências precisam satisfazer para
+     cumprir bem esse papel, conforme indicado na seção 5.3. Nesse processo,
+     com o propósito de construir achados robustos e argumentações convin-
+     centes, é importante que o auditor preveja a coleta de informações que
+     possam evidenciar não somente a situação encontrada, mas também suas
+     causas e efeitos. A equipe deve planejar a obtenção de evidências de dife-
+     rentes tipos de forma a fortalecer as conclusões da auditoria.
+
+                           Fontes de Informação
+
+          293. Deve-se identificar a fonte específica para cada tipo de in-
+     formação. Exemplos de fontes de informação:
+
+           a. documentação legal e institucional que dá suporte ao objeto
+              de auditoria;
+           b. legislação orçamentária (PPA, LDO e LOA);
+           c. missão declarada, planos estratégicos e relatórios de gestão;
+           d. pronunciamentos feitos e decisões tomadas pelas autoridades
+              competentes;
+      e. organogramas, diretrizes internas e manuais operacionais;
+      f. atas de reuniões;
+      g. sistemas de informação gerenciais;
+      h. bases de dados informatizadas;
+      i. sistemas de informação da administração pública (SIAFI,
+         SIGPlan, SIDOR, SIASG, SEI);
+      j. bibliografia especializada;
+      k. gestores;
+      l. especialistas;
+      m. beneficiários de programas governamentais;
+      n. relatórios e estudos produzidos por fonte credenciada;
+      o. mídia especializada.
+
+       294. Cuidado especial deve ser dedicado ao uso de revistas,
+jornais e outras publicações jornalísticas, bem como informações da
+internet que, embora possam oferecer informações de caráter geral
+e indicar a relevância de determinado tema, não são submetidas a
+revisões qualificadas, próprias de publicações científicas. Outras publi-
+                                                                            89
+cações, mesmo de caráter oficial, devem ser interpretadas com reserva
+ante à possibilidade de apresentarem fatos seletivamente, de maneira
+a dar sustentação a determinado ponto de vista (LEE; LINGS, 2008).
+
+              Procedimentos de coleta de dados
+
+       295. Em auditorias operacionais, as principais técnicas de coleta
+de dados usadas são: entrevista, pesquisa e revisão documental. Essas
+e outras técnicas estão descritas na seção 5.4 deste manual. É impor-
+tante detalhar suficientemente, na matriz de planejamento, os proce-
+dimentos que serão usados. Por exemplo, se for feita uma entrevista,
+dizer quem será entrevistado (cargo ou função). Se for feito estudo de
+caso, qual ou quais as localidades serão visitadas. Toda essa definição
+deve ser feita na fase de planejamento. A fase de execução é destinada
+à coleta e análise de informações e evidências.
+
+              Procedimentos de análise de dados
+
+       296. Em auditorias operacionais, as principais técnicas de aná-
+lise de dados usadas são: estatística descritiva e análise de conteúdo.
+Essas e outras técnicas estão descritas na seção 5.5 deste manual. Os
+procedimentos a serem utilizados devem ser suficientemente detalha-
+dos para que não haja dúvidas sobre como a análise deverá ser desen-
+volvida. A análise dependerá do tipo e da extensão dos dados coleta-
+dos, que deverão ser definidos durante o planejamento da auditoria.
+                                  Limitações
+            297. Nessa coluna da matriz de planejamento, a equipe de audi-
+     toria deve especificar as limitações inerentes à estratégia metodológica
+     adotada, às características das informações que se pretende coletar e
+     às condições operacionais de realização dos trabalhos (NAT, 135).
+
+            298. Quanto à estratégia metodológica, deve-se considerar que
+     não há estratégia ótima ou ideal, mas apenas aquela que, dadas as cir-
+     cunstâncias, melhor se adapta à questão que se pretende investigar.
+     Uma vez que sempre haverá algum tipo de limitação sobre o que pode
+     ser concluído a partir de determinada metodologia proposta, o melhor
+     a fazer é identificar tais restrições. A equipe de auditoria deve avaliar as
+     alternativas existentes e estar preparada para defender suas escolhas.
+
+            299. Assim, ao se optar por uma estratégia metodológica, é in-
+     dispensável apontar as limitações que lhe são inerentes, seja do ponto
+     de vista de sua capacidade de levar a conclusões sobre as questões
+     de auditoria, seja em relação às possibilidades de generalização dos
+90
+     resultados do trabalho.
+
+             300. Quanto às informações que se pretende utilizar na análise, é
+     importante mencionar que tipo de dificuldade se espera encontrar, tanto
+     em relação ao acesso aos dados, como em relação à sua qualidade e con-
+     fiabilidade. Qualquer problema relativo à utilização de dados existentes e às
+     suas possíveis limitações também deve constar da matriz de planejamento.
+
+          301. As limitações quanto à obtenção de informações não de-
+     vem decorrer de meras suposições, mas devem ser definidas com base
+     no que foi apurado durante a análise preliminar do objeto auditado.
+
+           302. A equipe deve indicar a alternativa a ser adotada para mi-
+     nimizar os riscos decorrentes das limitações identificadas.
+
+                     O que a análise vai permitir dizer
+
+            303. Essa coluna da matriz de planejamento registra como a
+     análise dos dados responderá à questão de auditoria. O propósito des-
+     sa informação é esclarecer quais conclusões ou resultados pretende-se
+     alcançar por meio dos procedimentos de auditoria. Está relacionado
+     com a coluna anterior, pois o que se espera obter da análise está, na-
+     turalmente, condicionado pelas limitações previamente identificadas.
+
+           304. Assim, deve-se considerar, por exemplo: se as conclusões
+     alcançadas permitirão responder integralmente às questões de audi-
+toria; se será possível fazer afirmações conclusivas sobre o objeto da
+auditoria; e se as conclusões limitar-se-ão aos casos examinados ou
+se será possível generalizá-las. Esses esclarecimentos são necessários
+para que se tenha noção, já na fase de planejamento, do que se pode
+esperar do esforço que será empreendido pela equipe e dos recursos
+que serão alocados no desenvolvimento do trabalho.
+
+
+
+                 4.8.1. VALIDAÇÃO DA MATRIZ DE PLANEJAMENTO
+
+       305. O processo de validação da matriz de planejamento é um
+dos procedimentos de controle de qualidade usados no TCU. A valida-
+ção abrange duas etapas. A primeira, após a revisão do supervisor, é
+a submissão da matriz a um painel de referência, com o objetivo de
+colher críticas e sugestões para seu aprimoramento. Esse processo de
+validação tem por objetivos:
+
+      a. conferir a lógica da auditoria e o rigor da metodologia usada,
+                                                                           91
+         mediante questionamento das fontes de informação, da
+         estratégia metodológica e do método de análise a ser usado,
+         em confronto com os objetivos da auditoria;
+      b. orientar e aconselhar a equipe de auditoria sobre a
+         abordagem a ser adotada;
+      c. obter opiniões especializadas e independentes sobre a
+         concepção da auditoria;
+      d. colaborar para o aprimoramento da auditoria e alertar a
+         equipe sobre falhas no seu desenvolvimento/concepção;
+      e. verificar a presença de benefícios potenciais significativos.
+
+       306. A composição do painel, a ser organizado pela equipe de
+auditoria, deve favorecer o debate e refletir diferentes pontos de vista
+sobre o tema da auditoria. O painel poderá contar com a participação
+de: especialistas, representantes da academia ou centros de pesquisa,
+consultores técnicos do Congresso, representantes do controle interno
+e dos órgãos de planejamento e orçamento, representante do gabinete
+do Ministro-Relator, auditores com experiência em auditoria operacio-
+nal, auditores com reconhecida experiência no tema, representantes de
+organizações do terceiro setor (quando for o caso). Em resumo, deve-
+-se convidar para o painel as pessoas que puderem fazer críticas cons-
+trutivas e sugestões à matriz de planejamento e ao plano de auditoria.
+
+      307. O gestor poderá participar do painel de referência sempre
+que a equipe e o supervisor entenderem que a sua presença não tra-
+rá prejuízo aos objetivos do painel. Deve-se avaliar se a presença do
+     gestor poderá inibir os outros participantes do painel, ou se o gestor
+     poderá mostrar-se muito defensivo e reativo ao ver a apresentação da
+     proposta de auditoria e escutar os comentários dos demais participan-
+     tes. Se a equipe considerar que esses riscos existem, o planejamento
+     da auditoria deverá ser discutido com o gestor, separadamente, na
+     segunda etapa de validação.
+
+            308. Desde 2018, o TCU tem realizado painéis de referência no
+     formato de oficina de construção colaborativa, com o uso de técnicas
+     de design thinking, obtendo bons resultados. Nas oficinas de constru-
+     ção colaborativa, a primeira parte do evento compreende a apresen-
+     tação do conceito de auditoria operacional, do contexto e do objetivo
+     do trabalho, assim como da referida matriz. Na segunda parte, os par-
+     ticipantes indicarão pontos positivos, fragilidades e oportunidades de
+     aperfeiçoamento de cada uma das questões da matriz, de forma escri-
+     ta (de preferência em post-its). Num terceiro momento, grupos hetero-
+     gêneos de participantes (de modo a assegurar diferentes repertórios
+     e visões sobre o tema) deverão debater e aprofundar a discussão de
+92
+     cada questão de auditoria, finalizando com a apresentação dos princi-
+     pais pontos identificados. A última parte do painel é reservada à troca
+     de ideias sobre alguns tópicos apontados e a considerações finais.
+
+            309. O modelo de oficina ajuda a estruturar a discussão, organi-
+     zar as ideias e aumentar a objetividade na obtenção de contribuições
+     dos participantes, garantindo maior volume de opiniões a respeito de
+     todas as questões da matriz e menor tempo dispendido para tanto.
+     Além disso, faz com que o trabalho ganhe em qualidade e a equipe de
+     auditoria tenha mais segurança com relação aos rumos selecionados
+     para sua realização, tendo em vista o amplo debate realizado. Outra
+     vantagem diz respeito ao sentimento gerado entre os participantes de
+     que contribuíram para o aprimoramento da ação do TCU, uma vez que
+     suas opiniões serão consideradas na auditoria.
+
+             310. Outro papel, não menos importante, desempenhado pelo
+     painel de referência é o de fortalecimento do controle social, ao possi-
+     bilitar que atores relevantes participem da discussão do planejamento
+     da auditoria e possam ser esclarecidos sobre a natureza da fiscalização
+     exercida pelo TCU, gerando expectativa sobre os resultados do traba-
+     lho e fortalecendo a imagem institucional.
+
+           311. Após o painel de referência, a equipe de auditoria analisará
+     as contribuições recebidas e incluirá na matriz de planejamento aque-
+     las que considerar pertinentes.
+       312. Se os gestores do objeto auditado não tiverem participado
+do painel de referência, a segunda etapa do processo de validação da
+matriz de planejamento consiste na sua apresentação a esses gestores,
+depois dos ajustes necessários em função do resultado das discussões
+do painel de referência. Essa etapa pode ocorrer no mesmo formato
+de oficina de construção colaborativa. A finalidade desse procedimento
+é apresentar o resultado da etapa de planejamento, realizada com a
+participação do gestor, visando obter seu comprometimento com os
+objetivos e a condução da auditoria. Além disso, a apresentação para
+os gestores também objetiva dar a oportunidade à equipe de ouvir do
+gestor sugestões de aperfeiçoamento do trabalho planejado.
+
+       313. Informações mais detalhadas sobre painel de referência
+podem ser encontradas no documento técnico do TCU Painel de refe-
+rência em auditorias (BRASIL, 2013a).
+
+
+
+           4.9 ELABORAÇÃO DE INSTRUMENTOS DE                                  93
+                      COLETA DE DADOS E TESTE-PILOTO
+
+       314. Uma vez definida e validada a matriz de planejamento,
+passa-se à elaboração dos instrumentos de coleta de dados que serão
+usados durante a fase de execução. Cada técnica de coleta de dados
+possui um instrumento próprio, a ser desenhado de forma a garantir a
+obtenção de informações que possam resultar em evidências suficien-
+tes e apropriadas para responder às questões de auditoria.
+
+       315. Os instrumentos de coleta de dados devem ser testados por
+meio de teste-piloto para garantir a sua consistência. A realização do tes-
+te-piloto permite, ainda, conferir as premissas iniciais acerca do funcio-
+namento do objeto auditado e a qualidade e a confiabilidade dos dados.
+
+       316. A equipe deve escolher para a realização do teste-piloto
+um local ou aspecto do objeto da auditoria que apresente dificuldades
+potenciais à condução dos trabalhos, permitindo que a equipe anteci-
+pe os problemas que poderão ser enfrentados. Além disso, os dados
+coletados permitirão ajustar o tamanho da amostra e assegurar que a
+estratégia metodológica selecionada oferecerá resposta conclusiva às
+questões de auditoria.
+
+     317. Portanto, a realização de teste-piloto é especialmente reco-
+mendável no caso de auditorias que envolvem estratégias metodológi-
+        cas complexas, visitas a locais de difícil acesso e custos elevados, pois
+        aumenta as chances de que o trabalho desenvolvido alcance o nível de
+        qualidade desejado com o menor custo possível. Além dos instrumen-
+        tos de coleta de dados, a matriz de planejamento também poderá ser
+        ajustada a partir dos resultados do teste-piloto.
+
+
+
+                                       4.10 PLANO DE AUDITORIA
+     Requisito
+
+     Durante o planejamento, o auditor deve desenvolver os procedimentos a se-
+     rem usados para coletar evidências de auditoria suficientes e apropriadas,
+     que respondam ao(s) objetivos(s) e questões de auditoria (ISSAI 3000/101).
+
+              318. Ao final da fase de planejamento, a equipe deve preparar
+        o plano de auditoria, que descreve a natureza do trabalho a realizar
+        e os resultados que se pretende alcançar. O plano deve explicitar a
+        motivação para se investigar o objetivo de auditoria, segundo enfoque
+94
+        específico e com o uso de certa metodologia (NAT, 96-97).
+
+               319. Portanto, o plano de auditoria conterá descrição sucinta
+        do objeto de auditoria, objetivos do trabalho, questões a investigar,
+        procedimentos a desenvolver e resultados esperados com a realização
+        da auditoria. Farão parte dos apêndices do plano: a matriz de plane-
+        jamento, que resume as informações centrais da auditoria; o relato do
+        teste piloto, se for o caso, o cronograma proposto para a condução dos
+        trabalhos; e a estimativa de custos. A estimativa de custos é realiza-
+        da com base no valor do “homem-dia-fiscalização”, valores de diárias,
+        passagens, suprimentos de fundos, pagamento de diárias e passagens
+        para colaboradores eventuais, contratação de serviços.
+
+              320. É fundamental destacar os resultados que se pretende al-
+        cançar com a realização da auditoria, indicando as oportunidades de
+        aperfeiçoamento e especificar os benefícios esperados (quantitativos
+        ou qualitativos).
+
+               321. Compete ao coordenador da equipe assegurar que o plano
+        de auditoria contenha todas as informações necessárias à correta e opor-
+        tuna apreciação da proposta de trabalho. A biblioteca digital do TCU dis-
+        ponibiliza um modelo de estrutura e exemplos de planos de auditorias.
+

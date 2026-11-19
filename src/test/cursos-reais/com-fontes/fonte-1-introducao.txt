@@ -1,0 +1,705 @@
+   5.4.4. Observação direta						107
+   5.4.5. Grupo focal							108
+5.5 TÉCNICAS DE ANÁLISE DE DADOS					                   109
+   5.5.1. Estatística descritiva						111
+   5.5.2. Regressão							111
+   5.5.3. Análise de conteúdo						112
+   5.5.4. Triangulação							112
+   5.5.5. Cruzamento eletrônico de dados				 113
+
+5.6 MATRIZ DE ACHADOS						113
+   5.6.1.Validação da matriz de achados				             117
+
+
+
+6 RELATÓRIO E DIVULGAÇÃO					118
+6.1 ORIENTAÇÕES GERAIS PARA ELABORAÇÃO DO RELATÓRIO		   120
+6.2 REQUISITOS DO RELATÓRIO 					122                          9
+6.3 ESTILO DE REDAÇÃO 						124
+6.4 COMPONENTES DO RELATÓRIO 					126
+   6.4.1. Elementos pré-textuais					127
+   6.4.2. Introdução							131
+   6.4.3. Visão geral							132
+   6.4.4. Capítulos principais						132
+   6.4.5. Conclusão							135
+   6.4.6. Proposta de encaminhamento				 135
+   6.4.7. Elementos pós-textuais					137
+
+6.5 COMENTÁRIOS DOS GESTORES E ANÁLISE DA EQUIPE		      141
+6.6 DIVULGAÇÃO							142
+
+7 MONITORAMENTO						                                   144
+7.1 FORMAS DE MONITORAMENTO					146
+7.2 SISTEMÁTICA DE MONITORAMENTO					147
+
+REFERÊNCIAS						                                       150
+
+APÊNDICE A - PRINCIPAIS ESTRATÉGIAS METODOLÓGICAS
+UTILIZADAS EM AUDITORIA OPERACIONAL		                   159
+
+LISTA DE ILUSTRAÇÕES					                               165
+
+LISTA DE SIGLAS						                                   166
+10
+                                                    1 INTRODUÇÃO
+
+
+
+              1. No XX Congresso Internacional de Entidades Fiscalizadoras
+        Superiores (Incosai, na sigla em inglês), em 2010, foram aprovadas as
+        Normas Internacionais das Entidades Fiscalizadoras Superiores (ISSAI,
+        na sigla em inglês) para os três tipos de auditoria do setor público
+        (operacional1, financeira e de conformidade).
+
+                2. É importante que o Tribunal de Contas da União (TCU) dispo-
+        nha de um manual alinhado às ISSAI e que, ao mesmo tempo, possa
+        interpretá-las no contexto das normas internas, incluindo as Normas
+                                                                                                     11
+        de Auditoria do TCU (NAT), e fornecer orientações adicionais que pos-
+        sibilitem aos auditores alinhar suas práticas de auditoria às normas
+        profissionais internacionalmente aceitas.
+
+              3. Cabe esclarecer que o Instituto Rui Barbosa2 (IRB), do qual o
+        TCU faz parte, vem internalizando as ISSAI por intermédio da publica-
+        ção das Normas Brasileiras de Auditoria do Setor Público (NBASP) des-
+        de 2015. As NBASP realizam a convergência das ISSAI ao contexto dos
+        tribunais de contas brasileiros ou são tradução direta dessas normas.
+        Como a norma profissional para auditoria operacional, NBASP 3000,
+        é tradução da ISSAI 3000, mantendo os números de parágrafos, o
+        manual não faz referência às duas simultaneamente, adotando a ISSAI
+        3000 como fonte principal.
+
+               4. Ao longo do manual, são especificadas as condutas e práticas
+        que devem ser adotadas pelo auditor, no exercício de suas atividades,
+        e que se compatibilizam com o seu papel, o qual deve ser visto de for-
+        ma abrangente, abarcando desde as atribuições dos dirigentes da En-
+        tidade Fiscalizadora Superior (EFS), dos encarregados de supervisionar
+        os trabalhos, até as dos membros das equipes de auditoria.
+
+
+1
+  Em inglês, performance audit. No TCU, chamada de auditoria operacional. Em outros países, tam-
+bém é conhecida como auditoria de gestão, de desempenho, operativa, value for money.
+2
+  O Instituto Rui Barbosa – IRB é uma associação civil criadas pelos Tribunais de Contas do Brasil
+em 1973 com o objetivo de auxiliar os Tribunais no desenvolvimento e aperfeiçoamento das ati-
+vidades dos Tribunais de Contas (https://irbcontas.org.br/sobre-o-irb/, acesso em 21/10/2020).
+            5. O manual também contribui para a realização de auditorias
+     que integram a estratégia de avaliação de resultados de políticas e pro-
+     gramas públicos, cujo produto é o relatório anual que deve ser enviado
+     ao Congresso Nacional sobre a qualidade da implementação e o alcan-
+     ce de metas e objetivos dos programas e ações governamentais. Esse
+     relatório visa subsidiar a discussão da lei orçamentária pela Comissão
+     Mista de Planos, Orçamentos Públicos e Fiscalização (CMO).
+
+             6. Este manual é composto por 7 capítulos. Esta introdução re-
+     sume a estrutura de normas da Organização das Entidades Fiscaliza-
+     doras Superiores (Intosai, na sigla em inglês), a definição de auditoria
+     operacional e seus principais conceitos, uma breve descrição do ciclo
+     de auditoria operacional e de seus elementos. O capítulo 2 apresenta
+     os requisitos gerais para auditoria operacional estabelecidos nas ISSAI,
+     que devem ser observados ao longo de todo seu processo. O capítulo
+     3 trata do processo de seleção de temas de auditoria. O capítulo 4
+     contém os conceitos e atividades referentes ao planejamento de uma
+     auditoria operacional. O capítulo 5 trata da fase de execução da audi-
+12
+     toria. O capítulo 6 contém orientações gerais, atributos e componentes
+     do relatório de auditoria, estabelece requisitos para sua divulgação e
+     explica a relevância dessa fase para a efetividade do controle. Final-
+     mente, o capítulo 7 trata do monitoramento.
+
+           7. Os requisitos profissionais constantes na ISSAI 3000 estão
+     destacados em caixas de texto no manual e guiam o desenvolvimento
+     do conteúdo. As NAT e demais regulamentos internos encontram-se
+     referenciados ao longo do texto.
+
+
+
+                 1.1 ESTRUTURA DE NORMAS DA INTOSAI
+            8. A Estrutura de Pronunciamentos Profissionais da Intosai
+     (IFPP, na sigla em inglês) sobre auditoria foi aprovada em setembro
+     de 2019. A IFPP é formada por três categorias de pronunciamentos
+     profissionais, organizados e numerados segundo seu propósito e status
+     na estrutura, conforme apresentado na figura 1. Os pronunciamentos
+     estão disponíveis em www.issai.org, com link para o Portal do TCU,
+     onde parte deles estão traduzidos para o português.
+             Figura 1 - Estrutura de pronunciamentos profissionais da Intosai
+
+            PRINCÍPIOS DA INTOSAI
+INTOSAI-P
+
+
+
+
+            Princípios fundadores da Intosai-P 1-9
+            Princípios basilares da Intosai-P 10-99
+
+
+            NORMAS DA INTOSAI
+                                                                                     Norma de
+            Princípios fundamentais da Auditoria                                   competência
+            do Setor Público ISSAI 100-129                                          profissional
+                                                                                      (COMP)
+            Requisitos organizacionais para EFS ISSAI 130-199
+
+              Auditoria         Auditoria       Auditoria de         Outros           COMP
+ISSAI
+
+
+
+
+                               Operacional     Conformidade        trabalhos        700 - 799
+            Princípios de
+              AF ISSAI        Princípios de     Princípios de    ISSAI 600-699
+              200-299           AO ISSAI          AC ISSAI                           COMP
+                                300-399           400-499         ISSAI 6000-
+                                                                     6499         7000 - 7499
+             Normas de
+              AF ISSAI         Normas de        Normas de
+             2000-2899          AO ISSAI         AC ISSAI
+                               3000-3899        4000-4899
+
+                                                                                                     13
+            ORIENTAÇÕES DA INTOSAI
+                                                                                  Orientação de
+            Orientação organizacional para EFS ISSAI 1900-1999                    competência
+                                                                                   profissional
+                                                                                      COMP
+            Orientação       Orientação        Orientação        Outros
+            suplementar      suplementar       suplementar       trabalhos GUID
+GUID
+
+
+
+
+            de AF            de AO GUID        de AC             6500 - 6999        Orientação
+                             3900 - 3999                                           suplementar
+                                                                                  de competên-
+            Orientação para objetos de                                            cia profissional
+            auditoria específicos GUID 5000-5999                                    COMP 7500
+            Outras orientações GUID 9000-9999                                          7999
+
+
+
+Fonte: Traduzido de https://www.issai.org/professional-pronouncements/.
+
+
+                     9. A primeira categoria abrange os princípios fundadores e os
+              basilares da Intosai, chamados INTOSAI-P. Os princípios fundadores
+              têm importância histórica, por constituírem o documento de fundação
+              da Intosai. São princípios informativos para governos e parlamentos,
+              assim como para as Entidades Fiscalizadoras Superiores (EFS) e para
+              o público em geral, e podem ser usados como referência no estabe-
+              lecimento de mandatos nacionais para as EFS. Os princípios basilares
+              apoiam os princípios fundadores, esclarecendo o papel das EFS na so-
+              ciedade, bem como os pré-requisitos de alto nível para o seu bom
+              funcionamento e para a conduta profissional.
+                    10. A segunda categoria corresponde às ISSAI, que têm por objetivo:
+
+                    a. garantir a qualidade das auditorias realizadas;
+                    b. fortalecer a credibilidade dos relatórios de auditoria para os
+                       usuários;
+                    c. aumentar a transparência do processo de auditoria;
+                    d. especificar a responsabilidade do auditor em relação às outras
+                       partes envolvidas;
+                    e. definir os diferentes tipos de auditoria e o conjunto de conceitos
+                       relacionados que proporciona uma linguagem comum para a
+                       auditoria do setor público.
+
+                  11. As ISSAI são baseadas em um conjunto de princípios e con-
+           ceitos que definem a auditoria do setor público e os diferentes tipos de
+           trabalhos apoiados pelas ISSAI.
+
+                 12. As orientações da Intosai (GUID) são desenvolvidas para apoiar
+           as EFS e os auditores a aplicar as ISSAI na prática ao realizarem auditorias
+14
+           financeiras, operacionais ou de conformidade e ao auditarem objetos de
+           auditoria específicos.
+
+
+
+                       1.2 DEFINIÇÃO DE AUDITORIA OPERACIONAL
+                 13. A auditoria operacional é o exame independente, objetivo e
+           confiável que analisa se empreendimentos, sistemas, operações, progra-
+           mas, atividades ou organizações do governo estão funcionando de acordo
+           com os princípios de economicidade, eficiência, eficácia e efetividade3 e se
+           há espaço para aperfeiçoamento (ISSAI 3000/17).
+
+
+
+     1.3 PRINCIPAIS CONCEITOS EM AUDITORIA OPERACIONAL
+                  14. As auditorias operacionais podem examinar, em um mesmo
+           trabalho, uma ou mais das principais dimensões de desempenho (econo-
+           micidade, eficiência, eficácia e efetividade – os quatro Es). O diagrama a
+           seguir ilustra essas dimensões e suas inter-relações:
+
+
+
+
+     3
+       A definição de auditoria operacional na ISSAI 3000/17 usa o termo em inglês effectiveness, que abran-
+     ge dois conceitos diferentes em língua portuguesa: eficácia (conceito relacionado ao grau de alcance das
+     metas programadas em termos de produtos) e efetividade (conceito relacionado aos impactos).
+                     Figura 2 - Diagrama das principais dimensões de
+                          desempenho em auditoria operacional
+
+
+                                                                        EFEITOS
+
+                                                                        IMPACTOS
+ Nível 1:                                               Fatores
+ Natureza,      NECESSIDADES                            Externos
+ Sociedade
+                                                                       RESULTADOS
+
+
+
+ Nível 2:
+ Intervenção,
+ Política            OBJETIVOS       INSUMOS        ATIVIDADES         PRODUTOS
+ pública
+
+
+
+ Nível 3:                                           Eficiência
+                             Economicidade
+ Avaliação                                          Eficácia
+ Operacional                                        Efetividade
+                                                                                       15
+Fonte: Adaptado do Manual de Auditoria de Resultados do Tribunal de Contas Europeu
+(TCE, 2017, p.18).
+
+
+              15. Para um melhor entendimento das principais dimensões de
+        desempenho avaliadas em uma auditoria operacional, é necessário
+        que alguns termos mencionados na Figura 2 sejam conceituados (TCE,
+        2017, p.18):
+
+                 a. Necessidades são os problemas, as dificuldades ou as
+                       demandas do conjunto da sociedade ou de alguns grupos
+                    específicos reconhecidos como destinatários legítimos de
+                    bens e serviços públicos, que a intervenção pública procura
+                    resolver ou superar.
+                 b. Objetivos são as enunciações iniciais dos efeitos que se
+                       pretendem obter com a intervenção.
+                 c. Insumos são os bens e serviços empregados na produção de
+                    outros bens e serviços que serão entregues a outras organizações
+                    ou diretamente ao público alvo de uma intervenção.
+                 d. Atividades são procedimentos utilizados para converter
+                    recursos em produtos. O conceito abrange igualmente
+                    a comunicação de informações de gestão e a respectiva
+                    utilização pelos gestores.
+                 e. Produtos são bens ou serviços obtidos por meio da
+                    conversão de insumos e que serão entregues como
+                    realização da intervenção pública.
+           f. Resultados são alterações ou efeitos imediatos experimentados
+              pelos destinatários diretos da intervenção pública.
+           g. Impactos são consequências socioeconómicas de longo
+              prazo que podem ser observadas após um determinado
+              período posterior à participação na intervenção e que
+              podem afetar os destinatários diretos da intervenção ou
+              os destinatários indiretos não inseridos na intervenção,
+              que tenham sido por ela beneficiados ou prejudicados.
+           h. Efeito é a alteração que resulta da execução da intervenção
+              e que está normalmente relacionada com os seus objetivos.
+              Os efeitos incluem os resultados e os impactos. Podem ser
+              esperados ou não, positivos ou negativos (por exemplo, uma
+              nova estrada que atrai investidores para uma região, mas que
+              causa níveis de poluição inaceitáveis nas zonas que atravessa).
+
+             16. Em administração pública, valor público são os produtos
+     e resultados gerados, preservados ou entregues pelas atividades de
+     uma organização que representem respostas efetivas e úteis às neces-
+16
+     sidades ou às demandas de interesse público e modifiquem aspectos
+     do conjunto da sociedade ou de alguns grupos específicos reconheci-
+     dos como destinatários legítimos de bens e serviços públicos (BRASIL,
+     2017e). Comparando essa definição com a Figura 2, observa-se que
+     valor público abrange produtos, resultados e impactos socioeconômi-
+     cos, isto é, o que é entregue pela intervenção pública e seus efeitos.
+
+
+
+                                                    1.3.1. ECONOMICIDADE
+
+             17. A economicidade é a minimização dos custos dos recursos
+     utilizados na consecução de uma atividade, sem comprometimento dos
+     padrões de qualidade (GUID 3910/38). Os recursos usados devem estar
+     disponíveis tempestivamente, em quantidade suficiente, na qualidade
+     apropriada e com o melhor preço (ISSAI 300/11). Refere-se à capacida-
+     de de uma organização gerir adequadamente os recursos financeiros
+     colocados à sua disposição.
+
+            18. O exame da economicidade poderá abranger a verificação de
+     práticas gerenciais, sistemas de gerenciamento, benchmarking de proces-
+     sos de compra e outros procedimentos afetos à auditoria operacional,
+     enquanto o exame estrito da legalidade de procedimentos de licitação e
+     da fidedignidade de documentos deverão ser objeto de auditoria de con-
+     formidade. Na prática, poderá haver alguma superposição entre auditoria
+     de conformidade e auditoria operacional. Nesses casos, a classificação do
+     tipo de uma auditoria específica dependerá de seu objetivo primordial.
+                                                      1.3.2. EFICIÊNCIA
+
+       19. A eficiência é definida como a relação entre os produtos (bens
+e serviços) gerados por uma atividade e os custos dos insumos empre-
+gados para produzi-los, em um determinado período, mantidos os pa-
+drões de qualidade (GUID 3910/39). Essa dimensão refere-se ao esforço
+do processo de transformação de insumos em produtos. Pode ser exa-
+minada sob duas perspectivas: minimização do custo total ou dos meios
+necessários para obter a mesma quantidade e qualidade de produto; ou
+otimização da combinação de insumos para maximizar o produto quando
+o gasto total está previamente fixado (COHEN; FRANCO, 1993).
+
+      20. A eficiência é um conceito relativo. Isso significa que em
+uma auditoria sobre eficiência é preciso algum tipo de comparação.
+Auditorias orientadas para eficiência podem também examinar os pro-
+cessos, desde os insumos até o produto, para expor as deficiências
+nesses processos ou na sua implementação (GUID 3910/41).
+
+                                                                            17
+                                                        1.3.3. EFICÁCIA
+
+       21. A eficácia é definida como o grau de alcance das metas pro-
+gramadas (bens e serviços) em um determinado período, independen-
+temente dos custos implicados (COHEN; FRANCO, 1993). O conceito de
+eficácia diz respeito à capacidade da gestão de cumprir objetivos ime-
+diatos, traduzidos em metas de produção ou de atendimento, ou seja,
+a capacidade de prover bens ou serviços de acordo com o estabelecido
+no planejamento das ações.
+
+       22. É importante observar que a análise de eficácia deve conside-
+rar os critérios adotados para fixação da meta a ser alcançada. Uma meta
+subestimada pode levar a conclusões equivocadas a respeito da eficácia
+do programa ou da atividade sob exame. Além disso, fatores externos
+como restrições orçamentárias podem comprometer o alcance das metas
+planejadas e devem ser levados em conta durante a análise da eficácia.
+
+
+
+                                                   1.3.4. EFETIVIDADE
+
+       23. A efetividade diz respeito ao alcance dos resultados preten-
+didos, a médio e longo prazo. Refere-se à relação entre os resultados
+de uma intervenção ou programa, em termos de efeitos sobre a po-
+pulação-alvo (impactos observados), e os objetivos pretendidos (im-
+pactos esperados), traduzidos pelos objetivos finalísticos da interven-
+     ção. Trata-se de verificar a ocorrência de mudanças na população-alvo
+     que se poderia razoavelmente atribuir às ações do programa avaliado
+     (COHEN; FRANCO, 1993).
+
+            24. Portanto, examinar a efetividade de uma intervenção go-
+     vernamental significa ir além do cumprimento de objetivos imediatos
+     ou específicos, em geral consubstanciados em metas de produção ou
+     de atendimento (exame da eficácia da gestão). Trata-se de verificar
+     se os resultados observados foram realmente causados pelas ações
+     desenvolvidas e não por outros fatores (GUID 3910/42). A avaliação
+     da efetividade pressupõe que bens e/ou serviços foram ofertados de
+     acordo com o previsto. O exame da efetividade ou avaliação de impac-
+     to requer tratamento metodológico específico que busca estabelecer
+     a relação de causalidade entre as variáveis do programa e os efeitos
+     observados, comparando-os com uma estimativa do que aconteceria
+     caso o programa não existisse.
+
+             25. É possível, em uma auditoria operacional, priorizar apenas
+18
+     um dos quatro Es. Porém, não é recomendável examinar aspectos de
+     economicidade, eficiência, eficácia ou efetividade de atividades em to-
+     tal isolamento. Por exemplo, olhar para a economicidade sem consi-
+     derar também, pelo menos sucintamente, o resultado de uma política
+     pode levar a intervenções baratas, porém não efetivas. Inversamente,
+     em uma auditoria de efetividade, o auditor pode também querer consi-
+     derar aspectos de economicidade, eficiência e eficácia (GUID 3910/47).
+
+
+
+                                                          1.3.5. EQUIDADE
+
+            26. O exame da equidade, que pode ser derivado da dimensão
+     de efetividade da política pública, baseia-se no princípio que reconhe-
+     ce a diferença entre os indivíduos e a necessidade de tratamento di-
+     ferenciado. Segundo Rawls (1995 apud COHEN; FRANCO, 1993, p. 25),
+     “para proporcionar uma autêntica igualdade de oportunidades a socie-
+     dade deve atender mais aos nascidos com menos dotes e aos nasci-
+     dos em setores socialmente menos favorecidos”. O tratamento desigual
+     é justo quando é benéfico ao indivíduo mais carente - desigualdade
+     justa (RAWLS, 1995 apud MEDEIROS, 1999). Promover a equidade é
+     garantir as condições para que todos tenham acesso ao exercício de
+     seus direitos civis (liberdade de expressão, de acesso à informação,
+     de associação, de voto, igualdade entre gêneros), políticos e sociais
+     (saúde, educação, moradia, segurança). Portanto, as políticas públicas
+de proteção e de desenvolvimento social têm papel fundamental na
+construção da equidade.
+
+       27. O exame da equidade poderá envolver, por exemplo, a in-
+vestigação dos critérios de alocação de recursos vis-à-vis a distribuição
+espacial, o perfil socioeconômico ou de gênero da população-alvo; as
+estratégias adotadas pelo gestor público para adequar a oferta de ser-
+viços ou benefícios às diferentes necessidades do público-alvo.
+
+
+
+                                     1.3.6. EXEMPLO DE APLICAÇÃO
+
+       28. A aplicação dos conceitos de economia, eficiência, eficácia,
+efetividade e equidade pode ser entendida, de maneira simplificada,
+por meio do exemplo de um programa de vacinação contra sarampo.
+Se o gerente do programa adquiriu as vacinas mais baratas (mantendo
+os padrões de qualidade, o prazo de entrega e os outros requisitos
+estabelecidos), pode-se dizer que ele agiu de forma econômica.
+                                                                            19
+       29. Suponha que os principais custos da vacinação sejam o pa-
+gamento dos enfermeiros vacinadores e as vacinas. Suponha também
+que os custos unitários desses insumos sejam os mesmos em dife-
+rentes municípios. O município A, com dez enfermeiros, vacinou cem
+crianças em uma semana e o município B (com condições similares ao
+município A), também com dez enfermeiros, vacinou 120 crianças em
+uma semana. Pode-se dizer que o programa de vacinação do municí-
+pio B foi mais eficiente, porque seu custo de vacinação por criança foi
+menor, considerando que todos trabalharam com a mesma qualidade.
+
+       30. Se o município A tinha a meta de vacinar duzentas crianças
+em um mês e a meta foi alcançada, isso significa que o município foi
+eficaz. Se, nos próximos anos, diminuiu a incidência de sarampo entre
+as crianças do município A, o programa foi efetivo. Se o programa in-
+cluiu ação para alcançar crianças que habitam em áreas onde o acesso
+ao serviço de vacinação é difícil, pode-se dizer que o gestor do progra-
+ma buscou agir de acordo com o conceito de equidade.
+
+
+
+                      1.3.7. OUTRAS DIMENSÕES DE DESEMPENHO
+
+      31. Além das quatro dimensões de desempenho examinadas,
+outras, a elas relacionadas, poderão ser explicitadas em razão de sua
+relevância para a delimitação do escopo das auditorias operacionais.
+       Aspectos como qualidade dos serviços, grau de adequação dos re-
+       sultados dos programas às necessidades do público-alvo (geração de
+       valor público), equidade na distribuição de bens e serviços, podem
+       ser tratados em auditorias operacionais com o objetivo de subsidiar a
+       accountability de desempenho da ação governamental.
+
+
+
+     1.4 CARACTERÍSTICAS DA AUDITORIA OPERACIONAL
+              32. As auditorias operacionais possuem características próprias
+       que as distinguem dos outros tipos de auditoria. Ao contrário das au-
+       ditorias de conformidade e financeiras, que adotam padrões relativa-
+       mente fixos, as auditorias operacionais, devido à variedade e comple-
+       xidade das questões tratadas, possuem maior flexibilidade na escolha
+       de temas, objetos de auditoria, métodos de trabalho e forma de comu-
+       nicar as conclusões de auditoria. Empregam ampla seleção de métodos
+       de avaliação e investigação de diferentes áreas do conhecimento, em
+       especial das ciências sociais. Além disso, esse tipo de auditoria requer
+20
+       do auditor flexibilidade, imaginação e capacidade analítica.
+
+              33. Nas auditorias financeiras e de conformidade, quando são
+       trabalhos de certificação, as conclusões assumem a forma de opinião
+       concisa e de formato padronizado sobre demonstrativos financeiros
+       e sobre a conformidade das transações com leis e regulamentos, ou
+       sobre temas como controles internos, entre outros. Entretanto, nor-
+       malmente não se espera que auditores operacionais apresentem uma
+       opinião geral, comparável à opinião padronizada dos trabalhos de cer-
+       tificação, sobre se a organização ou programa auditado alcançou eco-
+       nomicidade, eficácia, eficiência e efetividade (ISSAI 300/21).
+
+              34. Os relatórios de auditoria operacional podem variar consi-
+       deravelmente em escopo e natureza, informando, por exemplo, sobre
+       a adequada aplicação dos recursos, sobre o impacto de políticas e
+       programas e propondo mudanças destinadas a aperfeiçoar a gestão.
+       Pela sua natureza, as auditorias operacionais são mais abertas a julga-
+       mentos e interpretações e seus relatórios, consequentemente, são mais
+       analíticos e argumentativos.
+
+               35. Devido aos diferentes objetivos dos três tipos de auditoria,
+       são necessárias diferentes abordagens para realizá-las. O Quadro 1 en-
+       fatiza aspectos distintivos de cada tipo de auditoria, de forma a possi-
+       bilitar uma melhor compreensão de suas peculiaridades.
+                     Quadro 1 - Características das auditorias de
+                       conformidade, operacional e financeira
+
+                           Auditoria              Auditoria de
+   Característica                                                       Auditoria financeira
+                          operacional            conformidade
+
+                                                                           Materialidade,
+                            Economia,
+                                               Conformidade com            demonstrações
+ Conceitos-chave       eficiência, eficácia,
+                                               leis e regulamentos      financeiras livres de
+                           efetividade
+                                                                           erros materiais
+
+                                                                          Aumentar o grau
+                                               Verificar se o gestor
+                        Contribuir para                                   de confiança nas
+                                                atuou de acordo
+      Objetivo          a melhoria da                                    demonstrações por
+                                                   com normas
+                        gestão pública                                   parte dos usuários
+                                                     aplicáveis
+                                                                              previstos
+
+                                                                           Expressar opinião
+                                                 Verificar se há
+                                                                         quanto a estarem as
+                                                  discrepância
+                           Avaliar o                                   informações financeiras
+ Papel do auditor                               entre a situação
+                         desempenho                                       livres de distorções
+                                               encontrada e a lei
+                                                                         relevantes devido a
+                                                   ou norma
+                                                                             fraude ou erro      21
+
+     Principais
+      áreas de         Ciências sociais,
+                                                      Direito              Contabilidade
+   conhecimento       análise de políticas
+     do auditor
+
+                                                   Normas, que
+                            Normas
+                                                  incluem leis e        Estrutura de relatório
+                          legais, boas
+                                                  regulamentos,          financeiro aplicável
+                        práticas, valores
+      Critérios                                     resoluções,          (normas contábeis)
+                         profissionais,
+                                                políticas, códigos,      e marco regulatório
+                            modelos,
+                                                termos acordados              aplicável
+                          experiências
+                                               ou princípios gerais
+
+                                                   Atividades,              Demonstrações
+                          Atividades
+  Funcionamento                                    transações,          financeiras de acordo
+                        executadas da
+   esperado do                                    informações             com a estrutura de
+                        melhor maneira
+  objeto auditado                                 aderentes às            relatório financeiro
+                           possível
+                                                normas aplicáveis              aplicável
+
+                           Flexível,           Conformidade com          Conformidade com
+  Perfil do gestor
+                         empreendedor            procedimentos             procedimentos
+
+
+Fonte: elaboração própria com base em Barzelay (1997), IDI (2016, p. 36), ISSAI 200 e 400.
+            36. Também é possível conduzir auditorias combinando, em um
+     mesmo trabalho, aspectos operacionais, financeiros e de conformidade
+     (ISSAI 100/23). No TCU essas auditorias são denominadas auditorias
+     integradas. Nesses trabalhos, o objetivo primário da auditoria deverá
+     orientar quais normas serão aplicadas (ISSAI 3000/16).
+
+
+
+                  1.5 CICLO DE AUDITORIA OPERACIONAL
+           37. De forma ampla, a auditoria do setor público pode ser en-
+     tendida como um processo sobre o qual atuam diversos fatores, con-
+     forme ilustrado na Figura 3.
+
+           38. Os insumos do processo de auditoria, isto é, suas entradas,
+     ou aquilo que será utilizado para produzir os resultados, são essencial-
+     mente informações. Na figura 3, o objeto da auditoria é apresentado
+     como um elemento pré-definido, como ocorre normalmente no pro-
+     cesso de trabalho do TCU. Em auditoria operacional, frequentemente o
+22
+     tema da auditoria é pré-definido, mas é necessário delimitar melhor o
+     objeto na fase de planejamento.
+
+           39. Os requisitos são as disposições normativas em geral quanto
+     à auditoria, tais como as normas de auditoria dos órgãos regulamen-
+     tadores, leis e normas que regulam o funcionamento das organizações
+     envolvidas e do objeto de auditoria, padrões de trabalho estabelecidos
+     pela entidade de auditoria e controle, bem como o objetivo e escopo
+     de cada trabalho de auditoria em particular, quando são pré-definidos.
+
+           40. Os recursos necessários para a auditoria são os recursos
+     materiais, tecnológicos e humanos para realizar o trabalho, incluindo
+     as competências técnicas em termos de conhecimento, habilidades e
+     atitudes dos auditores e demais profissionais que concorrem para a
+     produção do resultado da auditoria.
+
+           41. Os produtos da auditoria são documentados no relatório da
+     auditoria. São os achados, as avaliações, as opiniões e conclusões e as
+     recomendações e determinações propostas.
+
+            42. Os usuários da auditoria do setor público abrangem os re-
+     latores e colegiados dos tribunais de contas, quem solicitou a audito-
+     ria, podendo ser o Legislativo ou o próprio auditado, os órgãos ou as
+     pessoas que compõem a gestão superior do auditado, os dirigentes de
+     órgãos supervisores e, em última instância, a sociedade.
+                         Figura 3 - Diagrama conceitual da auditoria do setor público
+
+                                                              REQUISITOS
+
+                                                Leis e Normas e Objetivo e Procedimen-
+                                               normas padrões de escopo da tos, inclusive
+                                               sobre o auditoria auditoria  controle de
+                                                objeto                       qualidade
+                       Informações
+                                                                                                       Resultados
+                       Sobre o
+                                                                                                       Achados da
+Fontes de informação
+
+
+
+
+                       objeto da
+                                                                                                         auditoria
+                       auditoria
+
+
+
+
+                                                                                                                      Usuários
+                       Sobre
+                                           Planejamento   Execução        Relatório    Monitoramento    Conclusões
+                       critérios
+                                                                                                       da auditoria
+
+                       Sobre
+                                                                                                          Proposta
+                       situações ou
+                                                                                                          de ações
+                       condições
+                                                                                                         corretivas
+
+                                           Auditores Colaboradores Competências Instalações/
+                                                                                sistemas/soﬞwares...
+
+                                                               RECURSOS
+                                                                                                                                 23
+
+Fonte: Adaptado de (BRASIL, 2011a).
+
+
+                              43. Alterando o nível de análise, é possível examinar em mais
+                       detalhe o ciclo da auditoria, em particular o ciclo da auditoria operacio-
+                       nal, como visto na Figura 4.
+
+                                          Figura 4 - Ciclo de auditoria operacional
+
+
+
+                                                                                 Seleção de
+                                                                                 temas
+                                      Monitoramento
+                                                                                                Planejamento
+
+
+
+
+                          Divulgação                                                                   Execução
+
+
+
+                                      Apreciação                                        Relatório
+                                                            Comentário
+                                                              do gestor
+Fonte: Adaptado de NAO (1997). Imagens Freepik
+

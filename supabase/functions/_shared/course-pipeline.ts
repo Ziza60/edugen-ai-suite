@@ -2947,7 +2947,7 @@ INTEGRIDADE DE DOMÍNIO
 FONTES
 ${
   useSources
-    ? `- Use exclusivamente os trechos abaixo.\n- Cada bloco substantivo deve listar em source_ids apenas IDs que sustentem o bloco.\n- IDs permitidos: ${allowedSourceIds.join(", ")}\n- Se um detalhe não está nas fontes, omita-o.\n\n<SOURCES>\n${sourcePacket}\n</SOURCES>`
+    ? `- Use exclusivamente os trechos abaixo.\n- Cada bloco substantivo deve listar em source_ids apenas IDs que sustentem o bloco.\n- IDs permitidos: ${allowedSourceIds.join(", ")}\n- O ID do trecho vai SÓ em source_ids. NUNCA escreva "S2:C34" ou qualquer id no texto que o aluno lê: ele não significa nada para quem faz o curso. Citação de norma no texto (ISSAI 3000/35, GUID 3910/38) é bem-vinda; id de trecho, não.\n- Se um detalhe não está nas fontes, omita-o.\n\n<SOURCES>\n${sourcePacket}\n</SOURCES>`
     : `- source_ids deve ser [] em todos os blocos.\n- Não apresente uma referência específica como consultada.`
 }
 
