@@ -519,6 +519,117 @@ function getModelFallbacks(model: string): string[] {
   return [FAST_MODEL];
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SOBRECARGA DO SERVIDOR NÃO É ERRO DE CONTEÚDO
+//
+// MEDIDO no curso de 19/11/2026, log das 18:14:
+//
+//   18:14:30  AI call  module_4_lesson_4.3
+//   18:14:31  503  "This model is currently experiencing high demand. Spikes in
+//                   demand are usually temporary. Please try again later."
+//   18:14:31  Módulo 4 (índice 3, tentativa 1/3) falhou
+//
+// Uma chamada de quatro — envelope + três lições — pegou um 503, e o módulo
+// inteiro morreu. As três lições anteriores, 67 segundos de trabalho pronto,
+// foram jogadas fora.
+//
+// POR QUE NÃO HOUVE RETENTATIVA NENHUMA
+//
+// O 429 tem retentativa própria: espera 1,5 s e repete no mesmo candidato. O
+// 503 cai no `break`, que vai para o PRÓXIMO MODELO — e `getModelFallbacks`
+// devolve UM único candidato para as lições (FAST_MODEL). Sem segundo
+// candidato, o `break` sai do laço e a função lança. Zero retentativas para o
+// erro que a própria API descreve como temporário.
+//
+// A PROVA de que era transitório está no mesmo log: a retentativa do MÓDULO
+// refez tudo e a mesma lição 4.3 passou às 18:15:50.
+//
+// O CUSTO de não retentar aqui: a retentativa do módulo regenera envelope e
+// todas as lições de novo, ~80 s de chamadas, para contornar um "tente de novo
+// em instantes" de uma chamada.
+//
+// OS NÚMEROS ABAIXO SÃO JULGAMENTO, NÃO MEDIÇÃO. Não sei quanto dura um pico de
+// demanda do Gemini; o log só prova que 79 s depois funcionou. Escolhi 2 s e 5 s
+// porque o modo de falhar do outro lado é conhecido e caro — perder o módulo —,
+// e porque a retentativa do módulo continua existindo como rede atrás desta.
+const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
+const ESPERA_TRANSIENTE_MS = [2000, 5000];
+/** Margem para não dormir e acordar sem prazo para a chamada em si. */
+const MARGEM_PARA_RETENTAR_MS = 5000;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NÚMEROS SEM FONTE: QUANDO REPROVAR O MÓDULO
+//
+// MEDIDO no curso de 19/11/2026, log das 18:12:
+//
+//   "Módulo 2 (índice 1, tentativa 1/3) falhou: Números não localizados nas
+//    fontes: 15/03/2024 (1 de 1)."
+//
+// Uma data do caso condutor fictício, o único número examinado no módulo: 1 de
+// 1 = 1,0 > 0,5, módulo reprovado. Voltou pela retentativa e saiu com ressalva,
+// custando ~70 s de chamadas por uma data.
+//
+// O defeito é de régua, não de limiar. Com um único examinado a proporção só
+// pode valer 0 ou 1: ela não mede concentração de invenção, mede a existência
+// de um achado. E o efeito fica invertido — 1 sem fonte em 1 BLOQUEIA, enquanto
+// 5 em 10 apenas AVISA, tendo cinco vezes mais evidência de invenção.
+//
+// OS DOIS NÚMEROS SÃO JULGAMENTO, NÃO MEDIÇÃO. O piso de 3 é o menor em que "a
+// maioria" significa algo (2 de 3). O 0,5 segue como estava: a bancada ganhou um
+// curso com fontes, mas um curso não dá taxa.
+const PISO_PARA_PROPORCAO = 3;
+const PROPORCAO_QUE_REPROVA = 0.5;
+
+/**
+ * Um achado de número sem fonte reprova o módulo ou só avisa?
+ *
+ * Vive fora de `validateModuleDocument` para poder ser medido: lá dentro, só um
+ * curso inteiro em memória faria a pergunta.
+ */
+function severidadeDosNumerosSemFonte(
+  semFonte: number,
+  examinados: number,
+): "blocking" | "warning" {
+  if (semFonte <= 0) return "warning";
+  // Sem amostra, a proporção não decide — mas o achado continua sendo dito.
+  if (examinados < PISO_PARA_PROPORCAO) return "warning";
+  return semFonte / examinados > PROPORCAO_QUE_REPROVA ? "blocking" : "warning";
+}
+
+/** O que fazer diante de uma resposta de erro do Gemini. */
+interface DecisaoDeRetentativa {
+  repetir: boolean;
+  esperaMs: number;
+  /** Por que não repetir — para o log dizer a razão em vez de só desistir. */
+  motivo: "sobrecarga" | "status-definitivo" | "retentativas-esgotadas" | "sem-prazo";
+}
+
+/**
+ * Repetir esta chamada por sobrecarga do servidor?
+ *
+ * A decisão mora fora do laço para poder ser medida. Dentro de um `for` com
+ * `fetch`, `await` e três variáveis de controle, a única forma de verificá-la
+ * seria reescrevê-la num teste — que é a régua que não olha o que afirma medir.
+ */
+function decidirRetentativaTransiente(
+  status: number,
+  retentativasFeitas: number,
+  prazoRestanteMs: number,
+): DecisaoDeRetentativa {
+  if (!TRANSIENT_STATUSES.has(status)) {
+    return { repetir: false, esperaMs: 0, motivo: "status-definitivo" };
+  }
+  if (retentativasFeitas >= ESPERA_TRANSIENTE_MS.length) {
+    return { repetir: false, esperaMs: 0, motivo: "retentativas-esgotadas" };
+  }
+  const esperaMs = ESPERA_TRANSIENTE_MS[retentativasFeitas];
+  if (prazoRestanteMs <= esperaMs + MARGEM_PARA_RETENTAR_MS) {
+    // Dormir e acordar sem prazo para a chamada é perder duas vezes.
+    return { repetir: false, esperaMs, motivo: "sem-prazo" };
+  }
+  return { repetir: true, esperaMs, motivo: "sobrecarga" };
+}
+
 // ─── Placeholder detection ─────────────────────────────────────────────────
 
 const PLACEHOLDER_PATTERNS: RegExp[] = [
@@ -725,6 +836,7 @@ async function callAIInner(
   for (const candidate of models) {
     let retryWithoutEffort = false;
     let rateLimitRetried = false;
+    let retentativasTransientes = 0;
     do {
       retryWithoutEffort = false;
       const baseBody: Record<string, unknown> = {
@@ -797,6 +909,32 @@ async function callAIInner(
             await new Promise((resolve) => setTimeout(resolve, 1500));
             retryWithoutEffort = true;
             continue;
+          }
+          // 500/502/503/504: o servidor está sobrecarregado AGORA. Não é erro de
+          // conteúdo, de schema nem de prompt — é hora errada, e a própria
+          // resposta do Gemini diz "usually temporary, please try again later".
+          // Ver TRANSIENT_STATUSES para o que isto custou quando não existia.
+          const decisao = decidirRetentativaTransiente(
+            response.status, retentativasTransientes, restanteDoPrazo(),
+          );
+          if (decisao.repetir) {
+            retentativasTransientes += 1;
+            console.warn(
+              `[generate-course] ${response.status} em ${candidate} ` +
+                `(${options.schemaName || "text"}); sobrecarga temporária, ` +
+                `repetindo em ${decisao.esperaMs}ms ` +
+                `(${retentativasTransientes}/${ESPERA_TRANSIENTE_MS.length}).`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, decisao.esperaMs));
+            retryWithoutEffort = true;
+            continue;
+          }
+          if (decisao.motivo !== "status-definitivo") {
+            console.warn(
+              `[generate-course] ${response.status} em ${candidate} ` +
+                `(${options.schemaName || "text"}): não repetindo — ${decisao.motivo} ` +
+                `(restam ${restanteDoPrazo()}ms).`,
+            );
           }
           // Endpoint sem suporte a reasoning_effort: desliga o campo e repete
           // esta mesma chamada uma vez, em vez de queimar o candidato.
@@ -3937,17 +4075,41 @@ function validateModuleDocument(params: {
       // era retentado três vezes e falhava, e o usuário ficava sem curso
       // nenhum. Entregar com aviso é estritamente melhor que não entregar.
       //
-      // Quando houver curso com fontes na bancada, este 0,5 é o primeiro número
-      // a ser medido e corrigido.
-      const proporcao = examinados ? semFonte.length / examinados : 1;
+      // ─── UMA PROPORÇÃO SOBRE UMA ÚNICA OBSERVAÇÃO NÃO É UMA PROPORÇÃO ─────
+      //
+      // MEDIDO no curso de 19/11/2026, log das 18:12:
+      //
+      //   "Módulo 2 (índice 1, tentativa 1/3) falhou: Módulo 2 sem conteúdo
+      //    entregável: Números não localizados nas fontes: 15/03/2024 (1 de 1)."
+      //
+      // Uma data do caso condutor fictício, o único número examinado no módulo:
+      // 1 de 1 = 1,0 > 0,5, módulo reprovado. Ele voltou pela retentativa e saiu
+      // com ressalva, custando ~70 s de chamadas por causa de uma data.
+      //
+      // O defeito é de régua, não de limiar. Com `examinados = 1` a proporção só
+      // pode valer 0 ou 1: ela não mede concentração de invenção, mede a
+      // existência de um achado. E o efeito fica invertido — 1 sem fonte em 1
+      // BLOQUEIA, enquanto 5 em 10 apenas AVISA, tendo cinco vezes mais
+      // evidência de invenção.
+      //
+      // Então a proporção só decide quando há amostra para ela decidir. Abaixo
+      // do piso o achado continua sendo dito, como aviso.
+      //
+      // O PISO É JULGAMENTO, NÃO MEDIÇÃO: três é o menor número em que "a
+      // maioria" significa algo (2 de 3). O 0,5 também segue sendo julgamento —
+      // a bancada ganhou um curso com fontes, mas um curso não dá taxa.
+      const severidade = severidadeDosNumerosSemFonte(semFonte.length, examinados);
+      const amostraSuficiente = examinados >= PISO_PARA_PROPORCAO;
       const lista = `${semFonte.join(", ")}`;
-      if (proporcao > 0.5) {
+      if (severidade === "blocking") {
         blocking.push(
           `Números não localizados nas fontes: ${lista} (${semFonte.length} de ${examinados}).`,
         );
       } else {
         warnings.push(
-          `Números não localizados nas fontes: ${lista} (${semFonte.length} de ${examinados}); confira se são contas derivadas das fontes.`,
+          `Números não localizados nas fontes: ${lista} (${semFonte.length} de ${examinados}` +
+          `${amostraSuficiente ? "" : `; amostra pequena demais para reprovar`}` +
+          `); confira se são contas derivadas das fontes.`,
         );
       }
     }
@@ -5983,6 +6145,12 @@ export {
   mapWithConcurrency,
   markdownHasPlaceholder,
   placeholdersNoMarkdown,
+  decidirRetentativaTransiente,
+  severidadeDosNumerosSemFonte,
+  PISO_PARA_PROPORCAO,
+  PROPORCAO_QUE_REPROVA,
+  ESPERA_TRANSIENTE_MS,
+  TRANSIENT_STATUSES,
   normalizeAssessment,
   normalizeBlockType,
   normalizeBlueprint,
