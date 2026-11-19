@@ -7,6 +7,7 @@ import {
 import {
   avisoDeVocabulario, expressoesForaDasFontes,
 } from "../_shared/vocabulario-das-fontes.ts";
+import { normalizarTextoExtraido } from "../_shared/texto-extraido.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -25,14 +26,7 @@ const RATE_LIMITS: Record<string, number> = {
   pro:     50,
 };
 
-function normalizeText(raw: string): string {
-  return raw
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/^(Page \d+ of \d+|[-–—]\s*\d+\s*[-–—])\s*$/gm, "")
-    .split("\n").map((l) => l.trim()).join("\n")
-    .trim();
-}
+
 
 // Chunked base64 — avoids call-stack overflow for large files
 function uint8ToBase64(bytes: Uint8Array): string {
@@ -204,7 +198,7 @@ Deno.serve(async (req: Request) => {
       rawText = extractDocxText(bytes);
     }
 
-    const extractedText = normalizeText(rawText);
+    const extractedText = normalizarTextoExtraido(rawText);
     if (extractedText.length < 100) {
       return json({ error: "O documento não contém texto suficiente para gerar um curso." }, 400);
     }

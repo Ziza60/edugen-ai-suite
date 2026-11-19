@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizarTextoExtraido } from "../_shared/texto-extraido.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,20 +20,6 @@ const MAX_TOTAL_CHARS = 500_000;
 const TESTING_MODE = true;
 
 // Simple text normalizer: collapse whitespace, remove repeated headers/footers
-function normalizeText(raw: string): string {
-  // Collapse multiple newlines to max 2
-  let text = raw.replace(/\n{3,}/g, "\n\n");
-  // Collapse multiple spaces/tabs to single space
-  text = text.replace(/[ \t]{2,}/g, " ");
-  // Remove common PDF artifacts (page numbers like "Page 1 of 10", "- 1 -")
-  text = text.replace(/^(Page \d+ of \d+|[-–—]\s*\d+\s*[-–—])\s*$/gm, "");
-  // Trim each line
-  text = text
-    .split("\n")
-    .map((l) => l.trim())
-    .join("\n");
-  return text.trim();
-}
 
 // Extract text from PDF using pdf-parse
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
@@ -194,7 +181,7 @@ Deno.serve(async (req: Request) => {
       extractedText = new TextDecoder().decode(bytes);
     }
 
-    extractedText = normalizeText(extractedText);
+    extractedText = normalizarTextoExtraido(extractedText);
 
     if (extractedText.length < 100) {
       return new Response(

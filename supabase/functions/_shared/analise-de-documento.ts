@@ -25,6 +25,8 @@
  * ser verificada por teste nenhum.
  */
 
+import { semSumario } from "./texto-extraido.ts";
+
 /** Um documento do conjunto já analisado. Metadado só — o texto não é reenviado. */
 export interface DocumentoIrmao {
   filename: string;
@@ -75,7 +77,22 @@ export function promptDeAnalise(
   filename: string,
   irmaos: readonly DocumentoIrmao[] = [],
 ): string {
-  const recortado = texto.slice(0, MAX_CHARS_NA_ANALISE);
+  // O SUMÁRIO SAI DAQUI, E SÓ DAQUI.
+  //
+  // RELATADO em 19/11/2026: com os dois capítulos anexados, o resumo sugerido
+  // afirmou que o curso apresenta "as etapas subsequentes de execução,
+  // elaboração de relatórios, divulgação e monitoramento", e os módulos
+  // sugeridos subiram de 5 para 9. A fonte não ensina nenhuma dessas fases —
+  // ela as nomeia no sumário do manual inteiro, nas primeiras linhas do PDF.
+  //
+  // A regra de escopo proíbe prometer o que não está no conjunto, e o modelo
+  // obedeceu: os nomes ESTÃO no conjunto, como índice. Pedir que ele distinga
+  // citar de ensinar é pedir que adivinhe. Tirar o índice resolve na origem.
+  //
+  // Ver `semSumario`: o corpus que gera as lições NÃO é tocado, porque uma
+  // tabela de dados legítima também tem densidade alta de números e tirá-la
+  // faria `useSources` reprovar os módulos por não achar os próprios valores.
+  const recortado = semSumario(texto).slice(0, MAX_CHARS_NA_ANALISE);
 
   return `You are an expert instructional designer. Analyze this document and suggest a course structure.
 
