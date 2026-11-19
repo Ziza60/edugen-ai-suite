@@ -52,6 +52,40 @@ critério (`1.3.1 ECONOMICIDADE`, GUID 3910/38; `1.3.2 EFICIÊNCIA`, GUID 3910/3
 Operacional: Conceitos e Os '4 Es'`, com uma subseção de definição por critério
 e uma seção de inter-relações. A lacuna era da fonte, não do gerador.
 
+## O segundo defeito, relatado por quem usou, e o resultado do conserto
+
+**Relatado em 19/11:** ao anexar os dois documentos, o app preencheu o título de
+forma abrangente, como se o curso cobrisse todas as fases da auditoria, e o tema
+afirmou que iria ALÉM do planejamento — promessa que as fontes não sustentam.
+Título e tema tiveram de ser corrigidos à mão.
+
+Causa dupla: `analyze-pdf-source` analisava cada documento sozinho ("desenhe um
+curso a partir deste documento"), e o formulário usava `analises[0]` — o
+primeiro escolhido, que era o dos conceitos gerais.
+
+**Conserto:** cada análise declara os documentos já analisados, o prompt exige
+escopo do conjunto com a regra de não prometer cobertura ausente, e o formulário
+usa a última análise — a única que conheceu todos. O tamanho em caracteres de
+cada documento vai no prompt como contrapeso (93.537 do planejamento contra
+38.605 dos conceitos gerais).
+
+**MEDIDO no mesmo upload, depois do conserto:**
+
+| campo | antes | depois |
+|---|---|---|
+| título | abrangente, todas as fases | `Auditoria Operacional no Setor Público: Fundamentos e Planejamento Estratégico` |
+| tema | afirmava ir além do planejamento | escopo em framework normativo, análise preliminar, estratégia e plano |
+| público-alvo | — | `...na fase de planejamento de auditorias operacionais` |
+
+A delimitação apareceu sozinha, sem edição. Nenhuma menção a execução, coleta de
+evidência, relatório ou monitoramento — as fases que os documentos não cobrem. O
+público-alvo nomeia a fase explicitamente, que é a regra do prompt agindo.
+
+Imprecisão que sobrou: o título diz "Planejamento Estratégico", expressão que em
+português puxa para planejamento estratégico de organização. A fonte trata da
+FASE de planejamento de uma auditoria, que inclui a Estratégia Global de
+Auditoria. Não é promessa falsa de cobertura; é escolha de palavra.
+
 ## O defeito que este curso revelou
 
 22 ocorrências de identificador interno de trecho (`S2:C34`) no corpo das
