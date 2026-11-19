@@ -52,7 +52,7 @@ import type {
 import { repairTruncation } from "../_shared/markdown.ts";
 import {
   dispatchAll, elegiveis, eUltimaTentativa, ganhouOPortao, moduloJaGravado,
-  reivindicou, secretsMatch,
+  prazoRestanteMs, reivindicou, secretsMatch,
 } from "../_shared/course-dispatch.ts";
 
 /**
@@ -149,6 +149,56 @@ const MODULE_DEADLINE_MS = Math.max(
   60000,
   Number(Deno.env.get("COURSE_MODULE_DEADLINE_MS") || "125000") || 125000,
 );
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O TETO É A IDADE DO ISOLATE, NÃO A DURAÇÃO DESTA REQUISIÇÃO
+//
+// `MODULE_DEADLINE_MS` é contado de `startedAt`, logo depois do claim. O
+// comentário acima já dizia que "o teto da plataforma conta a vida do worker" —
+// e o orçamento continuava contando a vida da REQUISIÇÃO. São coisas diferentes
+// porque um isolate atende vários módulos, em paralelo e em sequência.
+//
+// MEDIDO no curso 8091e1c1, de 19/11/2026, agrupando o log por `execution_id`:
+//
+//   isolate 99264670 ... 18:11:36 → 18:13:36 ... vida 121,0 s
+//   isolate 73bed077 ... 18:13:36 → 18:16:06 ... vida 150,0 s   ← morto no teto
+//
+// O 73bed077 reivindicou TRÊS módulos de uma vez (índices 2, 3 e 4, todos às
+// 18:13:37). Às 18:14:31 o índice 3 morreu num 503 e o MESMO isolate, já com 55
+// s de vida, pegou a segunda tentativa:
+//
+//   isolate nasce ...................... 18:13:36
+//   tentativa 2 do índice 3 começa ..... 18:14:31   (isolate com 55 s)
+//   orçamento do módulo diz ............ 125 s → até 18:16:36
+//   plataforma mata o isolate .......... 18:16:06   (150,0 s de vida)
+//
+// O módulo acreditava ter 30 s mais do que existia. Às 18:15:50 as três lições
+// estavam prontas e a guarda do reparo mediu `msLeft() = 46 s`, acima da reserva
+// de 42 s, e começou um reparo. O isolate tinha 16 s. Shutdown às 18:16:06, com
+// as três lições geradas e nada gravado — 79 s de trabalho perdidos por um
+// reparo que a guarda autorizou com o relógio errado.
+//
+// 150,0 s batendo no cravo confirma o teto do plano gratuito que o comentário
+// acima já citava. A margem existe para o que vem DEPOIS da última chamada de
+// IA: validar, gravar o módulo e devolver a resposta.
+//
+// O CPU medido no mesmo isolate foi 974 ms, contra o limite de 2 s do plano: o
+// gargalo é relógio de parede, como o comentário acima diz, e não computação.
+const TETO_DO_ISOLATE_MS = Math.max(
+  60000,
+  Number(Deno.env.get("COURSE_WORKER_WALL_CLOCK_MS") || "150000") || 150000,
+);
+/** Reserva para validar, gravar e responder depois da última chamada de IA. */
+const MARGEM_DO_ISOLATE_MS = 20000;
+
+/**
+ * Quanto tempo este isolate está no ar.
+ *
+ * Um `const` no escopo do módulo é avaliado UMA VEZ por isolate, no boot — é o
+ * único relógio disponível aqui que mede a mesma coisa que a plataforma mede.
+ */
+const ISOLATE_INICIOU_EM = Date.now();
+const idadeDoIsolate = () => Date.now() - ISOLATE_INICIOU_EM;
 
 // O TETO DO REPARO É DERIVADO, NÃO ADIVINHADO
 //
@@ -988,7 +1038,16 @@ Deno.serve(async (req: Request) => {
   }
 
   const startedAt = Date.now();
-  const msLeft = () => MODULE_DEADLINE_MS - (Date.now() - startedAt);
+  // O prazo é o MENOR entre o orçamento deste módulo e o que resta de vida do
+  // isolate. Ver TETO_DO_ISOLATE_MS: um isolate atende vários módulos, e a
+  // plataforma mata por idade dele, não por duração da requisição.
+  const msLeft = () => prazoRestanteMs({
+    orcamentoDoModuloMs: MODULE_DEADLINE_MS,
+    desdeOClaimMs: Date.now() - startedAt,
+    tetoDoIsolateMs: TETO_DO_ISOLATE_MS,
+    margemMs: MARGEM_DO_ISOLATE_MS,
+    idadeDoIsolateMs: idadeDoIsolate(),
+  });
 
   const work = (async () => {
     try {
@@ -1081,6 +1140,12 @@ Deno.serve(async (req: Request) => {
           licoes_ms: outcome.licoesMs,
           total_ms: Date.now() - tEntrada,
           orcamento_ms: MODULE_DEADLINE_MS,
+          // A idade do isolate no fim e no começo deste módulo. Sem isto, a
+          // diagnose de 19/11 só ficou possível agrupando o CSV do log por
+          // `execution_id` à mão — e foi esse número que explicou tudo.
+          isolate_idade_ms: idadeDoIsolate(),
+          isolate_idade_no_claim_ms: startedAt - ISOLATE_INICIOU_EM,
+          isolate_teto_ms: TETO_DO_ISOLATE_MS,
         }),
       );
     } catch (error: any) {
@@ -1098,7 +1163,8 @@ Deno.serve(async (req: Request) => {
       // os dois números e qual é qual.
       console.error(
         `[generate-course-module] Módulo ${payload.moduleIndex + 1} ` +
-        `(índice ${payload.moduleIndex}, tentativa ${claimed?.attempts ?? "?"}/3) ` +
+        `(índice ${payload.moduleIndex}, tentativa ${claimed?.attempts ?? "?"}/3, ` +
+        `isolate com ${Math.round(idadeDoIsolate() / 1000)}s de ${Math.round(TETO_DO_ISOLATE_MS / 1000)}s) ` +
         `falhou: ${message}`,
       );
       // Volta para 'pending' enquanto houver tentativa sobrando, para que a rede

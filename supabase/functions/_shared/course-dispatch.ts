@@ -164,6 +164,45 @@ export function reivindicou(resposta: unknown): boolean {
 }
 
 /**
+ * Quanto tempo ainda há para trabalhar: o MENOR entre o orçamento deste módulo
+ * e o que resta de vida do isolate.
+ *
+ * ─── POR QUE DOIS RELÓGIOS ───────────────────────────────────────────────────
+ *
+ * O orçamento do módulo é contado do claim desta requisição. A plataforma mata
+ * pela idade do ISOLATE, e um isolate atende vários módulos — em paralelo e em
+ * sequência. São grandezas diferentes, e o código tratava as duas como uma.
+ *
+ * MEDIDO no curso 8091e1c1, de 19/11/2026, agrupando o log por `execution_id`:
+ *
+ *   isolate 99264670 ... 18:11:36 → 18:13:36 ... vida 121,0 s
+ *   isolate 73bed077 ... 18:13:36 → 18:16:06 ... vida 150,0 s  ← morto no teto
+ *
+ * O 73bed077 reivindicou três módulos de uma vez (índices 2, 3 e 4, às
+ * 18:13:37). Às 18:14:31 o índice 3 morreu num 503 e o MESMO isolate, já com 55
+ * s de vida, pegou a segunda tentativa com um orçamento de 125 s — 30 s além do
+ * que existia. Às 18:15:50, com as três lições prontas, a guarda do reparo leu
+ * 46 s de sobra e começou um reparo; o isolate tinha 16 s. Shutdown, três lições
+ * geradas, nada gravado, curso entregue com 4 de 5 módulos.
+ *
+ * A margem é para o que vem DEPOIS da última chamada de IA: validar, gravar o
+ * módulo e responder. Com o prazo em zero ainda resta `margemMs` de vida real.
+ */
+export function prazoRestanteMs(params: {
+  orcamentoDoModuloMs: number;
+  desdeOClaimMs: number;
+  tetoDoIsolateMs: number;
+  margemMs: number;
+  idadeDoIsolateMs: number;
+}): number {
+  const { orcamentoDoModuloMs, desdeOClaimMs, tetoDoIsolateMs, margemMs, idadeDoIsolateMs } = params;
+  return Math.min(
+    orcamentoDoModuloMs - desdeOClaimMs,
+    tetoDoIsolateMs - margemMs - idadeDoIsolateMs,
+  );
+}
+
+/**
  * Quantas vezes um job pode ser reivindicado. É o mesmo 3 do `attempts < 3`
  * dentro de `claim_course_generation_job` — e são dois números que precisam
  * continuar iguais.
