@@ -558,6 +558,54 @@ const ESPERA_TRANSIENTE_MS = [2000, 5000];
 const MARGEM_PARA_RETENTAR_MS = 5000;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// A CLÁUSULA QUE DISTINGUE O CONCEITO É PARTE DA DEFINIÇÃO
+//
+// APONTADO por quem usou — auditor — em 19/11/2026, ao ler as definições dos
+// quatro critérios num curso gerado das normas do TCU. Perguntei se a perda
+// importava para um auditor e a resposta foi "sim, importa muito".
+//
+// MEDIDO em DOIS cursos seguidos, comparando cada definição com o parágrafo da
+// fonte que define o mesmo termo:
+//
+//   a fonte diz                                         o curso escreveu
+//   ─────────────────────────────────────────────────────────────────────────
+//   eficácia: "grau de alcance das metas programadas    sem "independentemente
+//   em determinado período, INDEPENDENTEMENTE DOS        dos custos" — nos dois
+//   CUSTOS IMPLICADOS"                                   cursos
+//
+//   eficiência: "relação entre os produtos e os custos   sem "mantidos os
+//   dos insumos, MANTIDOS OS PADRÕES DE QUALIDADE"       padrões de qualidade"
+//                                                        — nos dois cursos
+//
+// A cláusula cortada é exatamente a que separa o conceito do vizinho:
+// "independentemente dos custos" é o que distingue eficácia de eficiência, e
+// "mantidos os padrões de qualidade" é o que distingue eficiência de cortar
+// custo. Sem elas a definição parece certa e não serve para trabalhar — um
+// auditor que avalia eficácia pesando custo está avaliando outra coisa.
+//
+// NÃO É O MESMO CASO DE "PLANEJAMENTO ESTRATÉGICO". Lá o defeito era checável:
+// o par existe no corpus ou não existe. Aqui não há teste determinístico para
+// "este resumo preservou as cláusulas que distinguem o conceito" — eu teria de
+// identificar, sem ajuda, qual parágrafo da fonte define qual termo e qual das
+// suas orações é a distintiva.
+//
+// Então esta regra é instrução de prompt, e o que o teste garante é que ela
+// ESTÁ nos três prompts que escrevem conteúdo de lição. Se ela funciona, só o
+// próximo curso diz. Ficou registrado assim de propósito.
+const REGRA_DE_DEFINICAO = `FIDELIDADE DAS DEFINIÇÕES
+- Quando a fonte DEFINE um termo, conserve na definição as cláusulas que o
+  distinguem dos termos vizinhos, de preferência com as palavras da própria
+  fonte. É nelas que o conceito se separa dos outros; resumir cortando-as
+  entrega uma definição que parece correta e não serve para trabalhar.
+- Se a fonte limita a definição no tempo, no custo, na qualidade ou na
+  causalidade, essa limitação FAZ PARTE da definição e não é detalhe.
+- Exemplos do que NÃO fazer: definir "eficácia" como "grau de alcance das metas
+  programadas" omitindo "independentemente dos custos implicados", que é o que a
+  separa de eficiência; definir "eficiência" como "relação entre produtos e
+  recursos" omitindo "mantidos os padrões de qualidade", que é o que a separa de
+  simplesmente cortar custo.`;
+
+// ═══════════════════════════════════════════════════════════════════════════
 // NÚMEROS SEM FONTE: QUANDO REPROVAR O MÓDULO
 //
 // MEDIDO no curso de 19/11/2026, log das 18:12:
@@ -3092,6 +3140,8 @@ ${numbersRule}
 - Não invente leis, normas, estatísticas, métricas, referências, estudos, empresas ou resultados.
 - Não crie siglas ou fórmulas inexistentes.
 - Se houver caso condutor, use apenas os fatos do dossiê.
+
+${REGRA_DE_DEFINICAO}
 ${caseDossier ? `\n${caseDossier}\n` : ""}${ledgerDeValores ? `\n${ledgerDeValores}\n` : ""}
 
 O NOME DO CASO VEM ENTRE ASPAS
@@ -4506,6 +4556,9 @@ REGRAS
 - media_brief: imagem instrucional (diagrama, mapa de decisão, comparação visual), nunca decorativa.
 - Não invente fatos ou números. ${numbersRule}
 - Mantenha todos os exemplos no domínio do curso.
+
+${REGRA_DE_DEFINICAO}
+
 - source_ids: ${useSources ? `use apenas ${allowedSourceIds.join(", ")}` : "sempre []"}.
 
 BLUEPRINT DO MÓDULO
@@ -4755,6 +4808,9 @@ REGRAS
 - Não invente números nem fatos. ${numbersRule}
 - source_ids: ${useSources ? `use apenas ${allowedSourceIds.join(", ")}` : "sempre []"}.
 - Todos os campos do esquema são obrigatórios; campos não usados pelo tipo do bloco devem ser string vazia ou [].
+
+${REGRA_DE_DEFINICAO}
+- O reparo também não pode CORTAR uma cláusula dessas que a lição atual já tenha.
 
 LIÇÃO ATUAL (para referência)
 ${JSON.stringify(currentLesson)}
@@ -6147,6 +6203,7 @@ export {
   placeholdersNoMarkdown,
   decidirRetentativaTransiente,
   severidadeDosNumerosSemFonte,
+  REGRA_DE_DEFINICAO,
   PISO_PARA_PROPORCAO,
   PROPORCAO_QUE_REPROVA,
   ESPERA_TRANSIENTE_MS,
