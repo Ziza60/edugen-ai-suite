@@ -12,6 +12,9 @@ import {
   motivoDasRecusas, selecionarArquivos,
   type ArquivoRecusado, type RegrasDeSelecao,
 } from "@/lib/selecao-de-arquivos";
+import {
+  analiseDoConjunto, irmaosParaAnalise, type IrmaoDeclarado,
+} from "@/lib/metadados-do-conjunto";
 import { motion, AnimatePresence } from "framer-motion";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -258,10 +261,16 @@ async function prepararParaEnvio(
 
 async function enviarParaAnalise(
   arquivo: File, courseId: string, accessToken: string,
+  irmaos: IrmaoDeclarado[] = [],
 ): Promise<RespostaDaAnalise> {
   const formData = new FormData();
   formData.append("file", arquivo);
   formData.append("course_id", courseId);
+  // Declarar os documentos já analisados é o que permite à função escrever
+  // título e tema do CONJUNTO, em vez de um curso por documento.
+  if (irmaos.length) {
+    formData.append("outros_documentos", JSON.stringify(irmaos));
+  }
 
   const res = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-pdf-source`,
@@ -349,7 +358,10 @@ export function PdfImportScreen({
         try {
           const paraEnviar = await prepararParaEnvio(files[i], setLoadingStep);
           setLoadingStep(2);
-          analises.push(await enviarParaAnalise(paraEnviar, tempCourseId, session.access_token));
+          analises.push(await enviarParaAnalise(
+            paraEnviar, tempCourseId, session.access_token,
+            irmaosParaAnalise(analises),
+          ));
           setLoadingStep(3);
         } catch (err: any) {
           naoAnalisados.push({
@@ -368,17 +380,19 @@ export function PdfImportScreen({
         return;
       }
 
-      const principal = analises[0];
+      // O título e o tema saem da análise que conheceu TODOS os documentos, e
+      // não da primeira. A lista de fontes mantém a ordem que o usuário escolheu.
+      const doConjunto = analiseDoConjunto(analises)!;
       setAnalysis({
-        ...principal,
+        ...doConjunto,
         sources: analises.map((a) => ({
           id: a.source_id, filename: a.filename, char_count: a.char_count,
         })),
       });
       setFalhas(naoAnalisados);
 
-      const lang = LANGUAGE_OPTIONS.find((l) => l.value === principal.detectedLanguage);
-      setSelectedLanguage(lang ? principal.detectedLanguage : "pt-BR");
+      const lang = LANGUAGE_OPTIONS.find((l) => l.value === doConjunto.detectedLanguage);
+      setSelectedLanguage(lang ? doConjunto.detectedLanguage : "pt-BR");
     } catch (err: any) {
       setError(err.message || "Não foi possível processar o arquivo.");
     } finally {
@@ -643,6 +657,13 @@ export function PdfImportScreen({
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Título sugerido</p>
                     <h3 className="font-display text-xl font-bold text-foreground">{analysis.title}</h3>
+                    {analysis.sources.length > 1 && (
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        Escopo sugerido a partir dos {analysis.sources.length} documentos
+                        juntos. Confira se ele corresponde ao que as fontes realmente
+                        cobrem — você pode editar título e tema no próximo passo.
+                      </p>
+                    )}
                   </div>
 
                   {analysis.summary && (

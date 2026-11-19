@@ -1,6 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { unzipSync } from "https://esm.sh/fflate@0.8.2";
+import {
+  irmaosRecebidos, promptDeAnalise, type DocumentoIrmao,
+} from "../_shared/analise-de-documento.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -77,24 +80,40 @@ function extractDocxText(bytes: Uint8Array): string {
     .trim();
 }
 
-async function analyzeContent(text: string, filename: string, apiKey: string) {
-  const truncated = text.slice(0, 40_000);
-  const prompt = `You are an expert instructional designer. Analyze this document and suggest a course structure.
-
-Document name: "${filename}"
-
-Content:
-${truncated}
-
-Return ONLY valid JSON (no markdown, no code blocks):
-{
-  "title": "a clear, engaging course title (in the document's language)",
-  "theme": "main subject description in 1-2 sentences (in the document's language)",
-  "targetAudience": "who this course is for (in the document's language)",
-  "suggestedModules": <integer between 3 and 12 based on content depth>,
-  "language": "<BCP-47 code: pt-BR, en, es, fr, de>",
-  "summary": "2-3 sentence description of what students will learn (in the document's language)"
-}`;
+/**
+ * ─── POR QUE A ANÁLISE PRECISA SABER DOS OUTROS DOCUMENTOS ──────────────────
+ *
+ * Esta função analisava SEMPRE um documento sozinho, com o prompt "analyze this
+ * document and suggest a course structure" — isto é, desenhe um curso inteiro a
+ * partir dele. Com um arquivo só, correto. Com dois, estruturalmente errado: o
+ * escopo do curso é a UNIÃO dos documentos, e nenhuma das chamadas sabia que a
+ * outra existia.
+ *
+ * RELATADO por quem usou, em 19/11/2026: anexou o capítulo de conceitos gerais
+ * de auditoria junto com o de planejamento da auditoria operacional. O título
+ * veio abrangente, como se o curso cobrisse todas as fases, e o tema afirmou
+ * que o curso iria ALÉM do planejamento — uma promessa que as fontes não
+ * sustentam. Teve de corrigir os dois à mão.
+ *
+ * A causa do lado do app foi minha: o formulário era preenchido com
+ * `analises[0]`, o PRIMEIRO documento escolhido, e nesse caso o primeiro era o
+ * geral. Mas trocar o índice não resolveria — nenhuma das análises conhecia o
+ * conjunto.
+ *
+ * O peso em caracteres vai no prompt de propósito: é o único sinal objetivo de
+ * onde está a massa de conteúdo. No caso relatado, planejamento tinha 93.537
+ * caracteres contra 38.605 dos conceitos gerais.
+ */
+async function analyzeContent(
+  text: string,
+  filename: string,
+  apiKey: string,
+  irmaos: DocumentoIrmao[] = [],
+) {
+  // O prompt vive em `_shared/analise-de-documento.ts` para poder ser medido:
+  // a regra que conserta o escopo abrangente é uma frase de prompt, e uma frase
+  // de prompt dentro de `Deno.serve` não tem como ser verificada por teste.
+  const prompt = promptDeAnalise(text, filename, irmaos);
 
   const res = await fetch(
     "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
@@ -162,6 +181,11 @@ Deno.serve(async (req: Request) => {
     const courseId  = formData.get("course_id") as string;
     if (!file || !courseId) return json({ error: "file e course_id são obrigatórios" }, 400);
 
+    // Os documentos do mesmo conjunto já analisados. Metadado só; entrada
+    // quebrada devolve lista vazia e a análise segue sozinha, em vez de o
+    // upload inteiro falhar.
+    const irmaos: DocumentoIrmao[] = irmaosRecebidos(formData.get("outros_documentos"));
+
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (!["pdf", "docx"].includes(ext || "")) {
       return json({ error: "Apenas arquivos PDF e DOCX são suportados." }, 400);
@@ -184,7 +208,11 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[analyze-pdf-source] Extracted ${extractedText.length} chars, analyzing…`);
 
-    const analysis = await analyzeContent(extractedText, file.name, apiKey);
+    console.log(
+      `[analyze-pdf-source] ${file.name}: ${extractedText.length} chars, ` +
+      `${irmaos.length} documento(s) irmão(s) no conjunto`,
+    );
+    const analysis = await analyzeContent(extractedText, file.name, apiKey, irmaos);
 
     // Store file in Storage (with service key — no RLS restriction)
     const filePath = `${userId}/${courseId}/${Date.now()}-${file.name}`;
