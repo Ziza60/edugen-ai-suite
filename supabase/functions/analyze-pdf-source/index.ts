@@ -4,6 +4,9 @@ import { unzipSync } from "https://esm.sh/fflate@0.8.2";
 import {
   irmaosRecebidos, promptDeAnalise, type DocumentoIrmao,
 } from "../_shared/analise-de-documento.ts";
+import {
+  avisoDeVocabulario, expressoesForaDasFontes,
+} from "../_shared/vocabulario-das-fontes.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -238,11 +241,47 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[analyze-pdf-source] Done — source_id: ${source.id}`);
 
+    const titulo = analysis.title || file.name.replace(/\.[^.]+$/, "");
+
+    // ─── O TÍTULO USA O VOCABULÁRIO DOS DOCUMENTOS? ─────────────────────────
+    //
+    // O corpus é o texto deste documento mais o dos outros do mesmo curso. Com
+    // um documento só, não há consulta: o próprio texto basta — e o caso de
+    // 18/11, "Planejamento Estratégico e Operacional de Auditorias", nasceu
+    // justamente de um documento só.
+    //
+    // A consulta é melhor esforço: se falhar, o aviso deixa de existir e a
+    // análise segue. Um aviso ausente é pior que um aviso presente, e muito
+    // melhor que um upload que falha por causa de um aviso.
+    let corpus = extractedText;
+    if (irmaos.length) {
+      const { data: outras, error: erroCorpus } = await serviceClient
+        .from("course_sources")
+        .select("extracted_text")
+        .eq("course_id", courseId)
+        .neq("id", source.id)
+        .limit(20);
+      if (erroCorpus) {
+        console.warn("[analyze-pdf-source] corpus das outras fontes indisponível:", erroCorpus.message);
+      } else {
+        corpus += "\n" + (outras || []).map((o) => o.extracted_text || "").join("\n");
+      }
+    }
+
+    const foraDasFontes = expressoesForaDasFontes(titulo, corpus);
+    if (foraDasFontes.length) {
+      console.log(
+        `[analyze-pdf-source] título com expressão fora das fontes: ${foraDasFontes.join(" · ")}`,
+      );
+    }
+
     return json({
       source_id:       source.id,
       filename:        file.name,
       char_count:      extractedText.length,
-      title:           analysis.title           || file.name.replace(/\.[^.]+$/, ""),
+      termos_fora_das_fontes: foraDasFontes,
+      aviso_vocabulario:      avisoDeVocabulario(foraDasFontes),
+      title:           titulo,
       theme:           analysis.theme           || "",
       targetAudience:  analysis.targetAudience  || "",
       suggestedModules: Number(analysis.suggestedModules) || 6,

@@ -81,6 +81,11 @@ export function promptDeAnalise(
 
 Document name: "${filename}"
 ${blocoDoConjunto(filename, texto.length, irmaos)}
+TERMINOLOGY — this matters as much as the scope:
+- Name the subject with the EXPRESSIONS THE DOCUMENT ITSELF USES. Do not coin a technical term that does not appear in the text, even when it sounds more natural or more impressive in the language.
+- A common collocation of the general language is not a substitute for the document's term of art. If the document says "fase de planejamento", the title must not say "planejamento estratégico": in this field they denote different things.
+- Creative single words are fine. Invented two-word technical expressions are not.
+
 Content:
 ${recortado}
 

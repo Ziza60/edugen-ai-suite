@@ -54,6 +54,13 @@ export interface PdfAnalysis {
   detectedLanguage: string;
   summary: string;
   /**
+   * Expressões de duas palavras do título que NÃO aparecem em nenhum documento
+   * enviado — terminologia que o modelo trouxe de fora, num curso cuja premissa
+   * é que nada vem de fora. Verificado pela função, não pelo modelo.
+   */
+  aviso_vocabulario?: string | null;
+  termos_fora_das_fontes?: string[];
+  /**
    * Todas as fontes analisadas nesta tela, na ordem em que foram escolhidas.
    * O PRIMEIRO documento é o que preenche título, tema, público e número de
    * módulos; os demais entram como fonte adicional do mesmo curso. Um manual
@@ -663,6 +670,16 @@ export function PdfImportScreen({
                         juntos. Confira se ele corresponde ao que as fontes realmente
                         cobrem — você pode editar título e tema no próximo passo.
                       </p>
+                    )}
+                    {analysis.aviso_vocabulario && (
+                      <div className="flex items-start gap-2 text-amber-700 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mt-2.5">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        <p className="text-xs">
+                          {analysis.aviso_vocabulario}{" "}
+                          Em áreas técnicas, um termo parecido pode significar outra
+                          coisa — vale conferir se é o nome que a sua fonte usa.
+                        </p>
+                      </div>
                     )}
                   </div>
 
