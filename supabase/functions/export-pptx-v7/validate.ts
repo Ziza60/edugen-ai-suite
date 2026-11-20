@@ -36,6 +36,8 @@ export const LIMITS = {
   MAX_ITEM_CHARS: 160,
   MAX_TITLE_CHARS: 90,
   MAX_CODE_LINES: 16,
+  // Piso histórico; quem manda agora é capacidadeDoCorpoDoCard, que mede o
+  // arranjo. Ver o comentário lá: 90 não cabia uma definição.
   MAX_CARD_BODY_CHARS: 90,
   MAX_TABLE_COLS: 5,
   MAX_TABLE_ROWS: 6,
@@ -185,12 +187,54 @@ function normItems(items: string[] | undefined, max: number): string[] {
     .slice(0, max);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 90 CARACTERES NÃO CABEM UMA DEFINIÇÃO
+//
+// MEDIDO no deck de 20/11/2026, comparado com o curso de origem:
+//
+//   o curso define ... "grau de alcance das metas programadas em termos de
+//                       produtos e resultados imediatos, INDEPENDENTEMENTE DOS
+//                       CUSTOS IMPLICADOS"            → 123 caracteres
+//   o deck traz ...... os quatro Es NOMEADOS 36 vezes e DEFINIDOS zero vezes
+//   as cláusulas ..... "independentemente dos custos"  → 0 nos slides, 0 nas notas
+//                      "padrões de qualidade"          → 0 nos slides
+//
+// O prompt do planejador manda destilar em "fragmentos telegráficos de ≤12
+// palavras", e `MAX_CARD_BODY_CHARS: 90` com 12 palavras cortava a definição
+// AINDA QUE o modelo a escrevesse inteira. Uma regra de prompt sozinha não
+// resolveria: o corte vinha depois dela, aqui.
+//
+// É o mesmo defeito que o curso tinha em 18/11 — nomear sem definir — uma
+// camada abaixo. O usuário, auditor, já havia dito o que custa: uma definição
+// de eficácia sem "independentemente dos custos" é a definição de outra coisa.
+//
+// ─── O QUE O LAYOUT REALMENTE COMPORTA ──────────────────────────────────────
+//
+// `renderCards` dimensiona o cartão pelo corpo, até 3 LINHAS:
+//   bodyLines = min(3, ceil(body.length / bodyPerLine)), com
+//   bodyPerLine = innerW * 11.
+//
+// Com 2 ou 4 cartões são 2 colunas, innerW ≈ 5,3 pol → ~58 chars/linha → ~174
+// em três linhas. Com 3 cartões são 3 colunas, innerW ≈ 3,3 → ~36 → ~108.
+// E a altura natural de três linhas (2,13 pol) cabe no cartão em qualquer
+// arranjo, então subir o teto não estoura nada.
+//
+// Os tetos abaixo ficam ABAIXO do que cada arranjo comporta, com folga para a
+// diferença entre a métrica estimada aqui e a fonte real.
+function capacidadeDoCorpoDoCard(quantosCards: number): { palavras: number; chars: number } {
+  // 3 cartões caem em três colunas estreitas; 2 e 4 ficam em duas largas.
+  const estreito = quantosCards === 3;
+  return estreito ? { palavras: 16, chars: 100 } : { palavras: 26, chars: 165 };
+}
+
 function normCards(cards: DeckCard[] | undefined): DeckCard[] {
   if (!Array.isArray(cards)) return [];
+  const usados = cards.filter((c) => String(c?.heading ?? "").trim()).length;
+  const cap = capacidadeDoCorpoDoCard(Math.min(usados, LIMITS.MAX_CARDS));
   return cards
     .map((c) => ({
       heading: capText(String(c?.heading ?? ""), 8, 48),
-      body: capText(String(c?.body ?? ""), 12, LIMITS.MAX_CARD_BODY_CHARS),
+      body: capText(String(c?.body ?? ""), cap.palavras, cap.chars),
     }))
     .filter((c) => c.heading.length > 0)
     .slice(0, LIMITS.MAX_CARDS);

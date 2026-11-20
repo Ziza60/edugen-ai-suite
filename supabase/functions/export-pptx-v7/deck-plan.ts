@@ -365,10 +365,83 @@ export function condenseForPlanning(md: string, maxChars = 6000): string {
   const condensado = linhas.join("\n");
   if (condensado.length <= maxChars) return condensado;
 
-  // Ainda longo: corta em fronteira de linha, para não entregar meia frase.
-  const cortado = condensado.slice(0, maxChars);
-  const ultimaQuebra = cortado.lastIndexOf("\n");
-  return (ultimaQuebra > maxChars * 0.5 ? cortado.slice(0, ultimaQuebra) : cortado)
+  // ─── CORTAR A CAUDA APAGAVA A ÚLTIMA LIÇÃO DE CADA MÓDULO ────────────────
+  //
+  // Era `condensado.slice(0, maxChars)`. Como o planejador só enxerga o que
+  // sobra daqui, tudo depois do limite deixava de existir para ele.
+  //
+  // MEDIDO no curso de 20/11/2026, rodando esta função módulo a módulo com o
+  // orçamento real de 9.000 caracteres:
+  //
+  //   módulo 1 ... 33.564 → 8.968 ... 2 de 3 lições ... perdeu a 1.3
+  //   módulo 2 ... 38.668 → 8.889 ... 2 de 3 ......... perdeu a 2.3
+  //   módulo 3 ... 37.016 → 8.835 ... 2 de 3 ......... perdeu a 3.3
+  //   módulo 4 ... 39.640 → 8.935 ... 2 de 3 ......... perdeu a 4.3
+  //   módulo 5 ... 38.226 → 8.884 ... 2 de 4 ......... perdeu a 5.3 e a 5.4
+  //   módulo 6 ... 34.411 → 8.794 ... 2 de 3 ......... perdeu a 6.3
+  //
+  // SETE de dezenove lições, e sempre as do fim — inclusive "6.3 Estudo de
+  // Caso: Aplicação Integrada do Planejamento", que é o fecho do curso. No
+  // deck entregue, "WoG" aparecia 15 vezes no curso e nenhuma nos slides.
+  //
+  // Não era escolha do planejador: ele nunca viu o texto.
+  //
+  // O conserto reparte o orçamento ENTRE as lições em vez de dar tudo às
+  // primeiras. Cada lição recebe uma fatia proporcional ao seu tamanho, com um
+  // piso para que nenhuma fique só no título, e é cortada na fronteira de
+  // linha. Um módulo pode sair mais raso; nenhum sai sem uma de suas lições.
+  return reparteEntreLicoes(condensado, maxChars);
+}
+
+/** Piso por seção: título mais algumas linhas, para a lição existir de fato. */
+const PISO_POR_LICAO = 500;
+
+function reparteEntreLicoes(texto: string, maxChars: number): string {
+  // Quebra nos títulos de lição, preservando o preâmbulo do módulo como bloco 0.
+  const linhas = texto.split("\n");
+  const blocos: string[][] = [[]];
+  for (const l of linhas) {
+    if (/^###\s/.test(l.trim())) blocos.push([l]);
+    else blocos[blocos.length - 1].push(l);
+  }
+  const partes = blocos.map((b) => b.join("\n")).filter((b) => b.trim());
+  if (partes.length <= 1) {
+    // Sem lições para repartir: volta ao corte de cauda, em fronteira de linha.
+    const cortado = texto.slice(0, maxChars);
+    const q = cortado.lastIndexOf("\n");
+    return (q > maxChars * 0.5 ? cortado.slice(0, q) : cortado).trimEnd();
+  }
+
+  const total = partes.reduce((n, p) => n + p.length, 0);
+  // O piso não pode ser maior do que a fatia igualitária: com muitas seções,
+  // 500 × N estoura o teto — foi o que um teste que já existia pegou, exigindo
+  // que `condenseForPlanning` respeite o orçamento pedido.
+  const piso = Math.min(PISO_POR_LICAO, Math.floor(maxChars / partes.length));
+  const orcamentos = partes.map((p) =>
+    Math.max(piso, Math.floor((maxChars * p.length) / total))
+  );
+  // Reescalona o que passa do piso, preservando o piso de todas.
+  const soma = orcamentos.reduce((a, b) => a + b, 0);
+  if (soma > maxChars) {
+    const excedente = orcamentos.map((o) => Math.max(0, o - piso));
+    const somaExc = excedente.reduce((a, b) => a + b, 0);
+    const disponivel = Math.max(0, maxChars - piso * partes.length);
+    for (let i = 0; i < orcamentos.length; i++) {
+      orcamentos[i] = piso +
+        (somaExc > 0 ? Math.floor((excedente[i] * disponivel) / somaExc) : 0);
+    }
+  }
+
+  return partes
+    .map((parte, i) => {
+      const teto = orcamentos[i];
+      if (parte.length <= teto) return parte;
+      const cortado = parte.slice(0, teto);
+      const q = cortado.lastIndexOf("\n");
+      // Nunca abaixo do título: `q` pequeno significa que só o cabeçalho cabe.
+      return (q > 0 ? cortado.slice(0, q) : cortado).trimEnd();
+    })
+    .join("\n")
     .trimEnd();
 }
 
@@ -486,6 +559,18 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - Bullets are SHORT, PARALLEL POINTS — not full sentences. DISTILL prose into
   telegraphic fragments of ≤12 words (the way a real slide reads). If the source
   is a paragraph, extract its key point; do NOT copy the sentence verbatim.
+- DEFINITIONS ARE THE ONE EXCEPTION TO THE ≤12 WORDS. When the module DEFINES a
+  term, the definition must keep the clause that separates that term from its
+  neighbours, with the source's own wording. "Eficácia: grau de alcance das
+  metas programadas" is WRONG where the source says "...independentemente dos
+  custos implicados" — the dropped clause is exactly what distinguishes it from
+  efficiency, and a definition without it is a definition of something else.
+  Put such a term in "cards" (heading = the term, body = the full definition)
+  and let the body run as long as the distinction needs. A deck that names four
+  concepts and defines none has taught nothing.
+- NEVER name a set of concepts without defining them somewhere in the deck. If
+  the module says "the four Es are economy, efficiency, effectiveness and
+  impact", one slide must carry what each one means.
 - MAX 5 bullets/items per slide. If a topic needs more, split it across 2 slides
   or use "cards"/"steps". Never produce a wall of long sentences.
 - BE CONCISE: your JSON must be SHORTER than the source. SUMMARIZE for slides —
@@ -494,6 +579,10 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - No trailing "...", no dangling preposition; every point ends cleanly.
 - Vary the slide types across the module — avoid many "bullets" slides in a row.
 - ${dspec.min} to ${dspec.max} slides per module. ${dspec.note}
+- EVERY numbered lesson of the module (the "### 1.1", "### 1.2"… headings in the
+  source) must appear in the deck. Cover a thin lesson in one slide rather than
+  skipping it: a deck that silently drops a lesson sends the instructor into the
+  room without a topic the course teaches.
 - The LAST slide MUST be "closing" with 3–5 key takeaways as bullets. These
   takeaways must be SPECIFIC to THIS module's content — not generic restatements
   of the whole course's themes.
