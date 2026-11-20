@@ -3128,7 +3128,7 @@ ${
 - Explique o porquê e o como; não produza listas de nomes sem desenvolvimento.
 - checkpoint: uma pergunta que conecte o conteúdo ao contexto do aprendiz.
 - key_takeaways: 3 a 6 ações ou ideias específicas, sem platitudes.
-- media_brief: descreva uma imagem instrucional, como diagrama de processo, mapa de decisão ou comparação visual. Não peça imagem decorativa.
+- media_brief: descreva uma CENA ou METÁFORA VISUAL que evoque o conceito — não um diagrama. Diagrama de processo, mapa de decisão, fluxograma, organograma e tabela são desenhados como formas nativas do slide, e uma imagem deles sai sempre pior. Nada de rótulos, legendas ou palavras dentro da imagem: o gerador não escreve texto legível.
   ATENÇÃO ao idioma de cada campo: generation_prompt vai para um gerador de
   imagens e deve ser escrito em INGLÊS. Mas alt_text é a LEGENDA que o aluno lê
   no material e no PDF — escreva-a em ${language}, como uma frase curta que
@@ -4553,7 +4553,7 @@ REGRAS
 - opening_bridge: conecte explicitamente este módulo à aprendizagem anterior, com pelo menos 40 caracteres.
 - checkpoint: uma pergunta reflexiva que ligue o conteúdo ao contexto do aprendiz.
 - key_takeaways: de 3 a 6 itens específicos e acionáveis, sem platitudes.
-- media_brief: imagem instrucional (diagrama, mapa de decisão, comparação visual), nunca decorativa.
+- media_brief: cena ou metáfora visual que evoque o conceito, nunca um diagrama e nunca com palavras dentro da imagem.
 - Não invente fatos ou números. ${numbersRule}
 - Mantenha todos os exemplos no domínio do curso.
 
@@ -5586,6 +5586,65 @@ export interface ImagemGerada {
   alt: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// O PROMPT PEDIA UM DIAGRAMA E PROIBIA RÓTULOS NA MESMA RESPIRAÇÃO
+//
+// MEDIDO no PPTX do curso de 20/11/2026, abrindo as imagens do deck:
+//
+//   slide  4 ... EFFECTYNESS · EFICIACY · ELUINUMY · CONTINIUOUS · EPRFORMENCHT
+//   slide 27 ... ANÁLISIE PRELIMINAR · TÉNICAS · RECUSIÃO DE DOCUMENAL ·
+//                ENTREVITAS · AVALAÇÃO DE RISCOS · POTENIAIS POTENIAIS
+//   slide 45 ... HYOPTHESIES, duas vezes
+//
+// Quatro de quatro imagens inspecionadas, cheias de tipografia — e as em
+// português saíram PIORES que as em inglês. Três das cinco em inglês, num curso
+// em português.
+//
+// A instrução contra texto já existia, literalmente: "No typography, letters,
+// numerals... Any screens, signs, books, cards, or panels must remain blank."
+// Ela era desobedecida 4 vezes em 4.
+//
+// A CAUSA não era desobediência. Três linhas acima, o mesmo prompt pedia "a
+// process diagram, decision map, relationship map, ANNOTATED conceptual scene,
+// or visual comparison". Um diagrama de processo É um arranjo de caixas
+// rotuladas, e "annotated" quer dizer "com texto". O prompt pedia uma coisa e
+// proibia aquilo que ela é; o modelo resolvia a contradição do único jeito
+// possível — desenhava o diagrama e inventava as palavras.
+//
+// E a contradição nascia ANTES: o prompt da lição mandava o modelo escrever em
+// `media_brief` "uma imagem instrucional, como diagrama de processo, mapa de
+// decisão ou comparação visual", e esse texto entra aqui como primeira linha.
+// As duas pontas foram trocadas juntas.
+//
+// POR QUE A SAÍDA É PEDIR OUTRA COISA, E NÃO INSISTIR NA PROIBIÇÃO
+//
+// O deck já desenha diagrama de verdade: `renderProcessArrows`, `renderSteps`,
+// `renderMatrix`, `renderCompare`, `renderTable`, `renderPyramid`,
+// `renderRadial`, `renderNetwork` e companhia constroem tudo isso com formas
+// nativas do PowerPoint — texto nítido, no idioma do curso, editável, sem
+// chamada de imagem. Uma imagem de diagrama concorre com isso e perde sempre.
+// Então a imagem passa a fazer só o que imagem faz bem: evocar.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** O prompt que vai ao modelo de imagem. Fora da função para poder ser medido. */
+export function promptDaImagemDoModulo(params: {
+  courseTitle: string;
+  moduleTitle: string;
+  mediaBrief: ModuleDocument["media_brief"];
+}): string {
+  const { courseTitle, moduleTitle, mediaBrief } = params;
+  return `${mediaBrief.generation_prompt}
+
+Educational purpose: ${mediaBrief.purpose}
+Core concept: ${mediaBrief.concept}
+Course: ${courseTitle}
+Module: ${moduleTitle}
+
+Create a premium 16:9 editorial illustration for the concept above: a conceptual scene, a visual metaphor, or a photographic-style composition that evokes the idea. Use clean composition, strong visual hierarchy, generous negative space, and a professional corporate e-learning aesthetic.
+
+THE IMAGE CARRIES NO WORDS. Do NOT draw a diagram, flowchart, decision tree, org chart, labelled process, table, chart or any arrangement of labelled boxes — those are built as native slide shapes elsewhere and an image of one is always worse. No typography, letters, numerals, logos, signatures, watermarks, fake interface text or labels of any kind. Any screens, signs, books, cards or panels must remain blank. Do not depict a real identifiable person.`;
+}
+
 export async function gerarImagemDoModulo(params: {
   course: CourseBlueprint;
   module: ModuleBlueprint;
@@ -5595,16 +5654,11 @@ export async function gerarImagemDoModulo(params: {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   if (!geminiKey) return null;
 
-  const prompt = `${mediaBrief.generation_prompt}
-
-Educational purpose: ${mediaBrief.purpose}
-Core concept: ${mediaBrief.concept}
-Course: ${course.course_title}
-Module: ${module.title}
-
-Create a premium 16:9 educational visual that explains the concept rather than merely decorating the page. Prefer a process diagram, decision map, relationship map, annotated conceptual scene, or visual comparison as appropriate. Use clean composition, strong visual hierarchy, generous negative space, and a professional corporate e-learning aesthetic.
-
-No typography, letters, numerals, logos, signatures, watermarks, fake interface text, or unreadable labels. Any screens, signs, books, cards, or panels must remain blank. Do not depict a real identifiable person.`;
+  const prompt = promptDaImagemDoModulo({
+    courseTitle: course.course_title,
+    moduleTitle: module.title,
+    mediaBrief,
+  });
 
   // IMAGE_MODEL is already validated at startup; if it looks wrong skip silently.
   const imageModelResolved = safeModel(IMAGE_MODEL, "gemini-2.5-flash-image");

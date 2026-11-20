@@ -12,6 +12,10 @@ import { autoBodyFontSize } from "./validate.ts";
 import { coverBoxSize, imageSizeFromDataUri } from "../_shared/image-size.ts";
 import { categoricalColors } from "./chart-palette.ts";
 import { chevronNumberBox } from "./chevron-geometry.ts";
+import { trimToWholeThought } from "./layout-fit.ts";
+import {
+  notaDaAgenda, notaDaCapa, notaDaDivisoria, notaDoEncerramento,
+} from "./notas-estruturais.ts";
 import { chevronCabe, ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 import {
   alturaDaLinha,
@@ -260,6 +264,16 @@ function kickerFit(
  * screens of fragments. Optional-chained because not every PptxGenJS build
  * exposes addNotes, and notes must never be able to fail an export.
  */
+/** Nota para um slide estrutural, que não tem SlideSpec com `notes`. */
+function notaEstrutural(slide: AnySlide, texto: string) {
+  if (!texto.trim()) return;
+  try {
+    slide.addNotes?.(texto);
+  } catch (_e) {
+    /* nota nunca derruba o deck */
+  }
+}
+
 function speakerNotes(slide: AnySlide, s: SlideSpec) {
   const n = (s.notes ?? "").trim();
   if (!n) return;
@@ -271,6 +285,20 @@ function speakerNotes(slide: AnySlide, s: SlideSpec) {
 }
 
 /** Header band shared by all content slides. */
+/**
+ * O corpo do título no cabeçalho, para que duas linhas caibam em 0,72 pol.
+ *
+ * Três linhas não cabem em corpo nenhum que ainda seja um título, então o
+ * planejador é quem segura o comprimento; aqui o piso é 18pt porque abaixo
+ * disso o título deixa de pesar mais que a sobrancelha.
+ */
+export function tituloCabeNoCabecalho(titulo: string): number {
+  const n = (titulo || "").length;
+  if (n > 78) return 18;
+  if (n > 42) return 20;
+  return 26;
+}
+
 function header(slide: AnySlide, d: Palette, s: SlideSpec, moduleLabel: string) {
   // accent tick
   slide.addShape("rect", {
@@ -290,9 +318,9 @@ function header(slide: AnySlide, d: Palette, s: SlideSpec, moduleLabel: string) 
   if (showKicker) {
     slide.addText(eyebrow(kicker), {
       x: ML + 0.18,
-      y: 0.5,
+      y: 0.42,
       w: CW - 0.4,
-      h: 0.28,
+      h: 0.24,
       fontFace: FONT_BODY,
       ...kickerFit(kicker, CW - 0.4, 10, 2),
       bold: true,
@@ -301,13 +329,30 @@ function header(slide: AnySlide, d: Palette, s: SlideSpec, moduleLabel: string) 
       valign: "middle",
     });
   }
+  // ─── O TÍTULO DE DUAS LINHAS CAÍA EM CIMA DA RÉGUA ────────────────────────
+  //
+  // A caixa ia de y=0.78 a 0.78+0.62 = 1.40, e a régua está em HEADER_H+0.05 =
+  // 1.40. Qualquer segunda linha transbordava exatamente sobre ela.
+  //
+  // MEDIDO no deck de 20/11/2026: 37 dos 137 títulos passam de 42 caracteres e
+  // quebram em duas linhas. No slide 33, "Qual Abordagem Escolher? Avaliação de
+  // Risco ou Análise de Problema?" (67 chars) ficou com "Problema?" riscado pela
+  // linha.
+  //
+  // O conserto dá espaço em vez de encolher o conteúdo: a sobrancelha sobe e
+  // afina (0.42, h 0.24), e o título passa a ter 0.72 de altura, terminando em
+  // 1.38 — dois centésimos acima da régua.
+  //
+  // Os degraus de corpo vêm da aritmética da caixa, não de gosto: a 20pt duas
+  // linhas ocupam 2 × 20 × 1,2 ÷ 72 = 0,67 pol, e a 18pt, 0,60 — as duas cabem
+  // em 0,72. A 22pt dariam 0,73 e voltariam a transbordar.
   slide.addText(s.title, {
     x: ML + 0.18,
-    y: showKicker ? 0.78 : 0.5,
+    y: showKicker ? 0.66 : 0.5,
     w: CW - 0.4,
-    h: showKicker ? 0.62 : 0.9,
+    h: showKicker ? 0.72 : 0.9,
     fontFace: FONT_TITLE,
-    fontSize: s.title.length > 56 ? 22 : 26,
+    fontSize: tituloCabeNoCabecalho(s.title),
     bold: true,
     color: d.text,
     align: "left",
@@ -454,6 +499,41 @@ function renderCover(slide: AnySlide, deck: PlannedDeck, d: Palette, brand: stri
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// POUCOS ITENS NÃO DEVEM ESTICAR ATÉ O RODAPÉ
+//
+// Dois jeitos diferentes de produzir o mesmo buraco, medidos no deck de
+// 20/11/2026:
+//
+//   AGENDA ....... bloco preso em y=2.1 com linha de no máximo 0,92 pol. Com
+//                  seis módulos são 3 linhas = 2,76 pol, terminando em 4,86 e
+//                  deixando 2,26 pol vazias até o rodapé — 40% da altura.
+//
+//   BULLETS ...... `rowH = CONTENT_H / itens`. Com 3 ou 4 itens cada linha
+//                  ganha mais de 1,3 pol e o texto, centrado nela, fica com
+//                  buracos enormes entre um e outro.
+//
+// O primeiro não estica, o segundo estica demais. A regra é a mesma nos dois:
+// a linha tem um teto confortável, e o BLOCO inteiro é centrado no espaço
+// disponível. Com muitos itens o teto não morde e nada muda.
+//
+// O teto vem da tipografia: a 14pt, uma linha de texto com entrelinha ocupa
+// ~0,23 pol, e duas linhas com respiro pedem ~0,6. 1,05 dá folga para duas
+// linhas sem abrir o vão que se vê no slide 4.
+export const ALTURA_MAX_DA_LINHA = 1.05;
+
+export function blocoCentrado(
+  itens: number,
+  areaY: number,
+  areaH: number,
+  tetoDaLinha = ALTURA_MAX_DA_LINHA,
+): { rowH: number; y0: number } {
+  const n = Math.max(itens, 1);
+  const rowH = Math.min(tetoDaLinha, areaH / n);
+  const y0 = areaY + Math.max(0, (areaH - rowH * n) / 2);
+  return { rowH, y0 };
+}
+
 function renderTOC(slide: AnySlide, deck: PlannedDeck, d: Palette, brand: string) {
   bgFill(slide, d.bg);
   slide.addText("AGENDA", {
@@ -481,12 +561,15 @@ function renderTOC(slide: AnySlide, deck: PlannedDeck, d: Palette, brand: string
   const colCount = mods.length > 4 ? 2 : 1;
   const perCol = Math.ceil(mods.length / colCount);
   const colW = colCount === 2 ? (CW - 0.5) / 2 : CW;
-  const rowH = Math.min(0.92, (CONTENT_H - 0.6) / perCol);
+  // A área útil vai do fim do título ao topo do rodapé; o bloco é centrado nela.
+  const AREA_Y = 2.0;
+  const AREA_H = FOOTER_Y - 0.25 - AREA_Y;
+  const { rowH, y0 } = blocoCentrado(perCol, AREA_Y, AREA_H, 1.15);
   mods.forEach((m, i) => {
     const col = Math.floor(i / perCol);
     const row = i % perCol;
     const x = ML + col * (colW + 0.5);
-    const y = 2.1 + row * rowH;
+    const y = y0 + row * rowH;
     slide.addText(String(i + 1).padStart(2, "0"), {
       x,
       y,
@@ -724,9 +807,9 @@ function renderBullets(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   // Full-width text. Photos live on the cover + module dividers only, which
   // keeps content slides clean and the file light (avoids CPU/size blowups).
   const listW = CW;
-  const rowH = CONTENT_H / Math.max(items.length, 1);
+  const { rowH, y0 } = blocoCentrado(items.length, CONTENT_Y, CONTENT_H);
   items.forEach((b, i) => {
-    const y = CONTENT_Y + i * rowH;
+    const y = y0 + i * rowH;
     slide.addShape("rect", {
       x: ML,
       y: y + rowH / 2 - 0.06,
@@ -1162,13 +1245,13 @@ function renderSteps(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   }
   bgFill(slide, d.bg);
   header(slide, d, s, moduleLabel);
-  const rowH = CONTENT_H / Math.max(n, 1);
+  const { rowH, y0 } = blocoCentrado(n, CONTENT_Y, CONTENT_H);
   const numW = 1.45;
   // Oversized "ghost" ordinal as a design element on the left (Apple/Gamma look),
   // replacing the small numbered dot + spine. Heading + body sit to the right.
   const numFs = Math.min(54, Math.max(34, rowH * 72 * 0.8));
   steps.forEach((st, i) => {
-    const y = CONTENT_Y + i * rowH;
+    const y = y0 + i * rowH;
     slide.addText(String(i + 1).padStart(2, "0"), {
       x: ML, y, w: numW, h: rowH,
       fontFace: FONT_TITLE, fontSize: numFs, bold: true,
@@ -1558,8 +1641,55 @@ function renderCompare(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   footer(slide, d, brand, num);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// UMA CITAÇÃO QUE É UM PARÁGRAFO NÃO É UMA CITAÇÃO
+//
+// MEDIDO no deck de 20/11/2026, renderizado e olhado:
+//
+//   slide 18 ... 184 caracteres a 28pt ... coube na caixa
+//   slide 27 ... 329 caracteres a 28pt ... oito linhas, sangrando pelas
+//                margens, e a régua dourada de y=5.5 atravessou a palavra
+//                "resultados", riscando-a
+//
+// O TETO É JULGAMENTO, LIMITADO PELAS DUAS MEDIÇÕES: 184 coube, 329 não. 220 em
+// corpo menor fica com mais folga que os 184 que couberam. Não meço a largura
+// real do texto aqui — o renderizador não tem métrica de fonte —, então o
+// número é um limite seguro entre um caso que coube e um que não coube.
+//
+// `trimToWholeThought` corta num pensamento inteiro, nunca no meio da frase.
+const TETO_DA_CITACAO = 220;
+
+export function citacaoNoTamanho(texto: string): string {
+  const t = (texto || "").trim();
+  if (t.length <= TETO_DA_CITACAO) return t;
+
+  // Cortar em `slice(0, TETO)` cru parte a palavra: a primeira versão deste
+  // conserto saiu renderizada como "...escopo mal delimitado e, conse", porque
+  // `trimToWholeThought` arruma a frase mas não remove pedaço de palavra.
+  // Só vi isso RENDERIZANDO o deck — o teste que eu tinha escrito checava o
+  // comprimento e a última palavra contra uma lista de preposições, e "conse"
+  // não estava nela.
+  //
+  // Então: corta no último espaço antes do teto, e só depois arruma a frase.
+  const bruto = t.slice(0, TETO_DA_CITACAO);
+  const ultimoEspaco = bruto.lastIndexOf(" ");
+  const emPalavraInteira = ultimoEspaco > 40 ? bruto.slice(0, ultimoEspaco) : bruto;
+
+  // Preferir terminar numa FRASE. O corte em metade do orçamento é de
+  // propósito: no caso medido, a primeira frase fecha em "...é um erro
+  // crítico" aos 54% do texto cortado, e ela sozinha é uma citação melhor —
+  // completa e com força — do que a oração mais longa que ia até "escopo mal
+  // delimitado". Uma citação curta e inteira vence uma longa e interrompida.
+  const pontos = [...emPalavraInteira.matchAll(/[.!?](?=\s|$)/g)].map((m) => m.index ?? -1);
+  const ultimoPonto = pontos.length ? pontos[pontos.length - 1] : -1;
+  if (ultimoPonto >= emPalavraInteira.length * 0.5) {
+    return emPalavraInteira.slice(0, ultimoPonto + 1).trim();
+  }
+  return trimToWholeThought(emPalavraInteira).replace(/[\s,;:]+$/, "");
+}
+
 function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number) {
-  const text = s.quote ?? s.title;
+  const text = citacaoNoTamanho(s.quote ?? s.title);
   // Full-bleed cinematic variant: a photo fills the whole slide, a dark scrim
   // over it, big white quote on top. Fires when the module image was routed here.
   if (s.imageData) {
@@ -1567,7 +1697,10 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     maybeImage(slide, s, { x: 0, y: 0, w: W, h: H });
     slide.addShape("rect", {
       x: 0, y: 0, w: W, h: H,
-      fill: { color: "000000", transparency: 42 }, line: { type: "none" },
+      // O véu era 42% e a citação do slide 27 ficou por cima de um diagrama
+      // claro, cheio de caixas e setas: as duas coisas ilegíveis. A 26% o texto
+      // ganha sempre, e a imagem continua lá como atmosfera, que é o papel dela.
+      fill: { color: "000000", transparency: 26 }, line: { type: "none" },
     });
     // Opening mark sits above the text; the closing mark drops further below it
     // (qOffClose > qOffOpen) so it clears the bottom of the quote instead of
@@ -1589,7 +1722,7 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
     slide.addText(text, {
       x: 1.2, y: 1.9, w: W - 2.4, h: 3.2,
       fontFace: FONT_TITLE,
-      fontSize: text.length > 170 ? 28 : text.length > 95 ? 34 : 40,
+      fontSize: text.length > 170 ? 24 : text.length > 95 ? 30 : 38,
       italic: true, bold: true, color: "FFFFFF",
       align: "center", valign: "middle", lineSpacingMultiple: 1.15,
       shadow: { type: "outer", color: "000000", blur: 6, offset: 2, opacity: 0.5 },
@@ -1660,7 +1793,7 @@ function renderQuote(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   slide.addText(text, {
     x: 1.5, y: 2.15, w: W - 3.0, h: 3.0,
     fontFace: FONT_BODY,
-    fontSize: text.length > 170 ? 24 : text.length > 95 ? 29 : 34,
+    fontSize: text.length > 170 ? 22 : text.length > 95 ? 27 : 32,
     italic: true, color: d.text,
     align: "center", valign: "middle", lineSpacingMultiple: 1.18,
   });
@@ -1911,17 +2044,17 @@ function renderNumberedList(slide: AnySlide, s: SlideSpec, d: Palette, brand: st
   header(slide, d, s, moduleLabel);
   const items = (s.bullets ?? []).slice(0, 6);
   const n = Math.max(items.length, 1);
-  const rowH = CONTENT_H / n;
+  const { rowH, y0 } = blocoCentrado(n, CONTENT_Y, CONTENT_H);
   const lineX = ML + 0.4;
   const fs = autoBodyFontSize(items.length, items.join("").length);
   if (n > 1) {
     slide.addShape("line", {
-      x: lineX, y: CONTENT_Y + rowH / 2, w: 0, h: rowH * (n - 1),
+      x: lineX, y: y0 + rowH / 2, w: 0, h: rowH * (n - 1),
       line: { color: d.border, width: 1.5 },
     });
   }
   items.forEach((b, i) => {
-    const cy = CONTENT_Y + i * rowH + rowH / 2;
+    const cy = y0 + i * rowH + rowH / 2;
     slide.addShape("ellipse", {
       x: lineX - 0.27, y: cy - 0.27, w: 0.54, h: 0.54,
       fill: { color: d.accent }, line: { color: d.bg, width: 2 },
@@ -2010,11 +2143,11 @@ function renderStairs(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
   header(slide, d, s, moduleLabel);
   const steps = (s.steps ?? []).slice(0, 5);
   const n = Math.max(steps.length, 1);
-  const rowH = CONTENT_H / n;
+  const { rowH, y0 } = blocoCentrado(n, CONTENT_Y, CONTENT_H);
   const indentMax = Math.min(2.2, CW * 0.2);
   steps.forEach((st, i) => {
     const indent = n > 1 ? (indentMax * i) / (n - 1) : 0;
-    const y = CONTENT_Y + i * rowH;
+    const y = y0 + i * rowH;
     const x = ML + indent;
     const w = CW - indent;
     // TODOS OS DEGRAUS IGUAIS
@@ -2260,11 +2393,11 @@ function renderMarkers(slide: AnySlide, s: SlideSpec, d: Palette, brand: string,
   header(slide, d, s, moduleLabel);
   const items = bulletItems(s, 6);
   const n = Math.max(items.length, 1);
-  const rowH = CONTENT_H / n;
+  const { rowH, y0 } = blocoCentrado(n, CONTENT_Y, CONTENT_H);
   const fs = autoBodyFontSize(n, items.join("").length);
   const mk = 0.34;
   items.forEach((b, i) => {
-    const y = CONTENT_Y + i * rowH;
+    const y = y0 + i * rowH;
     slide.addShape("triangle", {
       x: ML + 0.05, y: y + rowH / 2 - mk / 2, w: mk, h: mk, rotate: 90,
       fill: { color: i % 2 === 0 ? d.accent2 : d.accent }, line: { type: "none" },
@@ -2608,9 +2741,18 @@ export function renderDeck(
   let stepsVar = 0;     // rotates step-family layouts (list / staircase)
 
   // Cover
-  renderCover(add(), deck, d, brand);
+  const lingua = opts.language ?? "";
+  {
+    const slide = add();
+    renderCover(slide, deck, d, brand);
+    notaEstrutural(slide, notaDaCapa(deck.courseTitle, deck.modules.length, lingua));
+  }
   // Agenda
-  renderTOC(add(), deck, d, brand);
+  {
+    const slide = add();
+    renderTOC(slide, deck, d, brand);
+    notaEstrutural(slide, notaDaAgenda(deck.modules.length, lingua));
+  }
 
   deck.modules.forEach((m, mi) => {
     // Module divider (if the planner didn't already provide a section slide).
@@ -2619,18 +2761,46 @@ export function renderDeck(
       // de destaque do módulo, e a mesma imagem aparecia duas vezes em poucos
       // segundos — esmaecida aqui, em brilho normal logo adiante. Ver o
       // comentário em index.ts. O número gigante segura a página sozinho.
-      renderSection(add(), {
+      const slide = add();
+      renderSection(slide, {
         kind: "section",
         title: m.title,
         eyebrow: m.title,
       }, d, mi + 1, m.objectives ?? []);
+      notaEstrutural(slide, notaDaDivisoria(mi + 1, m.title, m.objectives, lingua));
     }
     // Per-module memory for the anti-repetition guard: two card-family grids in
     // a row are visually monotonous, so the SECOND becomes a sidebar layout.
     let prevCardLike = false;
     const cardLikeKind = (k: string) => k === "cards" || k === "bento" || k === "tiles";
-    for (const s of m.slides) {
+    // ─── A SOBRANCELHA REPETIA O NOME DO MÓDULO EM TODO SLIDE ──────────────
+    //
+    // MEDIDO no deck de 20/11/2026: o nome do módulo apareceu como sobrancelha
+    // de 8 a 12 vezes por módulo — 55 vezes no deck —, sempre a mesma linha de
+    // até 70 caracteres. Depois do primeiro slide ela não informa nada e come a
+    // primeira linha útil do cabeçalho.
+    //
+    // O contexto do módulo é dado pelo divisor, que vem logo antes e traz o
+    // número gigante. Repeti-lo é o que o comentário de `header` chama de
+    // "templating glitch" — ali a regra já existia para o caso de a sobrancelha
+    // repetir o TÍTULO DO SLIDE; faltava o caso de repetir o do MÓDULO.
+    //
+    // Fica no primeiro slide de conteúdo do módulo, como âncora, e sai dos
+    // demais. Sobrancelha PRÓPRIA do slide, que diz outra coisa, continua
+    // sempre.
+    const mesmoRotulo = (a: string, b: string) =>
+      a.trim().toLowerCase().replace(/\s+/g, " ") ===
+      b.trim().toLowerCase().replace(/\s+/g, " ");
+    let slidesDeConteudo = 0;
+    for (const sOriginal of m.slides) {
       try {
+        const primeiroDoModulo = sOriginal.kind !== "section" && slidesDeConteudo === 0;
+        if (sOriginal.kind !== "section") slidesDeConteudo++;
+        const repeteOModulo = mesmoRotulo(sOriginal.eyebrow ?? "", m.title);
+        const s = (!primeiroDoModulo && repeteOModulo)
+          ? { ...sOriginal, eyebrow: "" }
+          : sOriginal;
+        const rotuloDoModulo = primeiroDoModulo ? m.title : "";
         const slide = add();
         // Notes are layout-independent, so attach them up front — the two
         // early `continue` branches below would otherwise skip them.
@@ -2639,13 +2809,13 @@ export function renderDeck(
         // (1) Single-point card/bullets/steps slide → high-impact statement
         // instead of one giant near-empty card.
         if ((cardLike || s.kind === "bullets" || s.kind === "steps") && contentItemCount(s) === 1) {
-          renderHighlight(slide, s, d, brand, num, m.title);
+          renderHighlight(slide, s, d, brand, num, rotuloDoModulo);
           prevCardLike = false;
           continue;
         }
         // (2) Two card grids back-to-back → swap the 2nd for a sidebar layout.
         if (cardLike && prevCardLike) {
-          renderSidebar(slide, s, d, brand, num, m.title);
+          renderSidebar(slide, s, d, brand, num, rotuloDoModulo);
           prevCardLike = false;
           continue;
         }
@@ -2653,12 +2823,21 @@ export function renderDeck(
         switch (s.kind) {
           case "section":
             renderSection(slide, s, d, mi + 1);
+            // A divisória que o planejador entrega passa por `speakerNotes`
+            // acima, mas ele raramente escreve nota para ela — e é o slide em
+            // que o apresentador tem só um número na tela.
+            if (!(s.notes ?? "").trim()) {
+              notaEstrutural(
+                slide,
+                notaDaDivisoria(mi + 1, s.title ?? m.title, m.objectives, lingua),
+              );
+            }
             break;
           case "tiles":
-            renderTiles(slide, s, d, brand, num, m.title);
+            renderTiles(slide, s, d, brand, num, rotuloDoModulo);
             break;
           case "bento":
-            renderBento(slide, s, d, brand, num, m.title);
+            renderBento(slide, s, d, brand, num, rotuloDoModulo);
             break;
           case "cards": {
             const nc = (s.cards ?? []).length;
@@ -2668,11 +2847,11 @@ export function renderDeck(
               // (title inside + description on the right) needs heading+body —
               // which cards always carry.
               const v = cardsVar++ % 3;
-              if (v === 1) renderRadial(slide, s, d, brand, num, m.title);
-              else if (v === 2) renderPyramid(slide, s, d, brand, num, m.title);
-              else renderCards(slide, s, d, brand, num, m.title);
+              if (v === 1) renderRadial(slide, s, d, brand, num, rotuloDoModulo);
+              else if (v === 2) renderPyramid(slide, s, d, brand, num, rotuloDoModulo);
+              else renderCards(slide, s, d, brand, num, rotuloDoModulo);
             } else {
-              renderCards(slide, s, d, brand, num, m.title);
+              renderCards(slide, s, d, brand, num, rotuloDoModulo);
             }
             break;
           }
@@ -2702,7 +2881,7 @@ export function renderDeck(
             // o rótulo, e passar-lhe um passo com corpo apaga o corpo.
             const cabeRotulo = chevronCabe(passos);
             const v = stepsVar++ % (cabeRotulo ? 3 : 2);
-            if (v === 1) renderStairs(slide, s, d, brand, num, m.title);
+            if (v === 1) renderStairs(slide, s, d, brand, num, rotuloDoModulo);
             else if (v === 2) {
               // renderProcessArrows lê s.bullets. Os títulos dos passos são o
               // que cabe na seta; o corpo fica de fora, como já ficava na
@@ -2712,17 +2891,17 @@ export function renderDeck(
                 { ...s, bullets: passos.map((st) => st.heading ?? "").filter(Boolean) },
                 d, brand, num, m.title,
               );
-            } else renderSteps(slide, s, d, brand, num, m.title);
+            } else renderSteps(slide, s, d, brand, num, rotuloDoModulo);
             break;
           }
           case "compare":
             renderCompare(slide, s, d, brand, num, m.title, compareCount++);
             break;
           case "matrix":
-            renderMatrix(slide, s, d, brand, num, m.title);
+            renderMatrix(slide, s, d, brand, num, rotuloDoModulo);
             break;
           case "table":
-            renderTable(slide, s, d, brand, num, m.title);
+            renderTable(slide, s, d, brand, num, rotuloDoModulo);
             break;
           case "quote":
             renderQuote(slide, s, d, brand, num);
@@ -2731,10 +2910,10 @@ export function renderDeck(
             renderStat(slide, s, d, brand, num);
             break;
           case "chart":
-            renderChart(slide, s, d, brand, num, m.title);
+            renderChart(slide, s, d, brand, num, rotuloDoModulo);
             break;
           case "code":
-            renderCode(slide, s, d, brand, num, m.title);
+            renderCode(slide, s, d, brand, num, rotuloDoModulo);
             break;
           case "closing": {
             // O RECAP ERA O MESMO SLIDE CINCO VEZES
@@ -2746,15 +2925,15 @@ export function renderDeck(
             // não precisa. Alterna pelo índice do módulo, o que mantém o
             // resultado determinístico: o mesmo curso gera o mesmo deck.
             const vc = mi % 3;
-            if (vc === 1) renderBands(slide, s, d, brand, num, m.title);
-            else if (vc === 2) renderNumberedList(slide, s, d, brand, num, m.title);
-            else renderClosing(slide, s, d, brand, num, m.title);
+            if (vc === 1) renderBands(slide, s, d, brand, num, rotuloDoModulo);
+            else if (vc === 2) renderNumberedList(slide, s, d, brand, num, rotuloDoModulo);
+            else renderClosing(slide, s, d, brand, num, rotuloDoModulo);
             break;
           }
           case "bullets":
           default: {
             if (s.imageData) {
-              renderBullets(slide, s, d, brand, num, m.title);
+              renderBullets(slide, s, d, brand, num, rotuloDoModulo);
             } else {
               // SINGLE source of bullet-slide variety (consolidated from the old
               // normalize-level breakLayoutRuns). Every short, image-less bullets
@@ -2824,13 +3003,16 @@ export function renderDeck(
                   variants.push(renderNumberedIcons);
                 }
               }
-              variants[bulletsVar++ % variants.length](slide, s, d, brand, num, m.title);
+              variants[bulletsVar++ % variants.length](slide, s, d, brand, num, rotuloDoModulo);
             }
             break;
           }
         }
       } catch (err) {
-        console.warn(`[V7-RENDER] slide failed (${s.kind}) — skipped:`, err);
+        // `sOriginal` e não `s`: o normalizado é declarado dentro do try e não
+        // existe aqui. O typecheck não pegou — `s` resolvia para outro escopo —
+        // e o erro só apareceu ao RENDERIZAR um deck de verdade.
+        console.warn(`[V7-RENDER] slide failed (${sOriginal.kind}) — skipped:`, err);
       }
     }
   });
@@ -2839,7 +3021,9 @@ export function renderDeck(
   // multi-module deck — skip the degenerate empty/junk case.
   if (deck.modules.length > 0) {
     try {
-      renderCourseOutro(add(), d, brand, num, opts.language ?? "");
+      const slide = add();
+      renderCourseOutro(slide, d, brand, num, lingua);
+      notaEstrutural(slide, notaDoEncerramento(lingua));
     } catch (err) {
       console.warn("[V7-RENDER] course outro failed — skipped:", err);
     }

@@ -158,6 +158,49 @@ const LIGACAO = new Set([
   "el", "la", "los", "las", "y", "en", "por", "para", "con",
 ]);
 
+// ═══════════════════════════════════════════════════════════════════════════
+// O TÍTULO QUE É PERGUNTA NÃO COMEÇA PELO ASSUNTO
+//
+// MEDIDO ao renderizar o deck consertado em 20/11/2026: o slide "O Que É
+// Auditoria Operacional?" saiu com o núcleo do diagrama escrito "Que É".
+//
+// `LIGACAO` derruba o artigo "O", e as duas primeiras palavras que sobram são
+// o interrogativo e a cópula. O assunto — "Auditoria Operacional" — fica em
+// terceiro e quarto lugar e nunca é alcançado.
+//
+// Um título em pergunta é comum num curso: "O que é X?", "Como fazer Y?",
+// "Qual abordagem escolher?". Em todos eles o assunto vem DEPOIS da abertura
+// interrogativa, e é ele que o núcleo do diagrama precisa nomear.
+//
+// A lista é de ABERTURA, não de palavras proibidas: ela só age enquanto não
+// apareceu nenhuma palavra de conteúdo. "Como" no meio de um título — "Risco
+// como critério" — não é tocado, porque a filtragem para no primeiro termo
+// substantivo.
+const ABERTURA_INTERROGATIVA = new Set([
+  "que", "qual", "quais", "quando", "onde", "quem", "como", "porque", "por",
+  "e", "ou", "sao", "são", "era", "eram", "ser",
+  "what", "which", "when", "where", "who", "whom", "how", "why", "is", "are",
+  "cual", "cuales", "cuando", "donde", "quien", "como", "es", "son",
+]);
+
+const SEM_ACENTO = (p: string) =>
+  p.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * Tira a abertura interrogativa de uma lista de palavras, parando na primeira
+ * palavra de conteúdo. Devolve a lista original quando sobraria nada.
+ */
+function semAberturaInterrogativa(palavras: string[]): string[] {
+  let i = 0;
+  while (i < palavras.length) {
+    const limpa = SEM_ACENTO(palavras[i]).replace(/[^a-z]/g, "");
+    if (!limpa || ABERTURA_INTERROGATIVA.has(limpa)) i++;
+    else break;
+  }
+  const resto = palavras.slice(i);
+  return resto.length ? resto : palavras;
+}
+
 /**
  * Rótulo curto para o centro de um diagrama, a partir do título do slide.
  *
@@ -180,7 +223,8 @@ export function rotuloDoNucleo(titulo: string, maxPalavras = 2, maxChars = 18): 
   }
 
   const brutas = base.split(/\s+/).filter(Boolean);
-  const palavras = brutas.filter((p, i) => !ehLigacao(p, brutas[i - 1]));
+  const semLigacao = brutas.filter((p, i) => !ehLigacao(p, brutas[i - 1]));
+  const palavras = semAberturaInterrogativa(semLigacao);
   const escolhidas = (palavras.length ? palavras : brutas)
     .slice(0, maxPalavras);
   let rotulo = escolhidas.join(" ").trim();
@@ -193,8 +237,10 @@ export function rotuloDoNucleo(titulo: string, maxPalavras = 2, maxChars = 18): 
       : `${rotulo.slice(0, maxChars - 1).trim()}…`;
   }
   // Nenhum rótulo termina em pontuação de divisa — é ela que fazia "PPA:
-  // Plano" parecer um corte.
-  return rotulo.replace(/[\s:;,\-–—]+$/, "");
+  // Plano" parecer um corte. A interrogação entra na mesma lista: o núcleo de
+  // "What Is Operational Audit?" saía escrito "Operational Audit?", com a
+  // pergunta pendurada dentro do círculo.
+  return rotulo.replace(/[\s:;,.!?\-–—]+$/, "");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
