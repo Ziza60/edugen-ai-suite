@@ -22,6 +22,7 @@
 
 import { esqueletoDeCaso, trimToWholeThought } from "./layout-fit.ts";
 import { tetoDoCorpoDoPasso } from "./table-geometry.ts";
+import { notaDaRubrica } from "./notas-estruturais.ts";
 
 export type SlideKind =
   | "cover" // course cover
@@ -625,6 +626,12 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - Plain text only in every field — NO Markdown emphasis (no asterisks, backticks or #).
 - For cards, tiles, steps and table cells, enforce a MAXIMUM of ~12 words per text
   block. Be ruthless in your summarization — these layouts must stay minimalist.
+  THE ONE EXCEPTION IS A DEFINITION, as stated above: when a card's heading is a
+  term the module DEFINES, its body carries the definition WITH the distinguishing
+  clause, up to ~25 words. "Eficácia: grau de alcance das metas programadas" is a
+  FAILURE where the source says "...independentemente dos custos implicados".
+  Be ruthless with everything else, never with the clause that makes a definition
+  correct.
 - Stay strictly faithful to the module content. Do NOT invent facts.
 - NEVER collapse a list of N DISTINCT items into one point. If the source lists
   3 trends / 4 types / 5 risks, the slide keeps ALL of them (split across two
@@ -2292,6 +2299,10 @@ export function ensureRubricSlide(
       kind: "table",
       title: t.title,
       eyebrow: m.title,
+      // A rubrica não é uma tabela qualquer: o que o participante quer ouvir
+      // são os pesos e o que separa um nível do outro. Sem esta linha ela cairia
+      // na nota genérica de tabela, que manda NÃO ler os números em voz alta.
+      notes: notaDaRubrica(language),
       // A coluna dos critérios ficava sem cabeçalho — no deck de 21/08 o slide
       // "Como Você Será Avaliado" mostrava uma célula vazia sobre "Compreensão
       // e Análise", "Adequação Legal", "Clareza". Era a última tabela do deck

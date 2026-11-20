@@ -1,15 +1,24 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // AS NOTAS DOS SLIDES QUE NINGUÉM ESCREVE
 //
-// MEDIDO no deck de 20/11/2026: 17 dos 67 slides saíram sem nota nenhuma — e
-// não são quaisquer 17. São a capa, a agenda, as seis divisórias de módulo e o
-// encerramento: exatamente os slides em que o apresentador não tem conteúdo na
-// tela para se apoiar e precisa da frase de transição.
+// MEDIDO no deck de 20/11/2026: 17 dos 67 slides saíram sem nota nenhuma. São
+// de DUAS famílias, e a primeira versão deste arquivo só atendeu uma delas —
+// o comentário dizia 17 e listava 9, e a conta nunca fechou.
 //
-// A causa é estrutural: `speakerNotes` só é chamada dentro do laço de slides de
-// conteúdo, a partir do campo `notes` que o planejador escreve. Capa, agenda,
-// divisória e encerramento são montadas fora desse laço, por `renderCover`,
-// `renderTOC`, `renderSection` e `renderCourseOutro`, e não passam por ali.
+//   9 slides sem SlideSpec ...... capa, agenda, 6 divisórias, encerramento.
+//                                 Montados fora do laço, por `renderCover`,
+//                                 `renderTOC`, `renderSection` e
+//                                 `renderCourseOutro`. Resolvidos em 20/11.
+//   8 slides COM SlideSpec ...... os 6 fechamentos de módulo ("Pontos-chave"),
+//      e `notes` vazio            as "Trilhas de aprofundamento" e "Como Você
+//                                 Será Avaliado". Passam pelo laço, mas o
+//                                 planejador não escreve `notes` para eles:
+//                                 dois são montados por nós, em deck-plan.ts,
+//                                 e o fechamento o modelo deixa em branco.
+//                                 MEDIDO no deck de 21/11: ainda sem nota.
+//
+// São justamente os slides em que o apresentador não tem conteúdo na tela para
+// se apoiar, ou em que a tela é uma lista que ele não deve ler em voz alta.
 //
 // Estas notas são DETERMINÍSTICAS — montadas do que o deck já sabe, sem
 // chamada de IA. O apresentador recebe o que dizer; não recebe conteúdo
@@ -22,6 +31,9 @@ interface Frases {
   divisoria: (n: number, titulo: string) => string;
   objetivos: string;
   encerramento: string;
+  fechamento: (titulo: string) => string;
+  tabela: (titulo: string) => string;
+  rubrica: string;
 }
 
 const PT: Frases = {
@@ -39,6 +51,16 @@ const PT: Frases = {
   encerramento:
     `Retome a competência central do curso em uma frase, não a lista inteira. ` +
     `Aponte o próximo passo concreto — avaliação, certificado, material de apoio — e abra para perguntas.`,
+  fechamento: (titulo) =>
+    `Fechamento do módulo "${titulo}". Não leia a lista: ela já está na tela. ` +
+    `Escolha o ponto que o grupo achou mais difícil e retome só ele, com um exemplo. ` +
+    `Depois pergunte o que ficou em aberto antes de passar ao módulo seguinte.`,
+  tabela: (titulo) =>
+    `"${titulo}": a tabela é para consulta, não para leitura em voz alta. ` +
+    `Diga o que as colunas comparam, percorra UMA linha inteira como exemplo e deixe o resto para o material.`,
+  rubrica:
+    `Leia os pesos em voz alta — é a informação que o participante mais quer. ` +
+    `Diga o que separa o nível excelente do suficiente em cada critério e onde a avaliação costuma ser perdida.`,
 };
 
 const EN: Frases = {
@@ -56,6 +78,16 @@ const EN: Frases = {
   encerramento:
     `Restate the course's central competence in one sentence, not the whole list. ` +
     `Point to the concrete next step — assessment, certificate, support material — and open for questions.`,
+  fechamento: (titulo) =>
+    `Closing module "${titulo}". Do not read the list — it is already on screen. ` +
+    `Pick the point the group found hardest and revisit just that one, with an example. ` +
+    `Then ask what is still open before moving to the next module.`,
+  tabela: (titulo) =>
+    `"${titulo}": the table is for reference, not to be read aloud. ` +
+    `Say what the columns compare, walk through ONE full row as an example, and leave the rest to the handout.`,
+  rubrica:
+    `Read the weights aloud — it is what participants most want to know. ` +
+    `Say what separates the excellent level from the sufficient one in each criterion, and where marks are usually lost.`,
 };
 
 const ES: Frases = {
@@ -73,6 +105,16 @@ const ES: Frases = {
   encerramento:
     `Retome la competencia central del curso en una frase, no la lista entera. ` +
     `Señale el próximo paso concreto — evaluación, certificado, material — y abra para preguntas.`,
+  fechamento: (titulo) =>
+    `Cierre del módulo "${titulo}". No lea la lista: ya está en pantalla. ` +
+    `Elija el punto que al grupo le resultó más difícil y retómelo solo a ese, con un ejemplo. ` +
+    `Luego pregunte qué quedó abierto antes de pasar al módulo siguiente.`,
+  tabela: (titulo) =>
+    `"${titulo}": la tabla es para consulta, no para leerla en voz alta. ` +
+    `Diga qué comparan las columnas, recorra UNA fila entera como ejemplo y deje el resto al material.`,
+  rubrica:
+    `Lea los pesos en voz alta — es lo que el participante más quiere saber. ` +
+    `Diga qué separa el nivel excelente del suficiente en cada criterio y dónde se suele perder la evaluación.`,
 };
 
 /** O idioma do deck decide as frases; português é o padrão do produto. */
@@ -111,4 +153,29 @@ export function notaDaDivisoria(
 
 export function notaDoEncerramento(language: string): string {
   return frases(language).encerramento;
+}
+
+export function notaDaRubrica(language: string): string {
+  return frases(language).rubrica;
+}
+
+/**
+ * A nota de apoio de um slide que TEM SlideSpec e chegou sem `notes`.
+ *
+ * Só para os tipos em que isso acontece por desenho, não por acaso: o
+ * fechamento do módulo (o planejador o deixa em branco) e a tabela que nós
+ * mesmos montamos em deck-plan.ts, como "Trilhas de aprofundamento". Para
+ * qualquer outro tipo devolve "" — um slide de conteúdo sem nota é um defeito
+ * do planejador, e inventar uma frase genérica ali esconderia o defeito.
+ */
+export function notaDeApoio(
+  kind: string,
+  titulo: string,
+  language: string,
+): string {
+  const f = frases(language);
+  const t = (titulo || "").trim();
+  if (kind === "closing") return f.fechamento(t);
+  if (kind === "table" && t) return f.tabela(t);
+  return "";
 }

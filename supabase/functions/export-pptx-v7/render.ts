@@ -14,7 +14,7 @@ import { categoricalColors } from "./chart-palette.ts";
 import { chevronNumberBox } from "./chevron-geometry.ts";
 import { trimToWholeThought } from "./layout-fit.ts";
 import {
-  notaDaAgenda, notaDaCapa, notaDaDivisoria, notaDoEncerramento,
+  notaDaAgenda, notaDaCapa, notaDaDivisoria, notaDeApoio, notaDoEncerramento,
 } from "./notas-estruturais.ts";
 import { chevronCabe, ehSequencia, rotuloDoNucleo } from "./layout-fit.ts";
 import {
@@ -2805,6 +2805,12 @@ export function renderDeck(
         // Notes are layout-independent, so attach them up front — the two
         // early `continue` branches below would otherwise skip them.
         speakerNotes(slide, s);
+        // O fechamento do módulo e as tabelas que nós mesmos montamos chegam
+        // aqui com `notes` vazio: o planejador não escreve nota para eles.
+        // MEDIDO no deck de 21/11: 8 slides assim, 6 deles fechamentos.
+        if (!(s.notes ?? "").trim()) {
+          notaEstrutural(slide, notaDeApoio(s.kind, s.title ?? m.title, lingua));
+        }
         const cardLike = cardLikeKind(s.kind);
         // (1) Single-point card/bullets/steps slide → high-impact statement
         // instead of one giant near-empty card.
@@ -2889,13 +2895,17 @@ export function renderDeck(
               renderProcessArrows(
                 slide,
                 { ...s, bullets: passos.map((st) => st.heading ?? "").filter(Boolean) },
-                d, brand, num, m.title,
+                d, brand, num, rotuloDoModulo,
               );
             } else renderSteps(slide, s, d, brand, num, rotuloDoModulo);
             break;
           }
           case "compare":
-            renderCompare(slide, s, d, brand, num, m.title, compareCount++);
+            // rotuloDoModulo, não m.title: o rótulo é âncora do PRIMEIRO slide de
+            // conteúdo do módulo e sai dos demais. Com m.title estes dois
+            // renderizadores reimprimiam o título do módulo em todo slide de
+            // contraste — MEDIDO no deck de 20/11: slides 8, 14 e 27.
+            renderCompare(slide, s, d, brand, num, rotuloDoModulo, compareCount++);
             break;
           case "matrix":
             renderMatrix(slide, s, d, brand, num, rotuloDoModulo);
