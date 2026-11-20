@@ -135,3 +135,52 @@ Cinco das 22 dividem o parêntese com uma citação normativa real, como
 parêntese levaria a ISSAI. `semCodigosDeTrecho` em `markdown.ts` desmonta o
 parêntese item por item, e `codigos-de-trecho.test.ts` mede isso contra estes
 recortes literais.
+
+## O experimento das cláusulas distintivas, fechado em 20/11/2026
+
+**Hipótese registrada em 19/11**, depois de o usuário — auditor — dizer que a
+perda "importa muito": se o prompt exigir que a definição conserve as cláusulas
+que distinguem o termo dos vizinhos, elas voltam.
+
+**Critério escrito antes do teste:** a definição de eficácia tem de conter
+"independentemente dos custos", e a de eficiência, "mantidos os padrões de
+qualidade".
+
+| | 18/11 | 19/11 | 20/11, com a regra |
+|---|---|---|---|
+| eficácia: independentemente dos custos | ausente | ausente | **presente, 2x** |
+| eficiência: padrões de qualidade | ausente | ausente | **presente** |
+| economicidade: qualidade | ausente | presente | **presente** |
+| efetividade: causalidade | ausente | presente | **presente** |
+
+E as cláusulas estão NA DEFINIÇÃO, não espalhadas pelo texto:
+
+```
+eficácia ....... "grau de alcance das metas programadas em termos de produtos
+                  e resultados imediatos, independentemente dos custos
+                  implicados"
+eficiência ..... "relação entre produtos obtidos e insumos empregados ...,
+                  mantendo os padrões de qualidade"
+economicidade .. "a preços competitivos, sem comprometer os padrões de
+                  qualidade e os prazos estabelecidos"
+```
+
+**Hipótese confirmada.** Duas de duas cláusulas recuperadas na primeira geração
+depois do deploy. Um curso não é uma taxa, e a regra segue sendo instrução de
+prompt sem verificação determinística — mas o critério era específico, foi
+escrito antes, e foi cumprido.
+
+`auditoria-definicoes-fieis.md` é o registro. MEDIDO nele:
+
+```
+módulos 6, objetivos 7     CO1 e CO2 no módulo 1, por desenho — nada perdido
+citações normativas        8 de 8 existem nas fontes, 0 inventadas
+caso fictício              175 menções no curso, 0 nas fontes, rotulado 6x
+códigos S<n>:C<nn>         0
+palavras partidas          0
+(nota N) pendurado         0      ← a ocorrência de 19/11 não repetiu
+tags <br>                  0
+valores monetários         0      percentuais 4
+estrutura                  6/6 módulos com pontos-chave, questão e referências
+escopo                     nenhum módulo ou lição ensina fase ausente das fontes
+```
