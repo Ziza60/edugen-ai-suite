@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { altDaImagem, montarPromptDeImagem } from "./image-prompt.ts";
 import { ehPng, paraJpeg } from "../_shared/imagem-jpeg.ts";
+import { deveDescartar, verificarTextoNaImagem } from "../_shared/imagem-sem-texto.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -179,6 +180,33 @@ serve(async (req) => {
       console.log(
         `[generate-module-image] PNG ${Math.round(original.length / 1024)}KB → ` +
           `JPEG ${Math.round(binaryData.length / 1024)}KB em ${Date.now() - t0}ms`,
+      );
+    }
+
+    // A REGRA "NO WORDS" PASSA A SER CONFERIDA
+    //
+    // MEDIDO na imagem do módulo 1 do curso de 20/11: "EFICIACY",
+    // "EFFECTYNESS", "EPRFORMENCHT" — tudo em inglês num curso em português.
+    // O prompt já proibia texto; ninguém verificava. Ver imagem-sem-texto.ts.
+    //
+    // Aqui, diferente da geração automática, há alguém esperando: em vez de
+    // devolver "sem imagem", devolve um erro que diz o que houve, e a tela
+    // oferece gerar de novo.
+    const veredito = await verificarTextoNaImagem({
+      bytes: binaryData,
+      mimeType: mime,
+      apiKey: geminiKey,
+      origem: isCover ? "capa" : `módulo ${module_id}`,
+    });
+    if (deveDescartar(veredito)) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "A imagem saiu com texto escrito e foi descartada — palavras geradas " +
+            "por IA costumam vir com erros de grafia. Gere novamente.",
+          reason: "imagem-com-texto",
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 

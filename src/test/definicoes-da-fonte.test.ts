@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  cartoesViramTabela,
   completarCartoes,
   completarDefinicoes,
   definicaoNaFonte,
@@ -10,6 +11,9 @@ import {
   perdeuClausula,
   semOPreambulo,
 } from "../../supabase/functions/export-pptx-v7/definicoes-da-fonte";
+import { normalizeDeck } from "../../supabase/functions/export-pptx-v7/validate";
+import { capacidadeDaCelula } from "../../supabase/functions/export-pptx-v7/table-geometry";
+import type { SlideSpec } from "../../supabase/functions/export-pptx-v7/deck-plan";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // O CARTÃO DO DECK DE 21/11, LITERAL, E O QUE A FONTE DIZIA
@@ -128,6 +132,102 @@ describe("O CASO MEDIDO: o cartão de 21/11 volta a definir", () => {
     const depois = cards.map((c) => c.body);
     expect(completarCartoes(cards, MODULO_1)).toEqual([]);
     expect(cards.map((c) => c.body)).toEqual(depois);
+  });
+});
+
+describe("A DEFINIÇÃO QUE NÃO CABE NO CARTÃO VIRA TABELA", () => {
+  // MEDIDO: a fonte define efetividade em 220 caracteres (sem o preâmbulo). O
+  // cartão comporta 165 em qualquer arranjo. A célula de uma tabela de uma
+  // coluna de dados com 4 linhas comporta 472.
+  function slideDosQuatroEs() {
+    return {
+      kind: "cards",
+      title: "Diferenciando as Dimensões de Desempenho",
+      cards: CARTOES_DE_21_11.map((c) => ({ ...c })),
+    } as never as SlideSpec;
+  }
+
+  it("converte o slide e traz AS QUATRO definições", () => {
+    const s = slideDosQuatroEs();
+    const feitas = cartoesViramTabela(s, MODULO_1, "Português");
+    expect(feitas).not.toBeNull();
+    expect(s.kind).toBe("table");
+    expect(s.cards).toBeUndefined();
+    expect(s.rows).toHaveLength(4);
+    expect(s.rows!.map((r) => r.label))
+      .toEqual(["Economicidade", "Eficiência", "Eficácia", "Efetividade"]);
+  });
+
+  it("a cláusula de causalidade da efetividade aparece", () => {
+    // É ela que separa efetividade de eficácia para quem audita: sem
+    // atribuição, "impacto de longo prazo" não diz de quem é o mérito.
+    const s = slideDosQuatroEs();
+    cartoesViramTabela(s, MODULO_1, "Português");
+    const efetividade = s.rows!.find((r) => r.label === "Efetividade")!;
+    expect(efetividade.cells[0]).toContain("atribuir às ações do programa");
+  });
+
+  it("e as outras duas cláusulas também, na mesma tabela", () => {
+    const s = slideDosQuatroEs();
+    cartoesViramTabela(s, MODULO_1, "Português");
+    const texto = s.rows!.map((r) => r.cells[0]).join(" | ");
+    expect(texto).toContain("independentemente dos custos implicados");
+    expect(texto).toContain("mantendo os padrões de qualidade");
+  });
+
+  it("tudo cabe na célula medida", () => {
+    const s = slideDosQuatroEs();
+    cartoesViramTabela(s, MODULO_1, "Português");
+    const teto = capacidadeDaCelula(1, s.rows!.length);
+    for (const r of s.rows!) expect(r.cells[0].length, r.label).toBeLessThanOrEqual(teto);
+  });
+
+  it("NÃO converte quando todas as definições cabem no cartão", () => {
+    const s = {
+      kind: "cards",
+      cards: [
+        { heading: "Eficácia", body: "Grau de alcance das metas programadas." },
+        { heading: "Eficiência", body: "Relação entre produtos e insumos." },
+      ],
+    } as never as SlideSpec;
+    expect(cartoesViramTabela(s, MODULO_1, "Português")).toBeNull();
+    expect(s.kind).toBe("cards");
+  });
+
+  it("a tabela convertida PASSA pela normalização, com uma coluna de dados", () => {
+    // normTable recusava `columns.length < 2`, contando só as colunas de dados
+    // — e a tabela "Conceito | Definição" tem uma. A recusa jogava fora
+    // justamente a forma que resolve o problema.
+    const s = slideDosQuatroEs();
+    cartoesViramTabela(s, MODULO_1, "Português");
+    const { deck } = normalizeDeck({
+      courseTitle: "C",
+      language: "Português",
+      modules: [{ title: "M", slides: [s] }],
+    } as never);
+    const saida = deck.modules[0].slides[0];
+    expect(saida.kind).toBe("table");
+    expect(saida.rows).toHaveLength(4);
+    expect(saida.rows!.map((r) => r.cells[0]).join(" "))
+      .toContain("atribuir às ações do programa");
+  });
+
+  it("os rótulos seguem o idioma do deck", () => {
+    for (const [lingua, termo] of [
+      ["Português", "Conceito"], ["English", "Concept"], ["Español", "Concepto"],
+    ] as [string, string][]) {
+      const s = slideDosQuatroEs();
+      cartoesViramTabela(s, MODULO_1, lingua);
+      expect(s.rowHeader, lingua).toBe(termo);
+    }
+  });
+
+  it("completarDefinicoes faz a conversão no deck inteiro", () => {
+    const out = [{ title: "M1", slides: [slideDosQuatroEs()] }] as never as Parameters<typeof completarDefinicoes>[0];
+    const feitas = completarDefinicoes(out, [{ title: "M1", content: MODULO_1 }], "Português");
+    expect(feitas.map((r) => r.termo).sort())
+      .toEqual(["Efetividade", "Eficiência", "Eficácia"]);
+    expect(out[0].slides[0].kind).toBe("table");
   });
 });
 

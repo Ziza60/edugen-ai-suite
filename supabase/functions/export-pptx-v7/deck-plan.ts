@@ -2467,7 +2467,7 @@ export async function buildDeck(
 
   // A definição que o modelo encolheu volta da fonte. Depois dos preenchimentos
   // acima, porque um cartão trazido pelo piso também pode ter perdido cláusula.
-  const definicoes = completarDefinicoes(out, modules);
+  const definicoes = completarDefinicoes(out, modules, language);
   for (const r of definicoes) {
     console.log(`[V7-DEFINICAO] "${r.termo}": ${r.antes.length} → ${r.depois.length} chars`);
   }

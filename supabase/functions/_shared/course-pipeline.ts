@@ -28,6 +28,7 @@ import {
 } from "./valores-do-caso.ts";
 import { descricaoDoTom } from "./course-tone.ts";
 import { paraJpeg } from "./imagem-jpeg.ts";
+import { deveDescartar, verificarTextoNaImagem } from "./imagem-sem-texto.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -5718,6 +5719,27 @@ export async function gerarImagemDoModulo(params: {
     // declaração põe a extensão errada no arquivo — defeito que só aparece na
     // hora em que o jsPDF recusa a imagem, exportações depois.
     const convertida = await paraJpeg(binary, "generate-course");
+
+    // A REGRA "NO WORDS" PASSA A SER CONFERIDA
+    //
+    // MEDIDO na imagem do módulo 1 do curso de 20/11: seis barras para quatro
+    // conceitos, "EFICIACY" e "EFFECTYNESS" grafados errado, tudo em inglês num
+    // curso em português. O prompt já proibia texto; ninguém verificava.
+    //
+    // Falha aberta: só um SIM explícito descarta. Ver imagem-sem-texto.ts.
+    const veredito = await verificarTextoNaImagem({
+      bytes: convertida.bytes,
+      mimeType: convertida.mime,
+      apiKey: geminiKey,
+      origem: `generate-course m${module.module_number}`,
+    });
+    if (deveDescartar(veredito)) {
+      console.warn(
+        `[generate-course] Imagem do módulo ${module.module_number} descartada: tem texto.`,
+      );
+      return null;
+    }
+
     return {
       ...convertida,
       alt: mediaBrief.alt_text || `Ilustração educacional: ${module.title}`,

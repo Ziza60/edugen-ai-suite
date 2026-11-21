@@ -311,7 +311,18 @@ function normTable(slide: SlideSpec):
     .map((c) => capText(String(c ?? ""), 6, 28))
     .filter((c) => c.length > 0)
     .slice(0, LIMITS.MAX_TABLE_COLS);
-  if (columns.length < 2) return null;
+  // DUAS COLUNAS NA TELA, UMA COLUNA DE DADOS
+  //
+  // `columns` conta só as colunas de DADOS; a coluna de rótulos vem de
+  // `rowHeader` e é desenhada à esquerda. Exigir duas aqui recusava a tabela de
+  // duas colunas que o leitor vê — "Conceito | Definição" —, que é a única
+  // forma do deck com espaço para uma definição longa: capacidadeDaCelula(1, 4)
+  // dá 472 caracteres contra os 165 do cartão.
+  //
+  // Sem rótulo de linha, porém, uma coluna só continua sendo uma lista disfarçada
+  // de tabela, e a recusa fica de pé.
+  const temRotuloDeLinha = String(slide.rowHeader ?? "").trim().length > 0;
+  if (columns.length < 1 || (columns.length < 2 && !temRotuloDeLinha)) return null;
   // O TETO DA CÉLULA VEM DA COLUNA, NÃO DE UMA CONSTANTE
   //
   // Era MAX_TABLE_CELL_CHARS = 80 para toda tabela. Medindo o deck de 23/08, a
@@ -448,7 +459,15 @@ function hasMinimumContent(s: SlideSpec): boolean {
     case "matrix":
       return (s.cards?.length ?? 0) > 0;
     case "table":
-      return (s.columns?.length ?? 0) >= 2 && (s.rows?.length ?? 0) > 0;
+      // Duas colunas na TELA: a de rótulos (rowHeader) mais as de dados. Ver a
+      // nota em normTable — exigir duas de dados descartava a tabela
+      // "Conceito | Definição", que é a única forma com espaço para uma
+      // definição longa.
+      return (
+        (s.rows?.length ?? 0) > 0 &&
+        ((s.columns?.length ?? 0) >= 2 ||
+          ((s.columns?.length ?? 0) >= 1 && String(s.rowHeader ?? "").trim().length > 0))
+      );
     case "steps":
       return (s.steps?.length ?? 0) > 0;
     case "compare":

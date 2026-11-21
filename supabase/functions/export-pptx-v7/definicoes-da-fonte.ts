@@ -37,6 +37,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import type { DeckCard, DeckModule, ModuleInput, SlideSpec } from "./deck-plan.ts";
+import { capacidadeDaCelula } from "./table-geometry.ts";
 
 /** Minúsculas, sem acento — para comparar palavra com palavra. */
 function dobra(s: string): string {
@@ -125,6 +126,16 @@ function fimDoPreambulo(frase: string, termo: string): number {
 }
 
 /**
+ * "investiga SE os bens foram adquiridos" não é a mesma coisa que "avalia o
+ * grau de alcance": o `se` abre uma oração, e cortar o verbo deixa um começo
+ * solto — "Os bens e serviços foram adquiridos...", que perde justamente o que
+ * a economicidade FAZ. MEDIDO na fonte do curso real, nas duas formas.
+ */
+function abreOracaoComSe(frase: string, fim: number): boolean {
+  return /\sse\s$/.test(dobra(frase).slice(0, fim));
+}
+
+/**
  * A frase da fonte que DEFINE o termo — aquela em que ele é o sujeito de um
  * verbo de ligação. Devolve null quando a fonte só o menciona.
  */
@@ -145,6 +156,7 @@ export function definicaoNaFonte(termo: string, fonte: string): string | null {
 export function semOPreambulo(frase: string, termo: string): string {
   const fim = fimDoPreambulo(frase, termo);
   if (fim <= 0) return frase;
+  if (abreOracaoComSe(frase, fim)) return frase;
   const resto = frase.slice(fim).trim();
   if (resto.length < 30) return frase;
   return resto.charAt(0).toUpperCase() + resto.slice(1);
@@ -176,41 +188,139 @@ export function perdeuClausula(
 }
 
 /** Quantos caracteres o corpo comporta, pelo arranjo do grid. */
-function tetoDoCorpo(quantosCards: number): number {
+export function tetoDoCorpo(quantosCards: number): number {
   return quantosCards === 3 ? 100 : 165;
 }
 
-/** Completa, num slide de cartões, as definições que a fonte tem inteiras. */
-export function completarCartoes(
-  cards: DeckCard[],
-  fonte: string,
-): Reposicao[] {
-  const teto = tetoDoCorpo(cards.length);
-  const feitas: Reposicao[] = [];
-  for (const card of cards) {
+/**
+ * A frase da fonte diz MAIS do que o corpo do cartão?
+ *
+ * Mede palavras de conteúdo, não caracteres: é a informação que interessa, e
+ * uma paráfrase mais arrastada não pode ganhar da fonte por ser mais comprida.
+ *
+ * MEDIDO nos quatro cartões do deck de 21/11, contra a fonte do módulo 1:
+ *
+ *   economicidade .. corpo 13 palavras, fonte 12 → a fonte não acrescenta
+ *   eficiência ..... corpo 12,          fonte 14 → troca
+ *   eficácia ....... corpo  4,          fonte 12 → troca
+ *   efetividade .... corpo  7,          fonte 19 → troca
+ *
+ * A primeira versão exigia que o corpo fosse SUBCONJUNTO da frase. Era
+ * conservadora demais e produzia um resultado incoerente: eficácia e
+ * eficiência ganhavam a cláusula e efetividade não, só porque o modelo
+ * escrevera "comunidades" onde a fonte diz "sociedade". Para um auditor, a
+ * causalidade que faltava na efetividade é tão distintiva quanto o
+ * "independentemente dos custos" que faltava na eficácia.
+ */
+export function fonteDizMais(corpo: string, daFonte: string): boolean {
+  return palavrasDeConteudo(daFonte).length > palavrasDeConteudo(corpo).length;
+}
+
+/** O que cada cartão deveria dizer, se a fonte define o termo. */
+interface Candidato {
+  card: DeckCard;
+  termo: string;
+  corpo: string;
+  texto: string | null;
+}
+
+function candidatos(cards: DeckCard[], fonte: string): Candidato[] {
+  return cards.map((card) => {
     const termo = (card.heading ?? "").trim();
     const corpo = (card.body ?? "").trim();
-    if (!termo || !corpo) continue;
-    const frase = definicaoNaFonte(termo, fonte);
-    if (!frase) continue;
-    if (!perdeuClausula(corpo, frase)) continue;
-    const texto = semOPreambulo(frase, termo).replace(/\s+/g, " ").trim();
-    // Não cabe no cartão: melhor o resumo do modelo do que uma frase cortada
-    // ao meio — que é exatamente o defeito que se está consertando.
-    if (texto.length > teto || texto.length <= corpo.length) continue;
-    feitas.push({ termo, antes: corpo, depois: texto });
-    card.body = texto;
+    let texto: string | null = null;
+    if (termo && corpo) {
+      const frase = definicaoNaFonte(termo, fonte);
+      if (frase) {
+        const t = semOPreambulo(frase, termo).replace(/\s+/g, " ").trim();
+        if (fonteDizMais(corpo, t)) texto = t;
+      }
+    }
+    return { card, termo, corpo, texto };
+  });
+}
+
+/** Completa, num slide de cartões, as definições que a fonte tem inteiras. */
+export function completarCartoes(cards: DeckCard[], fonte: string): Reposicao[] {
+  const teto = tetoDoCorpo(cards.length);
+  const feitas: Reposicao[] = [];
+  for (const c of candidatos(cards, fonte)) {
+    // Não cabe no cartão: melhor o resumo do modelo do que uma frase cortada ao
+    // meio — que é exatamente o defeito que se está consertando. Quem resolve o
+    // caso de não caber é `cartoesViramTabela`.
+    if (!c.texto || c.texto.length > teto) continue;
+    feitas.push({ termo: c.termo, antes: c.corpo, depois: c.texto });
+    c.card.body = c.texto;
   }
+  return feitas;
+}
+
+/** Os rótulos da tabela de definições, no idioma do deck. */
+export function rotulosDaTabela(language: string): { termo: string; definicao: string } {
+  const l = (language || "").toLowerCase();
+  if (/espa|spanish/.test(l)) return { termo: "Concepto", definicao: "Definición" };
+  if (/fran|french/.test(l)) return { termo: "Concept", definicao: "Définition" };
+  if (/ingl|english|^en\b|^en-/.test(l)) return { termo: "Concept", definicao: "Definition" };
+  return { termo: "Conceito", definicao: "Definição" };
+}
+
+// ─── QUANDO A DEFINIÇÃO NÃO CABE NO CARTÃO ──────────────────────────────────
+//
+// MEDIDO: a fonte define efetividade em 220 caracteres. O cartão comporta 165
+// em QUALQUER arranjo — renderCards limita o corpo a 3 linhas, e com 2 cartões
+// numa linha só a altura sobra mas o teto de linhas não olha para ela.
+//
+// A tabela olha: capacidadeDaCelula mede a coluna e a altura da linha, e uma
+// tabela de uma coluna de dados com 4 linhas dá 472 caracteres. É mais que o
+// dobro do necessário, os quatro termos continuam no MESMO slide, e a
+// comparação lado a lado — que é o valor do slide dos 4 Es — se mantém.
+const MIN_LINHAS_DA_TABELA = 2;
+
+/**
+ * Converte o slide de cartões em tabela "termo | definição" quando ao menos uma
+ * definição da fonte não cabe no cartão. Devolve as trocas, ou null quando não
+ * houve conversão.
+ */
+export function cartoesViramTabela(
+  slide: SlideSpec,
+  fonte: string,
+  language: string,
+): Reposicao[] | null {
+  const cards = slide.cards ?? [];
+  if (cards.length < MIN_LINHAS_DA_TABELA) return null;
+  const cs = candidatos(cards, fonte);
+  const teto = tetoDoCorpo(cards.length);
+  const naoCabem = cs.filter((c) => c.texto && c.texto.length > teto);
+  if (!naoCabem.length) return null;
+
+  const tetoDaCelula = capacidadeDaCelula(1, cards.length);
+  if (naoCabem.some((c) => (c.texto as string).length > tetoDaCelula)) return null;
+
+  const rotulos = rotulosDaTabela(language);
+  const feitas: Reposicao[] = [];
+  const linhas = cs.map((c) => {
+    const corpo = c.texto ?? c.corpo;
+    if (c.texto) feitas.push({ termo: c.termo, antes: c.corpo, depois: c.texto });
+    return { label: c.termo, cells: [corpo] };
+  });
+
+  slide.kind = "table";
+  slide.rowHeader = rotulos.termo;
+  slide.columns = [rotulos.definicao];
+  slide.rows = linhas;
+  delete slide.cards;
   return feitas;
 }
 
 /**
  * Passa o deck inteiro: para cada slide de cartões, completa as definições com
- * a palavra da fonte do próprio módulo.
+ * a palavra da fonte do próprio módulo — e, quando alguma não couber no cartão,
+ * troca o slide por uma tabela, que comporta.
  */
 export function completarDefinicoes(
   out: DeckModule[],
   inputs: ModuleInput[],
+  language = "",
 ): Reposicao[] {
   const todas: Reposicao[] = [];
   for (let i = 0; i < out.length; i++) {
@@ -218,6 +328,11 @@ export function completarDefinicoes(
     if (!fonte.trim()) continue;
     for (const s of out[i].slides as SlideSpec[]) {
       if (!s.cards?.length) continue;
+      const comoTabela = cartoesViramTabela(s, fonte, language);
+      if (comoTabela) {
+        todas.push(...comoTabela);
+        continue;
+      }
       todas.push(...completarCartoes(s.cards, fonte));
     }
   }
