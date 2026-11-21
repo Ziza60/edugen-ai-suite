@@ -37,7 +37,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import type { DeckCard, DeckModule, ModuleInput, SlideSpec } from "./deck-plan.ts";
-import { capacidadeDaCelula } from "./table-geometry.ts";
+import { capacidadeDaCelula, capacidadeDoCorpoDoCard } from "./table-geometry.ts";
 
 /** Minúsculas, sem acento — para comparar palavra com palavra. */
 function dobra(s: string): string {
@@ -187,10 +187,15 @@ export function perdeuClausula(
   return f.size - new Set(c).size >= margemMinima;
 }
 
-/** Quantos caracteres o corpo comporta, pelo arranjo do grid. */
-export function tetoDoCorpo(quantosCards: number): number {
-  return quantosCards === 3 ? 100 : 165;
-}
+/**
+ * Quantos caracteres o corpo comporta, pelo arranjo do grid.
+ *
+ * Era uma cópia local — `quantosCards === 3 ? 100 : 165` — que divergia do que
+ * renderCards desenha. Duas réguas para a mesma caixa é como a definição de
+ * eficácia se perdeu: uma media e a outra cortava. A conta agora é a de
+ * table-geometry.ts, a mesma que o renderizador usa.
+ */
+export const tetoDoCorpo = capacidadeDoCorpoDoCard;
 
 /**
  * A frase da fonte diz MAIS do que o corpo do cartão?
@@ -216,27 +221,69 @@ export function fonteDizMais(corpo: string, daFonte: string): boolean {
   return palavrasDeConteudo(daFonte).length > palavrasDeConteudo(corpo).length;
 }
 
-/** O que cada cartão deveria dizer, se a fonte define o termo. */
+/** O que cada item deveria dizer, se a fonte define o termo. */
 interface Candidato {
-  card: DeckCard;
+  card: DeckCard | null;
   termo: string;
   corpo: string;
   texto: string | null;
+}
+
+/** O candidato de um par termo/corpo já separado. */
+function candidatoDe(termo: string, corpo: string, fonte: string): string | null {
+  if (!termo || !corpo) return null;
+  const frase = definicaoNaFonte(termo, fonte);
+  if (!frase) return null;
+  const t = semOPreambulo(frase, termo).replace(/\s+/g, " ").trim();
+  return fonteDizMais(corpo, t) ? t : null;
 }
 
 function candidatos(cards: DeckCard[], fonte: string): Candidato[] {
   return cards.map((card) => {
     const termo = (card.heading ?? "").trim();
     const corpo = (card.body ?? "").trim();
-    let texto: string | null = null;
-    if (termo && corpo) {
-      const frase = definicaoNaFonte(termo, fonte);
-      if (frase) {
-        const t = semOPreambulo(frase, termo).replace(/\s+/g, " ").trim();
-        if (fonteDizMais(corpo, t)) texto = t;
-      }
-    }
-    return { card, termo, corpo, texto };
+    return { card, termo, corpo, texto: candidatoDe(termo, corpo, fonte) };
+  });
+}
+
+// ─── O MESMO DEFEITO, FORA DOS CARTÕES ──────────────────────────────────────
+//
+// MEDIDO no slide 7 do deck de 21/11: os quatro Es saíram como BULLETS —
+//
+//   "Economicidade: Uso de recursos com menor custo"
+//   "Eficácia: Grau de alcance das metas programadas"
+//
+// quarenta e cinco caracteres cada, sem cláusula distintiva, com metade do
+// slide vazia. `completarDefinicoes` percorria `s.cards` e nada mais, então
+// este slide passaria intacto pelo conserto. A régua não alcançava tudo o que
+// governa — de novo.
+//
+// Um bullet "Termo: definição" é um cartão escrito em uma linha. Separa-se no
+// primeiro dois-pontos e passa pelo mesmo crivo.
+
+/** O separador tem de deixar um termo curto à esquerda e texto à direita. */
+const BULLET_DEFINICAO = /^\s*([^:：]{3,40}?)\s*[:：]\s+(.{10,})$/;
+
+export function separarBullet(bullet: string): { termo: string; corpo: string } | null {
+  const m = (bullet ?? "").match(BULLET_DEFINICAO);
+  if (!m) return null;
+  const termo = m[1].trim();
+  // Termo de glossário é um nome, não uma frase: no máximo quatro palavras, e
+  // sem pontuação interna que denuncie uma oração.
+  if (termo.split(/\s+/).length > 4 || /[.;!?]/.test(termo)) return null;
+  return { termo, corpo: m[2].trim() };
+}
+
+function candidatosDeBullets(bullets: string[], fonte: string): Candidato[] {
+  return bullets.map((b) => {
+    const par = separarBullet(b);
+    if (!par) return { card: null, termo: "", corpo: b, texto: null };
+    return {
+      card: null,
+      termo: par.termo,
+      corpo: par.corpo,
+      texto: candidatoDe(par.termo, par.corpo, fonte),
+    };
   });
 }
 
@@ -248,10 +295,32 @@ export function completarCartoes(cards: DeckCard[], fonte: string): Reposicao[] 
     // Não cabe no cartão: melhor o resumo do modelo do que uma frase cortada ao
     // meio — que é exatamente o defeito que se está consertando. Quem resolve o
     // caso de não caber é `cartoesViramTabela`.
-    if (!c.texto || c.texto.length > teto) continue;
+    if (!c.texto || c.texto.length > teto || !c.card) continue;
     feitas.push({ termo: c.termo, antes: c.corpo, depois: c.texto });
     c.card.body = c.texto;
   }
+  return feitas;
+}
+
+// O bullet é cortado por normItems com DOIS tetos, e o de palavras é o que
+// aperta: 22 palavras contra 160 caracteres. Uma definição com cláusula quase
+// sempre passa de 22 palavras — por isso, nos bullets, o caminho comum é a
+// tabela, e não a reescrita no lugar.
+const BULLET = { palavras: 22, chars: 160 };
+
+function cabeNoBullet(termo: string, texto: string): boolean {
+  const linha = `${termo}: ${texto}`;
+  return linha.length <= BULLET.chars && linha.split(/\s+/).length <= BULLET.palavras;
+}
+
+/** Reescreve os bullets "Termo: definição" que a fonte enriquece E que cabem. */
+export function completarBullets(bullets: string[], fonte: string): Reposicao[] {
+  const feitas: Reposicao[] = [];
+  candidatosDeBullets(bullets, fonte).forEach((c, i) => {
+    if (!c.texto || !cabeNoBullet(c.termo, c.texto)) return;
+    feitas.push({ termo: c.termo, antes: c.corpo, depois: c.texto });
+    bullets[i] = `${c.termo}: ${c.texto}`;
+  });
   return feitas;
 }
 
@@ -313,6 +382,50 @@ export function cartoesViramTabela(
 }
 
 /**
+ * O mesmo, para o slide de BULLETS no formato "Termo: definição".
+ *
+ * MEDIDO no slide 7 do deck de 21/11, que é onde o curso apresenta os 4 Es:
+ * quatro bullets de ~45 caracteres, nenhuma cláusula, metade do slide vazia. E
+ * o teto do bullet (22 palavras) é apertado demais para uma definição com
+ * cláusula, então aqui a tabela é o caminho comum, não a exceção.
+ *
+ * Exige DUAS definições vindas da fonte: um slide com um "Contexto: ..." solto
+ * não é um glossário, e virar tabela ali seria atropelar o planejador.
+ */
+export function bulletsViramTabela(
+  slide: SlideSpec,
+  fonte: string,
+  language: string,
+): Reposicao[] | null {
+  const bullets = slide.bullets ?? [];
+  if (bullets.length < MIN_LINHAS_DA_TABELA) return null;
+  const cs = candidatosDeBullets(bullets, fonte);
+  const enriquecidos = cs.filter((c) => c.texto);
+  if (enriquecidos.length < 2) return null;
+  // Se todos couberem no bullet, não há motivo para mudar de forma.
+  if (enriquecidos.every((c) => cabeNoBullet(c.termo, c.texto as string))) return null;
+  // Metade dos itens tem de ser "Termo: corpo"; senão não é lista de conceitos.
+  if (cs.filter((c) => c.termo).length * 2 < cs.length) return null;
+
+  const tetoDaCelula = capacidadeDaCelula(1, cs.length);
+  if (enriquecidos.some((c) => (c.texto as string).length > tetoDaCelula)) return null;
+
+  const rotulos = rotulosDaTabela(language);
+  const feitas: Reposicao[] = [];
+  const linhas = cs.map((c) => {
+    if (c.texto) feitas.push({ termo: c.termo, antes: c.corpo, depois: c.texto });
+    return { label: c.termo || "—", cells: [c.texto ?? c.corpo] };
+  });
+
+  slide.kind = "table";
+  slide.rowHeader = rotulos.termo;
+  slide.columns = [rotulos.definicao];
+  slide.rows = linhas;
+  delete slide.bullets;
+  return feitas;
+}
+
+/**
  * Passa o deck inteiro: para cada slide de cartões, completa as definições com
  * a palavra da fonte do próprio módulo — e, quando alguma não couber no cartão,
  * troca o slide por uma tabela, que comporta.
@@ -327,13 +440,25 @@ export function completarDefinicoes(
     const fonte = inputs[i]?.content ?? "";
     if (!fonte.trim()) continue;
     for (const s of out[i].slides as SlideSpec[]) {
-      if (!s.cards?.length) continue;
-      const comoTabela = cartoesViramTabela(s, fonte, language);
-      if (comoTabela) {
-        todas.push(...comoTabela);
+      if (s.cards?.length) {
+        const comoTabela = cartoesViramTabela(s, fonte, language);
+        if (comoTabela) {
+          todas.push(...comoTabela);
+          continue;
+        }
+        todas.push(...completarCartoes(s.cards, fonte));
         continue;
       }
-      todas.push(...completarCartoes(s.cards, fonte));
+      // O fechamento do módulo é recapitulação, não glossário: seus bullets
+      // resumem o que já foi dito e não devem virar tabela de definições.
+      if (s.kind === "bullets" && s.bullets?.length) {
+        const comoTabela = bulletsViramTabela(s, fonte, language);
+        if (comoTabela) {
+          todas.push(...comoTabela);
+          continue;
+        }
+        todas.push(...completarBullets(s.bullets, fonte));
+      }
     }
   }
   return todas;

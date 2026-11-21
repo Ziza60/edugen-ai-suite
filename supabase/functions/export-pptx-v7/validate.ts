@@ -16,7 +16,7 @@ import type {
   PlannedDeck,
   SlideSpec,
 } from "./deck-plan.ts";
-import { capacidadeDaCelula } from "./table-geometry.ts";
+import { capacidadeDaCelula, capacidadeDoCorpoDoCard } from "./table-geometry.ts";
 import {
   DANGLING_PREP_RE,
   ELLIPSIS_RE,
@@ -210,31 +210,27 @@ function normItems(items: string[] | undefined, max: number): string[] {
 //
 // ─── O QUE O LAYOUT REALMENTE COMPORTA ──────────────────────────────────────
 //
-// `renderCards` dimensiona o cartão pelo corpo, até 3 LINHAS:
-//   bodyLines = min(3, ceil(body.length / bodyPerLine)), com
-//   bodyPerLine = innerW * 11.
+// Esta régua morava aqui, com 100/165 caracteres fixos derivados de "3 linhas",
+// e havia uma SEGUNDA cópia em definicoes-da-fonte.ts. Duas réguas para a mesma
+// caixa, nenhuma olhando a altura que a caixa tem.
 //
-// Com 2 ou 4 cartões são 2 colunas, innerW ≈ 5,3 pol → ~58 chars/linha → ~174
-// em três linhas. Com 3 cartões são 3 colunas, innerW ≈ 3,3 → ~36 → ~108.
-// E a altura natural de três linhas (2,13 pol) cabe no cartão em qualquer
-// arranjo, então subir o teto não estoura nada.
+// MEDIDO no slide 33 do deck de 21/11: dois dos três cartões cortados em 100
+// caracteres, terminando sem ponto final, num cartão com folga vertical de
+// sobra. Com três cartões há UMA fileira de grid, e o cartão tem a altura
+// inteira da área de conteúdo.
 //
-// Os tetos abaixo ficam ABAIXO do que cada arranjo comporta, com folga para a
-// diferença entre a métrica estimada aqui e a fonte real.
-function capacidadeDoCorpoDoCard(quantosCards: number): { palavras: number; chars: number } {
-  // 3 cartões caem em três colunas estreitas; 2 e 4 ficam em duas largas.
-  const estreito = quantosCards === 3;
-  return estreito ? { palavras: 16, chars: 100 } : { palavras: 26, chars: 165 };
-}
-
+// A conta passou para table-geometry.ts, junto da célula da tabela, e agora é
+// a mesma que renderCards desenha: 234 caracteres com 2 ou 4 cartões, 144 com
+// 3, 5 ou 6. O teto de PALAVRAS continua aqui e fica folgado de propósito —
+// quem limita é o teto de caracteres, que corresponde ao que a caixa desenha.
 function normCards(cards: DeckCard[] | undefined): DeckCard[] {
   if (!Array.isArray(cards)) return [];
   const usados = cards.filter((c) => String(c?.heading ?? "").trim()).length;
-  const cap = capacidadeDoCorpoDoCard(Math.min(usados, LIMITS.MAX_CARDS));
+  const teto = capacidadeDoCorpoDoCard(Math.min(usados, LIMITS.MAX_CARDS));
   return cards
     .map((c) => ({
       heading: capText(String(c?.heading ?? ""), 8, 48),
-      body: capText(String(c?.body ?? ""), cap.palavras, cap.chars),
+      body: capText(String(c?.body ?? ""), 40, teto),
     }))
     .filter((c) => c.heading.length > 0)
     .slice(0, LIMITS.MAX_CARDS);

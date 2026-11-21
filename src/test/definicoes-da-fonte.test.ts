@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  bulletsViramTabela,
   cartoesViramTabela,
   completarCartoes,
   completarDefinicoes,
@@ -10,9 +11,10 @@ import {
   palavrasDeConteudo,
   perdeuClausula,
   semOPreambulo,
+  separarBullet,
 } from "../../supabase/functions/export-pptx-v7/definicoes-da-fonte";
 import { normalizeDeck } from "../../supabase/functions/export-pptx-v7/validate";
-import { capacidadeDaCelula } from "../../supabase/functions/export-pptx-v7/table-geometry";
+import { capacidadeDaCelula, capacidadeDoCorpoDoCard } from "../../supabase/functions/export-pptx-v7/table-geometry";
 import type { SlideSpec } from "../../supabase/functions/export-pptx-v7/deck-plan";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -102,10 +104,11 @@ describe("O CASO MEDIDO: o cartão de 21/11 volta a definir", () => {
     expect(feitas.map((r) => r.termo)).toContain("Eficácia");
   });
 
-  it("e o corpo novo CABE no cartão — 165 caracteres com quatro cartões", () => {
+  it("e o corpo novo CABE no cartão, pela medida do arranjo", () => {
     const cards = CARTOES_DE_21_11.map((c) => ({ ...c }));
     completarCartoes(cards, MODULO_1);
-    for (const c of cards) expect(c.body.length, c.heading).toBeLessThanOrEqual(165);
+    const teto = capacidadeDoCorpoDoCard(cards.length);
+    for (const c of cards) expect(c.body.length, c.heading).toBeLessThanOrEqual(teto);
   });
 
   it("eficiência recupera 'mantendo os padrões de qualidade'", () => {
@@ -118,12 +121,23 @@ describe("O CASO MEDIDO: o cartão de 21/11 volta a definir", () => {
       .toContain("mantendo os padrões de qualidade");
   });
 
-  it("NÃO mexe em economicidade nem efetividade — não houve corte ali", () => {
+  it("efetividade recupera a cláusula de causalidade, no próprio cartão", () => {
+    // Com o teto medido (234 caracteres em quatro cartões, contra os 165 que a
+    // régua antiga supunha), os 220 da fonte cabem — e a tabela deixa de ser
+    // necessária para este caso. É a cláusula que separa efetividade de
+    // eficácia para quem audita.
+    const cards = CARTOES_DE_21_11.map((c) => ({ ...c }));
+    completarCartoes(cards, MODULO_1);
+    expect(cards.find((c) => c.heading === "Efetividade")!.body)
+      .toContain("atribuir às ações do programa");
+  });
+
+  it("NÃO mexe em economicidade — a fonte não acrescenta nada ali", () => {
     const cards = CARTOES_DE_21_11.map((c) => ({ ...c }));
     const feitas = completarCartoes(cards, MODULO_1);
-    expect(feitas.map((r) => r.termo).sort()).toEqual(["Eficiência", "Eficácia"]);
+    expect(feitas.map((r) => r.termo).sort())
+      .toEqual(["Efetividade", "Eficiência", "Eficácia"]);
     expect(cards[0].body).toBe(CARTOES_DE_21_11[0].body);
-    expect(cards[3].body).toBe(CARTOES_DE_21_11[3].body);
   });
 
   it("é idempotente: rodar de novo não muda mais nada", () => {
@@ -136,14 +150,21 @@ describe("O CASO MEDIDO: o cartão de 21/11 volta a definir", () => {
 });
 
 describe("A DEFINIÇÃO QUE NÃO CABE NO CARTÃO VIRA TABELA", () => {
-  // MEDIDO: a fonte define efetividade em 220 caracteres (sem o preâmbulo). O
-  // cartão comporta 165 em qualquer arranjo. A célula de uma tabela de uma
-  // coluna de dados com 4 linhas comporta 472.
+  // MEDIDO: a fonte define efetividade em 220 caracteres (sem o preâmbulo).
+  //
+  //   quatro cartões → 2 colunas largas → 234 caracteres → CABE
+  //   TRÊS cartões   → 3 colunas estreitas → 144 → não cabe
+  //
+  // Então o arranjo de três é o que exercita a tabela, e com razão: espremer
+  // 220 caracteres numa coluna de 3,8 polegadas é o corte pela metade de novo.
+  // A célula de uma tabela de uma coluna de dados com 3 linhas comporta 472.
   function slideDosQuatroEs() {
     return {
       kind: "cards",
       title: "Diferenciando as Dimensões de Desempenho",
-      cards: CARTOES_DE_21_11.map((c) => ({ ...c })),
+      // Sem economicidade: é o único termo que a fonte não enriquece, e com
+      // TRÊS cartões a coluna fica estreita o bastante para a tabela entrar.
+      cards: CARTOES_DE_21_11.slice(1).map((c) => ({ ...c })),
     } as never as SlideSpec;
   }
 
@@ -153,9 +174,9 @@ describe("A DEFINIÇÃO QUE NÃO CABE NO CARTÃO VIRA TABELA", () => {
     expect(feitas).not.toBeNull();
     expect(s.kind).toBe("table");
     expect(s.cards).toBeUndefined();
-    expect(s.rows).toHaveLength(4);
+    expect(s.rows).toHaveLength(3);
     expect(s.rows!.map((r) => r.label))
-      .toEqual(["Economicidade", "Eficiência", "Eficácia", "Efetividade"]);
+      .toEqual(["Eficiência", "Eficácia", "Efetividade"]);
   });
 
   it("a cláusula de causalidade da efetividade aparece", () => {
@@ -180,6 +201,18 @@ describe("A DEFINIÇÃO QUE NÃO CABE NO CARTÃO VIRA TABELA", () => {
     cartoesViramTabela(s, MODULO_1, "Português");
     const teto = capacidadeDaCelula(1, s.rows!.length);
     for (const r of s.rows!) expect(r.cells[0].length, r.label).toBeLessThanOrEqual(teto);
+  });
+
+  it("com QUATRO cartões a coluna é larga e a tabela não é preciso", () => {
+    // Mesma fonte, mesmo termo, outro arranjo: 234 caracteres de largura
+    // comportam os 220, e o slide segue sendo cartões.
+    const s = {
+      kind: "cards",
+      title: "Diferenciando as Dimensões de Desempenho",
+      cards: CARTOES_DE_21_11.map((c) => ({ ...c })),
+    } as never as SlideSpec;
+    expect(cartoesViramTabela(s, MODULO_1, "Português")).toBeNull();
+    expect(s.kind).toBe("cards");
   });
 
   it("NÃO converte quando todas as definições cabem no cartão", () => {
@@ -207,7 +240,7 @@ describe("A DEFINIÇÃO QUE NÃO CABE NO CARTÃO VIRA TABELA", () => {
     } as never);
     const saida = deck.modules[0].slides[0];
     expect(saida.kind).toBe("table");
-    expect(saida.rows).toHaveLength(4);
+    expect(saida.rows).toHaveLength(3);
     expect(saida.rows!.map((r) => r.cells[0]).join(" "))
       .toContain("atribuir às ações do programa");
   });
@@ -228,6 +261,7 @@ describe("A DEFINIÇÃO QUE NÃO CABE NO CARTÃO VIRA TABELA", () => {
     expect(feitas.map((r) => r.termo).sort())
       .toEqual(["Efetividade", "Eficiência", "Eficácia"]);
     expect(out[0].slides[0].kind).toBe("table");
+    expect(out[0].slides[0].rows).toHaveLength(3);
   });
 });
 
@@ -322,5 +356,116 @@ describe("completarDefinicoes no deck inteiro", () => {
   it("slide sem cartões é ignorado", () => {
     const out = [{ title: "M1", slides: [{ kind: "bullets", bullets: ["a"] }] }] as never;
     expect(completarDefinicoes(out, [{ title: "M1", content: MODULO_1 }])).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O MESMO DEFEITO, FORA DOS CARTÕES
+//
+// MEDIDO no slide 7 do deck de 21/11 — o slide em que o curso apresenta os 4
+// Es — que saiu como BULLETS, não como cartões:
+//
+//   "Economicidade: Uso de recursos com menor custo"
+//   "Eficiência: Relação entre produtos e recursos"
+//   "Eficácia: Grau de alcance das metas programadas"
+//   "Efetividade: Impacto dos resultados na sociedade"
+//
+// Quarenta e cinco caracteres cada, nenhuma cláusula distintiva, metade do
+// slide vazia. A fonte tem as cláusulas — a própria nota do slide traz "sem
+// comprometer os padrões de qualidade esperados" — e nos slides havia ZERO
+// ocorrências de "padrões de qualidade".
+//
+// `completarDefinicoes` percorria `s.cards` e nada mais: este slide passaria
+// intacto pelo conserto de a5ce929. A régua não alcançava tudo o que governa.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const BULLETS_DE_21_11 = [
+  "Economicidade: Uso de recursos com menor custo",
+  "Eficiência: Relação entre produtos e recursos",
+  "Eficácia: Grau de alcance das metas programadas",
+  "Efetividade: Impacto dos resultados na sociedade",
+];
+
+describe("separarBullet reconhece 'Termo: definição'", () => {
+  it("separa no primeiro dois-pontos", () => {
+    expect(separarBullet("Eficácia: Grau de alcance das metas programadas"))
+      .toEqual({ termo: "Eficácia", corpo: "Grau de alcance das metas programadas" });
+  });
+
+  it("recusa quando o lado esquerdo é uma frase, não um termo", () => {
+    expect(separarBullet(
+      "O planejamento da auditoria é uma fase complexa e fundamental: veja por quê",
+    )).toBeNull();
+  });
+
+  it("recusa bullet sem dois-pontos e corpo curto demais", () => {
+    expect(separarBullet("Compreender os quatro critérios de desempenho")).toBeNull();
+    expect(separarBullet("Eficácia: curto")).toBeNull();
+  });
+});
+
+describe("O SLIDE 7: bullets dos 4 Es viram tabela com as cláusulas", () => {
+  function slideDeBullets(bullets = BULLETS_DE_21_11) {
+    return {
+      kind: "bullets",
+      title: "As Quatro Dimensões do Desempenho",
+      bullets: [...bullets],
+    } as never as SlideSpec;
+  }
+
+  it("converte, porque a definição não cabe nos 22 palavras do bullet", () => {
+    const s = slideDeBullets();
+    const feitas = bulletsViramTabela(s, MODULO_1, "Português");
+    expect(feitas).not.toBeNull();
+    expect(s.kind).toBe("table");
+    expect(s.bullets).toBeUndefined();
+    expect(s.rows!.map((r) => r.label))
+      .toEqual(["Economicidade", "Eficiência", "Eficácia", "Efetividade"]);
+  });
+
+  it("AS TRÊS CLÁUSULAS aparecem", () => {
+    const s = slideDeBullets();
+    bulletsViramTabela(s, MODULO_1, "Português");
+    const texto = s.rows!.map((r) => r.cells[0]).join(" | ");
+    expect(texto).toContain("independentemente dos custos implicados");
+    expect(texto).toContain("mantendo os padrões de qualidade");
+    expect(texto).toContain("atribuir às ações do programa");
+  });
+
+  it("NÃO converte um slide que não é lista de conceitos", () => {
+    const s = slideDeBullets([
+      "Planejar a auditoria como um projeto de alta qualidade",
+      "Comunicar-se de forma transparente com os gestores",
+      "Documentar as decisões tomadas na fase inicial",
+    ]);
+    expect(bulletsViramTabela(s, MODULO_1, "Português")).toBeNull();
+    expect(s.kind).toBe("bullets");
+  });
+
+  it("NÃO converte com uma definição só — não é glossário", () => {
+    const s = slideDeBullets([
+      "Eficácia: Grau de alcance das metas programadas",
+      "Prazo: o cronograma acordado com a equipe na abertura",
+    ]);
+    expect(bulletsViramTabela(s, MODULO_1, "Português")).toBeNull();
+  });
+
+  it("completarDefinicoes alcança o slide de bullets", () => {
+    const out = [{
+      title: "M1",
+      slides: [slideDeBullets()],
+    }] as never as Parameters<typeof completarDefinicoes>[0];
+    const feitas = completarDefinicoes(out, [{ title: "M1", content: MODULO_1 }], "Português");
+    expect(feitas.length).toBeGreaterThanOrEqual(3);
+    expect(out[0].slides[0].kind).toBe("table");
+  });
+
+  it("o fechamento do módulo NÃO vira glossário", () => {
+    // kind "closing" também carrega bullets, e são recapitulação.
+    const s = slideDeBullets();
+    s.kind = "closing";
+    const out = [{ title: "M1", slides: [s] }] as never as Parameters<typeof completarDefinicoes>[0];
+    completarDefinicoes(out, [{ title: "M1", content: MODULO_1 }], "Português");
+    expect(out[0].slides[0].kind).toBe("closing");
   });
 });

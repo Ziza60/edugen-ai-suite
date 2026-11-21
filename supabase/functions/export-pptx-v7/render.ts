@@ -7,7 +7,7 @@
 // this file runs both in Deno (edge function) and Node/Bun (tests).
 // ═══════════════════════════════════════════════════════════════════════════
 
-import type { PlannedDeck, SlideSpec } from "./deck-plan.ts";
+import type { DeckCard, PlannedDeck, SlideSpec } from "./deck-plan.ts";
 import { autoBodyFontSize } from "./validate.ts";
 import { coverBoxSize, imageSizeFromDataUri } from "../_shared/image-size.ts";
 import { categoricalColors } from "./chart-palette.ts";
@@ -21,7 +21,9 @@ import {
   alturaDaLinha,
   corpoDaCelula,
   larguraDaColuna,
+  capacidadeDoSatelite,
   larguraDoRotulo,
+  linhasDoCorpoDoCard,
 } from "./table-geometry.ts";
 
 // ── Carimbo de build ─────────────────────────────────────────────────────────
@@ -996,10 +998,13 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const headPerLine = Math.max(12, innerW * 8.6); // ~chars/line @15pt bold
   const bodyPerLine = Math.max(14, innerW * 11); // ~chars/line @12pt
   const anyBody = cards.some((c) => c.body);
+  const maxLinhasDoCorpo = linhasDoCorpoDoCard(n);
   let bodyLines = 1;
   let headLines = 1;
   for (const c of cards) {
-    if (c.body) bodyLines = Math.max(bodyLines, Math.min(3, Math.ceil(c.body.length / bodyPerLine)));
+    // O teto de linhas vem da geometria (table-geometry.ts), não de um 3 fixo:
+    // com uma fileira de grid o cartão tem a altura inteira do conteúdo.
+    if (c.body) bodyLines = Math.max(bodyLines, Math.min(maxLinhasDoCorpo, Math.ceil(c.body.length / bodyPerLine)));
     headLines = Math.max(headLines, Math.min(3, Math.ceil((c.heading?.length || 1) / headPerLine)));
   }
   const padT = 0.2, numH = 0.36, headLH = 0.28, bodyLH = 0.21, midGap = 0.1, padB = 0.22;
@@ -2085,6 +2090,20 @@ function renderNumberedList(slide: AnySlide, s: SlideSpec, d: Palette, brand: st
   footer(slide, d, brand, num);
 }
 
+/**
+ * O corpo de todos os cartões cabe num satélite do radial?
+ *
+ * MEDIDO no slide 43 do deck de 21/11: não cabia, e as quatro caixas
+ * transbordaram. O satélite comporta ~96 caracteres (ver capacidadeDoSatelite);
+ * o grid de cartões comporta 144 a 234. Quem não cabe aqui vai para lá — o
+ * radial não tem como crescer, porque o satélite de cima já começa a 0,05
+ * polegada da borda da área de conteúdo.
+ */
+function cabeNoRadial(cards: readonly DeckCard[] | undefined): boolean {
+  const teto = capacidadeDoSatelite();
+  return (cards ?? []).every((c) => (c.body ?? "").trim().length <= teto);
+}
+
 /** Cards as a radial hub-and-spokes diagram: a central concept with satellites
  *  arranged on a ring, joined by connector lines. Premium, distinct from a grid. */
 function renderRadial(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, num: number, moduleLabel: string) {
@@ -2139,7 +2158,14 @@ function renderRadial(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
       align: "center", valign: "middle",
     });
     if (c.body) {
-      slide.addText(c.body, {
+      // Segunda trava, caso o radial seja alcançado por outro caminho: o que
+      // passa do teto do satélite é cortado em fronteira de frase, nunca
+      // desenhado FORA da caixa — que foi o defeito do slide 43 de 21/11.
+      const teto = capacidadeDoSatelite();
+      const corpo = c.body.length > teto
+        ? trimToWholeThought(c.body.slice(0, teto))
+        : c.body;
+      slide.addText(corpo, {
         x: p.x - satW / 2 + 0.12, y: p.y - satH / 2 + 0.42, w: satW - 0.24, h: satH - 0.5,
         fontFace: FONT_BODY, fontSize: 10, color: d.text,
         align: "center", valign: "top", lineSpacingMultiple: 0.98,
@@ -2885,7 +2911,10 @@ export function renderDeck(
               // (title inside + description on the right) needs heading+body —
               // which cards always carry.
               const v = continuacao ? ultimoVarDeCards : (ultimoVarDeCards = cardsVar++ % 3);
-              if (v === 1) renderRadial(slide, s, d, brand, num, rotuloDoModulo);
+              // O radial só entra se o texto couber nos satélites: a caixa é fixa
+              // e o que não cabe é desenhado FORA dela — medido no slide 43 de
+              // 21/11, nas quatro caixas.
+              if (v === 1 && cabeNoRadial(s.cards)) renderRadial(slide, s, d, brand, num, rotuloDoModulo);
               else if (v === 2) renderPyramid(slide, s, d, brand, num, rotuloDoModulo);
               else renderCards(slide, s, d, brand, num, rotuloDoModulo);
             } else {

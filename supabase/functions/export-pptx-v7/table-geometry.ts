@@ -149,3 +149,123 @@ export function capacidadeDoPasso(passos: number): number {
 export function tetoDoCorpoDoPasso(passos: number): number {
   return Math.max(130, Math.floor(capacidadeDoPasso(passos) * 0.5));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O CARTÃO — TRÊS LINHAS FIXAS, EM VEZ DA ALTURA QUE EXISTE
+//
+// MEDIDO no slide 33 do deck de 21/11/2026: dois dos três cartões terminam sem
+// ponto final, cortados em 100 caracteres.
+//
+//   "...as causas raiz de problemas ou deficiências no desempenho do objeto"
+//   "...avaliando sua estrutura, operações"
+//
+// Os 100 vinham de "3 linhas × ~37 caracteres". As três linhas eram
+// `Math.min(3, ...)` em renderCards — um teto que nunca olhou a altura
+// disponível. Com TRÊS cartões há UMA linha de grid, e o cartão tem a altura
+// inteira da área de conteúdo: cabem dezenove linhas, não três.
+//
+// A conta abaixo é a mesma do renderizador, feita antes, como já se faz com a
+// célula da tabela. MEDIDO pela geometria:
+//
+//   cartões  colunas  linhas de grid  linhas que cabem  teto de hoje
+//      2        2            1              19              175
+//      3        3            1              19              108
+//      4        2            2               5              175
+//      5–6      3            2               5              108
+//
+// Dezenove linhas num cartão não é cartão, é parágrafo numa caixa. O teto de
+// LINHAS fica em 4: é o que o grid de duas fileiras comporta com uma linha de
+// folga, e a folga existe porque caracteres-por-linha é estimativa.
+//
+// AO MEXER EM renderCards, MEXA AQUI — e vice-versa. Havia duas cópias desta
+// régua, uma em validate.ts e outra em definicoes-da-fonte.ts, com valores
+// diferentes do que o renderizador desenha. Agora é uma só.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Os mesmos números de renderCards. */
+const CARTAO = {
+  gap: 0.3,
+  padT: 0.2,
+  numH: 0.36,
+  headLH: 0.28,
+  bodyLH: 0.21,
+  midGap: 0.1,
+  padB: 0.22,
+  /** Folga do corpo dentro do cartão: a largura útil é cardW menos isto. */
+  margemHorizontal: 0.5,
+  /** ~caracteres por polegada a 12pt, como renderCards estima. */
+  porPolegada: 11,
+  /** Um cartão com mais linhas que isto deixa de ser cartão. */
+  maxLinhas: 4,
+};
+
+/** As colunas do grid de cartões, como renderCards as escolhe. */
+export function colunasDoGrid(quantosCards: number): number {
+  return quantosCards <= 2 ? Math.max(1, quantosCards) : quantosCards === 4 ? 2 : 3;
+}
+
+/** Quantas linhas de corpo o cartão comporta, pela altura que ele realmente tem. */
+export function linhasDoCorpoDoCard(quantosCards: number): number {
+  const n = Math.max(1, quantosCards);
+  const cols = colunasDoGrid(n);
+  const rows = Math.ceil(n / cols);
+  const alturaDaFileira = (CONTENT_H - CARTAO.gap * (rows - 1)) / rows;
+  const fixo = CARTAO.padT + CARTAO.numH + 0.04 + 2 * CARTAO.headLH +
+    CARTAO.midGap + CARTAO.padB;
+  const cabem = Math.floor((alturaDaFileira - fixo) / CARTAO.bodyLH);
+  return Math.max(1, Math.min(CARTAO.maxLinhas, cabem));
+}
+
+/** Quantos caracteres cabem no corpo de um cartão deste arranjo. */
+export function capacidadeDoCorpoDoCard(quantosCards: number): number {
+  const n = Math.max(1, quantosCards);
+  const cols = colunasDoGrid(n);
+  const larguraDoCartao = (CW - CARTAO.gap * (cols - 1)) / cols;
+  const util = Math.max(1.2, larguraDoCartao - CARTAO.margemHorizontal);
+  const porLinha = Math.max(14, util * CARTAO.porPolegada);
+  return Math.round(porLinha * linhasDoCorpoDoCard(n));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// O SATÉLITE DO RADIAL — CAIXA FIXA, TEXTO DE TAMANHO LIVRE
+//
+// MEDIDO no slide 43 do deck de 21/11/2026, renderizado e olhado: as QUATRO
+// caixas do diagrama radial transbordam. As duas ou três últimas linhas de cada
+// uma são desenhadas sobre o fundo, fora do retângulo, e a de baixo quase
+// encosta no rodapé.
+//
+//   "...razoável e fundamentada contra a qual o desempenho é comparado."
+//   "...centrais da auditoria operacional (ISSAI 3000/45)."
+//
+// A caixa é `satW = 2.5, satH = 1.0`, fixa, e o corpo recebe `h = satH - 0.5`
+// — meia polegada, que a 10pt são três linhas. O texto que chegou tem cinco.
+//
+// E havia um descasamento pior por trás: a normalização corta o corpo do cartão
+// por `capacidadeDoCorpoDoCard`, que mede o GRID (234 caracteres com quatro
+// cartões), enquanto o mesmo slide pode ser roteado ao radial, que comporta
+// ~90. A régua media uma caixa e o texto era desenhado noutra.
+//
+// O radial não tem como crescer: o satélite de cima já começa a 0,05 polegada
+// da borda da área de conteúdo. Então quem não cabe não usa esta forma — vai
+// para o grid, que tem espaço. Ver `cabeNoRadial` em render.ts.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SATELITE = {
+  largura: 2.5,
+  altura: 1.0,
+  /** Recuo horizontal do texto dentro da caixa (0,12 de cada lado). */
+  recuoH: 0.24,
+  /** O que o cabeçalho e as margens comem da altura. */
+  reservaV: 0.5,
+  corpoPt: 10,
+  entrelinha: 0.98,
+};
+
+/** Quantos caracteres cabem no corpo de um satélite do diagrama radial. */
+export function capacidadeDoSatelite(): number {
+  const larguraPt = (SATELITE.largura - SATELITE.recuoH) * 72;
+  const porLinha = Math.floor(larguraPt / (SATELITE.corpoPt * LARGURA_MEDIA));
+  const alturaDeLinha = (SATELITE.corpoPt * ENTRELINHA * SATELITE.entrelinha) / 72;
+  const linhas = Math.max(1, Math.floor((SATELITE.altura - SATELITE.reservaV) / alturaDeLinha));
+  return porLinha * linhas;
+}
