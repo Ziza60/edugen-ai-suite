@@ -375,6 +375,43 @@ export function terminaEmClassificador(t: string): boolean {
   return /(?:^|\s)\p{Lu}$/u.test(t.trim());
 }
 
+// ─── A LISTA QUE O CORTE DEIXOU ABERTA ──────────────────────────────────────
+//
+// MEDIDO no slide 5 do deck de 21/11/2026, renderizado e olhado. O cartão que
+// define "Auditoria Operacional" termina assim:
+//
+//   "...estão funcionando de acordo com os princípios de economicidade,
+//    eficiência, eficácia"
+//
+// Três dos quatro Es, sem ponto final. Para um auditor isso não é só frase
+// truncada: é a afirmação de que efetividade não é um dos princípios.
+//
+// `trimToWholeThought` não pegava porque nenhuma das suas regras se aplica —
+// não há preposição pendurada nem oração órfã, e "eficácia" é um substantivo
+// perfeitamente inteiro. O que está quebrado é a ENUMERAÇÃO, e isso se vê pela
+// pontuação: em português uma lista fecha com "e" ou "ou". Dois ou mais
+// segmentos separados por vírgula, sem conjunção nenhuma e sem ponto final, é
+// lista cortada no meio.
+//
+// Some a enumeração inteira junto com a palavra que a introduz, deixando
+// "...de acordo com os princípios" — verdadeiro e completo. Guardar três
+// quartos de uma lista é pior do que não mostrá-la.
+const TEM_CONJUNCAO_RE = /(?:^|\s)(?:e|ou)(?:\s|$)/i;
+
+export function enumeracaoAberta(texto: string): string {
+  const s = texto.trim();
+  if (/[.!?;:]$/.test(s)) return s;
+  const partes = s.split(",");
+  if (partes.length < 3) return s;
+  let i = partes.length - 1;
+  while (i > 0 && !TEM_CONJUNCAO_RE.test(partes[i])) i--;
+  if (partes.length - 1 - i < 2) return s;
+  // A palavra antes da primeira vírgula da corrida introduz a lista ("de", "em
+  // termos de", um verbo) e sozinha não diz nada: sai junto.
+  const cabeca = partes.slice(0, i + 1).join(",").replace(/\s+\S+$/, "").trim();
+  return cabeca.length >= 20 ? cabeca.replace(TRAILING_JUNK_RE, "") : s;
+}
+
 export function trimToWholeThought(raw: string): string {
   let s = raw;
   // Bounded loop rather than recursion: each rule can expose work for the
@@ -382,7 +419,7 @@ export function trimToWholeThought(raw: string): string {
   // string strictly shrinks, so a handful of passes always settles.
   for (let i = 0; i < 6; i++) {
     if (terminaEmClassificador(s)) break; // "Categoria A" está inteiro
-    let next = s
+    let next = enumeracaoAberta(s)
       .replace(CUT_TAIL_RE, "")
       .replace(DANGLING_PREP_RE, "")
       .replace(TRAILING_JUNK_RE, "")
