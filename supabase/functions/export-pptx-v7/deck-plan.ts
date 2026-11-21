@@ -23,6 +23,7 @@
 import { esqueletoDeCaso, trimToWholeThought } from "./layout-fit.ts";
 import { tetoDoCorpoDoPasso } from "./table-geometry.ts";
 import { notaDaRubrica } from "./notas-estruturais.ts";
+import { completarDefinicoes } from "./definicoes-da-fonte.ts";
 
 export type SlideKind =
   | "cover" // course cover
@@ -561,14 +562,16 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
   telegraphic fragments of ≤12 words (the way a real slide reads). If the source
   is a paragraph, extract its key point; do NOT copy the sentence verbatim.
 - DEFINITIONS ARE THE ONE EXCEPTION TO THE ≤12 WORDS. When the module DEFINES a
-  term, the definition must keep the clause that separates that term from its
-  neighbours, with the source's own wording. "Eficácia: grau de alcance das
-  metas programadas" is WRONG where the source says "...independentemente dos
-  custos implicados" — the dropped clause is exactly what distinguishes it from
-  efficiency, and a definition without it is a definition of something else.
-  Put such a term in "cards" (heading = the term, body = the full definition)
-  and let the body run as long as the distinction needs. A deck that names four
-  concepts and defines none has taught nothing.
+  term, the body of its card is the definition WITH the clause that separates
+  that term from its neighbours, in the SOURCE'S OWN WORDING. Copy the defining
+  sentence; do not compress it. Write the body like this:
+    "Grau de alcance das metas programadas em termos de produtos e resultados
+     imediatos, independentemente dos custos implicados."
+  Cut that sentence short and what is left would define efficiency just as
+  well — the final clause IS the definition, not a detail. Put such a term in
+  "cards" (heading = the term, body = the full definition) and let the body run
+  up to ~25 words. A deck that names four concepts and defines none has taught
+  nothing.
 - NEVER name a set of concepts without defining them somewhere in the deck. If
   the module says "the four Es are economy, efficiency, effectiveness and
   impact", one slide must carry what each one means.
@@ -627,11 +630,11 @@ UNIVERSAL QUALITY RULES (apply to EVERY topic, no exceptions):
 - For cards, tiles, steps and table cells, enforce a MAXIMUM of ~12 words per text
   block. Be ruthless in your summarization — these layouts must stay minimalist.
   THE ONE EXCEPTION IS A DEFINITION, as stated above: when a card's heading is a
-  term the module DEFINES, its body carries the definition WITH the distinguishing
-  clause, up to ~25 words. "Eficácia: grau de alcance das metas programadas" is a
-  FAILURE where the source says "...independentemente dos custos implicados".
-  Be ruthless with everything else, never with the clause that makes a definition
-  correct.
+  term the module DEFINES, its body carries the source's defining sentence WITH
+  the distinguishing clause, up to ~25 words — e.g. "...em termos de produtos e
+  resultados imediatos, independentemente dos custos implicados" belongs in the
+  body, not in your summary of it. Be ruthless with everything else, never with
+  the clause that makes a definition correct.
 - Stay strictly faithful to the module content. Do NOT invent facts.
 - NEVER collapse a list of N DISTINCT items into one point. If the source lists
   3 trends / 4 types / 5 risks, the slide keeps ALL of them (split across two
@@ -2461,6 +2464,13 @@ export async function buildDeck(
   // Rede para os módulos em que o planejador não escreveu visão geral nenhuma.
   const reserva = objetivosDeReserva(out, modules);
   if (reserva) console.log(`[V7-OVERVIEW] objectives from source=${reserva}`);
+
+  // A definição que o modelo encolheu volta da fonte. Depois dos preenchimentos
+  // acima, porque um cartão trazido pelo piso também pode ter perdido cláusula.
+  const definicoes = completarDefinicoes(out, modules);
+  for (const r of definicoes) {
+    console.log(`[V7-DEFINICAO] "${r.termo}": ${r.antes.length} → ${r.depois.length} chars`);
+  }
 
   // Speaker notes LAST: every slide the deck will ship now exists, including
   // the backfills above, so each one gets matched to its source passage.

@@ -170,6 +170,37 @@ depois do deploy. Um curso não é uma taxa, e a regra segue sendo instrução d
 prompt sem verificação determinística — mas o critério era específico, foi
 escrito antes, e foi cumprido.
 
+### A mesma hipótese, no DECK, foi refutada três vezes
+
+O curso passou a definir; o PPTX gerado a partir dele continuou não definindo.
+MEDIDO em três decks seguidos do MESMO curso:
+
+| | o que mudou antes | o que o cartão "Eficácia" trouxe |
+|---|---|---|
+| 20/11 | regra de definição no prompt do deck | nomeado 36x, definido 0x |
+| 21/11 (manhã) | teto do cartão 90 → 165 chars | "Grau de alcance das metas e objetivos programados." |
+| 21/11 (tarde) | exceção reconciliada com a regra dos 12 words | "Grau de alcance das metas programadas." |
+
+Na última, o teto era 165 e o corpo saiu com 37 caracteres — 128 de folga. A
+cláusula estava no texto condensado que o planejador leu (medido rodando
+`condenseForPlanning` com o orçamento real). **Nada cortou: o modelo escolheu.**
+
+E a regra citava o erro entre aspas — `"Eficácia: grau de alcance das metas
+programadas" is WRONG` — e o modelo devolveu exatamente essa frase. Exemplo
+negativo literal é exemplo.
+
+**Conclusão do experimento:** para o deck, instrução de prompt não bastou. A
+cláusula passou a voltar da fonte por código, em `definicoes-da-fonte.ts`: se o
+corpo do cartão é um encolhimento da frase com que a fonte define aquele termo,
+o corpo vira a frase da fonte. MEDIDO contra os quatro cartões de 21/11:
+
+```
+Eficiência .... 132 → 153 chars   ganhou "mantendo os padrões de qualidade"
+Eficácia ......  38 → 141 chars   ganhou "independentemente dos custos implicados"
+Economicidade . intacto           não era encolhimento da frase da fonte
+Efetividade ... intacto           idem
+```
+
 `auditoria-definicoes-fieis.md` é o registro. MEDIDO nele:
 
 ```
