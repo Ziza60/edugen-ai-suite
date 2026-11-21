@@ -264,6 +264,18 @@ function kickerFit(
  * screens of fragments. Optional-chained because not every PptxGenJS build
  * exposes addNotes, and notes must never be able to fail an export.
  */
+/**
+ * O número que o item leva na tela.
+ *
+ * Era sempre `i + 1`, e por isso a "Parte 2" de uma lista partida recomeçava do
+ * 1 — MEDIDO nos slides 51 e 52 do deck de 21/11, onde a quinta etapa de um
+ * procedimento de sete aparecia como "01". `startIndex` é o deslocamento que
+ * `unificarContinuacoes` grava na continuação; sem ele, nada muda.
+ */
+function ordinalDoItem(s: SlideSpec, i: number): number {
+  return Math.max(0, Math.floor(s.startIndex ?? 0)) + i + 1;
+}
+
 /** Nota para um slide estrutural, que não tem SlideSpec com `notes`. */
 function notaEstrutural(slide: AnySlide, texto: string) {
   if (!texto.trim()) return;
@@ -887,7 +899,7 @@ function renderTiles(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       fill: { color: d.accent },
       line: { type: "none" },
     });
-    slide.addText(String(i + 1), {
+    slide.addText(String(ordinalDoItem(s, i)), {
       x: bx, y: by, w: badge, h: badge,
       fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.onAccent,
       align: "center", valign: "middle",
@@ -951,7 +963,7 @@ function renderBento(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       x: x + 0.28, y: y + 0.28, w: chip, h: chip, rectRadius: 0.06,
       fill: { color: d.accent }, line: { type: "none" },
     });
-    slide.addText(String(i + 1), {
+    slide.addText(String(ordinalDoItem(s, i)), {
       x: x + 0.28, y: y + 0.28, w: chip, h: chip,
       fontFace: FONT_TITLE, fontSize: 18, bold: true, color: d.onAccent,
       align: "center", valign: "middle",
@@ -1025,7 +1037,7 @@ function renderCards(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       fill: { color: d.accent2 },
       line: { type: "none" },
     });
-    slide.addText(String(i + 1).padStart(2, "0"), {
+    slide.addText(String(ordinalDoItem(s, i)).padStart(2, "0"), {
       x: x + 0.25,
       y: y + padT,
       w: cardW - 0.5,
@@ -1207,7 +1219,7 @@ function renderTimeline(slide: AnySlide, s: SlideSpec, d: Palette, brand: string
       x: nodeX - node / 2, y: cy - node / 2, w: node, h: node,
       fill: { color: d.accent }, line: { type: "none" },
     });
-    slide.addText(String(i + 1), {
+    slide.addText(String(ordinalDoItem(s, i)), {
       x: nodeX - node / 2, y: cy - node / 2, w: node, h: node,
       fontFace: FONT_BODY, fontSize: 12, bold: true, color: d.onAccent,
       align: "center", valign: "middle",
@@ -1252,7 +1264,7 @@ function renderSteps(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
   const numFs = Math.min(54, Math.max(34, rowH * 72 * 0.8));
   steps.forEach((st, i) => {
     const y = y0 + i * rowH;
-    slide.addText(String(i + 1).padStart(2, "0"), {
+    slide.addText(String(ordinalDoItem(s, i)).padStart(2, "0"), {
       x: ML, y, w: numW, h: rowH,
       fontFace: FONT_TITLE, fontSize: numFs, bold: true,
       color: d.accent2, transparency: 60,
@@ -2024,7 +2036,7 @@ function renderBands(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, n
       x: ML + 0.24, y: y + bandH / 2 - 0.22, w: 0.44, h: 0.44,
       fill: { color: accentBand ? d.accent2 : d.accent }, line: { type: "none" },
     });
-    slide.addText(String(i + 1), {
+    slide.addText(String(ordinalDoItem(s, i)), {
       x: ML + 0.24, y: y + bandH / 2 - 0.22, w: 0.44, h: 0.44,
       fontFace: FONT_BODY, fontSize: 14, bold: true, color: d.onAccent,
       align: "center", valign: "middle",
@@ -2059,7 +2071,7 @@ function renderNumberedList(slide: AnySlide, s: SlideSpec, d: Palette, brand: st
       x: lineX - 0.27, y: cy - 0.27, w: 0.54, h: 0.54,
       fill: { color: d.accent }, line: { color: d.bg, width: 2 },
     });
-    slide.addText(String(i + 1), {
+    slide.addText(String(ordinalDoItem(s, i)), {
       x: lineX - 0.27, y: cy - 0.27, w: 0.54, h: 0.54,
       fontFace: FONT_BODY, fontSize: 15, bold: true, color: d.onAccent,
       align: "center", valign: "middle",
@@ -2170,7 +2182,7 @@ function renderStairs(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
       x, y: y + 0.06, w: 0.06, h: rowH - 0.12,
       fill: { color: d.accent }, line: { type: "none" },
     });
-    slide.addText(String(i + 1), {
+    slide.addText(String(ordinalDoItem(s, i)), {
       x: x + 0.22, y: y + 0.06, w: 0.7, h: rowH - 0.12,
       fontFace: FONT_TITLE, fontSize: 24, bold: true,
       color: d.accent2, align: "left", valign: "middle",
@@ -2265,7 +2277,7 @@ function renderProcessArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
       x, y, w: chW, h: chH,
       fill: { color: d.accent }, line: { color: d.border, width: 1 },
     });
-    slide.addText(String(i + 1), {
+    slide.addText(String(ordinalDoItem(s, i)), {
       x: x + caixaNum.dx, y: y + caixaNum.dy, w: caixaNum.w, h: caixaNum.h,
       fontFace: FONT_TITLE, fontSize: 26, bold: true,
       color: d.onAccent, align: "center", valign: "middle",
@@ -2445,7 +2457,7 @@ function renderSpiral(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
   pos.forEach((p, i) => {
     const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
     slide.addShape("ellipse", { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2, fill: { color }, line: { color: d.bg, width: 2 } });
-    slide.addText(String(i + 1), { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2, fontFace: FONT_TITLE, fontSize: 14, bold: true, color: d.onAccent, align: "center", valign: "middle" });
+    slide.addText(String(ordinalDoItem(s, i)), { x: p.x - r, y: p.y - r, w: r * 2, h: r * 2, fontFace: FONT_TITLE, fontSize: 14, bold: true, color: d.onAccent, align: "center", valign: "middle" });
   });
   const legX = ML + 5.1, legW = ML + CW - legX;
   const rowH = Math.min(1.1, CONTENT_H / n);
@@ -2455,7 +2467,7 @@ function renderSpiral(slide: AnySlide, s: SlideSpec, d: Palette, brand: string, 
     const ry = startY + i * rowH;
     const color = n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent;
     slide.addShape("ellipse", { x: legX, y: ry + rowH / 2 - 0.16, w: 0.34, h: 0.34, fill: { color }, line: { type: "none" } });
-    slide.addText(String(i + 1), { x: legX, y: ry + rowH / 2 - 0.16, w: 0.34, h: 0.34, fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent, align: "center", valign: "middle" });
+    slide.addText(String(ordinalDoItem(s, i)), { x: legX, y: ry + rowH / 2 - 0.16, w: 0.34, h: 0.34, fontFace: FONT_BODY, fontSize: 11, bold: true, color: d.onAccent, align: "center", valign: "middle" });
     slide.addText(b, { x: legX + 0.5, y: ry, w: legW - 0.5, h: rowH, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, valign: "middle", lineSpacingMultiple: 1.02 });
   });
   footer(slide, d, brand, num);
@@ -2545,7 +2557,7 @@ function renderNumberedIcons(slide: AnySlide, s: SlideSpec, d: Palette, brand: s
     const x = ML + c * (cellW + gapX), y = CONTENT_Y + r * (cellH + gapY);
     const cyc = y + cellH / 2;
     slide.addShape("ellipse", { x, y: cyc - cr, w: cr * 2, h: cr * 2, fill: { color: n > 1 ? hexLerp(d.accent, d.accent2, i / (n - 1)) : d.accent }, line: { type: "none" } });
-    slide.addText(String(i + 1), { x, y: cyc - cr, w: cr * 2, h: cr * 2, fontFace: FONT_TITLE, fontSize: 16, bold: true, color: d.onAccent, align: "center", valign: "middle" });
+    slide.addText(String(ordinalDoItem(s, i)), { x, y: cyc - cr, w: cr * 2, h: cr * 2, fontFace: FONT_TITLE, fontSize: 16, bold: true, color: d.onAccent, align: "center", valign: "middle" });
     slide.addText(b, { x: x + cr * 2 + 0.25, y, w: cellW - cr * 2 - 0.35, h: cellH, fontFace: FONT_BODY, fontSize: fs, color: d.subtext, align: "left", valign: "middle", lineSpacingMultiple: 1.02 });
   });
   footer(slide, d, brand, num);
@@ -2576,7 +2588,7 @@ function renderDiagonalArrows(slide: AnySlide, s: SlideSpec, d: Palette, brand: 
   items.forEach((b, i) => {
     const p = pos[i], accent = i % 2 === 0;
     slide.addShape("roundRect", { x: p.x, y: p.y, w: cardW, h: cardH, rectRadius: 0.08, fill: { color: accent ? d.accent : d.surface }, line: { color: d.border, width: 1 } });
-    slide.addText(String(i + 1), { x: p.x + 0.14, y: p.y + 0.1, w: cardW - 0.28, h: 0.5, fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.accent2, align: "left", valign: "top" });
+    slide.addText(String(ordinalDoItem(s, i)), { x: p.x + 0.14, y: p.y + 0.1, w: cardW - 0.28, h: 0.5, fontFace: FONT_TITLE, fontSize: 20, bold: true, color: d.accent2, align: "left", valign: "top" });
     slide.addText(b, { x: p.x + 0.16, y: p.y + 0.6, w: cardW - 0.32, h: cardH - 0.7, fontFace: FONT_BODY, fontSize: fs, color: accent ? d.onAccent : d.subtext, align: "left", valign: "top", lineSpacingMultiple: 1.0 });
   });
   footer(slide, d, brand, num);
@@ -2739,6 +2751,10 @@ export function renderDeck(
   let bulletsVar = 0;   // rotates bullet-family layouts (list / bands / numbered)
   let cardsVar = 0;     // rotates card-family layouts (grid / radial)
   let stepsVar = 0;     // rotates step-family layouts (list / staircase)
+  // A variante escolhida da última vez, para a continuação de uma lista partida
+  // repetir o desenho da parte anterior em vez de sortear outro.
+  let ultimoVarDeCards = 0;
+  let ultimoVarDeSteps = 0;
 
   // Cover
   const lingua = opts.language ?? "";
@@ -2812,15 +2828,31 @@ export function renderDeck(
           notaEstrutural(slide, notaDeApoio(s.kind, s.title ?? m.title, lingua));
         }
         const cardLike = cardLikeKind(s.kind);
+        // A CONTINUAÇÃO NÃO ENTRA NO RODÍZIO DE FORMAS
+        //
+        // As guardas abaixo existem para quebrar monotonia: dois grids iguais
+        // seguidos viram grid + barra lateral, e cartões e passos alternam
+        // entre três desenhos. Numa lista PARTIDA isso é o oposto do que se
+        // quer — foi assim que a "Parte 2" das etapas da matriz saiu noutro
+        // formato que a "Parte 1" (slides 51 e 52 do deck de 21/11).
+        //
+        // `startIndex` só existe em slide que continua outro, gravado por
+        // `unificarContinuacoes`. Então a continuação pula as guardas e
+        // reaproveita a variante da parte anterior.
+        const continuacao = (s.startIndex ?? 0) > 0;
         // (1) Single-point card/bullets/steps slide → high-impact statement
         // instead of one giant near-empty card.
-        if ((cardLike || s.kind === "bullets" || s.kind === "steps") && contentItemCount(s) === 1) {
+        if (
+          !continuacao &&
+          (cardLike || s.kind === "bullets" || s.kind === "steps") &&
+          contentItemCount(s) === 1
+        ) {
           renderHighlight(slide, s, d, brand, num, rotuloDoModulo);
           prevCardLike = false;
           continue;
         }
         // (2) Two card grids back-to-back → swap the 2nd for a sidebar layout.
-        if (cardLike && prevCardLike) {
+        if (!continuacao && cardLike && prevCardLike) {
           renderSidebar(slide, s, d, brand, num, rotuloDoModulo);
           prevCardLike = false;
           continue;
@@ -2852,7 +2884,7 @@ export function renderDeck(
               // several card slides doesn't repeat the same grid. The pyramid
               // (title inside + description on the right) needs heading+body —
               // which cards always carry.
-              const v = cardsVar++ % 3;
+              const v = continuacao ? ultimoVarDeCards : (ultimoVarDeCards = cardsVar++ % 3);
               if (v === 1) renderRadial(slide, s, d, brand, num, rotuloDoModulo);
               else if (v === 2) renderPyramid(slide, s, d, brand, num, rotuloDoModulo);
               else renderCards(slide, s, d, brand, num, rotuloDoModulo);
@@ -2886,7 +2918,9 @@ export function renderDeck(
             // contagem, exige que NENHUM passo tenha corpo — a seta desenha só
             // o rótulo, e passar-lhe um passo com corpo apaga o corpo.
             const cabeRotulo = chevronCabe(passos);
-            const v = stepsVar++ % (cabeRotulo ? 3 : 2);
+            const v = continuacao
+              ? ultimoVarDeSteps
+              : (ultimoVarDeSteps = stepsVar++ % (cabeRotulo ? 3 : 2));
             if (v === 1) renderStairs(slide, s, d, brand, num, rotuloDoModulo);
             else if (v === 2) {
               // renderProcessArrows lê s.bullets. Os títulos dos passos são o

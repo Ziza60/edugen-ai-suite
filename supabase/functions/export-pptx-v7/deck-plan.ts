@@ -24,6 +24,7 @@ import { esqueletoDeCaso, trimToWholeThought } from "./layout-fit.ts";
 import { tetoDoCorpoDoPasso } from "./table-geometry.ts";
 import { notaDaRubrica } from "./notas-estruturais.ts";
 import { completarDefinicoes } from "./definicoes-da-fonte.ts";
+import { unificarContinuacoes } from "./continuacao.ts";
 
 export type SlideKind =
   | "cover" // course cover
@@ -79,6 +80,12 @@ export interface SlideSpec {
   bullets?: string[];
   cards?: DeckCard[];
   steps?: DeckStep[];
+  /**
+   * Quantos itens vieram ANTES, nas partes anteriores da mesma lista. O
+   * renderizador numera a partir daqui, para que a "Parte 2" continue em vez de
+   * recomeçar do 1. Gravado por `unificarContinuacoes`; ausente = 0.
+   */
+  startIndex?: number;
   left?: DeckColumn;
   right?: DeckColumn;
   /** "table" kind: option headers across the top (the row-label column is implicit). */
@@ -2464,6 +2471,16 @@ export async function buildDeck(
   // Rede para os módulos em que o planejador não escreveu visão geral nenhuma.
   const reserva = objetivosDeReserva(out, modules);
   if (reserva) console.log(`[V7-OVERVIEW] objectives from source=${reserva}`);
+
+  // Lista partida em "(Parte 1)" e "(Parte 2)": um formato só, e a contagem
+  // segue. Depois de quebrarSequenciaDeLayout, que pode ter mudado o tipo de um
+  // dos dois, e antes das definições, que leem o tipo do slide.
+  const continuacoes = unificarContinuacoes(out);
+  for (const c of continuacoes) {
+    console.log(
+      `[V7-CONTINUACAO] "${c.tronco}": ${c.slides} slides em "${c.formato}", a 2ª começa em ${c.comecaEm}`,
+    );
+  }
 
   // A definição que o modelo encolheu volta da fonte. Depois dos preenchimentos
   // acima, porque um cartão trazido pelo piso também pode ter perdido cláusula.
